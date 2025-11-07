@@ -86,25 +86,57 @@ struct SimplifiedIOSView: View {
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
 
-                        VStack(spacing: 12) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 32))
-                                .foregroundStyle(OATheme.Colors.textSecondary)
+                        if let workingDir = bridge.workingDirectory {
+                            // Show working directory from macOS
+                            HStack(spacing: 12) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(OATheme.Colors.accent)
 
-                            Text("Managed on macOS")
-                                .font(OAFonts.ui(.body, 14))
-                                .foregroundStyle(OATheme.Colors.textSecondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(URL(fileURLWithPath: workingDir).lastPathComponent)
+                                        .font(OAFonts.ui(.body, 14))
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(OATheme.Colors.textPrimary)
 
-                            Text("Set working directory on your Mac")
-                                .font(OAFonts.ui(.caption, 12))
-                                .foregroundStyle(OATheme.Colors.textTertiary)
+                                    Text(workingDir)
+                                        .font(OAFonts.ui(.caption, 11))
+                                        .foregroundStyle(OATheme.Colors.textTertiary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(OATheme.Colors.border.opacity(0.3))
+                            )
+                        } else {
+                            // No working directory set
+                            VStack(spacing: 12) {
+                                Image(systemName: "folder.badge.questionmark")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+
+                                Text("Not set")
+                                    .font(OAFonts.ui(.body, 14))
+                                    .foregroundStyle(OATheme.Colors.textSecondary)
+
+                                Text("Set working directory on macOS")
+                                    .font(OAFonts.ui(.caption, 12))
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(24)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.black.opacity(0.1))
+                                    .strokeBorder(OATheme.Colors.textTertiary.opacity(0.2), lineWidth: 1)
+                            )
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(OATheme.Colors.border.opacity(0.3))
-                        )
                     }
                     .padding(.horizontal)
 

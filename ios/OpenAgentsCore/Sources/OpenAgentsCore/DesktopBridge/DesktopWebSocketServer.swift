@@ -78,6 +78,9 @@ public class DesktopWebSocketServer {
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
     public var enableAutoTailing = false
 
+    // Working directory (set by delegate/owner)
+    public var workingDirectory: URL? = nil
+
     // Live tailer state
     private var tailTimer: DispatchSourceTimer?
     private var tailURL: URL?
@@ -468,7 +471,14 @@ public class DesktopWebSocketServer {
                 if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                 else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                 else { idVal = JSONRPC.ID("1") }
-                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: nil)
+                // Include working directory in _meta if available
+                let meta: [String: AnyEncodable]? = {
+                    if let wd = self.workingDirectory {
+                        return ["working_directory": AnyEncodable(wd.path)]
+                    }
+                    return nil
+                }()
+                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: meta)
                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
                     print("[Bridge][server] send rpc result method=initialize id=\(inIdStr) text=\(jtext)")
                     client.send(text: jtext)

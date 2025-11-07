@@ -3,7 +3,7 @@ import Foundation
 
 public protocol MobileWebSocketClientDelegate: AnyObject {
     /// Called when the client successfully connects and authenticates
-    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient)
+    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient, workingDirectory: String?)
 
     /// Called when the client disconnects or fails to connect
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?)
@@ -256,12 +256,22 @@ public final class MobileWebSocketClient {
                 // Reset retry count on successful connection
                 retryCount = 0
 
+                // Extract working directory from _meta if available
+                let workingDir: String? = {
+                    guard let meta = resp.result._meta,
+                          let wdValue = meta["working_directory"]?.toJSONValue() else { return nil }
+                    switch wdValue {
+                    case .string(let s): return s
+                    default: return nil
+                    }
+                }()
+
                 self.isConnected = true
                 let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
-                print("[Bridge][client] initialize ok; connected sinceConnectMs=\(since)")
+                print("[Bridge][client] initialize ok; connected sinceConnectMs=\(since) workingDir=\(workingDir ?? "nil")")
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
-                    self.delegate?.mobileWebSocketClientDidConnect(self)
+                    self.delegate?.mobileWebSocketClientDidConnect(self, workingDirectory: workingDir)
                 }
                 // Start general receive loop after handshake
                 self.receive()
