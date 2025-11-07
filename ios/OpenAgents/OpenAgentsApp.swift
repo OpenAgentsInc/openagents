@@ -48,6 +48,7 @@ struct OpenAgentsApp: App {
                 PerformanceWarmup.preloadMonoFont()
                 PerformanceWarmup.prewarmHaptics()
                 PerformanceWarmup.prewarmKeyboardAndTextInput()
+                PerformanceWarmup.prewarmResponderSilently()
                 #endif
             }
             .environment(\.font, OAFonts.ui(.body, 16))

@@ -58,6 +58,32 @@ enum PerformanceWarmup {
             tv.removeFromSuperview()
         }
     }
+
+    /// Exercise first-responder path without showing the system keyboard by
+    /// attaching a custom empty inputView. This primes input managers while
+    /// remaining invisible to the user.
+    private static var didResponderWarm = false
+    static func prewarmResponderSilently() {
+        guard !didResponderWarm else { return }
+        didResponderWarm = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow }) ?? UIApplication.shared.windows.first else { return }
+            let tv = UITextView(frame: CGRect(x: -1000, y: -1000, width: 10, height: 10))
+            tv.inputView = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1)) // suppress system keyboard
+            tv.autocorrectionType = .no
+            tv.spellCheckingType = .no
+            tv.autocapitalizationType = .none
+            window.addSubview(tv)
+            tv.becomeFirstResponder()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                tv.resignFirstResponder()
+                tv.removeFromSuperview()
+            }
+        }
+    }
 }
 
 private final class HapticsHolder {

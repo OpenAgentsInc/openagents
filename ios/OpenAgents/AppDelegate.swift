@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ = BerkeleyFont.registerAll()
         PerformanceWarmup.preloadMonoFont()
         PerformanceWarmup.prewarmHaptics()
+        PerformanceWarmup.prewarmResponderSilently()
         return true
     }
 
