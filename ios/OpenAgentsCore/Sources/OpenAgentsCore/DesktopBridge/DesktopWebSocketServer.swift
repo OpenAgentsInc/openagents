@@ -88,6 +88,8 @@ public class DesktopWebSocketServer {
     private var tailProvider: String?
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
+    // Stdout buffer per session for partial lines (Codex exec --json)
+    private var stdoutRemainderBySession: [String: Data] = [:]
     public var useProviderTailer: Bool = false // disable global tailer by default
 
     // Session mode selection (per session)
@@ -265,8 +267,11 @@ public class DesktopWebSocketServer {
         // Build CLI arguments per provider
         switch chosenMode {
         case .codex:
-            process.arguments = ["exec", "--json", prompt]
-            print("[Bridge][server] arguments (codex): exec --json \"\(prompt)\"")
+            var args: [String] = ["exec", "--json"]
+            if let wd = self.workingDirectory?.path { args += ["--cd", wd] }
+            args.append(prompt)
+            process.arguments = args
+            print("[Bridge][server] arguments (codex): \(args.joined(separator: " "))")
         case .claude_code, .default_mode:
             // Claude CLI supports --continue to resume latest session
             process.arguments = ["--continue", prompt]
@@ -288,6 +293,12 @@ public class DesktopWebSocketServer {
 
         print("[Bridge][server] PATH for process: \(environment["PATH"] ?? "none")")
         process.environment = environment
+
+        // Ensure we launch from the configured working directory (root of repo)
+        if let wd = self.workingDirectory {
+            process.currentDirectoryURL = wd
+            print("[Bridge][server] process.cwd=\(wd.path)")
+        }
 
         // Set up output/error pipes (for logging/streaming)
         let stdoutPipe = Pipe()
@@ -331,10 +342,19 @@ public class DesktopWebSocketServer {
                 }
             }
 
-            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                guard let self = self else { return }
                 let data = handle.availableData
-                if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
-                    print("[Bridge][agent stderr] \(text)")
+                guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                if text.contains("stdout is not a terminal") { return }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty { return }
+                print("[Bridge][agent stderr] \(trimmed)")
+                // Surface stderr to UI as an agent message for visibility
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(trimmed)")))
+                let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
+                if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+                    for c in self.clients where c.isHandshakeComplete { c.send(text: jtext) }
                 }
             }
 
