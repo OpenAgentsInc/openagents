@@ -268,14 +268,8 @@ private struct UpdateRow: View {
             .contentShape(Rectangle())
             .onTapGesture { onInspect?(note) }
         case .agentMessageChunk(let chunk):
+            // Render agent message content without extra header label/icon
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(.blue)
-                    Text("Agent")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
                 markdownText(extractText(from: chunk))
                     .font(.body)
             }
