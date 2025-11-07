@@ -383,6 +383,18 @@ extension BridgeManager {
         }
     }
 
+    /// Explicitly set the session mode for the current chat (no-op if no session yet).
+    /// Useful when user switches provider before sending the first message.
+    func setSessionMode(_ mode: ACPSessionModeId) {
+        guard let client = self.client, let sid = currentSessionId else { return }
+        struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
+        client.sendJSONRPC(
+            method: ACPRPC.sessionSetMode,
+            params: SetModeReq(session_id: sid, mode_id: mode),
+            id: "session-set-mode-\(UUID().uuidString)"
+        ) { (_: EmptyResult?) in }
+    }
+
     func cancelCurrentSession() {
         guard let client = self.client, let sid = currentSessionId else { return }
         struct CancelReq: Codable { let session_id: ACPSessionId }
