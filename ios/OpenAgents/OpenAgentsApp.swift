@@ -31,9 +31,6 @@ struct OpenAgentsApp: App {
     init() {
         let ts = ISO8601DateFormatter().string(from: Date())
         print("[Bridge][app] OpenAgentsApp init at \(ts)")
-        if #available(iOS 16.0, macOS 13.0, *) {
-            Logger(subsystem: "com.openagents.app", category: "app").log("OpenAgentsApp init at \(ts, privacy: .public)")
-        }
     }
 
     var body: some Scene {
@@ -46,7 +43,7 @@ struct OpenAgentsApp: App {
                 #endif
             }
             .onAppear {
-                _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll()
+                // Fonts registered at launch in AppDelegate; only warm up here
                 PerformanceWarmup.preloadMonoFont()
                 PerformanceWarmup.prewarmHaptics()
                 PerformanceWarmup.prewarmKeyboardAndTextInput()
@@ -55,10 +52,7 @@ struct OpenAgentsApp: App {
             .tint(OATheme.Colors.accent)
             .task {
                 let ts = ISO8601DateFormatter().string(from: Date())
-                print("[Bridge][app] OpenAgentsApp appear; starting bridge")
-                if #available(iOS 16.0, macOS 13.0, *) {
-                    Logger(subsystem: "com.openagents.app", category: "app").log("appear start bridge at \(ts, privacy: .public)")
-                }
+                print("[Bridge][app] OpenAgentsApp appear; starting bridge at \(ts)")
                 bridge.start()
             }
             .environmentObject(bridge)
