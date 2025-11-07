@@ -486,11 +486,21 @@ struct DrawerMenuView: View {
         .frame(maxHeight: .infinity)
         .background(Color.black)
         .onAppear {
-            loadSessions()
+            loadSessionsIfConnected()
+        }
+        .onChange(of: bridge.status) { _, newStatus in
+            // Load sessions when bridge connects
+            if case .connected = newStatus {
+                loadSessionsIfConnected()
+            }
         }
     }
 
-    private func loadSessions() {
+    private func loadSessionsIfConnected() {
+        guard case .connected = bridge.status else {
+            print("[DrawerMenu] Skipping session load - bridge not connected yet")
+            return
+        }
         guard !isLoading else { return }
         isLoading = true
         bridge.fetchRecentSessions()
