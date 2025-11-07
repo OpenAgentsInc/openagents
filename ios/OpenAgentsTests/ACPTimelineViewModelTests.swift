@@ -72,6 +72,39 @@ final class ACPTimelineViewModelTests: XCTestCase {
             XCTFail("Expected one message item")
         }
     }
+
+    @MainActor
+    func testNoLeakFromOtherSessionsWhenNoCurrentSession() async throws {
+        let bridge = BridgeManager()
+        let vm = ACPTimelineViewModel()
+        vm.attach(bridge: bridge)
+
+        // No current session yet (nil). Only 'pending' items should render.
+        let otherSid = ACPSessionId("other")
+        let pendingSid = ACPSessionId("pending")
+
+        let other = ACP.Client.SessionNotificationWire(
+            session_id: otherSid,
+            update: .agentMessageChunk(.init(content: .text(.init(text: "From other session"))))
+        )
+        let pending = ACP.Client.SessionNotificationWire(
+            session_id: pendingSid,
+            update: .userMessageChunk(.init(content: .text(.init(text: "Local echo"))))
+        )
+
+        bridge.updates = [other, pending]
+
+        let exp = expectation(description: "items updated")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        // Only the 'pending' echo should be visible
+        XCTAssertEqual(vm.items.count, 1)
+        if case let .message(role, text, _) = vm.items.first {
+            switch role { case .user: break; default: XCTFail("Expected user echo") }
+            XCTAssertEqual(text, "Local echo")
+        } else { XCTFail("Expected one message item") }
+    }
 }
 
 #endif

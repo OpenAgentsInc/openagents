@@ -172,10 +172,8 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         if method == ACPRPC.sessionUpdate {
             if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: payload) {
                 log("client", "session.update for \(note.session_id.value)")
-                // Keep currentSessionId in sync with incoming updates
-                if currentSessionId == nil || currentSessionId != note.session_id {
-                    currentSessionId = note.session_id
-                }
+                // Do NOT auto-switch sessions on incoming updates.
+                // The active session is owned by the local UI flows (session/new result or explicit set).
                 // Append/coalesce into ring buffer for UI to observe (BridgeManager is @MainActor)
                 func adjustIndicesAfterPopFront() {
                     // Shift all stored indices down by 1; drop any that become negative
