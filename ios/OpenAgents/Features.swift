@@ -40,4 +40,14 @@ enum Features {
         if ProcessInfo.processInfo.environment["OPENAGENTS_AUTOLOAD_LATEST"] == "1" { return true }
         return UserDefaults.standard.bool(forKey: "autoload_latest")
     }
+
+    /// Show simplified macOS UI (bridge status + working directory only). Default: true.
+    /// Disable with env `OPENAGENTS_SIMPLIFIED_MACOS=0` or UserDefaults `simplified_macos_ui=false`.
+    static var simplifiedMacOSUI: Bool {
+        if ProcessInfo.processInfo.environment["OPENAGENTS_SIMPLIFIED_MACOS"] == "0" { return false }
+        if UserDefaults.standard.object(forKey: "simplified_macos_ui") != nil {
+            return UserDefaults.standard.bool(forKey: "simplified_macos_ui")
+        }
+        return true // Default to simplified UI
+    }
 }

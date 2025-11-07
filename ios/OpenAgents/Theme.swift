@@ -10,21 +10,21 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.systemBackground)
             #else
-            return Color(NSColor.windowBackgroundColor)
+            return Color(hex: "#08090a") // offblack from palette
             #endif
         }
         static var sidebarBackground: Color {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(NSColor.underPageBackgroundColor)
+            return Color(hex: "#0e0e12") // slightly lighter offblack
             #endif
         }
         static var border: Color {
             #if os(iOS)
             return Color(UIColor.separator)
             #else
-            return Color(NSColor.separatorColor)
+            return Color(hex: "#23252a") // border from palette
             #endif
         }
 
@@ -33,43 +33,43 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.label)
             #else
-            return Color(NSColor.labelColor)
+            return Color(hex: "#f7f8f8") // primary from palette
             #endif
         }
         static var textSecondary: Color {
             #if os(iOS)
             return Color(UIColor.secondaryLabel)
             #else
-            return Color(NSColor.secondaryLabelColor)
+            return Color(hex: "#d0d6e0") // secondary from palette
             #endif
         }
         static var textTertiary: Color {
             #if os(iOS)
             return Color(UIColor.tertiaryLabel)
             #else
-            return Color(NSColor.tertiaryLabelColor)
+            return Color(hex: "#8a8f98") // tertiary from palette
             #endif
         }
         static var textQuaternary: Color {
             #if os(iOS)
             return Color(UIColor.quaternaryLabel)
             #else
-            return Color(NSColor.quaternaryLabelColor)
+            return Color(hex: "#62666d") // quaternary from palette
             #endif
         }
 
         // Accents and states
         static var accent: Color { Color.accentColor }
-        static var success: Color { Color(red: 0.02, green: 0.64, blue: 0.27) } // #04A545
-        static var warning: Color { Color(red: 1.0, green: 0.75, blue: 0.0) }    // #FEBF00
-        static var danger: Color { Color(red: 0.90, green: 0.02, blue: 0.06) }   // #E7040F
+        static var success: Color { Color(hex: "#04A545") }  // green from palette
+        static var warning: Color { Color(hex: "#FEBF00") }  // yellow from palette
+        static var danger: Color { Color(hex: "#e7040f") }   // brightRed from palette
 
         // Surfaces
         static var card: Color {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(NSColor.underPageBackgroundColor)
+            return Color(hex: "#08090a") // card from palette (same as background)
             #endif
         }
         static var popover: Color { card }
@@ -77,7 +77,7 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.systemGray5)
             #else
-            return Color(NSColor.selectedTextBackgroundColor).opacity(0.2)
+            return Color(hex: "#23252a").opacity(0.5) // border color with opacity
             #endif
         }
     }
