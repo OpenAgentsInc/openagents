@@ -1,13 +1,3 @@
----
-
-title: "ADR-0007: Modular Bridge Server Components"
-date: "2025-11-07"
-status: "In Review" # Proposed | Draft | In Review | Accepted | Rejected | Deprecated | Superseded
-authors:
-  - "Claude (AI Agent)"
-reviewers: ["AtlantisPleb"] # When ready for review, add GitHub handles as strings
-
----
 
 ## 1. Context and Problem Statement
 
