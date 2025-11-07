@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         let ts = ISO8601DateFormatter().string(from: Date())
         print("[Bridge][app] applicationDidBecomeActive at \(ts)")
         if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("applicationDidBecomeActive at \(ts, privacy: .public)") }
+        // Ensure keyboard/text input is also prewarmed once we have a key window
+        PerformanceWarmup.prewarmKeyboardAndTextInput()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
