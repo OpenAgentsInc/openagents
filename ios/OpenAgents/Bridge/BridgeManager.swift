@@ -492,12 +492,12 @@ extension BridgeManager {
             let session_id: String
         }
 
-        // Clear current updates and set the session ID
+        // Clear current updates (but don't set currentSessionId - historical sessions are view-only)
         updates.removeAll()
         toolCallNames.removeAll()
         rawJSONByCallId.removeAll()
         outputJSONByCallId.removeAll()
-        currentSessionId = ACPSessionId(sessionId)
+        currentSessionId = nil  // Force new session for any new prompts
 
         client.sendJSONRPC(
             method: "tinyvex/history.sessionTimeline",
