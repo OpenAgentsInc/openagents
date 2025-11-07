@@ -12,6 +12,8 @@ final class TinyvexManager: ObservableObject {
     @Published private(set) var rowCount: Int64 = 0
     @Published private(set) var fileSizeBytes: Int64 = 0
 
+    // We currently do not bind Tinyvex to the network; DesktopWebSocketServer serves clients.
+    // Tinyvex provides persistence (DB) and status only.
     private var server: TinyvexServer?
     private var statusTimer: Timer?
 
@@ -20,10 +22,8 @@ final class TinyvexManager: ObservableObject {
         do {
             let path = TinyvexManager.defaultDbPath()
             dbPath = path.path
-            let cfg = TinyvexServer.Config(port: 9099, dbPath: dbPath)
-            let srv = try TinyvexServer(config: cfg)
-            try srv.start()
-            self.server = srv
+            // Initialize DB file (create tables) without starting a WS listener.
+            _ = try TinyvexDbLayer(path: dbPath)
             self.isRunning = true
             refreshStatus()
             statusTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in self?.refreshStatus() }
@@ -87,4 +87,3 @@ final class TinyvexManager: ObservableObject {
 }
 
 #endif
-
