@@ -41,17 +41,16 @@ struct NewChatView: View {
         .navigationBarBackButtonHidden(true)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            // LEFT: Hamburger menu
+            // LEFT: Hamburger menu + Agent selector (separated but both flush left)
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: { isMenuPresented.toggle() }) {
-                    Image(systemName: "line.3.horizontal")
-                        .foregroundStyle(OATheme.Colors.textPrimary)
-                }
-            }
+                HStack(spacing: 16) {
+                    // Hamburger menu
+                    Button(action: { isMenuPresented.toggle() }) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(OATheme.Colors.textPrimary)
+                    }
 
-            // CENTER-LEFT: Agent selector (standalone, no glass effect)
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 0) {
+                    // Agent selector (plain style, no glass)
                     Menu {
                         ForEach(detectedAgents, id: \.self) { agent in
                             Button(action: {
@@ -78,10 +77,7 @@ struct NewChatView: View {
                         .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
-
-                    Spacer()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
