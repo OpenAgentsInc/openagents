@@ -19,6 +19,14 @@ struct ChatHomeView: View {
     @State private var selectedJSON: String? = nil
 
     var body: some View {
+        if Features.simplifiedIOSUI {
+            SimplifiedIOSView()
+        } else {
+            fullChatView
+        }
+    }
+
+    private var fullChatView: some View {
         NavigationStack {
             // Main content placeholder
             VStack(spacing: 12) {
