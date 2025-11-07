@@ -40,7 +40,38 @@ final class ACPTimelineViewModelTests: XCTestCase {
             XCTAssertEqual(text2, "Hi there!")
         } else { XCTFail("Second should be message") }
     }
+
+    @MainActor
+    func testFiltersWarmupAsFirstMessage() async throws {
+        let bridge = BridgeManager()
+        let vm = ACPTimelineViewModel()
+        vm.attach(bridge: bridge)
+
+        let sid = ACPSessionId("test-session")
+        bridge.currentSessionId = sid
+
+        // First update is a provider warmup artifact
+        let warm = ACP.Client.ContentChunk(content: .text(.init(text: "Warmup")))
+        let wWire = ACP.Client.SessionNotificationWire(session_id: sid, update: .userMessageChunk(warm))
+
+        // Then a real user message
+        let user = ACP.Client.ContentChunk(content: .text(.init(text: "Real question")))
+        let uWire = ACP.Client.SessionNotificationWire(session_id: sid, update: .userMessageChunk(user))
+
+        bridge.updates = [wWire, uWire]
+
+        let exp = expectation(description: "items updated")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        // Warmup should be filtered; only the real question remains
+        XCTAssertEqual(vm.items.count, 1)
+        if case let .message(_, text, _) = vm.items.first {
+            XCTAssertEqual(text, "Real question")
+        } else {
+            XCTFail("Expected one message item")
+        }
+    }
 }
 
 #endif
-
