@@ -7,6 +7,11 @@ import OpenAgentsCore
 struct ChatHomeView: View {
     @State private var isMenuPresented = false
     @EnvironmentObject private var bridge: BridgeManager
+    // Transient "working" indicator shown between orchestration RPC start and the first streamed update
+    @State private var isWorking = false
+    @State private var workingStartedAt: Date? = nil
+    @State private var workingSeconds: Int = 0
+    @State private var workingTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         NavigationStack {
@@ -40,6 +45,17 @@ struct ChatHomeView: View {
                         .font(.subheadline)
                 }
                 .padding(.horizontal)
+
+                // Show a brief top status while orchestration is starting (until first update arrives)
+                if isWorking {
+                    HStack(spacing: 8) {
+                        ProgressView().progressViewStyle(.circular)
+                        Text("Working (\(workingSeconds)s)")
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
 
                 // Sticky plan header: show latest plan once, with per-step status icons
                 if let (plan, stepStatuses) = latestPlanFromUpdates(bridge.updates) {
@@ -92,6 +108,16 @@ struct ChatHomeView: View {
             .sheet(isPresented: $isMenuPresented) {
                 MenuSheet()
             }
+            // Timer to update the "Working (Ns)" indicator
+            .onReceive(workingTimer) { _ in
+                if isWorking, let t0 = workingStartedAt {
+                    workingSeconds = max(0, Int(Date().timeIntervalSince(t0).rounded()))
+                }
+            }
+            // Hide working indicator as soon as the first streamed update arrives
+            .onChange(of: bridge.updates.count) { newCount in
+                if isWorking && newCount > 0 { isWorking = false }
+            }
         }
     }
 
@@ -100,6 +126,10 @@ struct ChatHomeView: View {
         Task { @MainActor in
             // Reset stream so user sees only new events for this flow
             bridge.updates.removeAll()
+            // Start working indicator until the first update arrives
+            isWorking = true
+            workingStartedAt = Date()
+            workingSeconds = 0
 
             // IMPORTANT: The orchestrator runs on macOS, not iOS!
             // We need to send the macOS workspace path, not an iOS sandbox path.
