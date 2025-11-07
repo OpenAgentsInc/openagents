@@ -168,13 +168,13 @@ struct SimplifiedIOSView: View {
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ChatHeaderToolbar(
-                    title: "Home",
+                    title: "Setup",
                     onToggleMenu: { isMenuPresented.toggle() },
                     onNewChat: { /* no-op for now */ }
                 )
             }
             .sheet(isPresented: $isMenuPresented) {
-                SimplifiedMenuSheet()
+                NavigationMenuSheet(isPresented: $isMenuPresented)
             }
         }
         .preferredColorScheme(.dark)
@@ -225,17 +225,34 @@ struct AgentInfoRow: View {
     }
 }
 
-// MARK: - Menu Sheet
+// MARK: - Navigation Menu Sheet
 
-private struct SimplifiedMenuSheet: View {
+struct NavigationMenuSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Navigation") {
-                    Label("Home", systemImage: "house")
-                    Label("Settings", systemImage: "gear")
+                    NavigationLink {
+                        NewChatView()
+                            .onAppear {
+                                isPresented = false
+                            }
+                    } label: {
+                        Label("New Chat", systemImage: "plus.bubble")
+                    }
+
+                    NavigationLink {
+                        SimplifiedIOSView()
+                            .onAppear {
+                                isPresented = false
+                            }
+                    } label: {
+                        Label("Setup", systemImage: "gear")
+                    }
+
                     Label("About", systemImage: "info.circle")
                 }
             }
