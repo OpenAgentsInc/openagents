@@ -61,8 +61,14 @@ struct NewChatView: View {
 
                     // New chat icon
                     Button(action: {
-                        // TODO: Start new chat
-                        print("[NewChat] New chat button tapped")
+                        // Start a new session and wipe local timeline/cache
+                        let mode: ACPSessionModeId? = {
+                            let lower = selectedAgent.lowercased()
+                            if lower.contains("codex") { return .codex }
+                            if lower.contains("claude") { return .claude_code }
+                            return nil
+                        }()
+                        bridge.startNewSession(desiredMode: mode)
                     }) {
                         Image(systemName: "square.and.pencil")
                             .foregroundStyle(.white)
