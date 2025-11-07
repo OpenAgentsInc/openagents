@@ -8,6 +8,8 @@ struct SimplifiedNavigationView: View {
     @EnvironmentObject var bridge: BridgeManager
     @State private var navigationPath = NavigationPath()
     @State private var isMenuPresented = false
+    @State private var selectedAgent: String = "Codex"
+    @State private var detectedAgents: [String] = []
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -21,11 +23,16 @@ struct SimplifiedNavigationView: View {
                 if destination == "newChat" {
                     NewChatView(
                         isMenuPresented: $isMenuPresented,
+                        selectedAgent: $selectedAgent,
+                        detectedAgents: detectedAgents,
                         onNavigateToSetup: {
                             navigationPath.removeLast()
                         }
                     )
                 }
+            }
+            .onAppear {
+                setupAgents()
             }
             .sheet(isPresented: $isMenuPresented) {
                 NavigationMenuSheet(
@@ -43,6 +50,15 @@ struct SimplifiedNavigationView: View {
                 )
             }
         }
+    }
+
+    private func setupAgents() {
+        // Agents are managed on macOS, so we just show both options
+        // User can select which one they want to use for this chat
+        detectedAgents = ["Codex", "Claude Code"]
+
+        // Default to Codex
+        selectedAgent = "Codex"
     }
 }
 
