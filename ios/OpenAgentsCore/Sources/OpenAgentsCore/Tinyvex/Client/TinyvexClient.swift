@@ -26,14 +26,14 @@ public final class TinyvexClient: NSObject {
     public func disconnect() { ws?.cancel() }
 
     // MARK: - ACP lifecycle
-    public func initialize(_ req: ACP.Agent.InitializeRequest, id: JSONRPCId = .int(1)) async throws -> ACP.Agent.InitializeResponse {
+    public func initialize(_ req: ACP.Agent.InitializeRequest, id: JSONRPC.ID = JSONRPC.ID("1")) async throws -> ACP.Agent.InitializeResponse {
         try await rpc(method: TinyvexMethods.initialize, params: req, id: id)
     }
-    public func sessionNew(_ req: ACP.Agent.SessionNewRequest, id: JSONRPCId = .int(2)) async throws -> ACP.Agent.SessionNewResponse {
+    public func sessionNew(_ req: ACP.Agent.SessionNewRequest, id: JSONRPC.ID = JSONRPC.ID("2")) async throws -> ACP.Agent.SessionNewResponse {
         try await rpc(method: TinyvexMethods.sessionNew, params: req, id: id)
     }
-    public func sessionPrompt(_ req: ACP.Agent.SessionPromptRequest, id: JSONRPCId = .int(3)) async throws { let _: Empty = try await rpc(method: TinyvexMethods.sessionPrompt, params: req, id: id) }
-    public func sessionCancel(sessionId: ACPSessionId) async { _ = try? await rpc(method: TinyvexMethods.sessionCancel, params: ["session_id": sessionId.value], id: .int(4)) as Empty }
+    public func sessionPrompt(_ req: ACP.Agent.SessionPromptRequest, id: JSONRPC.ID = JSONRPC.ID("3")) async throws { let _: Empty = try await rpc(method: TinyvexMethods.sessionPrompt, params: req, id: id) }
+    public func sessionCancel(sessionId: ACPSessionId) async { _ = try? await rpc(method: TinyvexMethods.sessionCancel, params: ["session_id": sessionId.value], id: JSONRPC.ID("4")) as Empty }
 
     struct Empty: Codable {}
 
@@ -71,9 +71,9 @@ public final class TinyvexClient: NSObject {
     }
 
     // MARK: - RPC helper
-    private func rpc<Req: Encodable, Res: Decodable>(method: String, params: Req, id: JSONRPCId) async throws -> Res {
-        struct ReqWrap<P: Encodable>: Encodable { let jsonrpc = "2.0"; let id: JSONRPCId; let method: String; let params: P }
-        let payload = try encoder.encode(ReqWrap(id: id, method: method, params: params))
+    private func rpc<Req: Codable, Res: Decodable>(method: String, params: Req, id: JSONRPC.ID) async throws -> Res {
+        let req = JSONRPC.Request(id: id, method: method, params: params)
+        let payload = try encoder.encode(req)
         try await wsSend(payload)
         // naive: wait for first response with same id
         let (data, _) = try await wsRecv()
@@ -100,4 +100,3 @@ public final class TinyvexClient: NSObject {
         }
     }
 }
-

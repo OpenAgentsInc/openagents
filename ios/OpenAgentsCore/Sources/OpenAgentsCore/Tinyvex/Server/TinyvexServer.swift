@@ -175,7 +175,7 @@ final class TinyvexConnection {
         }
     }
 
-    private func send(_ data: Data) { connection.send(content: data, completion: .contentProcessed { _ in }) }
+    func send(_ data: Data) { connection.send(content: data, completion: .contentProcessed { _ in }) }
 }
 
 extension TinyvexServer {
