@@ -944,48 +944,8 @@ public actor ExploreOrchestrator {
     }
 
     private func normalizeWorkspacePath(_ p: String) -> String {
-        var path = p.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = (workspaceRoot as NSString).lastPathComponent
-        let rootStd = (workspaceRoot as NSString).standardizingPath
-
-        // Common aliases → workspace root
-        if path == "." || path == "/" || path.lowercased() == "workspace" || path == "/workspace" {
-            return "."
-        }
-
-        // Strip "/workspace/" prefix if present
-        if path.hasPrefix("/workspace/") {
-            path.removeFirst("/workspace/".count)
-        }
-
-        // Absolute path inside workspace → make relative
-        if path.hasPrefix("/") {
-            let std = (path as NSString).standardizingPath
-            if std.hasPrefix(rootStd) {
-                var rel = String(std.dropFirst(rootStd.count))
-                if rel.hasPrefix("/") { rel.removeFirst() }
-                path = rel
-            } else {
-                // Handle "/<workspaceName>[/...]" shorthand
-                let nameWithSlash = "/" + name
-                if std == nameWithSlash {
-                    path = "."
-                } else if std.hasPrefix(nameWithSlash + "/") {
-                    var rel = String(std.dropFirst(nameWithSlash.count + 1))
-                    if rel.hasPrefix("/") { rel.removeFirst() }
-                    path = rel
-                }
-            }
-        }
-
-        // Remove leading workspace name to avoid duplication (e.g., "openagents/..." → "...")
-        if path == name { return "." }
-        if path.hasPrefix(name + "/") { path.removeFirst(name.count + 1) }
-
-        // Clean leading/trailing tokens
-        if path.hasPrefix("./") { path.removeFirst(2) }
-        if path.hasSuffix("/") { path.removeLast() }
-        return path.isEmpty ? "." : path
+        // Delegate to PathUtils for a single source of truth (handles aliases like /workspace, /<name>, and placeholders like /path/to)
+        return PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: p)
     }
 
     // MARK: - Session Operation Parsers (Phase 2.5)
