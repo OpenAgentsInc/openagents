@@ -293,6 +293,11 @@ extension BridgeManager {
         }
     }
     func sendPrompt(text: String) {
+        sendPrompt(text: text, mode: nil)
+    }
+
+    /// Send prompt with optional session mode (e.g., .codex, .claude_code)
+    func sendPrompt(text: String, mode: ACPSessionModeId?) {
         guard let client = self.client else { return }
         let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
 
@@ -314,10 +319,23 @@ extension BridgeManager {
             client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
                 guard let resp = resp else { return }
                 DispatchQueue.main.async { [weak self] in self?.currentSessionId = resp.session_id }
-                let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
-                client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)" ) { (_: EmptyResult?) in }
+                // Optionally set mode before sending the first prompt
+                if let mode = mode {
+                    struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
+                    client.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in
+                        let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
+                        client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)" ) { (_: EmptyResult?) in }
+                    }
+                } else {
+                    let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
+                    client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)" ) { (_: EmptyResult?) in }
+                }
             }
         } else if let sid = currentSessionId {
+            if let mode = mode, mode != currentMode {
+                struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
+                client.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: sid, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in }
+            }
             let req = ACP.Agent.SessionPromptRequest(session_id: sid, content: parts)
             client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
         }
