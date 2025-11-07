@@ -10,6 +10,8 @@ struct NewChatView: View {
     var onNavigateToSetup: () -> Void
 
     @State private var messageText: String = ""
+    @State private var showAgentPicker = false
+    @State private var showMoreMenu = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,21 +36,10 @@ struct NewChatView: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Agent selector dropdown - flush left
-                    Menu {
-                        ForEach(detectedAgents, id: \.self) { agent in
-                            Button(action: {
-                                selectedAgent = agent
-                            }) {
-                                HStack {
-                                    Text(agent)
-                                    if selectedAgent == agent {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
+                    // Agent selector - tap to show picker
+                    Button(action: {
+                        showAgentPicker = true
+                    }) {
                         HStack(spacing: 4) {
                             Text(selectedAgent)
                                 .font(OAFonts.ui(.headline, 16))
@@ -76,19 +67,9 @@ struct NewChatView: View {
                     .buttonStyle(.plain)
 
                     // More options menu (ellipsis)
-                    Menu {
-                        Button(action: {
-                            print("[NewChat] Delete tapped")
-                        }) {
-                            Label("Delete", systemImage: "trash")
-                        }
-
-                        Button(action: {
-                            print("[NewChat] Share tapped")
-                        }) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
-                    } label: {
+                    Button(action: {
+                        showMoreMenu = true
+                    }) {
                         Image(systemName: "ellipsis")
                             .foregroundStyle(.white)
                             .font(.system(size: 18))
@@ -182,6 +163,22 @@ struct NewChatView: View {
         .background(OATheme.Colors.background)
         .navigationBarHidden(true)
         .preferredColorScheme(.dark)
+        .confirmationDialog("Select Agent", isPresented: $showAgentPicker, titleVisibility: .visible) {
+            ForEach(detectedAgents, id: \.self) { agent in
+                Button(agent) {
+                    selectedAgent = agent
+                }
+            }
+        }
+        .confirmationDialog("Options", isPresented: $showMoreMenu, titleVisibility: .hidden) {
+            Button("Delete", role: .destructive) {
+                print("[NewChat] Delete tapped")
+            }
+            Button("Share") {
+                print("[NewChat] Share tapped")
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private func sendMessage() {
