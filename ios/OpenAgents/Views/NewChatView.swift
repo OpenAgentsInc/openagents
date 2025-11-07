@@ -56,40 +56,47 @@ struct NewChatView: View {
         .navigationBarBackButtonHidden(true)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            // LEFT: Hamburger menu
+            // LEFT: Hamburger menu and agent selector flush together
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: { isMenuPresented.toggle() }) {
-                    Image(systemName: "line.3.horizontal")
-                        .foregroundStyle(OATheme.Colors.textPrimary)
-                }
-            }
+                HStack(spacing: 16) {
+                    // Bare hamburger menu icon - no glass
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented.toggle()
+                        }
+                    }) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(OATheme.Colors.textPrimary)
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.plain)
 
-            // CENTER: Agent selector dropdown
-            ToolbarItem(placement: .principal) {
-                Menu {
-                    ForEach(detectedAgents, id: \.self) { agent in
-                        Button(action: {
-                            selectedAgent = agent
-                        }) {
-                            HStack {
-                                Text(agent)
-                                if selectedAgent == agent {
-                                    Image(systemName: "checkmark")
+                    // Agent selector dropdown - flush left
+                    Menu {
+                        ForEach(detectedAgents, id: \.self) { agent in
+                            Button(action: {
+                                selectedAgent = agent
+                            }) {
+                                HStack {
+                                    Text(agent)
+                                    if selectedAgent == agent {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(selectedAgent)
+                                .font(OAFonts.ui(.headline, 16))
+                                .foregroundStyle(OATheme.Colors.textPrimary)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                        }
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(selectedAgent)
-                            .font(OAFonts.ui(.headline, 16))
-                            .foregroundStyle(OATheme.Colors.textPrimary)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 12))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .preferredColorScheme(.dark)
