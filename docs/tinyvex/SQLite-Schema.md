@@ -72,6 +72,48 @@ CREATE TABLE IF NOT EXISTS globals (
 );
 ```
 
+ACP Event Log
+
+- Canonical, append‑only storage of ACP session updates.
+- Columns:
+  - event_id INTEGER PRIMARY KEY AUTOINCREMENT
+  - session_id TEXT NOT NULL
+  - seq INTEGER NOT NULL                 -- per‑session sequence (monotonic)
+  - ts INTEGER NOT NULL                  -- server timestamp
+  - update_json TEXT NOT NULL            -- full ACP.Client.SessionUpdate JSON
+  - meta_json TEXT NULL                  -- optional `_meta`
+  - index_hints TEXT NULL                -- optional materialized keys (for projections)
+- Indexes:
+  - acp_events_by_session_seq (session_id, seq)
+  - acp_events_by_ts (ts)
+
+Example SQL
+
+```sql
+CREATE TABLE IF NOT EXISTS acp_events (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  ts INTEGER NOT NULL,
+  update_json TEXT NOT NULL,
+  meta_json TEXT NULL,
+  index_hints TEXT NULL
+);
+CREATE INDEX IF NOT EXISTS acp_events_by_session_seq ON acp_events (session_id, seq);
+CREATE INDEX IF NOT EXISTS acp_events_by_ts ON acp_events (ts);
+```
+
+Projection Tables (optional, minimal)
+
+- sessions(session_id TEXT PRIMARY KEY, created_ts INTEGER, last_update_ts INTEGER, title TEXT NULL, mode_id TEXT, meta_json TEXT)
+- messages(message_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content_json TEXT, ts INTEGER)
+- tool_calls(call_id TEXT PRIMARY KEY, session_id TEXT, name TEXT, status TEXT, args_json TEXT, output_json TEXT, ts INTEGER)
+
+Notes
+
+- ACP JSON is the source of truth; projections are derived for common UI queries.
+- Use projections sparingly at MVP; prefer reading from `acp_events` and aggregating in code where feasible.
+
 Read Patterns
 
 - Latest document snapshot: for a given (table_id, id), select the row with max(ts) ≤ read_ts; if deleted=1, treat as tombstone.

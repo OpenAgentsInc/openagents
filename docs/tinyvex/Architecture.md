@@ -14,15 +14,19 @@ Components
   - Maintains sequence numbers per stream to support resume on reconnect.
   - Normalizes parameters using canonical JSON (sorted keys, no whitespace) so equivalent requests share a computation.
   - Optionally maintains a small in-memory journal (recent values by seq) to support fast resume when `lastSeq` is recent.
+- ACP Session Fanout
+  - ACP `session/update` frames are produced by the agent runner (after translation) and first persisted to the Tinyvex log.
+  - A lightweight dispatcher then emits ACP‑compliant `session/update` notifications to all connected clients.
+  - This path is distinct from Tinyvex query subscriptions (which use `tinyvex/*`).
 - DbLayer (actor)
   - GRDB/SQLite access; WAL mode; single writer; transactional mutations.
   - Exposes read APIs that align with SubscriptionManager’s observation queries.
 
 Event Ingestion Path
 
-- Source: The existing Swift agent runner (CLI bridge) emits JSON‑L session updates.
+- Source: The existing Swift agent runner (CLI bridge) emits provider JSON‑L which is translated to ACP `SessionUpdate`.
 - Write‑through: These updates are written to Tinyvex via DbLayer first (append to the log and update any secondary indexes).
-- Propagation: SubscriptionManager observes the affected queries and broadcasts changes to connected clients.
+- Propagation: ACP dispatcher sends `session/update` to clients; SubscriptionManager observes DB projections for non‑ACP list/history queries.
 - Replay: On reconnect, clients resubscribe and either receive missed deltas (by seq/journal) or a fresh snapshot.
   - Applies a retention policy for log rows (compaction/GC) and exposes a snapshot validation helper for resume.
 
