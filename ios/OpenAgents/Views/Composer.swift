@@ -10,69 +10,117 @@ struct Composer: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
 
-        let textField = UITextField()
-        textField.placeholder = "Message \(agentName)"
-        textField.borderStyle = .none
-        textField.backgroundColor = UIColor(white: 1.0, alpha: 0.1)
-        textField.textColor = .white
-        textField.tintColor = .white
-        textField.returnKeyType = .send
-        textField.enablesReturnKeyAutomatically = true
-        textField.delegate = context.coordinator
+        let textView = UITextView()
+        textView.text = ""
+        textView.font = UIFont.systemFont(ofSize: 16)
+        textView.backgroundColor = UIColor(white: 1.0, alpha: 0.1)
+        textView.textColor = .white
+        textView.tintColor = .white
+        textView.returnKeyType = .send
+        textView.enablesReturnKeyAutomatically = true
+        textView.delegate = context.coordinator
+        textView.isScrollEnabled = false
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        textView.textContainer.lineFragmentPadding = 0
 
         // DISABLE HAPTIC FEEDBACK - this is what fixes the lag
-        textField.autocorrectionType = .no
-        textField.spellCheckingType = .no
+        textView.autocorrectionType = .no
+        textView.spellCheckingType = .no
 
         // Styling
-        textField.layer.cornerRadius = 24
-        textField.layer.masksToBounds = true
+        textView.layer.cornerRadius = 24
+        textView.layer.masksToBounds = true
 
-        // Padding via left/right views
-        let leftPadding = UIView(frame: CGRect(x: 0, y: 0, width: 16, height: 1))
-        let rightPadding = UIView(frame: CGRect(x: 0, y: 0, width: 16, height: 1))
-        textField.leftView = leftPadding
-        textField.leftViewMode = .always
-        textField.rightView = rightPadding
-        textField.rightViewMode = .always
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(textView)
 
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(textField)
+        let heightConstraint = textView.heightAnchor.constraint(equalToConstant: 44)
+        heightConstraint.priority = .defaultLow
 
         NSLayoutConstraint.activate([
-            textField.topAnchor.constraint(equalTo: container.topAnchor),
-            textField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            textField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            textField.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            textField.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+            textView.topAnchor.constraint(equalTo: container.topAnchor),
+            textView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            textView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            heightConstraint,
+            textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            textView.heightAnchor.constraint(lessThanOrEqualToConstant: 120)
         ])
+
+        // Set placeholder
+        if text.isEmpty {
+            textView.text = "Message \(agentName)"
+            textView.textColor = .systemGray
+        }
 
         return container
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        guard let textField = uiView.subviews.first as? UITextField else { return }
-        textField.text = text
+        guard let textView = uiView.subviews.first as? UITextView else { return }
+
+        if text != textView.text {
+            if text.isEmpty {
+                textView.text = "Message \(agentName)"
+                textView.textColor = .systemGray
+            } else {
+                if textView.textColor == .systemGray {
+                    textView.textColor = .white
+                }
+                textView.text = text
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
-    class Coordinator: NSObject, UITextFieldDelegate {
+    class Coordinator: NSObject, UITextViewDelegate {
         var parent: Composer
 
         init(_ parent: Composer) {
             self.parent = parent
         }
 
-        func textFieldDidChangeSelection(_ textField: UITextField) {
-            parent.text = textField.text ?? ""
+        func textViewDidChange(_ textView: UITextView) {
+            // Handle placeholder
+            if textView.text.isEmpty {
+                textView.text = "Message \(parent.agentName)"
+                textView.textColor = .systemGray
+                parent.text = ""
+            } else if textView.textColor == .systemGray {
+                textView.text = ""
+                textView.textColor = .white
+            } else {
+                parent.text = textView.text
+            }
+
+            // Enable scrolling if content exceeds max height
+            let size = textView.sizeThatFits(CGSize(width: textView.frame.width, height: .greatestFiniteMagnitude))
+            textView.isScrollEnabled = size.height > 120
         }
 
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            parent.onSubmit()
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            if text == "\n" {
+                parent.onSubmit()
+                return false
+            }
             return true
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            if textView.textColor == .systemGray {
+                textView.text = ""
+                textView.textColor = .white
+            }
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            if textView.text.isEmpty {
+                textView.text = "Message \(parent.agentName)"
+                textView.textColor = .systemGray
+            }
         }
     }
 }
