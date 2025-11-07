@@ -55,14 +55,23 @@ struct SimplifiedNavigationView: View {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             isMenuPresented = false
                         }
-                        // Go back to root (New Chat)
-                        navigationPath = NavigationPath()
+                        // Go back to root (New Chat) - no animation
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            navigationPath = NavigationPath()
+                        }
                     },
                     onNavigateToSetup: {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             isMenuPresented = false
                         }
-                        navigationPath.append("setup")
+                        // Navigate to setup - no animation
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            navigationPath.append("setup")
+                        }
                     }
                 )
                 .frame(width: UIScreen.main.bounds.width * 0.75)
@@ -340,13 +349,9 @@ struct DrawerMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Text("Menu")
-                .font(OAFonts.ui(.title, 24))
-                .foregroundStyle(OATheme.Colors.textPrimary)
-                .padding(.horizontal, 24)
-                .padding(.top, 60)
-                .padding(.bottom, 32)
+            // Header spacing
+            Color.clear
+                .frame(height: 60)
 
             // Navigation items
             Button(action: onNavigateToNewChat) {
@@ -381,18 +386,18 @@ struct DrawerMenuView: View {
             }
             .buttonStyle(.plain)
 
-            HStack(spacing: 16) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(OATheme.Colors.textSecondary)
-                    .frame(width: 24)
-                Text("About")
-                    .font(OAFonts.ui(.body, 16))
-                    .foregroundStyle(OATheme.Colors.textSecondary)
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+//            HStack(spacing: 16) {
+//                Image(systemName: "info.circle")
+//                    .font(.system(size: 20))
+//                    .foregroundStyle(OATheme.Colors.textSecondary)
+//                    .frame(width: 24)
+//                Text("About")
+//                    .font(OAFonts.ui(.body, 16))
+//                    .foregroundStyle(OATheme.Colors.textSecondary)
+//                Spacer()
+//            }
+//            .padding(.horizontal, 24)
+//            .padding(.vertical, 16)
 
             Spacer()
         }
