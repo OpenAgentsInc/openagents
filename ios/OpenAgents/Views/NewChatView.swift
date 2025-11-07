@@ -38,7 +38,9 @@ struct NewChatView: View {
                     Menu {
                         ForEach(detectedAgents, id: \.self) { agent in
                             Button(action: {
-                                selectedAgent = agent
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selectedAgent = agent
+                                }
                             }) {
                                 HStack {
                                     Text(agent)
@@ -53,12 +55,14 @@ struct NewChatView: View {
                             Text(selectedAgent)
                                 .font(OAFonts.ui(.headline, 16))
                                 .foregroundStyle(.white)
+                                .frame(minWidth: 110, alignment: .leading)
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
                     }
                     .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.2), value: selectedAgent)
 
                     Spacer()
 

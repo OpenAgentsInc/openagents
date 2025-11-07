@@ -91,7 +91,40 @@ struct SimplifiedIOSView: View {
     var onNavigateToNewChat: () -> Void
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            // Custom header - no glass
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: 0)
+                    .frame(maxWidth: .infinity)
+                    .background(.black)
+                    .ignoresSafeArea(edges: .top)
+
+                HStack(spacing: 16) {
+                    // Bare hamburger menu icon
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented.toggle()
+                        }
+                    }) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("Setup")
+                        .font(OAFonts.ui(.headline, 16))
+                        .foregroundStyle(.white)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.black)
+            }
+
+            ScrollView {
                 VStack(spacing: 32) {
                     // App title
                     VStack(spacing: 8) {
@@ -247,15 +280,9 @@ struct SimplifiedIOSView: View {
                 }
             }
             .background(OATheme.Colors.background)
-            .navigationTitle("")
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ChatHeaderToolbar(
-                    title: "Setup",
-                    onToggleMenu: { isMenuPresented.toggle() },
-                    onNewChat: { /* no-op for now */ }
-                )
-            }
+        }
+        .background(OATheme.Colors.background)
+        .navigationBarHidden(true)
         .preferredColorScheme(.dark)
     }
 
