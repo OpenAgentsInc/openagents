@@ -97,4 +97,23 @@ This document provides guidance for AI agents working with Architecture Decision
 > "We're already paying the cost of poor documentation in repeated debates and confused contributors. This makes that cost explicit and gives us a way to avoid having the same arguments every month."
 
 The goal is clarity and honesty, not corporate compliance.
+
+### Pre‑Handoff Build Discipline (for AI agents)
+
+Before you stop working on a task, always validate local builds from the command line and ensure zero errors or warnings:
+
+- macOS build
+  - `cd ios`
+  - `xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk macosx -configuration Debug`
+
+- iOS Simulator build (use iPhone 16 simulator)
+  - `cd ios`
+  - `xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk iphonesimulator -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16'`
+
+Requirements
+- No build errors
+- No warnings (fix or silence intentionally with justification)
+- If you changed shared code (`OpenAgentsCore`), run both builds
+
+This check is mandatory prior to handoff or closing an issue.
 \ No newline at end of file
