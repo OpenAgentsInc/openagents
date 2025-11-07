@@ -28,7 +28,7 @@ struct ChatHeaderToolbar: ToolbarContent {
             // to achieve the requested "left-of-center" feel.
             HStack(spacing: 0) {
                 Text(title)
-                    .font(.headline)
+                    .font(OAFonts.ui(.headline, 16))
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                     .truncationMode(.tail)
