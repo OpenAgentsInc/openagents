@@ -61,14 +61,5 @@ enum Features {
         return true // Default to simplified UI
     }
 
-    /// Use Tinyvex server instead of DesktopWebSocketServer on macOS (development only)
-    /// Enable with env `OPENAGENTS_USE_TINYVEX=1` or UserDefaults `use_tinyvex=true`.
-    static var useTinyvexServer: Bool {
-        #if os(macOS)
-        if ProcessInfo.processInfo.environment["OPENAGENTS_USE_TINYVEX"] == "1" { return true }
-        return UserDefaults.standard.bool(forKey: "use_tinyvex")
-        #else
-        return false
-        #endif
-    }
+    // Tinyvex runs unconditionally on macOS (no feature flag).
 }
