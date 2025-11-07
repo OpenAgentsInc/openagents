@@ -239,9 +239,11 @@ extension BridgeManager: MobileWebSocketClientDelegate {
 
                 switch note.update {
                 case .toolCall(let call):
-                    // Remember tool name for subsequent tool_call_update rows, but do NOT append a separate row.
-                    // We want a single row per call_id that updates in place from 'started'→'completed'.
+                    // Remember tool name for subsequent tool_call_update rows
                     self.toolCallNames[call.call_id] = call.name
+                    // Also add to updates array so timeline views can render initial tool call
+                    if self.updates.count >= 200 { self.updates.removeFirst(); adjustIndicesAfterPopFront() }
+                    self.updates.append(note)
                 case .toolCallUpdate(let upd):
                     // Keep raw JSON and extracted output for inspector
                     if let s = String(data: payload, encoding: .utf8) { self.rawJSONByCallId[upd.call_id] = s }

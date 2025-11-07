@@ -69,7 +69,6 @@ final class ACPTimelineViewModel: ObservableObject {
             filtered = updates.filter { $0.session_id.value == "pending" }
         }
 
-        print("[ACPTimelineVM] recompute: total updates=\(updates.count), filtered=\(filtered.count), currentSession=\(currentSession?.value ?? "nil")")
 
         for note in filtered {
             monoMs += 1000
@@ -84,15 +83,12 @@ final class ACPTimelineViewModel: ObservableObject {
                         break
                     }
                     out.append(.message(role: .user, text: trimmed, ts: monoMs))
-                    print("[ACPTimelineVM] added user message")
                 }
             case .agentMessageChunk(let chunk):
                 if case let .text(t) = chunk.content {
                     out.append(.message(role: .assistant, text: t.text, ts: monoMs))
-                    print("[ACPTimelineVM] added assistant message")
                 }
             case .toolCall(let wire):
-                print("[ACPTimelineVM] processing tool_call: id=\(wire.call_id) name=\(wire.name)")
                 // Only add each tool call once
                 if !seenCalls.contains(wire.call_id) {
                     seenCalls.insert(wire.call_id)
@@ -107,15 +103,9 @@ final class ACPTimelineViewModel: ObservableObject {
                     // Don't show TodoWrite as a tool call (converted to plan elsewhere)
                     if wire.name.lowercased() != "todowrite" {
                         out.append(.toolCall(call))
-                        print("[ACPTimelineVM] added tool call to items: \(wire.name)")
-                    } else {
-                        print("[ACPTimelineVM] skipped TodoWrite")
                     }
-                } else {
-                    print("[ACPTimelineVM] tool call already seen: \(wire.call_id)")
                 }
             case .toolCallUpdate(let upd):
-                print("[ACPTimelineVM] processing tool_call_update: id=\(upd.call_id) status=\(upd.status)")
                 // Only add each result once per status
                 let key = "\(upd.call_id)|\(upd.status.rawValue)"
                 if !seenResults.contains(key) {
@@ -128,7 +118,6 @@ final class ACPTimelineViewModel: ObservableObject {
                         ts: monoMs
                     )
                     out.append(.toolResult(result))
-                    print("[ACPTimelineVM] added tool result")
                 }
             default:
                 continue // Ignore other types for simplified view
@@ -137,7 +126,6 @@ final class ACPTimelineViewModel: ObservableObject {
 
         // Keep bounded (200 like bridge ring buffer)
         if out.count > 200 { out = Array(out.suffix(200)) }
-        print("[ACPTimelineVM] final items count: \(out.count)")
         self.items = out
     }
 }
