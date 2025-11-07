@@ -97,6 +97,8 @@ public class DesktopWebSocketServer {
     // Exec stream state per session (for codex --json mapping)
     private struct ExecStreamState { var callIdByItemId: [String:String] = [:] }
     private var execStateBySession: [String: ExecStreamState] = [:]
+    // Codex thread id per ACP session for resume support
+    private var codexThreadIdBySession: [String: String] = [:]
 
     // Active agent sessions
     private var activeProcesses: [String: Process] = [:]  // session_id -> Process
@@ -269,6 +271,9 @@ public class DesktopWebSocketServer {
         case .codex:
             var args: [String] = ["exec", "--json"]
             if let wd = self.workingDirectory?.path { args += ["--cd", wd] }
+            if let thread = codexThreadIdBySession[sidStr], !thread.isEmpty {
+                args += ["resume", thread]
+            }
             args.append(prompt)
             process.arguments = args
             print("[Bridge][server] arguments (codex): \(args.joined(separator: " "))")
@@ -1607,6 +1612,12 @@ extension DesktopWebSocketServer {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
+        case "thread.started":
+            if let threadId = obj["thread_id"] as? String, !threadId.isEmpty {
+                codexThreadIdBySession[sessionId.value] = threadId
+                print("[Bridge][server] codex thread started id=\(threadId) for session=\(sessionId.value)")
+            }
+            return
         case "item.started":
             if let item = obj["item"] as? [String: Any], let id = item["id"] as? String, let itemType = item["type"] as? String {
                 if itemType == "command_execution" {
