@@ -14,76 +14,7 @@ struct HistorySidebar: View {
 
     var body: some View {
         List {
-            // Bridge status chip (desktop + mobile)
-            BridgeStatusChip()
-                .listRowBackground(Color.clear)
-            
-            HStack(spacing: 8) {
-                Image(systemName: "clock").imageScale(.small)
-                    .foregroundStyle(OATheme.Colors.textTertiary)
-                Text("History")
-                    .font(OAFonts.ui(.caption, 12))
-                    .foregroundStyle(OATheme.Colors.textTertiary)
-            }
-            .listRowBackground(Color.clear)
-            #if os(iOS)
-            .listRowSeparator(.hidden)
-            #endif
-            
-            Group {
-                if isLoading && effectiveItems().isEmpty {
-                    HStack {
-                        ProgressView()
-                        Text("Loading…")
-                            .font(OAFonts.ui(.caption, 12))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                    }
-                }
-                if effectiveItems().isEmpty && !isLoading {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("No chats found")
-                            .font(OAFonts.ui(.caption, 12))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                        if !debugLines.isEmpty {
-                            ForEach(debugLines.prefix(8), id: \.self) { line in
-                                Text(line).font(.footnote).foregroundStyle(OATheme.Colors.textSecondary).lineLimit(2)
-                            }
-                        }
-                        #if os(macOS)
-                        Button("Select Codex Folder…", action: selectCodexFolder)
-                            .buttonStyle(.bordered)
-                        #endif
-                    }
-                }
-            }
-                ForEach(Array(effectiveItems().prefix(10).enumerated()), id: \.0) { _, pair in
-                    let row = pair.0
-                    let isActive = (selected?.id == row.id && selected?.source == row.source)
-                    Button(action: { onSelect?(row, pair.1) }) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(displayTitle(for: row) ?? "Thread")
-                                .font(OAFonts.ui(.body, 13))
-                                .fontWeight(isActive ? .semibold : .regular)
-                                .foregroundStyle(OATheme.Colors.textPrimary)
-                                .lineLimit(1)
-                            HStack(spacing: 8) {
-                                if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
-                                    Label(relative(ts), systemImage: "clock")
-                                        .symbolRenderingMode(.monochrome)
-                                        .font(OAFonts.ui(.caption2, 10))
-                                        .foregroundStyle(OATheme.Colors.textTertiary)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
-                    .contentShape(Rectangle())
-                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                    #if os(iOS)
-                    .listRowSeparator(.hidden)
-                    #endif
-                }
+            listContent
         }
         .scrollContentBackground(.hidden)
         .background(OATheme.Colors.sidebarBackground)
@@ -92,9 +23,133 @@ struct HistorySidebar: View {
         #if os(iOS)
         .onChange(of: bridge.threads) { _, newVal in
             self.isLoading = false
-            self.items = newVal.map { t in (LocalThreadSummary(id: t.id, title: t.title, source: t.source, created_at: t.created_at, updated_at: t.updated_at, last_message_ts: t.last_message_ts, message_count: t.message_count), nil) }
+            self.items = self.mapThreadsToItems(newVal)
+        }
+        .onChange(of: bridge.recentSessions) { _, newVal in
+            self.isLoading = false
+            self.items = self.mapRecentSessionsToItems(newVal)
         }
         #endif
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        // Bridge status chip (desktop + mobile)
+        BridgeStatusChip()
+            .listRowBackground(Color.clear)
+
+        HStack(spacing: 8) {
+            Image(systemName: "clock").imageScale(.small)
+                .foregroundStyle(OATheme.Colors.textTertiary)
+            Text("History")
+                .font(OAFonts.ui(.caption, 12))
+                .foregroundStyle(OATheme.Colors.textTertiary)
+        }
+        .listRowBackground(Color.clear)
+        #if os(iOS)
+        .listRowSeparator(.hidden)
+        #endif
+
+        Group {
+            if isLoading && effectiveItems().isEmpty {
+                HStack {
+                    ProgressView()
+                    Text("Loading…")
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                }
+            }
+            if effectiveItems().isEmpty && !isLoading {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No chats found")
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                    if !debugLines.isEmpty {
+                        ForEach(debugLines.prefix(8), id: \.self) { line in
+                            Text(line).font(.footnote).foregroundStyle(OATheme.Colors.textSecondary).lineLimit(2)
+                        }
+                    }
+                    #if os(macOS)
+                    Button("Select Codex Folder…", action: selectCodexFolder)
+                        .buttonStyle(.bordered)
+                    #endif
+                }
+            }
+        }
+        sessionRows
+    }
+
+    @ViewBuilder
+    private var sessionRows: some View {
+        ForEach(Array(effectiveItems().prefix(10).enumerated()), id: \.0) { _, pair in
+            sessionRow(pair.0, pair.1)
+        }
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ row: LocalThreadSummary, _ url: URL?) -> some View {
+        let isActive = (selected?.id == row.id && selected?.source == row.source)
+        Button(action: {
+            #if os(iOS)
+            // For Tinyvex sessions, load the timeline from the database
+            if row.source == "tinyvex" {
+                bridge.loadSessionTimeline(sessionId: row.id)
+            }
+            #endif
+            onSelect?(row, url)
+        }) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayTitle(for: row) ?? "Thread")
+                    .font(OAFonts.ui(.body, 13))
+                    .fontWeight(isActive ? .semibold : .regular)
+                    .foregroundStyle(OATheme.Colors.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
+                        Label(relative(ts), systemImage: "clock")
+                            .symbolRenderingMode(.monochrome)
+                            .font(OAFonts.ui(.caption2, 10))
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
+        .contentShape(Rectangle())
+        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+        #if os(iOS)
+        .listRowSeparator(.hidden)
+        #endif
+    }
+
+    // Helper methods to reduce View body complexity
+    private func mapThreadsToItems(_ threads: [ThreadSummary]) -> [(LocalThreadSummary, URL?)] {
+        threads.map { t in
+            (LocalThreadSummary(
+                id: t.id,
+                title: t.title,
+                source: t.source,
+                created_at: t.created_at,
+                updated_at: t.updated_at,
+                last_message_ts: t.last_message_ts,
+                message_count: t.message_count
+            ), nil)
+        }
+    }
+
+    private func mapRecentSessionsToItems(_ sessions: [RecentSession]) -> [(LocalThreadSummary, URL?)] {
+        sessions.map { session in
+            (LocalThreadSummary(
+                id: session.session_id,
+                title: nil,
+                source: "tinyvex",
+                created_at: nil,
+                updated_at: session.last_ts,
+                last_message_ts: session.last_ts,
+                message_count: Int(session.message_count)
+            ), nil)
+        }
     }
 
     private func load() {
@@ -102,10 +157,12 @@ struct HistorySidebar: View {
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             var dbg: [String] = []
-            // iOS path: if bridge has threads, prefer those and skip FS scanning
+            // iOS path: load recent sessions from Tinyvex DB
             #if os(iOS)
-            // On iOS, rely on bridge.threads updates to populate items; keep loading spinner until then.
-            DispatchQueue.main.async { self.isLoading = true }
+            DispatchQueue.main.async {
+                self.isLoading = true
+                self.bridge.fetchRecentSessions()
+            }
             return
             #endif
             #if os(macOS)
@@ -182,11 +239,7 @@ struct HistorySidebar: View {
     }
 
     private func effectiveItems() -> [(LocalThreadSummary, URL?)] {
-        #if os(iOS)
-        if !bridge.threads.isEmpty {
-            return bridge.threads.map { ts in (LocalThreadSummary(id: ts.id, title: ts.title, source: ts.source, created_at: ts.created_at, updated_at: ts.updated_at, last_message_ts: ts.last_message_ts, message_count: ts.message_count), nil) }
-        }
-        #endif
+        // On iOS, items are already populated by onChange observers
         return items
     }
 
