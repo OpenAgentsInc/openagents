@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OpenAgentsCore
 struct ContentView: View {
     @State private var selectedRow: LocalThreadSummary? = nil
     @State private var selectedURL: URL? = nil
@@ -36,11 +37,13 @@ struct ContentView: View {
                             self.selectedRow = row
                             self.selectedURL = url
                         }
+                        // Adopt selected thread id as active session for subsequent prompts
+                        bridge.currentSessionId = ACPSessionId(row.id)
                     })
                     .navigationSplitViewColumnWidth(min: 220, ideal: 260)
                 } detail: {
-                    // Keep detail title empty; we draw our own leading toolbar title
-                    AcpThreadView(url: selectedURL, onTitleChange: { t in
+                    // Do not hydrate previous threads; show only live updates
+                    AcpThreadView(url: nil, onTitleChange: { t in
                         self.toolbarTitle = t
                     })
                     .navigationTitle("")
@@ -125,9 +128,7 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
     }
 
-    #if os(iOS)
     @EnvironmentObject private var bridge: BridgeManager
-    #endif
 
     private func selectedRowTitle() -> String {
         if let r = selectedRow {
