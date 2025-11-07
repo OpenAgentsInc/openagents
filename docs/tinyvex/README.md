@@ -12,7 +12,9 @@ Scope
 
 - macOS host server (SwiftNIO + GRDB + SQLite WAL)
 - iOS/macOS Swift client (Combine + async/await)
-- JSON‑RPC 2.0 over a persistent WebSocket, namespaced as `tinyvex/*` per ADR‑0004
+- JSON‑RPC 2.0 over a persistent WebSocket
+- ACP‑first transport: session lifecycle and streamed updates use ACP method names/payloads (`session/new`, `session/prompt`, `session/update`, `session/cancel`).
+- Tinyvex‑namespaced methods (`tinyvex/*`) are only for persistence/query utilities (e.g., list/history snapshots), never for ACP session streams.
  - Canonical parameter encoding and per-subscription journaling for fast resume.
 
 Non‑goals (for MVP)
@@ -29,6 +31,11 @@ Read next
 - SQLite Schema: Tables, indexes, and queries
 - Client API: Swift subscribe/mutation interface
 - Roadmap: Milestones and test plan
+
+ACP Compliance
+
+- On‑wire: All session lifecycle and streaming updates are 100% ACP compliant using the Swift ACP module in `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/`.
+- In storage: We persist ACP `SessionUpdate` events (JSON) as the canonical log and project the minimum additional tables needed for UI queries. Extra OpenAgents metadata is stored alongside via `_meta` fields.
  - Security: Local threat model and hardening plan
 
 Delivery Semantics (Store‑first, Push‑second)
