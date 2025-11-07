@@ -5,22 +5,24 @@ Transport
 - JSON‑RPC 2.0 messages over a single persistent WebSocket.
 - Namespaced methods: `tinyvex/*` per ADR‑0004 to coexist with existing bridge methods.
 - Server may send notifications at any time (data, error, pong, transitionChunk).
+- All requests MUST include `"jsonrpc": "2.0"`, `method`, and either `id` (request) or omit `id` (notification).
 
 Correlation & Sequence
 
 - Client supplies `id` for requests; server replies with matching `id`.
 - Subscriptions are identified by `subId` (client‑chosen) and stream a monotonically increasing `seq` per subscription.
 - Clients can resume by resending `subscribe` with `lastSeq` after reconnect.
+- The server MAY return a `journal` identifier to enable fast resume within a retention window.
 
 Methods (Client → Server)
 
 1) tinyvex/connect
 - params: { client: { name, version }, clockSkewHint?: number }
-- result: { serverVersion, nowTs, features: { chunks: boolean } }
+- result: { serverVersion, nowTs, features: { chunks: boolean, maxChunkBytes: number }, sessionId: string }
 
 2) tinyvex/subscribe
-- params: { subId: string, name: string, params: any, lastSeq?: number }
-- result: { accepted: true }
+- params: { subId: string, name: string, params: any, lastSeq?: number, journal?: string }
+- result: { accepted: true, resumed: boolean, startSeq: number }
 - semantics: Starts or resumes a stream keyed by (name, normalized(params)). Duplicate subscribers share a single computation.
 
 3) tinyvex/unsubscribe
@@ -37,7 +39,12 @@ Methods (Client → Server)
 - result: { requestId: string, value: any }
 - semantics: Like mutation but side‑effect semantics are looser (e.g., external calls), does not guarantee local state change.
 
-6) tinyvex/ping
+6) tinyvex/auth.setToken (optional)
+- params: { token: string | null }
+- result: { ok: true }
+- semantics: Applies/clears a bearer token for the connection; unused in pure local mode but future‑proofs the wire protocol.
+
+7) tinyvex/ping
 - params: { t?: number }
 - result: { t?: number }
 
@@ -59,16 +66,22 @@ Payload Guidelines
 - JSON encoding: Standard JSON (no special $integer/$float wrappers). Use explicit string/number mapping in schemas.
 - Size limits: Servers MAY chunk `value` if serialized size exceeds a configured threshold; clients MUST reassemble.
 - Ordering: For a given `subId`, messages with higher `seq` supersede lower ones; clients SHOULD drop older in‑flight chunks once a newer complete value arrives.
+- Canonical params: Clients SHOULD send params as canonical JSON (sorted keys). Servers MUST canonicalize before keying subscriptions.
 
 Errors
 
-- Request errors use JSON‑RPC error response with { code, message, data? }.
+- Request errors use JSON‑RPC error response with { code, message, data? }. See Errors.md for code taxonomy.
 - Stream errors use `tinyvex/error` with optional `subId`.
 
 Resubscribe on Reconnect
 
 - Client caches active `{ subId, name, params, lastSeq }` and resends `tinyvex/subscribe` for each.
 - Server MAY fast‑path resume if journal still valid; otherwise emits a fresh value with a new `seq`.
+
+Durable Delivery Clarification
+
+- The server persists all updates from the agent/CLI into SQLite before notifying clients.
+- If a client is offline, upon reconnection it will receive the latest snapshot (and, where supported, replay deltas from `lastSeq`). This avoids missed events and ensures consistency with the desktop source‑of‑truth.
 
 Examples
 
@@ -78,3 +91,5 @@ Examples
 - Data notification
   { "jsonrpc": "2.0", "method": "tinyvex/data", "params": { "subId": "inbox", "seq": 3, "value": [ { "id": "m1", "text": "hi" } ] } }
 
+- Error response (invalid params)
+  { "jsonrpc": "2.0", "id": 42, "error": { "code": -32602, "message": "Invalid params", "data": { "path": ["params","threadId"] } } }
