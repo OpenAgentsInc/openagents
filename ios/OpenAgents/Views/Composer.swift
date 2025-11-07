@@ -9,41 +9,25 @@ struct Composer: View {
 
     @FocusState private var isFocused: Bool
 
-    private var isEmpty: Bool {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     var body: some View {
         HStack(spacing: 12) {
-            // Text field
-            TextField("Message \(agentName)", text: $text, axis: .vertical)
+            TextField("Message \(agentName)", text: $text)
+                .textFieldStyle(.plain)
                 .font(.system(size: 16))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.white.opacity(0.1))
-                )
+                .padding(12)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(20)
                 .focused($isFocused)
-                .submitLabel(.send)
-                .onSubmit {
-                    if !isEmpty { onSubmit() }
-                }
 
-            // Submit button
-            Button(action: {
-                if !isEmpty { onSubmit() }
-            }) {
+            Button(action: onSubmit) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(isEmpty ? Color.gray : Color.blue)
+                    .foregroundColor(text.isEmpty ? .gray : .blue)
             }
-            .disabled(isEmpty)
+            .disabled(text.isEmpty)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.black)
+        .padding()
+        .background(.black)
     }
 }
 
