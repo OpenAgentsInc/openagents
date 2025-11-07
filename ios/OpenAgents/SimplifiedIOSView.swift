@@ -38,15 +38,15 @@ struct SimplifiedNavigationView: View {
             }
 
             // Overlay when drawer is open
-            if isMenuPresented {
-                Color.gray.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            isMenuPresented = false
-                        }
+            Color.gray.opacity(isMenuPresented ? 0.3 : 0)
+                .ignoresSafeArea()
+                .allowsHitTesting(isMenuPresented)
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isMenuPresented = false
                     }
-            }
+                }
+                .animation(.easeInOut(duration: 0.3), value: isMenuPresented)
 
             // Drawer from left
             HStack(spacing: 0) {
@@ -67,6 +67,7 @@ struct SimplifiedNavigationView: View {
                 )
                 .frame(width: UIScreen.main.bounds.width * 0.75)
                 .offset(x: isMenuPresented ? 0 : -UIScreen.main.bounds.width * 0.75)
+                .animation(.easeInOut(duration: 0.3), value: isMenuPresented)
 
                 Spacer()
             }
