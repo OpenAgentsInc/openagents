@@ -258,40 +258,43 @@ private struct UpdateRow: View {
         case .toolCallUpdate(let upd):
             HStack(alignment: .firstTextBaseline) {
                 let hasOutput = bridge.outputJSONByCallId[upd.call_id] != nil
-                if (upd.status == .started && !hasOutput) {
-                    ProgressView().progressViewStyle(.circular)
-                        .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
-                        .frame(width: 14, height: 14)
-                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
-                } else if (upd.status == .error) {
-                    Image(systemName: "xmark.octagon")
-                        .foregroundStyle(OATheme.Colors.danger)
-                } else {
-                    Image(systemName: "checkmark.circle")
-                }
-                // Show the original tool name if known; fall back to the call_id
-                let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
-                // Extract progress percent from _meta if available
-                let pct: String? = {
+                // Extract numeric progress if available
+                let progressValue: Double? = {
                     if let meta = upd._meta, let p = meta["progress"]?.toJSONValue() {
                         switch p {
-                        case .number(let d):
-                            return "\(Int((d * 100).rounded()))%"
+                        case .number(let d): return d
                         case .string(let s):
-                            return s
-                        default:
+                            if s.hasSuffix("%"), let v = Double(s.dropLast()) { return v / 100.0 }
+                            if let v = Double(s) { return v }
                             return nil
+                        default: return nil
                         }
                     }
                     return nil
                 }()
-                if let pct = pct, upd.status == .started && !hasOutput {
-                    Text("\(name) (\(pct))")
+                let isCompleteish = hasOutput || upd.status == .completed || ((progressValue ?? 0.0) >= 0.999)
+                // Leading status icon/spinner sized like SF Symbol
+                if upd.status == .error {
+                    Image(systemName: "xmark.octagon")
+                        .foregroundStyle(OATheme.Colors.danger)
+                } else if isCompleteish {
+                    Image(systemName: "checkmark.circle")
+                } else {
+                    ProgressView().progressViewStyle(.circular)
+                        .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
+                        .frame(width: 14, height: 14)
+                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
+                }
+                // Show the original tool name if known; fall back to the call_id
+                let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
+                if let pv = progressValue, !isCompleteish {
+                    Text("\(name) (\(Int((pv * 100).rounded()))%)")
                 } else {
                     Text(name)
                 }
                 Spacer()
-                Text((hasOutput && upd.status == .started) ? ACPToolCallUpdateWire.Status.completed.rawValue : upd.status.rawValue)
+                let statusText = isCompleteish ? ACPToolCallUpdateWire.Status.completed.rawValue : upd.status.rawValue
+                Text(statusText)
                     .font(.footnote)
                     .foregroundStyle(upd.status == .error ? .red : .secondary)
             }
