@@ -2,6 +2,7 @@ import SwiftUI
 import CoreText
 
 enum BerkeleyFont {
+    private static var registered = false
     static let fileNames = [
         "BerkeleyMono-Regular",
         "BerkeleyMono-Bold",
@@ -18,6 +19,7 @@ enum BerkeleyFont {
 
     @discardableResult
     static func registerAll() -> Bool {
+        if registered { return true }
         var ok = true
         for name in fileNames {
             if let url = Bundle.main.url(forResource: name, withExtension: "ttf") {
@@ -26,6 +28,7 @@ enum BerkeleyFont {
                 ok = false
             }
         }
+        registered = true
         return ok
     }
 
@@ -49,6 +52,7 @@ enum BerkeleyFont {
 
 // MARK: - Inter variable font loader
 enum InterFont {
+    private static var registered = false
     // Variable font files (opsz,wght) for regular and italic
     static let fileNames = [
         "Inter-VariableFont_opsz,wght",
@@ -63,6 +67,7 @@ enum InterFont {
 
     @discardableResult
     static func registerAll() -> Bool {
+        if registered { return true }
         var ok = true
         for name in fileNames {
             if let url = Bundle.main.url(forResource: name, withExtension: "ttf") {
@@ -71,6 +76,7 @@ enum InterFont {
                 ok = false
             }
         }
+        registered = true
         return ok
     }
 
