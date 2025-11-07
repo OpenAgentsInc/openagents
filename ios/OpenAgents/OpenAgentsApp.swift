@@ -45,7 +45,12 @@ struct OpenAgentsApp: App {
                 ContentView()
                 #endif
             }
-            .onAppear { _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll(); PerformanceWarmup.preloadMonoFont(); PerformanceWarmup.prewarmHaptics() }
+            .onAppear {
+                _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll()
+                PerformanceWarmup.preloadMonoFont()
+                PerformanceWarmup.prewarmHaptics()
+                PerformanceWarmup.prewarmKeyboardAndTextInput()
+            }
             .environment(\.font, OAFonts.ui(.body, 16))
             .tint(OATheme.Colors.accent)
             .task {
