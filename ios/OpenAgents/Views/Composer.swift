@@ -110,11 +110,25 @@ struct Composer: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
+            let start = CFAbsoluteTimeGetCurrent()
+            defer {
+                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                if elapsed > 0.016 {
+                    print("[Composer] textViewDidChange took \(Int(elapsed * 1000))ms")
+                }
+            }
             if !isPriming { parent.text = textView.text }
             placeholder?.isHidden = !textView.text.isEmpty
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let start = CFAbsoluteTimeGetCurrent()
+            defer {
+                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                if elapsed > 0.016 {
+                    print("[Composer] shouldChangeTextIn took \(Int(elapsed * 1000))ms")
+                }
+            }
             if text == "\n" {
                 parent.onSubmit()
                 return false
@@ -126,10 +140,11 @@ struct Composer: UIViewRepresentable {
             placeholder?.isHidden = true
             // Prime the candidate/autocorrection pipeline once per app run while the
             // keyboard is open, without leaving any visible character behind.
+            // Delay until after keyboard animation completes (~300ms) so all subsystems are ready
             if !didPrime, textView.text.isEmpty {
                 didPrime = true
                 isPriming = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     textView.insertText("a")
                     textView.deleteBackward()
                     self.isPriming = false
