@@ -2,13 +2,59 @@ import SwiftUI
 
 #if os(iOS)
 
-struct SimplifiedIOSView: View {
+// MARK: - Navigation Container
+
+struct SimplifiedNavigationView: View {
     @EnvironmentObject var bridge: BridgeManager
+    @State private var navigationPath = NavigationPath()
     @State private var isMenuPresented = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        NavigationStack(path: $navigationPath) {
+            SimplifiedIOSView(
+                isMenuPresented: $isMenuPresented,
+                onNavigateToNewChat: {
+                    navigationPath.append("newChat")
+                }
+            )
+            .navigationDestination(for: String.self) { destination in
+                if destination == "newChat" {
+                    NewChatView(
+                        isMenuPresented: $isMenuPresented,
+                        onNavigateToSetup: {
+                            navigationPath.removeLast()
+                        }
+                    )
+                }
+            }
+            .sheet(isPresented: $isMenuPresented) {
+                NavigationMenuSheet(
+                    onNavigateToNewChat: {
+                        isMenuPresented = false
+                        navigationPath.append("newChat")
+                    },
+                    onNavigateToSetup: {
+                        isMenuPresented = false
+                        navigationPath = NavigationPath()
+                    },
+                    onDismiss: {
+                        isMenuPresented = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Setup View
+
+struct SimplifiedIOSView: View {
+    @EnvironmentObject var bridge: BridgeManager
+    @Binding var isMenuPresented: Bool
+    var onNavigateToNewChat: () -> Void
+
+    var body: some View {
+        ScrollView {
                 VStack(spacing: 32) {
                     // App title
                     VStack(spacing: 8) {
@@ -173,10 +219,6 @@ struct SimplifiedIOSView: View {
                     onNewChat: { /* no-op for now */ }
                 )
             }
-            .sheet(isPresented: $isMenuPresented) {
-                NavigationMenuSheet(isPresented: $isMenuPresented)
-            }
-        }
         .preferredColorScheme(.dark)
     }
 
@@ -228,28 +270,19 @@ struct AgentInfoRow: View {
 // MARK: - Navigation Menu Sheet
 
 struct NavigationMenuSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var isPresented: Bool
+    var onNavigateToNewChat: () -> Void
+    var onNavigateToSetup: () -> Void
+    var onDismiss: () -> Void
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Navigation") {
-                    NavigationLink {
-                        NewChatView()
-                            .onAppear {
-                                isPresented = false
-                            }
-                    } label: {
+                    Button(action: onNavigateToNewChat) {
                         Label("New Chat", systemImage: "plus.bubble")
                     }
 
-                    NavigationLink {
-                        SimplifiedIOSView()
-                            .onAppear {
-                                isPresented = false
-                            }
-                    } label: {
+                    Button(action: onNavigateToSetup) {
                         Label("Setup", systemImage: "gear")
                     }
 
@@ -260,7 +293,7 @@ struct NavigationMenuSheet: View {
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: { dismiss() })
+                    Button("Done", action: onDismiss)
                 }
             }
         }
@@ -269,7 +302,7 @@ struct NavigationMenuSheet: View {
 }
 
 #Preview {
-    SimplifiedIOSView()
+    SimplifiedNavigationView()
         .environmentObject(BridgeManager())
 }
 
