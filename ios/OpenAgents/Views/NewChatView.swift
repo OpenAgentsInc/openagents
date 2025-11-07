@@ -120,20 +120,15 @@ struct NewChatView: View {
             .padding(.vertical, 12)
             .background(OATheme.Colors.border.opacity(0.2))
 
-            // Main content area
-            VStack {
-                Spacer()
-
-                Text("New Chat")
-                    .font(OAFonts.ui(.title, 24))
-                    .foregroundStyle(OATheme.Colors.textSecondary)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
+            // Main content area - tap to dismiss keyboard
+            Spacer()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
 
             // Composer at bottom
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Composer(
                     text: $messageText,
                     agentName: selectedAgent,
@@ -154,13 +149,15 @@ struct NewChatView: View {
                         )
                 }
                 .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .padding(.bottom, 6)
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(OATheme.Colors.background)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OATheme.Colors.background)
+        .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
         .preferredColorScheme(.dark)
         .confirmationDialog("Select Agent", isPresented: $showAgentPicker, titleVisibility: .visible) {

@@ -8,6 +8,9 @@ struct Composer: UIViewRepresentable {
     var onSubmit: () -> Void
 
     func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
         let textView = UITextView()
         textView.text = ""
         textView.font = UIFont.systemFont(ofSize: 16)
@@ -29,10 +32,20 @@ struct Composer: UIViewRepresentable {
         textView.layer.cornerRadius = 20
         textView.layer.masksToBounds = true
 
-        // Set explicit height
+        // Prevent expansion
+        textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+
         textView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(textView)
+
         NSLayoutConstraint.activate([
-            textView.heightAnchor.constraint(equalToConstant: 40)
+            textView.topAnchor.constraint(equalTo: container.topAnchor),
+            textView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            textView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            textView.heightAnchor.constraint(equalToConstant: 40),
+            container.heightAnchor.constraint(equalToConstant: 40)
         ])
 
         // Set placeholder
@@ -41,20 +54,22 @@ struct Composer: UIViewRepresentable {
             textView.textColor = .systemGray
         }
 
-        return textView
+        return container
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        guard let textView = uiView as? UITextView else { return }
+        guard let textView = uiView.subviews.first as? UITextView else { return }
 
-        if text != textView.text {
-            if text.isEmpty {
+        // Handle clearing when text binding is empty
+        if text.isEmpty {
+            if textView.textColor != .systemGray || textView.text != "Message \(agentName)" {
                 textView.text = "Message \(agentName)"
                 textView.textColor = .systemGray
-            } else {
-                if textView.textColor == .systemGray {
-                    textView.textColor = .white
-                }
+            }
+        } else {
+            // Only update if text actually changed (ignore placeholder state)
+            if textView.textColor == .systemGray || textView.text != text {
+                textView.textColor = .white
                 textView.text = text
             }
         }
