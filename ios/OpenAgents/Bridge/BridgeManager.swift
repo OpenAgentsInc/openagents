@@ -38,6 +38,7 @@ final class BridgeManager: ObservableObject {
         let srv = DesktopWebSocketServer()
         do {
             srv.delegate = self
+            srv.workingDirectory = workingDirectory  // Set working directory on server
             try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
             server = srv
             log("server", "Started on ws://0.0.0.0:\(BridgeConfig.defaultPort)")
@@ -55,6 +56,8 @@ final class BridgeManager: ObservableObject {
     func setWorkingDirectory(_ url: URL) {
         workingDirectory = url
         saveWorkingDirectory(url)
+        // Update server's working directory so new connections get the updated value
+        server?.workingDirectory = url
     }
 
     func loadWorkingDirectory() {
@@ -83,6 +86,8 @@ final class BridgeManager: ObservableObject {
     @Published var currentSessionId: ACPSessionId? = nil
     @Published var availableCommands: [ACP.Client.AvailableCommand] = []
     @Published var currentMode: ACPSessionModeId = .default_mode
+    // Working directory from macOS server (received during initialize handshake)
+    @Published var workingDirectory: String? = nil
     // Map tool call_id -> tool name for rendering updates
     @Published var toolCallNames: [String: String] = [:]
     // Track latest index in `updates` for each tool_call_update call_id to coalesce progress
@@ -142,8 +147,10 @@ final class BridgeManager: ObservableObject {
 
 #if os(iOS)
 extension BridgeManager: MobileWebSocketClientDelegate {
-    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
-        log("client", "Connected; requesting latest thread")
+    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient, workingDirectory: String?) {
+        log("client", "Connected; workingDir=\(workingDirectory ?? "nil")")
+        // Store working directory from macOS server
+        self.workingDirectory = workingDirectory
         if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
         // Persist last successful endpoint for fast reconnects on next launch
         if let h = currentHost, let p = currentPort {
