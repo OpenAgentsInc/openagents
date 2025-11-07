@@ -472,10 +472,13 @@ public class DesktopWebSocketServer {
                 else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                 else { idVal = JSONRPC.ID("1") }
                 // Include working directory in _meta if available
+                print("[Bridge][server] workingDirectory=\(self.workingDirectory?.path ?? "nil")")
                 let meta: [String: AnyEncodable]? = {
                     if let wd = self.workingDirectory {
+                        print("[Bridge][server] including working_directory in _meta: \(wd.path)")
                         return ["working_directory": AnyEncodable(wd.path)]
                     }
+                    print("[Bridge][server] workingDirectory is nil, not including in _meta")
                     return nil
                 }()
                 let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: meta)
