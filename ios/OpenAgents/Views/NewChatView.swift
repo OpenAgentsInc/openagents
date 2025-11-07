@@ -14,17 +14,12 @@ struct NewChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Main content area
-            ScrollView {
-                VStack {
-                    Spacer()
-
-                    Text("New Chat")
-                        .font(OAFonts.ui(.title, 24))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, minHeight: 400)
+            VStack {
+                Spacer()
+                Text("New Chat")
+                    .font(.system(size: 24, weight: .regular))
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
 
             // Composer at bottom
@@ -36,7 +31,7 @@ struct NewChatView: View {
                 }
             )
         }
-        .background(OATheme.Colors.background)
+        .background(.black)
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
         .toolbarTitleDisplayMode(.inline)
@@ -52,7 +47,6 @@ struct NewChatView: View {
                     .font(.system(size: 16, weight: .semibold))
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .preferredColorScheme(.dark)
     }
 
