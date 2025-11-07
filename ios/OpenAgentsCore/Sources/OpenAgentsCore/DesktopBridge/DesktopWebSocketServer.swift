@@ -319,23 +319,142 @@ public class DesktopWebSocketServer {
     }
 
     private func handleThreadLoadLatest(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
-            client.send(text: text)
+        // Deprecated raw JSONL hydrate; prefer thread/load_latest_typed
+        struct LatestResult: Codable {
+            let id: String
+            let lines: [String]
+        }
+
+        let paramLimit = (params?["limit_lines"] as? NSNumber)?.intValue
+        let paramBytes = (params?["max_bytes"] as? NSNumber)?.intValue
+        let base = CodexScanner.defaultBaseDir()
+        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
+
+        if let file = urls.first {
+            let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+            // Read a larger window of lines before pruning/capping to fit mobile limits
+            let maxLines = paramLimit ?? 16000
+            let maxBytes = paramBytes ?? 1_000_000
+            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: maxBytes, maxLines: maxLines)
+            // Prune heavy payloads (e.g., tool results and large strings) to fit mobile WS limits
+            lines = DesktopWebSocketServer.pruneHeavyPayloads(in: lines)
+            // Keep total payload comfortably under 1MB (account for envelope overhead)
+            lines = DesktopWebSocketServer.capTotalBytes(lines, limit: 900_000)
+
+            let result = LatestResult(id: tid, lines: lines)
+            JsonRpcRouter.sendResponse(id: id, result: result) { text in
+                print("[Bridge][server] send rpc result method=thread/load_latest id=\(id.value) bytes=\(text.utf8.count)")
+                client.send(text: text)
+            }
+        } else {
+            JsonRpcRouter.sendError(id: id, code: -32002, message: "No threads found") { text in
+                client.send(text: text)
+            }
         }
     }
 
     private func handleThreadLoadLatestTyped(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
-            client.send(text: text)
+        struct LatestTypedResult: Codable {
+            let id: String
+            let updates: [ACP.Client.SessionUpdate]
+        }
+
+        // Load Claude Code sessions ONLY (fall back to Codex if none found)
+        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
+        let claudeFiles = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+
+        var file: URL?
+        var provider: String = "claude-code"
+        var base: URL = claudeBase
+
+        if let clf = claudeFiles.first {
+            // Use Claude Code session
+            file = clf
+            provider = "claude-code"
+            base = claudeBase
+        } else {
+            // Fallback to Codex only if no Claude Code sessions exist
+            let codexBase = CodexScanner.defaultBaseDir()
+            let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
+            if let cf = codexFiles.first {
+                file = cf
+                provider = "codex"
+                base = codexBase
+            }
+        }
+
+        if let file = file {
+            let tid: String
+            if provider == "codex" {
+                tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+            } else {
+                tid = ClaudeCodeScanner.scanForSessionID(file) ?? ClaudeCodeScanner.relativeId(for: file, base: base)
+            }
+
+            // Read and translate to ACP
+            let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
+            let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines, provider: provider)
+
+            let result = LatestTypedResult(id: tid, updates: updates)
+            JsonRpcRouter.sendResponse(id: id, result: result) { text in
+                print("[Bridge][server] send rpc result method=thread/load_latest_typed id=\(id.value) provider=\(provider) bytes=\(text.utf8.count)")
+                client.send(text: text)
+            }
+        } else {
+            JsonRpcRouter.sendError(id: id, code: -32002, message: "No threads found") { text in
+                client.send(text: text)
+            }
         }
     }
 
     private func handleIndexStatus(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+        // Minimal Phase-1: respond and emit a tiny synthetic stream for visibility
+        // Params may contain session_id to stream under
+        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
+        let sid = ACPSessionId(sidStr)
+
+        struct StatusResult: Codable {
+            let workspace_path: String
+            let exists: Bool
+            let files_indexed: Int?
+            let chunks: Int?
+        }
+
+        // Default workspace path (env override TEST_WORKSPACE_ROOT)
+        let ws = ProcessInfo.processInfo.environment["TEST_WORKSPACE_ROOT"] ?? "\(NSHomeDirectory())/code/openagents"
+        let exists = FileManager.default.fileExists(atPath: ws)
+
+        let result = StatusResult(workspace_path: ws, exists: exists, files_indexed: nil, chunks: nil)
+        JsonRpcRouter.sendResponse(id: id, result: result) { text in
+            print("[Bridge][server] send rpc result method=index.status id=\(id.value) text=\(text)")
             client.send(text: text)
+        }
+
+        // Emit synthetic tool stream: index.rebuild started→completed
+        let call = ACPToolCallWire(call_id: UUID().uuidString, name: "index.rebuild", arguments: [
+            "workspace": AnyEncodable(ws)
+        ])
+        let toolNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCall(call))
+        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: toolNote)), let jtext = String(data: out, encoding: .utf8) {
+            client.send(text: jtext)
+        }
+
+        // started
+        let started = ACPToolCallUpdateWire(call_id: call.call_id, status: .started, output: nil, error: nil, _meta: ["progress": AnyEncodable(0.0)])
+        let startedNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCallUpdate(started))
+        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: startedNote)), let jtext = String(data: out, encoding: .utf8) {
+            client.send(text: jtext)
+        }
+
+        // completed with tiny payload
+        let payload: [String: AnyEncodable] = [
+            "workspace": AnyEncodable(ws),
+            "indexed": AnyEncodable(false)
+        ]
+        let completed = ACPToolCallUpdateWire(call_id: call.call_id, status: .completed, output: AnyEncodable(payload), error: nil, _meta: nil)
+        let completedNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCallUpdate(completed))
+        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: completedNote)), let jtext = String(data: out, encoding: .utf8) {
+            client.send(text: jtext)
         }
     }
 
