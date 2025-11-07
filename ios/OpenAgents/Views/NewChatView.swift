@@ -207,7 +207,13 @@ struct NewChatView: View {
         guard !message.isEmpty else { return }
 
         // Send via bridge (creates a session on first send, then reuses it)
-        bridge.sendPrompt(text: message)
+        let mode: ACPSessionModeId? = {
+            let lower = selectedAgent.lowercased()
+            if lower.contains("codex") { return .codex }
+            if lower.contains("claude") { return .claude_code }
+            return nil
+        }()
+        bridge.sendPrompt(text: message, mode: mode)
 
         // Clear input
         messageText = ""

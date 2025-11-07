@@ -89,6 +89,9 @@ public class DesktopWebSocketServer {
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
 
+    // Session mode selection (per session)
+    private var modeBySession: [String: ACPSessionModeId] = [:]
+
     // Active agent sessions
     private var activeProcesses: [String: Process] = [:]  // session_id -> Process
     private var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
@@ -230,19 +233,30 @@ public class DesktopWebSocketServer {
             return
         }
 
-        // Find claude CLI
-        let claudePath = findClaudeCLI()
-        guard let claudePath = claudePath else {
-            print("[Bridge][server] ERROR: claude CLI not found")
-            sendErrorMessage(sessionId: sessionId, message: "Claude CLI not found. Please install Claude Code CLI.", client: client)
+        // Pick agent binary based on session mode
+        let chosenMode = modeBySession[sidStr] ?? .default_mode
+        var binary: String?
+        var agentName = "claude"
+        switch chosenMode {
+        case .codex:
+            binary = findCodexCLI()
+            agentName = "codex"
+        case .claude_code, .default_mode:
+            binary = findClaudeCLI()
+            agentName = "claude"
+        }
+        guard let execPath = binary else {
+            let msg = chosenMode == .codex ? "Codex CLI not found" : "Claude CLI not found"
+            print("[Bridge][server] ERROR: \(msg)")
+            sendErrorMessage(sessionId: sessionId, message: "\(msg). Please install the \(agentName) CLI.", client: client)
             return
         }
 
-        print("[Bridge][server] launching agent: \(claudePath)")
+        print("[Bridge][server] launching agent (mode=\(chosenMode.rawValue)): \(execPath)")
 
         // Create process
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: claudePath)
+        process.executableURL = URL(fileURLWithPath: execPath)
 
         // Use --continue to resume the most recent session, or start new one
         // This ensures claude writes to the JSONL file we're tailing
@@ -253,13 +267,13 @@ public class DesktopWebSocketServer {
         var environment = ProcessInfo.processInfo.environment
 
         // Add fnm node to PATH
-        let claudeDir = (claudePath as NSString).deletingLastPathComponent
-        let fnmNodePath = (claudeDir as NSString).deletingLastPathComponent
+        let binDir = (execPath as NSString).deletingLastPathComponent
+        let fnmNodePath = (binDir as NSString).deletingLastPathComponent
 
         if let existingPath = environment["PATH"] {
-            environment["PATH"] = "\(claudeDir):\(fnmNodePath):\(existingPath)"
+            environment["PATH"] = "\(binDir):\(fnmNodePath):\(existingPath)"
         } else {
-            environment["PATH"] = "\(claudeDir):\(fnmNodePath):/usr/local/bin:/usr/bin:/bin"
+            environment["PATH"] = "\(binDir):\(fnmNodePath):/usr/local/bin:/usr/bin:/bin"
         }
 
         print("[Bridge][server] PATH for process: \(environment["PATH"] ?? "none")")
@@ -387,6 +401,37 @@ public class DesktopWebSocketServer {
         return nil
     }
 
+    private func findCodexCLI() -> String? {
+        // Try common locations for a "codex" CLI
+        let paths = [
+            "/usr/local/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "\(NSHomeDirectory())/bin/codex",
+            "\(NSHomeDirectory())/.local/bin/codex",
+            "\(NSHomeDirectory())/.npm-global/bin/codex",
+            "/usr/bin/codex"
+        ]
+        for p in paths { if FileManager.default.fileExists(atPath: p) { return p } }
+        // Fallback to login shells
+        for shell in ["/bin/zsh", "/bin/bash"] {
+            do {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: shell)
+                process.arguments = ["-l", "-c", "which codex"]
+                let out = Pipe(); let err = Pipe()
+                process.standardOutput = out; process.standardError = err
+                try process.run(); process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    let data = out.fileHandleForReading.readDataToEndOfFile()
+                    if let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return s }
+                }
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
     private func searchForClaudeRecursive(in basePath: String, maxDepth: Int, currentDepth: Int = 0) -> String? {
         guard currentDepth < maxDepth else { return nil }
         guard FileManager.default.fileExists(atPath: basePath) else { return nil }
@@ -409,16 +454,26 @@ public class DesktopWebSocketServer {
     }
 
     private func findAndTailSessionFile(sessionId: ACPSessionId, client: Client) {
-        // Look for the latest session file from Claude Code
-        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
-        let files = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+        let sidStr = sessionId.value
+        let chosenMode = modeBySession[sidStr] ?? .default_mode
+        var picked: URL? = nil
+        var provider = "claude-code"
+        if chosenMode == .codex {
+            let codexBase = CodexScanner.defaultBaseDir()
+            picked = CodexScanner.listRecentTopN(at: codexBase, topK: 1).first
+            provider = "codex"
+        }
+        if picked == nil {
+            let claudeBase = ClaudeCodeScanner.defaultBaseDir()
+            picked = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1).first
+            provider = "claude-code"
+        }
 
-        guard let file = files.first else {
-            print("[Bridge][server] WARNING: no session file found for \(sessionId.value)")
+        guard let file = picked else {
+            print("[Bridge][server] WARNING: no session file found for \(sessionId.value) (mode=\(chosenMode.rawValue))")
             return
         }
 
-        let sidStr = sessionId.value
         sessionFiles[sidStr] = file
 
         print("[Bridge][server] tailing session file: \(file.path)")
@@ -428,7 +483,7 @@ public class DesktopWebSocketServer {
             guard let self = self else { return }
             self.tailURL = file
             self.tailSessionId = sessionId
-            self.tailProvider = "claude-code"
+            self.tailProvider = provider
             let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.uint64Value ?? 0
             self.tailOffset = size
             self.tailBuffer.removeAll(keepingCapacity: true)
@@ -718,9 +773,12 @@ public class DesktopWebSocketServer {
                         let params = dict["params"] as? [String: Any]
                         let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
                         let sid = ACPSessionId(sidStr)
-                        // Echo a current_mode_update
+                        // Store mode for this session
                         let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
-                        let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: ACPSessionModeId(rawValue: modeStr) ?? .default_mode))
+                        let modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
+                        self.modeBySession[sidStr] = modeId
+                        // Echo a current_mode_update
+                        let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: modeId))
                         let note = ACP.Client.SessionNotificationWire(session_id: sid, update: update)
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
                             print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) text=\(jtext)")

@@ -18,7 +18,11 @@ public struct ACPSessionId: Codable, Hashable, Equatable {
     }
 }
 
-public enum ACPSessionModeId: String, Codable, CaseIterable { case default_mode }
+public enum ACPSessionModeId: String, Codable, CaseIterable {
+    case default_mode = "default_mode"
+    case claude_code = "claude-code"
+    case codex = "codex"
+}
 
 public extension ACP.Agent {
     struct SessionNewRequest: Codable {
