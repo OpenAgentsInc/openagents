@@ -3,6 +3,7 @@ import SwiftUI
 #if os(iOS)
 
 struct NewChatView: View {
+    @EnvironmentObject var bridge: BridgeManager
     @Binding var isMenuPresented: Bool
     @Binding var selectedAgent: String
     var detectedAgents: [String]
@@ -12,6 +13,45 @@ struct NewChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Connection info at top
+            VStack(alignment: .leading, spacing: 8) {
+                // Bridge status
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(bridgeStatusColor)
+                        .frame(width: 8, height: 8)
+                    Text(bridgeStatusText)
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                }
+
+                // Working directory
+                if let workingDir = bridge.workingDirectory {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 10))
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                        Text(URL(fileURLWithPath: workingDir).lastPathComponent)
+                            .font(OAFonts.ui(.caption, 12))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                    }
+                }
+
+                // Enabled agents
+                HStack(spacing: 8) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 10))
+                        .foregroundStyle(OATheme.Colors.textTertiary)
+                    Text(detectedAgents.joined(separator: ", "))
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(OATheme.Colors.border.opacity(0.2))
+
             // Main content area
             VStack {
                 Spacer()
@@ -111,6 +151,38 @@ struct NewChatView: View {
 
         // Clear input
         messageText = ""
+    }
+
+    private var bridgeStatusText: String {
+        switch bridge.status {
+        case .connected(let host, let port):
+            return "Connected to \(host):\(port)"
+        case .connecting(let host, let port):
+            return "Connecting to \(host):\(port)"
+        case .handshaking(let host, let port):
+            return "Handshaking with \(host):\(port)"
+        case .discovering:
+            return "Discovering desktop..."
+        case .advertising(let port):
+            return "Advertising on :\(port)"
+        case .idle:
+            return "Idle"
+        case .error(let msg):
+            return "Error: \(msg)"
+        }
+    }
+
+    private var bridgeStatusColor: Color {
+        switch bridge.status {
+        case .connected:
+            return OATheme.Colors.success
+        case .connecting, .handshaking, .discovering, .advertising:
+            return OATheme.Colors.textSecondary
+        case .idle:
+            return OATheme.Colors.textTertiary
+        case .error:
+            return OATheme.Colors.danger
+        }
     }
 }
 
