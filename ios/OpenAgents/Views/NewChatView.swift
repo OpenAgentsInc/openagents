@@ -16,11 +16,20 @@ struct NewChatView: View {
             Text("New Chat")
             Spacer()
 
-            Composer(
-                text: $messageText,
-                agentName: selectedAgent,
-                onSubmit: { messageText = "" }
-            )
+            HStack {
+                Composer(
+                    text: $messageText,
+                    agentName: selectedAgent,
+                    onSubmit: { messageText = "" }
+                )
+
+                Button(action: { messageText = "" }) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding()
         }
         .background(.black)
         .navigationTitle("")

@@ -2,26 +2,50 @@ import SwiftUI
 
 #if os(iOS)
 
-struct Composer: View {
+struct Composer: UIViewRepresentable {
     @Binding var text: String
     var agentName: String
     var onSubmit: () -> Void
 
-    var body: some View {
-        HStack {
-            TextField("Message", text: $text)
-                .textFieldStyle(.plain)
-                .padding(12)
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(20)
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField()
+        textField.placeholder = "Message"
+        textField.borderStyle = .roundedRect
+        textField.backgroundColor = .systemGray6
+        textField.returnKeyType = .send
+        textField.enablesReturnKeyAutomatically = true
+        textField.delegate = context.coordinator
 
-            Button(action: onSubmit) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.blue)
-            }
+        // DISABLE HAPTIC FEEDBACK
+        textField.autocorrectionType = .no
+        textField.spellCheckingType = .no
+
+        return textField
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        uiView.text = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: Composer
+
+        init(_ parent: Composer) {
+            self.parent = parent
         }
-        .padding()
+
+        func textFieldDidChangeSelection(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.onSubmit()
+            return true
+        }
     }
 }
 
