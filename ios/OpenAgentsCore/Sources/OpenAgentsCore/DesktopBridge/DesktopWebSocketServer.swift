@@ -77,6 +77,8 @@ public class DesktopWebSocketServer {
     private var tinyvexDb: TinyvexDbLayer?
     // Session update hub for persistence+broadcast
     private var updateHub: SessionUpdateHub?
+    // History API for Tinyvex queries
+    private var historyApi: HistoryApi?
 
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
@@ -119,6 +121,8 @@ public class DesktopWebSocketServer {
             self.updateHub = SessionUpdateHub(tinyvexDb: db) { [weak self] notificationJSON in
                 await self?.broadcastToClients(notificationJSON)
             }
+            // Initialize HistoryApi for Tinyvex queries
+            self.historyApi = HistoryApi(tinyvexDb: db)
             print("[Bridge][server] Tinyvex DB attached at \(path)")
         } else {
             print("[Bridge][server] Failed to open Tinyvex DB at \(path)")
@@ -1053,32 +1057,31 @@ public class DesktopWebSocketServer {
                         else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                         else { idVal = JSONRPC.ID("1") }
 
-                        guard let db = self.tinyvexDb else {
+                        guard let api = self.historyApi else {
                             DesktopWebSocketServer.sendJSONRPCError(
                                 client: client,
                                 id: idVal,
                                 code: -32603,
-                                message: "Tinyvex DB not attached"
+                                message: "History API not initialized"
                             )
                             return
                         }
 
                         Task {
                             do {
-                                let sessions = try await db.recentSessions(limit: 10)
-                                struct SessionItem: Codable {
-                                    let session_id: String
-                                    let last_ts: Int64
-                                    let message_count: Int64
-                                }
-                                let items = sessions.map { SessionItem(session_id: $0.session_id, last_ts: $0.last_ts, message_count: $0.message_count) }
-                                print("[Bridge][tinyvex.history] recentSessions count=\(items.count)")
-
-                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: items)), let jtext = String(data: out, encoding: .utf8) {
+                                let items = try await api.recentSessions()
+                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: items)),
+                                   let jtext = String(data: out, encoding: .utf8) {
                                     client.send(text: jtext)
                                 }
+                            } catch let error as HistoryApi.HistoryError {
+                                DesktopWebSocketServer.sendJSONRPCError(
+                                    client: client,
+                                    id: idVal,
+                                    code: error.jsonRpcCode,
+                                    message: error.localizedDescription
+                                )
                             } catch {
-                                print("[Bridge][tinyvex.history] recentSessions error: \(error)")
                                 DesktopWebSocketServer.sendJSONRPCError(
                                     client: client,
                                     id: idVal,
@@ -1094,12 +1097,12 @@ public class DesktopWebSocketServer {
                         else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                         else { idVal = JSONRPC.ID("1") }
 
-                        guard let db = self.tinyvexDb else {
+                        guard let api = self.historyApi else {
                             DesktopWebSocketServer.sendJSONRPCError(
                                 client: client,
                                 id: idVal,
                                 code: -32603,
-                                message: "Tinyvex DB not attached"
+                                message: "History API not initialized"
                             )
                             return
                         }
@@ -1119,39 +1122,19 @@ public class DesktopWebSocketServer {
 
                         Task {
                             do {
-                                let updateJsons = try await db.sessionTimeline(sessionId: sessionId, limit: limit)
-                                print("[Bridge][tinyvex.history] sessionTimeline session=\(sessionId) rows=\(updateJsons.count)")
-
-                                // Parse each JSON string into ACP.Client.SessionNotificationWire
-                                // Note: DB stores just the "update" portion, so we need to decode SessionUpdate and wrap it
-                                var updates: [ACP.Client.SessionNotificationWire] = []
-                                for (idx, jsonStr) in updateJsons.enumerated() {
-                                    guard let data = jsonStr.data(using: .utf8) else {
-                                        print("[Bridge][tinyvex.history] Failed to convert JSON string to data at index \(idx)")
-                                        continue
-                                    }
-
-                                    do {
-                                        // Decode the SessionUpdate from stored JSON
-                                        let update = try JSONDecoder().decode(ACP.Client.SessionUpdate.self, from: data)
-                                        // Wrap it in SessionNotificationWire with the session_id
-                                        let wire = ACP.Client.SessionNotificationWire(
-                                            session_id: ACPSessionId(sessionId),
-                                            update: update,
-                                            _meta: nil
-                                        )
-                                        updates.append(wire)
-                                    } catch {
-                                        print("[Bridge][tinyvex.history] Failed to decode update at index \(idx): \(error)")
-                                        print("[Bridge][tinyvex.history] JSON preview: \(jsonStr.prefix(200))...")
-                                    }
-                                }
-
-                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: updates)), let jtext = String(data: out, encoding: .utf8) {
+                                let updates = try await api.sessionTimeline(sessionId: sessionId, limit: limit)
+                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: updates)),
+                                   let jtext = String(data: out, encoding: .utf8) {
                                     client.send(text: jtext)
                                 }
+                            } catch let error as HistoryApi.HistoryError {
+                                DesktopWebSocketServer.sendJSONRPCError(
+                                    client: client,
+                                    id: idVal,
+                                    code: error.jsonRpcCode,
+                                    message: error.localizedDescription
+                                )
                             } catch {
-                                print("[Bridge][tinyvex.history] sessionTimeline error: \(error)")
                                 DesktopWebSocketServer.sendJSONRPCError(
                                     client: client,
                                     id: idVal,
