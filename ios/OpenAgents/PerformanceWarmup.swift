@@ -8,15 +8,22 @@ enum PerformanceWarmup {
     /// Preload Berkeley Mono and prime CoreText glyph caches.
     static func preloadMonoFont() {
         let name = BerkeleyFont.defaultName()
-        // Create and render a tiny offscreen label to force layout and glyph rasterization
-        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        label.font = UIFont(name: name, size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
-        label.text = "Warmup"
-        label.sizeToFit()
-        UIGraphicsBeginImageContextWithOptions(CGSize(width: 1, height: 1), false, 0)
-        if let ctx = UIGraphicsGetCurrentContext() {
-            label.layer.render(in: ctx)
-        }
+        let font = UIFont(name: name, size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+        // Render a broad ASCII sample to precreate glyphs and layout caches
+        let ascii = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" +
+                    " ~`!@#$%^&*()-_=+[{]}\\|;:'\",<.>/?\n \t"
+        let attr = NSAttributedString(string: ascii, attributes: [.font: font, .foregroundColor: UIColor.white])
+        let size = CGSize(width: 600, height: 200)
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        attr.draw(in: CGRect(origin: .zero, size: size))
+        UIGraphicsEndImageContext()
+        // Also render using a UILabel's layer to warm TextKit path
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        label.numberOfLines = 0
+        label.text = ascii
+        label.font = font
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        if let ctx = UIGraphicsGetCurrentContext() { label.layer.render(in: ctx) }
         UIGraphicsEndImageContext()
     }
 
@@ -54,6 +61,8 @@ enum PerformanceWarmup {
             tv.setNeedsLayout(); tv.layoutIfNeeded()
             // Touch active input modes to warm internal caches
             _ = UITextInputMode.activeInputModes
+            // Touch text checker to avoid first-use cost
+            _ = UITextChecker.availableLanguages
             // Remove immediately without showing keyboard
             tv.removeFromSuperview()
         }
