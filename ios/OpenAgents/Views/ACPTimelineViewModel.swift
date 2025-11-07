@@ -56,7 +56,8 @@ final class ACPTimelineViewModel: ObservableObject {
         if let sid = currentSession {
             filtered = updates.filter { $0.session_id == sid }
         } else {
-            filtered = updates
+            // No active session yet: show only optimistic local echoes (session_id == "pending").
+            filtered = updates.filter { $0.session_id.value == "pending" }
         }
 
         for note in filtered {
