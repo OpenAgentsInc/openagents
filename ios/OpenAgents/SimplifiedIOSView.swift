@@ -457,10 +457,23 @@ struct DrawerMenuView: View {
                             onNavigateToNewChat()
                         }) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(session.session_id.prefix(8) + "...")
-                                    .font(OAFonts.ui(.body, 14))
-                                    .foregroundStyle(OATheme.Colors.textPrimary)
-                                    .lineLimit(1)
+                                HStack(spacing: 8) {
+                                    Text(session.session_id.prefix(8) + "...")
+                                        .font(OAFonts.ui(.body, 14))
+                                        .foregroundStyle(OATheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    if let mode = session.mode {
+                                        Text(modeBadgeText(mode))
+                                            .font(OAFonts.ui(.caption2, 10))
+                                            .foregroundStyle(OATheme.Colors.textSecondary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(OATheme.Colors.border.opacity(0.3))
+                                            )
+                                    }
+                                }
                                 HStack(spacing: 8) {
                                     Text(relativeTime(session.last_ts))
                                         .font(OAFonts.ui(.caption2, 11))
@@ -524,6 +537,15 @@ struct DrawerMenuView: View {
         if day < 7 { return "\(day)d" }
         let week = day / 7
         return "\(week)w"
+    }
+
+    private func modeBadgeText(_ mode: String) -> String {
+        switch mode {
+        case "codex": return "Codex"
+        case "claude-code", "claude_code": return "Claude"
+        case "default_mode": return "Claude"
+        default: return mode.capitalized
+        }
     }
 }
 

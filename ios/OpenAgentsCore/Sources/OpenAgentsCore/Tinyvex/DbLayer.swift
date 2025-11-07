@@ -52,7 +52,12 @@ public actor TinyvexDbLayer {
 
     public struct EventRow: Codable { public let event_id: Int64; public let session_id: String; public let seq: Int64; public let ts: Int64; public let update_json: String; public let meta_json: String? }
 
-    public struct RecentSessionRow: Codable { public let session_id: String; public let last_ts: Int64; public let message_count: Int64 }
+    public struct RecentSessionRow: Codable {
+        public let session_id: String
+        public let last_ts: Int64
+        public let message_count: Int64
+        public let mode: String?
+    }
 
     public func appendEvent(sessionId: String, seq: Int64, ts: Int64, updateJSON: String, metaJSON: String? = nil) throws {
         let sql = "INSERT INTO acp_events (session_id, seq, ts, update_json, meta_json) VALUES (?,?,?,?,?);"
@@ -100,10 +105,22 @@ public actor TinyvexDbLayer {
 
     public func recentSessions(limit: Int = 10) throws -> [RecentSessionRow] {
         let sql = """
-        SELECT session_id, MAX(ts) AS last_ts, COUNT(*) AS cnt
-        FROM acp_events
-        GROUP BY session_id
-        ORDER BY last_ts DESC
+        SELECT
+          main.session_id,
+          main.last_ts,
+          main.cnt,
+          (SELECT json_extract(update_json, '$.current_mode_id')
+           FROM acp_events
+           WHERE session_id = main.session_id
+             AND update_json LIKE '%"sessionUpdate":"current_mode_update"%'
+           ORDER BY seq DESC
+           LIMIT 1) AS mode
+        FROM (
+          SELECT session_id, MAX(ts) AS last_ts, COUNT(*) AS cnt
+          FROM acp_events
+          GROUP BY session_id
+        ) AS main
+        ORDER BY main.last_ts DESC
         LIMIT ?;
         """
         var stmt: OpaquePointer?
@@ -116,7 +133,12 @@ public actor TinyvexDbLayer {
             let session_id = String(cString: sqlite3_column_text(stmt, 0))
             let last_ts = sqlite3_column_int64(stmt, 1)
             let cnt = sqlite3_column_int64(stmt, 2)
-            out.append(RecentSessionRow(session_id: session_id, last_ts: last_ts, message_count: cnt))
+            let mode: String? = if sqlite3_column_type(stmt, 3) != SQLITE_NULL {
+                String(cString: sqlite3_column_text(stmt, 3))
+            } else {
+                nil
+            }
+            out.append(RecentSessionRow(session_id: session_id, last_ts: last_ts, message_count: cnt, mode: mode))
         }
         return out
     }
