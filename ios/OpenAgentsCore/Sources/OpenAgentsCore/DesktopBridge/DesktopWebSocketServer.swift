@@ -570,9 +570,28 @@ public class DesktopWebSocketServer {
     }
 
     private func handleSessionSetMode(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
-            client.send(text: text)
+        // Update current mode and broadcast a current_mode_update
+        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
+        let sid = ACPSessionId(sidStr)
+
+        // Store mode for this session
+        let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
+        let modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
+        self.modeBySession[sidStr] = modeId
+
+        // Echo a current_mode_update
+        let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: modeId))
+        let note = ACP.Client.SessionNotificationWire(session_id: sid, update: update)
+        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) text=\(jtext)")
+            client.send(text: jtext)
+        }
+
+        // Respond with an empty SetSessionModeResponse
+        let result = ACP.Agent.SetSessionModeResponse()
+        JsonRpcRouter.sendResponse(id: id, result: result) { responseText in
+            print("[Bridge][server] send rpc result method=\(ACPRPC.sessionSetMode) id=\(id.value) text=\(responseText)")
+            client.send(text: responseText)
         }
     }
 
@@ -697,9 +716,54 @@ public class DesktopWebSocketServer {
     }
 
     private func handleOrchestrationStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
-            client.send(text: text)
+        // Phase 2: On-device Foundation Models orchestrator
+        print("[Bridge][server] recv orchestrate.explore.start")
+
+        // Parse request
+        guard let p = rawDict["params"],
+              let d = try? JSONSerialization.data(withJSONObject: p),
+              let req = try? JSONDecoder().decode(OrchestrateExploreStartRequest.self, from: d) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Generate session and plan IDs
+        let sessionId = ACPSessionId(UUID().uuidString)
+        let planId = UUID().uuidString
+
+        // Send immediate response
+        let response = OrchestrateExploreStartResponse(
+            session_id: sessionId.value,
+            plan_id: planId,
+            status: "started"
+        )
+        JsonRpcRouter.sendResponse(id: id, result: response) { responseText in
+            print("[Bridge][server] send rpc result method=orchestrate.explore.start id=\(id.value)")
+            client.send(text: responseText)
+        }
+
+        // Start orchestration async (non-blocking)
+        if #available(macOS 26.0, *) {
+            Task.detached {
+                await self.runOrchestration(
+                    request: req,
+                    sessionId: sessionId,
+                    planId: planId,
+                    client: client
+                )
+            }
+        } else {
+            // Foundation Models not available on this OS version
+            print("[Bridge][server] orchestrate.explore.start requires macOS 26.0+")
+            JsonRpcRouter.sendError(
+                id: id,
+                code: -32603,
+                message: "orchestrate.explore.start requires macOS 26.0+ for Foundation Models"
+            ) { text in
+                client.send(text: text)
+            }
         }
     }
 
@@ -1528,10 +1592,6 @@ public class DesktopWebSocketServer {
                             print("[Bridge][server] send rpc result method=\(ACPRPC.sessionSetMode) id=\(idVal.value) text=\(jtext)")
                             client.send(text: jtext)
                         }
-                    case ACPRPC.sessionCancel:
-                        // Notification: log and optionally send a status note
-                        print("[Bridge][server] session/cancel received")
-                        // No response required
                     case ACPRPC.fsReadTextFile:
                         struct ReqURI: Codable { let session_id: ACPSessionId; let uri: String }
                         struct ReqPath: Codable { let session_id: ACPSessionId; let path: String; let line: UInt32?; let limit: UInt32? }
