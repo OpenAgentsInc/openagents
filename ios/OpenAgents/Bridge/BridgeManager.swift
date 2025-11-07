@@ -28,7 +28,7 @@ final class BridgeManager: ObservableObject {
     @Published var currentSessionId: ACPSessionId? = nil
 
 #if os(macOS)
-    private var server: DesktopWebSocketServer? // Deprecated: Tinyvex now handles WS; kept for compatibility
+    private var server: DesktopWebSocketServer?
     @Published var connectedClientCount: Int = 0
     @Published var workingDirectory: URL? = nil
     private static let workingDirectoryKey = "oa.bridge.working_directory"
@@ -37,10 +37,19 @@ final class BridgeManager: ObservableObject {
         // Load persisted working directory
         loadWorkingDirectory()
 
-        // Tinyvex server runs unconditionally (started by OpenAgentsApp via TinyvexManager).
-        // Mark status as advertising on the default port for UI consistency.
-        log("server", "Tinyvex active on ws://0.0.0.0:\(BridgeConfig.defaultPort)")
-        status = .advertising(port: BridgeConfig.defaultPort)
+        // Start Desktop WebSocket server on macOS (single WS endpoint for iOS/macOS clients)
+        let srv = DesktopWebSocketServer()
+        do {
+            srv.delegate = self
+            srv.workingDirectory = workingDirectory
+            try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
+            server = srv
+            log("server", "DesktopWebSocketServer on ws://0.0.0.0:\(BridgeConfig.defaultPort)")
+            status = .advertising(port: BridgeConfig.defaultPort)
+        } catch {
+            status = .error("server_start_failed: \(error.localizedDescription)")
+            log("server", "Failed to start: \(error.localizedDescription)")
+        }
     }
 
     func stop() {
