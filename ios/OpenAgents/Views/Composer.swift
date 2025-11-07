@@ -6,6 +6,7 @@ struct Composer: UIViewRepresentable {
     @Binding var text: String
     var agentName: String
     var onSubmit: () -> Void
+    private var placeholderString: String { "Message \(agentName)" }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -53,18 +54,38 @@ struct Composer: UIViewRepresentable {
         textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        // Start empty; no placeholder text to avoid state churn
+        // Start empty; overlay placeholder label (not part of text)
         textView.text = text
         textView.textColor = .white
-        
+
+        let ph = UILabel()
+        ph.text = placeholderString
+        ph.font = UIFont(name: monoName, size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+        ph.textColor = .systemGray
+        ph.numberOfLines = 1
+        ph.isUserInteractionEnabled = false
+        ph.translatesAutoresizingMaskIntoConstraints = false
+        textView.addSubview(ph)
+        NSLayoutConstraint.activate([
+            ph.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 12),
+            ph.topAnchor.constraint(equalTo: textView.topAnchor, constant: 10),
+            ph.trailingAnchor.constraint(lessThanOrEqualTo: textView.trailingAnchor, constant: -12)
+        ])
+        ph.isHidden = !(text.isEmpty)
+        context.coordinator.placeholder = ph
+
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        // Keep the text view synced with the binding without placeholder logic
+        // Keep the text view synced with the binding and toggle placeholder
         if textView.text != text {
             textView.textColor = .white
             textView.text = text
+        }
+        if let ph = context.coordinator.placeholder {
+            ph.text = placeholderString
+            ph.isHidden = !(text.isEmpty) || textView.isFirstResponder
         }
     }
 
@@ -80,6 +101,7 @@ struct Composer: UIViewRepresentable {
 
     class Coordinator: NSObject, UITextViewDelegate {
         var parent: Composer
+        weak var placeholder: UILabel?
 
         init(_ parent: Composer) {
             self.parent = parent
@@ -87,6 +109,7 @@ struct Composer: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
+            placeholder?.isHidden = !textView.text.isEmpty
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -97,8 +120,8 @@ struct Composer: UIViewRepresentable {
             return true
         }
 
-        func textViewDidBeginEditing(_ textView: UITextView) {}
-        func textViewDidEndEditing(_ textView: UITextView) {}
+        func textViewDidBeginEditing(_ textView: UITextView) { placeholder?.isHidden = true }
+        func textViewDidEndEditing(_ textView: UITextView) { placeholder?.isHidden = !(parent.text.isEmpty) }
     }
 }
 
