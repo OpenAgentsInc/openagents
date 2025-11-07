@@ -89,10 +89,15 @@ struct ChatHomeView: View {
                 List(visibleIndices, id: \.self) { idx in
                     let note = bridge.updates[idx]
                     UpdateRow(note: note) { tapped in
-                        if let json = toPrettyJSON(tapped) {
+                        // Prefer showing the latest `output` JSON for this call_id if available
+                        if let callId = callId(from: tapped), let out = bridge.outputJSONByCallId[callId] {
+                            selectedJSON = out
+                        } else if let json = toPrettyJSON(tapped) {
                             selectedJSON = json
-                            isJSONSheetPresented = true
+                        } else {
+                            selectedJSON = nil
                         }
+                        isJSONSheetPresented = selectedJSON != nil
                     }
                 }
                 .listStyle(.plain)
@@ -194,6 +199,14 @@ private struct JSONInspectorView: View {
     }
 }
 
+private func callId(from note: ACP.Client.SessionNotificationWire) -> String? {
+    switch note.update {
+    case .toolCall(let c): return c.call_id
+    case .toolCallUpdate(let u): return u.call_id
+    default: return nil
+    }
+}
+
 private struct MenuSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -238,7 +251,8 @@ private struct UpdateRow: View {
             .onTapGesture { onInspect?(note) }
         case .toolCallUpdate(let upd):
             HStack(alignment: .firstTextBaseline) {
-                Image(systemName: upd.status == .completed ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
+                let hasOutput = bridge.outputJSONByCallId[upd.call_id] != nil
+                Image(systemName: (upd.status == .completed || hasOutput) ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
                 // Show the original tool name if known; fall back to the call_id
                 let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
                 // Extract progress percent from _meta if available
@@ -255,13 +269,13 @@ private struct UpdateRow: View {
                     }
                     return nil
                 }()
-                if let pct = pct, upd.status == .started {
+                if let pct = pct, upd.status == .started && !hasOutput {
                     Text("\(name) (\(pct))")
                 } else {
                     Text(name)
                 }
                 Spacer()
-                Text(upd.status.rawValue)
+                Text((hasOutput && upd.status == .started) ? ACPToolCallUpdateWire.Status.completed.rawValue : upd.status.rawValue)
                     .font(.footnote)
                     .foregroundStyle(upd.status == .error ? .red : .secondary)
             }

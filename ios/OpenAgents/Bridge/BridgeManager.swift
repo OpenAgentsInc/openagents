@@ -62,6 +62,9 @@ final class BridgeManager: ObservableObject {
     @Published var toolCallNames: [String: String] = [:]
     // Track latest index in `updates` for each tool_call_update call_id to coalesce progress
     private var lastUpdateRowIndexByCallId: [String: Int] = [:]
+    // Inspector data: latest raw JSON (full notification) and extracted `output` JSON per call_id
+    @Published var rawJSONByCallId: [String: String] = [:]
+    @Published var outputJSONByCallId: [String: String] = [:]
 
     func start() {
         let (h, p) = BridgeManager.pickInitialEndpoint()
@@ -165,6 +168,9 @@ extension BridgeManager: MobileWebSocketClientDelegate {
                     // We want a single row per call_id that updates in place from 'started'→'completed'.
                     self.toolCallNames[call.call_id] = call.name
                 case .toolCallUpdate(let upd):
+                    // Keep raw JSON and extracted output for inspector
+                    if let s = String(data: payload, encoding: .utf8) { self.rawJSONByCallId[upd.call_id] = s }
+                    if let out = BridgeManager.extractOutputJSON(from: payload) { self.outputJSONByCallId[upd.call_id] = out }
                     if let idx = self.lastUpdateRowIndexByCallId[upd.call_id], idx < self.updates.count {
                         // Replace existing row for this call_id with the latest update (coalesce progress)
                         self.updates[idx] = note
@@ -369,3 +375,21 @@ extension BridgeManager {
 
 // JSON-RPC threads list result shape
 fileprivate struct ThreadsListResult: Codable { let items: [ThreadSummary] }
+
+// MARK: - JSON helpers
+extension BridgeManager {
+    static func extractOutputJSON(from payload: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let params = obj["params"] as? [String: Any],
+              let update = params["update"] as? [String: Any],
+              let kind = update["sessionUpdate"] as? String, kind == "tool_call_update",
+              let tcu = update["tool_call_update"] as? [String: Any],
+              let output = tcu["output"]
+        else { return nil }
+        if let data = try? JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys]),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        return nil
+    }
+}
