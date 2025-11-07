@@ -339,10 +339,17 @@ public class DesktopWebSocketServer {
                         for line in lines { self.handleCodexExecEvent(line: line, sessionId: sessionId, client: client) }
                     }
                 } else {
-                    // Non-codex: log trimmed stdout only (no ACP streaming here)
+                    // Claude path: stream stdout text to UI as agent messages
                     if let t = String(data: data, encoding: .utf8) {
                         let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty { print("[Bridge][agent stdout] \(trimmed)") }
+                        if !trimmed.isEmpty {
+                            let chunk = ACP.Client.ContentChunk(content: .text(.init(text: trimmed)))
+                            let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
+                            if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
+                                for c in self.clients where c.isHandshakeComplete { c.send(text: txt) }
+                            }
+                            print("[Bridge][agent stdout] \(trimmed)")
+                        }
                     }
                 }
             }
