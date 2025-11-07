@@ -15,6 +15,9 @@ struct OpenAgentsApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
     @StateObject private var bridge = BridgeManager()
+    #if os(macOS)
+    @StateObject private var tinyvex = TinyvexManager()
+    #endif
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -57,8 +60,14 @@ struct OpenAgentsApp: App {
                 let ts = ISO8601DateFormatter().string(from: Date())
                 print("[Bridge][app] OpenAgentsApp appear; starting bridge at \(ts)")
                 bridge.start()
+                #if os(macOS)
+                tinyvex.start()
+                #endif
             }
             .environmentObject(bridge)
+            #if os(macOS)
+            .environmentObject(tinyvex)
+            #endif
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
