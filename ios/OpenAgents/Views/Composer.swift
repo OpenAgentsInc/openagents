@@ -4,6 +4,7 @@ import SwiftUI
 
 struct Composer: UIViewRepresentable {
     @Binding var text: String
+    @Binding var isFocused: Bool
     var agentName: String
     var onSubmit: () -> Void
     private var placeholderString: String { "Message \(agentName)" }
@@ -81,6 +82,12 @@ struct Composer: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
+        // Focus management
+        if isFocused {
+            if !textView.isFirstResponder { textView.becomeFirstResponder() }
+        } else {
+            if textView.isFirstResponder { textView.resignFirstResponder() }
+        }
         // Keep the text view synced with the binding and toggle placeholder
         if textView.text != text {
             textView.textColor = .white
@@ -125,8 +132,14 @@ struct Composer: UIViewRepresentable {
             return true
         }
 
-        func textViewDidBeginEditing(_ textView: UITextView) { placeholder?.isHidden = true }
-        func textViewDidEndEditing(_ textView: UITextView) { placeholder?.isHidden = !(parent.text.isEmpty) }
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            placeholder?.isHidden = true
+            parent.isFocused = true
+        }
+        func textViewDidEndEditing(_ textView: UITextView) {
+            placeholder?.isHidden = !(parent.text.isEmpty)
+            parent.isFocused = false
+        }
     }
 }
 
@@ -135,6 +148,7 @@ struct Composer: UIViewRepresentable {
         Spacer()
         Composer(
             text: .constant(""),
+            isFocused: .constant(false),
             agentName: "Codex",
             onSubmit: {}
         )
