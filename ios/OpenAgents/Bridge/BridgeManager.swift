@@ -94,6 +94,8 @@ final class BridgeManager: ObservableObject {
     @Published var toolCallNames: [String: String] = [:]
     // Track latest index in `updates` for each tool_call_update call_id to coalesce progress
     private var lastUpdateRowIndexByCallId: [String: Int] = [:]
+    // Track the optimistic user echo row index for session creation flow
+    private var pendingUserEchoIndex: Int? = nil
     // Inspector data: latest raw JSON (full notification) and extracted `output` JSON per call_id
     @Published var rawJSONByCallId: [String: String] = [:]
     @Published var outputJSONByCallId: [String: String] = [:]
@@ -308,15 +310,27 @@ extension BridgeManager {
             update: userUpdate
         )
 
-        // Add to updates ring buffer (same logic as WebSocket delegate)
+        // Add to updates ring buffer (same logic as WebSocket delegate) and remember index
         if updates.count >= 200 { updates.removeFirst() }
         updates.append(optimisticNotification)
+        pendingUserEchoIndex = updates.count - 1
         objectWillChange.send()
 
         if currentSessionId == nil {
             client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
                 guard let resp = resp else { return }
-                DispatchQueue.main.async { [weak self] in self?.currentSessionId = resp.session_id }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.currentSessionId = resp.session_id
+                    // Convert the optimistic 'pending' echo to the real session id to avoid flicker
+                    if let idx = self.pendingUserEchoIndex, idx < self.updates.count {
+                        if self.updates[idx].session_id.value == "pending" {
+                            self.updates[idx].session_id = resp.session_id
+                            self.objectWillChange.send()
+                        }
+                    }
+                    self.pendingUserEchoIndex = nil
+                }
                 // Optionally set mode before sending the first prompt
                 if let mode = mode {
                     struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
