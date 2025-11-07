@@ -9,45 +9,41 @@ struct Composer: View {
 
     @FocusState private var isFocused: Bool
 
+    private var isEmpty: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Text field
             TextField("Message \(agentName)", text: $text, axis: .vertical)
-                .font(OAFonts.ui(.body, 16))
-                .foregroundStyle(OATheme.Colors.textPrimary)
+                .font(.system(size: 16))
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(OATheme.Colors.border.opacity(0.3))
+                        .fill(Color.white.opacity(0.1))
                 )
                 .focused($isFocused)
                 .submitLabel(.send)
                 .onSubmit {
-                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        onSubmit()
-                    }
+                    if !isEmpty { onSubmit() }
                 }
 
             // Submit button
             Button(action: {
-                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    onSubmit()
-                }
+                if !isEmpty { onSubmit() }
             }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(
-                        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? OATheme.Colors.textTertiary
-                            : OATheme.Colors.accent
-                    )
+                    .foregroundStyle(isEmpty ? Color.gray : Color.blue)
             }
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(OATheme.Colors.background)
+        .background(Color.black)
     }
 }
 
