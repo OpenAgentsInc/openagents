@@ -9,6 +9,7 @@ struct Composer: UIViewRepresentable {
     private var placeholderString: String { "Message \(agentName)" }
 
     func makeUIView(context: Context) -> UITextView {
+        print("[Composer] makeUIView called - creating new text view")
         let textView = UITextView()
         textView.text = ""
         // Use our mono font (Berkeley Mono)
@@ -122,12 +123,12 @@ struct Composer: UIViewRepresentable {
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            print("[Composer] shouldChangeTextIn called with text: '\(text)'")
             let start = CFAbsoluteTimeGetCurrent()
             defer {
                 let elapsed = CFAbsoluteTimeGetCurrent() - start
-                if elapsed > 0.016 {
-                    print("[Composer] shouldChangeTextIn took \(Int(elapsed * 1000))ms")
-                }
+                let ms = Int(elapsed * 1000)
+                print("[Composer] shouldChangeTextIn took \(ms)ms")
             }
             if text == "\n" {
                 parent.onSubmit()
@@ -137,17 +138,21 @@ struct Composer: UIViewRepresentable {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
+            print("[Composer] textViewDidBeginEditing - keyboard opened")
             placeholder?.isHidden = true
             // Prime the candidate/autocorrection pipeline once per app run while the
             // keyboard is open, without leaving any visible character behind.
             // Delay until after keyboard animation completes (~300ms) so all subsystems are ready
             if !didPrime, textView.text.isEmpty {
+                print("[Composer] Starting priming sequence (350ms delay)")
                 didPrime = true
                 isPriming = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    print("[Composer] Executing prime: insert 'a' + delete")
                     textView.insertText("a")
                     textView.deleteBackward()
                     self.isPriming = false
+                    print("[Composer] Priming complete")
                 }
             }
         }
