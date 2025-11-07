@@ -99,7 +99,7 @@ public class DesktopWebSocketServer {
     private var execStateBySession: [String: ExecStreamState] = [:]
     // Codex thread id per ACP session for resume support
     private var codexThreadIdBySession: [String: String] = [:]
-    // Claude conversation start flag per ACP session; when false, first prompt should NOT use --continue
+    // Claude conversation start flag per ACP session; if false, first prompt must create the conversation with --session-id
     private var claudeStartedBySession: [String: Bool] = [:]
 
     // Active agent sessions
@@ -280,10 +280,16 @@ public class DesktopWebSocketServer {
             process.arguments = args
             print("[Bridge][server] arguments (codex): \(args.joined(separator: " "))")
         case .claude_code, .default_mode:
-            // Always bind Claude to the exact ACP session id using --resume <session_id>.
-            // Never use --continue (implicit latest) to avoid cross-session leakage.
-            process.arguments = ["--resume", sidStr, prompt]
-            print("[Bridge][server] arguments (claude): --resume \(sidStr) \"\(prompt)\"")
+            // Bind Claude to the exact ACP session id. For the first prompt in this ACP session,
+            // create a new Claude conversation using --session-id <UUID>. For subsequent prompts, use --resume <UUID>.
+            let started = claudeStartedBySession[sidStr] ?? false
+            if started {
+                process.arguments = ["--resume", sidStr, prompt]
+                print("[Bridge][server] arguments (claude): --resume \(sidStr) \"\(prompt)\"")
+            } else {
+                process.arguments = ["--session-id", sidStr, prompt]
+                print("[Bridge][server] arguments (claude): --session-id \(sidStr) \"\(prompt)\"")
+            }
         }
 
         // Set up environment with node in PATH
@@ -321,7 +327,10 @@ public class DesktopWebSocketServer {
         do {
             try process.run()
             print("[Bridge][server] agent process started pid=\(process.processIdentifier)")
-            // No-op: we always use --resume with the ACP session id; no per-session flag needed.
+            // Mark Claude session as started so later prompts will use --resume with the same ACP session id
+            if self.modeBySession[sidStr] == .claude_code || self.modeBySession[sidStr] == .default_mode {
+                self.claudeStartedBySession[sidStr] = true
+            }
 
             // Monitor stdout: for Codex exec --json, map JSONL events -> ACP updates
             stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
