@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenAgentsCore
 
 #if os(iOS)
 
@@ -14,6 +15,13 @@ struct ACPTimelineView: View {
                         case .message(let role, let text, _):
                             MessageRow(role: role, text: text)
                                 .id(item.id)
+                        case .toolCall(let call):
+                            ToolCallView(call: call, result: findResult(for: call))
+                                .id(item.id)
+                        case .toolResult:
+                            // Don't render tool results as separate items
+                            // Results are shown via status indicator on the tool call itself
+                            EmptyView()
                         }
                     }
                 }
@@ -24,6 +32,16 @@ struct ACPTimelineView: View {
             }
         }
         .background(OATheme.Colors.background)
+    }
+
+    /// Find the matching result for a tool call
+    private func findResult(for call: ACPToolCall) -> ACPToolResult? {
+        for item in items {
+            if case .toolResult(let result) = item, result.call_id == call.id {
+                return result
+            }
+        }
+        return nil
     }
 
     private struct MessageRow: View {

@@ -8,6 +8,8 @@ import OpenAgentsCore
 final class ACPTimelineViewModel: ObservableObject {
     enum Item: Identifiable, Equatable {
         case message(role: Role, text: String, ts: Int64)
+        case toolCall(ACPToolCall)
+        case toolResult(ACPToolResult)
 
         enum Role { case user, assistant }
 
@@ -15,6 +17,10 @@ final class ACPTimelineViewModel: ObservableObject {
             switch self {
             case .message(let role, let text, let ts):
                 return "msg_\(role == .user ? "u" : "a")_\(ts)_\(text.hashValue)"
+            case .toolCall(let call):
+                return "call_\(call.id)_\(call.ts ?? 0)"
+            case .toolResult(let result):
+                return "res_\(result.call_id)_\(result.ts ?? 0)"
             }
         }
     }
@@ -52,6 +58,9 @@ final class ACPTimelineViewModel: ObservableObject {
     private func recompute(from updates: [ACP.Client.SessionNotificationWire], currentSession: ACPSessionId?) {
         var out: [Item] = []
         var monoMs: Int64 = 0
+        var seenCalls: Set<String> = []
+        var seenResults: Set<String> = []
+
         let filtered: [ACP.Client.SessionNotificationWire]
         if let sid = currentSession {
             filtered = updates.filter { $0.session_id == sid }
@@ -78,8 +87,39 @@ final class ACPTimelineViewModel: ObservableObject {
                 if case let .text(t) = chunk.content {
                     out.append(.message(role: .assistant, text: t.text, ts: monoMs))
                 }
+            case .toolCall(let wire):
+                // Only add each tool call once
+                if !seenCalls.contains(wire.call_id) {
+                    seenCalls.insert(wire.call_id)
+                    let argsJV: JSONValue = wire.arguments.map { dict in
+                        var out: [String: JSONValue] = [:]
+                        for (k, v) in dict {
+                            out[k] = v.toJSONValue()
+                        }
+                        return JSONValue.object(out)
+                    } ?? .object([:])
+                    let call = ACPToolCall(id: wire.call_id, tool_name: wire.name, arguments: argsJV, ts: monoMs)
+                    // Don't show TodoWrite as a tool call (converted to plan elsewhere)
+                    if wire.name.lowercased() != "todowrite" {
+                        out.append(.toolCall(call))
+                    }
+                }
+            case .toolCallUpdate(let upd):
+                // Only add each result once per status
+                let key = "\(upd.call_id)|\(upd.status.rawValue)"
+                if !seenResults.contains(key) {
+                    seenResults.insert(key)
+                    let result = ACPToolResult(
+                        call_id: upd.call_id,
+                        ok: upd.status == .completed,
+                        result: upd.output?.toJSONValue(),
+                        error: upd.error,
+                        ts: monoMs
+                    )
+                    out.append(.toolResult(result))
+                }
             default:
-                continue // M1: ignore other types for now
+                continue // Ignore other types for simplified view
             }
         }
 
