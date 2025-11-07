@@ -1117,6 +1117,7 @@ public class DesktopWebSocketServer {
                                 print("[Bridge][tinyvex.history] sessionTimeline session=\(sessionId) rows=\(updateJsons.count)")
 
                                 // Parse each JSON string into ACP.Client.SessionNotificationWire
+                                // Note: DB stores just the "update" portion, so we need to decode SessionUpdate and wrap it
                                 var updates: [ACP.Client.SessionNotificationWire] = []
                                 for (idx, jsonStr) in updateJsons.enumerated() {
                                     guard let data = jsonStr.data(using: .utf8) else {
@@ -1125,7 +1126,14 @@ public class DesktopWebSocketServer {
                                     }
 
                                     do {
-                                        let wire = try JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: data)
+                                        // Decode the SessionUpdate from stored JSON
+                                        let update = try JSONDecoder().decode(ACP.Client.SessionUpdate.self, from: data)
+                                        // Wrap it in SessionNotificationWire with the session_id
+                                        let wire = ACP.Client.SessionNotificationWire(
+                                            session_id: ACPSessionId(sessionId),
+                                            update: update,
+                                            _meta: nil
+                                        )
                                         updates.append(wire)
                                     } catch {
                                         print("[Bridge][tinyvex.history] Failed to decode update at index \(idx): \(error)")
