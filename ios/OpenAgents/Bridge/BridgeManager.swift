@@ -41,6 +41,9 @@ final class BridgeManager: ObservableObject {
         let srv = DesktopWebSocketServer()
         do {
             srv.delegate = self
+            // Attach Tinyvex DB path for persistence
+            let dbPath = TinyvexManager.defaultDbPath().path
+            srv.setTinyvexDb(path: dbPath)
             srv.workingDirectory = workingDirectory
             try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
             server = srv
