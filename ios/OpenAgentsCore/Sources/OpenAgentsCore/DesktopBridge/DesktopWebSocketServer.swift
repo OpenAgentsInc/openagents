@@ -88,6 +88,7 @@ public class DesktopWebSocketServer {
     private var tailProvider: String?
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
+    public var useProviderTailer: Bool = false // disable global tailer by default
 
     // Session mode selection (per session)
     private var modeBySession: [String: ACPSessionModeId] = [:]
@@ -314,9 +315,12 @@ public class DesktopWebSocketServer {
                 }
             }
 
-            // Find the session file for this session
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.findAndTailSessionFile(sessionId: sessionId, client: client)
+            // Do not auto-attach a global provider tailer; it can pick the wrong file.
+            // If explicitly enabled, attach a session-scoped tailer in a follow-up pass.
+            if self.useProviderTailer {
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.findAndTailSessionFile(sessionId: sessionId, client: client)
+                }
             }
 
         } catch {
