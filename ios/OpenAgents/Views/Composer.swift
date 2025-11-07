@@ -38,7 +38,6 @@ struct Composer: UIViewRepresentable {
         textView.keyboardDismissMode = .interactive
         if #available(iOS 17.0, *) {
             textView.inlinePredictionType = .no
-            textView.isHandwritingEnabled = false
         }
         // Hide the QuickType bar (input assistant) to reduce layout churn
         let ia = textView.inputAssistantItem
