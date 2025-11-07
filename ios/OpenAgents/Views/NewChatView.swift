@@ -165,17 +165,17 @@ struct NewChatView: View {
             .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
             .layoutPriority(1)
 
-            Button(action: { sendMessage() }) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(
-                        messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? OATheme.Colors.textTertiary
-                            : OATheme.Colors.accent
-                    )
+                Button(action: { sendMessage() }) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(
+                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? OATheme.Colors.textTertiary
+                                : OATheme.Colors.accent
+                        )
+                }
+                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(OATheme.Colors.background)
