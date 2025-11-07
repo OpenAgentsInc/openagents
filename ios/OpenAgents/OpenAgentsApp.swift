@@ -44,9 +44,11 @@ struct OpenAgentsApp: App {
             }
             .onAppear {
                 // Fonts registered at launch in AppDelegate; only warm up here
+                #if os(iOS)
                 PerformanceWarmup.preloadMonoFont()
                 PerformanceWarmup.prewarmHaptics()
                 PerformanceWarmup.prewarmKeyboardAndTextInput()
+                #endif
             }
             .environment(\.font, OAFonts.ui(.body, 16))
             .tint(OATheme.Colors.accent)
