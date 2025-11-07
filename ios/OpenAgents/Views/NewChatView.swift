@@ -61,6 +61,37 @@ struct NewChatView: View {
                     .buttonStyle(.plain)
 
                     Spacer()
+
+                    // New chat icon
+                    Button(action: {
+                        // TODO: Start new chat
+                        print("[NewChat] New chat button tapped")
+                    }) {
+                        Image(systemName: "square.and.pencil")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.plain)
+
+                    // More options menu (ellipsis)
+                    Menu {
+                        Button(action: {
+                            print("[NewChat] Delete tapped")
+                        }) {
+                            Label("Delete", systemImage: "trash")
+                        }
+
+                        Button(action: {
+                            print("[NewChat] Share tapped")
+                        }) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
