@@ -75,6 +75,8 @@ public class DesktopWebSocketServer {
     public weak var delegate: DesktopWebSocketServerDelegate?
     // Optional Tinyvex persistence for ACP updates
     private var tinyvexDb: TinyvexDbLayer?
+    // Session update hub for persistence+broadcast
+    private var updateHub: SessionUpdateHub?
 
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
@@ -113,6 +115,10 @@ public class DesktopWebSocketServer {
     public func setTinyvexDb(path: String) {
         if let db = try? TinyvexDbLayer(path: path) {
             self.tinyvexDb = db
+            // Initialize SessionUpdateHub with broadcast callback
+            self.updateHub = SessionUpdateHub(tinyvexDb: db) { [weak self] notificationJSON in
+                await self?.broadcastToClients(notificationJSON)
+            }
             print("[Bridge][server] Tinyvex DB attached at \(path)")
         } else {
             print("[Bridge][server] Failed to open Tinyvex DB at \(path)")
@@ -1285,43 +1291,37 @@ public class DesktopWebSocketServer {
         }
     }
 
-    /// Send session update via WebSocket
+    /// Send session update via WebSocket (delegates to SessionUpdateHub)
     private func sendSessionUpdate(
         sessionId: ACPSessionId,
         update: ACP.Client.SessionUpdate
     ) async {
-        // Persist to Tinyvex if configured
-        let kind: String
-        switch update {
-        case .userMessageChunk: kind = "user_message_chunk"
-        case .agentMessageChunk: kind = "agent_message_chunk"
-        case .agentThoughtChunk: kind = "agent_thought_chunk"
-        case .toolCall: kind = "tool_call"
-        case .toolCallUpdate: kind = "tool_call_update"
-        case .plan: kind = "plan"
-        case .availableCommandsUpdate: kind = "available_commands_update"
-        case .currentModeUpdate: kind = "current_mode_update"
+        // Delegate to SessionUpdateHub if available
+        if let hub = updateHub {
+            await hub.sendSessionUpdate(sessionId: sessionId, update: update)
+        } else {
+            // Fallback: direct broadcast without persistence (for tests or if hub not initialized)
+            let notification = ACP.Client.SessionNotificationWire(
+                session_id: sessionId,
+                update: update,
+                _meta: nil
+            )
+            guard let data = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: notification)),
+                  let jtext = String(data: data, encoding: .utf8) else {
+                print("[Bridge] Failed to encode session update")
+                return
+            }
+            await broadcastToClients(jtext)
         }
-        if let db = tinyvexDb,
-           let updJSON = String(data: (try? JSONEncoder().encode(update)) ?? Data(), encoding: .utf8) {
-            // Seq=0 placeholder for now; ts = now
-            try? await db.appendEvent(sessionId: sessionId.value, seq: 0, ts: Int64(Date().timeIntervalSince1970 * 1000), updateJSON: updJSON)
-            print("[Bridge][tinyvex] append session=\(sessionId.value) kind=\(kind)")
-        }
-        let notification = ACP.Client.SessionNotificationWire(
-            session_id: sessionId,
-            update: update,
-            _meta: nil
-        )
+    }
 
-        guard let data = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: notification)),
-              let jtext = String(data: data, encoding: .utf8) else {
-            print("[Orchestrator] Failed to encode session update")
-            return
+    /// Broadcast a JSON-RPC notification to all connected clients
+    private func broadcastToClients(_ notificationJSON: String) async {
+        await MainActor.run {
+            for c in self.clients where c.isHandshakeComplete {
+                c.send(text: notificationJSON)
+            }
         }
-
-        // Broadcast to all connected clients
-        await MainActor.run { for c in self.clients where c.isHandshakeComplete { c.send(text: jtext) } }
     }
 }
 
