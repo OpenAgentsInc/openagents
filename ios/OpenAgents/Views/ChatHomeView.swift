@@ -13,6 +13,9 @@ struct ChatHomeView: View {
     @State private var workingStartedAt: Date? = nil
     @State private var workingSeconds: Int = 0
     @State private var workingTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    // Raw JSON inspector state
+    @State private var isJSONSheetPresented = false
+    @State private var selectedJSON: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -85,7 +88,12 @@ struct ChatHomeView: View {
                 }
                 List(visibleIndices, id: \.self) { idx in
                     let note = bridge.updates[idx]
-                    UpdateRow(note: note)
+                    UpdateRow(note: note) { tapped in
+                        if let json = toPrettyJSON(tapped) {
+                            selectedJSON = json
+                            isJSONSheetPresented = true
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -118,6 +126,10 @@ struct ChatHomeView: View {
             // Hide working indicator as soon as the first streamed update arrives
             .onChange(of: bridge.updates.count) { newCount in
                 if isWorking && newCount > 0 { isWorking = false }
+            }
+            // Present raw JSON inspector when available
+            .sheet(isPresented: $isJSONSheetPresented) {
+                JSONInspectorView(json: selectedJSON ?? "")
             }
         }
     }
@@ -156,6 +168,32 @@ struct ChatHomeView: View {
     }
 }
 
+// MARK: - JSON helpers and inspector
+private func toPrettyJSON(_ note: ACP.Client.SessionNotificationWire) -> String? {
+    let enc = JSONEncoder()
+    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    guard let data = try? enc.encode(note) else { return nil }
+    return String(data: data, encoding: .utf8)
+}
+
+private struct JSONInspectorView: View {
+    let json: String
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(json)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(OATheme.Colors.background)
+            .navigationTitle("Tool Call JSON")
+            .toolbarTitleDisplayMode(.inline)
+        }
+    }
+}
+
 private struct MenuSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -183,6 +221,7 @@ private struct MenuSheet: View {
 
 private struct UpdateRow: View {
     let note: ACP.Client.SessionNotificationWire
+    var onInspect: ((ACP.Client.SessionNotificationWire) -> Void)? = nil
     @EnvironmentObject private var bridge: BridgeManager
     var body: some View {
         switch note.update {
@@ -195,6 +234,8 @@ private struct UpdateRow: View {
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onInspect?(note) }
         case .toolCallUpdate(let upd):
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: upd.status == .completed ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
@@ -224,6 +265,8 @@ private struct UpdateRow: View {
                     .font(.footnote)
                     .foregroundStyle(upd.status == .error ? .red : .secondary)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onInspect?(note) }
         case .agentMessageChunk(let chunk):
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
