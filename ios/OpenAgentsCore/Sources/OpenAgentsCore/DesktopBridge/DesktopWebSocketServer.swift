@@ -83,6 +83,8 @@ public class DesktopWebSocketServer {
     private let router = JsonRpcRouter()
     // Current client context for handlers (set during routing)
     private var currentClient: Client?
+    // Agent registry for provider management
+    private let agentRegistry = AgentRegistry()
 
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
@@ -117,7 +119,18 @@ public class DesktopWebSocketServer {
     private var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
 
     public init() {
+        // Register agent providers
+        Task {
+            await registerAgentProviders()
+        }
         registerHandlers()
+    }
+
+    /// Register all available agent providers
+    private func registerAgentProviders() async {
+        await agentRegistry.register(CodexAgentProvider())
+        await agentRegistry.register(ClaudeCodeAgentProvider())
+        print("[Bridge][server] Registered \(await agentRegistry.allProviders().count) agent providers")
     }
 
     /// Register all JSON-RPC method handlers with the router
@@ -327,9 +340,113 @@ public class DesktopWebSocketServer {
     }
 
     private func handleSessionPrompt(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic (most important one!)
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
-            client.send(text: text)
+        // Parse request
+        guard let data = try? JSONSerialization.data(withJSONObject: rawDict),
+              let req = try? JSONDecoder().decode(JSONRPC.Request<ACP.Agent.SessionPromptRequest>.self, from: data) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid session/prompt parameters") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        let sessionId = req.params.session_id
+        let sidStr = sessionId.value
+
+        // Extract prompt text from content blocks
+        let promptText = req.params.content.compactMap { block -> String? in
+            if case .text(let textBlock) = block {
+                return textBlock.text
+            }
+            return nil
+        }.joined(separator: "\n")
+
+        guard !promptText.isEmpty else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Empty prompt") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        print("[Bridge][handleSessionPrompt] session=\(sidStr) prompt=\(promptText.prefix(50))...")
+
+        // Get mode (defaults to .default_mode if not set)
+        let mode = modeBySession[sidStr] ?? .default_mode
+
+        // Get provider from registry
+        guard let provider = await agentRegistry.provider(for: mode) else {
+            JsonRpcRouter.sendError(id: id, code: -32601, message: "No agent provider for mode: \(mode.rawValue)") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Check if provider is available
+        guard await provider.isAvailable() else {
+            JsonRpcRouter.sendError(id: id, code: -32601, message: "\(provider.displayName) is not available. Please install the required CLI.") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Build context
+        let context = AgentContext(
+            workingDirectory: workingDirectory,
+            mcpServers: nil,
+            client: client,
+            metadata: [:]
+        )
+
+        // Get update hub
+        guard let updateHub = self.updateHub else {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "Update hub not initialized") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Check if we have an existing handle (resume scenario)
+        if let existingHandle = await agentRegistry.handle(for: sessionId) {
+            // Resume existing session
+            do {
+                try await provider.resume(
+                    sessionId: sessionId,
+                    prompt: promptText,
+                    handle: existingHandle,
+                    context: context,
+                    updateHub: updateHub
+                )
+
+                // Send success response
+                JsonRpcRouter.sendResponse(id: id, result: ["status": "resumed"]) { text in
+                    client.send(text: text)
+                }
+            } catch {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to resume: \(error.localizedDescription)") { text in
+                    client.send(text: text)
+                }
+            }
+        } else {
+            // Start new session
+            do {
+                let handle = try await provider.start(
+                    sessionId: sessionId,
+                    prompt: promptText,
+                    context: context,
+                    updateHub: updateHub
+                )
+
+                // Store handle
+                await agentRegistry.setHandle(handle, for: sessionId)
+
+                // Send success response
+                JsonRpcRouter.sendResponse(id: id, result: ["status": "started"]) { text in
+                    client.send(text: text)
+                }
+            } catch {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to start: \(error.localizedDescription)") { text in
+                    client.send(text: text)
+                }
+            }
         }
     }
 
@@ -341,8 +458,41 @@ public class DesktopWebSocketServer {
     }
 
     private func handleSessionCancel(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Stub - will implement from existing switch logic
-        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+        // Parse session ID from params
+        guard let sessionIdStr = params?["session_id"] as? String else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing session_id") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        let sessionId = ACPSessionId(sessionIdStr)
+
+        // Get handle
+        guard let handle = await agentRegistry.handle(for: sessionId) else {
+            // No active session, send success anyway
+            JsonRpcRouter.sendResponse(id: id, result: ["status": "no_active_session"]) { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Get provider
+        guard let provider = await agentRegistry.provider(for: handle.mode) else {
+            JsonRpcRouter.sendError(id: id, code: -32601, message: "Provider not found for mode: \(handle.mode.rawValue)") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Cancel the session
+        await provider.cancel(sessionId: sessionId, handle: handle)
+
+        // Remove handle from registry
+        await agentRegistry.removeHandle(for: sessionId)
+
+        // Send success response
+        JsonRpcRouter.sendResponse(id: id, result: ["status": "cancelled"]) { text in
             client.send(text: text)
         }
     }
