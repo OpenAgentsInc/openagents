@@ -73,6 +73,8 @@ public class DesktopWebSocketServer {
     private var listener: NWListener?
     private var clients = Set<Client>()
     public weak var delegate: DesktopWebSocketServerDelegate?
+    // Optional Tinyvex persistence for ACP updates
+    private var tinyvexDb: TinyvexDbLayer?
 
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
@@ -107,6 +109,15 @@ public class DesktopWebSocketServer {
     private var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
 
     public init() {}
+
+    public func setTinyvexDb(path: String) {
+        if let db = try? TinyvexDbLayer(path: path) {
+            self.tinyvexDb = db
+            print("[Bridge][server] Tinyvex DB attached at \(path)")
+        } else {
+            print("[Bridge][server] Failed to open Tinyvex DB at \(path)")
+        }
+    }
 
     /// Start listening on given port
     public func start(port: UInt16, advertiseService: Bool = true, serviceName: String? = nil, serviceType: String = BridgeConfig.serviceType) throws {
@@ -357,10 +368,7 @@ public class DesktopWebSocketServer {
                         let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty {
                             let chunk = ACP.Client.ContentChunk(content: .text(.init(text: trimmed)))
-                            let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
-                            if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
-                                for c in self.clients where c.isHandshakeComplete { c.send(text: txt) }
-                            }
+                            Task { await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk)) }
                             print("[Bridge][agent stdout] \(trimmed)")
                         }
                     }
@@ -377,10 +385,7 @@ public class DesktopWebSocketServer {
                 print("[Bridge][agent stderr] \(trimmed)")
                 // Surface stderr to UI as an agent message for visibility
                 let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(trimmed)")))
-                let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
-                if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
-                    for c in self.clients where c.isHandshakeComplete { c.send(text: jtext) }
-                }
+                Task { await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk)) }
             }
 
             // Do not auto-attach a global provider tailer; it can pick the wrong file.
@@ -1062,7 +1067,7 @@ public class DesktopWebSocketServer {
 
         // Create stream handler that sends updates via WebSocket
         let streamHandler: ACPUpdateStreamHandler = { [weak self] update in
-            await self?.sendSessionUpdate(sessionId: sessionId, update: update, client: client)
+            await self?.sendSessionUpdate(sessionId: sessionId, update: update)
         }
 
         // Create and run orchestrator
@@ -1111,7 +1116,7 @@ public class DesktopWebSocketServer {
                     arguments: nil,
                     _meta: ["stage": AnyEncodable("summary")] 
                 )
-                await sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCall), client: client)
+                await sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCall))
                 let started = ACPToolCallUpdateWire(
                     call_id: callId,
                     status: .started,
@@ -1119,7 +1124,7 @@ public class DesktopWebSocketServer {
                     error: nil,
                     _meta: ["progress": AnyEncodable(0.0)]
                 )
-                await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(started), client: client)
+                await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(started))
 
                 if let analysis = await orchestrator.fmAnalysis(), !analysis.text.isEmpty {
                     let heading = (analysis.source == .sessionAnalyze) ? "\n**Intent From Session History:**" : "\n**Inferred Intent (FM):**"
@@ -1136,7 +1141,7 @@ public class DesktopWebSocketServer {
                         error: nil,
                         _meta: nil
                     )
-                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed), client: client)
+                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed))
                 } else {
                     let completed = ACPToolCallUpdateWire(
                         call_id: callId,
@@ -1145,7 +1150,7 @@ public class DesktopWebSocketServer {
                         error: nil,
                         _meta: nil
                     )
-                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed), client: client)
+                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed))
                 }
             }
 
@@ -1154,11 +1159,7 @@ public class DesktopWebSocketServer {
             let summaryChunk = ACP.Client.ContentChunk(
                 content: .text(.init(text: summaryText))
             )
-            await sendSessionUpdate(
-                sessionId: sessionId,
-                update: .agentMessageChunk(summaryChunk),
-                client: client
-            )
+            await sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(summaryChunk))
         } catch {
             print("[Orchestrator] Error: \(error)")
 
@@ -1166,20 +1167,33 @@ public class DesktopWebSocketServer {
             let errorChunk = ACP.Client.ContentChunk(
                 content: .text(.init(text: "❌ Orchestration failed: \(error.localizedDescription)"))
             )
-            await sendSessionUpdate(
-                sessionId: sessionId,
-                update: .agentMessageChunk(errorChunk),
-                client: client
-            )
+            await sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
         }
     }
 
     /// Send session update via WebSocket
     private func sendSessionUpdate(
         sessionId: ACPSessionId,
-        update: ACP.Client.SessionUpdate,
-        client: Client
+        update: ACP.Client.SessionUpdate
     ) async {
+        // Persist to Tinyvex if configured
+        let kind: String
+        switch update {
+        case .userMessageChunk: kind = "user_message_chunk"
+        case .agentMessageChunk: kind = "agent_message_chunk"
+        case .agentThoughtChunk: kind = "agent_thought_chunk"
+        case .toolCall: kind = "tool_call"
+        case .toolCallUpdate: kind = "tool_call_update"
+        case .plan: kind = "plan"
+        case .availableCommandsUpdate: kind = "available_commands_update"
+        case .currentModeUpdate: kind = "current_mode_update"
+        }
+        if let db = tinyvexDb,
+           let updJSON = String(data: (try? JSONEncoder().encode(update)) ?? Data(), encoding: .utf8) {
+            // Seq=0 placeholder for now; ts = now
+            try? await db.appendEvent(sessionId: sessionId.value, seq: 0, ts: Int64(Date().timeIntervalSince1970 * 1000), updateJSON: updJSON)
+            print("[Bridge][tinyvex] append session=\(sessionId.value) kind=\(kind)")
+        }
         let notification = ACP.Client.SessionNotificationWire(
             session_id: sessionId,
             update: update,
@@ -1192,10 +1206,8 @@ public class DesktopWebSocketServer {
             return
         }
 
-        // Send on main queue to avoid background thread warnings
-        await MainActor.run {
-            client.send(text: jtext)
-        }
+        // Broadcast to all connected clients
+        await MainActor.run { for c in self.clients where c.isHandshakeComplete { c.send(text: jtext) } }
     }
 }
 
@@ -1618,12 +1630,7 @@ extension DesktopWebSocketServer {
         if newLines.isEmpty { return }
         let updates = DesktopWebSocketServer.makeTypedUpdates(from: newLines, provider: tailProvider ?? "codex")
         guard !updates.isEmpty else { return }
-        for u in updates {
-            let note = ACP.Client.SessionNotificationWire(session_id: sid, update: u)
-            if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
-                for c in clients where c.isHandshakeComplete { c.send(text: jtext) }
-            }
-        }
+        for u in updates { Task { await self.sendSessionUpdate(sessionId: sid, update: u) } }
     }
     
     // MARK: - Codex exec --json event mapper
@@ -1652,10 +1659,7 @@ extension DesktopWebSocketServer {
                         "arguments": AnyEncodable("{\"command\":[\"bash\",\"-lc\",\"\(cmd.replacingOccurrences(of: "\"", with: "\\\""))\"]}")
                     ]
                     let wire = ACPToolCallWire(call_id: callId, name: "shell", arguments: args, _meta: nil)
-                    let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .toolCall(wire))
-                    if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
-                        client.send(text: txt)
-                    }
+                    Task { await self.sendSessionUpdate(sessionId: sessionId, update: .toolCall(wire)) }
                 }
             }
         case "item.completed":
@@ -1670,25 +1674,16 @@ extension DesktopWebSocketServer {
                         "metadata": AnyEncodable(["exit_code": AnyEncodable(exitCode)])
                     ]
                     let upd = ACPToolCallUpdateWire(call_id: callId, status: ok ? .completed : .error, output: AnyEncodable(payload), error: ok ? nil : "exit_code=\(exitCode)", _meta: nil)
-                    let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .toolCallUpdate(upd))
-                    if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
-                        client.send(text: txt)
-                    }
+                    Task { await self.sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(upd)) }
                 } else if itemType == "agent_message" {
                     if let text = item["text"] as? String, !text.isEmpty {
                         let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
-                        let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
-                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
-                            client.send(text: txt)
-                        }
+                        Task { await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk)) }
                     }
                 } else if itemType == "reasoning" {
                     if let text = item["text"] as? String, !text.isEmpty {
                         let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
-                        let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentThoughtChunk(chunk))
-                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
-                            client.send(text: txt)
-                        }
+                        Task { await self.sendSessionUpdate(sessionId: sessionId, update: .agentThoughtChunk(chunk)) }
                     }
                 }
             }
