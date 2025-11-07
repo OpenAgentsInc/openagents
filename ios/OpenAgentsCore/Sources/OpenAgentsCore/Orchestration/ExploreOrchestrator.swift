@@ -63,6 +63,15 @@ public actor ExploreOrchestrator {
     /// Policy governing exploration
     private let policy: ExplorationPolicy
 
+    // MARK: - Persistent FM session
+    #if canImport(FoundationModels)
+    /// Persistent Foundation Models session (reused across exploration calls)
+    /// The session maintains its own conversation history automatically
+    private var fmSession: LanguageModelSession?
+    /// Turn counter for context management
+    private var sessionTurnCount: Int = 0
+    #endif
+
     /// Current plan
     private var currentPlan: ExplorePlan?
     /// Current ACP plan (for status updates)
@@ -121,25 +130,137 @@ public actor ExploreOrchestrator {
         // Validate workspace
         try validateWorkspace()
 
-        // Generate initial plan
-        let plan = try await generateInitialPlan(using: model)
-        currentPlan = plan
+        // Route based on policy flag
+        if policy.use_native_tool_calling {
+            // NEW PATH: Native FM tool calling loop
+            print("[Orchestrator] Using native FM tool calling loop (experimental)")
+            let summary = try await executeNativeToolCallingLoop()
+            return summary
+        } else {
+            // LEGACY PATH: Text-based plan generation and parsing
+            print("[Orchestrator] Using legacy text plan parsing")
 
-        // Stream plan as ACP
-        await streamPlan(plan)
+            // Generate initial plan
+            let plan = try await generateInitialPlan(using: model)
+            currentPlan = plan
 
-        // Execute operations from plan
-        try await executeOperations(plan.nextOps)
+            // Stream plan as ACP
+            await streamPlan(plan)
 
-        // Generate summary (simplified for Phase 2)
-        let summary = try await generateSummary()
+            // Execute operations from plan
+            try await executeOperations(plan.nextOps)
 
-        return summary
+            // Generate summary (simplified for Phase 2)
+            let summary = try await generateSummary()
+
+            return summary
+        }
         #else
         // Foundation Models not available at compile time
         throw OrchestrationError.modelUnavailable("FoundationModels framework not available")
         #endif
     }
+
+    // MARK: - Session Management
+
+    #if canImport(FoundationModels)
+    /// Get or create persistent FM session with tools
+    @available(iOS 26.0, macOS 26.0, *)
+    private func getOrCreateSession() async throws -> LanguageModelSession {
+        if let existing = fmSession {
+            print("[Orchestrator] Reusing existing FM session (turn \(sessionTurnCount))")
+            return existing
+        }
+
+        let tools = FMToolsRegistry.defaultTools(workspaceRoot: workspaceRoot)
+        let instructions = Instructions("""
+        You are a workspace exploration assistant. Use the available tools to explore the workspace and achieve the user's goals.
+
+        Available tools:
+        - session.list: List recent conversation sessions
+        - session.search: Search sessions for patterns
+        - session.read: Read session content
+        - session.analyze: Analyze sessions for insights
+        - content.get_span: Read file content
+        - code.grep: Search code
+        - fs.list_dir: List directory contents
+
+        After using tools, summarize your findings and suggest next steps.
+        """)
+
+        let session = LanguageModelSession(
+            model: SystemLanguageModel.default,
+            tools: tools,
+            instructions: instructions
+        )
+
+        try? session.prewarm(promptPrefix: nil)
+        fmSession = session
+        sessionTurnCount = 0
+        print("[Orchestrator] FM session created with \(tools.count) tools")
+        return session
+    }
+    /// Execute native FM tool calling loop
+    /// The session handles tool calling automatically - tools are invoked by FM as needed
+    @available(iOS 26.0, macOS 26.0, *)
+    private func executeNativeToolCallingLoop() async throws -> ExploreSummary {
+        let session = try await getOrCreateSession()
+        sessionTurnCount += 1
+
+        let workspaceName = (workspaceRoot as NSString).lastPathComponent
+        let goalsStr = goals.isEmpty ? "(explore the workspace)" : goals.joined(separator: "\n- ")
+
+        let prompt = """
+        Workspace: \(workspaceName)
+        Goals:
+        - \(goalsStr)
+
+        Use the available tools to explore the workspace and achieve these goals. Start by analyzing recent sessions to understand the user's work patterns, then use other tools as needed.
+
+        After using tools, provide a summary of your findings.
+        """
+
+        print("[Orchestrator] Starting native tool calling (turn \(sessionTurnCount))")
+
+        // Send prompt - FM session will automatically call tools as needed
+        let t0 = Date()
+        let response = try await session.respond(to: prompt)
+        let elapsed = Date().timeIntervalSince(t0)
+
+        print("[Orchestrator] FM response received in \(String(format: "%.2f", elapsed))s")
+        print("[Orchestrator] Response: \(response.content.prefix(200))...")
+
+        // Stream the response content as agent message chunk
+        let chunk = ACP.Client.ContentChunk(
+            content: .text(.init(text: response.content))
+        )
+        await streamHandler(.agentMessageChunk(chunk))
+
+        // Generate summary from the response
+        let summary = try await generateSummaryFromResponse(response.content)
+
+        return summary
+    }
+
+    /// Generate summary from FM response content
+    @available(iOS 26.0, macOS 26.0, *)
+    private func generateSummaryFromResponse(_ content: String) async throws -> ExploreSummary {
+        // Extract insights from the response
+        let workspaceName = (workspaceRoot as NSString).lastPathComponent
+
+        // For now, create a simple summary
+        // In future iterations, we could use FM to structure this better
+        let summary = ExploreSummary(
+            repo_name: workspaceName,
+            languages: [:],  // Could extract from response
+            entrypoints: [],  // Could extract from response
+            top_files: [],    // Could extract from response
+            followups: [content]  // Use the FM response as a follow-up suggestion
+        )
+
+        return summary
+    }
+    #endif
 
     // MARK: - Plan Generation
 
