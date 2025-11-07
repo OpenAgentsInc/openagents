@@ -1,6 +1,8 @@
 import SwiftUI
+import OpenAgentsCore
 
 #if os(iOS)
+import UIKit
 
 struct NewChatView: View {
     @EnvironmentObject var bridge: BridgeManager
@@ -12,9 +14,11 @@ struct NewChatView: View {
     @State private var messageText: String = ""
     @State private var showAgentPicker = false
     @State private var showMoreMenu = false
+    @StateObject private var timelineVM = ACPTimelineViewModel()
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
             // Custom header - no glass
             VStack(spacing: 0) {
                 Color.clear
@@ -93,6 +97,29 @@ struct NewChatView: View {
                         .foregroundStyle(OATheme.Colors.textSecondary)
                 }
 
+                // Session indicator
+                HStack(spacing: 8) {
+                    Image(systemName: "number")
+                        .font(.system(size: 10))
+                        .foregroundStyle(OATheme.Colors.textTertiary)
+                    if let sid = bridge.currentSessionId?.value, !sid.isEmpty {
+                        Text("Session: \(sid.prefix(8))…")
+                            .font(OAFonts.ui(.caption, 12))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Button(action: { UIPasteboard.general.string = sid }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11))
+                                .foregroundStyle(OATheme.Colors.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Copy session ID")
+                    } else {
+                        Text("Session: No session")
+                            .font(OAFonts.ui(.caption, 12))
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                    }
+                }
+
                 // Working directory
                 if let workingDir = bridge.workingDirectory {
                     HStack(spacing: 8) {
@@ -120,45 +147,43 @@ struct NewChatView: View {
             .padding(.vertical, 12)
             .background(OATheme.Colors.border.opacity(0.2))
 
-            // Main content area - tap to dismiss keyboard
-            Spacer()
+            // ACP timeline area - tap to dismiss keyboard anywhere above the composer
+            ACPTimelineView(items: timelineVM.items)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-
-            // Composer at bottom - fixed to bottom edge
-            HStack(alignment: .center, spacing: 12) {
-                Composer(
-                    text: $messageText,
-                    agentName: selectedAgent,
-                    onSubmit: {
-                        sendMessage()
-                    }
-                )
-
-                Button(action: {
-                    sendMessage()
-                }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(
-                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                ? OATheme.Colors.textTertiary
-                                : OATheme.Colors.accent
-                        )
-                }
-                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 12)
-            .background(OATheme.Colors.background)
+                .onTapGesture { dismissKeyboard() }
         }
-        .ignoresSafeArea(edges: .bottom)
+        // Also capture taps anywhere in the background to dismiss the keyboard
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
+        // Bottom composer overlay pinned to the view's bottom
+        HStack(alignment: .center, spacing: 12) {
+            Composer(
+                text: $messageText,
+                agentName: selectedAgent,
+                onSubmit: { sendMessage() }
+            )
+            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+            .layoutPriority(1)
+
+            Button(action: { sendMessage() }) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(
+                        messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? OATheme.Colors.textTertiary
+                            : OATheme.Colors.accent
+                    )
+            }
+            .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(OATheme.Colors.background)
+        }
         .background(OATheme.Colors.background)
         .navigationBarHidden(true)
         .preferredColorScheme(.dark)
+        .onAppear { timelineVM.attach(bridge: bridge) }
         .confirmationDialog("Select Agent", isPresented: $showAgentPicker, titleVisibility: .visible) {
             ForEach(detectedAgents, id: \.self) { agent in
                 Button(agent) {
@@ -181,11 +206,15 @@ struct NewChatView: View {
         let message = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
 
-        // TODO: Send message to selected agent
-        print("[NewChat] Sending to \(selectedAgent): \(message)")
+        // Send via bridge (creates a session on first send, then reuses it)
+        bridge.sendPrompt(text: message)
 
         // Clear input
         messageText = ""
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private var bridgeStatusText: String {
