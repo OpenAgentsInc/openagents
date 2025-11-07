@@ -29,13 +29,15 @@ enum PerformanceWarmup {
     /// Create an offscreen text input, focus and resign it to load the keyboard
     /// and associated input subsystems ahead of time.
     static func prewarmKeyboardAndTextInput() {
+        // Soft warmup: create and configure a text view, perform layout and trait access
+        // without becoming first responder (avoids showing the keyboard to the user).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             guard let window = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .flatMap({ $0.windows })
                 .first(where: { $0.isKeyWindow }) ?? UIApplication.shared.windows.first else { return }
 
-            let tv = UITextView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
+            let tv = UITextView(frame: CGRect(x: -1000, y: -1000, width: 10, height: 10))
             tv.isScrollEnabled = false
             tv.autocorrectionType = .no
             tv.spellCheckingType = .no
@@ -46,15 +48,14 @@ enum PerformanceWarmup {
             tv.dataDetectorTypes = []
             tv.keyboardType = .asciiCapable
             tv.keyboardAppearance = .dark
-            tv.text = ""
+            tv.text = "Warm"
+            tv.alpha = 0.001
             window.addSubview(tv)
-
-            // Focus → brief delay → resign to prime show/dismiss paths
-            tv.becomeFirstResponder()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                tv.resignFirstResponder()
-                tv.removeFromSuperview()
-            }
+            tv.setNeedsLayout(); tv.layoutIfNeeded()
+            // Touch active input modes to warm internal caches
+            _ = UITextInputMode.activeInputModes
+            // Remove immediately without showing keyboard
+            tv.removeFromSuperview()
         }
     }
 }

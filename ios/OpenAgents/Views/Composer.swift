@@ -53,28 +53,18 @@ struct Composer: UIViewRepresentable {
         textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        // Set placeholder
-        if text.isEmpty {
-            textView.text = "Message \(agentName)"
-            textView.textColor = .systemGray
-        }
-
+        // Start empty; no placeholder text to avoid state churn
+        textView.text = text
+        textView.textColor = .white
+        
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        // Handle clearing when text binding is empty
-        if text.isEmpty {
-            if textView.textColor != .systemGray || textView.text != "Message \(agentName)" {
-                textView.text = "Message \(agentName)"
-                textView.textColor = .systemGray
-            }
-        } else {
-            // Only update if text actually changed (ignore placeholder state)
-            if textView.textColor == .systemGray || textView.text != text {
-                textView.textColor = .white
-                textView.text = text
-            }
+        // Keep the text view synced with the binding without placeholder logic
+        if textView.text != text {
+            textView.textColor = .white
+            textView.text = text
         }
     }
 
@@ -96,17 +86,7 @@ struct Composer: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            // Handle placeholder
-            if textView.text.isEmpty {
-                textView.text = "Message \(parent.agentName)"
-                textView.textColor = .systemGray
-                parent.text = ""
-            } else if textView.textColor == .systemGray {
-                textView.text = ""
-                textView.textColor = .white
-            } else {
-                parent.text = textView.text
-            }
+            parent.text = textView.text
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -117,19 +97,8 @@ struct Composer: UIViewRepresentable {
             return true
         }
 
-        func textViewDidBeginEditing(_ textView: UITextView) {
-            if textView.textColor == .systemGray {
-                textView.text = ""
-                textView.textColor = .white
-            }
-        }
-
-        func textViewDidEndEditing(_ textView: UITextView) {
-            if textView.text.isEmpty {
-                textView.text = "Message \(parent.agentName)"
-                textView.textColor = .systemGray
-            }
-        }
+        func textViewDidBeginEditing(_ textView: UITextView) {}
+        func textViewDidEndEditing(_ textView: UITextView) {}
     }
 }
 
