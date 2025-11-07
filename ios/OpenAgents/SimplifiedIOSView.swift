@@ -12,42 +12,63 @@ struct SimplifiedNavigationView: View {
     @State private var detectedAgents: [String] = []
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            SimplifiedIOSView(
-                isMenuPresented: $isMenuPresented,
-                onNavigateToNewChat: {
-                    navigationPath.append("newChat")
-                }
-            )
-            .navigationDestination(for: String.self) { destination in
-                if destination == "newChat" {
-                    NewChatView(
-                        isMenuPresented: $isMenuPresented,
-                        selectedAgent: $selectedAgent,
-                        detectedAgents: detectedAgents,
-                        onNavigateToSetup: {
-                            navigationPath.removeLast()
-                        }
-                    )
-                }
-            }
-            .onAppear {
-                setupAgents()
-            }
-            .sheet(isPresented: $isMenuPresented) {
-                NavigationMenuSheet(
-                    onNavigateToNewChat: {
-                        isMenuPresented = false
-                        navigationPath.append("newChat")
-                    },
+        ZStack {
+            NavigationStack(path: $navigationPath) {
+                NewChatView(
+                    isMenuPresented: $isMenuPresented,
+                    selectedAgent: $selectedAgent,
+                    detectedAgents: detectedAgents,
                     onNavigateToSetup: {
-                        isMenuPresented = false
-                        navigationPath = NavigationPath()
-                    },
-                    onDismiss: {
-                        isMenuPresented = false
+                        navigationPath.append("setup")
                     }
                 )
+                .navigationDestination(for: String.self) { destination in
+                    if destination == "setup" {
+                        SimplifiedIOSView(
+                            isMenuPresented: $isMenuPresented,
+                            onNavigateToNewChat: {
+                                navigationPath.removeLast()
+                            }
+                        )
+                    }
+                }
+                .onAppear {
+                    setupAgents()
+                }
+            }
+
+            // Overlay when drawer is open
+            if isMenuPresented {
+                Color.gray.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented = false
+                        }
+                    }
+            }
+
+            // Drawer from left
+            HStack(spacing: 0) {
+                DrawerMenuView(
+                    onNavigateToNewChat: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented = false
+                        }
+                        // Go back to root (New Chat)
+                        navigationPath = NavigationPath()
+                    },
+                    onNavigateToSetup: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented = false
+                        }
+                        navigationPath.append("setup")
+                    }
+                )
+                .frame(width: UIScreen.main.bounds.width * 0.75)
+                .offset(x: isMenuPresented ? 0 : -UIScreen.main.bounds.width * 0.75)
+
+                Spacer()
             }
         }
     }
@@ -283,37 +304,72 @@ struct AgentInfoRow: View {
     }
 }
 
-// MARK: - Navigation Menu Sheet
+// MARK: - Drawer Menu View
 
-struct NavigationMenuSheet: View {
+struct DrawerMenuView: View {
     var onNavigateToNewChat: () -> Void
     var onNavigateToSetup: () -> Void
-    var onDismiss: () -> Void
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Navigation") {
-                    Button(action: onNavigateToNewChat) {
-                        Label("New Chat", systemImage: "plus.bubble")
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            Text("Menu")
+                .font(OAFonts.ui(.title, 24))
+                .foregroundStyle(OATheme.Colors.textPrimary)
+                .padding(.horizontal, 24)
+                .padding(.top, 60)
+                .padding(.bottom, 32)
 
-                    Button(action: onNavigateToSetup) {
-                        Label("Setup", systemImage: "gear")
-                    }
+            // Navigation items
+            Button(action: onNavigateToNewChat) {
+                HStack(spacing: 16) {
+                    Image(systemName: "plus.bubble")
+                        .font(.system(size: 20))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                        .frame(width: 24)
+                    Text("New Chat")
+                        .font(OAFonts.ui(.body, 16))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
 
-                    Label("About", systemImage: "info.circle")
+            Button(action: onNavigateToSetup) {
+                HStack(spacing: 16) {
+                    Image(systemName: "gear")
+                        .font(.system(size: 20))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                        .frame(width: 24)
+                    Text("Setup")
+                        .font(OAFonts.ui(.body, 16))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    Spacer()
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
-            .navigationTitle("Menu")
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: onDismiss)
-                }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 16) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                    .frame(width: 24)
+                Text("About")
+                    .font(OAFonts.ui(.body, 16))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                Spacer()
             }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+
+            Spacer()
         }
-        .presentationDetents([.medium, .large])
+        .frame(maxHeight: .infinity)
+        .background(Color.black)
     }
 }
 
