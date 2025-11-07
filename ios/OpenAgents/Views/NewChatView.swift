@@ -11,40 +11,88 @@ struct NewChatView: View {
     @State private var messageText: String = ""
 
     var body: some View {
-        VStack {
-            Spacer()
-            Text("New Chat")
-            Spacer()
+        VStack(spacing: 0) {
+            // Main content area
+            VStack {
+                Spacer()
 
-            HStack {
+                Text("New Chat")
+                    .font(OAFonts.ui(.title, 24))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+
+            // Composer at bottom
+            HStack(spacing: 12) {
                 Composer(
                     text: $messageText,
                     agentName: selectedAgent,
-                    onSubmit: { messageText = "" }
+                    onSubmit: {
+                        sendMessage()
+                    }
                 )
 
-                Button(action: { messageText = "" }) {
+                Button(action: {
+                    sendMessage()
+                }) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 32))
-                        .foregroundColor(.blue)
+                        .foregroundStyle(
+                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? OATheme.Colors.textTertiary
+                                : OATheme.Colors.accent
+                        )
                 }
+                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(OATheme.Colors.background)
         }
-        .background(.black)
+        .background(OATheme.Colors.background)
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
+            // LEFT: Hamburger menu
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: { isMenuPresented.toggle() }) {
                     Image(systemName: "line.3.horizontal")
+                        .foregroundStyle(OATheme.Colors.textPrimary)
                 }
             }
 
+            // CENTER: Agent selector dropdown
             ToolbarItem(placement: .principal) {
-                Text(selectedAgent)
+                Menu {
+                    ForEach(detectedAgents, id: \.self) { agent in
+                        Button(action: {
+                            selectedAgent = agent
+                        }) {
+                            HStack {
+                                Text(agent)
+                                if selectedAgent == agent {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(selectedAgent)
+                            .font(OAFonts.ui(.headline, 16))
+                            .foregroundStyle(OATheme.Colors.textPrimary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
+        .preferredColorScheme(.dark)
     }
 
     private func sendMessage() {
