@@ -127,37 +127,37 @@ struct NewChatView: View {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
 
-            // Composer at bottom
-            HStack(alignment: .center, spacing: 12) {
-                Composer(
-                    text: $messageText,
-                    agentName: selectedAgent,
-                    onSubmit: {
-                        sendMessage()
-                    }
-                )
+            // Composer at bottom - fixed to bottom edge
+            VStack(spacing: 0) {
+                HStack(alignment: .center, spacing: 12) {
+                    Composer(
+                        text: $messageText,
+                        agentName: selectedAgent,
+                        onSubmit: {
+                            sendMessage()
+                        }
+                    )
 
-                Button(action: {
-                    sendMessage()
-                }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(
-                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                ? OATheme.Colors.textTertiary
-                                : OATheme.Colors.accent
-                        )
+                    Button(action: {
+                        sendMessage()
+                    }) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(
+                                messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? OATheme.Colors.textTertiary
+                                    : OATheme.Colors.accent
+                            )
+                    }
+                    .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .background(OATheme.Colors.background)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OATheme.Colors.background)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OATheme.Colors.background)
-        .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
         .preferredColorScheme(.dark)
         .confirmationDialog("Select Agent", isPresented: $showAgentPicker, titleVisibility: .visible) {
