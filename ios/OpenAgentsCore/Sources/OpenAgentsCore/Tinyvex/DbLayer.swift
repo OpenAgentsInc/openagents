@@ -52,6 +52,8 @@ public actor TinyvexDbLayer {
 
     public struct EventRow: Codable { public let event_id: Int64; public let session_id: String; public let seq: Int64; public let ts: Int64; public let update_json: String; public let meta_json: String? }
 
+    public struct RecentSessionRow: Codable { public let session_id: String; public let last_ts: Int64; public let message_count: Int64 }
+
     public func appendEvent(sessionId: String, seq: Int64, ts: Int64, updateJSON: String, metaJSON: String? = nil) throws {
         let sql = "INSERT INTO acp_events (session_id, seq, ts, update_json, meta_json) VALUES (?,?,?,?,?);"
         var stmt: OpaquePointer?
@@ -92,6 +94,50 @@ public actor TinyvexDbLayer {
             let metaPtr = sqlite3_column_text(stmt, 5)
             let meta = metaPtr != nil ? String(cString: metaPtr!) : nil
             out.append(EventRow(event_id: event_id, session_id: sess, seq: seq, ts: ts, update_json: upd, meta_json: meta))
+        }
+        return out
+    }
+
+    public func recentSessions(limit: Int = 10) throws -> [RecentSessionRow] {
+        let sql = """
+        SELECT session_id, MAX(ts) AS last_ts, COUNT(*) AS cnt
+        FROM acp_events
+        GROUP BY session_id
+        ORDER BY last_ts DESC
+        LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw DbError.execFailed("prepare recentSessions") }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(limit))
+
+        var out: [RecentSessionRow] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let session_id = String(cString: sqlite3_column_text(stmt, 0))
+            let last_ts = sqlite3_column_int64(stmt, 1)
+            let cnt = sqlite3_column_int64(stmt, 2)
+            out.append(RecentSessionRow(session_id: session_id, last_ts: last_ts, message_count: cnt))
+        }
+        return out
+    }
+
+    public func sessionTimeline(sessionId: String, limit: Int? = nil) throws -> [String] {
+        let sql: String
+        if let lim = limit {
+            sql = "SELECT update_json FROM acp_events WHERE session_id = ? ORDER BY ts ASC LIMIT \(lim);"
+        } else {
+            sql = "SELECT update_json FROM acp_events WHERE session_id = ? ORDER BY ts ASC;"
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw DbError.execFailed("prepare sessionTimeline") }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, (sessionId as NSString).utf8String, -1, nil)
+
+        var out: [String] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let updateJson = String(cString: sqlite3_column_text(stmt, 0))
+            out.append(updateJson)
         }
         return out
     }
