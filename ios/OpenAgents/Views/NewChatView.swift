@@ -13,6 +13,60 @@ struct NewChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Custom header - no glass
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: 0)
+                    .frame(maxWidth: .infinity)
+                    .background(.black)
+                    .ignoresSafeArea(edges: .top)
+
+                HStack(spacing: 16) {
+                    // Bare hamburger menu icon
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isMenuPresented.toggle()
+                        }
+                    }) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Agent selector dropdown - flush left
+                    Menu {
+                        ForEach(detectedAgents, id: \.self) { agent in
+                            Button(action: {
+                                selectedAgent = agent
+                            }) {
+                                HStack {
+                                    Text(agent)
+                                    if selectedAgent == agent {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(selectedAgent)
+                                .font(OAFonts.ui(.headline, 16))
+                                .foregroundStyle(.white)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.black)
+            }
+
             // Connection info at top
             VStack(alignment: .leading, spacing: 8) {
                 // Bridge status
@@ -93,53 +147,7 @@ struct NewChatView: View {
             .background(OATheme.Colors.background)
         }
         .background(OATheme.Colors.background)
-        .navigationTitle("")
-        .navigationBarBackButtonHidden(true)
-        .toolbarTitleDisplayMode(.inline)
-        .toolbar {
-            // LEFT: Hamburger menu and agent selector flush together
-            ToolbarItem(placement: .topBarLeading) {
-                HStack(spacing: 16) {
-                    // Bare hamburger menu icon - no glass
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            isMenuPresented.toggle()
-                        }
-                    }) {
-                        Image(systemName: "line.3.horizontal")
-                            .foregroundStyle(OATheme.Colors.textPrimary)
-                            .font(.system(size: 18))
-                    }
-                    .buttonStyle(.plain)
-
-                    // Agent selector dropdown - flush left
-                    Menu {
-                        ForEach(detectedAgents, id: \.self) { agent in
-                            Button(action: {
-                                selectedAgent = agent
-                            }) {
-                                HStack {
-                                    Text(agent)
-                                    if selectedAgent == agent {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(selectedAgent)
-                                .font(OAFonts.ui(.headline, 16))
-                                .foregroundStyle(OATheme.Colors.textPrimary)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12))
-                                .foregroundStyle(OATheme.Colors.textSecondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
+        .navigationBarHidden(true)
         .preferredColorScheme(.dark)
     }
 
