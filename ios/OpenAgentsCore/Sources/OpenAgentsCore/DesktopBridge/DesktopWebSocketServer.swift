@@ -1041,6 +1041,104 @@ public class DesktopWebSocketServer {
                                 message: "orchestrate.explore.start requires macOS 26.0+ for Foundation Models"
                             )
                         }
+                    case "tinyvex/history.recentSessions":
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+
+                        guard let db = self.tinyvexDb else {
+                            DesktopWebSocketServer.sendJSONRPCError(
+                                client: client,
+                                id: idVal,
+                                code: -32603,
+                                message: "Tinyvex DB not attached"
+                            )
+                            return
+                        }
+
+                        Task {
+                            do {
+                                let sessions = try await db.recentSessions(limit: 10)
+                                struct SessionItem: Codable {
+                                    let session_id: String
+                                    let last_ts: Int64
+                                    let message_count: Int64
+                                }
+                                let items = sessions.map { SessionItem(session_id: $0.session_id, last_ts: $0.last_ts, message_count: $0.message_count) }
+                                print("[Bridge][tinyvex.history] recentSessions count=\(items.count)")
+
+                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: items)), let jtext = String(data: out, encoding: .utf8) {
+                                    client.send(text: jtext)
+                                }
+                            } catch {
+                                print("[Bridge][tinyvex.history] recentSessions error: \(error)")
+                                DesktopWebSocketServer.sendJSONRPCError(
+                                    client: client,
+                                    id: idVal,
+                                    code: -32603,
+                                    message: "Failed to query recent sessions: \(error)"
+                                )
+                            }
+                        }
+
+                    case "tinyvex/history.sessionTimeline":
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+
+                        guard let db = self.tinyvexDb else {
+                            DesktopWebSocketServer.sendJSONRPCError(
+                                client: client,
+                                id: idVal,
+                                code: -32603,
+                                message: "Tinyvex DB not attached"
+                            )
+                            return
+                        }
+
+                        let params = dict["params"] as? [String: Any]
+                        guard let sessionId = params?["session_id"] as? String else {
+                            DesktopWebSocketServer.sendJSONRPCError(
+                                client: client,
+                                id: idVal,
+                                code: -32602,
+                                message: "Missing required parameter: session_id"
+                            )
+                            return
+                        }
+
+                        let limit = params?["limit"] as? Int
+
+                        Task {
+                            do {
+                                let updateJsons = try await db.sessionTimeline(sessionId: sessionId, limit: limit)
+                                print("[Bridge][tinyvex.history] sessionTimeline session=\(sessionId) rows=\(updateJsons.count)")
+
+                                // Parse each JSON string into ACP.Client.SessionNotificationWire
+                                var updates: [ACP.Client.SessionNotificationWire] = []
+                                for jsonStr in updateJsons {
+                                    if let data = jsonStr.data(using: .utf8),
+                                       let wire = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: data) {
+                                        updates.append(wire)
+                                    }
+                                }
+
+                                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: updates)), let jtext = String(data: out, encoding: .utf8) {
+                                    client.send(text: jtext)
+                                }
+                            } catch {
+                                print("[Bridge][tinyvex.history] sessionTimeline error: \(error)")
+                                DesktopWebSocketServer.sendJSONRPCError(
+                                    client: client,
+                                    id: idVal,
+                                    code: -32603,
+                                    message: "Failed to load session timeline: \(error)"
+                                )
+                            }
+                        }
+
                     default:
                         break
                     }
