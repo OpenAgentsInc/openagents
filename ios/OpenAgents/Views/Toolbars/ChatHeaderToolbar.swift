@@ -4,6 +4,7 @@ import SwiftUI
 /// Reusable top header that you can attach to any screen inside a NavigationStack.
 /// iOS 26+ only: uses Liquid Glass button styles directly.
 struct ChatHeaderToolbar: ToolbarContent {
+    @Environment(\.colorScheme) private var colorScheme
     var title: String
     var onToggleMenu: () -> Void
     var onNewChat: () -> Void
@@ -14,7 +15,9 @@ struct ChatHeaderToolbar: ToolbarContent {
             Button(action: onToggleMenu) {
                 Image(systemName: "line.3.horizontal")
                     .accessibilityLabel("Open navigation menu")
+                    .foregroundStyle(colorScheme == .dark ? Color.white : OATheme.Colors.textPrimary)
             }
+            .tint(colorScheme == .dark ? .white : OATheme.Colors.textPrimary)
             // Rely on the system’s toolbar chrome for Liquid Glass.
             // Avoid explicit .glass here to prevent the inner oval effect.
         }

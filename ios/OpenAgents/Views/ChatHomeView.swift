@@ -6,6 +6,7 @@ import OpenAgentsCore
 /// Fresh screen showcasing the new top toolbar header for iOS 26+.
 /// This screen intentionally does not auto-load a conversation thread.
 struct ChatHomeView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isMenuPresented = false
     @EnvironmentObject private var bridge: BridgeManager
     // Transient "working" indicator shown between orchestration RPC start and the first streamed update
@@ -115,6 +116,8 @@ struct ChatHomeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Start") { startExploreFlow() }
                         .buttonStyle(.glass)
+                        .tint(colorScheme == .dark ? .white : OATheme.Colors.accent)
+                        .foregroundStyle(colorScheme == .dark ? Color.white : OATheme.Colors.textPrimary)
                         .accessibilityLabel("Start Workspace Exploration")
                 }
             }
