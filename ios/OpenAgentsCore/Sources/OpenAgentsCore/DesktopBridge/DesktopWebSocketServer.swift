@@ -1118,10 +1118,18 @@ public class DesktopWebSocketServer {
 
                                 // Parse each JSON string into ACP.Client.SessionNotificationWire
                                 var updates: [ACP.Client.SessionNotificationWire] = []
-                                for jsonStr in updateJsons {
-                                    if let data = jsonStr.data(using: .utf8),
-                                       let wire = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: data) {
+                                for (idx, jsonStr) in updateJsons.enumerated() {
+                                    guard let data = jsonStr.data(using: .utf8) else {
+                                        print("[Bridge][tinyvex.history] Failed to convert JSON string to data at index \(idx)")
+                                        continue
+                                    }
+
+                                    do {
+                                        let wire = try JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: data)
                                         updates.append(wire)
+                                    } catch {
+                                        print("[Bridge][tinyvex.history] Failed to decode update at index \(idx): \(error)")
+                                        print("[Bridge][tinyvex.history] JSON preview: \(jsonStr.prefix(200))...")
                                     }
                                 }
 
