@@ -3,7 +3,6 @@ import SwiftUI
 #if os(iOS)
 
 struct NewChatView: View {
-    @EnvironmentObject var bridge: BridgeManager
     @Binding var isMenuPresented: Bool
     @Binding var selectedAgent: String
     var detectedAgents: [String]
@@ -12,29 +11,20 @@ struct NewChatView: View {
     @State private var messageText: String = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Main content area
-            VStack {
-                Spacer()
-                Text("New Chat")
-                    .font(.system(size: 24, weight: .regular))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+        VStack {
+            Spacer()
+            Text("New Chat")
+            Spacer()
 
-            // Composer at bottom
             Composer(
                 text: $messageText,
                 agentName: selectedAgent,
-                onSubmit: {
-                    sendMessage()
-                }
+                onSubmit: { messageText = "" }
             )
         }
         .background(.black)
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
-        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: { isMenuPresented.toggle() }) {
@@ -44,10 +34,8 @@ struct NewChatView: View {
 
             ToolbarItem(placement: .principal) {
                 Text(selectedAgent)
-                    .font(.system(size: 16, weight: .semibold))
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func sendMessage() {

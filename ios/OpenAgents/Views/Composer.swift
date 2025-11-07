@@ -7,27 +7,21 @@ struct Composer: View {
     var agentName: String
     var onSubmit: () -> Void
 
-    @FocusState private var isFocused: Bool
-
     var body: some View {
-        HStack(spacing: 12) {
-            TextField("Message \(agentName)", text: $text)
+        HStack {
+            TextField("Message", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16))
                 .padding(12)
                 .background(Color.gray.opacity(0.2))
                 .cornerRadius(20)
-                .focused($isFocused)
 
             Button(action: onSubmit) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundColor(text.isEmpty ? .gray : .blue)
+                    .foregroundColor(.blue)
             }
-            .disabled(text.isEmpty)
         }
         .padding()
-        .background(.black)
     }
 }
 
