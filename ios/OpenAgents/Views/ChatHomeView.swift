@@ -20,7 +20,7 @@ struct ChatHomeView: View {
 
     var body: some View {
         if Features.simplifiedIOSUI {
-            SimplifiedIOSView()
+            SimplifiedNavigationView()
         } else {
             fullChatView
         }

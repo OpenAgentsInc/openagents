@@ -4,11 +4,11 @@ import SwiftUI
 
 struct NewChatView: View {
     @EnvironmentObject var bridge: BridgeManager
-    @State private var isMenuPresented = false
+    @Binding var isMenuPresented: Bool
+    var onNavigateToSetup: () -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack {
+        VStack {
                 Spacer()
 
                 Text("New Chat")
@@ -28,17 +28,18 @@ struct NewChatView: View {
                     onNewChat: { /* no-op for now */ }
                 )
             }
-            .sheet(isPresented: $isMenuPresented) {
-                NavigationMenuSheet(isPresented: $isMenuPresented)
-            }
-        }
         .preferredColorScheme(.dark)
     }
 }
 
 #Preview {
-    NewChatView()
+    NavigationStack {
+        NewChatView(
+            isMenuPresented: .constant(false),
+            onNavigateToSetup: {}
+        )
         .environmentObject(BridgeManager())
+    }
 }
 
 #endif
