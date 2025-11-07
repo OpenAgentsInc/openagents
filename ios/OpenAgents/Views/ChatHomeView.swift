@@ -27,16 +27,16 @@ struct ChatHomeView: View {
                     case .connected(let host, let port):
                         Text("ACP OK (0.2.2)")
                             .font(.headline)
-                        Text("· \(host):\(port)")
+                        Text("· \(host):\(port, format: .number.grouping(.never))")
                             .foregroundStyle(.secondary)
                     case .handshaking(let host, let port):
-                        Text("Handshaking… \(host):\(port)")
+                        Text("Handshaking… \(host):\(port, format: .number.grouping(.never))")
                     case .connecting(let host, let port):
-                        Text("Connecting… \(host):\(port)")
+                        Text("Connecting… \(host):\(port, format: .number.grouping(.never))")
                     case .discovering:
                         Text("Discovering desktop…")
                     case .advertising(let port):
-                        Text("Advertising on :\(port)")
+                        Text("Advertising on :\(port, format: .number.grouping(.never))")
                     case .idle:
                         Text("Idle")
                     case .error(let msg):
