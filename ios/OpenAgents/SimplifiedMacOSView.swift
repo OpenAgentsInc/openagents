@@ -40,7 +40,7 @@ struct SimplifiedMacOSView: View {
                 // Bridge Status Section
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("Bridge Status", systemImage: "network")
+                        Text("Bridge Status")
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
@@ -145,7 +145,7 @@ struct SimplifiedMacOSView: View {
                 // Working Directory Section
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("Working Directory", systemImage: "folder")
+                        Text("Working Directory")
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
@@ -228,7 +228,7 @@ struct SimplifiedMacOSView: View {
                 // Configure Coding Agents Section
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("Configure Coding Agents", systemImage: "terminal")
+                        Text("Configure Coding Agents")
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
@@ -276,7 +276,7 @@ struct SimplifiedMacOSView: View {
                 #if DEBUG
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("Tinyvex (Dev)", systemImage: "internaldrive")
+                        Text("Tinyvex (Dev)")
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
@@ -395,9 +395,9 @@ struct AgentToggleRow: View {
                     .foregroundStyle(OATheme.Colors.textPrimary)
 
                 if showStatus {
-                    Text(detected ? "Detected" : "Not found")
+                    Text(enabled ? "Enabled" : "Disabled")
                         .font(OAFonts.ui(.caption, 11))
-                        .foregroundStyle(detected ? OATheme.Colors.success : OATheme.Colors.textTertiary)
+                        .foregroundStyle(enabled ? OATheme.Colors.textSecondary : OATheme.Colors.danger)
                 }
             }
 
