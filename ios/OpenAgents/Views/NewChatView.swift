@@ -65,7 +65,7 @@ struct NewChatView: View {
             .frame(maxWidth: .infinity)
 
             // Composer at bottom
-            HStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 12) {
                 Composer(
                     text: $messageText,
                     agentName: selectedAgent,
@@ -86,6 +86,7 @@ struct NewChatView: View {
                         )
                 }
                 .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .padding(.bottom, 6)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
