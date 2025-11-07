@@ -280,16 +280,10 @@ public class DesktopWebSocketServer {
             process.arguments = args
             print("[Bridge][server] arguments (codex): \(args.joined(separator: " "))")
         case .claude_code, .default_mode:
-            // For a brand new ACP session, do NOT resume a previous Claude chat.
-            // First prompt: start a fresh conversation (no --continue). Subsequent prompts: use --continue.
-            let hasStarted = claudeStartedBySession[sidStr] ?? false
-            if hasStarted {
-                process.arguments = ["--continue", prompt]
-                print("[Bridge][server] arguments (claude): --continue \"\(prompt)\"")
-            } else {
-                process.arguments = [prompt]
-                print("[Bridge][server] arguments (claude): \"\(prompt)\" (new conversation)")
-            }
+            // Always bind Claude to the exact ACP session id using --resume <session_id>.
+            // Never use --continue (implicit latest) to avoid cross-session leakage.
+            process.arguments = ["--resume", sidStr, prompt]
+            print("[Bridge][server] arguments (claude): --resume \(sidStr) \"\(prompt)\"")
         }
 
         // Set up environment with node in PATH
@@ -327,10 +321,7 @@ public class DesktopWebSocketServer {
         do {
             try process.run()
             print("[Bridge][server] agent process started pid=\(process.processIdentifier)")
-            // Mark Claude session as started so later prompts can use --continue
-            if self.modeBySession[sidStr] == .claude_code || self.modeBySession[sidStr] == .default_mode {
-                self.claudeStartedBySession[sidStr] = true
-            }
+            // No-op: we always use --resume with the ACP session id; no per-session flag needed.
 
             // Monitor stdout: for Codex exec --json, map JSONL events -> ACP updates
             stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
