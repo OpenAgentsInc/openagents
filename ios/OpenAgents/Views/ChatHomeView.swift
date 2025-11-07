@@ -55,6 +55,7 @@ struct ChatHomeView: View {
                 if isWorking {
                     HStack(spacing: 8) {
                         ProgressView().progressViewStyle(.circular)
+                            .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
                         Text("Working (\(workingSeconds)s)")
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
@@ -72,6 +73,7 @@ struct ChatHomeView: View {
                 if let fmStatus = fmAnalysisStatus(bridge.updates), fmStatus.inProgress {
                     HStack(spacing: 8) {
                         ProgressView().progressViewStyle(.circular)
+                            .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
                         Text("Analyzing intent…")
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         if let pct = fmStatus.progressPercent {
@@ -239,6 +241,7 @@ private struct UpdateRow: View {
     let note: ACP.Client.SessionNotificationWire
     var onInspect: ((ACP.Client.SessionNotificationWire) -> Void)? = nil
     @EnvironmentObject private var bridge: BridgeManager
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         switch note.update {
         case .toolCall(let call):
@@ -255,7 +258,15 @@ private struct UpdateRow: View {
         case .toolCallUpdate(let upd):
             HStack(alignment: .firstTextBaseline) {
                 let hasOutput = bridge.outputJSONByCallId[upd.call_id] != nil
-                Image(systemName: (upd.status == .completed || hasOutput) ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
+                if (upd.status == .started && !hasOutput) {
+                    ProgressView().progressViewStyle(.circular)
+                        .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
+                } else if (upd.status == .error) {
+                    Image(systemName: "xmark.octagon")
+                        .foregroundStyle(OATheme.Colors.danger)
+                } else {
+                    Image(systemName: "checkmark.circle")
+                }
                 // Show the original tool name if known; fall back to the call_id
                 let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
                 // Extract progress percent from _meta if available
