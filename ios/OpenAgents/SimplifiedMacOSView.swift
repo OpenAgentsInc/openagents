@@ -6,6 +6,7 @@ import OpenAgentsCore
 
 struct SimplifiedMacOSView: View {
     @EnvironmentObject var bridge: BridgeManager
+    @EnvironmentObject var tinyvex: TinyvexManager
     @State private var showInstructions = false
 
     // Coding agents state
@@ -270,6 +271,55 @@ struct SimplifiedMacOSView: View {
                 .onAppear {
                     detectAgents()
                 }
+
+                // Developer-only: Tinyvex status
+                #if DEBUG
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Tinyvex (Dev)", systemImage: "internaldrive")
+                            .font(OAFonts.ui(.headline, 16))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Spacer()
+                        Button(action: { tinyvex.start() }) {
+                            Label("Restart", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.plain)
+                        .font(OAFonts.ui(.body, 14))
+                        .foregroundStyle(OATheme.Colors.accent)
+                    }
+                    .frame(maxWidth: 500)
+
+                    HStack(spacing: 16) {
+                        Image(systemName: tinyvex.isRunning ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(tinyvex.isRunning ? OATheme.Colors.success : OATheme.Colors.danger)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(tinyvex.isRunning ? "DB Connected" : "DB Stopped")
+                                .font(OAFonts.ui(.body, 15))
+                                .foregroundStyle(OATheme.Colors.textPrimary)
+                            Text("Path: \(tinyvex.dbPath)")
+                                .font(OAFonts.ui(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                                .lineLimit(2)
+                            HStack(spacing: 12) {
+                                Text("Tables: \(tinyvex.tableCount)")
+                                Text("Rows: \(tinyvex.rowCount)")
+                                Text(String(format: "Size: %.2f MB", Double(tinyvex.fileSizeBytes) / (1024.0*1024.0)))
+                            }
+                            .font(OAFonts.ui(.caption, 11))
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                        }
+                    }
+                    .frame(maxWidth: 500, minHeight: 60)
+                    .padding(20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(OATheme.Colors.border.opacity(0.3))
+                    )
+                }
+                .frame(maxWidth: 500)
+                #endif
 
                 Spacer()
             }
