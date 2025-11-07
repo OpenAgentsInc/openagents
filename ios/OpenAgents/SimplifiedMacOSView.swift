@@ -280,12 +280,6 @@ struct SimplifiedMacOSView: View {
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
-                        Button(action: { tinyvex.start() }) {
-                            Label("Restart", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.plain)
-                        .font(OAFonts.ui(.body, 14))
-                        .foregroundStyle(OATheme.Colors.accent)
                     }
                     .frame(maxWidth: 500)
 

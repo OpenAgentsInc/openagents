@@ -16,6 +16,7 @@ final class TinyvexManager: ObservableObject {
     // Tinyvex provides persistence (DB) and status only.
     private var server: TinyvexServer?
     private var statusTimer: Timer?
+    private var vnodeSource: DispatchSourceFileSystemObject?
 
     func start() {
         guard !isRunning else { return }
@@ -26,7 +27,16 @@ final class TinyvexManager: ObservableObject {
             _ = try TinyvexDbLayer(path: dbPath)
             self.isRunning = true
             refreshStatus()
-            statusTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in self?.refreshStatus() }
+            statusTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshStatus() }
+            // File change notifications for faster UI refresh
+            let fd = open(dbPath, O_EVTONLY)
+            if fd >= 0 {
+                let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend, .attrib], queue: .main)
+                src.setEventHandler { [weak self] in self?.refreshStatus() }
+                src.setCancelHandler { close(fd) }
+                src.resume()
+                vnodeSource = src
+            }
         } catch {
             print("[Tinyvex] Failed to start: \(error)")
         }
@@ -35,6 +45,7 @@ final class TinyvexManager: ObservableObject {
     func stop() {
         server?.stop(); server = nil
         statusTimer?.invalidate(); statusTimer = nil
+        vnodeSource?.cancel(); vnodeSource = nil
         isRunning = false
     }
 
@@ -71,6 +82,7 @@ final class TinyvexManager: ObservableObject {
             }
             self.rowCount = total
         }
+        DispatchQueue.main.async { self.objectWillChange.send() }
     }
 
     static func defaultDbPath() -> URL {
