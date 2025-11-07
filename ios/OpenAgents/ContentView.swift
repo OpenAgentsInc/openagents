@@ -26,24 +26,35 @@ struct ContentView: View {
             })
             .navigationTitle("")
             #else
-            NavigationSplitView {
-                HistorySidebar(selected: selectedRow, onSelect: { row, url in
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        self.selectedRow = row
-                        self.selectedURL = url
-                    }
-                })
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260)
-            } detail: {
-                // Keep detail title empty; we draw our own leading toolbar title
-                AcpThreadView(url: selectedURL, onTitleChange: { t in
-                    self.toolbarTitle = t
-                })
-                .navigationTitle("")
+            // macOS: conditionally show simplified UI or full navigation split view
+            if Features.simplifiedMacOSUI {
+                SimplifiedMacOSView()
+            } else {
+                NavigationSplitView {
+                    HistorySidebar(selected: selectedRow, onSelect: { row, url in
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            self.selectedRow = row
+                            self.selectedURL = url
+                        }
+                    })
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+                } detail: {
+                    // Keep detail title empty; we draw our own leading toolbar title
+                    AcpThreadView(url: selectedURL, onTitleChange: { t in
+                        self.toolbarTitle = t
+                    })
+                    .navigationTitle("")
+                }
             }
             #endif
             // Gradient sits above content but under the toolbar, creating a soft edge behind the title
+            #if os(macOS)
+            if !Features.simplifiedMacOSUI {
+                TopEdgeGradient()
+            }
+            #else
             TopEdgeGradient()
+            #endif
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
         .task { if Features.foundationModelsEnabled { FMProbe.logAvailability() } }
@@ -98,7 +109,7 @@ struct ContentView: View {
         }
         #endif
         #if os(macOS)
-        .toolbar(.visible, for: .windowToolbar)
+        .toolbar(Features.simplifiedMacOSUI ? .hidden : .visible, for: .windowToolbar)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .navigation) {

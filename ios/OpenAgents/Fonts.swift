@@ -2,9 +2,13 @@ import SwiftUI
 
 /// Centralized font accessors so we can swap families in one place.
 enum OAFonts {
-    /// Primary UI font family (defaults to Inter). Swap here to try `.system`.
+    /// Primary UI font family (Berkeley Mono on macOS, Inter on iOS).
     static var primary: (Font.TextStyle, CGFloat) -> Font = { style, size in
-        InterFont.font(relativeTo: style, size: size)
+        #if os(macOS)
+        return BerkeleyFont.font(relativeTo: style, size: size)
+        #else
+        return InterFont.font(relativeTo: style, size: size)
+        #endif
     }
 
     /// Monospace/code font family (defaults to Berkeley Mono).

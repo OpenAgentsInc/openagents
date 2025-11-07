@@ -27,8 +27,13 @@ final class BridgeManager: ObservableObject {
 #if os(macOS)
     private var server: DesktopWebSocketServer?
     @Published var connectedClientCount: Int = 0
+    @Published var workingDirectory: URL? = nil
+    private static let workingDirectoryKey = "oa.bridge.working_directory"
 
     func start() {
+        // Load persisted working directory
+        loadWorkingDirectory()
+
         // Start Desktop WebSocket server automatically on macOS
         let srv = DesktopWebSocketServer()
         do {
@@ -45,6 +50,26 @@ final class BridgeManager: ObservableObject {
 
     func stop() {
         server?.stop(); server = nil
+    }
+
+    func setWorkingDirectory(_ url: URL) {
+        workingDirectory = url
+        saveWorkingDirectory(url)
+    }
+
+    func loadWorkingDirectory() {
+        if let path = UserDefaults.standard.string(forKey: Self.workingDirectoryKey) {
+            let url = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: path) {
+                workingDirectory = url
+                log("workdir", "Loaded working directory: \(path)")
+            }
+        }
+    }
+
+    private func saveWorkingDirectory(_ url: URL) {
+        UserDefaults.standard.set(url.path, forKey: Self.workingDirectoryKey)
+        log("workdir", "Saved working directory: \(url.path)")
     }
     #endif
 
