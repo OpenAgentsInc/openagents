@@ -211,12 +211,16 @@ public struct WorkspaceScanner: Sendable {
 
     private func resolvePath(_ path: String) throws -> String {
         var p = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Normalize common aliases
+        // Normalize common aliases and placeholders
         if p == "." || p == "/" || p.lowercased() == "workspace" || p == "/workspace" {
             p = "."
         } else if p.hasPrefix("/workspace/") {
             p.removeFirst("/workspace/".count)
         }
+        // Model placeholder: "/path/to" or variants → workspace root or subpath
+        if p == "/path/to" || p == "path/to" { p = "." }
+        if p.hasPrefix("/path/to/") { p.removeFirst("/path/to/".count) }
+        if p.hasPrefix("path/to/") { p.removeFirst("path/to/".count) }
 
         let cleanPath = p.replacingOccurrences(of: "..", with: "")
 

@@ -13,6 +13,11 @@ public enum PathUtils {
 
         if path == "." || path == "/" || path.lowercased() == "workspace" || path == "/workspace" { return "." }
 
+        // Handle common placeholder prefixes emitted by models, e.g. "/path/to", "path/to/..."
+        if path == "/path/to" || path == "path/to" { return "." }
+        if path.hasPrefix("/path/to/") { path.removeFirst("/path/to/".count) }
+        if path.hasPrefix("path/to/") { path.removeFirst("path/to/".count) }
+
         if path.hasPrefix("/workspace/") { path.removeFirst("/workspace/".count) }
 
         if path.hasPrefix("/") {
@@ -32,4 +37,3 @@ public enum PathUtils {
         return path.isEmpty ? "." : path
     }
 }
-
