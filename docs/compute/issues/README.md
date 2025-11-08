@@ -17,7 +17,7 @@ We're building a decentralized compute marketplace where anyone can buy or sell 
 
 ### Phase 1: Prove the Marketplace Works (6-8 weeks)
 
-**What we build**: iOS app for coordination (marketplace viewer, identity, wallet) + macOS worker app (using Foundation Models backend). No payments yet—just prove the technical foundation works.
+**What we build**: iOS app for coordination (marketplace viewer, identity, wallet) + macOS worker app. No payments yet—just prove the technical foundation works.
 
 **Why start here**: Foundation Models are Apple's on-device LLMs (free, fast, private). By starting with the Foundation Models backend, we avoid the complexity of payment flows and Bitcoin wallets while validating the harder parts: Nostr protocol integration, job schemas, policy enforcement, and multi-platform coordination. iOS handles **no compute**—it's coordination only. macOS runs the actual worker. If the marketplace UX is broken or Nostr relay performance is poor, we learn that *before* investing 10+ weeks in Lightning integration.
 
@@ -41,7 +41,7 @@ We're building a decentralized compute marketplace where anyone can buy or sell 
 
 **Why now**: With payments working (Phase 2), providers want to differentiate. Some offer fast jobs using the Foundation Models backend, others offer larger custom models via MLX or Ollama backends. The model router picks the right backend for each job based on requirements and bidding.
 
-**Why not Phase 1**: Starting with the Foundation Models backend alone proves the concept. Adding MLX/Ollama in Phase 1 triples complexity without validating marketplace demand. Phase 3 is about scale and differentiation once the marketplace is proven.
+**Why not Phase 1**: Starting with Foundation Models as the initial backend proves the concept. Adding MLX/Ollama in Phase 1 triples complexity without validating marketplace demand. Phase 3 is about scale and differentiation once the marketplace is proven.
 
 ### Phase 4: Advanced Capabilities (6-8 weeks, optional)
 
@@ -58,7 +58,7 @@ This phased approach follows the lean startup principle: **build → measure →
 ## Phase Overview
 
 ### Phase 1: MVP (Foundation) - 8 Issues
-**Goal**: Prove marketplace concept with iOS coordination + macOS worker (Foundation Models backend)
+**Goal**: Prove marketplace concept with iOS coordination + macOS worker
 
 | # | Issue | Priority | Effort | Status |
 |---|-------|----------|--------|--------|
