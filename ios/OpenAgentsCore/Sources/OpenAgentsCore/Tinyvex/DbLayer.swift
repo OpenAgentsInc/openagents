@@ -50,6 +50,142 @@ public actor TinyvexDbLayer {
         }
     }
 
+    // MARK: - General SQL Helpers
+
+    /// Execute SQL with parameters (INSERT, UPDATE, DELETE)
+    public func execute(_ sql: String, params: [Any]) throws {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DbError.execFailed("prepare failed: \(sql)")
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        // Bind parameters
+        for (i, param) in params.enumerated() {
+            let idx = Int32(i + 1)
+            if let s = param as? String {
+                sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, nil)
+            } else if let n = param as? Int {
+                sqlite3_bind_int64(stmt, idx, Int64(n))
+            } else if let n = param as? Int64 {
+                sqlite3_bind_int64(stmt, idx, n)
+            } else if let d = param as? Double {
+                sqlite3_bind_double(stmt, idx, d)
+            } else if param is NSNull {
+                sqlite3_bind_null(stmt, idx)
+            } else {
+                // Treat as NULL for unsupported types
+                sqlite3_bind_null(stmt, idx)
+            }
+        }
+
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw DbError.execFailed("execute step failed")
+        }
+    }
+
+    /// Query one row returning column_name -> value dictionary
+    public func queryOne(_ sql: String, params: [Any]) throws -> [String: Any]? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DbError.execFailed("prepare query failed")
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        // Bind parameters
+        for (i, param) in params.enumerated() {
+            let idx = Int32(i + 1)
+            if let s = param as? String {
+                sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, nil)
+            } else if let n = param as? Int {
+                sqlite3_bind_int64(stmt, idx, Int64(n))
+            } else if let n = param as? Int64 {
+                sqlite3_bind_int64(stmt, idx, n)
+            } else if let d = param as? Double {
+                sqlite3_bind_double(stmt, idx, d)
+            } else {
+                sqlite3_bind_null(stmt, idx)
+            }
+        }
+
+        guard sqlite3_step(stmt) == SQLITE_ROW else {
+            return nil  // No row found
+        }
+
+        var row: [String: Any] = [:]
+        let colCount = sqlite3_column_count(stmt)
+        for i in 0..<colCount {
+            let colName = String(cString: sqlite3_column_name(stmt, i))
+            let colType = sqlite3_column_type(stmt, i)
+
+            switch colType {
+            case SQLITE_TEXT:
+                row[colName] = String(cString: sqlite3_column_text(stmt, i))
+            case SQLITE_INTEGER:
+                row[colName] = sqlite3_column_int64(stmt, i)
+            case SQLITE_FLOAT:
+                row[colName] = sqlite3_column_double(stmt, i)
+            case SQLITE_NULL:
+                row[colName] = NSNull()
+            default:
+                row[colName] = NSNull()
+            }
+        }
+
+        return row
+    }
+
+    /// Query all rows returning array of column_name -> value dictionaries
+    public func queryAll(_ sql: String, params: [Any]) throws -> [[String: Any]] {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DbError.execFailed("prepare query failed")
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        // Bind parameters
+        for (i, param) in params.enumerated() {
+            let idx = Int32(i + 1)
+            if let s = param as? String {
+                sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, nil)
+            } else if let n = param as? Int {
+                sqlite3_bind_int64(stmt, idx, Int64(n))
+            } else if let n = param as? Int64 {
+                sqlite3_bind_int64(stmt, idx, n)
+            } else if let d = param as? Double {
+                sqlite3_bind_double(stmt, idx, d)
+            } else {
+                sqlite3_bind_null(stmt, idx)
+            }
+        }
+
+        var rows: [[String: Any]] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            var row: [String: Any] = [:]
+            let colCount = sqlite3_column_count(stmt)
+            for i in 0..<colCount {
+                let colName = String(cString: sqlite3_column_name(stmt, i))
+                let colType = sqlite3_column_type(stmt, i)
+
+                switch colType {
+                case SQLITE_TEXT:
+                    row[colName] = String(cString: sqlite3_column_text(stmt, i))
+                case SQLITE_INTEGER:
+                    row[colName] = sqlite3_column_int64(stmt, i)
+                case SQLITE_FLOAT:
+                    row[colName] = sqlite3_column_double(stmt, i)
+                case SQLITE_NULL:
+                    row[colName] = NSNull()
+                default:
+                    row[colName] = NSNull()
+                }
+            }
+            rows.append(row)
+        }
+
+        return rows
+    }
+
     public struct EventRow: Codable { public let event_id: Int64; public let session_id: String; public let seq: Int64; public let ts: Int64; public let update_json: String; public let meta_json: String? }
 
     public struct RecentSessionRow: Codable {
