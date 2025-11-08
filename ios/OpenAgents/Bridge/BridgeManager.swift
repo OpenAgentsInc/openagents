@@ -316,7 +316,7 @@ extension BridgeManager {
     func log(_ tag: String, _ message: String) {
         let ts = ISO8601DateFormatter().string(from: Date())
         let line = "[\(ts)] [\(tag)] \(message)"
-        print("[Bridge] \(line)")
+        OpenAgentsLog.bridge.debug("[Bridge] \(line)")
         if Thread.isMainThread {
             lastLog = line
             logs.append(line)
@@ -451,7 +451,7 @@ extension BridgeManager {
                 if let response = response {
                     // Update current session ID for streaming updates
                     self.currentSessionId = ACPSessionId(response.session_id)
-                    print("[Bridge] Orchestration started: session=\(response.session_id) plan=\(response.plan_id)")
+                    OpenAgentsLog.bridge.info("Orchestration started: session=\(response.session_id) plan=\(response.plan_id)")
                 }
                 completion?(response)
             }
@@ -524,7 +524,7 @@ extension BridgeManager {
     static func saveLastSuccessfulEndpoint(host: String, port: Int) {
         UserDefaults.standard.set(host, forKey: lastHostKey)
         UserDefaults.standard.set(port, forKey: lastPortKey)
-        print("[Bridge][mgr] saved last endpoint host=\(host) port=\(port)")
+        OpenAgentsLog.bridge.debug("saved last endpoint host=\(host, privacy: .private) port=\(port)")
     }
     static func readLastSuccessfulEndpoint() -> (String, Int)? {
         if let h = UserDefaults.standard.string(forKey: lastHostKey) {
@@ -538,16 +538,19 @@ extension BridgeManager {
     static func pickInitialEndpoint() -> (String, Int) {
         #if targetEnvironment(simulator)
         // Always prefer loopback when running on Simulator to avoid stale LAN IPs
-        print("[Bridge][mgr] pickInitialEndpoint simulator loopback")
+        OpenAgentsLog.bridge.debug("pickInitialEndpoint simulator loopback")
         return ("127.0.0.1", Int(BridgeConfig.defaultPort))
         #else
         // On device: prefer the configured default host first; fall back to persisted endpoint.
         if !BridgeConfig.defaultHost.isEmpty {
-            print("[Bridge][mgr] pickInitialEndpoint device default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
+            OpenAgentsLog.bridge.debug("pickInitialEndpoint device default host=\(BridgeConfig.defaultHost, privacy: .private) port=\(BridgeConfig.defaultPort)")
             return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
         }
-        if let last = readLastSuccessfulEndpoint() { print("[Bridge][mgr] pickInitialEndpoint using persisted host=\(last.0) port=\(last.1)"); return last }
-        print("[Bridge][mgr] pickInitialEndpoint fallback default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
+        if let last = readLastSuccessfulEndpoint() {
+            OpenAgentsLog.bridge.debug("pickInitialEndpoint using persisted host=\(last.0, privacy: .private) port=\(last.1)")
+            return last
+        }
+        OpenAgentsLog.bridge.debug("pickInitialEndpoint fallback default host=\(BridgeConfig.defaultHost, privacy: .private) port=\(BridgeConfig.defaultPort)")
         return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
         #endif
     }
