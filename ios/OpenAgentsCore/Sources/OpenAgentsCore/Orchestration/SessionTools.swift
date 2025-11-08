@@ -303,15 +303,15 @@ public struct SessionReadTool: Sendable {
             }
             if stop { break }
             // Safety caps to avoid stalls on huge files
-            if Date().timeIntervalSince(startTime) > maxSeconds { print("[SessionRead] time cap hit for id=\(sessionId)"); truncated = true; break }
-            if bytesProcessed > maxBytes { print("[SessionRead] byte cap hit for id=\(sessionId) bytes=\(bytesProcessed)"); truncated = true; break }
+            if Date().timeIntervalSince(startTime) > maxSeconds { OpenAgentsLog.orchestration.warning("SessionRead time cap hit for id=\(sessionId)"); truncated = true; break }
+            if bytesProcessed > maxBytes { OpenAgentsLog.orchestration.warning("SessionRead byte cap hit for id=\(sessionId) bytes=\(bytesProcessed)"); truncated = true; break }
         }
         // Process any remaining data as last line (if not empty)
         if !buffer.isEmpty, events.count < maxEvts {
             let line = String(decoding: buffer, as: UTF8.self)
             processLine(line)
         }
-        print("[SessionRead] done id=\(sessionId) events=\(events.count) processedBytes=\(bytesProcessed) in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
+        OpenAgentsLog.orchestration.debug("SessionRead done id=\(sessionId) events=\(events.count) processedBytes=\(bytesProcessed) in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
 
         return SessionReadResult(
             sessionId: sessionId,
@@ -333,7 +333,7 @@ public struct SessionAnalyzeTool: Sendable {
         metrics: [String]? = nil,
         progress: ((Int, Int) -> Void)? = nil
     ) async throws -> SessionAnalyzeResult {
-        print("[SessionAnalyze] start provider=\(provider ?? "<any>") explicit_ids=\(sessionIds.count) metrics=\(metrics ?? ["files","tools","goals"]))")
+        OpenAgentsLog.orchestration.info("SessionAnalyze start provider=\(provider ?? "<any>") explicit_ids=\(sessionIds.count) metrics=\(metrics ?? ["files","tools","goals"]))")
         let computeAll = metrics == nil
         let computeFiles = computeAll || metrics?.contains("files") == true
         let computeTools = computeAll || metrics?.contains("tools") == true
@@ -364,7 +364,7 @@ public struct SessionAnalyzeTool: Sendable {
             // Caller provided explicit session IDs. Respect provided provider if present; otherwise, we'll auto-detect per session.
             targets = sessionIds.map { ($0, provider) }
         }
-        print("[SessionAnalyze] targets=\(targets.count) (limit=10)")
+        OpenAgentsLog.orchestration.debug("SessionAnalyze targets=\(targets.count) (limit=10)")
 
         // Read each target (most recent per provider by default)
         let readTool = SessionReadTool()
@@ -374,26 +374,26 @@ public struct SessionAnalyzeTool: Sendable {
                 // Determine provider for this session; if unknown, try both providers.
                 let result: SessionReadResult
                 if let prov = target.provider {
-                    print("[SessionAnalyze] read session id=\(target.id) provider=\(prov) …")
+                    OpenAgentsLog.orchestration.debug("SessionAnalyze read session id=\(target.id) provider=\(prov) …")
                     result = try await readTool.read(sessionId: target.id, provider: prov, maxEvents: 200)
                 } else {
                     // Try claude-code first, then codex
-                    print("[SessionAnalyze] read session id=\(target.id) provider=<auto> try claude-code …")
+                    OpenAgentsLog.orchestration.debug("SessionAnalyze read session id=\(target.id) provider=<auto> try claude-code …")
                     if let r1 = try? await readTool.read(sessionId: target.id, provider: "claude-code", maxEvents: 200) {
                         result = r1
-                        print("[SessionAnalyze] id=\(target.id) resolved provider=claude-code events=\(r1.events.count)")
+                        OpenAgentsLog.orchestration.debug("SessionAnalyze id=\(target.id) resolved provider=claude-code events=\(r1.events.count)")
                     } else if let r2 = try? await readTool.read(sessionId: target.id, provider: "codex", maxEvents: 200) {
                         result = r2
-                        print("[SessionAnalyze] id=\(target.id) resolved provider=codex events=\(r2.events.count)")
+                        OpenAgentsLog.orchestration.debug("SessionAnalyze id=\(target.id) resolved provider=codex events=\(r2.events.count)")
                     } else {
-                        print("[SessionAnalyze] skip id=\(target.id) not found in either provider")
+                        OpenAgentsLog.orchestration.debug("SessionAnalyze skip id=\(target.id) not found in either provider")
                         continue // Skip if not found under either provider
                     }
                 }
                 sessionCount += 1
                 totalEvents += result.events.count
                 if (idx + 1) % 1 == 0 { // log every session
-                    print("[SessionAnalyze] progress \(idx+1)/\(min(targets.count, 10)) sessions, totalEvents=\(totalEvents)")
+                    OpenAgentsLog.orchestration.debug("SessionAnalyze progress \(idx+1)/\(min(targets.count, 10)) sessions, totalEvents=\(totalEvents)")
                 }
                 // Emit progress callback
                 progress?(idx + 1, total)
@@ -421,7 +421,7 @@ public struct SessionAnalyzeTool: Sendable {
                 }
             } catch {
                 // Skip sessions that can't be read
-                print("[SessionAnalyze] error reading id=\(target.id): \(error.localizedDescription)")
+                OpenAgentsLog.orchestration.warning("SessionAnalyze error reading id=\(target.id): \(error.localizedDescription)")
                 continue
             }
         }
@@ -440,7 +440,7 @@ public struct SessionAnalyzeTool: Sendable {
             avgConversationLength: avgLength,
             userIntent: inferredIntent
         )
-        print("[SessionAnalyze] done sessions=\(sessionCount) avgLen=\(Int(avgLength)) files=\(fileFreq.count) tools=\(toolFreq.count) goals=\(goalPatterns.count)")
+        OpenAgentsLog.orchestration.info("SessionAnalyze done sessions=\(sessionCount) avgLen=\(Int(avgLength)) files=\(fileFreq.count) tools=\(toolFreq.count) goals=\(goalPatterns.count)")
         return result
     }
 }
