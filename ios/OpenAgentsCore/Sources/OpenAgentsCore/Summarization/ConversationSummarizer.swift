@@ -13,20 +13,20 @@ public enum ConversationSummarizer {
             let trimmed = messages.filter { $0.role == .user || $0.role == .assistant }
             if let fm = await FoundationModelSummarizer.trySummarizeTitle(messages: trimmed) {
                 if !fm.isEmpty {
-                    print("[Summary] used=foundation_model title=\(fm)")
+                    OpenAgentsLog.app.info("Summary used=foundation_model title=\(fm, privacy: .public)")
                     return fm
                 } else {
-                    print("[Summary] fm_empty_fallback=true")
+                    OpenAgentsLog.app.debug("Summary fm_empty_fallback=true")
                 }
             } else {
-                print("[Summary] fm_unavailable_or_failed=true")
+                OpenAgentsLog.app.debug("Summary fm_unavailable_or_failed=true")
             }
         }
         #endif
         // Fallback: first user message (~5 words), skipping preface/system-like tags.
         let title = firstUserFiveWords(messages: messages)
         let out = title.isEmpty ? "Conversation" : title
-        print("[Summary] used=first_user_5 title=\(out)")
+        OpenAgentsLog.app.info("Summary used=first_user_5 title=\(out, privacy: .public)")
         return out
     }
 
