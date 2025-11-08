@@ -171,12 +171,16 @@ public final class CodexAgentProvider: CLIAgentProvider {
             return
         }
 
-        // Plan state updates
-        // TODO(#1448): Convert Codex plan format (status/summary/steps) to ACPPlan format (entries)
-        // For now, skip plan updates since the main focus is tool calls
+        // Plan state updates → represent as ACP plan entries (simplified)
         if itemType == "plan_state" || type == "plan_state" || type == "plan.updated" {
-            // Skip for now - would need to map steps to ACPPlanEntry array
-            return
+            if let steps = item?["steps"] as? [String] {
+                let entries = steps.map { step in
+                    ACPPlanEntry(content: step, priority: .medium, status: .in_progress, _meta: nil)
+                }
+                let plan = ACPPlan(entries: entries, _meta: nil)
+                await updateHub.sendSessionUpdate(sessionId: sessionId, update: .plan(plan))
+                return
+            }
         }
 
         // User messages
