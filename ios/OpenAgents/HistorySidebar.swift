@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 import OpenAgentsCore
 import Combine
 
