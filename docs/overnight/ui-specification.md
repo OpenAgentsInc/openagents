@@ -1,4 +1,4 @@
-# Overnight Agents - UI Specification
+# Orchiestration - UI Specification
 
 **Last Updated**: 2025-11-08
 **Platform**: macOS 13.0+ (primary), iOS 16.0+ (monitoring only)
@@ -63,9 +63,9 @@ macOS App (DesktopWebSocketServer)
 │   ├── Sidebar
 │   │   ├── Sessions (existing)
 │   │   ├── Agents (existing)
-│   │   └── Overnight ← NEW
+│   │   └── Orchiestration ← NEW
 │   └── Content Area
-│       └── OvernightOrchestrationView (selected via sidebar)
+│       └── OrchiestrationConsoleView (selected via sidebar)
 │           ├── Header (status, controls)
 │           ├── SchedulerCard
 │           ├── TaskQueueSection
@@ -76,8 +76,8 @@ iOS App (MobileWebSocketClient)
 ├── Tab Bar
 │   ├── Sessions (existing)
 │   ├── Agents (existing)
-│   └── Overnight ← NEW
-│       └── OvernightMonitoringView
+│   └── Orchiestration ← NEW
+│       └── OrchiestrationMonitoringView
 │           ├── StatusHeader
 │           ├── TaskQueueCard
 │           ├── ActiveSessionsList
@@ -88,15 +88,15 @@ iOS App (MobileWebSocketClient)
 
 ## macOS Views
 
-### 1. OvernightOrchestrationView
+### 1. OrchiestrationConsoleView
 
-**Purpose**: Main control center for overnight agent orchestration on macOS.
+**Purpose**: Main control center for Orchiestration on macOS.
 
 **Layout**: Single-column, scrollable content area with fixed header.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Overnight Agent Orchestration                        [ ]  │  ← Header
+│  Orchiestration                                      [ ]  │  ← Header
 │  ● Running  Next wake: 2:30 AM (in 1h 23m)                │
 │                                                             │
 │  [▶ Start] [⏸ Pause] [⏹ Stop] [⚙ Settings]              │  ← Controls
@@ -809,7 +809,7 @@ struct ToolCallRow: View {
 
 ## iOS Views
 
-### OvernightMonitoringView
+### OrchiestrationMonitoringView
 
 **Purpose**: iOS monitoring interface (read-only, no orchestration controls).
 
@@ -817,7 +817,7 @@ struct ToolCallRow: View {
 
 ```
 ┌─────────────────────────────────────────────┐
-│ < Overnight                                 │  ← Nav bar
+│ < Orchiestration                            │  ← Nav bar
 ├─────────────────────────────────────────────┤
 │                                             │
 │ ┌─────────────────────────────────────────┐ │
@@ -1320,7 +1320,7 @@ struct SkeletonCard: View {
 **View Models**:
 ```swift
 @MainActor
-class OvernightOrchestrationViewModel: ObservableObject {
+class OrchiestrationConsoleViewModel: ObservableObject {
     @Published var schedulerState: SchedulerState = .idle
     @Published var tasks: [OvernightTask] = []
     @Published var activeSessions: [AgentSessionInfo] = []

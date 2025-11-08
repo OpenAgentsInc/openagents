@@ -10,9 +10,9 @@
 
 ## Overview
 
-Prepare for video recording: demo script, sample repo setup, expected outputs, PR examples, upgrade JSON visualization.
+Prepare for video recording: demo script, sample repo setup, expected outputs, PR examples, upgrade JSON visualization. The feature is named “Orchiestration” in the UI and code examples.
 
-**Location**: `private/overnight/demo-script.md`
+**Location**: `private/orchiestration/demo-script.md`
 
 ---
 
@@ -49,7 +49,7 @@ Step-by-step guide for recording demo video:
 - Another PR created
 
 **Part 5: Results & Vision (2 minutes)**
-- Show morning view: multiple PRs created overnight
+- Show morning view: multiple PRs created by Orchiestration while unattended
 - Show quality of work (code changes, tests)
 - Show upgrade JSON manifest (deterministic logic)
 - Explain future: Nostr marketplace, reputation, Bitcoin payments
@@ -86,14 +86,14 @@ Document what the demo should produce:
 
 Create diagrams:
 - System architecture (macOS orchestration + iOS monitoring)
-- Overnight timeline (wake-ups, decisions, agent work, PRs)
+- Orchiestration timeline (wake-ups, decisions, agent work, PRs)
 - Upgrade manifest structure (JSON → execution)
 - Future vision (Nostr marketplace)
 
 ### 5. Talking Points
 
 **Key Messages**:
-1. "Agents work for you while you sleep"
+1. "Agents work for you while you sleep (Orchiestration)"
 2. "On-device Apple Intelligence makes smart decisions"
 3. "Wake up to quality PRs, not busywork"
 4. "All logic is deterministic JSON - shareable, verifiable, monetizable"

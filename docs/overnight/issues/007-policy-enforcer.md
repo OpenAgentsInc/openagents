@@ -94,7 +94,7 @@ actor PolicyEnforcer {
         )
     }
 
-    func enforceTimeBudget(_ task: OvernightTask, elapsed: TimeInterval) -> TimeBudgetResult {
+    func enforceTimeBudget(_ task: OrchiestrationTask, elapsed: TimeInterval) -> TimeBudgetResult {
         let budget = task.decision.estimatedDuration * 1.5  // 50% grace period
         let remaining = budget - elapsed
 

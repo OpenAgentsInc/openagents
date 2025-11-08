@@ -24,7 +24,7 @@ Delegate tasks to AgentProvider instances (Claude Code, Codex), monitor progress
 
 ## Requirements
 
-1. Delegate OvernightTask to appropriate AgentProvider
+1. Delegate OrchiestrationTask to appropriate AgentProvider
 2. Subscribe to SessionUpdateHub for progress monitoring
 3. Enforce time budget (cancel if exceeded)
 4. Handle concurrent sessions (max 2 parallel)
@@ -47,7 +47,7 @@ actor AgentCoordinator {
         self.sessionUpdateHub = sessionUpdateHub
     }
 
-    func delegate(_ task: OvernightTask) async throws -> AgentSessionResult {
+    func delegate(_ task: OrchiestrationTask) async throws -> AgentSessionResult {
         // Get provider from registry (instance, not .shared)
         guard let provider = await agentRegistry.provider(for: task.decision.agent) else {
             throw CoordinatorError.agentNotAvailable(task.decision.agent)
@@ -59,7 +59,7 @@ actor AgentCoordinator {
             workingDirectory: FileManager.default.currentDirectoryURL,
             mcpServers: [],
             client: nil,
-            metadata: ["overnight_task_id": task.id]
+            metadata: ["orchiestration_task_id": task.id]
         )
 
         // Start session with proper signature

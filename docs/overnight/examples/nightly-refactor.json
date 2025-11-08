@@ -3,7 +3,7 @@
   "id": "nightly-refactor-v1",
   "version": "1.0.0",
   "title": "Nightly Code Refactoring Agent",
-  "description": "Autonomous overnight refactoring with FM-driven decisions. Analyzes recent development patterns and refactors frequently-touched files for improved code quality.",
+  "description": "Autonomous Orchiestration: refactoring with FM-driven decisions. Analyzes recent development patterns and refactors frequently-touched files for improved code quality.",
 
   "author": {
     "name": "OpenAgents",
@@ -13,7 +13,7 @@
 
   "license": "MIT",
   "categories": ["development", "code-quality", "refactoring"],
-  "tags": ["overnight", "automation", "foundation-models", "claude-code"],
+  "tags": ["orchiestration", "automation", "foundation-models", "claude-code"],
 
   "capabilities": {
     "platforms": ["macos"],
@@ -108,7 +108,7 @@
         "branch_prefix": "agent/nightly-refactor/",
         "base_branch": "main",
         "title": "{decision.task}",
-        "body_template": "## Autonomous Agent Work\n\n**Task**: {decision.task}\n\n**Agent**: {session_result.agent}\n\n**Rationale**: {decision.rationale}\n\n**Session ID**: `{session_result.session_id}`\n\n**Duration**: {session_result.duration}\n\n**Tool Calls**: {session_result.tool_call_count}\n\n**Confidence**: {decision.confidence}\n\n---\n\n### Summary\n\nThis PR was created autonomously as part of the nightly refactoring upgrade. The Foundation Models orchestrator analyzed recent development patterns and identified this task as high-impact work.\n\n**Files Changed**: {session_result.files_changed}\n\n**Tests**: All tests passing ✅\n\n---\n\n*Generated with [OpenAgents Overnight Orchestration](https://github.com/OpenAgentsInc/openagents)*\n\n*Upgrade*: `nightly-refactor-v1`",
+        "body_template": "## Autonomous Agent Work\n\n**Task**: {decision.task}\n\n**Agent**: {session_result.agent}\n\n**Rationale**: {decision.rationale}\n\n**Session ID**: `{session_result.session_id}`\n\n**Duration**: {session_result.duration}\n\n**Tool Calls**: {session_result.tool_call_count}\n\n**Confidence**: {decision.confidence}\n\n---\n\n### Summary\n\nThis PR was created autonomously as part of the nightly refactoring upgrade. The Foundation Models orchestrator analyzed recent development patterns and identified this task as high-impact work.\n\n**Files Changed**: {session_result.files_changed}\n\n**Tests**: All tests passing ✅\n\n---\n\n*Generated with [OpenAgents Orchiestration](https://github.com/OpenAgentsInc/openagents)*\n\n*Upgrade*: `nightly-refactor-v1`",
         "auto_push": true,
         "draft": false
       },
