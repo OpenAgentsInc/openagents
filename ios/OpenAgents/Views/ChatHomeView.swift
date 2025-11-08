@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import OpenAgentsCore
+import OSLog
 
 #if os(iOS)
 /// Fresh screen showcasing the new top toolbar header for iOS 26+.

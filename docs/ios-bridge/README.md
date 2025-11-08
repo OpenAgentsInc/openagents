@@ -73,6 +73,7 @@ All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
 - `session/cancel` - Cancel running session (notification)
 - `session/update` - Agent update stream (notification from server)
 - `session/set_mode` - Set agent provider (Codex/Claude Code)
+  - Note: `session/load` is currently not supported in the v0.3 bridge and is intentionally omitted from the public API until implemented.
 - `tinyvex/history.recentSessions` - Query session history
 - `tinyvex/history.sessionTimeline` - Load session timeline
 - `fs/read_text_file`, `fs/write_text_file` - File system (client-handled)

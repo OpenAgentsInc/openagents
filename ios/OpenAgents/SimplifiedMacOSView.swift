@@ -37,7 +37,21 @@ struct SimplifiedMacOSView: View {
                         .foregroundStyle(OATheme.Colors.textSecondary)
                 }
 
-                // Bridge Status Section
+                // Two-column layout of cards (less vertical, more horizontal)
+                let columns = [GridItem(.flexible(), spacing: 24), GridItem(.flexible(), spacing: 24)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                    bridgeStatusCard
+                    workingDirectoryCard
+                    configureAgentsCard
+                    #if DEBUG
+                    tinyvexDevCard
+                    nostrDevCard
+                    #endif
+                }
+                .frame(maxWidth: 1100)
+
+                #if false
+                // Bridge Status Section (legacy vertical layout)
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Text("Bridge Status")
@@ -313,7 +327,28 @@ struct SimplifiedMacOSView: View {
                     )
                 }
                 .frame(maxWidth: 500)
+
+                // Developer-only: Nostr keypair generator
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Nostr (Dev)")
+                            .font(OAFonts.ui(.headline, 16))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: 500)
+
+                    NostrKeygenCard()
+                        .frame(maxWidth: 500)
+                        .padding(20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(OATheme.Colors.border.opacity(0.3))
+                        )
+                }
+                .frame(maxWidth: 500)
                 #endif
+                #endif // legacy vertical layout
 
                 Spacer()
             }
@@ -329,6 +364,149 @@ struct SimplifiedMacOSView: View {
 
     private var bridgeStatusText: String {
         BridgeStatusText.text(for: bridge.status, platform: .macos)
+    }
+
+    // MARK: - Card builders for grid layout
+
+    @ViewBuilder private var bridgeStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Bridge Status")
+                    .font(OAFonts.ui(.headline, 16))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                Spacer()
+                Button(action: { showInstructions = true }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                        Text("View Setup Instructions")
+                    }
+                    .font(OAFonts.ui(.body, 14))
+                    .foregroundStyle(OATheme.Colors.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            HStack(spacing: 16) {
+                if case .advertising = bridge.status {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(OATheme.Colors.success)
+                } else {
+                    ProgressView().scaleEffect(0.8)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(bridgeStatusText)
+                        .font(OAFonts.ui(.body, 15))
+                        .fontWeight(.medium)
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    HStack(spacing: 8) {
+                        if case .advertising(let port) = bridge.status {
+                            Text("Port: \(String(port))")
+                                .font(OAFonts.ui(.caption, 12))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                            if bridge.connectedClientCount > 0 {
+                                Text("•").font(OAFonts.ui(.caption, 12)).foregroundStyle(OATheme.Colors.textTertiary)
+                                Text("\(bridge.connectedClientCount) client\(bridge.connectedClientCount == 1 ? "" : "s") connected")
+                                    .font(OAFonts.ui(.caption, 12))
+                                    .foregroundStyle(OATheme.Colors.success)
+                            }
+                        }
+                    }
+                    if case .error(let msg) = bridge.status {
+                        Text(msg).font(OAFonts.ui(.caption, 12)).foregroundStyle(OATheme.Colors.danger)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
+    }
+
+    @ViewBuilder private var workingDirectoryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Working Directory")
+                    .font(OAFonts.ui(.headline, 16))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                Spacer()
+            }
+            if let dir = bridge.workingDirectory {
+                HStack(spacing: 12) {
+                    Image(systemName: "folder.fill").font(.system(size: 24)).foregroundStyle(OATheme.Colors.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(dir.lastPathComponent)
+                            .font(OAFonts.ui(.body, 14)).fontWeight(.medium).foregroundStyle(OATheme.Colors.textPrimary)
+                        Text(dir.path)
+                            .font(OAFonts.ui(.caption, 11)).foregroundStyle(OATheme.Colors.textTertiary)
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                    Spacer()
+                    Button("Change", action: selectWorkingDirectory).buttonStyle(.bordered)
+                }
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.15)))
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "folder.badge.questionmark").font(.system(size: 32)).foregroundStyle(OATheme.Colors.textTertiary)
+                    Text("No working directory selected").font(OAFonts.ui(.body, 14)).foregroundStyle(OATheme.Colors.textSecondary)
+                    Button("Select Directory", action: selectWorkingDirectory).buttonStyle(.borderedProminent)
+                }
+                .padding(24)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.15)))
+            }
+        }
+    }
+
+    @ViewBuilder private var configureAgentsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Configure Coding Agents")
+                .font(OAFonts.ui(.headline, 16))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+            VStack(spacing: 8) {
+                AgentToggleRow(name: "OpenAI Codex", detected: codexDetected, enabled: $codexEnabled, showStatus: true)
+                AgentToggleRow(name: "Claude Code", detected: claudeDetected, enabled: $claudeEnabled, showStatus: true)
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
+        }
+    }
+
+    @ViewBuilder private var tinyvexDevCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tinyvex (Dev)")
+                .font(OAFonts.ui(.headline, 16))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+            HStack(spacing: 16) {
+                Image(systemName: tinyvex.isRunning ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(tinyvex.isRunning ? OATheme.Colors.success : OATheme.Colors.danger)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(tinyvex.isRunning ? "DB Connected" : "DB Stopped")
+                        .font(OAFonts.ui(.body, 15))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    Text("Path: \(tinyvex.dbPath)")
+                        .font(OAFonts.ui(.caption, 11)).foregroundStyle(OATheme.Colors.textSecondary).lineLimit(2)
+                    HStack(spacing: 12) {
+                        Text("Tables: \(tinyvex.tableCount)")
+                        Text("Rows: \(tinyvex.rowCount)")
+                        Text(String(format: "Size: %.2f MB", Double(tinyvex.fileSizeBytes) / (1024.0*1024.0)))
+                    }
+                    .font(OAFonts.ui(.caption, 11)).foregroundStyle(OATheme.Colors.textTertiary)
+                }
+            }
+            .padding(20)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
+        }
+    }
+
+    @ViewBuilder private var nostrDevCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Nostr (Dev)")
+                .font(OAFonts.ui(.headline, 16))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+            NostrKeygenCard()
+                .padding(20)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
+        }
     }
 
     private func selectWorkingDirectory() {

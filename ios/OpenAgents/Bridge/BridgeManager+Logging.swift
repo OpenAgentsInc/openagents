@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import OpenAgentsCore
 
 extension BridgeManager {
     func log(_ tag: String, _ message: String) {
@@ -20,4 +21,3 @@ extension BridgeManager {
         }
     }
 }
-

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import OpenAgentsCore
+import OSLog
 struct ContentView: View {
     @StateObject private var timelineVM = ACPTimelineViewModel()
     @State private var selectedRow: LocalThreadSummary? = nil
