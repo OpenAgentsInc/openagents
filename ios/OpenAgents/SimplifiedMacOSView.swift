@@ -15,6 +15,9 @@ struct SimplifiedMacOSView: View {
     @State private var claudeEnabled = true
     @State private var codexEnabled = true
     @State private var openagentsEnabled = true
+    #if DEBUG
+    @StateObject private var nostrRelayManager = NostrRelayManager()
+    #endif
 
     var body: some View {
         ZStack {
@@ -38,15 +41,26 @@ struct SimplifiedMacOSView: View {
                 }
 
                 // Two-column layout of cards (less vertical, more horizontal)
-                let columns = [GridItem(.flexible(), spacing: 24), GridItem(.flexible(), spacing: 24)]
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
-                    bridgeStatusCard
-                    workingDirectoryCard
-                    configureAgentsCard
-                    #if DEBUG
-                    tinyvexDevCard
-                    nostrDevCard
-                    #endif
+                // Independent column stacks so the left column doesn't shift
+                // when the right column grows taller (masonry-like layout).
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        bridgeStatusCard
+                        configureAgentsCard
+                        #if DEBUG
+                        nostrDevCard
+                        #endif
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 24) {
+                        workingDirectoryCard
+                        #if DEBUG
+                        tinyvexDevCard
+                        nostrEventFeedCard
+                        #endif
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxWidth: 1100)
 
@@ -508,6 +522,12 @@ struct SimplifiedMacOSView: View {
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
         }
     }
+
+    #if DEBUG
+    @ViewBuilder private var nostrEventFeedCard: some View {
+        NostrEventFeedView(relayManager: nostrRelayManager)
+    }
+    #endif
 
     private func selectWorkingDirectory() {
         let panel = NSOpenPanel()
