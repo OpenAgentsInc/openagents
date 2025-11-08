@@ -89,7 +89,7 @@ public final class CodexAgentProvider: CLIAgentProvider {
         sessionId: ACPSessionId,
         updateHub: SessionUpdateHub
     ) async {
-        // Parse Codex JSONL and translate to ACP
+        // Parse Codex JSONL and translate to ACP SessionUpdate
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
@@ -109,10 +109,104 @@ public final class CodexAgentProvider: CLIAgentProvider {
             }
         }
 
-        // For now, simple handling: extract any text and stream as agent chunks
-        // TODO: Full ACP translation using CodexAcpTranslator
+        // Normalized container: many Codex lines carry an `item` or `msg` payload
         let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any])
-        if let text = extractText(from: item ?? obj), !text.isEmpty {
+        let itemType = ((item?["type"] as? String) ?? "").lowercased()
+
+        // Tool calls
+        if itemType == "tool_call" || type == "tool_call" {
+            let toolName = (item?["tool_name"] as? String) ?? (item?["tool"] as? String) ?? "tool"
+            let callId = (item?["id"] as? String) ?? (item?["call_id"] as? String) ?? UUID().uuidString
+            let argsDict = (item?["arguments"] as? [String: Any]) ?? (item?["args"] as? [String: Any]) ?? [:]
+
+            // Convert dict to AnyEncodable dict
+            // Encode through JSON to ensure compatibility
+            var argsAEDict: [String: AnyEncodable]? = nil
+            if !argsDict.isEmpty {
+                if let jsonData = try? JSONSerialization.data(withJSONObject: argsDict),
+                   let decoded = try? JSONDecoder().decode([String: AnyEncodable].self, from: jsonData) {
+                    argsAEDict = decoded
+                }
+            }
+
+            let wire = ACPToolCallWire(
+                call_id: callId,
+                name: toolName,
+                arguments: argsAEDict
+            )
+            await updateHub.sendSessionUpdate(
+                sessionId: sessionId,
+                update: .toolCall(wire)
+            )
+            return
+        }
+
+        // Tool results
+        if itemType == "tool_result" || type == "tool_result" {
+            let callId = (item?["call_id"] as? String) ?? (item?["id"] as? String) ?? UUID().uuidString
+            let ok = (item?["ok"] as? Bool) ?? (item?["success"] as? Bool) ?? true
+            let status: ACPToolCallUpdateWire.Status = ok ? .completed : .error
+            let outputAny = item?["result"] ?? item?["output"]
+            // Encode through JSON to ensure compatibility
+            var outputAE: AnyEncodable? = nil
+            if let output = outputAny {
+                if let jsonData = try? JSONSerialization.data(withJSONObject: [output]),
+                   let decoded = try? JSONDecoder().decode([AnyEncodable].self, from: jsonData),
+                   let first = decoded.first {
+                    outputAE = first
+                }
+            }
+            let error = item?["error"] as? String
+
+            let wire = ACPToolCallUpdateWire(
+                call_id: callId,
+                status: status,
+                output: outputAE,
+                error: error
+            )
+            await updateHub.sendSessionUpdate(
+                sessionId: sessionId,
+                update: .toolCallUpdate(wire)
+            )
+            return
+        }
+
+        // Plan state updates
+        // TODO: Convert Codex plan format (status/summary/steps) to ACPPlan format (entries)
+        // For now, skip plan updates since the main focus is tool calls
+        if itemType == "plan_state" || type == "plan_state" || type == "plan.updated" {
+            // Skip for now - would need to map steps to ACPPlanEntry array
+            return
+        }
+
+        // User messages
+        if itemType == "user_message" || type == "user_message" {
+            if let itemDict = item, let text = extractText(from: itemDict), !text.isEmpty {
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                await updateHub.sendSessionUpdate(
+                    sessionId: sessionId,
+                    update: .userMessageChunk(chunk)
+                )
+            }
+            return
+        }
+
+        // Agent/Assistant messages (reasoning, agent_message, etc.)
+        if itemType == "agent_message" || itemType == "assistant_message" || type == "agent_message" || itemType == "agent_reasoning" {
+            let sourceDict = item ?? obj
+            if let text = extractText(from: sourceDict), !text.isEmpty {
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                await updateHub.sendSessionUpdate(
+                    sessionId: sessionId,
+                    update: .agentMessageChunk(chunk)
+                )
+            }
+            return
+        }
+
+        // Fallback: extract any text and stream as agent chunks (for events we don't explicitly handle)
+        let sourceDict = item ?? obj
+        if let text = extractText(from: sourceDict), !text.isEmpty {
             let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
             await updateHub.sendSessionUpdate(
                 sessionId: sessionId,
