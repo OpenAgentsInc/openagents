@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-07
 **Total Issues**: 31 planned
-**Completed (Draft)**: 6 of 31
+**Completed (Draft)**: 16 of 31 (All Phase 1 + key issues from 2-4)
 
 ## Summary
 
@@ -10,40 +10,36 @@ This directory contains draft GitHub issues for implementing the OpenAgents comp
 
 ## Progress
 
-### ✅ Completed Draft Issues
+### ✅ Completed Draft Issues (16 total)
 
-#### Foundation Layer (Critical Path)
-- **✅ 001**: Nostr Client Library (Swift) - **COMPLETE**
-  - Full NIP-01, NIP-04, NIP-19, NIP-57, NIP-90 implementation
-  - Multi-relay manager, event signing, encryption
-  - ~6000 words, comprehensive technical spec
+#### Phase 1: MVP - COMPLETE (9/9)
+- **✅ 001**: Nostr Client Library (~6000 words) - P0, 4-6w
+- **✅ 002**: Secp256k1 & Cryptography (~5500 words) - P0, 2-3w
+- **✅ 003**: BOLT11 & Lightning Primitives (~4500 words) - P0, 2-3w
+- **✅ 004**: Job Schema Registry (~4000 words) - P1, 1-2w
+- **✅ 005**: iOS Nostr Identity (~4000 words) - P0, 2-3w
+- **✅ 006**: iOS Marketplace Viewer (~3500 words) - P1, 1-2w
+- **✅ 007**: macOS Foundation Models Worker (~5000 words) - P0, 3-4w
+- **✅ 008**: macOS Capability Advertising (~3500 words) - P1, 1w
+- **✅ 009**: Policy & Safety Module (~4500 words) - P0, 2-3w
 
-- **✅ 002**: Secp256k1 & Cryptography Integration - **COMPLETE**
-  - Schnorr/ECDSA signatures, ECDH, Secure Enclave
-  - BECH32 encoding, HD wallet (BIP32/39/84)
-  - ~5500 words, full API design
+#### Phase 2: Payments - KEY ISSUES (2/7)
+- **✅ 011**: iOS Job Creation & Submission (~3000 words) - P0, 2-3w
+- **✅ 014**: macOS Bidding Engine (~2500 words) - P1, 2w
+- **⏸️  DEFERRED**: 010, 013 (Wallet/Lightning - awaiting Breez/Spark docs)
 
-- **✅ 003**: BOLT11 & Lightning Primitives - **COMPLETE**
-  - Invoice parsing/generation, LNURL protocol
-  - Lightning Address resolution
-  - ~4500 words, complete spec
+#### Phase 3: Backends - KEY ISSUES (2/7)
+- **✅ 017**: macOS MLX Integration (~3000 words) - P1, 3-4w
+- **✅ 020**: macOS Model Router (~2500 words) - P1, 2-3w
 
-- **✅ 004**: Job Schema Registry (NIP-90 Extension) - **COMPLETE**
-  - 12 job kinds defined with schemas
-  - JobBuilder, validation, capability advertising
-  - ~4000 words, registry format + Swift types
+#### Phase 4: SearchKit - COMPLETE (1/1)
+- **✅ 024**: SearchKit MVP (~3500 words) - P2, 6-8w (Deferrable)
 
-#### iOS Application
-- **✅ 005**: iOS Nostr Identity & Key Management - **COMPLETE**
-  - Key generation/import, Secure Enclave storage
-  - Relay management UI, identity display
-  - ~4000 words, full SwiftUI implementation
+#### Documentation - KEY ISSUE (1/4)
+- **✅ 025**: ADRs: Marketplace Architecture (~2500 words) - P1, 1-2w
 
-#### Policy & Safety
-- **✅ 009**: Policy & Safety Module (Foundation Models AUP) - **COMPLETE**
-  - AUP enforcement, content classification
-  - Foundation Models-based classifier + keyword fallback
-  - ~4500 words, compliance-first design
+#### Testing - KEY ISSUE (1/3)
+- **✅ 029**: Unit Test Suite (~2500 words) - P0, 3-4w
 
 ### 📝 Remaining Issues
 
@@ -105,15 +101,17 @@ Each completed issue includes:
 
 ## Completed Issues Stats
 
-| Issue | Words | LOC Estimated | Effort |
-|-------|-------|---------------|--------|
-| 001 | ~6000 | ~600 | 4-6w |
-| 002 | ~5500 | ~450 | 2-3w |
-| 003 | ~4500 | ~400 | 2-3w |
-| 004 | ~4000 | ~350 | 1-2w |
-| 005 | ~4000 | ~300 | 2-3w |
-| 009 | ~4500 | ~400 | 2-3w |
-| **Total** | **~28,500** | **~2,500** | **14-21w** |
+| Category | Issues | Words | LOC Est | Effort |
+|----------|--------|-------|---------|--------|
+| Phase 1 (MVP) | 9 | ~40,500 | ~3,000 | 20-29w |
+| Phase 2 (Key) | 2 | ~5,500 | ~400 | 4-5w |
+| Phase 3 (Key) | 2 | ~5,500 | ~500 | 5-7w |
+| Phase 4 (SearchKit) | 1 | ~3,500 | ~2,000 | 6-8w |
+| Documentation | 1 | ~2,500 | - | 1-2w |
+| Testing | 1 | ~2,500 | - | 3-4w |
+| **TOTAL** | **16** | **~55,000** | **~5,900** | **45-60w** |
+
+**Parallelized (3 engineers)**: ~15-20 weeks for Phases 1-3
 
 ## Next Steps
 
