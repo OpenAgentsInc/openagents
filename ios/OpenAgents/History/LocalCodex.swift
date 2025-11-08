@@ -1,4 +1,5 @@
 import Foundation
+import OpenAgentsCore
 
 // Local copy for app target (no SPM required)
 struct LocalThreadSummary: Codable, Equatable, Hashable {

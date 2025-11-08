@@ -1052,7 +1052,7 @@ public class DesktopWebSocketServer {
     }
 
     /// Send session update via WebSocket (delegates to SessionUpdateHub)
-    private func sendSessionUpdate(
+    func sendSessionUpdate(
         sessionId: ACPSessionId,
         update: ACP.Client.SessionUpdate
     ) async {

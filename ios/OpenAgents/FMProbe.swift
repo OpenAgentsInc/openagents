@@ -1,4 +1,5 @@
 import Foundation
+import OpenAgentsCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
