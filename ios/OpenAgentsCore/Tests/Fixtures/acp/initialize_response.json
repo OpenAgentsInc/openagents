@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocol_version": "0.7.0",
+    "agent_capabilities": {
+      "load_session": true,
+      "prompt_capabilities": {
+        "image": false,
+        "audio": false,
+        "embedded_context": true
+      },
+      "mcp_capabilities": {
+        "http": true,
+        "sse": false
+      }
+    },
+    "auth_methods": ["none"],
+    "agent_info": {
+      "name": "OpenAgents Desktop",
+      "title": "OpenAgents macOS Bridge",
+      "version": "0.3.0"
+    }
+  }
+}
+

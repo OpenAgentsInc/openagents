@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocol_version": "0.7.0",
+    "client_capabilities": {
+      "fs": {
+        "read_text_file": true,
+        "write_text_file": true
+      },
+      "terminal": false
+    },
+    "client_info": {
+      "name": "OpenAgents Mobile",
+      "title": "OpenAgents iOS/macOS",
+      "version": "0.3.0"
+    }
+  }
+}
+
