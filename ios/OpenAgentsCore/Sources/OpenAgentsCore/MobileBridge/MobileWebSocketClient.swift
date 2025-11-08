@@ -24,21 +24,36 @@ public final class MobileWebSocketClient {
     private let session: URLSession
 
     private var isConnected: Bool = false
-    private var pending: [String: (Data) -> Void] = [:]
+    private let requestManager = JSONRPCRequestManager()
 
     // Retry/reconnect configuration
-    public var maxRetryAttempts: Int = 5
-    public var initialRetryDelay: TimeInterval = 1.0
-    public var maxRetryDelay: TimeInterval = 30.0
+    public var maxRetryAttempts: Int {
+        get { reconnectPolicy.maxRetryAttempts }
+        set { reconnectPolicy.maxRetryAttempts = newValue }
+    }
+    public var initialRetryDelay: TimeInterval {
+        get { reconnectPolicy.initialRetryDelay }
+        set { reconnectPolicy.initialRetryDelay = newValue }
+    }
+    public var maxRetryDelay: TimeInterval {
+        get { reconnectPolicy.maxRetryDelay }
+        set { reconnectPolicy.maxRetryDelay = newValue }
+    }
     public var handshakeTimeout: TimeInterval = 10.0
     /// Shorter timeout for the first connection attempt to avoid long black-screen impressions.
-    public var initialHandshakeTimeout: TimeInterval = 3.0
+    public var initialHandshakeTimeout: TimeInterval {
+        get { reconnectPolicy.initialHandshakeTimeout }
+        set { reconnectPolicy.initialHandshakeTimeout = newValue }
+    }
     /// Timeout for retry attempts after the first.
-    public var retryHandshakeTimeout: TimeInterval = 10.0
+    public var retryHandshakeTimeout: TimeInterval {
+        get { reconnectPolicy.retryHandshakeTimeout }
+        set { reconnectPolicy.retryHandshakeTimeout = newValue }
+    }
     public var autoReconnect: Bool = true
 
     // Retry state
-    private var retryCount: Int = 0
+    private var reconnectPolicy = ReconnectPolicy()
     private var lastConnectURL: URL?
     private var handshakeTimer: Timer?
     private var isManualDisconnect: Bool = false
@@ -56,8 +71,8 @@ public final class MobileWebSocketClient {
         isManualDisconnect = false
 
         // Reset retry count on new explicit connect
-        retryCount = 0
-        OpenAgentsLog.client.info("connect requested url=\(url.absoluteString) retryCount=\(self.retryCount)")
+        reconnectPolicy.reset()
+        OpenAgentsLog.client.info("connect requested url=\(url.absoluteString) retryCount=\(self.reconnectPolicy.retryCount)")
         performConnect(url: url)
     }
 
@@ -68,8 +83,8 @@ public final class MobileWebSocketClient {
         let webSocketTask = session.webSocketTask(with: request)
         self.webSocketTask = webSocketTask
         connectStartedAt = Date()
-        let hs = Self.handshakeTimeoutForAttempt(retryCount: retryCount, initial: initialHandshakeTimeout, retry: retryHandshakeTimeout)
-        OpenAgentsLog.client.debug("performConnect attempt=\(self.retryCount + 1) url=\(url.absoluteString) hsTimeout=\(String(format: "%.2f", hs))s autoReconnect=\(self.autoReconnect) initialDelay=\(self.initialRetryDelay)s maxDelay=\(self.maxRetryDelay)s")
+        let hs = Self.handshakeTimeoutForAttempt(retryCount: reconnectPolicy.retryCount, initial: initialHandshakeTimeout, retry: retryHandshakeTimeout)
+        OpenAgentsLog.client.debug("performConnect attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString) hsTimeout=\(String(format: "%.2f", hs))s autoReconnect=\(self.autoReconnect) initialDelay=\(self.initialRetryDelay)s maxDelay=\(self.maxRetryDelay)s")
         webSocketTask.resume()
 
         // Start handshake timeout (short on first attempt, longer on retries)
@@ -96,13 +111,11 @@ public final class MobileWebSocketClient {
             completion(nil); return
         }
         // store pending handler
-        pending[id] = { data in
-            if let r = try? JSONDecoder().decode(R.self, from: data) { completion(r) } else { completion(nil) }
-        }
+        requestManager.addExpectation(id: id, completion: completion)
         OpenAgentsLog.client.debug("send rpc method=\(method) id=\(id) bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
-            if let error = error {
-                _ = self?.pending.removeValue(forKey: id)
+            if let _ = error {
+                self?.requestManager.remove(id: id)
                 completion(nil)
             }
         }
@@ -145,11 +158,11 @@ public final class MobileWebSocketClient {
     private func startHandshakeTimeout() {
         handshakeTimer?.invalidate()
         let interval = Self.handshakeTimeoutForAttempt(
-            retryCount: retryCount,
+            retryCount: reconnectPolicy.retryCount,
             initial: initialHandshakeTimeout,
             retry: retryHandshakeTimeout
         )
-        OpenAgentsLog.client.debug("handshake timer scheduled in \(String(format: "%.2f", interval))s (attempt=\(self.retryCount + 1))")
+        OpenAgentsLog.client.debug("handshake timer scheduled in \(String(format: "%.2f", interval))s (attempt=\(self.reconnectPolicy.retryCount + 1))")
         handshakeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             self?.handleHandshakeTimeout()
         }
@@ -158,14 +171,14 @@ public final class MobileWebSocketClient {
     private func handleHandshakeTimeout() {
         guard !isConnected else { return }
         let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
-        OpenAgentsLog.client.warning("handshake timeout fired sinceConnectMs=\(since) attempt=\(self.retryCount + 1)")
+        OpenAgentsLog.client.warning("handshake timeout fired sinceConnectMs=\(since) attempt=\(self.reconnectPolicy.retryCount + 1)")
         let error = NSError(domain: "MobileWebSocketClient", code: 7, userInfo: [NSLocalizedDescriptionKey: "Handshake timeout"])
         disconnect(error: error, notifyDelegate: true)
     }
 
     private func scheduleReconnect() {
         guard let url = lastConnectURL else { return }
-        guard retryCount < maxRetryAttempts else {
+        guard reconnectPolicy.canRetry() else {
             let error = NSError(domain: "MobileWebSocketClient", code: 8, userInfo: [NSLocalizedDescriptionKey: "Max retry attempts reached"])
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
@@ -174,25 +187,18 @@ public final class MobileWebSocketClient {
             return
         }
 
-        retryCount += 1
-        let delay = calculateBackoff(retryCount: retryCount)
+        let delay = reconnectPolicy.registerFailureAndGetDelay()
 
-        OpenAgentsLog.client.info("Scheduling reconnect attempt \(self.retryCount)/\(self.maxRetryAttempts) in \(String(format: "%.1f", delay))s")
+        OpenAgentsLog.client.info("Scheduling reconnect attempt \(self.reconnectPolicy.retryCount)/\(self.maxRetryAttempts) in \(String(format: "%.1f", delay))s")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self else { return }
             guard !self.isManualDisconnect else { return }
             if let url = self.lastConnectURL {
-                OpenAgentsLog.client.info("reconnecting attempt=\(self.retryCount + 1) url=\(url.absoluteString)")
+                OpenAgentsLog.client.info("reconnecting attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString)")
             }
             self.performConnect(url: url)
         }
-    }
-
-    private func calculateBackoff(retryCount: Int) -> TimeInterval {
-        // Exponential backoff: initialDelay * 2^(retryCount - 1), capped at maxDelay
-        let exponential = initialRetryDelay * pow(2.0, Double(retryCount - 1))
-        return min(exponential, maxRetryDelay)
     }
 
     /// Compute the handshake timeout to use for the current attempt.
@@ -254,7 +260,7 @@ public final class MobileWebSocketClient {
                 handshakeTimer = nil
 
                 // Reset retry count on successful connection
-                retryCount = 0
+                reconnectPolicy.reset()
 
                 // Extract working directory from _meta if available
                 let workingDir: String? = {
@@ -385,10 +391,7 @@ public final class MobileWebSocketClient {
             if OpenAgentsLog.isDebugLoggingEnabled, let pp = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]), pp.count <= 20_000, let pps = String(data: pp, encoding: .utf8) {
                 OpenAgentsLog.client.debug("pretty result:\n\(pps, privacy: .public)")
             }
-            if let handler = pending.removeValue(forKey: idStr),
-               let d = try? JSONSerialization.data(withJSONObject: result) {
-                handler(d)
-            }
+            _ = requestManager.fulfill(id: idStr, withJsonResult: result)
         }
     }
 
