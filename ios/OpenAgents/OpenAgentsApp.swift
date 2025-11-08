@@ -8,6 +8,7 @@
 import SwiftUI
 import OSLog
 import SwiftData
+import OpenAgentsCore
 
 @main
 struct OpenAgentsApp: App {

@@ -9,7 +9,7 @@ import Foundation
  rendering; the surface can be extended to one-to-one parity.
 */
 
-public extension ACP.Client {
+extension ACP.Client {
     /// A streamed item of content (text/tool/etc.) used by update chunks.
     /// Mirrors `ContentChunk` in Rust `client.rs`.
     public struct ContentChunk: Codable {

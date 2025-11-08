@@ -2,7 +2,7 @@
 import Foundation
 
 /// Agent provider for OpenAI Codex CLI
-public final class CodexAgentProvider: CLIAgentProvider {
+public final class CodexAgentProvider: CLIAgentProvider, @unchecked Sendable {
     // MARK: - State
 
     /// Codex thread IDs by session (for resume)

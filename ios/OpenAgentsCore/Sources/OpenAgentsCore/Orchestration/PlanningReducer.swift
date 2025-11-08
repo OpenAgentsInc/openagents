@@ -1,5 +1,4 @@
 import Foundation
-import OpenAgentsCore
 
 /// Handles planning-related transformations and plan streaming state.
 final class PlanningReducer {
@@ -17,7 +16,7 @@ final class PlanningReducer {
         var entries: [ACPPlanEntry] = []
         for (i, op) in plan.nextOps.enumerated() {
             planIndexByOpId[op.opId.uuidString] = i
-            entries.append(ACPPlanEntry(content: op.humanLabel, priority: .medium, status: .pending, _meta: nil))
+            entries.append(ACPPlanEntry(content: op.description, priority: .medium, status: .pending, _meta: nil))
         }
         let acpPlan = ACPPlan(entries: entries, _meta: nil)
         currentACPPlan = acpPlan
@@ -53,7 +52,7 @@ final class PlanningReducer {
         }
         guard hasSessionOps else { return ops }
         var out = ops
-        out.append(AgentOp(kind: .sessionAnalyze, opId: UUID()))
+        out.append(AgentOp(opId: UUID(), kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil, metrics: nil))))
         return out
     }
 
@@ -70,24 +69,25 @@ final class PlanningReducer {
             let rest = parts.count > 1 ? parts[1] : ""
             switch opName {
             case let n where n.contains("sessionlist"):
-                ops.append(AgentOp(kind: .sessionList(.init(provider: nil)), opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .sessionList(.init(provider: nil))))
             case let n where n.contains("sessionsearch"):
                 let pat = rest.isEmpty ? "TODO" : rest
-                ops.append(AgentOp(kind: .sessionSearch(.init(pattern: pat, provider: nil)), opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .sessionSearch(.init(pattern: pat, provider: nil))))
             case let n where n.contains("sessionread"):
                 let sid = rest.isEmpty ? "latest" : rest
-                ops.append(AgentOp(kind: .sessionRead(.init(sessionId: sid)), opId: UUID()))
+                // Default provider if not inferred from FM output
+                ops.append(AgentOp(opId: UUID(), kind: .sessionRead(.init(sessionId: sid, provider: "claude-code"))))
             case let n where n.contains("listdir"):
                 let path = rest.isEmpty ? "." : rest
-                ops.append(AgentOp(kind: .listDir(.init(path: path)), opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .listDir(.init(path: path))))
             case let n where n.contains("readspan"):
                 let path = rest.isEmpty ? "." : rest
-                ops.append(AgentOp(kind: .readSpan(.init(path: path, start: 0, end: 512)), opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .readSpan(.init(path: path, startLine: 0, endLine: 512))))
             case let n where n.contains("grep"):
                 let pat = rest.isEmpty ? "TODO" : rest
-                ops.append(AgentOp(kind: .grep(.init(pattern: pat, path: nil, maxMatches: 200)), opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .grep(.init(pattern: pat, pathPrefix: nil, caseInsensitive: false, maxResults: 200))))
             case let n where n.contains("sessionanalyze"):
-                ops.append(AgentOp(kind: .sessionAnalyze, opId: UUID()))
+                ops.append(AgentOp(opId: UUID(), kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil, metrics: nil))))
             default:
                 continue
             }
@@ -103,6 +103,7 @@ final class PlanningReducer {
 import FoundationModels
 extension PlanningReducer {
     /// Rough token estimator for guarded prompts.
+    @available(iOS 26.0, macOS 26.0, *)
     static func estimateTokenCount(instructions: Instructions, prompt: String) -> Int {
         // Very rough heuristic: 1 token ≈ 4 chars; add 20% headroom
         let instrChars = String(describing: instructions).count
@@ -111,4 +112,3 @@ extension PlanningReducer {
     }
 }
 #endif
-

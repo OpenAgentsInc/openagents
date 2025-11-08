@@ -1,5 +1,4 @@
 import Foundation
-import OpenAgentsCore
 
 /// Manages execution of AgentOps and streaming of tool call updates.
 actor ToolExecutionOrchestrator {
@@ -37,8 +36,8 @@ actor ToolExecutionOrchestrator {
     private func streamToolCall(_ op: AgentOp, status: ACPToolCallUpdateWire.Status) async {
         let call = ACPToolCallWire(
             call_id: op.opId.uuidString,
-            name: op.humanLabel,
-            arguments: op.arguments
+            name: op.toolName,
+            arguments: nil
         )
         await stream(.toolCall(call))
         await planner.updateEntry(opId: op.opId.uuidString, to: .in_progress)
@@ -72,7 +71,7 @@ actor ToolExecutionOrchestrator {
         if let note = note { meta["note"] = AnyEncodable(note) }
         let upd = ACPToolCallUpdateWire(
             call_id: op.opId.uuidString,
-            status: .in_progress,
+            status: .started,
             output: nil,
             error: nil,
             _meta: meta
