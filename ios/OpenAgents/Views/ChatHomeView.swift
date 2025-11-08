@@ -93,25 +93,10 @@ struct ChatHomeView: View {
                     .padding(.horizontal)
                 }
 
-                // Streamed ACP updates as a simple list (excluding plan updates; shown in header)
-                let visibleIndices = bridge.updates.indices.filter { idx in
-                    if case .plan = bridge.updates[idx].update { return false } else { return true }
+                UpdatesListView(updates: bridge.updates) { json in
+                    selectedJSON = json
+                    isJSONSheetPresented = selectedJSON != nil
                 }
-                List(visibleIndices, id: \.self) { idx in
-                    let note = bridge.updates[idx]
-                    UpdateRow(note: note) { tapped in
-                        // Prefer showing the latest `output` JSON for this call_id if available
-                        if let callId = callId(from: tapped), let out = bridge.outputJSONByCallId[callId] {
-                            selectedJSON = out
-                        } else if let json = toPrettyJSON(tapped) {
-                            selectedJSON = json
-                        } else {
-                            selectedJSON = nil
-                        }
-                        isJSONSheetPresented = selectedJSON != nil
-                    }
-                }
-                .listStyle(.plain)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -146,9 +131,7 @@ struct ChatHomeView: View {
                 if isWorking && newCount > 0 { isWorking = false }
             }
             // Present raw JSON inspector when available
-            .sheet(isPresented: $isJSONSheetPresented) {
-                JSONInspectorView(json: selectedJSON ?? "")
-            }
+            .sheet(isPresented: $isJSONSheetPresented) { JSONInspectorView(json: selectedJSON ?? "") }
         }
     }
 
@@ -186,196 +169,7 @@ struct ChatHomeView: View {
     }
 }
 
-// MARK: - JSON helpers and inspector
-private func toPrettyJSON(_ note: ACP.Client.SessionNotificationWire) -> String? {
-    let enc = JSONEncoder()
-    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-    guard let data = try? enc.encode(note) else { return nil }
-    return String(data: data, encoding: .utf8)
-}
-
-private struct JSONInspectorView: View {
-    let json: String
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                Text(json)
-                    .font(.system(.footnote, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(OATheme.Colors.background)
-            .navigationTitle("Tool Call JSON")
-            .toolbarTitleDisplayMode(.inline)
-        }
-    }
-}
-
-private func callId(from note: ACP.Client.SessionNotificationWire) -> String? {
-    switch note.update {
-    case .toolCall(let c): return c.call_id
-    case .toolCallUpdate(let u): return u.call_id
-    default: return nil
-    }
-}
-
-private struct MenuSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Navigation") {
-                    Label("Home", systemImage: "house")
-                    Label("Recent", systemImage: "clock")
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-            .navigationTitle("Menu")
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: { dismiss() })
-                        .buttonStyle(.glass)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-private struct UpdateRow: View {
-    let note: ACP.Client.SessionNotificationWire
-    var onInspect: ((ACP.Client.SessionNotificationWire) -> Void)? = nil
-    @EnvironmentObject private var bridge: BridgeManager
-    @Environment(\.colorScheme) private var colorScheme
-    var body: some View {
-        switch note.update {
-        case .toolCall(let call):
-            HStack {
-                Image(systemName: "hammer")
-                Text(call.name)
-                Spacer()
-                Text("call_id: \(call.call_id.prefix(8))…")
-                    .foregroundStyle(.secondary)
-                    .font(.footnote)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { onInspect?(note) }
-        case .toolCallUpdate(let upd):
-            HStack(alignment: .firstTextBaseline) {
-                let hasOutput = bridge.outputJSONByCallId[upd.call_id] != nil
-                // Extract numeric progress if available
-                let progressValue: Double? = {
-                    if let meta = upd._meta, let p = meta["progress"]?.toJSONValue() {
-                        switch p {
-                        case .number(let d): return d
-                        case .string(let s):
-                            if s.hasSuffix("%"), let v = Double(s.dropLast()) { return v / 100.0 }
-                            if let v = Double(s) { return v }
-                            return nil
-                        default: return nil
-                        }
-                    }
-                    return nil
-                }()
-                let isCompleteish = hasOutput || upd.status == .completed || ((progressValue ?? 0.0) >= 0.999)
-                // Leading status icon/spinner sized like SF Symbol
-                if upd.status == .error {
-                    Image(systemName: "xmark.octagon")
-                        .foregroundStyle(OATheme.Colors.danger)
-                } else if isCompleteish {
-                    Image(systemName: "checkmark.circle")
-                } else {
-                    ProgressView().progressViewStyle(.circular)
-                        .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
-                        .frame(width: 14, height: 14)
-                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
-                }
-                // Show the original tool name if known; fall back to the call_id
-                let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
-                if let pv = progressValue, !isCompleteish {
-                    Text("\(name) (\(Int((pv * 100).rounded()))%)")
-                } else {
-                    Text(name)
-                }
-                Spacer()
-                let statusText = isCompleteish ? ACPToolCallUpdateWire.Status.completed.rawValue : upd.status.rawValue
-                Text(statusText)
-                    .font(.footnote)
-                    .foregroundStyle(upd.status == .error ? .red : .secondary)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { onInspect?(note) }
-        case .agentMessageChunk(let chunk):
-            // Render agent message content without extra header label/icon
-            VStack(alignment: .leading, spacing: 4) {
-                markdownText(extractText(from: chunk))
-                    .font(.body)
-            }
-        case .userMessageChunk(let chunk):
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "person")
-                        .foregroundStyle(.green)
-                    Text("User")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(extractText(from: chunk))
-                    .font(.body)
-            }
-        case .agentThoughtChunk(let chunk):
-            HStack {
-                Image(systemName: "brain")
-                    .foregroundStyle(.purple)
-                Text(extractText(from: chunk))
-                    .italic()
-                    .foregroundStyle(.secondary)
-            }
-        case .plan:
-            // Hide inline plan rows; plan is rendered once at the top
-            EmptyView()
-        case .availableCommandsUpdate(let ac):
-            Text("Available: \(ac.available_commands.count) commands")
-                .foregroundStyle(.secondary)
-        case .currentModeUpdate(let cur):
-            Text("Mode: \(cur.current_mode_id.rawValue)")
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    /// Extract text content from a ContentChunk
-    private func extractText(from chunk: ACP.Client.ContentChunk) -> String {
-        switch chunk.content {
-        case .text(let textContent):
-            return textContent.text
-        case .image:
-            return "[Image]"
-        case .audio:
-            return "[Audio]"
-        case .resource_link(let link):
-            return "Resource: \(link.uri)"
-        case .resource(let embeddedResource):
-            // EmbeddedResource has a nested resource field which is an enum
-            switch embeddedResource.resource {
-            case .text(let textResource):
-                return "Embedded text: \(textResource.uri)"
-            case .blob(let blobResource):
-                return "Embedded blob: \(blobResource.uri)"
-            }
-        }
-    }
-
-    /// Render markdown text
-    private func markdownText(_ text: String) -> Text {
-        if let md = try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return Text(md)
-        }
-        return Text(text)
-    }
-}
+// Extracted components live in separate files: UpdatesListView, JSONInspectorView, and MenuSheet.
 
 // Compute latest plan state from streamed updates
 private func latestPlanFromUpdates(_ updates: [ACP.Client.SessionNotificationWire]) -> (ACPPlanState, [String: ACPPlanEntryStatus])? {
