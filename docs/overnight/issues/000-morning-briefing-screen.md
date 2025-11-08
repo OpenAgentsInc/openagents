@@ -1,6 +1,6 @@
 # Issue 000: Morning Briefing Screen Mockup
 
-**Status**: ✅ Completed
+**Status**: 🔄 Reopened (integration updates in progress)
 **Priority**: High (Next Implementation)
 **Platform**: iOS + macOS
 **Dependencies**: ACP SessionUpdate types, OrchestrationTask (issue #003), TaskDecision (issue #002), PRAutomationService (issue #005), SessionAnalyzeResult
@@ -1699,3 +1699,4 @@ This morning briefing screen is successful if:
 **Author**: AI Agent (Claude Code)
 **Implementation**: Demo UI + Full backend infrastructure (phases 1 & 2)
 **Commits**: b05dde8e (phase 1), c98e762e (phase 2)
+> Reopen note (2025-11-08): Reopened to implement integration updates: inject SessionUpdateHub into AgentCoordinator, add runtime timeout cancellation, adopt stable opHash, and align naming to Orchestration across docs. This note will be replaced with a closure summary upon completion.
