@@ -115,10 +115,10 @@ public actor ExploreOrchestrator {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            print("[Orchestrator] Foundation Models available")
+            OpenAgentsLog.orchestration.info("Foundation Models available")
         case .unavailable(let reason):
             let reasonStr = String(describing: reason)
-            print("[Orchestrator] Foundation Models unavailable: \(reasonStr)")
+            OpenAgentsLog.orchestration.warning("Foundation Models unavailable: \(reasonStr)")
 
             // Send agent message explaining unavailability
             await streamUnavailabilityMessage(reason: reasonStr)
@@ -133,12 +133,12 @@ public actor ExploreOrchestrator {
         // Route based on policy flag
         if policy.use_native_tool_calling {
             // NEW PATH: Native FM tool calling loop
-            print("[Orchestrator] Using native FM tool calling loop (experimental)")
+            OpenAgentsLog.orchestration.info("Using native FM tool calling loop (experimental)")
             let summary = try await executeNativeToolCallingLoop()
             return summary
         } else {
             // LEGACY PATH: Text-based plan generation and parsing
-            print("[Orchestrator] Using legacy text plan parsing")
+            OpenAgentsLog.orchestration.info("Using legacy text plan parsing")
 
             // Generate initial plan
             let plan = try await generateInitialPlan(using: model)
@@ -168,7 +168,7 @@ public actor ExploreOrchestrator {
     @available(iOS 26.0, macOS 26.0, *)
     private func getOrCreateSession() async throws -> LanguageModelSession {
         if let existing = fmSession {
-            print("[Orchestrator] Reusing existing FM session (turn \(sessionTurnCount))")
+            OpenAgentsLog.orchestration.debug("Reusing existing FM session (turn \(sessionTurnCount))")
             return existing
         }
 
@@ -197,7 +197,7 @@ public actor ExploreOrchestrator {
         try? session.prewarm(promptPrefix: nil)
         fmSession = session
         sessionTurnCount = 0
-        print("[Orchestrator] FM session created with \(tools.count) tools")
+        OpenAgentsLog.orchestration.info("FM session created with \(tools.count) tools")
         return session
     }
     /// Execute native FM tool calling loop
@@ -220,15 +220,15 @@ public actor ExploreOrchestrator {
         After using tools, provide a summary of your findings.
         """
 
-        print("[Orchestrator] Starting native tool calling (turn \(sessionTurnCount))")
+        OpenAgentsLog.orchestration.info("Starting native tool calling (turn \(sessionTurnCount))")
 
         // Send prompt - FM session will automatically call tools as needed
         let t0 = Date()
         let response = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(t0)
 
-        print("[Orchestrator] FM response received in \(String(format: "%.2f", elapsed))s")
-        print("[Orchestrator] Response: \(response.content.prefix(200))...")
+        OpenAgentsLog.orchestration.debug("FM response received in \(String(format: "%.2f", elapsed))s")
+        OpenAgentsLog.orchestration.debug("Response: \(response.content.prefix(200))...")
 
         // Stream the response content as agent message chunk
         let chunk = ACP.Client.ContentChunk(
@@ -305,19 +305,19 @@ public actor ExploreOrchestrator {
             throw OrchestrationError.executionFailed("Prompt too large: \(estimatedTokens) tokens (limit: 4096). Truncate goals or workspace path.")
         }
 
-        print("[Orchestrator] Estimated tokens: \(estimatedTokens)")
+        OpenAgentsLog.orchestration.debug("Estimated tokens: \(estimatedTokens)")
         let instrChars = String(describing: instructions).count
-        print("[FM] preparing request: instructions=\(instrChars) chars, prompt=\(prompt.count) chars")
+        OpenAgentsLog.orchestration.debug("FM preparing request: instructions=\(instrChars) chars, prompt=\(prompt.count) chars")
 
         do {
             let options = GenerationOptions(temperature: 0.5)
             let t0 = Date()
             let response = try await session.respond(to: prompt, options: options)
-            print("[FM] response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
+            OpenAgentsLog.orchestration.debug("FM response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
             let raw = response.content
             let ops = try parseOperationsFromResponse(raw)
 
-            print("[Orchestrator] Generated plan with \(ops.count) operations")
+            OpenAgentsLog.orchestration.info("Generated plan with \(ops.count) operations")
 
             guard !ops.isEmpty else {
                 throw OrchestrationError.executionFailed("FM generated empty plan")
@@ -332,7 +332,7 @@ public actor ExploreOrchestrator {
                 nextOps: finalOps
             )
         } catch {
-            print("[Orchestrator] Error generating plan: \(error)")
+            OpenAgentsLog.orchestration.error("Error generating plan: \(error)")
             throw OrchestrationError.executionFailed("Failed to generate exploration plan: \(error.localizedDescription)")
         }
     }
@@ -388,7 +388,7 @@ public actor ExploreOrchestrator {
             return AgentOp(kind: .listDir(ListDirParams(path: param, depth: 0)))
 
         default:
-            print("[Orchestrator] Unknown operation type: \(type)")
+            OpenAgentsLog.orchestration.warning("Unknown operation type: \(type)")
             return nil
         }
     }
@@ -401,7 +401,7 @@ public actor ExploreOrchestrator {
         // Extract content from response description
         let content = extractContent(from: response) ?? response
 
-        print("[Orchestrator] Parsing FM response (first 500 chars): \(String(content.prefix(500)))")
+        OpenAgentsLog.orchestration.debug("Parsing FM response (first 500 chars): \(String(content.prefix(500)))")
 
         // Simple parsing: look for operation patterns
         let lines = content.components(separatedBy: "\n")
@@ -464,7 +464,7 @@ public actor ExploreOrchestrator {
         for op in ops {
             // Skip if already executed (deduplication)
             if executedOps.contains(op) {
-                print("[Orchestrator] Skipping duplicate op: \(op.description)")
+                OpenAgentsLog.orchestration.debug("Skipping duplicate op: \(op.description)")
                 continue
             }
 
@@ -477,7 +477,7 @@ public actor ExploreOrchestrator {
     }
 
     private func executeOperation(_ op: AgentOp) async throws {
-        print("[Orchestrator] Executing: \(op.description) [tool=\(op.toolName) id=\(op.opId)]")
+        OpenAgentsLog.orchestration.info("Executing: \(op.description) [tool=\(op.toolName) id=\(op.opId)]")
 
         // Stream tool call (started)
         await streamToolCall(op, status: .started)
@@ -491,9 +491,9 @@ public actor ExploreOrchestrator {
 
             // Stream tool call update (completed)
             await streamToolCallUpdate(op, status: .completed, output: result)
-            print("[Orchestrator] Completed: \(op.toolName) [id=\(op.opId)]")
+            OpenAgentsLog.orchestration.debug("Completed: \(op.toolName) [id=\(op.opId)]")
         } catch {
-            print("[Orchestrator] Operation failed: \(error)")
+            OpenAgentsLog.orchestration.error("Operation failed: \(error)")
 
             // Stream tool call update (error)
             await streamToolCallUpdate(op, status: .error, error: error.localizedDescription)
@@ -880,13 +880,13 @@ public actor ExploreOrchestrator {
         """
 
         // Log sizes and time
-        print("[FM] analysis request: instructions=\(String(describing: instructions).count) chars, prompt=\(prompt.count) chars, ctxBytes=\(ctxData.count)")
+        OpenAgentsLog.orchestration.debug("FM analysis request: instructions=\(String(describing: instructions).count) chars, prompt=\(prompt.count) chars, ctxBytes=\(ctxData.count)")
         do {
             let t0 = Date()
             let resp = try await session.respond(to: prompt)
             let dt = Date().timeIntervalSince(t0)
             // LanguageModelSession.Response<String> exposes `content` (not `text`)
-            print("[FM] analysis response in \(String(format: "%.2f", dt))s, text=\(resp.content.count) chars")
+            OpenAgentsLog.orchestration.debug("FM analysis response in \(String(format: "%.2f", dt))s, text=\(resp.content.count) chars")
             let analysis = resp.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !analysis.isEmpty else { return nil }
             // Provide context from analyze metrics and grep hints
@@ -900,7 +900,7 @@ public actor ExploreOrchestrator {
             let avg = analyze.avgConversationLength
             return FMAnalysisResult(text: analysis, source: .fm, topFiles: topFilesFromAnalyze, goalPatterns: goals, avgConversationLength: avg)
         } catch {
-            print("[FM] analysis error: \(error)")
+            OpenAgentsLog.orchestration.error("FM analysis error: \(error)")
             return nil
         }
         #else
@@ -946,7 +946,7 @@ public actor ExploreOrchestrator {
             _meta: meta
         )
         await streamHandler(.toolCallUpdate(update))
-        print("[Orchestrator] Progress: \(op.toolName) \(Int(fraction * 100))% \(note ?? "")")
+        OpenAgentsLog.orchestration.debug("Progress: \(op.toolName) \(Int(fraction * 100))% \(note ?? "")")
     }
 
     private func streamUnavailabilityMessage(reason: String) async {
