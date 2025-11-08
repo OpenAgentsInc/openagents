@@ -172,7 +172,7 @@ public final class CodexAgentProvider: CLIAgentProvider {
         }
 
         // Plan state updates
-        // TODO: Convert Codex plan format (status/summary/steps) to ACPPlan format (entries)
+        // TODO(#1448): Convert Codex plan format (status/summary/steps) to ACPPlan format (entries)
         // For now, skip plan updates since the main focus is tool calls
         if itemType == "plan_state" || type == "plan_state" || type == "plan.updated" {
             // Skip for now - would need to map steps to ACPPlanEntry array

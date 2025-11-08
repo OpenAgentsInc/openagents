@@ -17,7 +17,7 @@ struct FloatingMicButton: View {
 
     private var content: some View {
         let fg = HStack(spacing: 0) {
-            Button(action: { /* TODO: voice input */ }, label: {
+            Button(action: { /* TODO(#1447): voice input */ }, label: {
                 Image(systemName: "mic")
                     .renderingMode(.template)
                     .symbolRenderingMode(.monochrome)
