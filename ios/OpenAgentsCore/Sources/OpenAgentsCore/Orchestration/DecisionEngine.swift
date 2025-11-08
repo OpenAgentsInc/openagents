@@ -98,7 +98,7 @@ public actor DecisionEngine {
 
     /// Decide the next task to execute based on session insights
     ///
-    /// Implements the heuristic defined in docs/overnight/decision-logic.md:
+    /// Implements the heuristic defined in docs/overnight/issues/002-decision-orchestrator.md:
     /// - Refactor: If top file touched >20 times AND user mentioned "refactor"
     /// - Tests: If no strong refactor signal
     /// - Claude Code: For refactoring and architectural work
