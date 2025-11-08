@@ -732,12 +732,10 @@ public class DesktopWebSocketServer {
         listener = try NWListener(using: params, on: nwPort)
         // Advertise Bonjour service for discovery when supported
         if advertiseService {
-            #if os(macOS)
             if #available(macOS 12.0, *) {
                 let name = serviceName ?? Host.current().localizedName ?? "OpenAgents"
                 listener?.service = NWListener.Service(name: name, type: serviceType, domain: "local.")
             }
-            #endif
         }
         listener?.stateUpdateHandler = { [weak self] newState in
             guard let self = self else { return }

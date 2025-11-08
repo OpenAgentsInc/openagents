@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 import OpenAgentsCore
 
 struct DrawerMenuView: View {
@@ -169,4 +170,3 @@ struct DrawerMenuView: View {
         }
     }
 }
-

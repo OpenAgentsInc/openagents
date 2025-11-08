@@ -37,7 +37,7 @@ enum FoundationModelSummarizer {
         """)
 
         let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
-        try? session.prewarm(promptPrefix: nil)
+        session.prewarm(promptPrefix: nil)
 
         let prompt = lines.joined(separator: "\n") + "\n\nTitle (3-5 words):"
         do {

@@ -150,7 +150,7 @@ final class TinyvexConnection {
     private func receive() {
         connection.receiveMessage { [weak self] (data, ctx, isComplete, err) in
             guard let self else { return }
-            if let err { self.cancel(); return }
+            if err != nil { self.cancel(); return }
             if let data, data.count > 0 { self.handle(data: data) }
             self.receive()
         }

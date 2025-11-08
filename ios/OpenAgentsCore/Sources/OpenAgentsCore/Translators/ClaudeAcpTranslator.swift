@@ -45,7 +45,7 @@ public enum ClaudeAcpTranslator {
             }
 
             guard let message = obj["message"] as? [String: Any] else { continue }
-            let role = message["role"] as? String ?? ""
+            _ = message["role"] as? String ?? ""
 
             // User message
             if type == "user" {

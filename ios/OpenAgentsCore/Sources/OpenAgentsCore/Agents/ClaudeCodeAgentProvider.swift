@@ -2,7 +2,7 @@
 import Foundation
 
 /// Agent provider for Claude Code CLI
-public final class ClaudeCodeAgentProvider: CLIAgentProvider {
+public final class ClaudeCodeAgentProvider: CLIAgentProvider, @unchecked Sendable {
     // MARK: - State
 
     /// Track whether a session has been started (for --resume logic)

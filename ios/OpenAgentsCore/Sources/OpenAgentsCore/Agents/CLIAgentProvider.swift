@@ -71,16 +71,16 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
 
         // Check for existing process
         if let existing = activeProcesses[sidStr], existing.isRunning {
-            OpenAgentsLog.orchestration.error("[\(displayName)] Session \(sidStr) already has running process")
+            OpenAgentsLog.orchestration.error("[\(self.displayName)] Session \(sidStr) already has running process")
             throw AgentProviderError.startFailed("Session already has a running process")
         }
 
         // Find binary
         guard let execPath = findBinary() else {
-            throw AgentProviderError.binaryNotFound("\(displayName) CLI not found. Please install the \(binaryName) CLI.")
+            throw AgentProviderError.binaryNotFound("\(self.displayName) CLI not found. Please install the \(self.binaryName) CLI.")
         }
 
-        OpenAgentsLog.orchestration.info("[\(displayName)] Launching (session=\(sidStr)): \(execPath, privacy: .private)")
+        OpenAgentsLog.orchestration.info("[\(self.displayName)] Launching (session=\(sidStr)): \(execPath, privacy: .private)")
 
         // Create process
         let process = Process()
@@ -109,7 +109,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         // Set working directory
         if let wd = context.workingDirectory {
             process.currentDirectoryURL = wd
-            OpenAgentsLog.orchestration.debug("[\(displayName)] Working directory: \(wd.path, privacy: .private)")
+            OpenAgentsLog.orchestration.debug("[\(self.displayName)] Working directory: \(wd.path, privacy: .private)")
         }
 
         // Set up pipes
@@ -124,7 +124,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         // Start process
         do {
             try process.run()
-            OpenAgentsLog.orchestration.info("[\(displayName)] Process started (pid=\(process.processIdentifier))")
+            OpenAgentsLog.orchestration.info("[\(self.displayName)] Process started (pid=\(process.processIdentifier))")
 
             // Set up output handlers
             setupStdoutHandler(
@@ -209,7 +209,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
 
         do {
             try process.run()
-            OpenAgentsLog.orchestration.info("[\(displayName)] Process resumed (pid=\(process.processIdentifier))")
+            OpenAgentsLog.orchestration.info("[\(self.displayName)] Process resumed (pid=\(process.processIdentifier))")
 
             setupStdoutHandler(pipe: stdoutPipe, sessionId: sessionId, updateHub: updateHub)
             setupStderrHandler(pipe: stderrPipe, sessionId: sessionId, updateHub: updateHub)
@@ -228,7 +228,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         if let process = activeProcesses[sidStr] {
             if process.isRunning {
                 process.terminate()
-                OpenAgentsLog.orchestration.info("[\(displayName)] Terminated process for session \(sidStr)")
+                OpenAgentsLog.orchestration.info("[\(self.displayName)] Terminated process for session \(sidStr)")
             }
             activeProcesses.removeValue(forKey: sidStr)
         }
@@ -246,7 +246,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
            let override = ProcessInfo.processInfo.environment[envVar],
            !override.isEmpty,
            FileManager.default.fileExists(atPath: override) {
-            OpenAgentsLog.orchestration.debug("[\(displayName)] Using override: \(override, privacy: .private)")
+            OpenAgentsLog.orchestration.debug("[\(self.displayName)] Using override: \(override, privacy: .private)")
             return override
         }
 
@@ -258,7 +258,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
 
         for basePath in fnmPaths {
             if let found = searchForBinaryRecursive(in: basePath, maxDepth: 4) {
-                OpenAgentsLog.orchestration.debug("[\(displayName)] Found in fnm: \(found, privacy: .private)")
+                OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found in fnm: \(found, privacy: .private)")
                 return found
             }
         }
@@ -275,7 +275,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
 
         for path in commonPaths {
             if FileManager.default.fileExists(atPath: path) {
-                OpenAgentsLog.orchestration.debug("[\(displayName)] Found at: \(path, privacy: .private)")
+                OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found at: \(path, privacy: .private)")
                 return path
             }
         }
@@ -285,7 +285,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         for shell in shells {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: shell)
-            process.arguments = ["-l", "-c", "which \(binaryName)"]
+            process.arguments = ["-l", "-c", "which \(self.binaryName)"]
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = Pipe()
@@ -298,7 +298,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
                    let data = try? pipe.fileHandleForReading.readToEnd(),
                    let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !path.isEmpty {
-                    OpenAgentsLog.orchestration.debug("[\(displayName)] Found via \(shell): \(path, privacy: .private)")
+                    OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found via \(shell): \(path, privacy: .private)")
                     return path
                 }
             } catch {
@@ -306,7 +306,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             }
         }
 
-        OpenAgentsLog.orchestration.warning("[\(displayName)] Binary '\(binaryName)' not found")
+        OpenAgentsLog.orchestration.warning("[\(self.displayName)] Binary '\(self.binaryName)' not found")
         return nil
     }
 
@@ -351,7 +351,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         prompt: String,
         context: AgentContext
     ) -> [String] {
-        OpenAgentsLog.orchestration.error("[\(displayName)] buildStartArguments not implemented in subclass; returning empty args")
+        OpenAgentsLog.orchestration.error("[\(self.displayName)] buildStartArguments not implemented in subclass; returning empty args")
         assertionFailure("Subclasses must implement buildStartArguments")
         return []
     }
@@ -364,7 +364,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         handle: AgentHandle,
         context: AgentContext
     ) -> [String] {
-        OpenAgentsLog.orchestration.error("[\(displayName)] buildResumeArguments not implemented in subclass; returning empty args")
+        OpenAgentsLog.orchestration.error("[\(self.displayName)] buildResumeArguments not implemented in subclass; returning empty args")
         assertionFailure("Subclasses must implement buildResumeArguments")
         return []
     }
@@ -393,7 +393,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         // Skip common noise
         if trimmed.contains("stdout is not a terminal") { return }
 
-        OpenAgentsLog.orchestration.warning("[\(displayName)] stderr: \(trimmed)")
+        OpenAgentsLog.orchestration.warning("[\(self.displayName)] stderr: \(trimmed)")
 
         // Send to UI as error chunk
         let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(trimmed)")))
