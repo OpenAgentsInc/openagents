@@ -106,14 +106,27 @@ Complete specifications for all official DVM kinds are available in:
 
 For agent-specific tasks not covered by official DVM kinds, OpenAgents defines custom kinds in the **6500-6599** range:
 
+**Code & Development:**
 - **6500**: Code Generation
 - **6501**: Code Review
 - **6502**: Code Refactoring
+- **6506**: Code Explanation
+- **6507**: Test Generation
+
+**Agent Capabilities & Orchestration:**
 - **6503**: Q&A / RAG
 - **6504**: Codebase Search (future SearchKit integration)
 - **6505**: Agent Execution
-- **6506**: Code Explanation
-- **6507**: Test Generation
+- **6519**: Task Planning
+
+**Foundation Models Primitives:**
+- **6508**: Classification/Categorization
+- **6509**: Structured Data Extraction
+- **6510**: Tool/Function Calling
+- **6511**: Embedding Generation
+
+**Safety & Content:**
+- **6513**: Content Moderation/Safety Check
 
 See `docs/compute/issues/phase-1-mvp/004-job-schema-registry.md` for complete specifications.
 
