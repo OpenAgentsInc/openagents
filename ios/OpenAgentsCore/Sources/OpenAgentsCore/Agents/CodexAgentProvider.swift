@@ -50,7 +50,7 @@ public final class CodexAgentProvider: CLIAgentProvider {
         // Prompt
         args.append(prompt)
 
-        print("[Codex] Arguments: \(args.joined(separator: " "))")
+        OpenAgentsLog.orchestration.debug("[Codex] Arguments: \(args.joined(separator: " "), privacy: .private)")
         return args
     }
 
@@ -78,7 +78,7 @@ public final class CodexAgentProvider: CLIAgentProvider {
         // Prompt
         args.append(prompt)
 
-        print("[Codex] Resume arguments: \(args.joined(separator: " "))")
+        OpenAgentsLog.orchestration.debug("[Codex] Resume arguments: \(args.joined(separator: " "), privacy: .private)")
         return args
     }
 
@@ -96,7 +96,7 @@ public final class CodexAgentProvider: CLIAgentProvider {
         }
 
         let type = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
-        print("[Codex] Event: \(type)")
+        OpenAgentsLog.orchestration.debug("[Codex] Event: \(type, privacy: .public)")
 
         // Extract thread ID for resume capability
         if type == "thread.started" || type == "session_meta" {
