@@ -10,9 +10,14 @@
 
 ## Overview
 
-Create GitHub PRs from agent work using `gh` CLI: branch management, commit generation from ACP tool calls, PR creation with templated body.
+Create GitHub PRs from agent work using `gh` CLI: branch management, commit generation, PR creation with templated body.
 
-**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/GitHubIntegration/PRAutomationService.swift`
+**Key Change from Audit**: Use `findBinary()` strategy (not hardcoded `/opt/homebrew/bin/gh`). For demo: commit working tree, don't parse tool calls for file changes.
+
+**Location**: `ios/OpenAgensCore/Sources/OpenAgentsCore/GitHubIntegration/PRAutomationService.swift`
+
+**References**:
+- Binary finding strategy: ios/OpenAgentsCore/Sources/OpenAgentsCore/Agents/CLIAgentProvider.swift:246
 
 ---
 

@@ -2,17 +2,23 @@
 
 **Component**: Orchestration Layer - Decision Engine
 **Priority**: P0 (Critical Path)
-**Estimated Effort**: 4-5 days
-**Dependencies**: None (uses existing FMOrchestrator)
+**Estimated Effort**: 2-3 days (using existing components)
+**Dependencies**: None (uses existing ExploreOrchestrator + SessionTools)
 **Assignee**: TBD
 
 ---
 
 ## Overview
 
-Implement `DecisionOrchestrator`, a Foundation Models-powered decision engine that analyzes session history and repository state to decide what tasks to work on next and which agent to assign.
+Implement `DecisionOrchestrator`, a Foundation Models-powered decision engine that analyzes session history to decide what tasks to work on next and which agent to assign.
+
+**Key Change from Audit**: Reuse `ExploreOrchestrator` and `SessionAnalyzeTool` instead of creating new FM wrapper. Defer `repo.status` for demo.
 
 **Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/DecisionOrchestrator.swift`
+
+**References**:
+- `ExploreOrchestrator`: ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/ExploreOrchestrator.swift:1
+- `SessionAnalyzeTool`: ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/SessionTools.swift:145
 
 ---
 
@@ -21,21 +27,20 @@ Implement `DecisionOrchestrator`, a Foundation Models-powered decision engine th
 ### Functional Requirements
 
 1. **Foundation Models Integration**
-   - Use existing `FMOrchestrator` with `SystemLanguageModel.default`
+   - Use existing `ExploreOrchestrator` with its `fmAnalysis()` method
    - Check availability: `SystemLanguageModel.default.availability`
    - Fallback to heuristic decision-making if FM unavailable
    - Stream responses for responsiveness
 
 2. **Session History Analysis**
-   - Use existing `session.analyze` tool (from `SessionHistoryTools`)
+   - Use existing `SessionAnalyzeTool` from `SessionTools`
    - Extract: file frequency, tool usage, user intents, avg duration
    - Support multiple providers (Claude Code, Codex)
    - Cache results (expensive to recompute)
 
-3. **Repository Status**
-   - New tool: `repo.status` (git status, recent commits, branch info)
-   - Optional: `repo.coverage` (parse test coverage reports)
-   - Optional: `repo.complexity` (code metrics)
+3. **Repository Status (Post-Demo)**
+   - Defer `repo.status`, `repo.coverage`, `repo.complexity` for post-demo
+   - For demo: use session insights only
 
 4. **Task Decision Logic**
    - Input: `OrchestrationContext` (session insights + repo status + recent tasks)

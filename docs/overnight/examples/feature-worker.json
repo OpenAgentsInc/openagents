@@ -53,7 +53,7 @@
       "respect_dnd": false,
       "suspend_if_active": true
     },
-    "jitter": 900,
+    "jitter_ms": 900000,
     "on_missed": "skip"
   },
 
