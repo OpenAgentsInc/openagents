@@ -1,0 +1,20 @@
+--swiftversion 5.9
+--indent 4
+--allman false
+--stripunusedargs closure-only
+--wraparguments before-first
+--wrapcollections before-first
+--ifdef no-indent
+--self init-only
+--hexliterals uppercase
+--stripunusedimports enabled
+--patternlet inline
+--ranges no-space
+--commas inline
+--shortoptionals always
+--trimwhitespace nonblank-lines
+--linebreaks lf
+--fragment true
+--maxwidth 180
+--disable redundantReturn, redundantFileprivate
+

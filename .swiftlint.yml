@@ -1,0 +1,33 @@
+included:
+  - ios
+
+excluded:
+  - ios/build
+  - ios/OpenAgentsCore/.build
+  - ios/OpenAgentsTests
+  - ios/OpenAgentsCore/Tests
+  - packages/tricoder
+  - docs
+
+disabled_rules:
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - todo
+
+opt_in_rules: []
+
+custom_rules:
+  ban_print:
+    name: "No print() in sources"
+    regex: "\\bprint\\s*\\("
+    message: "Use OpenAgentsLog or os.Logger instead of print()"
+    severity: error
+    excluded:
+      - ios/OpenAgentsTests
+      - ios/OpenAgentsCore/Tests
+
+reporter: xcode
+
