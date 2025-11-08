@@ -17,9 +17,9 @@ We're building a decentralized compute marketplace where anyone can buy or sell 
 
 ### Phase 1: Prove the Marketplace Works (6-8 weeks)
 
-**What we build**: iOS app for browsing jobs + macOS app running Foundation Models workers. No payments yet—just prove the technical foundation works.
+**What we build**: iOS app for coordination (marketplace viewer, identity, wallet) + macOS worker app (using Foundation Models backend). No payments yet—just prove the technical foundation works.
 
-**Why start here**: Foundation Models are Apple's on-device LLMs (free, fast, private). By starting with them, we avoid the complexity of payment flows and Bitcoin wallets while validating the harder parts: Nostr protocol integration, job schemas, policy enforcement, and multi-platform coordination. If the marketplace UX is broken or Nostr relay performance is poor, we learn that *before* investing 10+ weeks in Lightning integration.
+**Why start here**: Foundation Models are Apple's on-device LLMs (free, fast, private). By starting with the Foundation Models backend, we avoid the complexity of payment flows and Bitcoin wallets while validating the harder parts: Nostr protocol integration, job schemas, policy enforcement, and multi-platform coordination. iOS handles **no compute**—it's coordination only. macOS runs the actual worker. If the marketplace UX is broken or Nostr relay performance is poor, we learn that *before* investing 10+ weeks in Lightning integration.
 
 **What we learn**: Do users want to buy remote compute? Do macOS users want to sell their idle GPU time? Is Nostr fast enough for job routing? Can we enforce safety policies? Phase 1 answers these questions with minimal investment.
 
@@ -39,9 +39,9 @@ We're building a decentralized compute marketplace where anyone can buy or sell 
 
 **What we build**: MLX (Apple Silicon-optimized LLMs), Ollama (user-friendly model management), and llama.cpp (low-level control) backends. Multi-backend routing lets providers offer different models at different price points.
 
-**Why now**: With payments working (Phase 2), providers want to differentiate. Some offer fast Foundation Models (free tier), others offer larger custom models via MLX (premium tier). The model router picks the right backend for each job based on requirements and bidding.
+**Why now**: With payments working (Phase 2), providers want to differentiate. Some offer fast jobs using the Foundation Models backend, others offer larger custom models via MLX or Ollama backends. The model router picks the right backend for each job based on requirements and bidding.
 
-**Why not Phase 1**: Foundation Models alone prove the concept. Adding MLX/Ollama in Phase 1 triples complexity without validating marketplace demand. Phase 3 is about scale and differentiation once the marketplace is proven.
+**Why not Phase 1**: Starting with the Foundation Models backend alone proves the concept. Adding MLX/Ollama in Phase 1 triples complexity without validating marketplace demand. Phase 3 is about scale and differentiation once the marketplace is proven.
 
 ### Phase 4: Advanced Capabilities (6-8 weeks, optional)
 
@@ -58,7 +58,7 @@ This phased approach follows the lean startup principle: **build → measure →
 ## Phase Overview
 
 ### Phase 1: MVP (Foundation) - 8 Issues
-**Goal**: Prove marketplace concept with iOS coordination + macOS Foundation Models worker
+**Goal**: Prove marketplace concept with iOS coordination + macOS worker (Foundation Models backend)
 
 | # | Issue | Priority | Effort | Status |
 |---|-------|----------|--------|--------|
@@ -224,10 +224,10 @@ All issues include an "Apple Compliance Considerations" section addressing:
 - **AUP**: Prohibited job types (regulated health/legal/finance, guardrail circumvention)
 
 Key compliance strategies:
-- iOS does **no worker compute** (only coordination)
-- macOS runs all providers (Foundation Models, MLX, Ollama)
+- iOS does **no worker compute** (only coordination, marketplace viewer, wallet, identity)
+- macOS runs the worker with multiple backends (Foundation Models, MLX, Ollama, llama.cpp)
 - Payments for in-app consumption → web/desktop redirect (avoid IAP issues)
-- Policy module enforces AUP for all marketplace jobs
+- Policy module enforces AUP for all marketplace jobs (especially Foundation Models AUP)
 - Bitcoin wallet allowed (Organization developer only)
 
 ## Publishing to GitHub
