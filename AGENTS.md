@@ -208,6 +208,10 @@ Key test suites:
 - Run a full build before pushing to shared branches
 - For large changes, test on a clean clone to catch missing files
 
+### Pre‑release Policy
+
+- avoid feature gates/flags and any backwards compability changes - since our app is still unreleased
+
 ### iOS/macOS Testing
 
 - **Always test on both platforms** if you touch shared code (`OpenAgentsCore`)
