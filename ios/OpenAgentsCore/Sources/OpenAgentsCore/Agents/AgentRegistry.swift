@@ -23,14 +23,14 @@ public actor AgentRegistry {
     /// - Parameter provider: The provider to register
     public func register(_ provider: AgentProvider) {
         providers[provider.id] = provider
-        print("[AgentRegistry] Registered provider: \(provider.displayName) (mode=\(provider.id.rawValue))")
+        OpenAgentsLog.orchestration.info("AgentRegistry Registered provider: \(provider.displayName) (mode=\(provider.id.rawValue))")
     }
 
     /// Unregister an agent provider
     /// - Parameter modeId: The mode ID to unregister
     public func unregister(_ modeId: ACPSessionModeId) {
         if let provider = providers.removeValue(forKey: modeId) {
-            print("[AgentRegistry] Unregistered provider: \(provider.displayName)")
+            OpenAgentsLog.orchestration.info("AgentRegistry Unregistered provider: \(provider.displayName)")
         }
     }
 
