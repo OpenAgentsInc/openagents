@@ -218,10 +218,10 @@ struct NewChatView: View {
         }
         .confirmationDialog("Options", isPresented: $showMoreMenu, titleVisibility: .hidden) {
             Button("Delete", role: .destructive) {
-                print("[NewChat] Delete tapped")
+                OpenAgentsLog.ui.debug("NewChat Delete tapped")
             }
             Button("Share") {
-                print("[NewChat] Share tapped")
+                OpenAgentsLog.ui.debug("NewChat Share tapped")
             }
             Button("Cancel", role: .cancel) {}
         }

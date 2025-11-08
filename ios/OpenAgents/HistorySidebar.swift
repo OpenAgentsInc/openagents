@@ -290,7 +290,7 @@ struct HistorySidebar: View {
                     msgs.sort { $0.ts < $1.ts }
                     title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: Features.foundationModelsEnabled)
                 }
-                if !title.isEmpty { print("[Titles] \(row.source)::\(row.id) strategy=\(strategy) title=\(title)") }
+                if !title.isEmpty { OpenAgentsLog.ui.info("Titles \(row.source)::\(row.id) strategy=\(strategy) title=\(title, privacy: .public)") }
                 guard !title.isEmpty else { return }
                 let finalTitle = title
                 await MainActor.run { self.titles[rowKey] = finalTitle }

@@ -77,7 +77,7 @@ struct ThreadHeaderView: View {
                 let mtime = fileMTime(url)
                 if !newTitle.isEmpty {
                     let finalTitle = newTitle
-                    print("[TitleHeader] regenerated \(row.id) title=\(finalTitle)")
+                    OpenAgentsLog.ui.info("TitleHeader regenerated \(row.id) title=\(finalTitle, privacy: .public)")
                     await TitleCache.shared.set(path: url.path, mtime: mtime, title: finalTitle)
                     await MainActor.run { self.title = finalTitle }
                 }

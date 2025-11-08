@@ -260,7 +260,7 @@ enum LocalCodexDiscovery {
             let updated = LocalCodexScanner.fileMTime(url)
             return LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
         }
-        print("[History] Codex bases=\(bases.map{ $0.path }) items=\(rows.count)")
+        OpenAgentsLog.app.info("History Codex bases=\(bases.count) items=\(rows.count)")
         return rows
     }
 }

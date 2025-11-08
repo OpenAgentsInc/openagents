@@ -19,7 +19,7 @@ struct ContentView: View {
             #if os(iOS)
             // Log appearance to help correlate with bridge timing
             Text("")
-                .onAppear { print("[Bridge][ui] ContentView appear on iOS") }
+                .onAppear { OpenAgentsLog.ui.info("ContentView appear on iOS") }
             #endif
             #if os(iOS)
             // Mobile: hide the sidebar for now; show only the latest thread

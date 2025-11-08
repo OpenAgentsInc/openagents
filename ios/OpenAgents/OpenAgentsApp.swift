@@ -33,7 +33,7 @@ struct OpenAgentsApp: App {
 
     init() {
         let ts = ISO8601DateFormatter().string(from: Date())
-        print("[Bridge][app] OpenAgentsApp init at \(ts)")
+        OpenAgentsLog.app.info("OpenAgentsApp init at \(ts)")
     }
 
     var body: some Scene {
@@ -58,7 +58,7 @@ struct OpenAgentsApp: App {
             .tint(OATheme.Colors.accent)
             .task {
                 let ts = ISO8601DateFormatter().string(from: Date())
-                print("[Bridge][app] OpenAgentsApp appear; starting bridge at \(ts)")
+                OpenAgentsLog.app.info("OpenAgentsApp appear; starting bridge at \(ts)")
                 bridge.start()
                 #if os(macOS)
                 tinyvex.start()
