@@ -78,9 +78,50 @@ Switching package location
 - Xcode not picking changes: run resolve step or clean build folder; ensure the scheme targets macOS when building locally
 - iOS build errors referencing Nostr: confirm the conditional dependency remains `platforms: [.macOS]` only
 
+## Data Vending Machine (DVM) Kinds
+
+OpenAgents supports both **official DVM kinds** (standardized across the Nostr ecosystem) and **custom OpenAgents kinds** (agent/coding-specific workflows).
+
+### Official DVM Kinds Reference
+
+Complete specifications for all official DVM kinds are available in:
+
+- **`dvm-kinds/`** - Individual kind specifications (5000, 5001, 5002, etc.)
+- **`dvm-ranges/`** - Kind range allocations (50xx, 51xx, 52xx, etc.)
+- **Source**: Copied from https://github.com/nostr-protocol/data-vending-machines
+- **Website**: https://www.data-vending-machines.org/
+
+### Kind Ranges
+
+- **50xx**: Text processing (extraction, summarization, translation, generation)
+- **51xx**: Image manipulation (generation)
+- **52xx**: Video/audio (conversion, translation, text-to-speech)
+- **53xx**: Discovery (content, people)
+- **54xx**: Analytics (event counting)
+- **55xx**: Software analysis (malware scanning)
+- **59xx**: Other/miscellaneous (timestamping, OP_RETURN, scheduling, PoW)
+- **65xx**: **OpenAgents custom kinds** (code generation, review, Q&A, etc.)
+
+### OpenAgents Custom Kinds
+
+For agent-specific tasks not covered by official DVM kinds, OpenAgents defines custom kinds in the **6500-6599** range:
+
+- **6500**: Code Generation
+- **6501**: Code Review
+- **6502**: Code Refactoring
+- **6503**: Q&A / RAG
+- **6504**: Codebase Search (future SearchKit integration)
+- **6505**: Agent Execution
+- **6506**: Code Explanation
+- **6507**: Test Generation
+
+See `docs/compute/issues/phase-1-mvp/004-job-schema-registry.md` for complete specifications.
+
 ## References
 
 - Issue: Nostr Client Library (Swift) — `docs/compute/issues/phase-1-mvp/001-nostr-client-library.md`
+- Issue: Job Schema Registry — `docs/compute/issues/phase-1-mvp/004-job-schema-registry.md`
 - Apple terms and constraints — `docs/compute/apple-terms-research.md`
 - ADR overview — `docs/adr/README.md`
+- Data Vending Machines — https://www.data-vending-machines.org/
 

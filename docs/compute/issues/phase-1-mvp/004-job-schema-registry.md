@@ -28,25 +28,55 @@ A centralized (but open) job schema registry solves this by:
 ## Acceptance Criteria
 
 ### Job Kind Definitions
-- [ ] Define 10-15 common job kinds for MVP:
-  - `kind:5100` - Text Summarization
-  - `kind:5101` - Text Translation
-  - `kind:5102` - Code Generation
-  - `kind:5103` - Code Review
-  - `kind:5104` - Q&A / RAG
-  - `kind:5105` - Image Analysis
-  - `kind:5106` - Sentiment Analysis
-  - `kind:5107` - Content Moderation
-  - `kind:5108` - Data Extraction
-  - `kind:5109` - Text Embedding Generation
-  - `kind:5110` - Tool Calling / Agent Execution
-  - `kind:5200` - Search (Codebase Hybrid Search - future SearchKit)
+
+#### Official DVM Kinds (NIP-90 Standard)
+
+OpenAgents will support the following **official DVM kinds** (see `docs/nostr/dvm-kinds/` for full specifications):
+
+**Text Processing (50xx range):**
+- [ ] `kind:5000` - Text Extraction (extract text from media/documents)
+- [ ] `kind:5001` - Text Summarization (summarize text inputs)
+- [ ] `kind:5002` - Text Translation (translate to target language)
+- [ ] `kind:5050` - Text Generation (AI text generation with prompts)
+
+**Media Generation (51xx range):**
+- [ ] `kind:5100` - Image Generation (AI image generation from prompts)
+
+**Video/Audio (52xx range):**
+- [ ] `kind:5200` - Video Conversion
+- [ ] `kind:5201` - Video Translation
+- [ ] `kind:5250` - Text-to-Speech
+
+**Discovery (53xx range):**
+- [ ] `kind:5300` - Nostr Content Discovery
+- [ ] `kind:5301` - Nostr People Discovery
+
+#### OpenAgents Custom Kinds (65xx range)
+
+For agent-specific tasks not covered by official DVM kinds, we define **custom OpenAgents kinds** in the `65xx` range to avoid conflicts:
+
+- [ ] `kind:6500` - Code Generation (generate code from natural language)
+- [ ] `kind:6501` - Code Review (analyze and review code)
+- [ ] `kind:6502` - Code Refactoring (refactor code with improvements)
+- [ ] `kind:6503` - Q&A / RAG (question answering with retrieval augmentation)
+- [ ] `kind:6504` - Codebase Search (hybrid search - future SearchKit integration)
+- [ ] `kind:6505` - Agent Execution (autonomous agent task execution)
+- [ ] `kind:6506` - Code Explanation (explain code functionality)
+- [ ] `kind:6507` - Test Generation (generate unit/integration tests)
+
+**Rationale for custom range:**
+- Official DVM kinds (5000-5999) are reserved for standardized, cross-platform tasks
+- OpenAgents custom kinds (6500-6599) are for agent/coding-specific workflows
+- Using 65xx avoids conflicts with official result kinds (6000-6999 per NIP-90)
+- See `docs/nostr/dvm-ranges/` for official kind allocations
+
 - [ ] Each kind has:
   - Human-readable name and description
   - Input schema (param tags)
   - Output schema (result format)
   - Example request/result
   - Version number
+  - Reference to official spec (if applicable)
 
 ### Parameter Schema Format
 - [ ] Use JSON Schema for validation
@@ -88,32 +118,21 @@ A centralized (but open) job schema registry solves this by:
 
 {
   "version": "0.1.0",
-  "updated": "2025-11-07T00:00:00Z",
+  "updated": "2025-11-08T00:00:00Z",
+  "official_dvm_spec": "docs/nostr/dvm-kinds/",
   "kinds": {
-    "5100": {
+    "5001": {
       "name": "text-summarization",
       "displayName": "Text Summarization",
-      "description": "Summarize text content to a specified length",
+      "description": "Summarize text content to a specified length (Official DVM kind)",
+      "official_spec": "docs/nostr/dvm-kinds/5001.md",
       "input": {
-        "types": ["text", "url"],
+        "types": ["text", "event", "job"],
         "params": {
-          "max_length": {
-            "type": "integer",
-            "description": "Maximum summary length in words",
-            "default": 100,
-            "min": 10,
-            "max": 1000
-          },
-          "style": {
+          "length": {
             "type": "string",
-            "description": "Summary style",
-            "enum": ["concise", "detailed", "bullet"],
-            "default": "concise"
-          },
-          "language": {
-            "type": "string",
-            "description": "Output language (ISO 639-1)",
-            "default": "en"
+            "description": "Desired length in words or paragraphs (e.g., '10 paragraphs', '100 words')",
+            "default": "100 words"
           }
         },
         "required": []
@@ -138,31 +157,30 @@ A centralized (but open) job schema registry solves this by:
       "examples": [
         {
           "request": {
-            "kind": 5100,
+            "kind": 5001,
+            "content": "",
             "tags": [
-              ["i", "This is a long article about AI...", "text"],
-              ["param", "max_length", "50"],
-              ["param", "style", "concise"],
-              ["output", "text/plain"],
-              ["bid", "1000"]
+              ["i", "<event_id>", "event"],
+              ["param", "length", "10 paragraphs"]
             ]
           },
           "result": {
-            "kind": 6100,
+            "kind": 6001,
+            "content": "Summary of the content in 10 paragraphs...",
             "tags": [
               ["request", "<event_id>"],
-              ["amount", "1000"]
-            ],
-            "content": "{\"summary\": \"AI article discusses...\", \"original_length\": 1500, \"summary_length\": 45, \"compression_ratio\": 33.3}"
+              ["e", "<request_event_id>", "wss://relay.example.com"]
+            ]
           }
         }
       ],
       "version": "0.1.0"
     },
-    "5102": {
+    "6500": {
       "name": "code-generation",
-      "displayName": "Code Generation",
-      "description": "Generate code from natural language description",
+      "displayName": "Code Generation (OpenAgents)",
+      "description": "Generate code from natural language description (OpenAgents custom kind)",
+      "custom_kind": true,
       "input": {
         "types": ["text"],
         "params": {
@@ -202,10 +220,35 @@ A centralized (but open) job schema registry solves this by:
           "required": ["code", "language"]
         }
       },
+      "examples": [
+        {
+          "request": {
+            "kind": 6500,
+            "content": "",
+            "tags": [
+              ["i", "Write a function to check if a number is prime", "text"],
+              ["param", "language", "swift"],
+              ["param", "include_tests", "true"]
+            ]
+          },
+          "result": {
+            "kind": 7500,
+            "content": "{\"code\": \"func isPrime(_ n: Int) -> Bool { ... }\", \"language\": \"swift\", \"tests\": \"func testIsPrime() { ... }\"}",
+            "tags": [
+              ["request", "<event_id>"],
+              ["e", "<request_event_id>", "wss://relay.example.com"]
+            ]
+          }
+        }
+      ],
       "version": "0.1.0"
     }
   }
 }
+
+// Note: Result kinds follow NIP-90 convention:
+// - Official DVM results: request_kind + 1000 (e.g., 5001 -> 6001)
+// - OpenAgents custom results: request_kind + 1000 (e.g., 6500 -> 7500)
 ```
 
 ### Swift Types
@@ -222,40 +265,148 @@ JobBuilder.swift             // Job creation helpers
 ```swift
 // JobKind.swift
 
-/// Standard job kinds (NIP-90 extension)
+/// Job kinds combining official DVM kinds and OpenAgents custom kinds
+///
+/// Official DVM kinds (5000-5999) follow the standard from docs/nostr/dvm-kinds/
+/// Custom OpenAgents kinds (6500-6599) are for agent/coding-specific workflows
 public enum JobKind: Int, Codable, CaseIterable {
-    case textSummarization = 5100
-    case textTranslation = 5101
-    case codeGeneration = 5102
-    case codeReview = 5103
-    case qaRag = 5104
-    case imageAnalysis = 5105
-    case sentimentAnalysis = 5106
-    case contentModeration = 5107
-    case dataExtraction = 5108
-    case textEmbedding = 5109
-    case agentExecution = 5110
-    case codebaseSearch = 5200
+    // MARK: - Official DVM Kinds (Text Processing - 50xx)
 
-    /// Result kind (add 1000 to request kind)
+    /// Text Extraction - Extract text from media/documents (Official DVM)
+    case textExtraction = 5000
+
+    /// Text Summarization - Summarize text inputs (Official DVM)
+    case textSummarization = 5001
+
+    /// Text Translation - Translate to target language (Official DVM)
+    case textTranslation = 5002
+
+    /// Text Generation - AI text generation with prompts (Official DVM)
+    case textGeneration = 5050
+
+    // MARK: - Official DVM Kinds (Media Generation - 51xx)
+
+    /// Image Generation - AI image generation from prompts (Official DVM)
+    case imageGeneration = 5100
+
+    // MARK: - Official DVM Kinds (Video/Audio - 52xx)
+
+    /// Video Conversion (Official DVM)
+    case videoConversion = 5200
+
+    /// Video Translation (Official DVM)
+    case videoTranslation = 5201
+
+    /// Text-to-Speech (Official DVM)
+    case textToSpeech = 5250
+
+    // MARK: - Official DVM Kinds (Discovery - 53xx)
+
+    /// Nostr Content Discovery (Official DVM)
+    case nostrContentDiscovery = 5300
+
+    /// Nostr People Discovery (Official DVM)
+    case nostrPeopleDiscovery = 5301
+
+    // MARK: - OpenAgents Custom Kinds (65xx)
+
+    /// Code Generation - Generate code from natural language (OpenAgents custom)
+    case codeGeneration = 6500
+
+    /// Code Review - Analyze and review code (OpenAgents custom)
+    case codeReview = 6501
+
+    /// Code Refactoring - Refactor code with improvements (OpenAgents custom)
+    case codeRefactoring = 6502
+
+    /// Q&A / RAG - Question answering with retrieval augmentation (OpenAgents custom)
+    case qaRag = 6503
+
+    /// Codebase Search - Hybrid search (OpenAgents custom, future SearchKit)
+    case codebaseSearch = 6504
+
+    /// Agent Execution - Autonomous agent task execution (OpenAgents custom)
+    case agentExecution = 6505
+
+    /// Code Explanation - Explain code functionality (OpenAgents custom)
+    case codeExplanation = 6506
+
+    /// Test Generation - Generate unit/integration tests (OpenAgents custom)
+    case testGeneration = 6507
+
+    // MARK: - Computed Properties
+
+    /// Result kind (add 1000 to request kind per NIP-90)
     public var resultKind: Int {
         rawValue + 1000
     }
 
+    /// Whether this is an official DVM kind
+    public var isOfficialDVMKind: Bool {
+        rawValue >= 5000 && rawValue < 6000
+    }
+
+    /// Whether this is a custom OpenAgents kind
+    public var isCustomKind: Bool {
+        rawValue >= 6500 && rawValue < 6600
+    }
+
+    /// Machine-readable name
     public var name: String {
         switch self {
+        // Official DVM kinds
+        case .textExtraction: return "text-extraction"
         case .textSummarization: return "text-summarization"
+        case .textTranslation: return "text-translation"
+        case .textGeneration: return "text-generation"
+        case .imageGeneration: return "image-generation"
+        case .videoConversion: return "video-conversion"
+        case .videoTranslation: return "video-translation"
+        case .textToSpeech: return "text-to-speech"
+        case .nostrContentDiscovery: return "nostr-content-discovery"
+        case .nostrPeopleDiscovery: return "nostr-people-discovery"
+        // OpenAgents custom kinds
         case .codeGeneration: return "code-generation"
-        // ...
+        case .codeReview: return "code-review"
+        case .codeRefactoring: return "code-refactoring"
+        case .qaRag: return "qa-rag"
+        case .codebaseSearch: return "codebase-search"
+        case .agentExecution: return "agent-execution"
+        case .codeExplanation: return "code-explanation"
+        case .testGeneration: return "test-generation"
         }
     }
 
+    /// Human-readable display name
     public var displayName: String {
         switch self {
+        // Official DVM kinds
+        case .textExtraction: return "Text Extraction"
         case .textSummarization: return "Text Summarization"
+        case .textTranslation: return "Text Translation"
+        case .textGeneration: return "Text Generation"
+        case .imageGeneration: return "Image Generation"
+        case .videoConversion: return "Video Conversion"
+        case .videoTranslation: return "Video Translation"
+        case .textToSpeech: return "Text-to-Speech"
+        case .nostrContentDiscovery: return "Nostr Content Discovery"
+        case .nostrPeopleDiscovery: return "Nostr People Discovery"
+        // OpenAgents custom kinds
         case .codeGeneration: return "Code Generation"
-        // ...
+        case .codeReview: return "Code Review"
+        case .codeRefactoring: return "Code Refactoring"
+        case .qaRag: return "Q&A / RAG"
+        case .codebaseSearch: return "Codebase Search"
+        case .agentExecution: return "Agent Execution"
+        case .codeExplanation: return "Code Explanation"
+        case .testGeneration: return "Test Generation"
         }
+    }
+
+    /// Reference to official spec (if applicable)
+    public var officialSpec: String? {
+        guard isOfficialDVMKind else { return nil }
+        return "docs/nostr/dvm-kinds/\(rawValue).md"
     }
 }
 ```
@@ -677,15 +828,22 @@ Add AUP compliance metadata to each job schema:
 
 ## Reference Links
 
-### Specifications
+### Official DVM Specifications (Local)
+- **DVM Kinds Directory**: `docs/nostr/dvm-kinds/` - All official DVM kind specifications
+- **DVM Ranges Directory**: `docs/nostr/dvm-ranges/` - Kind range allocations
+- **Copied from**: https://github.com/nostr-protocol/data-vending-machines
+
+### Specifications (Remote)
 - **NIP-90 (Data Vending Machine)**: https://github.com/nostr-protocol/nips/blob/master/90.md
 - **NIP-89 (Recommended Application Handlers)**: https://github.com/nostr-protocol/nips/blob/master/89.md
 - **JSON Schema**: https://json-schema.org/
+- **Data Vending Machines Website**: https://www.data-vending-machines.org/
 
 ### OpenAgents
 - **Issue #001**: Nostr Client Library
 - **Issue #009**: Policy & Safety Module (AUP enforcement)
 - **Apple Terms Research**: docs/compute/apple-terms-research.md
+- **Nostr Integration**: docs/nostr/README.md
 
 ## Success Metrics
 
@@ -699,14 +857,45 @@ Add AUP compliance metadata to each job schema:
 
 ## Notes
 
+### Kind Range Allocation
+
+Per NIP-90 and official DVM specifications:
+
+- **Request kinds**: 5000-5999
+  - **5000-5099**: Text processing (official DVM)
+  - **5100-5199**: Image manipulation (official DVM)
+  - **5200-5299**: Video/audio manipulation (official DVM)
+  - **5300-5399**: Discovery (official DVM)
+  - **5400-5499**: Analytics (official DVM)
+  - **5500-5599**: Software analysis (official DVM)
+  - **5900-5999**: Other/miscellaneous (official DVM)
+  - **6500-6599**: OpenAgents custom kinds (agent/coding workflows)
+- **Result kinds**: 6000-6999 (request_kind + 1000)
+  - **6000-6099**: Text processing results
+  - **6100-6199**: Image manipulation results
+  - **6200-6299**: Video/audio results
+  - **6300-6399**: Discovery results
+  - **6400-6499**: Analytics results
+  - **6500-6599**: Software analysis results
+  - **6900-6999**: Other results
+  - **7500-7599**: OpenAgents custom results (custom_kind + 1000)
+
+**Why 65xx for OpenAgents custom kinds?**
+- Avoids collision with official DVM kinds (5000-5999)
+- Avoids collision with official result kinds (6000-6999)
+- 6500-6599 range is currently unused in official spec
+- Reserves 7500-7599 for our custom result kinds
+
+### Registry Management
+
 - **Open Registry**: Publish registry on GitHub for community contributions
 - **Versioning**: Follow semver (major.minor.patch)
   - Major: Breaking schema changes
   - Minor: New job kinds or backward-compatible changes
   - Patch: Bug fixes, clarifications
-- **Community Input**: Accept PRs for new job schemas
-- **Namespace**: Use `kind:5000-5999` for requests, `kind:6000-6999` for results (per NIP-90)
-- **Reserved Kinds**: Document which kinds are reserved for future use
+- **Community Input**: Accept PRs for new job schemas (custom kinds only)
+- **Official DVM Sync**: Periodically sync `docs/nostr/dvm-kinds/` with upstream
+- **Documentation**: All custom kinds must have full specs like official kinds
 
 ## Future Enhancements (Post-MVP)
 
