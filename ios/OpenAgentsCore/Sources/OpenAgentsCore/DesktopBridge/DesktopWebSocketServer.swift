@@ -86,6 +86,11 @@ public class DesktopWebSocketServer {
     // Agent registry for provider management
     let agentRegistry = AgentRegistry()
 
+    // Ext capabilities negotiated/advertised during initialize
+    private(set) var advertisedExtCapabilities: ACP.Agent.ExtCapabilities = .init(orchestrate_explore: false)
+    /// Test/feature-flag override for orchestrate.explore.* support
+    public var overrideExtOrchestrateExplore: Bool? = nil
+
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
     public var enableAutoTailing = false
@@ -279,6 +284,14 @@ public class DesktopWebSocketServer {
     private func registerOrchestrationHandler() {
         router.register(method: ACPRPC.orchestrateExploreStart) { [weak self] id, params, rawDict in
             guard let self = self, let client = self.currentClient else { return }
+            // Gate on negotiated extension capability
+            if self.advertisedExtCapabilities.orchestrate_explore == false {
+                OpenAgentsLog.server.warning("orchestrate.explore.* called but not advertised; gating with error")
+                JsonRpcRouter.sendError(id: id, code: -32601, message: "orchestrate.explore not supported") { text in
+                    client.send(text: text)
+                }
+                return
+            }
             await self.handleOrchestrationStart(id: id, params: params, rawDict: rawDict, client: client)
         }
     }
@@ -882,7 +895,21 @@ public class DesktopWebSocketServer {
                     OpenAgentsLog.server.debug("workingDirectory is nil, not including in _meta")
                     return nil
                 }()
-                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: meta)
+                // Compute and advertise extension capabilities
+                let extCaps: ACP.Agent.ExtCapabilities = {
+                    if let override = self.overrideExtOrchestrateExplore { return .init(orchestrate_explore: override) }
+                    if #available(macOS 26.0, *) { return .init(orchestrate_explore: true) }
+                    return .init(orchestrate_explore: false)
+                }()
+                self.advertisedExtCapabilities = extCaps
+                let agentCaps = ACP.Agent.AgentCapabilities(
+                    load_session: false,
+                    prompt_capabilities: .init(),
+                    mcp_capabilities: .init(),
+                    ext_capabilities: extCaps,
+                    _meta: nil
+                )
+                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: agentCaps, auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: meta)
                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
                     OpenAgentsLog.server.debug("send rpc result method=initialize id=\(inIdStr) text=\(jtext, privacy: .public)")
                     client.send(text: jtext)

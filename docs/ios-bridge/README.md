@@ -79,6 +79,10 @@ All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
 - `fs/read_text_file`, `fs/write_text_file` - File system (client-handled)
 - `terminal/run` - Terminal execution (client-handled)
 
+### Extension Capabilities
+
+Some non-core (dotted) methods are gated behind extension capabilities negotiated during `initialize`. See `ext-capabilities.md` for details and the `orchestrate.explore.*` examples.
+
 ### Example: Start Session
 
 **Request:**
