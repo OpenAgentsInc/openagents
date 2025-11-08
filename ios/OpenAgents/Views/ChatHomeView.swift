@@ -174,12 +174,12 @@ struct ChatHomeView: View {
             ]
 
             // Start orchestration
-            print("[ChatHome] Starting workspace exploration: \(workspacePath)")
+            OpenAgentsLog.ui.info("ChatHome Starting workspace exploration: \(workspacePath, privacy: .private)")
             bridge.orchestrateExploreStart(root: workspacePath, goals: goals) { response in
                 if let response = response {
-                    print("[ChatHome] Orchestration started: \(response.plan_id)")
+                    OpenAgentsLog.ui.info("ChatHome Orchestration started: \(response.plan_id)")
                 } else {
-                    print("[ChatHome] Orchestration failed to start")
+                    OpenAgentsLog.ui.error("ChatHome Orchestration failed to start")
                 }
             }
         }

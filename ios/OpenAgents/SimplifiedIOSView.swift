@@ -511,7 +511,7 @@ struct DrawerMenuView: View {
 
     private func loadSessionsIfConnected() {
         guard case .connected = bridge.status else {
-            print("[DrawerMenu] Skipping session load - bridge not connected yet")
+            OpenAgentsLog.ui.warning("DrawerMenu Skipping session load - bridge not connected yet")
             return
         }
         guard !isLoading else { return }
