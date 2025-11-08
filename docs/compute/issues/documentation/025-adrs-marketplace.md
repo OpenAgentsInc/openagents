@@ -13,7 +13,7 @@ Create Architecture Decision Records (ADRs) documenting all marketplace architec
 
 The marketplace introduces significant architectural decisions that must be documented:
 - Nostr as marketplace protocol (vs custom P2P, blockchain, centralized)
-- Lightning for payments (vs on-chain, credit cards, traditional rails)
+- **Breez Spark SDK** for Bitcoin/Lightning payments (vs manual Lightning implementation, on-chain, traditional rails)
 - iOS coordination-only (vs on-device compute worker)
 - Multi-backend model routing (Foundation Models + MLX + Ollama)
 - Policy enforcement approach (classifier vs rules)
@@ -54,27 +54,55 @@ ADRs provide:
 
 ---
 
-### ADR-0008: Lightning for Marketplace Payments
-**Decision**: Use Lightning Network (BOLT11 invoices + NIP-57 zaps) for payments
+### ADR-0008: Breez Spark SDK for Marketplace Payments
+**Decision**: Use **Breez Spark SDK** (Layer 2 Bitcoin protocol) instead of manually implementing Lightning Network
 
-**Alternatives**:
-1. On-chain Bitcoin
-   - ❌ High fees, slow confirmations
+**Context**:
+- Need fast, low-fee Bitcoin payments for compute micropayments
+- **Spark is NOT Lightning** - it's a Layer 2 Bitcoin protocol using **statechain technology**
+- Uses threshold signatures (FROST): users hold one key, Spark Operators hold another
+- Self-custodial: users control Bitcoin, can exit to L1 anytime via pre-signed timelocked transactions
+- Provides BOLT11 compatibility (can send/receive Lightning invoices)
+- **User directive**: "We're not going to be manually implementing Bolt 11... We're going to basically use Spark via Breez for all of our Bitcoin and Lightning stuff"
+
+**Alternatives Considered**:
+1. **Manual Lightning implementation** (BOLT11 parser/generator, LND/Core Lightning integration)
+   - ❌ **Rejected by user**: "We're not going to be manually implementing Bolt 11"
+   - ❌ High complexity: 10-13 weeks effort for wallet + Lightning integration
+   - ❌ Channel management burden (liquidity, routing, watchtowers)
+   - ❌ Ongoing maintenance (Lightning protocol changes)
+
+2. On-chain Bitcoin only
+   - ❌ High fees ($5-50 per transaction)
+   - ❌ Slow confirmations (10-60 minutes)
    - ❌ Impractical for micropayments (<$1)
-2. Stablecoins (USDC on Ethereum/Solana)
-   - ❌ Centralization risk (Circle, Tether)
+
+3. Stablecoins (USDC on Ethereum/Solana)
+   - ❌ Centralization risk (Circle, Tether control)
    - ❌ Regulatory uncertainty
-3. Traditional payments (credit cards, ACH)
-   - ❌ High fees (2-3% + fixed)
-   - ❌ Chargeback risk, KYC/AML burden
+   - ❌ Not truly self-custodial
+
+4. Traditional payments (credit cards, Stripe, PayPal)
+   - ❌ High fees (2-3% + $0.30 fixed)
+   - ❌ Chargeback risk
+   - ❌ KYC/AML burden
+   - ❌ Geographic restrictions
 
 **Consequences**:
-- ✅ Instant settlement (<1 second)
-- ✅ Low fees (sub-penny for small payments)
-- ✅ Permissionless (no KYC required)
-- ✅ Native integration with Nostr (NIP-57 zaps)
-- ⚠️  Liquidity management (channels, LSPs)
-- ⚠️  UX complexity (invoice generation, routing)
+- ✅ **Production-ready**: Breez maintains SDK, node infrastructure, LSP (no DIY)
+- ✅ **Nodeless**: No Lightning channel management (Spark handles liquidity automatically)
+- ✅ **Better UX**: Offline receive, instant sends, automatic backups
+- ✅ **Effort reduction**: ~35-40% reduction in Phase 2 effort (5.5-9.5w vs 10-13w manual)
+- ✅ **Code sharing**: SparkWalletManager shared between iOS and macOS
+- ✅ **Self-custodial**: Users control private keys (BIP39 mnemonic)
+- ✅ **BOLT11 compatible**: Can transact with any Lightning wallet
+- ✅ **Instant settlement**: Payments confirm in <1 second
+- ✅ **Low fees**: Sub-penny for small payments
+- ✅ **Permissionless**: No KYC required
+- ✅ **Native Nostr integration**: Works with NIP-57 zaps
+- ⚠️  **Breez API key required**: Free tier available, paid tier for production
+- ⚠️  **Spark Operator dependency**: Relies on Breez's statechain operators (but pre-signed exits ensure safety)
+- ⚠️  **SDK updates**: Must track Breez SDK releases for bug fixes/features
 
 ---
 
@@ -161,6 +189,8 @@ For each ADR:
 - **ADR-0001**: Adopt ADRs (process)
 - **AGENTS.md**: ADR writing guidelines for AI agents
 - **apple-terms-research.md**: Compliance research
+- **SPARK-SDK-INTEGRATION.md**: Breez Spark SDK integration plan and rationale
+- **Issues #010, #012, #013, #015, #016**: Spark SDK wallet implementation
 
 ## Success Metrics
 
@@ -174,3 +204,7 @@ For each ADR:
 - **ADR Template**: `docs/adr/template.md`
 - **ADR Guidelines**: `docs/adr/AGENTS.md`
 - **Existing ADRs**: `docs/adr/0001-*.md` through `0006-*.md`
+- **Spark SDK Integration**: `docs/compute/issues/SPARK-SDK-INTEGRATION.md` (full integration plan)
+- **Breez Spark SDK Docs**: https://sdk-doc-spark.breez.technology/
+- **Spark SDK Swift Bindings**: https://github.com/breez/breez-sdk-spark-swift
+- **Related Issues**: #010 (iOS Wallet), #012 (API Key Config), #013 (macOS Wallet), #015 (Payment Coordinator), #016 (Seed Backup)
