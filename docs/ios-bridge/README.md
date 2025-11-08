@@ -217,6 +217,13 @@ extension MyController: MobileWebSocketClientDelegate {
 }
 ```
 
+### Defaults and Persistence
+
+- The app remembers the last successful connection (host + port) and uses it for future sessions.
+- On the Simulator, the initial fallback is `127.0.0.1:9099` for an out‑of‑box developer experience.
+- There is no hard‑coded developer LAN IP in the repo; the neutral fallback host is `127.0.0.1`.
+- On devices, if no previous connection exists, use Manual Connect from the bridge status chip to enter your Mac’s LAN IP once; it will persist until you change it.
+
 ## Discovery
 
 Bonjour/mDNS discovery is available behind a feature flag. Until the iOS multicast entitlement is approved, discovery is disabled by default and the app uses Manual Connect.

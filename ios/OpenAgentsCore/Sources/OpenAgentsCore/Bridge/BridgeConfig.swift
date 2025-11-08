@@ -3,7 +3,8 @@ import Foundation
 public enum BridgeConfig {
     public static let serviceType = "_openagents._tcp"
     public static let defaultPort: UInt16 = 9099
-    // Default host for iOS devices to connect to this Mac.
-    // Auto-filled in Manual Connect UI and used as first pick on device.
-    public static let defaultHost: String = "192.168.1.11"
+    // Default host used only as a neutral fallback when no prior
+    // connection is known. Simulator uses loopback automatically.
+    // We deliberately avoid hard‑coding a developer‑specific LAN IP.
+    public static let defaultHost: String = "127.0.0.1"
 }

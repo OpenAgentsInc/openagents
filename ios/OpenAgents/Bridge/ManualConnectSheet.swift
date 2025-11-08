@@ -37,5 +37,13 @@ struct ManualConnectSheet: View {
         }
         .padding(16)
         .background(OATheme.Colors.sidebarBackground)
+        .onAppear {
+            // Pre-fill with last successful endpoint if available
+            let d = UserDefaults.standard
+            if let h = d.string(forKey: "oa.bridge.last_host") {
+                let p = d.integer(forKey: "oa.bridge.last_port")
+                if p > 0 { self.host = h; self.port = String(p) }
+            }
+        }
     }
 }
