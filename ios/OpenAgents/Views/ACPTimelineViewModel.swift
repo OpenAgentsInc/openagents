@@ -2,8 +2,6 @@ import Foundation
 import Combine
 import OpenAgentsCore
 
-#if os(iOS)
-
 @MainActor
 final class ACPTimelineViewModel: ObservableObject {
     enum Item: Identifiable, Equatable {
@@ -27,9 +25,13 @@ final class ACPTimelineViewModel: ObservableObject {
 
     @Published private(set) var items: [Item] = []
 
+    /// Optional callback when title changes (extracted from first user message)
+    var onTitleChange: ((String) -> Void)?
+
     private var cancellables: Set<AnyCancellable> = []
     private weak var bridge: BridgeManager?
     private var isAttached = false
+    private var lastTitle: String = ""
 
     func attach(bridge: BridgeManager) {
         guard !isAttached else { return }
@@ -127,7 +129,28 @@ final class ACPTimelineViewModel: ObservableObject {
         // Keep bounded (200 like bridge ring buffer)
         if out.count > 200 { out = Array(out.suffix(200)) }
         self.items = out
+
+        // Extract title from first user message
+        extractAndNotifyTitle(from: out)
+    }
+
+    private func extractAndNotifyTitle(from items: [Item]) {
+        // Find first user message
+        for item in items {
+            if case let .message(role, text, _) = item, role == .user {
+                let title = text.prefix(50).trimmingCharacters(in: .whitespacesAndNewlines)
+                if title != lastTitle {
+                    lastTitle = title
+                    onTitleChange?(String(title))
+                }
+                return
+            }
+        }
+
+        // No user message yet - use default
+        if lastTitle != "New Chat" {
+            lastTitle = "New Chat"
+            onTitleChange?("New Chat")
+        }
     }
 }
-
-#endif
