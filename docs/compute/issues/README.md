@@ -13,37 +13,39 @@ Issues are organized into phases aligned with the phased rollout strategy:
 
 ## Phase Overview
 
-### Phase 1: MVP (Foundation) - 9 Issues
+### Phase 1: MVP (Foundation) - 8 Issues
 **Goal**: Prove marketplace concept with iOS coordination + macOS Foundation Models worker
 
 | # | Issue | Priority | Effort | Status |
 |---|-------|----------|--------|--------|
-| 001 | Nostr Client Library | P0 | 4-6w | Draft |
-| 002 | Secp256k1 & Cryptography | P0 | 2-3w | Draft |
-| 003 | BOLT11 & Lightning Primitives | P0 | 2-3w | Draft |
-| 004 | Job Schema Registry | P1 | 1-2w | Draft |
-| 005 | iOS: Nostr Identity & Key Management | P0 | 2-3w | Draft |
-| 006 | iOS: Marketplace Viewer (Read-Only) | P1 | 1-2w | Draft |
-| 007 | macOS: Foundation Models Worker | P0 | 3-4w | Draft |
-| 008 | macOS: Capability Advertising (NIP-89) | P1 | 1w | Draft |
-| 009 | Policy & Safety Module (AUP) | P0 | 2-3w | Draft |
+| 001 | Nostr Client Library | P0 | 4-6w | ✅ Draft |
+| 002 | Secp256k1 & Cryptography | P0 | 2-3w | ✅ Draft |
+| ~~003~~ | ~~BOLT11 & Lightning Primitives~~ | ~~P0~~ | ~~2-3w~~ | ❌ **DELETED** (replaced by Spark SDK) |
+| 004 | Job Schema Registry | P1 | 1-2w | ✅ Draft |
+| 005 | iOS: Nostr Identity & Key Management | P0 | 2-3w | ✅ Draft |
+| 006 | iOS: Marketplace Viewer (Read-Only) | P1 | 1-2w | ✅ Draft |
+| 007 | macOS: Foundation Models Worker | P0 | 3-4w | ✅ Draft |
+| 008 | macOS: Capability Advertising (NIP-89) | P1 | 1w | ✅ Draft |
+| 009 | Policy & Safety Module (AUP) | P0 | 2-3w | ✅ Draft |
 
-**Total Estimated Effort**: ~20-29 weeks (sequential) | ~6-8 weeks (with 2-3 engineers)
+**Total Estimated Effort**: ~18-26 weeks (sequential) | ~6-8 weeks (with 2-3 engineers)
+**Note**: Issue #003 deleted - Breez Spark SDK replaces manual BOLT11 implementation (see `SPARK-SDK-INTEGRATION.md`)
 
-### Phase 2: Payments (Economic Loop) - 7 Issues
-**Goal**: Enable full marketplace with wallet + payments
+### Phase 2: Payments (Economic Loop) - 6 Issues
+**Goal**: Enable full marketplace with Spark SDK wallet + payments
 
-| # | Issue | Priority | Effort |
-|---|-------|----------|--------|
-| 010 | iOS: Bitcoin/Lightning Wallet | P0 | 4-5w |
-| 011 | iOS: Job Creation & Submission | P0 | 2-3w |
-| 012 | iOS: Payment Flows | P0 | 2-3w |
-| 013 | macOS: Lightning Integration | P0 | 4-5w |
-| 014 | macOS: Bidding Engine | P1 | 2w |
-| 015 | iOS: Active Job Management | P1 | 2w |
-| 016 | iOS: Provider Dashboard | P1 | 2w |
+| # | Issue | Priority | Effort | Status |
+|---|-------|----------|--------|--------|
+| 010 | iOS: Wallet with Spark SDK | P0 | 2-3w | ✅ Draft (rewrote) |
+| 011 | iOS: Job Creation & Submission | P0 | 2-3w | ✅ Draft |
+| 012 | Breez API Key & SDK Configuration | P1 | 2-3d | ✅ Draft (new) |
+| 013 | macOS: Wallet with Spark SDK | P0 | 1-2w | ✅ Draft (rewrote) |
+| 014 | macOS: Bidding Engine | P1 | 2w | ✅ Draft |
+| 015 | Marketplace Payment Coordinator | P0 | 1-2w | ✅ Draft (new) |
+| 016 | Seed Backup & Recovery UI | P1 | 3-5d | ✅ Draft (new) |
 
-**Total Estimated Effort**: ~18-23 weeks | ~5-6 weeks (parallelized)
+**Total Estimated Effort**: ~10.5-15 weeks (sequential) | ~4-5 weeks (parallelized)
+**Effort Savings**: ~35-40% reduction vs manual Lightning implementation (see `SPARK-SDK-INTEGRATION.md`)
 
 ### Phase 3: Backends (Compute Diversity) - 7 Issues
 **Goal**: Multi-backend model routing
@@ -91,7 +93,7 @@ Issues are organized into phases aligned with the phased rollout strategy:
 ```
 Phase 1 Foundation:
 ├── 001 (Nostr) ← 002 (Crypto)
-├── 003 (BOLT11) ← 002 (Crypto)
+├── ❌ 003 (BOLT11) - DELETED (Spark SDK)
 ├── 004 (Schemas) ← 001 (Nostr)
 ├── 005 (iOS Nostr) ← 001, 002
 ├── 006 (iOS Viewer) ← 001, 004, 005
@@ -99,14 +101,14 @@ Phase 1 Foundation:
 ├── 008 (Capabilities) ← 001, 004
 └── 009 (Policy/AUP) ← (independent)
 
-Phase 2 Payments:
-├── 010 (Wallet) ← 002, 003
+Phase 2 Payments (Spark SDK):
+├── 012 (API Key Config) ← (foundational)
+├── 010 (iOS Wallet) ← 002, 012
+├── 013 (macOS Wallet) ← 002, 012, 010 (shares core)
+├── 016 (Seed Backup) ← 010, 013
 ├── 011 (Job Creation) ← 001, 004, 005, 010
-├── 012 (Payments) ← 010, 003
-├── 013 (macOS Lightning) ← 003, 007
 ├── 014 (Bidding) ← 007, 013
-├── 015 (Job Mgmt) ← 011, 012
-└── 016 (Provider Dashboard) ← 013, 014
+└── 015 (Payment Coordinator) ← 010, 013, 011, 014
 
 Phase 3 Backends:
 ├── 017 (MLX) ← 007
@@ -127,7 +129,7 @@ The critical path for marketplace MVP (Phase 1 complete):
 
 1. **002** Secp256k1 & Cryptography (2-3w)
 2. **001** Nostr Client Library (4-6w) [depends on 002]
-3. **003** BOLT11 & Lightning Primitives (2-3w) [depends on 002]
+3. ~~**003** BOLT11 & Lightning Primitives~~ [**DELETED** - Spark SDK replaces this]
 4. **004** Job Schema Registry (1-2w) [depends on 001]
 5. **009** Policy & Safety Module (2-3w) [independent, can parallelize]
 6. **005** iOS Nostr Identity (2-3w) [depends on 001, 002]
@@ -135,7 +137,7 @@ The critical path for marketplace MVP (Phase 1 complete):
 8. **006** iOS Viewer (1-2w) [depends on 001, 004, 005]
 9. **008** Capability Advertising (1w) [depends on 001, 004]
 
-**Sequential**: 20-29 weeks
+**Sequential**: 18-26 weeks (reduced from 20-29 weeks)
 **Parallelized** (3 engineers): ~6-8 weeks
 
 ## Timeline Estimates
@@ -144,13 +146,13 @@ The critical path for marketplace MVP (Phase 1 complete):
 
 **Phase 1**: 6-8 weeks
 - Engineer 1: Crypto → Nostr → iOS Nostr/Viewer
-- Engineer 2: BOLT11 → Job Schemas → Capability Advertising
+- Engineer 2: ~~BOLT11~~ → Job Schemas → Capability Advertising
 - Engineer 3: Policy/AUP → macOS Worker
 
-**Phase 2**: 5-6 weeks
-- Engineer 1: iOS Wallet → Payment Flows → Job Management
-- Engineer 2: macOS Lightning → Bidding Engine
-- Engineer 3: iOS Job Creation → Provider Dashboard
+**Phase 2**: 4-5 weeks (reduced from 5-6 weeks via Spark SDK)
+- Engineer 1: API Key Config → iOS Wallet (Spark SDK) → Seed Backup
+- Engineer 2: macOS Wallet (Spark SDK) → Bidding Engine
+- Engineer 3: iOS Job Creation → Payment Coordinator
 
 **Phase 3**: 4-5 weeks
 - Engineer 1: MLX Integration → Model Router
@@ -160,7 +162,7 @@ The critical path for marketplace MVP (Phase 1 complete):
 **Phase 4** (Optional): 6-8 weeks
 - Engineer 1 or 2: SearchKit (can overlap with Phase 3)
 
-**Total**: ~15-19 weeks for Phases 1-3 (marketplace through backend diversity)
+**Total**: ~14-18 weeks for Phases 1-3 (reduced from 15-19 weeks)
 
 ## Apple Compliance Notes
 
@@ -219,14 +221,28 @@ These issues are the foundation for the OpenAgents compute marketplace. Contribu
 ## Status
 
 - [x] Directory structure created
-- [x] Phase 1 issues 001-004 created (draft)
-- [ ] Phase 1 issues 005-009 (in progress)
-- [ ] Phase 2 issues 010-016
-- [ ] Phase 3 issues 017-023
-- [ ] Phase 4 issue 024
-- [ ] Documentation issues 025-028
-- [ ] Testing issues 029-031
+- [x] Phase 1 issues 001-009 created (draft)
+- [x] **Issue #003 deleted** (Spark SDK replaces BOLT11)
+- [x] Phase 2 issues rewritten with Spark SDK integration
+  - [x] #010 iOS Wallet (rewrote)
+  - [x] #011 iOS Job Creation (complete)
+  - [x] #012 API Key Config (new)
+  - [x] #013 macOS Wallet (rewrote)
+  - [x] #014 macOS Bidding Engine (complete)
+  - [x] #015 Payment Coordinator (new)
+  - [x] #016 Seed Backup/Recovery (new)
+- [x] Phase 3 key issues 017, 020 (MLX, Router)
+- [x] Phase 4 issue 024 (SearchKit)
+- [x] Documentation issue 025 (ADRs)
+- [x] Testing issue 029 (Unit Tests)
+- [x] Spark SDK integration summary created
+- [ ] Phase 2-4 remaining issues (can create when needed)
 - [ ] User review and approval
 - [ ] Publish to GitHub
+
+**Key Achievements**:
+- 16 comprehensive issues completed (~55,000 words)
+- Spark SDK integration reduces effort by ~35-40%
+- All critical path issues specified
 
 Last updated: 2025-11-07
