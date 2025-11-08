@@ -40,11 +40,11 @@ public final class ClaudeCodeAgentProvider: CLIAgentProvider {
         if started {
             // Resume existing Claude session
             args = ["--resume", sidStr, prompt]
-            print("[Claude Code] Resume arguments: --resume \(sidStr) \"\(prompt)\"")
+            OpenAgentsLog.orchestration.debug("[Claude Code] Resume arguments: --resume \(sidStr) \"\(prompt, privacy: .private)\"")
         } else {
             // Start new Claude session with specific session ID
             args = ["--session-id", sidStr, prompt]
-            print("[Claude Code] Start arguments: --session-id \(sidStr) \"\(prompt)\"")
+            OpenAgentsLog.orchestration.debug("[Claude Code] Start arguments: --session-id \(sidStr) \"\(prompt, privacy: .private)\"")
             sessionStarted[sidStr] = true
         }
 
@@ -61,7 +61,7 @@ public final class ClaudeCodeAgentProvider: CLIAgentProvider {
 
         // Always use --resume for subsequent prompts
         let args = ["--resume", sidStr, prompt]
-        print("[Claude Code] Resume arguments: --resume \(sidStr) \"\(prompt)\"")
+        OpenAgentsLog.orchestration.debug("[Claude Code] Resume arguments: --resume \(sidStr) \"\(prompt, privacy: .private)\"")
 
         return args
     }
@@ -99,7 +99,7 @@ public final class ClaudeCodeAgentProvider: CLIAgentProvider {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        print("[Claude Code] stdout: \(trimmed)")
+        OpenAgentsLog.orchestration.debug("[Claude Code] stdout: \(trimmed, privacy: .public)")
 
         let chunk = ACP.Client.ContentChunk(content: .text(.init(text: trimmed)))
         await updateHub.sendSessionUpdate(
