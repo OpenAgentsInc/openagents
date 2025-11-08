@@ -3,7 +3,7 @@
 **Status**: Draft
 **Priority**: High (Next Implementation)
 **Platform**: iOS + macOS
-**Dependencies**: ACP SessionUpdate types, OrchestrationTask, TaskDecision, PRAutomationService
+**Dependencies**: ACP SessionUpdate types, OrchestrationTask (issue #003), TaskDecision (issue #002), PRAutomationService (issue #005), SessionAnalyzeResult
 
 ---
 
@@ -35,7 +35,7 @@ When a user returns to their computer in the morning after overnight orchestrati
 │ Morning Briefing                                   [Export] [Close] │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  🌙 Overnight Run Complete                                         │
+│  🌙 Orchestration Run Complete                                     │
 │  Friday, Nov 8, 2025 • 1:00 AM - 5:00 AM (4 hours)                │
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
@@ -144,7 +144,7 @@ When a user returns to their computer in the morning after overnight orchestrati
 │ < Back          Morning Briefing │
 ├──────────────────────────────────┤
 │                                  │
-│ 🌙 Overnight Run Complete       │
+│ 🌙 Orchestration Run Complete   │
 │ Nov 8, 2025 • 1-5 AM (4 hrs)    │
 │                                  │
 │ ┌──────────────────────────────┐ │
@@ -213,10 +213,10 @@ When a user returns to their computer in the morning after overnight orchestrati
 
 ## Mock Data Structures (ACP-Shaped)
 
-### 1. Overnight Run Summary
+### 1. Orchestration Run Summary
 
 ```swift
-struct OvernightRunSummary: Codable {
+struct OrchestrationRunSummary: Codable {
     let runId: String  // UUID
     let startTime: Date  // 2025-11-08T01:00:00Z
     let endTime: Date    // 2025-11-08T05:00:00Z
@@ -262,8 +262,8 @@ struct AgentStats: Codable {
 
 **Mock Instance**:
 ```swift
-let mockSummary = OvernightRunSummary(
-    runId: "run_20251108_overnight",
+let mockSummary = OrchestrationRunSummary(
+    runId: "run_20251108_orchestration",
     startTime: Date(timeIntervalSince1970: 1731024000),  // Nov 8, 2025 1:00 AM
     endTime: Date(timeIntervalSince1970: 1731038400),    // Nov 8, 2025 5:00 AM
     duration: 14400,
@@ -398,7 +398,7 @@ let mockTasks = [
             "files_changed": "3",
             "lines_added": "145",
             "lines_removed": "67",
-            "branch": "agent/overnight/bridge-error-handling"
+            "branch": "agent/orchestration/bridge-error-handling"
         ]
     ),
 
@@ -442,7 +442,7 @@ let mockTasks = [
             "files_changed": "5",
             "lines_added": "423",
             "lines_removed": "12",
-            "branch": "agent/overnight/websocket-tests"
+            "branch": "agent/orchestration/websocket-tests"
         ]
     ),
 
@@ -486,7 +486,7 @@ let mockTasks = [
             "files_changed": "2",
             "lines_added": "98",
             "lines_removed": "145",
-            "branch": "agent/overnight/concurrency-refactor"
+            "branch": "agent/orchestration/concurrency-refactor"
         ]
     ),
 
@@ -597,7 +597,7 @@ let mockPRs = [
         filesChanged: 3,
         linesAdded: 145,
         linesRemoved: 67,
-        branch: "agent/overnight/bridge-error-handling",
+        branch: "agent/orchestration/bridge-error-handling",
         taskId: "task_001",
         duration: 1680,  // 28 minutes
         ciStatus: .success
@@ -615,7 +615,7 @@ let mockPRs = [
         filesChanged: 5,
         linesAdded: 423,
         linesRemoved: 12,
-        branch: "agent/overnight/websocket-tests",
+        branch: "agent/orchestration/websocket-tests",
         taskId: "task_002",
         duration: 1080,  // 18 minutes
         ciStatus: .success
@@ -633,7 +633,7 @@ let mockPRs = [
         filesChanged: 2,
         linesAdded: 98,
         linesRemoved: 145,
-        branch: "agent/overnight/concurrency-refactor",
+        branch: "agent/orchestration/concurrency-refactor",
         taskId: "task_003",
         duration: 1920,  // 32 minutes
         ciStatus: .pending
@@ -651,7 +651,7 @@ let mockPRs = [
         filesChanged: 4,
         linesAdded: 234,
         linesRemoved: 45,
-        branch: "agent/overnight/fm-caching",
+        branch: "agent/orchestration/fm-caching",
         taskId: "task_004",
         duration: 1500,  // 25 minutes
         ciStatus: .success
@@ -669,7 +669,7 @@ let mockPRs = [
         filesChanged: 8,
         linesAdded: 567,
         linesRemoved: 23,
-        branch: "agent/overnight/api-docs",
+        branch: "agent/orchestration/api-docs",
         taskId: "task_005",
         duration: 900,  // 15 minutes
         ciStatus: .success
@@ -687,7 +687,7 @@ let mockPRs = [
         filesChanged: 2,
         linesAdded: 89,
         linesRemoved: 156,
-        branch: "agent/overnight/taskqueue-optimization",
+        branch: "agent/orchestration/taskqueue-optimization",
         taskId: "task_006",
         duration: 1320,  // 22 minutes
         ciStatus: .success
@@ -1223,7 +1223,7 @@ let mockFileChanges = [
 
 3. **View on GitHub**
    - Opens GitHub repository PR list in browser
-   - Filtered to show only overnight-created PRs
+- Filtered to show only orchestration-created PRs
 
 4. **Configure Next Run**
    - Quick access to scheduler settings
@@ -1315,7 +1315,7 @@ let mockFileChanges = [
 - Quick PR review and approval
 - Tap-to-drill-down navigation
 - Share briefing via Messages/Mail/Slack
-- Push notifications for overnight completion
+- Push notifications for orchestration completion
 
 **Layout**:
 - Single-column scrolling view
@@ -1326,7 +1326,7 @@ let mockFileChanges = [
 **Unique Features**:
 - Widgets for Lock Screen / Home Screen (run status, PRs pending)
 - Live Activities for active run progress
-- Shortcuts integration (e.g., "Show me overnight PRs")
+- Shortcuts integration (e.g., "Show me orchestration PRs")
 - Haptic feedback for status changes
 
 **Constraints**:
@@ -1409,7 +1409,7 @@ let mockFileChanges = [
 ### SwiftUI Components Needed
 
 1. **MorningBriefingView.swift** (main view)
-   - Consumes `OvernightRunSummary` model
+   - Consumes `OrchestrationRunSummary` model
    - Renders hero stats, agent performance, PR list, decisions
    - Handles navigation to drill-down views
 
@@ -1459,7 +1459,7 @@ let mockFileChanges = [
 ```swift
 @MainActor
 class MorningBriefingViewModel: ObservableObject {
-    @Published var summary: OvernightRunSummary?
+    @Published var summary: OrchestrationRunSummary?
     @Published var tasks: [OrchestrationTask] = []
     @Published var prs: [PRSummary] = []
     @Published var isLoading: Bool = false
@@ -1492,7 +1492,7 @@ class MorningBriefingViewModel: ObservableObject {
 
 1. **On View Appear**:
    - `MorningBriefingView` creates `MorningBriefingViewModel`
-   - ViewModel fetches latest overnight run from `TaskQueue`
+- ViewModel fetches latest orchestration run from `TaskQueue`
    - Loads associated PR data from `PRAutomationService`
    - Populates summary, tasks, PRs arrays
    - View renders with mock or real data
