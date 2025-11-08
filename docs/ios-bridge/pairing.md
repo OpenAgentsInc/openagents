@@ -1,56 +1,119 @@
 # Pairing (iOS ↔ Desktop Bridge)
 
-This document describes how the iOS app finds and pairs with the desktop WebSocket bridge and how tokens are exchanged.
+This document describes how the iOS app finds and pairs with the desktop WebSocket bridge.
 
 ## TL;DR
 
-- Desktop app (macOS) automatically starts a WebSocket bridge on launch at `ws://0.0.0.0:9099`.
-- Discovery is behind a feature flag; by default, iOS uses Manual Connect (enter the desktop LAN IP + `9099`).
-- When multicast is approved and enabled, the app advertises `_openagents._tcp` and the iOS app browses and connects automatically.
-- Handshake uses a pre‑shared token (dev default: `OA_DEV_TOKEN`).
+- Desktop app (macOS) automatically starts a WebSocket bridge on launch at `ws://0.0.0.0:9099`
+- Discovery is behind a feature flag; by default, iOS uses Manual Connect (enter the desktop LAN IP + `9099`)
+- When multicast is approved and enabled, the app advertises `_openagents._tcp` and iOS browses and connects automatically
+- Handshake uses JSON-RPC 2.0 `initialize` request/response
 
 ## Why Bonjour
 
-We want a zero‑config, LAN‑first pairing story. Bonjour (mDNS) lets iOS discover the desktop without manual IP entry. Until Apple approves the multicast entitlement for the app, discovery is disabled by default and Manual Connect is the recommended path. In constrained or remote setups, we’ll also support Tailscale (VPN) or manual host entry.
+We want a zero‑config, LAN‑first pairing story. Bonjour (mDNS) lets iOS discover the desktop without manual IP entry. Until Apple approves the multicast entitlement for the app, discovery is disabled by default and Manual Connect is the recommended path. In constrained or remote setups, we also support Tailscale (VPN) or manual host entry.
 
 ## Handshake
 
-1. iOS → Desktop: `{"type":"Hello","token":"<token>"}` over WebSocket.
-2. Desktop verifies token; responds: `{"type":"HelloAck","token":"<token>"}`.
-3. Connection established; subsequent messages are sent as envelopes `{type,data}` (reserved for future sync controls).
+The bridge uses JSON-RPC 2.0 for all communication, including the initial handshake:
 
-Notes:
-- For compatibility, the desktop accepts `{"token":"…"}` without a `type` field.
-- The iOS client accepts HelloAck as a text or data frame.
+**1. WebSocket Connection**
+- iOS establishes WebSocket connection to `ws://<host>:9099`
 
-## Tokens
+**2. Initialize Request**
+- iOS → Desktop: JSON-RPC `initialize` request
 
-- Dev builds use a static token `OA_DEV_TOKEN` (see `BridgeConfig`).
-- Production should rotate to a user‑generated secret per desktop install.
-- Storage
-  - macOS: Keychain or user defaults (dev only).
-  - iOS: Keychain.
-- Distribution
-  - Initially Bonjour only; future: QR code flow to transfer `{host,port,token}` securely.
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "initialize",
+  "id": "1",
+  "params": {
+    "protocol_version": "0.2.2",
+    "client_capabilities": {},
+    "client_info": {
+      "name": "openagents-ios",
+      "title": "OpenAgents iOS",
+      "version": "0.1.0"
+    }
+  }
+}
+```
+
+**3. Initialize Response**
+- Desktop → iOS: JSON-RPC success response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "result": {
+    "protocol_version": "0.2.2",
+    "agent_capabilities": {},
+    "auth_methods": [],
+    "agent_info": {
+      "name": "openagents-mac",
+      "title": "OpenAgents macOS",
+      "version": "0.1.0"
+    },
+    "_meta": {
+      "working_directory": "/path/to/workspace"
+    }
+  }
+}
+```
+
+**4. Connection Established**
+- After successful `initialize` response, connection is ready
+- iOS can now send `session/new`, `session/prompt`, etc.
+- Desktop sends `session/update` notifications as agent generates output
+
+## Authentication (Future)
+
+Current implementation validates protocol version during `initialize` handshake. Future enhancements:
+
+- **Token-based pairing:** QR code flow to securely transfer connection credentials
+- **Keychain storage:** Persist paired desktop hosts in iOS Keychain
+- **Token rotation:** Periodic refresh for long-lived connections
 
 ## Failure Modes
 
-- Different Wi‑Fi networks (guest vs main): Bonjour discovery fails → use Tailscale or manual host.
-- Firewalls: block port 9099 inbound on macOS → allow or change port.
-- Token mismatch: Desktop closes connection; verify the token.
+- **Different Wi‑Fi networks (guest vs main):** Bonjour discovery fails → use Tailscale or manual host entry
+- **Firewalls:** Block port 9099 inbound on macOS → allow in System Settings or change port
+- **Protocol version mismatch:** Desktop rejects `initialize` if version incompatible → update app
+- **Handshake timeout:** iOS disconnects if no `initialize` response within timeout → check server is running
 
 ## Roadmap
 
-- Token QR pairing (desktop shows, iOS scans; stored in Keychain).
-- Tailscale discovery (MagicDNS name) and `wss://` hardening.
-- Bridge envelopes for Tinyvex/ACP sync controls.
+**Current State:**
+- JSON-RPC 2.0 `initialize` handshake ✅
+- Manual Connect fallback ✅
+- Bonjour discovery behind feature flag ✅
+
+**Future:**
+- Multicast entitlement approval for automatic Bonjour discovery
+- Token-based pairing (desktop shows QR, iOS scans; stored in Keychain)
+- Tailscale MagicDNS integration
+- TLS (`wss://`) with certificate pinning
 
 ## Developer Notes
 
+**Configuration:**
 - Service type: `_openagents._tcp`
 - Default port: `9099`
-- Code paths
-  - Desktop server: `ios/OpenAgentsCore/Sources/DesktopBridge/DesktopWebSocketServer.swift`
-  - iOS client: `ios/OpenAgentsCore/Sources/MobileBridge/MobileWebSocketClient.swift`
-  - Bridge config: `ios/OpenAgentsCore/Sources/Bridge/BridgeConfig.swift`
-  - App wiring: `ios/OpenAgents/Bridge/BridgeManager.swift`, `ios/OpenAgents/OpenAgentsApp.swift`
+- Protocol version: `0.2.2`
+- Handshake method: `initialize`
+
+**Code Paths:**
+- Desktop server: `ios/OpenAgentsCore/Sources/OpenAgentsCore/DesktopBridge/DesktopWebSocketServer.swift`
+- JSON-RPC router: `ios/OpenAgentsCore/Sources/OpenAgentsCore/DesktopBridge/JsonRpcRouter.swift`
+- iOS client: `ios/OpenAgentsCore/Sources/OpenAgentsCore/MobileBridge/MobileWebSocketClient.swift`
+- RPC method constants: `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/rpc.swift`
+- Bridge config: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Bridge/BridgeConfig.swift`
+- App wiring: `ios/OpenAgents/Bridge/BridgeManager.swift`
+
+**Key Types:**
+- `ACP.Agent.InitializeRequest` - Client handshake request
+- `ACP.Agent.InitializeResponse` - Server handshake response
+- `JSONRPC.Request`, `JSONRPC.Response` - JSON-RPC 2.0 envelopes
+- `ACPRPC` - Method name constants (e.g., `ACPRPC.initialize`, `ACPRPC.sessionNew`)

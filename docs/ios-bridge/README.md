@@ -1,63 +1,154 @@
 # iOS ↔︎ Desktop WebSocket Bridge
 
-This document explains the WebSocket‑only bridge that lets the iOS app control and mirror the desktop app (which owns filesystem access and runs the Codex CLI). The desktop acts as a WebSocket server; the iOS app is a WebSocket client.
+This document explains the WebSocket‑only bridge that lets the iOS app control and mirror the desktop app (which owns filesystem access and runs agent CLIs). The desktop acts as a WebSocket server; the iOS app is a WebSocket client.
 
 ## Design Goals
 
 - Real‑time updates (single persistent WebSocket)
-- Simple token‑based authentication at handshake time
-- LAN‑first connectivity with future support for Tailscale VPN
+- JSON-RPC 2.0 for all communication
+- LAN‑first connectivity with Bonjour discovery (behind feature flag)
 - No third‑party dependencies
 
 ## Overview
 
-- Desktop (macOS): runs `DesktopWebSocketServer` and exposes a `ws://` endpoint on a configurable port.
-- Mobile (iOS): uses `MobileWebSocketClient` to connect, authenticate, and exchange messages.
-- Shared protocol: `BridgeMessages` defines Codable message types and helpers.
-
-Future enhancements:
-
-- Bonjour/mDNS for zero‑config discovery
-- TLS (`wss://`) with local certificates
-- QR‑code pairing to pass host:port and token
+- Desktop (macOS): runs `DesktopWebSocketServer` and exposes a `ws://` endpoint on port 9099
+- Mobile (iOS): uses `MobileWebSocketClient` to connect via Bonjour discovery or manual host entry
+- Transport: JSON-RPC 2.0 over WebSocket with ACP method names
+- Discovery: Bonjour `_openagents._tcp` service (requires multicast entitlement, currently behind feature flag)
 
 ## Protocol
 
-All messages are JSON‑encoded and framed over WebSocket.
+All messages are **JSON-RPC 2.0** formatted and framed over WebSocket.
 
-Examples:
+### Handshake (Initialize)
 
+After WebSocket connection, the iOS client sends an `initialize` request:
+
+**Request:**
 ```json
-{ "type": "Hello", "token": "<shared-secret>" }
+{
+  "jsonrpc": "2.0",
+  "method": "initialize",
+  "id": "1",
+  "params": {
+    "protocol_version": "0.2.2",
+    "client_capabilities": {},
+    "client_info": {
+      "name": "openagents-ios",
+      "title": "OpenAgents iOS",
+      "version": "0.1.0"
+    }
+  }
+}
 ```
 
+**Response:**
 ```json
-{ "type": "HelloAck", "token": "<shared-secret>" }
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "result": {
+    "protocol_version": "0.2.2",
+    "agent_capabilities": {},
+    "auth_methods": [],
+    "agent_info": {
+      "name": "openagents-mac",
+      "title": "OpenAgents macOS",
+      "version": "0.1.0"
+    },
+    "_meta": {
+      "working_directory": "/path/to/workspace"
+    }
+  }
+}
 ```
 
+### Available Methods
+
+All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
+
+- `initialize` - Handshake (above)
+- `session/new` - Create new agent session
+- `session/prompt` - Send prompt to session
+- `session/cancel` - Cancel running session (notification)
+- `session/update` - Agent update stream (notification from server)
+- `session/set_mode` - Set agent provider (Codex/Claude Code)
+- `tinyvex/history.recentSessions` - Query session history
+- `tinyvex/history.sessionTimeline` - Load session timeline
+- `fs/read_text_file`, `fs/write_text_file` - File system (client-handled)
+- `terminal/run` - Terminal execution (client-handled)
+
+### Example: Start Session
+
+**Request:**
 ```json
-{ "type": "Ping" }
+{
+  "jsonrpc": "2.0",
+  "method": "session/new",
+  "id": "2",
+  "params": {}
+}
 ```
 
+**Response:**
 ```json
-{ "type": "Pong" }
-
-History list (Phase 1):
-
-```json
-{ "type": "threads.list.request", "data": { "topK": 20 } }
+{
+  "jsonrpc": "2.0",
+  "id": "2",
+  "result": {
+    "session_id": "abc-123-def-456"
+  }
+}
 ```
 
+### Example: Send Prompt
+
+**Request:**
 ```json
-{ "type": "threads.list.response", "data": { "items": [ { "id": "…", "title": "…", "source": "codex", "updated_at": 123, "last_message_ts": 123 } ] } }
-```
+{
+  "jsonrpc": "2.0",
+  "method": "session/prompt",
+  "id": "3",
+  "params": {
+    "session_id": "abc-123-def-456",
+    "prompt": "List files in current directory"
+  }
+}
 ```
 
-Notes:
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "3",
+  "result": {}
+}
+```
 
-- `token` is a pre‑shared secret stored locally on both devices (see Security below).
-- An envelope `{type,data}` is available (`WebSocketMessage.Envelope`) if/when we need to carry structured payloads.
-  - Implemented messages: `threads.list.request/response` (desktop scans Codex history and returns summaries).
+### Example: Session Updates (Notification)
+
+The server sends `session/update` notifications as the agent generates output:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "session_id": "abc-123-def-456",
+    "update": {
+      "agent_message_chunk": {
+        "content": {
+          "text": {
+            "text": "Let me list the files..."
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Note:** Notifications have no `id` field and expect no response.
 
 ## Desktop Server (macOS)
 
@@ -65,21 +156,23 @@ Entry: `DesktopWebSocketServer` (Network.framework).
 
 Responsibilities:
 
-- Listen on a TCP port and upgrade to WebSocket.
-- On new connection, wait for `Hello`.
-- Verify token; reply `HelloAck` or close the connection.
-- Start a receive loop for subsequent messages (e.g., ping/pong, future sync messages).
+- Listen on TCP port 9099 and upgrade to WebSocket
+- On new connection, wait for JSON-RPC `initialize` request
+- Respond with `InitializeResponse` to complete handshake
+- Route JSON-RPC requests to registered method handlers via `JsonRpcRouter`
+- Send `session/update` notifications as agent generates output
 
-Minimal usage:
+The server uses `JsonRpcRouter` for method dispatch. Handlers are registered in `registerHandlers()`:
 
 ```swift
-#if os(macOS)
-import DesktopBridge
-
-let server = DesktopWebSocketServer(token: "YOUR_TOKEN")
-try server.start(port: 9099)
-print("Server running on ws://127.0.0.1:9099")
-#endif
+router.register(method: "session/new") { id, params, rawDict in
+    // Create new session
+    let sessionId = ACPSessionId(UUID().uuidString)
+    let result = ACP.Agent.SessionNewResponse(session_id: sessionId)
+    JsonRpcRouter.sendResponse(id: id, result: result) { text in
+        client.send(text: text)
+    }
+}
 ```
 
 ## iOS Client
@@ -88,78 +181,104 @@ Entry: `MobileWebSocketClient` (URLSessionWebSocketTask).
 
 Responsibilities:
 
-- Connect to `ws://<host>:<port>`.
-- Send `Hello { token }` immediately.
-- Wait for `HelloAck` and only then mark the connection as established.
-- Maintain a receive loop for updates.
-- Composer: The iOS UI currently defaults to a messages‑only view (no input bar) when connected to a desktop bridge. Prompt entry is disabled by design for this workflow.
+- Connect to `ws://<host>:<port>` via Bonjour discovery or manual entry
+- Send JSON-RPC `initialize` request immediately after connection
+- Wait for `InitializeResponse` and only then mark connection as established
+- Maintain receive loop for JSON-RPC notifications and responses
+- Handle `session/update` notifications from server
 
 Minimal usage:
 
 ```swift
-import MobileBridge
+import OpenAgentsCore
 
 let client = MobileWebSocketClient()
 client.delegate = self
-client.connect(url: URL(string: "ws://192.168.1.10:9099")!, token: "YOUR_TOKEN")
+client.connect(url: URL(string: "ws://192.168.1.10:9099")!)
 ```
 
 Delegate example:
 
 ```swift
 extension MyController: MobileWebSocketClientDelegate {
-    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
-        print("connected")
+    func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient, workingDirectory: String?) {
+        print("Connected! Working directory: \(workingDirectory ?? "nil")")
     }
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        // handle envelope
+
+    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data) {
+        if method == "session/update" {
+            // Handle session update notification
+        }
     }
+
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
-        // show error
+        print("Disconnected: \(error?.localizedDescription ?? "no error")")
     }
 }
 ```
 
-## Discovery (future work)
-Bonjour/mDNS discovery is available behind a feature flag. Until the iOS multicast entitlement is approved for the app, discovery is disabled by default and the app uses Manual Connect instead.
+## Discovery
 
-- Enable discovery: set `OPENAGENTS_ENABLE_MULTICAST=1` (or `enable_multicast=true` in `UserDefaults`).
-- Otherwise, use Manual Connect from the Bridge status chip and enter the desktop’s LAN IP and port `9099`.
+Bonjour/mDNS discovery is available behind a feature flag. Until the iOS multicast entitlement is approved, discovery is disabled by default and the app uses Manual Connect.
 
-See `docs/ios-bridge/discovery-and-permissions.md` for permissions and the fallback.
+**Current State:**
+- Desktop advertises `_openagents._tcp` Bonjour service on port 9099
+- iOS discovery requires multicast entitlement (currently behind feature flag)
+- Default: Manual Connect via Bridge status chip (enter desktop LAN IP + port 9099)
+
+**Enable Discovery:**
+- Set `OPENAGENTS_ENABLE_MULTICAST=1` environment variable
+- OR set `enable_multicast=true` in UserDefaults
+
+See `docs/ios-bridge/discovery-and-permissions.md` for detailed permission requirements.
 
 ## Security
 
-- Token: use a random, high‑entropy token stored in Keychain on iOS and in a secure local store on macOS. Consider a pairing flow where the desktop shows a QR code and the iOS app scans it to capture host:port + token.
-- Transport: Start with `ws://` on trusted LAN. For untrusted networks or remote access, use:
-  - Tailscale (recommended): connect via the Tailscale IP and keep `ws://` inside the VPN.
-  - TLS: move to `wss://` with a certificate (self‑signed or managed). This requires certificate provisioning and pinning.
-- Authorization: Reject state‑changing messages until handshake success. Consider refreshing the token periodically.
+- **Transport:** Currently `ws://` on trusted LAN only
+- **Authentication:** JSON-RPC `initialize` handshake validates protocol version
+- **Future enhancements:**
+  - Token-based pairing with QR code flow
+  - TLS (`wss://`) with certificate pinning
+  - Tailscale VPN for remote access (recommended for untrusted networks)
 
 ## Using Tailscale
 
 Once both devices are in the same Tailscale network:
 
-- Find the desktop’s Tailscale IP (e.g., `100.x.y.z`).
-- On iOS, connect to `ws://100.x.y.z:9099` using the same token.
-- Optionally, set up a stable MagicDNS name and use that instead of the IP.
+- Find the desktop's Tailscale IP (e.g., `100.x.y.z`)
+- On iOS, use Manual Connect to enter `100.x.y.z:9099`
+- Optionally, set up a stable MagicDNS name and use that instead of the IP
+- Connection uses same JSON-RPC `initialize` handshake over Tailscale VPN tunnel
 
 ## Troubleshooting
 
-- Build errors referencing Network or `NWProtocolWebSocket`:
-  - Ensure the macOS deployment target is macOS 12.0 or later.
-  - Make sure the Desktop target links Network.framework (usually automatic).
-- iOS cannot connect:
-  - Verify the desktop server is running and reachable (try `ws://127.0.0.1:9099` locally first).
-  - On device, ensure both are on the same LAN or connected via Tailscale.
-  - Check that the token matches.
-- JSON decoding errors:
-  - Log incoming/outgoing frames. Ensure `type` strings and payload shapes match the protocol.
+- **Build errors referencing Network or `NWProtocolWebSocket`:**
+  - Ensure macOS deployment target is macOS 12.0 or later
+  - Desktop target should automatically link Network.framework
+
+- **iOS cannot connect:**
+  - Verify desktop server is running (check for "Started on ws://0.0.0.0:9099" in logs)
+  - Try simulator first: automatically connects to `ws://127.0.0.1:9099`
+  - On device: ensure both are on same LAN or connected via Tailscale
+  - Check desktop logs for `initialize` request
+
+- **Initialize handshake fails:**
+  - Check protocol version mismatch (must be "0.2.x")
+  - Verify JSON-RPC format (must have `"jsonrpc": "2.0"`)
+  - Check client logs for "initialize ok; connected" message
+  - Check server logs for "recv rpc request method=initialize"
+
+- **JSON decoding errors:**
+  - Enable verbose logging to see full JSON-RPC messages
+  - Verify method names match `rpc.swift` constants
+  - Check params structure matches ACP types
 
 ## Roadmap
 
-- Bonjour‑based discovery
-- TLS (`wss://`) and certificate pinning
-- Thread/message synchronization messages (list, diff, post)
-- QR‑based pairing and token rotation
-- Backoff/retry strategy and reachability integration
+- **Phase 1 (Complete):** JSON-RPC 2.0 over WebSocket, `initialize` handshake, session methods
+- **Phase 2 (In Progress):** Agent provider registry (Codex/Claude Code), session mode selection
+- **Future:**
+  - Multicast entitlement approval for Bonjour discovery
+  - Token-based pairing with QR code flow
+  - TLS (`wss://`) and certificate pinning
+  - Enhanced retry/backoff strategy
