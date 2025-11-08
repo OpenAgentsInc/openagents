@@ -85,7 +85,9 @@ All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
 
 ### Extension Capabilities
 
-Some non-core (dotted) methods are gated behind extension capabilities negotiated during `initialize`. See `ext-capabilities.md` for details and the `orchestrate.explore.*` examples.
+Some non-core (dotted) methods are gated behind extension capabilities negotiated during `initialize`. See [ext-capabilities.md](ext-capabilities.md) for details and the `orchestrate.explore.*` examples.
+
+See also: [acp-lint-guardrails.md](acp-lint-guardrails.md) for ACP wire‑contract lint guidance.
 
 ### Example: Start Session
 
