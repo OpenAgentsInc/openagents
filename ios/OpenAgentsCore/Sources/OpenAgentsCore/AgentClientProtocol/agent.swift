@@ -55,16 +55,28 @@ public extension ACP.Agent {
         public var load_session: Bool
         public var prompt_capabilities: PromptCapabilities
         public var mcp_capabilities: McpCapabilities
+        /// Optional extension capabilities negotiated during initialize
+        public var ext_capabilities: ExtCapabilities?
         public var _meta: [String: AnyEncodable]?
         public init(load_session: Bool = false,
                     prompt_capabilities: PromptCapabilities = .init(),
                     mcp_capabilities: McpCapabilities = .init(),
+                    ext_capabilities: ExtCapabilities? = nil,
                     _meta: [String: AnyEncodable]? = nil) {
             self.load_session = load_session
             self.prompt_capabilities = prompt_capabilities
             self.mcp_capabilities = mcp_capabilities
+            self.ext_capabilities = ext_capabilities
             self._meta = _meta
         }
+    }
+
+    /// Extension capabilities for non-core (dotted) methods.
+    /// Used to gate usage of ACPExt features like orchestrate.explore.*
+    struct ExtCapabilities: Codable, Equatable {
+        /// Whether orchestrate.explore.* extension methods are supported
+        public var orchestrate_explore: Bool
+        public init(orchestrate_explore: Bool = false) { self.orchestrate_explore = orchestrate_explore }
     }
 
     struct PromptCapabilities: Codable {
