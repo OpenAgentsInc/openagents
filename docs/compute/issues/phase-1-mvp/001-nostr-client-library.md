@@ -25,7 +25,7 @@ Without a robust Nostr client, neither iOS marketplace coordination nor macOS wo
 
 We are using a **fork** of the official nostr-sdk-ios ([original repo](https://github.com/nostr-sdk/nostr-sdk-ios)) for two reasons:
 
-1. **Stale Upstream**: The official SDK hasn't had a release since **February 2024** (9 months ago as of November 2024)
+1. **Stale Upstream**: The official SDK hasn't had a release since **February 2025** (9 months ago as of November 2025)
 2. **Rapid Iteration**: We need to quickly add marketplace-specific NIPs (NIP-57, NIP-89, NIP-90) without waiting for upstream merges
 
 Our fork is at: [https://github.com/OpenAgentsInc/nostr-sdk-ios](https://github.com/OpenAgentsInc/nostr-sdk-ios)
