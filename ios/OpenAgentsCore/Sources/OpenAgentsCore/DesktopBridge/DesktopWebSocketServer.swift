@@ -222,9 +222,6 @@ public class DesktopWebSocketServer {
             await self.handleThreadsList(id: id, params: params, rawDict: rawDict, client: client)
         }
 
-        // thread/load_latest
-        // Deprecated: thread/load_latest removed in favor of thread/load_latest_typed
-
         // thread/load_latest_typed
         router.register(method: "thread/load_latest_typed") { [weak self] id, params, rawDict in
             guard let self = self, let client = self.currentClient else { return }
@@ -306,8 +303,6 @@ public class DesktopWebSocketServer {
             client.send(text: text)
         }
     }
-
-    // (deprecated handler removed)
 
     private func handleThreadLoadLatestTyped(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
         struct LatestTypedResult: Codable {
