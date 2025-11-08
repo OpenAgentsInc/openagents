@@ -1,6 +1,6 @@
-# Issue #006: Implement OrchiestrationRunner
+# Issue #006: Implement OrchestrationRunner
 
-**Component**: Orchiestration Runner
+**Component**: Orchestration Runner
 **Priority**: P1 (High)
 **Estimated Effort**: 1-2 days (minimal scope for demo)
 **Dependencies**: #002 (DecisionOrchestrator), #004 (AgentCoordinator)
@@ -10,11 +10,11 @@
 
 ## Overview
 
-**RENAMED from UpgradeExecutor per audit**: Create minimal `OrchiestrationRunner` that runs SessionAnalyzeTool → decide() → AgentCoordinator → PRAutomationService. Defer full declarative pipeline runtime to post-demo.
+**RENAMED from UpgradeExecutor per audit**: Create minimal `OrchestrationRunner` that runs SessionAnalyzeTool → decide() → AgentCoordinator → PRAutomationService. Defer full declarative pipeline runtime to post-demo.
 
 **Scope for Demo**: Simple runner with minimal JSON config (schedule + toggles only). Not full upgrade manifest schema.
 
-**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/OrchiestrationRunner.swift`
+**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/OrchestrationRunner.swift`
 
 ---
 
@@ -34,7 +34,7 @@
 ## Implementation (Pseudocode)
 
 ```swift
-actor OrchiestrationRunner {
+actor OrchestrationRunner {
   let taskQueue: TaskQueue
   let decision: DecisionOrchestrator
   let coordinator: AgentCoordinator

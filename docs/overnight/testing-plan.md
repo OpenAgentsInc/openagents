@@ -1,6 +1,6 @@
-# Orchiestration — Testing Plan (Stub)
+# Orchestration — Testing Plan (Stub)
 
-- Compressed Orchiestration cycle (1–3 minute intervals) using the runner directly
+- Compressed Orchestration cycle (1–3 minute intervals) using the runner directly
 - Multi-agent execution (Claude Code + Codex) with mocks
 - FM decision quality (skip if FM unavailable)
 - Error recovery (agent crash, timeout)

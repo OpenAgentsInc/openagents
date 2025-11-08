@@ -10,9 +10,9 @@
 
 ## Overview
 
-Implement `TaskQueue`, a persistent work queue with SQLite backing (via TinyvexDbLayer) that tracks Orchiestration tasks through their lifecycle: pending → in_progress → completed/failed.
+Implement `TaskQueue`, a persistent work queue with SQLite backing (via TinyvexDbLayer) that tracks Orchestration tasks through their lifecycle: pending → in_progress → completed/failed.
 
-**Key Change from Audit**: Use existing `TinyvexDbLayer` with new `orchiestration_tasks` table in same DB (not separate store).
+**Key Change from Audit**: Use existing `TinyvexDbLayer` with new `orchestration_tasks` table in same DB (not separate store).
 
 **Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/TaskQueue.swift`
 
@@ -36,7 +36,7 @@ Implement `TaskQueue`, a persistent work queue with SQLite backing (via TinyvexD
 ### Schema
 
 ```sql
-CREATE TABLE orchiestration_tasks (
+CREATE TABLE orchestration_tasks (
     id TEXT PRIMARY KEY,
     op_hash TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -49,9 +49,9 @@ CREATE TABLE orchiestration_tasks (
     metadata_json TEXT
 );
 
-CREATE INDEX idx_status ON orchiestration_tasks(status);
-CREATE INDEX idx_created_at ON orchiestration_tasks(created_at);
-CREATE INDEX idx_op_hash ON orchiestration_tasks(op_hash);
+CREATE INDEX idx_status ON orchestration_tasks(status);
+CREATE INDEX idx_created_at ON orchestration_tasks(created_at);
+CREATE INDEX idx_op_hash ON orchestration_tasks(op_hash);
 ```
 
 ---
@@ -74,7 +74,7 @@ actor TaskQueue {
         self.updates = stream
     }
 
-    func enqueue(_ task: OrchiestrationTask) async throws -> TaskID {
+    func enqueue(_ task: OrchestrationTask) async throws -> TaskID {
         // Check for duplicate opHash
         if let existing = try await findByOpHash(task.opHash), existing.status != .failed {
             return existing.id
@@ -83,7 +83,7 @@ actor TaskQueue {
         // Insert task
         try await db.execute(
             """
-            INSERT INTO orchiestration_tasks (id, op_hash, status, decision_json, created_at, metadata_json)
+            INSERT INTO orchestration_tasks (id, op_hash, status, decision_json, created_at, metadata_json)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             [task.id, task.opHash, task.status.rawValue, task.decision.json, task.createdAt.timeIntervalSince1970, task.metadata.json]
@@ -93,11 +93,11 @@ actor TaskQueue {
         return task.id
     }
 
-    func dequeue() async throws -> OrchiestrationTask? {
+    func dequeue() async throws -> OrchestrationTask? {
         // Get highest priority pending task
         let rows = try await db.query(
             """
-            SELECT * FROM orchiestration_tasks
+            SELECT * FROM orchestration_tasks
             WHERE status = 'pending'
             ORDER BY
               CASE json_extract(decision_json, '$.priority')
@@ -119,15 +119,15 @@ actor TaskQueue {
 
     func updateStatus(_ taskId: TaskID, status: TaskStatus) async throws {
         try await db.execute(
-            "UPDATE orchiestration_tasks SET status = ?, completed_at = ? WHERE id = ?",
+            "UPDATE orchestration_tasks SET status = ?, completed_at = ? WHERE id = ?",
             [status.rawValue, status == .completed ? Date().timeIntervalSince1970 : nil, taskId]
         )
         updatesContinuation.yield(.statusChanged(taskId, status))
     }
 
-    func all(filter: TaskFilter? = nil) async throws -> [OrchiestrationTask] {
+    func all(filter: TaskFilter? = nil) async throws -> [OrchestrationTask] {
         // Build query with filters
-        var sql = "SELECT * FROM orchiestration_tasks WHERE 1=1"
+        var sql = "SELECT * FROM orchestration_tasks WHERE 1=1"
         var params: [Any] = []
 
         if let status = filter?.status {
@@ -143,7 +143,7 @@ actor TaskQueue {
     var updates: AsyncStream<TaskQueueUpdate> { get }
 }
 
-struct OrchiestrationTask: Codable, Identifiable {
+struct OrchestrationTask: Codable, Identifiable {
     let id: TaskID
     let opHash: String
     var status: TaskStatus

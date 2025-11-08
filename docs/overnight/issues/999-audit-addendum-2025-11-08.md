@@ -1,4 +1,4 @@
-# Audit Addendum — Orchiestration Plans (2025-11-08)
+# Audit Addendum — Orchestration Plans (2025-11-08)
 
 This addendum reviews the updates claimed in commit `16bc4ff7` and applies targeted corrections to align the plans with the current Swift codebase and demo scope.
 
@@ -13,8 +13,8 @@ This addendum reviews the updates claimed in commit `16bc4ff7` and applies targe
   - File: README.md
 - PRAutomationService plan: Fix location typo and replace hardcoded `gh` path with a PATH-based lookup helper (mirrors CLIAgentProvider strategy).
   - File: docs/overnight/issues/005-pr-automation-service.md
-- OrchiestrationRunner plan: Trim to the minimal demo runner (analyze → decide → execute → PR), removing the heavy UpgradeExecutor/OperationsRegistry sections.
-  - File: docs/overnight/issues/006-upgrade-executor.md (retitled in place to “Implement OrchiestrationRunner”).
+- OrchestrationRunner plan: Trim to the minimal demo runner (analyze → decide → execute → PR), removing the heavy UpgradeExecutor/OperationsRegistry sections.
+  - File: docs/overnight/issues/006-upgrade-executor.md (retitled in place to “Implement OrchestrationRunner”).
 - DecisionOrchestrator plan: Note reliance on ExploreOrchestrator + SessionAnalyzeTool and `ACPSessionModeId` mapping for agent selection; FM fallback guidance remains. (Deep rewrite deferred to keep plans readable; conflicts called out below.)
 
 ## Remaining Deltas (for follow‑up)

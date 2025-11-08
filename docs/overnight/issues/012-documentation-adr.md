@@ -10,7 +10,7 @@
 
 ## Overview
 
-Write comprehensive documentation and create ADR (Architectural Decision Record) for the Orchiestration system.
+Write comprehensive documentation and create ADR (Architectural Decision Record) for the Orchestration system.
 
 **Locations**:
 - ADR: `docs/adr/0007-overnight-agent-orchestration.md`
@@ -21,9 +21,9 @@ Write comprehensive documentation and create ADR (Architectural Decision Record)
 
 ## Deliverables
 
-### 1. ADR-0007: Orchiestration Architecture
+### 1. ADR-0007: Orchestration Architecture
 
-**Title**: Orchiestration Architecture
+**Title**: Orchestration Architecture
 
 **Status**: Accepted
 
@@ -82,7 +82,7 @@ All logic encapsulated as declarative JSON "upgrade" manifests, designed for fut
 Add Swift documentation to all public types:
 
 ```swift
-/// macOS-only background scheduler service for Orchiestration.
+/// macOS-only background scheduler service for Orchestration.
 ///
 /// Provides cron-based wake-up with constraint checking (power, network, CPU, user activity).
 /// Integrates with `UpgradeExecutor` to run declarative JSON manifests.
@@ -115,13 +115,13 @@ Apply to:
 
 ### 3. User Guide
 
-**File**: `docs/orchiestration-guide.md`
+**File**: `docs/orchestration-guide.md`
 
 **Sections**:
-1. **Introduction**: What is Orchiestration?
+1. **Introduction**: What is Orchestration?
 2. **Prerequisites**: macOS 26+, gh CLI, Foundation Models
 3. **Installation**: Enable orchestration features
-4. **Quick Start**: Run first Orchiestration cycle
+4. **Quick Start**: Run first Orchestration cycle
 5. **Creating Upgrade Manifests**: JSON schema, examples
 6. **Monitoring on iOS**: Bridge connection, real-time updates
 7. **Troubleshooting**: Common issues and solutions
@@ -132,7 +132,7 @@ Apply to:
 ### 4. Update Existing ADRs
 
 **ADR-0002 (Agent Client Protocol)**:
-- Add note about Orchiestration using ACP for all agent communication
+- Add note about Orchestration using ACP for all agent communication
 
 **ADR-0004 (iOS ↔ Desktop Bridge)**:
 - Add new JSON-RPC methods: `orchestration/*`
