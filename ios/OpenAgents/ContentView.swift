@@ -8,6 +8,7 @@
 import SwiftUI
 import OpenAgentsCore
 struct ContentView: View {
+    @StateObject private var timelineVM = ACPTimelineViewModel()
     @State private var selectedRow: LocalThreadSummary? = nil
     @State private var selectedURL: URL? = nil
     @State private var toolbarTitle: String = ""
@@ -22,10 +23,14 @@ struct ContentView: View {
             #endif
             #if os(iOS)
             // Mobile: hide the sidebar for now; show only the latest thread
-            AcpThreadView(url: nil, onTitleChange: { t in
-                self.toolbarTitle = t
-            })
-            .navigationTitle("")
+            ACPTimelineView(items: timelineVM.items)
+                .navigationTitle("")
+                .onAppear {
+                    timelineVM.attach(bridge: bridge)
+                    timelineVM.onTitleChange = { t in
+                        self.toolbarTitle = t
+                    }
+                }
             #else
             // macOS: conditionally show simplified UI or full navigation split view
             if Features.simplifiedMacOSUI {
@@ -43,10 +48,14 @@ struct ContentView: View {
                     .navigationSplitViewColumnWidth(min: 220, ideal: 260)
                 } detail: {
                     // Do not hydrate previous threads; show only live updates
-                    AcpThreadView(url: nil, onTitleChange: { t in
-                        self.toolbarTitle = t
-                    })
-                    .navigationTitle("")
+                    ACPTimelineView(items: timelineVM.items)
+                        .navigationTitle("")
+                        .onAppear {
+                            timelineVM.attach(bridge: bridge)
+                            timelineVM.onTitleChange = { t in
+                                self.toolbarTitle = t
+                            }
+                        }
                 }
             }
             #endif

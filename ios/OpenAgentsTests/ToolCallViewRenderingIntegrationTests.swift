@@ -50,7 +50,7 @@ final class ToolCallViewRenderingIntegrationTests: XCTestCase {
 
     func testReadToolCall_ShowsRelativePath() {
         let homeDir = NSHomeDirectory()
-        let absolutePath = "\(homeDir)/code/openagents/ios/OpenAgents/AcpThreadView.swift"
+        let absolutePath = "\(homeDir)/code/openagents/ios/OpenAgents/ContentView.swift"
 
         let call = ACPToolCall(
             id: "read-789",
@@ -62,8 +62,8 @@ final class ToolCallViewRenderingIntegrationTests: XCTestCase {
         let view = ToolCallView(call: call, result: nil)
 
         XCTAssertNotNil(view)
-        // Should show: 📄 ~/code/openagents/ios/OpenAgents/AcpThreadView.swift
-        // NOT: 📄 /Users/username/code/openagents/ios/OpenAgents/AcpThreadView.swift
+        // Should show: 📄 ~/code/openagents/ios/OpenAgents/ContentView.swift
+        // NOT: 📄 /Users/username/code/openagents/ios/OpenAgents/ContentView.swift
         // Path should be relative with ~ for home directory
     }
 

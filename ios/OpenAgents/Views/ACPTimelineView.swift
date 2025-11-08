@@ -1,8 +1,6 @@
 import SwiftUI
 import OpenAgentsCore
 
-#if os(iOS)
-
 struct ACPTimelineView: View {
     let items: [ACPTimelineViewModel.Item]
 
@@ -69,6 +67,4 @@ struct ACPTimelineView: View {
         }
     }
 }
-
-#endif
 
