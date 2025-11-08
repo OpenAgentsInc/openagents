@@ -14,7 +14,7 @@ Create GitHub PRs from agent work using `gh` CLI: branch management, commit gene
 
 **Key Change from Audit**: Use `findBinary()` strategy (not hardcoded `/opt/homebrew/bin/gh`). For demo: commit working tree, don't parse tool calls for file changes.
 
-**Location**: `ios/OpenAgensCore/Sources/OpenAgentsCore/GitHubIntegration/PRAutomationService.swift`
+**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/GitHubIntegration/PRAutomationService.swift`
 
 **References**:
 - Binary finding strategy: ios/OpenAgentsCore/Sources/OpenAgentsCore/Agents/CLIAgentProvider.swift:246
@@ -85,8 +85,10 @@ actor PRAutomationService {
     }
 
     func createPR(title: String, body: String, branch: String, baseBranch: String, draft: Bool) async throws -> Int {
+        // Discover gh binary (reuse CLIAgentProvider's PATH search strategy)
+        let ghPath = try findGhBinary()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/gh")
+        process.executableURL = URL(fileURLWithPath: ghPath)
         process.arguments = [
             "pr", "create",
             "--title", title,
@@ -116,6 +118,29 @@ actor PRAutomationService {
         }
 
         return prNumber
+    }
+
+    private func findGhBinary() throws -> String {
+        // Minimal PATH-based lookup; mirror CLIAgentProvider.findBinary() behavior
+        let shells = ["/bin/zsh", "/bin/bash"]
+        for sh in shells {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: sh)
+            p.arguments = ["-l", "-c", "which gh"]
+            let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
+            try? p.run(); p.waitUntilExit()
+            if p.terminationStatus == 0,
+               let data = try? out.fileHandleForReading.readToEnd(),
+               let path = String(data: data ?? Data(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !path.isEmpty {
+                return path
+            }
+        }
+        // Common locations
+        for path in ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "\(NSHomeDirectory())/bin/gh"] {
+            if FileManager.default.fileExists(atPath: path) { return path }
+        }
+        throw GitHubError.prCreationFailed(127) // not found
     }
 
     func generatePRBody(task: OvernightTask, result: AgentSessionResult) async throws -> String {
