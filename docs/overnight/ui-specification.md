@@ -525,10 +525,10 @@ struct SchedulerCard: View {
 │                                                  │
 │ ☑ Only run when plugged into power              │
 │ ☑ Only run on WiFi (not cellular)               │
-│ ☐ Pause when Do Not Disturb is enabled          │
-│ ☐ Pause when user is actively using Mac         │
+│ ☐ Pause when Do Not Disturb is enabled          │  (post‑demo; disabled)
+│ ☐ Pause when user is actively using Mac         │  (post‑demo; disabled)
 │                                                  │
-│ CPU Usage Limit: [80% ▾]                        │
+│ CPU Usage Limit: [80% ▾]                        │  (post‑demo; disabled)
 │                                                  │
 │ ──────────────────────────────────────────────  │
 │                                                  │
@@ -1343,12 +1343,8 @@ class OvernightOrchestrationViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    func startScheduler() async throws {
-        try await bridgeManager.sendRequest(
-            method: "orchestration/start",
-            params: [:]
-        )
-    }
+    // For the demo, orchestration control is initiated from macOS.
+    // iOS subscribes to live ACP session/update notifications and history.
 }
 ```
 
@@ -1369,13 +1365,17 @@ struct OpenAgentsApp: App {
 
 ### Bridge Integration
 
-**JSON-RPC Methods** (macOS → iOS):
-- `orchestration/status` - Get current state
-- `orchestration/task_queued` - New task added
-- `orchestration/task_started` - Agent started
-- `orchestration/task_completed` - Task finished
-- `orchestration/decision_made` - FM decision
-- `orchestration/pr_created` - PR created
+**Demo path (implemented)**:
+- Subscribe to ACP session/update notifications via the existing bridge (`ACPRPC.sessionUpdate`).
+- Query Tinyvex history as needed (e.g., recent sessions, session timeline).
+
+**Future orchestration notifications** (planned):
+- `orchestration/status` – Current state snapshot
+- `orchestration/task_queued` – New task added
+- `orchestration/task_started` – Agent started
+- `orchestration/task_completed` – Task finished
+- `orchestration/decision_made` – FM decision
+- `orchestration/pr_created` – PR created
 
 **Notification Names**:
 ```swift
