@@ -13,7 +13,7 @@ This directory contains draft GitHub issues for implementing the OpenAgents comp
 ### ✅ Completed Draft Issues (19 total)
 
 #### Phase 1: MVP - COMPLETE (8/8 after deletion)
-- **✅ 001**: Nostr Client Library (~6000 words) - P0, 4-6w
+- **✅ 001**: Nostr Client Library (Fork Integration) (~6000 words) - P0, **2-3w** (reduced from 4-6w via nostr-sdk-ios fork)
 - **✅ 002**: Secp256k1 & Cryptography (~5500 words) - P0, 2-3w
 - **❌ 003**: ~~BOLT11 & Lightning Primitives~~ - **DELETED** (Spark SDK replaces)
 - **✅ 004**: Job Schema Registry (~4000 words) - P1, 1-2w
@@ -107,15 +107,15 @@ Each completed issue includes:
 
 | Category | Issues | Words | LOC Est | Effort |
 |----------|--------|-------|---------|--------|
-| Phase 1 (MVP) | 8 (was 9, deleted #003) | ~36,000 | ~3,000 | 18-26w |
+| Phase 1 (MVP) | 8 (was 9, deleted #003) | ~36,000 | ~3,000 | **16-24w** (reduced from 18-26w) |
 | Phase 2 (Spark SDK) | 7 (complete) | ~27,500 | ~1,500 | 10.5-15w |
 | Phase 3 (Key) | 2 | ~5,500 | ~500 | 5-7w |
 | Phase 4 (SearchKit) | 1 | ~3,500 | ~2,000 | 6-8w |
 | Documentation | 1 | ~2,500 | - | 1-2w |
 | Testing | 1 | ~2,500 | - | 3-4w |
-| **TOTAL** | **19** | **~75,000** | **~7,000** | **44-61w** |
+| **TOTAL** | **19** | **~75,000** | **~7,000** | **42-59w** (reduced from 44-61w) |
 
-**Parallelized (3 engineers)**: ~14-18 weeks for Phases 1-3 (reduced via Spark SDK)
+**Parallelized (3 engineers)**: ~14-18 weeks for Phases 1-3 (reduced from 17-21w via nostr-sdk-ios fork + Spark SDK)
 
 ## Next Steps
 
@@ -124,6 +124,7 @@ Each completed issue includes:
 2. ~~Delete issue #003~~ - **DONE** (Spark SDK replaces BOLT11)
 3. ~~Rewrite Phase 2 wallet issues with Spark SDK~~ - **DONE** (#010, #013)
 4. ~~Create new Spark SDK issues~~ - **DONE** (#012, #015, #016)
+5. ~~Update issue #001 for nostr-sdk-ios fork~~ - **DONE** (effort reduced 4-6w → 2-3w)
 
 ### Immediate (User Review)
 1. **Review Spark SDK integration** (see `SPARK-SDK-INTEGRATION.md`)
@@ -148,6 +149,22 @@ Each completed issue includes:
 - **Nostr**: Open marketplace (NIP-90 + NIP-57)
 - **Spark SDK**: Layer 2 Bitcoin protocol (replaces manual Lightning)
 - **Compliance**: Strict Apple rules enforced (no background workers, AUP filters)
+
+### nostr-sdk-ios Fork Decision (Phase 1 Optimization)
+
+**Why fork nostr-sdk-ios?**
+- ✅ **Stale upstream**: Official SDK hasn't had release since February 2025 (9 months stale)
+- ✅ **Effort reduction**: ~40% reduction in issue #001 (4-6w → 2-3w)
+- ✅ **25+ NIPs implemented**: Core protocol, relay management, encryption, bech32 already done
+- ✅ **Rapid iteration**: Add marketplace NIPs (NIP-57, NIP-89, NIP-90) without waiting for upstream
+- ✅ **Shallow fork**: Only ~850 LOC additions, can still pull upstream updates
+
+**What Changed?**
+- **✏️ Rewrote**: Issue #001 (Nostr Client Library) - fork integration instead of building from scratch
+- **Effort saved**: 2-3 weeks in Phase 1 critical path
+- **What to add**: NIP-57 (Zaps), NIP-89 (Handlers), NIP-90 (DVM) - marketplace-specific event types
+
+**Fork**: https://github.com/OpenAgentsInc/nostr-sdk-ios
 
 ### Spark SDK Decision (Phase 2 Redesign)
 
@@ -178,7 +195,10 @@ Payment Coordinator (015) → Job Execution (depends on 010, 013, 011, 014)
 - **Phase 1** (MVP): 6-8 weeks with 3 engineers
 - **Phase 2** (Payments): 4-5 weeks (reduced from 5-6 via Spark SDK)
 - **Phase 3** (Backends): 4-5 weeks
-- **Total**: ~14-18 weeks for full marketplace (Phases 1-3, reduced from 15-19)
+- **Total**: ~14-18 weeks for full marketplace (Phases 1-3)
+  - **Reduced from 17-21 weeks** via:
+    - nostr-sdk-ios fork (Phase 1: 2-3w savings)
+    - Spark SDK (Phase 2: 4-5w savings)
 
 ## Compliance Summary
 
