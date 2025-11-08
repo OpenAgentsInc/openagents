@@ -74,10 +74,8 @@ public actor ExploreOrchestrator {
 
     /// Current plan
     private var currentPlan: ExplorePlan?
-    /// Current ACP plan (for status updates)
-    private var currentACPPlan: ACPPlan?
-    /// Map op_id -> entry index for fast status updates
-    private var planIndexByOpId: [String: Int] = [:]
+    // Planning / streaming reducer
+    private let planning: PlanningReducer
 
     /// Executed operations (for deduplication)
     private var executedOps: Set<AgentOp> = []
@@ -105,6 +103,7 @@ public actor ExploreOrchestrator {
         self.goals = goals
         self.policy = policy
         self.streamHandler = streamHandler
+        self.planning = PlanningReducer(stream: streamHandler)
         // toolExecutor is lazy and will be created on first use
     }
 
@@ -145,7 +144,7 @@ public actor ExploreOrchestrator {
             currentPlan = plan
 
             // Stream plan as ACP
-            await streamPlan(plan)
+            await planning.streamPlan(plan)
 
             // Execute operations from plan
             try await executeOperations(plan.nextOps)
@@ -168,7 +167,7 @@ public actor ExploreOrchestrator {
     @available(iOS 26.0, macOS 26.0, *)
     private func getOrCreateSession() async throws -> LanguageModelSession {
         if let existing = fmSession {
-            OpenAgentsLog.orchestration.debug("Reusing existing FM session (turn \(sessionTurnCount))")
+            OpenAgentsLog.orchestration.debug("Reusing existing FM session (turn \(self.sessionTurnCount))")
             return existing
         }
 
@@ -194,7 +193,7 @@ public actor ExploreOrchestrator {
             instructions: instructions
         )
 
-        try? session.prewarm(promptPrefix: nil)
+        session.prewarm(promptPrefix: nil)
         fmSession = session
         sessionTurnCount = 0
         OpenAgentsLog.orchestration.info("FM session created with \(tools.count) tools")
@@ -220,7 +219,7 @@ public actor ExploreOrchestrator {
         After using tools, provide a summary of your findings.
         """
 
-        OpenAgentsLog.orchestration.info("Starting native tool calling (turn \(sessionTurnCount))")
+        OpenAgentsLog.orchestration.info("Starting native tool calling (turn \(self.sessionTurnCount))")
 
         // Send prompt - FM session will automatically call tools as needed
         let t0 = Date()
@@ -285,7 +284,7 @@ public actor ExploreOrchestrator {
             return t
         }()
         let session = LanguageModelSession(model: model, tools: tools, instructions: instructions)
-        try? session.prewarm(promptPrefix: nil)
+        session.prewarm(promptPrefix: nil)
 
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
         let goalsStr = goals.isEmpty ? "(no goals provided)" : goals.joined(separator: "\n- ")
@@ -300,7 +299,7 @@ public actor ExploreOrchestrator {
         """
 
         // Validate context size before sending
-        let estimatedTokens = estimateTokenCount(instructions: instructions, prompt: prompt)
+        let estimatedTokens = PlanningReducer.estimateTokenCount(instructions: instructions, prompt: prompt)
         guard estimatedTokens < 3500 else {
             throw OrchestrationError.executionFailed("Prompt too large: \(estimatedTokens) tokens (limit: 4096). Truncate goals or workspace path.")
         }
@@ -315,7 +314,7 @@ public actor ExploreOrchestrator {
             let response = try await session.respond(to: prompt, options: options)
             OpenAgentsLog.orchestration.debug("FM response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
             let raw = response.content
-            let ops = try parseOperationsFromResponse(raw)
+            let ops = try PlanningReducer.parseOperationsFromResponse(raw)
 
             OpenAgentsLog.orchestration.info("Generated plan with \(ops.count) operations")
 
@@ -325,7 +324,7 @@ public actor ExploreOrchestrator {
 
             // Post-process: add sessionAnalyze if we have session operations
             // This reads actual conversation content for deeper analysis
-            let finalOps = addAnalysisIfNeeded(ops)
+            let finalOps = PlanningReducer.addAnalysisIfNeeded(ops)
 
             return ExplorePlan(
                 goals: goals,
@@ -337,27 +336,7 @@ public actor ExploreOrchestrator {
         }
     }
 
-    /// Add sessionAnalyze if plan contains session operations
-    /// This ensures we actually read conversation content, not just list titles
-    private func addAnalysisIfNeeded(_ ops: [AgentOp]) -> [AgentOp] {
-        let hasSessionOps = ops.contains { op in
-            switch op.kind {
-            case .sessionList, .sessionSearch:
-                return true
-            default:
-                return false
-            }
-        }
-
-        guard hasSessionOps else {
-            return ops // No session operations, return as-is
-        }
-
-        // Add sessionAnalyze to read and analyze conversation content
-        var expanded = ops
-        expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
-        return expanded
-    }
+    // addAnalysisIfNeeded moved to PlanningReducer.addAnalysisIfNeeded
 
     /// Convert PlannedOperation (from guided generation) to AgentOp
     /// Hard-codes all numeric parameters to avoid confusing the model
@@ -461,44 +440,14 @@ public actor ExploreOrchestrator {
     // MARK: - Operation Execution
 
     private func executeOperations(_ ops: [AgentOp]) async throws {
-        for op in ops {
-            // Skip if already executed (deduplication)
-            if executedOps.contains(op) {
-                OpenAgentsLog.orchestration.debug("Skipping duplicate op: \(op.description)")
-                continue
-            }
-
-            // Execute operation
-            try await executeOperation(op)
-
-            // Mark as executed
-            executedOps.insert(op)
-        }
-    }
-
-    private func executeOperation(_ op: AgentOp) async throws {
-        OpenAgentsLog.orchestration.info("Executing: \(op.description) [tool=\(op.toolName) id=\(op.opId)]")
-
-        // Stream tool call (started)
-        await streamToolCall(op, status: .started)
-
-        do {
-            // Execute via ToolExecutor
-            let result = try await toolExecutor.execute(op)
-
-            // Store result for summary generation
+        // Deduplicate
+        let pending = ops.filter { !executedOps.contains($0) }
+        guard !pending.isEmpty else { return }
+        let exec = ToolExecutionOrchestrator(toolExecutor: toolExecutor, stream: streamHandler, planner: planning)
+        let results = try await exec.execute(pending)
+        for (op, result) in results {
             operationResults[op] = result
-
-            // Stream tool call update (completed)
-            await streamToolCallUpdate(op, status: .completed, output: result)
-            OpenAgentsLog.orchestration.debug("Completed: \(op.toolName) [id=\(op.opId)]")
-        } catch {
-            OpenAgentsLog.orchestration.error("Operation failed: \(error)")
-
-            // Stream tool call update (error)
-            await streamToolCallUpdate(op, status: .error, error: error.localizedDescription)
-
-            throw error
+            executedOps.insert(op)
         }
     }
 
@@ -534,7 +483,7 @@ public actor ExploreOrchestrator {
             var seenTitles = Set<String>()
             var interestingTitles: [String] = []
 
-            for (provider, sessions) in allSessions {
+            for (_, sessions) in allSessions {
                 for session in sessions {
                     guard let title = session.title else { continue }
 
@@ -661,88 +610,13 @@ public actor ExploreOrchestrator {
 
     // MARK: - ACP Streaming
 
-    private func streamPlan(_ plan: ExplorePlan) async {
-        let acpPlan = plan.toACPPlan()
-        // Build index map for entry updates
-        planIndexByOpId.removeAll()
-        for (i, e) in acpPlan.entries.enumerated() {
-            if let meta = e._meta, let any = meta["op_id"], case let .string(opId) = any.toJSONValue() {
-                planIndexByOpId[opId] = i
-            }
-        }
-        currentACPPlan = acpPlan
-        let update = ACP.Client.SessionUpdate.plan(acpPlan)
-        await streamHandler(update)
-    }
+    // streamPlan is handled by PlanningReducer
 
-    private func updatePlanEntry(opId: String, to status: ACPPlanEntryStatus, error: String? = nil) async {
-        guard var plan = currentACPPlan, let idx = planIndexByOpId[opId], idx < plan.entries.count else { return }
-        var entry = plan.entries[idx]
-        entry.status = status
-        if var meta = entry._meta {
-            if let err = error { meta["error"] = AnyEncodable(err) }
-            entry._meta = meta
-        } else if let err = error {
-            entry._meta = ["error": AnyEncodable(err)]
-        }
-        plan.entries[idx] = entry
-        currentACPPlan = plan
-        await streamHandler(.plan(plan))
-    }
+    // updatePlanEntry is handled by PlanningReducer
 
-    private func streamToolCall(_ op: AgentOp, status: ACPToolCallUpdateWire.Status) async {
-        let toolCall = ACPToolCallWire(
-            call_id: op.opId.uuidString,
-            name: op.toolName,
-            arguments: nil, // Could add op parameters here
-            _meta: ["op_hash": AnyEncodable(op.opHash)]
-        )
-        let update = ACP.Client.SessionUpdate.toolCall(toolCall)
-        await streamHandler(update)
+    // streamToolCall moved to ToolExecutionOrchestrator
 
-        // Also emit a started update for clearer progress in UI
-        if status == .started {
-            switch op.kind {
-            case .sessionAnalyze, .grep, .sessionSearch:
-                let started = ACPToolCallUpdateWire(
-                    call_id: op.opId.uuidString,
-                    status: .started,
-                    output: nil,
-                    error: nil,
-                    _meta: ["progress": AnyEncodable(0.0)]
-                )
-                let startedUpdate = ACP.Client.SessionUpdate.toolCallUpdate(started)
-                await streamHandler(startedUpdate)
-            default:
-                break
-            }
-        }
-        // Update plan entry to in_progress when a tool starts
-        await updatePlanEntry(opId: op.opId.uuidString, to: .in_progress)
-    }
-
-    private func streamToolCallUpdate(
-        _ op: AgentOp,
-        status: ACPToolCallUpdateWire.Status,
-        output: (any Encodable)? = nil,
-        error: String? = nil
-    ) async {
-        let update = ACPToolCallUpdateWire(
-            call_id: op.opId.uuidString,
-            status: status,
-            output: output.map { AnyEncodable($0) },
-            error: error,
-            _meta: nil
-        )
-        let sessionUpdate = ACP.Client.SessionUpdate.toolCallUpdate(update)
-        await streamHandler(sessionUpdate)
-        // Mark completed (or completed with error) in plan
-        if status == .completed {
-            await updatePlanEntry(opId: op.opId.uuidString, to: .completed)
-        } else if status == .error {
-            await updatePlanEntry(opId: op.opId.uuidString, to: .completed, error: error)
-        }
-    }
+    // streamToolCallUpdate moved to ToolExecutionOrchestrator
 
     // MARK: - FM-Powered Insight Generation
     /// Use Foundation Models to turn computed metrics into actual analysis text
@@ -1137,15 +1011,5 @@ public actor ExploreOrchestrator {
         return nil
     }
 
-    // MARK: - Token Estimation
-
-    /// Estimate token count for Foundation Models context validation
-    /// Foundation Models have a 4096 token context window limit
-    private func estimateTokenCount(instructions: Instructions, prompt: String) -> Int {
-        // Conservative estimate: ~4 characters per token (OpenAI rule of thumb)
-        // This is approximate but provides a safe upper bound
-        let instructionsText = String(describing: instructions)
-        let totalChars = instructionsText.count + prompt.count
-        return totalChars / 4
-    }
+    // Token estimation moved to PlanningReducer.estimateTokenCount
 }
