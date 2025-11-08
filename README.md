@@ -83,9 +83,9 @@ All ACP translation and processing happens in Swift. No Rust, no TypeScript, no 
 ## Development
 
 ```bash
-# Open in Xcode
+# Open in Xcode (use the workspace)
 cd ios
-open OpenAgents.xcodeproj
+open OpenAgents.xcworkspace
 
 # Build iOS
 xcodebuild -scheme OpenAgents -sdk iphonesimulator
