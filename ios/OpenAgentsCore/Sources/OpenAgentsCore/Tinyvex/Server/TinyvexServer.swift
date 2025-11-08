@@ -23,7 +23,10 @@ public actor TinyvexServer {
         let wsOptions = NWProtocolWebSocket.Options()
         wsOptions.autoReplyPing = true
         params.defaultProtocolStack.applicationProtocols = [wsOptions]
-        let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: config.port)!)
+        guard let nwPort = NWEndpoint.Port(rawValue: config.port) else {
+            throw NSError(domain: "TinyvexServer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid port: \(config.port)"])
+        }
+        let listener = try NWListener(using: params, on: nwPort)
         listener.newConnectionHandler = { [weak self] conn in
             guard let self else { return }
             Task { await self.accept(connection: conn) }

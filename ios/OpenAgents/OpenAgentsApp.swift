@@ -27,7 +27,15 @@ struct OpenAgentsApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            OpenAgentsLog.app.error("Could not create persistent ModelContainer: \(error.localizedDescription)")
+            // Fall back to in-memory store to keep the app running
+            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            if let mc = try? ModelContainer(for: schema, configurations: [fallback]) {
+                return mc
+            }
+            // If even this fails, treat as a critical configuration error
+            OpenAgentsLog.app.fault("ModelContainer creation failed for both persistent and in-memory configurations.")
+            preconditionFailure("ModelContainer initialization failed")
         }
     }()
 
