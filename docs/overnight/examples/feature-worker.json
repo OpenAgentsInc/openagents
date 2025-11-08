@@ -1,0 +1,157 @@
+{
+  "$schema": "https://openagents.com/schemas/upgrade-manifest-v1.json",
+  "id": "feature-worker-v1",
+  "version": "1.0.0",
+  "title": "Feature Implementation Worker",
+  "description": "Autonomously implements small features and improvements from GitHub issues tagged 'good-first-issue' or 'enhancement'.",
+
+  "author": {
+    "name": "OpenAgents",
+    "npub": "npub1openagentsexamplekey",
+    "url": "https://github.com/OpenAgentsInc/openagents"
+  },
+
+  "license": "MIT",
+  "categories": ["development", "features", "automation"],
+  "tags": ["overnight", "github-issues", "claude-code", "features"],
+
+  "capabilities": {
+    "platforms": ["macos"],
+    "min_macos_version": "26.0",
+    "backends": ["foundation_models"],
+    "required_tools": ["git", "gh", "swift", "xcodebuild"]
+  },
+
+  "permissions": {
+    "filesystem": {
+      "read": ["$WORKSPACE/**"],
+      "write": ["$WORKSPACE/**"],
+      "exclude": [".env", "*.key", "credentials.json", ".git/**"]
+    },
+    "network": {
+      "allowed_domains": ["github.com", "api.github.com"],
+      "ports": []
+    },
+    "tools": {
+      "allowed": ["git", "gh", "xcodebuild", "swift"],
+      "denied": ["rm", "curl", "wget"]
+    }
+  },
+
+  "schedule": {
+    "type": "cron",
+    "expression": "0 2 * * *",
+    "timezone": "America/Los_Angeles",
+    "window": {
+      "start": "01:00",
+      "end": "05:00"
+    },
+    "constraints": {
+      "plugged_in": true,
+      "wifi_only": true,
+      "cpu_max_percentage": 80,
+      "respect_dnd": false,
+      "suspend_if_active": true
+    },
+    "jitter": 900,
+    "on_missed": "skip"
+  },
+
+  "triggers": [
+    {
+      "type": "github_issue",
+      "labels": ["good-first-issue", "enhancement"],
+      "debounce": 3600
+    }
+  ],
+
+  "pipeline": [
+    {
+      "op": "github.list_issues",
+      "params": {
+        "labels": ["good-first-issue", "enhancement"],
+        "state": "open",
+        "sort": "created",
+        "limit": 10
+      },
+      "output_var": "issues"
+    },
+    {
+      "op": "session.analyze",
+      "params": {
+        "providers": ["claude-code"],
+        "topK": 10,
+        "since": "14d"
+      },
+      "output_var": "session_insights"
+    },
+    {
+      "op": "orchestrate.decide",
+      "backend": "foundation_models",
+      "params": {
+        "context": {
+          "issues": "{issues}",
+          "session_insights": "{session_insights}"
+        },
+        "available_agents": ["claude-code"],
+        "time_budget": 3600,
+        "hint": "Select the most impactful and feasible issue to implement. Consider: issue clarity, scope (can it be done in ~1 hour?), user demand (upvotes/comments), alignment with recent work patterns."
+      },
+      "output_var": "decision"
+    },
+    {
+      "op": "agent.execute",
+      "params": {
+        "agent": "claude-code",
+        "task": "Implement GitHub issue #{decision.issue_number}: {decision.issue_title}\n\n{decision.issue_body}\n\nImplementation approach: {decision.rationale}",
+        "working_dir": "$WORKSPACE",
+        "max_duration": 3600,
+        "resume_on_error": true,
+        "stream_updates": true
+      },
+      "output_var": "session_result"
+    },
+    {
+      "op": "test.run",
+      "params": {
+        "command": "xcodebuild test -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk macosx",
+        "timeout": 600,
+        "required": true
+      },
+      "output_var": "test_results"
+    },
+    {
+      "op": "pr.create",
+      "params": {
+        "branch_prefix": "agent/feature/",
+        "base_branch": "main",
+        "title": "{decision.issue_title}",
+        "body_template": "## Feature Implementation\n\nCloses #{decision.issue_number}\n\n**Issue**: {decision.issue_title}\n\n**Implementation Summary**:\n\n{session_result.summary}\n\n---\n\n### Changes\n\n{session_result.changes_summary}\n\n**Files Changed**: {session_result.files_changed}\n\n**Lines Added/Removed**: +{session_result.lines_added}/-{session_result.lines_removed}\n\n---\n\n### Testing\n\n{test_results.summary}\n\n**All Tests**: {test_results.status} ✅\n\n---\n\n**Agent**: Claude Code\n\n**Session**: `{session_result.session_id}`\n\n**Duration**: {session_result.duration}\n\n**Confidence**: {decision.confidence}\n\n---\n\n*Generated with [OpenAgents Feature Worker](https://github.com/OpenAgentsInc/openagents)*\n\n*Upgrade*: `feature-worker-v1`",
+        "auto_push": true,
+        "draft": false
+      },
+      "output_var": "pr_number"
+    },
+    {
+      "op": "github.comment_issue",
+      "params": {
+        "issue_number": "{decision.issue_number}",
+        "body": "🤖 Autonomous agent has created PR #{pr_number} to implement this feature.\n\nSession: `{session_result.session_id}`\n\nPlease review and merge if acceptable."
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": "free",
+    "amount_sats": 0,
+    "revenue_split": []
+  },
+
+  "policy": {
+    "aup_compliance": true,
+    "data_retention": "30d",
+    "telemetry_level": "aggregate"
+  },
+
+  "signing": null
+}
