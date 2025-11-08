@@ -10,6 +10,12 @@ extension BridgeManager {
     // Dependencies
     func start() {
         let conn = MobileConnectionManager()
+        wireConnection(conn)
+        conn.start()
+    }
+
+    // Internal for tests: inject a custom connection manager and wire subscriptions
+    func wireConnection(_ conn: ConnectionManaging) {
         connection = conn
         // Connection events
         conn.statusPublisher
@@ -64,9 +70,6 @@ extension BridgeManager {
 
         // Initialize dispatcher with RPC client
         dispatcher = PromptDispatcher(rpc: conn.rpcClient, timeline: timeline)
-
-        // Kick off connection
-        conn.start()
     }
 
     // Manual connection entry point
