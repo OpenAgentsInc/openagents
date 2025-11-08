@@ -1,4 +1,4 @@
-# Orchiestration - UI Specification
+# Orchestration - UI Specification
 
 **Last Updated**: 2025-11-08
 **Platform**: macOS 13.0+ (primary), iOS 16.0+ (monitoring only)
@@ -63,9 +63,9 @@ macOS App (DesktopWebSocketServer)
 │   ├── Sidebar
 │   │   ├── Sessions (existing)
 │   │   ├── Agents (existing)
-│   │   └── Orchiestration ← NEW
+│   │   └── Orchestration ← NEW
 │   └── Content Area
-│       └── OrchiestrationConsoleView (selected via sidebar)
+│       └── OrchestrationConsoleView (selected via sidebar)
 │           ├── Header (status, controls)
 │           ├── SchedulerCard
 │           ├── TaskQueueSection
@@ -76,8 +76,8 @@ iOS App (MobileWebSocketClient)
 ├── Tab Bar
 │   ├── Sessions (existing)
 │   ├── Agents (existing)
-│   └── Orchiestration ← NEW
-│       └── OrchiestrationMonitoringView
+│   └── Orchestration ← NEW
+│       └── OrchestrationMonitoringView
 │           ├── StatusHeader
 │           ├── TaskQueueCard
 │           ├── ActiveSessionsList
@@ -88,15 +88,15 @@ iOS App (MobileWebSocketClient)
 
 ## macOS Views
 
-### 1. OrchiestrationConsoleView
+### 1. OrchestrationConsoleView
 
-**Purpose**: Main control center for Orchiestration on macOS.
+**Purpose**: Main control center for Orchestration on macOS.
 
 **Layout**: Single-column, scrollable content area with fixed header.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Orchiestration                                      [ ]  │  ← Header
+│  Orchestration                                       [ ]  │  ← Header
 │  ● Running  Next wake: 2:30 AM (in 1h 23m)                │
 │                                                             │
 │  [▶ Start] [⏸ Pause] [⏹ Stop] [⚙ Settings]              │  ← Controls
@@ -809,7 +809,7 @@ struct ToolCallRow: View {
 
 ## iOS Views
 
-### OrchiestrationMonitoringView
+### OrchestrationMonitoringView
 
 **Purpose**: iOS monitoring interface (read-only, no orchestration controls).
 
@@ -817,7 +817,7 @@ struct ToolCallRow: View {
 
 ```
 ┌─────────────────────────────────────────────┐
-│ < Orchiestration                            │  ← Nav bar
+│ < Orchestration                             │  ← Nav bar
 ├─────────────────────────────────────────────┤
 │                                             │
 │ ┌─────────────────────────────────────────┐ │
@@ -1320,7 +1320,7 @@ struct SkeletonCard: View {
 **View Models**:
 ```swift
 @MainActor
-class OrchiestrationConsoleViewModel: ObservableObject {
+class OrchestrationConsoleViewModel: ObservableObject {
     @Published var schedulerState: SchedulerState = .idle
     @Published var tasks: [OvernightTask] = []
     @Published var activeSessions: [AgentSessionInfo] = []

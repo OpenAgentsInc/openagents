@@ -10,7 +10,7 @@
 
 ## Overview
 
-Implement `SchedulerService`, a macOS-only background service that provides time-based orchestration wake-up with minimal constraint checking. This is the entry point for the Orchiestration system.
+Implement `SchedulerService`, a macOS-only background service that provides time-based orchestration wake-up with minimal constraint checking. This is the entry point for the Orchestration system.
 
 **Scope for Demo**: Implement cron + window + jitter + plugged_in + wifi_only only. Defer DND/CPU/user-activity to post-demo.
 
