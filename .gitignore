@@ -24,6 +24,8 @@ ios/OpenAgentsCore/.swiftpm/
 **/*.xcscmblueprint
 ios/DerivedData/
 ios/OpenAgents.xcodeproj/project.xcworkspace/xcuserdata/
+ios/OpenAgents.xcodeproj/xcuserdata/
+ios/OpenAgents.xcodeproj/project.xcworkspace/xcshareddata/
 ios/OpenAgents.xcworkspace/xcuserdata/
 
 # Claude Code local configuration
