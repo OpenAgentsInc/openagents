@@ -1,5 +1,8 @@
 #if os(macOS)
 import Foundation
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
 
 // MARK: - Cycle Result
 
@@ -78,6 +81,7 @@ public actor AgentCoordinator {
     private let taskQueue: TaskQueue
     private let decisionEngine: DecisionEngine
     private let agentRegistry: AgentRegistry
+    private let updateHub: SessionUpdateHub?
 
     // MARK: - Metrics
 
@@ -98,11 +102,13 @@ public actor AgentCoordinator {
     public init(
         taskQueue: TaskQueue,
         decisionEngine: DecisionEngine,
-        agentRegistry: AgentRegistry
+        agentRegistry: AgentRegistry,
+        updateHub: SessionUpdateHub? = nil
     ) {
         self.taskQueue = taskQueue
         self.decisionEngine = decisionEngine
         self.agentRegistry = agentRegistry
+        self.updateHub = updateHub
     }
 
     // MARK: - Public API
@@ -269,18 +275,15 @@ public actor AgentCoordinator {
                 metadata: task.metadata
             )
 
-            // Create update hub (no-op broadcast for now)
-            let updateHub = SessionUpdateHub(
-                tinyvexDb: nil,
-                broadcastCallback: { _ in }
-            )
+            // Use injected update hub if provided; otherwise a no-op hub
+            let hub: SessionUpdateHub = self.updateHub ?? SessionUpdateHub(tinyvexDb: nil, broadcastCallback: { _ in })
 
             // Start the agent
             let handle = try await provider.start(
                 sessionId: ACPSessionId(sessionId),
                 prompt: task.decision.task,
                 context: context,
-                updateHub: updateHub
+                updateHub: hub
             )
 
             // Update task status to in_progress
@@ -295,6 +298,9 @@ public actor AgentCoordinator {
 
             tasksExecuted += 1
             OpenAgentsLog.orchestration.info("AgentCoordinator Task executing: \(task.id) session=\(sessionId)")
+
+            // Schedule timeout enforcement based on estimated duration
+            await scheduleTimeout(for: updatedTask, sessionId: sessionId)
 
             return .taskExecuted(taskId: task.id, sessionId: sessionId)
         } catch {
@@ -314,9 +320,48 @@ public actor AgentCoordinator {
 
     /// Compute operation hash for deduplication
     private func computeOpHash(decision: DecisionOutput) -> String {
-        // Simple hash: combine task description + agent mode
+        // Stable hash: SHA-256 of task + agent mode, truncated
         let combined = "\(decision.task)|\(decision.agentMode.rawValue)"
-        return String(combined.hash)
+        if let data = combined.data(using: .utf8) {
+            #if canImport(CryptoKit)
+            let digest = SHA256.hash(data: data)
+            let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
+            return String(hex.prefix(16))
+            #else
+            // Fallback: simple djb2
+            var hash: UInt64 = 5381
+            for b in data { hash = ((hash << 5) &+ hash) &+ UInt64(b) }
+            return String(format: "%016llx", hash)
+            #endif
+        }
+        return UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16).description
+    }
+
+    /// Schedule a timeout to cancel long-running tasks that exceed budget
+    private func scheduleTimeout(for task: OvernightTask, sessionId: String) async {
+        let allowance = max(1.0, min(task.decision.estimatedDuration * 1.25, 3 * 3600))
+        Task.detached { [weak self] in
+            // Sleep for the allowance
+            try? await Task.sleep(nanoseconds: UInt64(allowance * 1_000_000_000))
+            guard let self = self else { return }
+            // Check if task still in progress
+            guard let t = try? await self.taskQueue.get(task.id), t.status == .in_progress else { return }
+            // Attempt to cancel via provider handle
+            if let sess = t.sessionId,
+               let handle = await self.agentRegistry.handle(for: ACPSessionId(sess)),
+               let provider = await self.agentRegistry.provider(for: handle.mode) {
+                await provider.cancel(sessionId: ACPSessionId(sess), handle: handle)
+                await self.agentRegistry.removeHandle(for: ACPSessionId(sess))
+            }
+            // Mark as failed (timeout)
+            var tt = t
+            tt.status = .failed
+            tt.error = "Timed out after \(Int(allowance))s"
+            tt.completedAt = Date()
+            try? await self.taskQueue.update(tt)
+            self.tasksFailed += 1
+            OpenAgentsLog.orchestration.warning("AgentCoordinator Timed out task: \(tt.id) after \(Int(allowance))s")
+        }
     }
 }
 
