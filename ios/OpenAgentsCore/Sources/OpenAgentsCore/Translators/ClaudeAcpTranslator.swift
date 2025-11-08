@@ -22,8 +22,8 @@ public enum ClaudeAcpTranslator {
         }
 
         func touchTs(_ t: Int64) {
-            if tsMin == nil || t < tsMin! { tsMin = t }
-            if tsMax == nil || t > tsMax! { tsMax = t }
+            tsMin = min(tsMin ?? t, t)
+            tsMax = max(tsMax ?? t, t)
         }
 
         for line in lines {

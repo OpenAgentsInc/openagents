@@ -790,7 +790,8 @@ public actor ExploreOrchestrator {
                     if maxItems.count == 1 { return maxItems[0] }
                     if maxItems.count == 2 { return "\(maxItems[0]) and \(maxItems[1])" }
                     let head = maxItems.dropLast().joined(separator: ", ")
-                    return "\(head), and \(maxItems.last!)"
+                    if let last = maxItems.last { return "\(head), and \(last)" }
+                    return head
                 }()
                 let sentence = "User intends to \(label.lowercased()) \(joined)."
                 // Build context from session.analyze metrics

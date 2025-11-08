@@ -351,7 +351,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         prompt: String,
         context: AgentContext
     ) -> [String] {
-        fatalError("Subclasses must implement buildStartArguments")
+        OpenAgentsLog.orchestration.error("[\(displayName)] buildStartArguments not implemented in subclass; returning empty args")
+        assertionFailure("Subclasses must implement buildStartArguments")
+        return []
     }
 
     /// Build command-line arguments for resuming a session
@@ -362,7 +364,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         handle: AgentHandle,
         context: AgentContext
     ) -> [String] {
-        fatalError("Subclasses must implement buildResumeArguments")
+        OpenAgentsLog.orchestration.error("[\(displayName)] buildResumeArguments not implemented in subclass; returning empty args")
+        assertionFailure("Subclasses must implement buildResumeArguments")
+        return []
     }
 
     /// Process a line of stdout (for JSONL-based agents)

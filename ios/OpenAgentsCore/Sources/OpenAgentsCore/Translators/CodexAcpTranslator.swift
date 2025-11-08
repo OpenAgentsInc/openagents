@@ -24,7 +24,10 @@ public enum CodexAcpTranslator {
         func stableCallId(seed: String) -> String {
             return ACPId.stableId(namespace: "codex-call:\(options.sourceId)", seed: seed)
         }
-        func touchTs(_ t: Int64) { if tsMin == nil || t < tsMin! { tsMin = t }; if tsMax == nil || t > tsMax! { tsMax = t } }
+        func touchTs(_ t: Int64) {
+            tsMin = min(tsMin ?? t, t)
+            tsMax = max(tsMax ?? t, t)
+        }
 
         for line in lines {
             guard let data = line.data(using: .utf8),

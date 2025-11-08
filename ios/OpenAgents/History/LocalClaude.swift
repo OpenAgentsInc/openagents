@@ -162,7 +162,7 @@ struct LocalClaudeDiscovery {
 
     static func posixListFiles(in base: URL) -> [URL] {
         var out: [URL] = []
-        let cPath = base.path.cString(using: .utf8)!
+        guard let cPath = base.path.cString(using: .utf8) else { return out }
         guard let dir = opendir(cPath) else { return out }
         defer { closedir(dir) }
         while let ent = readdir(dir) {

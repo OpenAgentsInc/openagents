@@ -97,7 +97,7 @@ public actor TinyvexDbLayer {
             let ts = sqlite3_column_int64(stmt, 3)
             let upd = String(cString: sqlite3_column_text(stmt, 4))
             let metaPtr = sqlite3_column_text(stmt, 5)
-            let meta = metaPtr != nil ? String(cString: metaPtr!) : nil
+            let meta: String? = metaPtr.flatMap { String(cString: $0) }
             out.append(EventRow(event_id: event_id, session_id: sess, seq: seq, ts: ts, update_json: upd, meta_json: meta))
         }
         return out

@@ -726,7 +726,10 @@ public class DesktopWebSocketServer {
         let wsOptions = NWProtocolWebSocket.Options()
         params.defaultProtocolStack.applicationProtocols.insert(wsOptions, at: 0)
         params.acceptLocalOnly = false
-        listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            throw NSError(domain: "DesktopWebSocketServer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid port: \(port)"])
+        }
+        listener = try NWListener(using: params, on: nwPort)
         // Advertise Bonjour service for discovery when supported
         if advertiseService {
             #if os(macOS)
@@ -1100,7 +1103,8 @@ extension DesktopWebSocketServer {
     fileprivate static func writeText(toURI uri: String, text: String) -> Bool {
         guard let url = urlFromURI(uri) else { return false }
         if url.isFileURL {
-            do { try text.data(using: .utf8)!.write(to: url); return true } catch { return false }
+            guard let data = text.data(using: .utf8) else { return false }
+            do { try data.write(to: url); return true } catch { return false }
         }
         return false
     }
