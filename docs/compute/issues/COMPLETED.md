@@ -2,24 +2,29 @@
 
 **Created**: 2025-11-07
 **Status**: 19 comprehensive issues completed (16 original + 3 new Spark SDK issues - 1 deleted)
-**Key Change**: Spark SDK integration (replaced manual Lightning implementation)
+**Key Changes**:
+- **nostr-sdk-ios fork** (Phase 1 optimization - issue #001)
+- **Spark SDK integration** (Phase 2 redesign - replaced manual Lightning)
 **Ready for**: User review → GitHub publishing
 
 ## Overview
 
 Created **19 comprehensive GitHub issues** (out of 31 planned) covering the critical path for OpenAgents compute marketplace implementation. Each issue includes full technical specifications, Apple compliance analysis, testing requirements, and implementation guidance.
 
-**Major Decision**: Switched from manual Lightning implementation to **Breez Spark SDK**, reducing Phase 2 effort by ~35-40% while improving UX and reliability.
+**Major Decisions**:
+1. **nostr-sdk-ios fork** (Phase 1): Use OpenAgents fork of nostr-sdk-ios instead of building Nostr from scratch. Reduces issue #001 effort by ~40% (4-6w → 2-3w) while leveraging 25+ NIPs already implemented.
+2. **Spark SDK** (Phase 2): Switched from manual Lightning implementation to Breez Spark SDK, reducing Phase 2 effort by ~35-40% while improving UX and reliability.
 
 ## What's Been Created (19 Issues)
 
 ### ✅ Phase 1: MVP - COMPLETE (8/8 issues after deletion)
 
 **Foundation Layer** (Critical Path):
-1. **001 - Nostr Client Library** (~6000 words)
-   - Full NIP-01, NIP-04, NIP-19, NIP-57, NIP-90 implementation
-   - Multi-relay manager, encryption, zaps, DVM
-   - Priority: P0 | Effort: 4-6 weeks
+1. **001 - Nostr Client Library (Fork Integration)** (~6000 words) **[UPDATED]**
+   - Integration of OpenAgents fork of nostr-sdk-ios
+   - Add marketplace NIPs: NIP-57 (Zaps), NIP-89 (Handlers), NIP-90 (DVM)
+   - 25+ NIPs already implemented (NIP-01, 04, 19, 44, relay management, encryption)
+   - Priority: P0 | Effort: **2-3 weeks** (reduced from 4-6 weeks via fork)
 
 2. **002 - Secp256k1 & Cryptography** (~5500 words)
    - Schnorr/ECDSA signatures, ECDH, Secure Enclave
@@ -58,7 +63,7 @@ Created **19 comprehensive GitHub issues** (out of 31 planned) covering the crit
    - Foundation Models AUP enforcement, classifier
    - Priority: P0 | Effort: 2-3 weeks
 
-**Phase 1 Total**: ~36,000 words | 18-26 weeks effort (reduced from 40,500 words / 20-29 weeks)
+**Phase 1 Total**: ~36,000 words | **16-24 weeks effort** (reduced from 40,500 words / 20-29 weeks via deletion + fork)
 
 ---
 
@@ -165,10 +170,32 @@ Created **19 comprehensive GitHub issues** (out of 31 planned) covering the crit
 | **Total Issues Created** | 19 of 31 planned (16 original + 3 new - 1 deleted) |
 | **Total Words Written** | ~75,000 words (increased from ~55,000) |
 | **Estimated LOC** | ~7,000 (increased from ~5,000 due to Spark SDK integration code) |
-| **Estimated Effort** | ~44-61 engineering weeks (reduced from ~45-60 via Spark SDK) |
+| **Estimated Effort** | **~42-59 engineering weeks** (reduced from ~45-60) |
 | **Team Size (Recommended)** | 3 engineers |
-| **Timeline (Parallelized)** | ~14-18 weeks for Phases 1-3 (reduced from ~15-20) |
-| **Phase 2 Effort Reduction** | ~35-40% (10.5-15w vs 18-23w manual Lightning) |
+| **Timeline (Parallelized)** | **~14-18 weeks for Phases 1-3** |
+| **Effort Reductions** | Phase 1: ~40% (issue #001: 4-6w → 2-3w via nostr-sdk-ios fork)<br>Phase 2: ~35-40% (10.5-15w vs 18-23w via Spark SDK)<br>**Total: Reduced from 17-21w to 14-18w** |
+
+## nostr-sdk-ios Fork Decision
+
+### Why Fork nostr-sdk-ios?
+
+**Rationale**:
+- ✅ **Stale upstream**: Official SDK hasn't had a release since February 2025 (9 months ago)
+- ✅ **25+ NIPs implemented**: Core protocol (NIP-01), relay management, encryption (NIP-04, NIP-44), bech32 (NIP-19) already done
+- ✅ **Effort reduction**: ~40% reduction in issue #001 (4-6w → 2-3w)
+- ✅ **Rapid iteration**: Add marketplace NIPs without waiting for upstream merge approvals
+- ✅ **Shallow fork**: Only ~850 LOC additions to add NIP-57 (Zaps), NIP-89 (Handlers), NIP-90 (DVM)
+
+**What Changed**:
+- **✏️ Updated**: Issue #001 (Nostr Client Library) - **2-3 weeks saved**
+  - From: "Build comprehensive Nostr library from scratch" (4-6 weeks)
+  - To: "Integrate nostr-sdk-ios fork and add marketplace NIPs" (2-3 weeks)
+- What's already implemented: RelayPool, NostrEvent, EventKind, Filter, encryption, signatures
+- What to add: ZapRequestEvent, ZapReceiptEvent, DVMJobRequestEvent, DVMJobResultEvent, etc.
+
+**Fork**: https://github.com/OpenAgentsInc/nostr-sdk-ios
+
+---
 
 ## Spark SDK Integration Decision
 
@@ -205,8 +232,8 @@ Created **19 comprehensive GitHub issues** (out of 31 planned) covering the crit
 
 ### Critical Path ✅ COMPLETE
 - Crypto & Keys (issue #002)
-- Nostr Protocol (issue #001)
-- Lightning Primitives (issue #003)
+- **Nostr Protocol (issue #001)** - Updated to use nostr-sdk-ios fork
+- ~~Lightning Primitives (issue #003)~~ - **Deleted** (Spark SDK replaces)
 - Job Schemas (issue #004)
 - iOS Identity (issue #005)
 - macOS Worker (issue #007)
