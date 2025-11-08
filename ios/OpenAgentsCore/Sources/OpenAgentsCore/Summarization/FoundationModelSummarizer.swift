@@ -27,7 +27,7 @@ enum FoundationModelSummarizer {
         case .available:
             break
         case .unavailable(let reason):
-            print("[FM] unavailable reason=\(String(describing: reason))")
+            OpenAgentsLog.app.debug("FM unavailable reason=\(String(describing: reason))")
             return nil
         }
 

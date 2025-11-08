@@ -38,7 +38,7 @@ final class TinyvexManager: ObservableObject {
                 vnodeSource = src
             }
         } catch {
-            print("[Tinyvex] Failed to start: \(error)")
+            OpenAgentsLog.app.error("Tinyvex Failed to start: \(error)")
         }
     }
 
