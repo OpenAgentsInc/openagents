@@ -4,6 +4,7 @@
 **Component:** macOS App (OpenAgents)
 **Priority:** P1 (High - Critical for marketplace debugging and validation)
 **Estimated Effort:** 1-2 weeks
+**Status:** ✅ **READY TO IMPLEMENT** (No blocking dependencies)
 
 ## Summary
 
@@ -466,15 +467,19 @@ LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
 
 ### OpenAgents Dependencies
 
-- **Issue #001**: Nostr Client Library (Swift) - **BLOCKING**
-  - Must be completed first
-  - Provides: `RelayPool`, `NostrEvent`, `Filter`, `Relay` types
+- **NostrSDK** - ✅ **ALREADY AVAILABLE**
   - Source: `/Users/christopherdavid/code/nostr-sdk-ios` (OpenAgents fork)
-- **Issue #002**: secp256k1 & Cryptography - **BLOCKING**
-  - Need signature verification (`event.isVerified()`)
+  - Already integrated via local package dependency
+  - Provides: `RelayPool`, `NostrEvent`, `Filter`, `Relay` types
+  - Signature verification: `event.isVerified()` available
+- **Keypair Generation** - ✅ **ALREADY AVAILABLE**
+  - Implemented on macOS Nostr Dev card
+  - Ephemeral keys sufficient for relay connections
+  - No blocking work needed
 - **Issue #004**: Job Schema Registry - **SOFT DEPENDENCY**
   - Provides `JobKind` enum for kind metadata lookup
   - Feed can show raw kind numbers without registry (degraded UX)
+  - Can implement feed without this, then enhance later
 
 ### System Frameworks
 
