@@ -49,7 +49,11 @@ After WebSocket connection, the iOS client sends an `initialize` request:
   "id": "1",
   "result": {
     "protocol_version": "0.2.2",
-    "agent_capabilities": {},
+    "agent_capabilities": {
+      "ext_capabilities": {
+        "orchestrate_explore": true
+      }
+    },
     "auth_methods": [],
     "agent_info": {
       "name": "openagents-mac",
@@ -69,7 +73,7 @@ All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
 
 - `initialize` - Handshake (above)
 - `session/new` - Create new agent session
-- `session/prompt` - Send prompt to session
+- `session/prompt` - Send prompt to session (content array of ACP blocks)
 - `session/cancel` - Cancel running session (notification)
 - `session/update` - Agent update stream (notification from server)
 - `session/set_mode` - Set agent provider (Codex/Claude Code)
@@ -106,7 +110,9 @@ Some non-core (dotted) methods are gated behind extension capabilities negotiate
 }
 ```
 
-### Example: Send Prompt
+### Example: Send Prompt (Content Array)
+
+ACP uses a content array for prompts. Each entry is an ACP content block (e.g., text, image).
 
 **Request:**
 ```json
@@ -116,7 +122,9 @@ Some non-core (dotted) methods are gated behind extension capabilities negotiate
   "id": "3",
   "params": {
     "session_id": "abc-123-def-456",
-    "prompt": "List files in current directory"
+    "prompt": [
+      { "type": "text", "text": "List files in current directory" }
+    ]
   }
 }
 ```
@@ -132,7 +140,7 @@ Some non-core (dotted) methods are gated behind extension capabilities negotiate
 
 ### Example: Session Updates (Notification)
 
-The server sends `session/update` notifications as the agent generates output:
+The server sends `session/update` notifications as the agent generates output (discriminated by `sessionUpdate`):
 
 ```json
 {
@@ -141,12 +149,9 @@ The server sends `session/update` notifications as the agent generates output:
   "params": {
     "session_id": "abc-123-def-456",
     "update": {
-      "agent_message_chunk": {
-        "content": {
-          "text": {
-            "text": "Let me list the files..."
-          }
-        }
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+        "content": { "type": "text", "text": "Let me list the files..." }
       }
     }
   }
