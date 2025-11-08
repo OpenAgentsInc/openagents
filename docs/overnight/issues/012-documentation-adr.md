@@ -10,7 +10,7 @@
 
 ## Overview
 
-Write comprehensive documentation and create ADR (Architectural Decision Record) for overnight agent orchestration system.
+Write comprehensive documentation and create ADR (Architectural Decision Record) for the Orchiestration system.
 
 **Locations**:
 - ADR: `docs/adr/0007-overnight-agent-orchestration.md`
@@ -21,14 +21,14 @@ Write comprehensive documentation and create ADR (Architectural Decision Record)
 
 ## Deliverables
 
-### 1. ADR-0007: Overnight Agent Orchestration Architecture
+### 1. ADR-0007: Orchiestration Architecture
 
-**Title**: Overnight Agent Orchestration Architecture
+**Title**: Orchiestration Architecture
 
 **Status**: Accepted
 
 **Context**:
-- Users want agents to work autonomously overnight
+- Users want agents to work autonomously while unattended
 - Need to demonstrate control of Claude Code and OpenAI Codex
 - Foundation Models should make orchestration decisions
 - Logic must be deterministic and shareable (upgrade JSON)
@@ -82,7 +82,7 @@ All logic encapsulated as declarative JSON "upgrade" manifests, designed for fut
 Add Swift documentation to all public types:
 
 ```swift
-/// macOS-only background scheduler service for orchestrating overnight agent work.
+/// macOS-only background scheduler service for Orchiestration.
 ///
 /// Provides cron-based wake-up with constraint checking (power, network, CPU, user activity).
 /// Integrates with `UpgradeExecutor` to run declarative JSON manifests.
@@ -115,13 +115,13 @@ Apply to:
 
 ### 3. User Guide
 
-**File**: `docs/overnight-agents-guide.md`
+**File**: `docs/orchiestration-guide.md`
 
 **Sections**:
-1. **Introduction**: What is overnight orchestration?
+1. **Introduction**: What is Orchiestration?
 2. **Prerequisites**: macOS 26+, gh CLI, Foundation Models
 3. **Installation**: Enable orchestration features
-4. **Quick Start**: Run first overnight cycle
+4. **Quick Start**: Run first Orchiestration cycle
 5. **Creating Upgrade Manifests**: JSON schema, examples
 6. **Monitoring on iOS**: Bridge connection, real-time updates
 7. **Troubleshooting**: Common issues and solutions
@@ -132,7 +132,7 @@ Apply to:
 ### 4. Update Existing ADRs
 
 **ADR-0002 (Agent Client Protocol)**:
-- Add note about overnight orchestration using ACP for all agent communication
+- Add note about Orchiestration using ACP for all agent communication
 
 **ADR-0004 (iOS ↔ Desktop Bridge)**:
 - Add new JSON-RPC methods: `orchestration/*`
