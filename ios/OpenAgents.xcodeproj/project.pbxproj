@@ -656,6 +656,7 @@
 			package = E1A1B2C33D4E5F60718293A4 /* XCLocalSwiftPackageReference "OpenAgentsCore" */;
 			productName = OpenAgentsCore;
 		};
+/* removed XCSwiftPackageProductDependency OpenAgentsNostr */
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2C3A0EEB2EB930AA00C8CDB0 /* Project object */;
