@@ -80,9 +80,9 @@ public actor SessionUpdateHub {
                 )
                 persistedCount += 1
                 lastAppendTimestamp = timestamp
-                print("[Bridge][tinyvex] append session=\(sessionId.value) kind=\(kind)")
+                OpenAgentsLog.server.debug("tinyvex append session=\(sessionId.value) kind=\(kind)")
             } catch {
-                print("[Bridge][tinyvex] append error session=\(sessionId.value) kind=\(kind): \(error)")
+                OpenAgentsLog.server.error("tinyvex append error session=\(sessionId.value) kind=\(kind): \(error)")
             }
         }
 
@@ -94,7 +94,7 @@ public actor SessionUpdateHub {
         )
 
         guard let notificationJSON = encodeNotification(notification) else {
-            print("[SessionUpdateHub] Failed to encode session update for session=\(sessionId.value)")
+            OpenAgentsLog.server.error("SessionUpdateHub Failed to encode session update for session=\(sessionId.value)")
             return
         }
 
