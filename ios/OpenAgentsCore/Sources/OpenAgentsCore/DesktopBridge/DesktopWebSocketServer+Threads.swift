@@ -85,10 +85,10 @@ extension DesktopWebSocketServer {
             let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines, provider: provider)
 
             let result = LatestTypedResult(id: tid, updates: updates)
-            JsonRpcRouter.sendResponse(id: id, result: result) { text in
-                OpenAgentsLog.server.debug("send rpc result method=thread/load_latest_typed id=\(id.value) provider=\(provider) bytes=\(text.utf8.count)")
-                client.send(text: text)
-            }
+        JsonRpcRouter.sendResponse(id: id, result: result) { text in
+            OpenAgentsLog.bridgeServer.debug("send rpc result method=thread/load_latest_typed id=\(id.value) provider=\(provider) bytes=\(text.utf8.count)")
+            client.send(text: text)
+        }
         } else {
             JsonRpcRouter.sendError(id: id, code: -32002, message: "No threads found") { text in
                 client.send(text: text)
@@ -115,7 +115,7 @@ extension DesktopWebSocketServer {
 
         let result = StatusResult(workspace_path: ws, exists: exists, files_indexed: nil, chunks: nil)
         JsonRpcRouter.sendResponse(id: id, result: result) { text in
-            OpenAgentsLog.server.debug("send rpc result method=index.status id=\(id.value) text=\(text)")
+            OpenAgentsLog.bridgeServer.debug("send rpc result method=index.status id=\(id.value) text=\(text)")
             client.send(text: text)
         }
 

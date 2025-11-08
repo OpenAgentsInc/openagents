@@ -72,7 +72,7 @@ public final class MobileWebSocketClient {
 
         // Reset retry count on new explicit connect
         reconnectPolicy.reset()
-        OpenAgentsLog.client.info("connect requested url=\(url.absoluteString) retryCount=\(self.reconnectPolicy.retryCount)")
+        OpenAgentsLog.bridgeClient.info("connect requested url=\(url.absoluteString) retryCount=\(self.reconnectPolicy.retryCount)")
         performConnect(url: url)
     }
 
@@ -84,7 +84,7 @@ public final class MobileWebSocketClient {
         self.webSocketTask = webSocketTask
         connectStartedAt = Date()
         let hs = Self.handshakeTimeoutForAttempt(retryCount: reconnectPolicy.retryCount, initial: initialHandshakeTimeout, retry: retryHandshakeTimeout)
-        OpenAgentsLog.client.debug("performConnect attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString) hsTimeout=\(String(format: "%.2f", hs))s autoReconnect=\(self.autoReconnect) initialDelay=\(self.initialRetryDelay)s maxDelay=\(self.maxRetryDelay)s")
+        OpenAgentsLog.bridgeClient.debug("performConnect attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString) hsTimeout=\(String(format: "%.2f", hs))s autoReconnect=\(self.autoReconnect) initialDelay=\(self.initialRetryDelay)s maxDelay=\(self.maxRetryDelay)s")
         webSocketTask.resume()
 
         // Start handshake timeout (short on first attempt, longer on retries)
@@ -112,7 +112,7 @@ public final class MobileWebSocketClient {
         }
         // store pending handler
         requestManager.addExpectation(id: id, completion: completion)
-        OpenAgentsLog.client.debug("send rpc method=\(method) id=\(id) bytes=\(text.utf8.count)")
+        OpenAgentsLog.bridgeClient.debug("send rpc method=\(method) id=\(id) bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let _ = error {
                 self?.requestManager.remove(id: id)
@@ -125,7 +125,7 @@ public final class MobileWebSocketClient {
     public func sendJSONRPCNotification<P: Codable>(method: String, params: P) {
         let note = JSONRPC.Notification(method: method, params: params)
         guard let data = try? JSONEncoder().encode(note), let text = String(data: data, encoding: .utf8) else { return }
-        OpenAgentsLog.client.debug("send rpc notify method=\(method) bytes=\(text.utf8.count)")
+        OpenAgentsLog.bridgeClient.debug("send rpc notify method=\(method) bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { _ in }
     }
 
@@ -162,7 +162,7 @@ public final class MobileWebSocketClient {
             initial: initialHandshakeTimeout,
             retry: retryHandshakeTimeout
         )
-        OpenAgentsLog.client.debug("handshake timer scheduled in \(String(format: "%.2f", interval))s (attempt=\(self.reconnectPolicy.retryCount + 1))")
+        OpenAgentsLog.bridgeClient.debug("handshake timer scheduled in \(String(format: "%.2f", interval))s (attempt=\(self.reconnectPolicy.retryCount + 1))")
         handshakeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             self?.handleHandshakeTimeout()
         }
@@ -171,7 +171,7 @@ public final class MobileWebSocketClient {
     private func handleHandshakeTimeout() {
         guard !isConnected else { return }
         let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
-        OpenAgentsLog.client.warning("handshake timeout fired sinceConnectMs=\(since) attempt=\(self.reconnectPolicy.retryCount + 1)")
+        OpenAgentsLog.bridgeClient.warning("handshake timeout fired sinceConnectMs=\(since) attempt=\(self.reconnectPolicy.retryCount + 1)")
         let error = NSError(domain: "MobileWebSocketClient", code: 7, userInfo: [NSLocalizedDescriptionKey: "Handshake timeout"])
         disconnect(error: error, notifyDelegate: true)
     }
@@ -189,13 +189,13 @@ public final class MobileWebSocketClient {
 
         let delay = reconnectPolicy.registerFailureAndGetDelay()
 
-        OpenAgentsLog.client.info("Scheduling reconnect attempt \(self.reconnectPolicy.retryCount)/\(self.maxRetryAttempts) in \(String(format: "%.1f", delay))s")
+        OpenAgentsLog.bridgeClient.info("Scheduling reconnect attempt \(self.reconnectPolicy.retryCount)/\(self.maxRetryAttempts) in \(String(format: "%.1f", delay))s")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self else { return }
             guard !self.isManualDisconnect else { return }
             if let url = self.lastConnectURL {
-                OpenAgentsLog.client.info("reconnecting attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString)")
+                OpenAgentsLog.bridgeClient.info("reconnecting attempt=\(self.reconnectPolicy.retryCount + 1) url=\(url.absoluteString)")
             }
             self.performConnect(url: url)
         }
@@ -219,10 +219,10 @@ public final class MobileWebSocketClient {
             disconnect(error: NSError(domain: "MobileWebSocketClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Encode initialize failed"]), notifyDelegate: true)
             return
         }
-        OpenAgentsLog.client.debug("send rpc method=initialize id=1 bytes=\(text.utf8.count)")
+        OpenAgentsLog.bridgeClient.debug("send rpc method=initialize id=1 bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let error = error { self?.disconnect(error: error, notifyDelegate: true); return }
-            OpenAgentsLog.client.debug("initialize sent; waiting for response…")
+            OpenAgentsLog.bridgeClient.debug("initialize sent; waiting for response…")
             self?.waitForInitializeResponse()
         }
     }
@@ -274,7 +274,7 @@ public final class MobileWebSocketClient {
 
                 self.isConnected = true
                 let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
-                OpenAgentsLog.client.info("initialize ok; connected sinceConnectMs=\(since) workingDir=\(workingDir ?? "nil", privacy: .private)")
+                OpenAgentsLog.bridgeClient.info("initialize ok; connected sinceConnectMs=\(since) workingDir=\(workingDir ?? "nil", privacy: .private)")
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.delegate?.mobileWebSocketClientDidConnect(self, workingDirectory: workingDir)
@@ -285,12 +285,12 @@ public final class MobileWebSocketClient {
             }
         }
         let preview = Self.truncatePreview(text)
-        OpenAgentsLog.client.error("initialize unexpected response preview=\(preview)")
+        OpenAgentsLog.bridgeClient.error("initialize unexpected response preview=\(preview)")
         self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]), notifyDelegate: true)
     }
 
     private func receive() {
-        OpenAgentsLog.client.debug("entering receive loop")
+        OpenAgentsLog.bridgeClient.debug("entering receive loop")
         webSocketTask?.receive { [weak self] result in
             guard let self = self else { return }
             switch result {
@@ -303,10 +303,10 @@ public final class MobileWebSocketClient {
                         if text.contains("\"jsonrpc\":\"2.0\"") {
                             self.handleJSONRPCText(text)
                         } else {
-                            OpenAgentsLog.client.debug("ignoring non-JSON-RPC data frame")
+                            OpenAgentsLog.bridgeClient.debug("ignoring non-JSON-RPC data frame")
                         }
                     } else {
-                        OpenAgentsLog.client.debug("non-UTF8 data frame ignored")
+                        OpenAgentsLog.bridgeClient.debug("non-UTF8 data frame ignored")
                     }
                 case .string(let text):
                     if text.contains("\"jsonrpc\":\"2.0\"") {
@@ -314,7 +314,7 @@ public final class MobileWebSocketClient {
                     } else {
                         let bytes = text.utf8.count
                         let preview = Self.truncatePreview(text)
-                        OpenAgentsLog.client.debug("ignoring non-JSON-RPC text bytes=\(bytes) preview=\(preview)")
+                        OpenAgentsLog.bridgeClient.debug("ignoring non-JSON-RPC text bytes=\(bytes) preview=\(preview)")
                     }
                 @unknown default:
                     break
@@ -335,10 +335,10 @@ public final class MobileWebSocketClient {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
                     let s = String(data: payload, encoding: .utf8) ?? ""
                     let preview = Self.truncatePreview(s)
-                    OpenAgentsLog.client.debug("<- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
+                    OpenAgentsLog.bridgeClient.debug("<- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
                     // Pretty-print small JSON payloads for Xcode logs
                     if OpenAgentsLog.isDebugLoggingEnabled, payload.count <= 12_000, let obj = try? JSONSerialization.jsonObject(with: payload), let pp = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]), let pps = String(data: pp, encoding: .utf8) {
-                        OpenAgentsLog.client.debug("pretty params:\n\(pps, privacy: .public)")
+                        OpenAgentsLog.bridgeClient.debug("pretty params:\n\(pps, privacy: .public)")
                     }
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
@@ -349,9 +349,9 @@ public final class MobileWebSocketClient {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
                     let s = String(data: payload, encoding: .utf8) ?? ""
                     let preview = Self.truncatePreview(s)
-                    OpenAgentsLog.client.debug("<- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
+                    OpenAgentsLog.bridgeClient.debug("<- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
                     if OpenAgentsLog.isDebugLoggingEnabled, payload.count <= 12_000, let obj = try? JSONSerialization.jsonObject(with: payload), let pp = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]), let pps = String(data: pp, encoding: .utf8) {
-                        OpenAgentsLog.client.debug("pretty params:\n\(pps, privacy: .public)")
+                        OpenAgentsLog.bridgeClient.debug("pretty params:\n\(pps, privacy: .public)")
                     }
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
@@ -360,14 +360,14 @@ public final class MobileWebSocketClient {
                 }
             } else if let idAny = root["id"], let idStr: String = (idAny as? String) ?? (idAny as? Int).map(String.init) {
                 // Request path (client-handled) → delegate for a synchronous result
-                OpenAgentsLog.client.debug("recv rpc request method=\(method) id=\(idStr)")
+                OpenAgentsLog.bridgeClient.debug("recv rpc request method=\(method) id=\(idStr)")
                 let paramsData = (try? JSONSerialization.data(withJSONObject: root["params"] ?? [:])) ?? Data("{}".utf8)
                 let resultData = delegate?.mobileWebSocketClient(self, didReceiveJSONRPCRequest: method, id: idStr, params: paramsData)
                 if let rd = resultData,
                    let respJSON = try? JSONSerialization.jsonObject(with: rd) {
                     let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "result": respJSON]
                     if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
-                        OpenAgentsLog.client.debug("send rpc result method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
+                        OpenAgentsLog.bridgeClient.debug("send rpc result method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
                         webSocketTask?.send(.string(text)) { _ in }
                     }
                 } else {
@@ -375,7 +375,7 @@ public final class MobileWebSocketClient {
                     let err: [String: Any] = ["code": -32601, "message": "Method not implemented"]
                     let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "error": err]
                     if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
-                        OpenAgentsLog.client.debug("send rpc error method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
+                        OpenAgentsLog.bridgeClient.debug("send rpc error method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
                         webSocketTask?.send(.string(text)) { _ in }
                     }
                 }
@@ -387,9 +387,9 @@ public final class MobileWebSocketClient {
            let idStr: String = (idAny as? String) ?? (idAny as? Int).map { String($0) } {
             let bytes = text.utf8.count
             let preview = Self.truncatePreview(text)
-            OpenAgentsLog.client.debug("<- result id=\(idStr) bytes=\(bytes) preview=\(preview)")
+            OpenAgentsLog.bridgeClient.debug("<- result id=\(idStr) bytes=\(bytes) preview=\(preview)")
             if OpenAgentsLog.isDebugLoggingEnabled, let pp = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]), pp.count <= 20_000, let pps = String(data: pp, encoding: .utf8) {
-                OpenAgentsLog.client.debug("pretty result:\n\(pps, privacy: .public)")
+                OpenAgentsLog.bridgeClient.debug("pretty result:\n\(pps, privacy: .public)")
             }
             _ = requestManager.fulfill(id: idStr, withJsonResult: result)
         }

@@ -9,7 +9,7 @@ extension DesktopWebSocketServer {
             guard let self = self, let client = self.currentClient else { return }
             // Gate on negotiated extension capability
             if self.advertisedExtCapabilities.orchestrate_explore == false {
-                OpenAgentsLog.server.warning("orchestrate.explore.* called but not advertised; gating with error")
+                OpenAgentsLog.bridgeServer.warning("orchestrate.explore.* called but not advertised; gating with error")
                 JsonRpcRouter.sendError(id: id, code: -32601, message: "orchestrate.explore not supported") { text in
                     client.send(text: text)
                 }
@@ -20,7 +20,7 @@ extension DesktopWebSocketServer {
     }
 
     func handleOrchestrationStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        OpenAgentsLog.server.info("recv orchestrate.explore.start")
+        OpenAgentsLog.bridgeServer.info("recv orchestrate.explore.start")
         guard let p = rawDict["params"],
               let d = try? JSONSerialization.data(withJSONObject: p),
               let req = try? JSONDecoder().decode(OrchestrateExploreStartRequest.self, from: d) else {
@@ -38,7 +38,7 @@ extension DesktopWebSocketServer {
             status: "started"
         )
         JsonRpcRouter.sendResponse(id: id, result: response) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=orchestrate.explore.start id=\(id.value)")
+            OpenAgentsLog.bridgeServer.debug("send rpc result method=orchestrate.explore.start id=\(id.value)")
             client.send(text: responseText)
         }
 
@@ -52,7 +52,7 @@ extension DesktopWebSocketServer {
                 )
             }
         } else {
-            OpenAgentsLog.server.warning("orchestrate.explore.start requires macOS 26.0+")
+            OpenAgentsLog.bridgeServer.warning("orchestrate.explore.start requires macOS 26.0+")
             JsonRpcRouter.sendError(
                 id: id,
                 code: -32603,

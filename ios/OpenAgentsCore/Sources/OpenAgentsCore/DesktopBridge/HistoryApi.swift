@@ -69,10 +69,10 @@ public actor HistoryApi {
                     message_count: $0.message_count
                 )
             }
-            OpenAgentsLog.server.info("HistoryApi recentSessions count=\(items.count)")
+            OpenAgentsLog.bridgeServer.info("HistoryApi recentSessions count=\(items.count)")
             return items
         } catch {
-            OpenAgentsLog.server.error("HistoryApi recentSessions error: \(error)")
+            OpenAgentsLog.bridgeServer.error("HistoryApi recentSessions error: \(error)")
             throw HistoryError.queryFailed(reason: "Failed to query recent sessions: \(error)")
         }
     }
@@ -93,14 +93,14 @@ public actor HistoryApi {
 
         do {
             let updateJsons = try await db.sessionTimeline(sessionId: sessionId, limit: limit)
-            OpenAgentsLog.server.info("HistoryApi sessionTimeline session=\(sessionId) rows=\(updateJsons.count)")
+            OpenAgentsLog.bridgeServer.info("HistoryApi sessionTimeline session=\(sessionId) rows=\(updateJsons.count)")
 
             // Parse each JSON string into ACP.Client.SessionNotificationWire
             // Note: DB stores just the "update" portion, so we need to decode SessionUpdate and wrap it
             var updates: [ACP.Client.SessionNotificationWire] = []
             for (idx, jsonStr) in updateJsons.enumerated() {
                 guard let data = jsonStr.data(using: .utf8) else {
-                    OpenAgentsLog.server.error("HistoryApi Failed to convert JSON string to data at index \(idx)")
+                    OpenAgentsLog.bridgeServer.error("HistoryApi Failed to convert JSON string to data at index \(idx)")
                     continue
                 }
 
@@ -115,15 +115,15 @@ public actor HistoryApi {
                     )
                     updates.append(wire)
                 } catch {
-                    OpenAgentsLog.server.error("HistoryApi Failed to decode update at index \(idx): \(error)")
-                    OpenAgentsLog.server.error("HistoryApi JSON preview: \(jsonStr.prefix(200), privacy: .public)...")
+                    OpenAgentsLog.bridgeServer.error("HistoryApi Failed to decode update at index \(idx): \(error)")
+                    OpenAgentsLog.bridgeServer.error("HistoryApi JSON preview: \(jsonStr.prefix(200), privacy: .public)...")
                     // Continue processing remaining updates
                 }
             }
 
             return updates
         } catch {
-            OpenAgentsLog.server.error("HistoryApi sessionTimeline error: \(error)")
+            OpenAgentsLog.bridgeServer.error("HistoryApi sessionTimeline error: \(error)")
             throw HistoryError.queryFailed(reason: "Failed to load session timeline: \(error)")
         }
     }

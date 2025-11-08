@@ -35,7 +35,7 @@ extension DesktopWebSocketServer {
             }
             if let text = text {
                 JsonRpcRouter.sendResponse(id: id, result: Resp(content: text)) { responseText in
-                    OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.fsReadTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
+                    OpenAgentsLog.bridgeServer.debug("send rpc result method=\(ACPRPC.fsReadTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
                     client.send(text: responseText)
                 }
             } else {
@@ -65,7 +65,7 @@ extension DesktopWebSocketServer {
             }
             if ok {
                 JsonRpcRouter.sendResponse(id: id, result: Resp(_meta: nil)) { responseText in
-                    OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.fsWriteTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
+                    OpenAgentsLog.bridgeServer.debug("send rpc result method=\(ACPRPC.fsWriteTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
                     client.send(text: responseText)
                 }
             } else {

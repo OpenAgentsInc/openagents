@@ -64,7 +64,7 @@ extension DesktopWebSocketServer {
             return
         }
 
-        OpenAgentsLog.server.debug("handleSessionPrompt session=\(sidStr, privacy: .public) prompt=\(promptText.prefix(50), privacy: .private)...")
+        OpenAgentsLog.bridgeServer.debug("handleSessionPrompt session=\(sidStr, privacy: .public) prompt=\(promptText.prefix(50), privacy: .private)...")
 
         // Get mode (defaults to .default_mode if not set)
         let mode = modeBySession[sidStr] ?? .default_mode
@@ -151,7 +151,7 @@ extension DesktopWebSocketServer {
 
         let result = ACP.Agent.SetSessionModeResponse()
         JsonRpcRouter.sendResponse(id: id, result: result) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.sessionSetMode) id=\(id.value) text=\(responseText, privacy: .public)")
+            OpenAgentsLog.bridgeServer.debug("send rpc result method=\(ACPRPC.sessionSetMode) id=\(id.value) text=\(responseText, privacy: .public)")
             client.send(text: responseText)
         }
     }

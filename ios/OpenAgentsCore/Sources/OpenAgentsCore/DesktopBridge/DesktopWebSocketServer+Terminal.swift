@@ -24,7 +24,7 @@ extension DesktopWebSocketServer {
 
         let result = DesktopWebSocketServer.runCommand(req.command, cwd: req.cwd, env: req.env, limit: req.output_byte_limit)
         JsonRpcRouter.sendResponse(id: id, result: Resp(output: result.output, truncated: result.truncated, exit_status: result.exitStatus)) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.terminalRun) id=\(id.value) bytes=\(responseText.utf8.count)")
+            OpenAgentsLog.bridgeServer.debug("send rpc result method=\(ACPRPC.terminalRun) id=\(id.value) bytes=\(responseText.utf8.count)")
             client.send(text: responseText)
         }
     }
