@@ -76,52 +76,16 @@ struct HistorySidebar: View {
                 }
             }
         }
-        sessionRows
+        HistoryListView(
+            items: effectiveItems(),
+            selected: selected,
+            limit: 10,
+            titleFor: { row in displayTitle(for: row) },
+            onSelect: onSelect
+        )
     }
 
-    @ViewBuilder
-    private var sessionRows: some View {
-        ForEach(Array(effectiveItems().prefix(10).enumerated()), id: \.0) { _, pair in
-            sessionRow(pair.0, pair.1)
-        }
-    }
-
-    @ViewBuilder
-    private func sessionRow(_ row: LocalThreadSummary, _ url: URL?) -> some View {
-        let isActive = (selected?.id == row.id && selected?.source == row.source)
-        Button(action: {
-            #if os(iOS)
-            // For Tinyvex sessions, load the timeline from the database
-            if row.source == "tinyvex" {
-                bridge.loadSessionTimeline(sessionId: row.id)
-            }
-            #endif
-            onSelect?(row, url)
-        }) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(displayTitle(for: row) ?? "Thread")
-                    .font(OAFonts.ui(.body, 13))
-                    .fontWeight(isActive ? .semibold : .regular)
-                    .foregroundStyle(OATheme.Colors.textPrimary)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
-                    if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
-                        Label(relative(ts), systemImage: "clock")
-                            .symbolRenderingMode(.monochrome)
-                            .font(OAFonts.ui(.caption2, 10))
-                            .foregroundStyle(OATheme.Colors.textTertiary)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
-        .contentShape(Rectangle())
-        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-        #if os(iOS)
-        .listRowSeparator(.hidden)
-        #endif
-    }
+    
 
     // Helper methods to reduce View body complexity
     private func mapThreadsToItems(_ threads: [ThreadSummary]) -> [(LocalThreadSummary, URL?)] {
@@ -303,21 +267,7 @@ struct HistorySidebar: View {
 
     // Provider badges removed per request.
 
-    private func relative(_ ms: Int64) -> String {
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let diff = max(0, now - ms)
-        let sec = diff / 1000
-        if sec < 5 { return "just now" }
-        if sec < 60 { return "\(sec)s ago" }
-        let min = sec / 60
-        if min < 60 { return "\(min)m ago" }
-        let hr = min / 60
-        if hr < 24 { return "\(hr)h ago" }
-        let day = hr / 24
-        if day < 7 { return "\(day)d ago" }
-        let week = day / 7
-        return "\(week)w ago"
-    }
+    // relative() moved into HistorySessionRow component
 }
 
 #if os(macOS)
