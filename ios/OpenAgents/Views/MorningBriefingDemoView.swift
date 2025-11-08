@@ -2,40 +2,30 @@ import SwiftUI
 import OpenAgentsCore
 
 struct MorningBriefingDemoView: View {
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Hero stats
-                    MorningBriefingStatsView(summary: MockOrchestrationData.overnightRun)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Hero stats
+                MorningBriefingStatsView(summary: MockOrchestrationData.overnightRun)
 
-                    // Agent performance
-                    AgentPerformanceView(summary: MockOrchestrationData.overnightRun)
+                // Agent performance
+                AgentPerformanceView(summary: MockOrchestrationData.overnightRun)
 
-                    // Pull requests section
-                    prListSection
+                // Pull requests section
+                prListSection
 
-                    // Decisions section
-                    decisionsSection
+                // Decisions section
+                decisionsSection
 
-                    // Issues/Alerts section
-                    issuesSection
-                }
-                .padding(20)
+                // Issues/Alerts section
+                issuesSection
             }
-            .navigationTitle("Morning Briefing")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-            }
-            .preferredColorScheme(.dark)
-            .background(OATheme.Colors.background)
+            .padding(20)
         }
+        .navigationTitle("Morning Briefing")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(OATheme.Colors.background)
     }
 
     @ViewBuilder
