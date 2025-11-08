@@ -10,9 +10,15 @@
 
 ## Overview
 
-Implement `TaskQueue`, a persistent work queue with SQLite backing (via Tinyvex) that tracks overnight tasks through their lifecycle: pending → in_progress → completed/failed.
+Implement `TaskQueue`, a persistent work queue with SQLite backing (via TinyvexDbLayer) that tracks overnight tasks through their lifecycle: pending → in_progress → completed/failed.
+
+**Key Change from Audit**: Use existing `TinyvexDbLayer` with new `overnight_tasks` table in same DB (not separate store).
 
 **Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/TaskQueue.swift`
+
+**References**:
+- `TinyvexDbLayer`: ios/OpenAgentsCore/Sources/OpenAgentsCore/Tinyvex/DbLayer.swift:1
+- DB path example: ios/OpenAgents/TinyvexManager.swift:28
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Component**: Orchestration Layer - Scheduler
 **Priority**: P0 (Critical Path)
-**Estimated Effort**: 3-4 days
+**Estimated Effort**: 2-3 days (scoped for demo)
 **Dependencies**: None
 **Assignee**: TBD
 
@@ -10,7 +10,9 @@
 
 ## Overview
 
-Implement `SchedulerService`, a macOS-only background service that provides time-based orchestration wake-up with constraint checking. This is the entry point for the overnight agents system.
+Implement `SchedulerService`, a macOS-only background service that provides time-based orchestration wake-up with minimal constraint checking. This is the entry point for the overnight agents system.
+
+**Scope for Demo**: Implement cron + window + jitter + plugged_in + wifi_only only. Defer DND/CPU/user-activity to post-demo.
 
 **Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/SchedulerService.swift`
 
@@ -38,12 +40,10 @@ Implement `SchedulerService`, a macOS-only background service that provides time
    - Prevents thundering herd if multiple devices use same schedule
    - Configurable per manifest (default: 0)
 
-4. **Constraint Checking**
+4. **Constraint Checking (Demo Scope)**
    - `plugged_in: bool` - Only run when on AC power (IOKit battery API)
    - `wifi_only: bool` - Only run on WiFi, not cellular (NWPathMonitor)
-   - `cpu_max_percentage: int` - Only run if CPU usage below threshold (host_processor_info)
-   - `respect_dnd: bool` - Pause when Do Not Disturb enabled (DistributedNotificationCenter)
-   - `suspend_if_active: bool` - Pause when user actively using foreground app (NSWorkspace)
+   - **Post-Demo**: `cpu_max_percentage`, `respect_dnd`, `suspend_if_active` (defer these)
 
 5. **Catch-Up Policy**
    - `run_once_at_next_opportunity`: If missed due to constraints, run once when available
@@ -51,8 +51,8 @@ Implement `SchedulerService`, a macOS-only background service that provides time
 
 6. **State Management**
    - Track current state: idle, running, paused, stopped
-   - Persist last run time and next scheduled time
-   - Observable state for UI updates
+   - Persist last run time and next scheduled time in Tinyvex DB (new table: `overnight_scheduler_state`)
+   - Observable state for UI updates via AsyncStream
 
 7. **Graceful Shutdown**
    - `stop()` method: finish current task, then stop

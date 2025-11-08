@@ -12,7 +12,13 @@
 
 Delegate tasks to AgentProvider instances (Claude Code, Codex), monitor progress via ACP SessionUpdate stream, enforce time budgets, handle concurrent sessions.
 
+**Key Change from Audit**: Use AgentRegistry instance (not .shared). Build proper AgentContext with SessionUpdateHub. Use actual provider.start() signature.
+
 **Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/AgentCoordinator.swift`
+
+**References**:
+- `AgentProvider.start()`: ios/OpenAgentsCore/Sources/OpenAgentsCore/Agents/AgentProvider.swift:23
+- AgentRegistry instance: ios/OpenAgentsCore/Sources/OpenAgentsCore/DesktopBridge/DesktopWebSocketServer.swift:69
 
 ---
 
@@ -33,20 +39,35 @@ Delegate tasks to AgentProvider instances (Claude Code, Codex), monitor progress
 actor AgentCoordinator {
     private var activeSessions: [String: AgentSessionInfo] = [:]
     private let maxConcurrentSessions = 2
+    private let agentRegistry: AgentRegistry
+    private let sessionUpdateHub: SessionUpdateHub
+
+    init(agentRegistry: AgentRegistry, sessionUpdateHub: SessionUpdateHub) {
+        self.agentRegistry = agentRegistry
+        self.sessionUpdateHub = sessionUpdateHub
+    }
 
     func delegate(_ task: OvernightTask) async throws -> AgentSessionResult {
-        // Get provider from registry
-        let registry = AgentRegistry.shared
-        guard let provider = await registry.provider(for: task.decision.agent) else {
+        // Get provider from registry (instance, not .shared)
+        guard let provider = await agentRegistry.provider(for: task.decision.agent) else {
             throw CoordinatorError.agentNotAvailable(task.decision.agent)
         }
 
-        // Start session
+        // Build agent context
         let sessionId = UUID().uuidString
-        try await provider.start(
+        let context = AgentContext(
+            workingDirectory: FileManager.default.currentDirectoryURL,
+            mcpServers: [],
+            client: nil,
+            metadata: ["overnight_task_id": task.id]
+        )
+
+        // Start session with proper signature
+        let handle = try await provider.start(
             sessionId: sessionId,
             prompt: task.decision.task,
-            workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            context: context,
+            updateHub: sessionUpdateHub
         )
 
         // Monitor progress

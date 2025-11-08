@@ -1,8 +1,8 @@
-# Issue #006: Implement UpgradeExecutor
+# Issue #006: Implement OvernightRunner
 
-**Component**: Upgrade System
+**Component**: Overnight Orchestration Runner
 **Priority**: P1 (High)
-**Estimated Effort**: 4-5 days
+**Estimated Effort**: 1-2 days (minimal scope for demo)
 **Dependencies**: #002 (DecisionOrchestrator), #004 (AgentCoordinator)
 **Assignee**: TBD
 
@@ -10,9 +10,11 @@
 
 ## Overview
 
-Load, validate, and execute upgrade manifests. Implements pipeline executor with operations registry supporting declarative JSON workflows.
+**RENAMED from UpgradeExecutor per audit**: Create minimal `OvernightRunner` that runs SessionAnalyzeTool → decide() → AgentCoordinator → PRAutomationService. Defer full declarative pipeline runtime to post-demo.
 
-**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Upgrades/UpgradeExecutor.swift`
+**Scope for Demo**: Simple runner with minimal JSON config (schedule + toggles only). Not full upgrade manifest schema.
+
+**Location**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/OvernightRunner.swift`
 
 ---
 
