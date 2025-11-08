@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "session_id": "sess-123",
+    "update": {
+      "sessionUpdate": "plan",
+      "plan": {
+        "entries": [
+          { "content": "Analyze codebase", "priority": "high", "status": "pending" },
+          { "content": "Add tests", "priority": "medium", "status": "in_progress" }
+        ]
+      }
+    }
+  }
+}
+

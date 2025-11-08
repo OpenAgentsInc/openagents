@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "session_id": "sess-123"
+  }
+}
+

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "session/prompt",
+  "params": {
+    "session_id": "sess-123",
+    "prompt": [
+      { "type": "text", "text": "Hello agent" }
+    ]
+  }
+}
+

@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "session_id": "sess-123",
+    "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+        "content": { "type": "text", "text": "Sure, let's begin." }
+      }
+    }
+  }
+}
+
