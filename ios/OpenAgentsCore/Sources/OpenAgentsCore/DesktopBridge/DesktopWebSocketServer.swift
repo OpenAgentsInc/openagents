@@ -30,13 +30,13 @@ public class DesktopWebSocketServer {
 
         /// Send a text message to the client (log full payload)
         public func send(text: String) {
-            OpenAgentsLog.server.debug("send text=\(text, privacy: .public)")
+            OpenAgentsLog.bridgeServer.debug("send text=\(text, privacy: .public)")
             let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
             let context = NWConnection.ContentContext(identifier: "textContext", metadata: [metadata])
             let data = text.data(using: .utf8) ?? Data()
             connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
                 if let sendError = sendError {
-                    OpenAgentsLog.server.error("send error: \(sendError)")
+                    OpenAgentsLog.bridgeServer.error("send error: \(sendError)")
                 }
             })
         }
@@ -47,7 +47,7 @@ public class DesktopWebSocketServer {
             let context = NWConnection.ContentContext(identifier: "pingContext", metadata: [metadata])
             connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
                 if let sendError = sendError {
-                    OpenAgentsLog.server.error("ping send error: \(sendError)")
+                    OpenAgentsLog.bridgeServer.error("ping send error: \(sendError)")
                 }
             })
         }
@@ -58,7 +58,7 @@ public class DesktopWebSocketServer {
             let context = NWConnection.ContentContext(identifier: "pongContext", metadata: [metadata])
             connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
                 if let sendError = sendError {
-                    OpenAgentsLog.server.error("pong send error: \(sendError)")
+                    OpenAgentsLog.bridgeServer.error("pong send error: \(sendError)")
                 }
             })
         }
@@ -127,7 +127,7 @@ public class DesktopWebSocketServer {
         await agentRegistry.register(CodexAgentProvider())
         await agentRegistry.register(ClaudeCodeAgentProvider())
         let count = await agentRegistry.allProviders().count
-        OpenAgentsLog.server.info("Registered \(count) agent providers")
+        OpenAgentsLog.bridgeServer.info("Registered \(count) agent providers")
     }
 
     /// Register all JSON-RPC method handlers with the router
@@ -250,9 +250,9 @@ public class DesktopWebSocketServer {
             }
             // Initialize HistoryApi for Tinyvex queries
             self.historyApi = HistoryApi(tinyvexDb: db)
-            OpenAgentsLog.server.info("Tinyvex DB attached at \(path, privacy: .private)")
+            OpenAgentsLog.bridgeServer.info("Tinyvex DB attached at \(path, privacy: .private)")
         } else {
-            OpenAgentsLog.server.error("Failed to open Tinyvex DB at \(path, privacy: .private)")
+            OpenAgentsLog.bridgeServer.error("Failed to open Tinyvex DB at \(path, privacy: .private)")
         }
     }
 
@@ -388,7 +388,7 @@ public class DesktopWebSocketServer {
     private func sendErrorMessage(sessionId: ACPSessionId, message: String, client: Client) {
         let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Error: \(message)")))
         let errorUpdate = ACP.Client.SessionUpdate.agentMessageChunk(errorChunk)
-        OpenAgentsLog.server.error("send error message: \(message)")
+        OpenAgentsLog.bridgeServer.error("send error message: \(message)")
         Task { [weak self] in
             await self?.sendSessionUpdate(sessionId: sessionId, update: errorUpdate)
         }
@@ -396,26 +396,26 @@ public class DesktopWebSocketServer {
 
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
-            OpenAgentsLog.server.debug("recv handshake text=\(text, privacy: .public)")
+            OpenAgentsLog.bridgeServer.debug("recv handshake text=\(text, privacy: .public)")
             if let data = text.data(using: .utf8), let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any], (dict["jsonrpc"] as? String) == "2.0", let method = dict["method"] as? String, method == "initialize" {
                 let inIdStr: String = {
                     if let idNum = dict["id"] as? Int { return String(idNum) }
                     if let idStr = dict["id"] as? String { return idStr }
                     return "1"
                 }()
-                OpenAgentsLog.server.info("recv rpc request method=initialize id=\(inIdStr)")
+                OpenAgentsLog.bridgeServer.info("recv rpc request method=initialize id=\(inIdStr)")
                 let idVal: JSONRPC.ID
                 if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                 else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                 else { idVal = JSONRPC.ID("1") }
                 // Include working directory in _meta if available
-                OpenAgentsLog.server.debug("workingDirectory=\(self.workingDirectory?.path ?? "nil", privacy: .private)")
+                OpenAgentsLog.bridgeServer.debug("workingDirectory=\(self.workingDirectory?.path ?? "nil", privacy: .private)")
                 let meta: [String: AnyEncodable]? = {
                     if let wd = self.workingDirectory {
-                        OpenAgentsLog.server.debug("including working_directory in _meta: \(wd.path, privacy: .private)")
+                        OpenAgentsLog.bridgeServer.debug("including working_directory in _meta: \(wd.path, privacy: .private)")
                         return ["working_directory": AnyEncodable(wd.path)]
                     }
-                    OpenAgentsLog.server.debug("workingDirectory is nil, not including in _meta")
+                    OpenAgentsLog.bridgeServer.debug("workingDirectory is nil, not including in _meta")
                     return nil
                 }()
                 // Compute and advertise extension capabilities
@@ -434,7 +434,7 @@ public class DesktopWebSocketServer {
                 )
                 let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: agentCaps, auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: meta)
                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
-                    OpenAgentsLog.server.debug("send rpc result method=initialize id=\(inIdStr) text=\(jtext, privacy: .public)")
+                    OpenAgentsLog.bridgeServer.debug("send rpc result method=initialize id=\(inIdStr) text=\(jtext, privacy: .public)")
                     client.send(text: jtext)
                 }
                 client.isHandshakeComplete = true
@@ -449,7 +449,7 @@ public class DesktopWebSocketServer {
             }
         } else {
             // Handle envelopes after handshake
-            OpenAgentsLog.server.debug("recv payload text=\(text, privacy: .public)")
+            OpenAgentsLog.bridgeServer.debug("recv payload text=\(text, privacy: .public)")
             if let data = text.data(using: .utf8),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                (dict["jsonrpc"] as? String) == "2.0" {
@@ -457,9 +457,9 @@ public class DesktopWebSocketServer {
                 if let method = dict["method"] as? String {
                     if let idAny = dict["id"] {
                         let idStr = (idAny as? String) ?? (idAny as? Int).map(String.init) ?? "1"
-                        OpenAgentsLog.server.debug("recv rpc request method=\(method) id=\(idStr)")
+                        OpenAgentsLog.bridgeServer.debug("recv rpc request method=\(method) id=\(idStr)")
                     } else {
-                        OpenAgentsLog.server.debug("recv rpc notify method=\(method)")
+                        OpenAgentsLog.bridgeServer.debug("recv rpc notify method=\(method)")
                     }
 
                     // Route through JsonRpcRouter
@@ -471,13 +471,13 @@ public class DesktopWebSocketServer {
                             self.currentClient = nil
                         }
                         if !handled {
-                            OpenAgentsLog.server.warning("method '\(method)' not handled by any registered handler")
+                            OpenAgentsLog.bridgeServer.warning("method '\(method)' not handled by any registered handler")
                         }
                     }
                 }
                 return
             }
-            OpenAgentsLog.server.debug("ignoring non JSON-RPC payload")
+            OpenAgentsLog.bridgeServer.debug("ignoring non JSON-RPC payload")
         }
     }
 
@@ -502,7 +502,7 @@ public class DesktopWebSocketServer {
             )
             guard let data = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: notification)),
                   let jtext = String(data: data, encoding: .utf8) else {
-                OpenAgentsLog.server.error("Failed to encode session update")
+                OpenAgentsLog.bridgeServer.error("Failed to encode session update")
                 return
             }
             await broadcastToClients(jtext)
@@ -578,7 +578,7 @@ extension DesktopWebSocketServer {
             "error": ["code": code, "message": message]
         ]
         if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
-            OpenAgentsLog.server.debug("send rpc error id=\(id.value) code=\(code) bytes=\(text.utf8.count)")
+            OpenAgentsLog.bridgeServer.debug("send rpc error id=\(id.value) code=\(code) bytes=\(text.utf8.count)")
             client.send(text: text)
         }
     }

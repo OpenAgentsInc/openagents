@@ -20,13 +20,13 @@ extension DesktopWebSocketServer {
         }
 
         guard let file = picked else {
-            OpenAgentsLog.server.warning("no session file found for \(sessionId.value) (mode=\(chosenMode.rawValue))")
+            OpenAgentsLog.bridgeServer.warning("no session file found for \(sessionId.value) (mode=\(chosenMode.rawValue))")
             return
         }
 
         sessionFiles[sidStr] = file
 
-        OpenAgentsLog.server.debug("tailing session file: \(file.path, privacy: .private)")
+        OpenAgentsLog.bridgeServer.debug("tailing session file: \(file.path, privacy: .private)")
 
         // Update the live tailer to watch this file
         queue.async { [weak self] in
@@ -45,7 +45,7 @@ extension DesktopWebSocketServer {
                 timer.setEventHandler { [weak self] in self?.pollTail() }
                 self.tailTimer = timer
                 timer.resume()
-                OpenAgentsLog.server.debug("tailer started for session \(sidStr)")
+                OpenAgentsLog.bridgeServer.debug("tailer started for session \(sidStr)")
             }
         }
     }
@@ -95,13 +95,13 @@ extension DesktopWebSocketServer {
         timer.setEventHandler { [weak self] in self?.pollTail() }
         tailTimer = timer
         timer.resume()
-        OpenAgentsLog.server.debug("tailer started file=\(file.path, privacy: .private) session=\(tid) provider=\(provider)")
+        OpenAgentsLog.bridgeServer.debug("tailer started file=\(file.path, privacy: .private) session=\(tid) provider=\(provider)")
     }
 
     func stopLiveTailer() {
         tailTimer?.cancel(); tailTimer = nil
         tailURL = nil; tailSessionId = nil; tailProvider = nil; tailOffset = 0; tailBuffer.removeAll()
-        OpenAgentsLog.server.debug("tailer stopped")
+        OpenAgentsLog.bridgeServer.debug("tailer stopped")
     }
 
     func pollTail() {
@@ -408,4 +408,3 @@ extension DesktopWebSocketServer {
     }
 }
 #endif
-

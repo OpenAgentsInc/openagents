@@ -58,25 +58,35 @@ public enum OpenAgentsLog {
     /// Use for: View lifecycle, user interactions, UI state changes, rendering events
     public static let ui = Logger(subsystem: subsystem, category: "ui")
 
-    /// Bridge protocol and coordination
+    /// Bridge protocol and coordination (umbrella)
     ///
     /// Use for: Bridge manager, iOS ↔ macOS communication coordination, pairing
     public static let bridge = Logger(subsystem: subsystem, category: "bridge")
 
-    /// Desktop WebSocket server
+    /// Bridge server (DesktopWebSocketServer)
     ///
     /// Use for: Server lifecycle, JSON-RPC routing, session updates, history API
-    public static let server = Logger(subsystem: subsystem, category: "server")
+    public static let bridgeServer = Logger(subsystem: subsystem, category: "bridge.server")
 
-    /// Mobile WebSocket client
+    /// Bridge client (MobileWebSocketClient)
     ///
     /// Use for: Client connection, reconnection, message sending/receiving
-    public static let client = Logger(subsystem: subsystem, category: "client")
+    public static let bridgeClient = Logger(subsystem: subsystem, category: "bridge.client")
 
     /// Session management and agent orchestration
     ///
     /// Use for: Session lifecycle, workspace exploration, tool execution, agent providers
     public static let orchestration = Logger(subsystem: subsystem, category: "orchestration")
+
+    /// ACP wire/timeline messages and parsing
+    ///
+    /// Use for: ACP message encode/decode, session updates, contract checks
+    public static let acp = Logger(subsystem: subsystem, category: "acp")
+
+    /// UI timeline rendering and related transforms
+    ///
+    /// Use for: Timeline list updates, diffing, render performance hints
+    public static let uiTimeline = Logger(subsystem: subsystem, category: "ui.timeline")
 
     // MARK: - Debug Flag
 

@@ -75,27 +75,27 @@ public class JsonRpcRouter {
 
         switch parseResult {
         case .request(let method, let id, let params, let rawDict):
-            OpenAgentsLog.server.debug("Request: method=\(method) id=\(id.value)")
+            OpenAgentsLog.bridgeServer.debug("Request: method=\(method) id=\(id.value)")
             if let handler = handlers[method] {
                 await handler(id, params, rawDict)
                 return true
             } else {
-                OpenAgentsLog.server.warning("No handler for method: \(method)")
+                OpenAgentsLog.bridgeServer.warning("No handler for method: \(method)")
                 await onUnhandled?(method, id)
                 return false
             }
 
         case .notification(let method, _):
-            OpenAgentsLog.server.debug("Notification: method=\(method)")
+            OpenAgentsLog.bridgeServer.debug("Notification: method=\(method)")
             // Notifications don't have handlers in this implementation
             return false
 
         case .invalidJson:
-            OpenAgentsLog.server.error("Invalid JSON")
+            OpenAgentsLog.bridgeServer.error("Invalid JSON")
             return false
 
         case .notJsonRpc:
-            OpenAgentsLog.server.warning("Not a JSON-RPC 2.0 message")
+            OpenAgentsLog.bridgeServer.warning("Not a JSON-RPC 2.0 message")
             return false
         }
     }
@@ -158,10 +158,10 @@ public class JsonRpcRouter {
     ) {
         if let out = try? JSONEncoder().encode(JSONRPC.Response(id: id, result: result)),
            let jtext = String(data: out, encoding: .utf8) {
-            OpenAgentsLog.server.debug("Sending response for id=\(id.value)")
+            OpenAgentsLog.bridgeServer.debug("Sending response for id=\(id.value)")
             sendText(jtext)
         } else {
-            OpenAgentsLog.server.error("Failed to encode response for id=\(id.value)")
+            OpenAgentsLog.bridgeServer.error("Failed to encode response for id=\(id.value)")
         }
     }
 
@@ -182,10 +182,10 @@ public class JsonRpcRouter {
 
         if let out = try? JSONEncoder().encode(errorResponse),
            let jtext = String(data: out, encoding: .utf8) {
-            OpenAgentsLog.server.debug("Sending error for id=\(id.value) code=\(code) message=\(message)")
+            OpenAgentsLog.bridgeServer.debug("Sending error for id=\(id.value) code=\(code) message=\(message)")
             sendText(jtext)
         } else {
-            OpenAgentsLog.server.error("Failed to encode error for id=\(id.value)")
+            OpenAgentsLog.bridgeServer.error("Failed to encode error for id=\(id.value)")
         }
     }
 
@@ -201,10 +201,10 @@ public class JsonRpcRouter {
     ) {
         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: method, params: params)),
            let jtext = String(data: out, encoding: .utf8) {
-            OpenAgentsLog.server.debug("Sending notification method=\(method)")
+            OpenAgentsLog.bridgeServer.debug("Sending notification method=\(method)")
             sendText(jtext)
         } else {
-            OpenAgentsLog.server.error("Failed to encode notification method=\(method)")
+            OpenAgentsLog.bridgeServer.error("Failed to encode notification method=\(method)")
         }
     }
 }
