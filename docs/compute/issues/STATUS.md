@@ -1,8 +1,8 @@
 # OpenAgents Compute Marketplace Issues - Status
 
 **Last Updated**: 2025-11-07
-**Total Issues**: 31 planned
-**Completed (Draft)**: 16 of 31 (All Phase 1 + key issues from 2-4)
+**Total Issues**: 31 planned (1 deleted, 3 new, net +2)
+**Completed (Draft)**: 19 of 31 (All Phase 1 [minus deleted #003] + Phase 2 complete + key Phase 3-4)
 
 ## Summary
 
@@ -10,12 +10,12 @@ This directory contains draft GitHub issues for implementing the OpenAgents comp
 
 ## Progress
 
-### ✅ Completed Draft Issues (16 total)
+### ✅ Completed Draft Issues (19 total)
 
-#### Phase 1: MVP - COMPLETE (9/9)
+#### Phase 1: MVP - COMPLETE (8/8 after deletion)
 - **✅ 001**: Nostr Client Library (~6000 words) - P0, 4-6w
 - **✅ 002**: Secp256k1 & Cryptography (~5500 words) - P0, 2-3w
-- **✅ 003**: BOLT11 & Lightning Primitives (~4500 words) - P0, 2-3w
+- **❌ 003**: ~~BOLT11 & Lightning Primitives~~ - **DELETED** (Spark SDK replaces)
 - **✅ 004**: Job Schema Registry (~4000 words) - P1, 1-2w
 - **✅ 005**: iOS Nostr Identity (~4000 words) - P0, 2-3w
 - **✅ 006**: iOS Marketplace Viewer (~3500 words) - P1, 1-2w
@@ -23,10 +23,14 @@ This directory contains draft GitHub issues for implementing the OpenAgents comp
 - **✅ 008**: macOS Capability Advertising (~3500 words) - P1, 1w
 - **✅ 009**: Policy & Safety Module (~4500 words) - P0, 2-3w
 
-#### Phase 2: Payments - KEY ISSUES (2/7)
+#### Phase 2: Payments - COMPLETE (7/7 with Spark SDK)
+- **✅ 010**: iOS Wallet with Spark SDK (~5000 words) - P0, 2-3w (rewrote)
 - **✅ 011**: iOS Job Creation & Submission (~3000 words) - P0, 2-3w
+- **✅ 012**: Breez API Key & SDK Config (~3000 words) - P1, 2-3d (new)
+- **✅ 013**: macOS Wallet with Spark SDK (~5000 words) - P0, 1-2w (rewrote)
 - **✅ 014**: macOS Bidding Engine (~2500 words) - P1, 2w
-- **⏸️  DEFERRED**: 010, 013 (Wallet/Lightning - awaiting Breez/Spark docs)
+- **✅ 015**: Marketplace Payment Coordinator (~4500 words) - P0, 1-2w (new)
+- **✅ 016**: Seed Backup & Recovery (~3500 words) - P1, 3-5d (new)
 
 #### Phase 3: Backends - KEY ISSUES (2/7)
 - **✅ 017**: macOS MLX Integration (~3000 words) - P1, 3-4w
@@ -103,32 +107,38 @@ Each completed issue includes:
 
 | Category | Issues | Words | LOC Est | Effort |
 |----------|--------|-------|---------|--------|
-| Phase 1 (MVP) | 9 | ~40,500 | ~3,000 | 20-29w |
-| Phase 2 (Key) | 2 | ~5,500 | ~400 | 4-5w |
+| Phase 1 (MVP) | 8 (was 9, deleted #003) | ~36,000 | ~3,000 | 18-26w |
+| Phase 2 (Spark SDK) | 7 (complete) | ~27,500 | ~1,500 | 10.5-15w |
 | Phase 3 (Key) | 2 | ~5,500 | ~500 | 5-7w |
 | Phase 4 (SearchKit) | 1 | ~3,500 | ~2,000 | 6-8w |
 | Documentation | 1 | ~2,500 | - | 1-2w |
 | Testing | 1 | ~2,500 | - | 3-4w |
-| **TOTAL** | **16** | **~55,000** | **~5,900** | **45-60w** |
+| **TOTAL** | **19** | **~75,000** | **~7,000** | **44-61w** |
 
-**Parallelized (3 engineers)**: ~15-20 weeks for Phases 1-3
+**Parallelized (3 engineers)**: ~14-18 weeks for Phases 1-3 (reduced via Spark SDK)
 
 ## Next Steps
 
-### Immediate (Complete Phase 1)
-1. Create issues **006-008** (iOS Viewer, macOS Worker, Capabilities)
-2. Review all Phase 1 issues for completeness
-3. Get user approval on Phase 1
+### ✅ Completed
+1. ~~Create all Phase 1 issues~~ - **DONE**
+2. ~~Delete issue #003~~ - **DONE** (Spark SDK replaces BOLT11)
+3. ~~Rewrite Phase 2 wallet issues with Spark SDK~~ - **DONE** (#010, #013)
+4. ~~Create new Spark SDK issues~~ - **DONE** (#012, #015, #016)
 
-### Short-term (Phase 2 Foundation)
-4. Create **critical** Phase 2 issues (010, 011, 013 - wallet + payments)
-5. Create placeholders for remaining Phase 2-4 issues
-6. Prioritize based on user feedback
+### Immediate (User Review)
+1. **Review Spark SDK integration** (see `SPARK-SDK-INTEGRATION.md`)
+2. **Review all 19 completed issues** for completeness
+3. **Approve or request changes**
+
+### Short-term (Implementation)
+4. **Assign issues to engineers** (3-person team recommended)
+5. **Create GitHub milestones**: Phase 1, Phase 2, Phase 3, Phase 4
+6. **Begin implementation** (start with #012 API Key Config)
 
 ### Publishing
 7. Convert approved issues to GitHub via `gh issue create`
-8. Create milestones: Phase 1, Phase 2, Phase 3, Phase 4
-9. Add labels: priority (p0/p1/p2), component (ios/macos/shared), phase
+8. Add labels: priority (p0/p1/p2), component (ios/macos/shared), phase, spark-sdk
+9. Link to Breez Spark SDK documentation in issues
 
 ## Key Insights from Research
 
@@ -136,21 +146,39 @@ Each completed issue includes:
 - **iOS**: Coordination + wallet + agent management (NO worker compute)
 - **macOS**: Worker runtime (Foundation Models + MLX + Ollama)
 - **Nostr**: Open marketplace (NIP-90 + NIP-57)
+- **Spark SDK**: Layer 2 Bitcoin protocol (replaces manual Lightning)
 - **Compliance**: Strict Apple rules enforced (no background workers, AUP filters)
+
+### Spark SDK Decision (Phase 2 Redesign)
+
+**Why Spark SDK?**
+- ✅ **User directive**: "We're going to basically use Spark via Breez for all of our Bitcoin and Lightning stuff"
+- ✅ **Effort reduction**: ~35-40% reduction in Phase 2 (10-13w → 5.5-9.5w)
+- ✅ **Production-ready**: Breez maintains SDK, node infrastructure, LSP
+- ✅ **Better UX**: Nodeless operation, offline receive, instant sends
+- ✅ **No manual BOLT11**: SDK handles all Lightning protocol details
+
+**What Changed?**
+- **❌ Deleted**: Issue #003 (BOLT11 & Lightning Primitives) - 2-3 weeks saved
+- **✏️ Rewrote**: Issues #010, #013 (iOS/macOS Wallets) - simplified with Spark SDK
+- **🆕 Created**: Issues #012 (API Key Config), #015 (Payment Coordinator), #016 (Seed Backup)
+
+**See**: `SPARK-SDK-INTEGRATION.md` for full integration plan
 
 ### Critical Dependencies
 ```
 Crypto (002) → Nostr (001) → Everything Else
-BOLT11 (003) → Payments (010, 012, 013)
+API Key (012) → Spark SDK Wallets (010, 013)
 Schemas (004) → Worker (007), Marketplace (006)
 Policy (009) → Worker (007) - AUP enforcement
+Payment Coordinator (015) → Job Execution (depends on 010, 013, 011, 014)
 ```
 
 ### Timeline Estimates
 - **Phase 1** (MVP): 6-8 weeks with 3 engineers
-- **Phase 2** (Payments): 5-6 weeks
+- **Phase 2** (Payments): 4-5 weeks (reduced from 5-6 via Spark SDK)
 - **Phase 3** (Backends): 4-5 weeks
-- **Total**: ~15-19 weeks for full marketplace (Phases 1-3)
+- **Total**: ~14-18 weeks for full marketplace (Phases 1-3, reduced from 15-19)
 
 ## Compliance Summary
 
@@ -180,26 +208,41 @@ All completed issues address Apple compliance:
 
 ```
 docs/compute/issues/
-├── README.md                    # Master index with all 31 issues listed
+├── README.md                    # Master index (updated for Spark SDK)
 ├── STATUS.md                    # This file (progress tracking)
+├── COMPLETED.md                 # Delivery summary
+├── SPARK-SDK-INTEGRATION.md     # 🆕 Spark SDK integration plan
 ├── phase-1-mvp/
 │   ├── 001-nostr-client-library.md          ✅ COMPLETE
 │   ├── 002-secp256k1-crypto.md              ✅ COMPLETE
-│   ├── 003-bolt11-lightning-primitives.md   ✅ COMPLETE
+│   ├── ❌ 003-bolt11-lightning-primitives.md   **DELETED**
 │   ├── 004-job-schema-registry.md           ✅ COMPLETE
 │   ├── 005-ios-nostr-identity.md            ✅ COMPLETE
-│   ├── 006-ios-marketplace-viewer.md        ⏳ TODO
-│   ├── 007-macos-foundation-models-worker.md ⏳ TODO
-│   ├── 008-macos-capability-advertising.md  ⏳ TODO
+│   ├── 006-ios-marketplace-viewer.md        ✅ COMPLETE
+│   ├── 007-macos-foundation-models-worker.md ✅ COMPLETE
+│   ├── 008-macos-capability-advertising.md  ✅ COMPLETE
 │   └── 009-policy-safety-module.md          ✅ COMPLETE
-├── phase-2-payments/             ⏳ 7 issues TODO
-├── phase-3-backends/             ⏳ 7 issues TODO
-├── phase-4-searchkit/            ⏳ 1 issue TODO
-├── documentation/                ⏳ 4 issues TODO
-└── testing/                      ⏳ 3 issues TODO
+├── phase-2-payments/            ✅ COMPLETE (7/7 with Spark SDK)
+│   ├── 010-ios-wallet-spark-sdk.md         ✅ COMPLETE (rewrote)
+│   ├── 011-ios-job-creation-submission.md  ✅ COMPLETE
+│   ├── 012-breez-api-key-config.md         ✅ COMPLETE (new)
+│   ├── 013-macos-wallet-spark-sdk.md       ✅ COMPLETE (rewrote)
+│   ├── 014-macos-bidding-engine.md         ✅ COMPLETE
+│   ├── 015-marketplace-payment-coordinator.md ✅ COMPLETE (new)
+│   └── 016-seed-backup-recovery.md         ✅ COMPLETE (new)
+├── phase-3-backends/            ⏳ 2 of 7 (key issues)
+│   ├── 017-macos-mlx-integration.md        ✅ COMPLETE
+│   └── 020-macos-model-router.md           ✅ COMPLETE
+├── phase-4-searchkit/           ✅ 1 of 1
+│   └── 024-searchkit-mvp.md                ✅ COMPLETE
+├── documentation/               ✅ 1 of 4
+│   └── 025-adrs-marketplace.md             ✅ COMPLETE
+└── testing/                     ✅ 1 of 3
+    └── 029-unit-test-suite.md              ✅ COMPLETE
 ```
 
 ---
 
-**Ready for review**: Issues 001, 002, 003, 004, 005, 009
-**Next**: Complete Phase 1 (issues 006, 007, 008), then proceed to Phase 2
+**Ready for review**: All 19 completed issues
+**Key integration**: Spark SDK (see `SPARK-SDK-INTEGRATION.md`)
+**Next**: User approval → GitHub publishing → Implementation (14-18 weeks for Phases 1-3)
