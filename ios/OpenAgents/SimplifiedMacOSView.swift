@@ -8,6 +8,7 @@ struct SimplifiedMacOSView: View {
     @EnvironmentObject var bridge: BridgeManager
     @EnvironmentObject var tinyvex: TinyvexManager
     @State private var showInstructions = false
+    @State private var showMorningBriefing = false
 
     // Coding agents state
     @State private var claudeDetected = false
@@ -49,6 +50,7 @@ struct SimplifiedMacOSView: View {
                         configureAgentsCard
                         #if DEBUG
                         nostrDevCard
+                        morningBriefingDemoCard
                         #endif
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -373,6 +375,9 @@ struct SimplifiedMacOSView: View {
             BridgeSetupInstructionsSheet()
                 .environmentObject(bridge)
         }
+        .sheet(isPresented: $showMorningBriefing) {
+            MorningBriefingDemoView()
+        }
         .preferredColorScheme(.dark)
     }
 
@@ -521,6 +526,34 @@ struct SimplifiedMacOSView: View {
                 .padding(20)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
         }
+    }
+
+    @ViewBuilder private var morningBriefingDemoCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Morning Briefing Demo")
+                .font(OAFonts.ui(.headline, 16))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+
+            Text("Preview the overnight orchestration summary screen")
+                .font(OAFonts.ui(.body, 14))
+                .foregroundStyle(OATheme.Colors.textSecondary.opacity(0.7))
+
+            Button {
+                showMorningBriefing = true
+            } label: {
+                Text("Open Demo")
+                    .font(OAFonts.ui(.body, 14))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(OATheme.Colors.accent)
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(OATheme.Colors.border.opacity(0.3)))
     }
 
     #if DEBUG
