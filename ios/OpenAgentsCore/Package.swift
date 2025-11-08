@@ -8,8 +8,7 @@ let package = Package(
     ],
     products: [
         .library(name: "OpenAgentsCore", targets: ["OpenAgentsCore"]),
-        // macOS-only wrapper around Nostr SDK (transitively used by OpenAgentsCore on macOS only)
-        .library(name: "OpenAgentsNostr", targets: ["OpenAgentsNostr"]),
+        .library(name: "OpenAgentsNostr", targets: ["OpenAgentsNostr"]) // relinked
     ],
     dependencies: [
         // Local path to nostr-sdk-ios (editable and updatable without re-importing)
@@ -19,8 +18,7 @@ let package = Package(
         .target(
             name: "OpenAgentsCore",
             dependencies: [
-                // Only pull in the Nostr wrapper when building for macOS
-                .target(name: "OpenAgentsNostr", condition: .when(platforms: [.macOS]))
+                .target(name: "OpenAgentsNostr")
             ]
         ),
         .target(

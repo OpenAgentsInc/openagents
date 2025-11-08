@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenAgentsCore
+import OSLog
 
 #if os(iOS)
 import UIKit

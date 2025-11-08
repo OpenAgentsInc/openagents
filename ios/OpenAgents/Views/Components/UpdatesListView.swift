@@ -1,6 +1,8 @@
 import SwiftUI
 import OpenAgentsCore
 
+#if os(iOS)
+
 /// Renders the list of non-plan session updates using UpdateRow.
 /// Calls `onSelectJSON` with a pretty JSON string when a row is tapped.
 struct UpdatesListView: View {
@@ -28,6 +30,7 @@ struct UpdatesListView: View {
         .listStyle(.plain)
     }
 }
+// macOS excludes this file; keep iOS-specific code guarded until end of file.
 
 // Single row renderer for updates, extracted from ChatHomeView for reuse.
 struct UpdateRow: View {
@@ -162,3 +165,5 @@ struct UpdateRow: View {
     }
 }
 
+// End iOS-only UpdatesListView
+#endif

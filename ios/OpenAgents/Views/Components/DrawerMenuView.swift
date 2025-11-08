@@ -2,6 +2,8 @@ import SwiftUI
 import OSLog
 import OpenAgentsCore
 
+#if os(iOS)
+
 struct DrawerMenuView: View {
     @EnvironmentObject var bridge: BridgeManager
     var onNavigateToNewChat: () -> Void
@@ -170,3 +172,4 @@ struct DrawerMenuView: View {
         }
     }
 }
+#endif

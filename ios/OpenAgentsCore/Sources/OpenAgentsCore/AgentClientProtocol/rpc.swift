@@ -11,7 +11,6 @@ public enum ACPRPC {
 
     // Session lifecycle
     public static let sessionNew = "session/new"
-    public static let sessionLoad = "session/load"          // optional
     public static let sessionSetMode = "session/set_mode"
     public static let sessionPrompt = "session/prompt"
     public static let sessionCancel = "session/cancel"       // notification

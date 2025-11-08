@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import OpenAgentsCore
 #if canImport(FoundationModels)
 import FoundationModels

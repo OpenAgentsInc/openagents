@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import OpenAgentsCore
 
 // Local copy for app target (no SPM required)

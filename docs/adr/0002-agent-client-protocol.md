@@ -34,7 +34,11 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
   - The Tinyvex Rust crate is DB‑only; the bridge hosts the writer that ingests ACP updates and mirrors into Tinyvex.
 
 - Naming & casing
-  - All public payloads the app observes are snake_case and align with ACP concepts. No mixed‑case fallback in the app.
+  - General rule: prefer snake_case for public payload fields and align with ACP concepts.
+  - ACP canonical exceptions (use as‑is, even if camelCase):
+    - `sessionUpdate` — discriminant inside `update` envelope for `session/update` notifications (e.g., `{ "update": { "sessionUpdate": "agent_message_chunk", ... } }`).
+    - Content/type keys originating from ACP content model such as `type`, `mimeType`, `lastModified`, `name`, `title`, `uri` where applicable in content blocks and resource descriptors.
+  - Rationale: these keys are defined by the ACP spec/examples and widely used across implementations; we adopt them verbatim to ensure interop. All other fields under our control remain snake_case (e.g., `current_mode_id`, `available_commands`).
 
 ## Rationale
 

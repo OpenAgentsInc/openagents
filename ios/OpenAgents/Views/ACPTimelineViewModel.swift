@@ -49,7 +49,8 @@ final class ACPTimelineViewModel: ObservableObject {
         isAttached = true
         self.bridge = bridge
 
-        // Recompute whenever updates change
+        #if os(iOS)
+        // Recompute whenever updates change (iOS only)
         bridge.$updates
             .receive(on: DispatchQueue.main)
             .sink { [weak self] updates in
@@ -58,7 +59,7 @@ final class ACPTimelineViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Also refresh on session switch
+        // Also refresh on session switch (iOS only)
         bridge.$currentSessionId
             .receive(on: DispatchQueue.main)
             .sink { [weak self] sid in
@@ -66,6 +67,9 @@ final class ACPTimelineViewModel: ObservableObject {
                 self.recompute(from: bridge.updates, currentSession: sid)
             }
             .store(in: &cancellables)
+        #else
+        // On macOS, this view model is not wired to updates (UI differs)
+        #endif
     }
 
     private func recompute(from updates: [ACP.Client.SessionNotificationWire], currentSession: ACPSessionId?) {

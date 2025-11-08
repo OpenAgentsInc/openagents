@@ -1,5 +1,7 @@
 import SwiftUI
 
+#if os(iOS)
+
 struct MenuSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -25,3 +27,4 @@ struct MenuSheet: View {
     }
 }
 
+#endif

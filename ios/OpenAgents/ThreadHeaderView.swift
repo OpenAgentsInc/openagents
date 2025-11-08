@@ -1,5 +1,6 @@
 import SwiftUI
 import OSLog
+import OSLog
 import OpenAgentsCore
 
 struct ThreadHeaderView: View {

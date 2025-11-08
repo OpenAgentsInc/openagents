@@ -1,5 +1,6 @@
 import Foundation
 import OpenAgentsCore
+import OSLog
 
 #if os(iOS)
 extension BridgeManager {

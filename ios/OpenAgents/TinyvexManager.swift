@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import OpenAgentsCore
+import OSLog
 #if os(macOS)
 import SQLite3
 import SwiftUI
