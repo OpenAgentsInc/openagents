@@ -50,19 +50,48 @@ OpenAgents will support the following **official DVM kinds** (see `docs/nostr/dv
 **Discovery (53xx range):**
 - [ ] `kind:5300` - Nostr Content Discovery
 - [ ] `kind:5301` - Nostr People Discovery
+- [ ] `kind:5302` - Nostr Content Search
+- [ ] `kind:5303` - Nostr People Search
 
-#### OpenAgents Custom Kinds (65xx range)
+**Analytics (54xx range):**
+- [ ] `kind:5400` - Nostr Event Count
+
+**Software Analysis (55xx range):**
+- [ ] `kind:5500` - Malware Scanning
+
+**Other/Miscellaneous (59xx range):**
+- [ ] `kind:5900` - Nostr Event Timestamping (NIP-03)
+- [ ] `kind:5901` - Bitcoin OP_RETURN Creation
+- [ ] `kind:5905` - Event Publish Schedule
+- [ ] `kind:5970` - Event PoW Delegation
+
+#### OpenAgents Custom Kinds (65xx range) *
 
 For agent-specific tasks not covered by official DVM kinds, we define **custom OpenAgents kinds** in the `65xx` range to avoid conflicts:
 
-- [ ] `kind:6500` - Code Generation (generate code from natural language)
-- [ ] `kind:6501` - Code Review (analyze and review code)
-- [ ] `kind:6502` - Code Refactoring (refactor code with improvements)
-- [ ] `kind:6503` - Q&A / RAG (question answering with retrieval augmentation)
-- [ ] `kind:6504` - Codebase Search (hybrid search - future SearchKit integration)
-- [ ] `kind:6505` - Agent Execution (autonomous agent task execution)
-- [ ] `kind:6506` - Code Explanation (explain code functionality)
-- [ ] `kind:6507` - Test Generation (generate unit/integration tests)
+**Code & Development:**
+- [ ] `kind:6500` - Code Generation * (generate code from natural language)
+- [ ] `kind:6501` - Code Review * (analyze and review code)
+- [ ] `kind:6502` - Code Refactoring * (refactor code with improvements)
+- [ ] `kind:6506` - Code Explanation * (explain code functionality)
+- [ ] `kind:6507` - Test Generation * (generate unit/integration tests)
+
+**Agent Capabilities & Orchestration:**
+- [ ] `kind:6503` - Q&A / RAG * (question answering with retrieval augmentation)
+- [ ] `kind:6504` - Codebase Search * (hybrid search - future SearchKit integration)
+- [ ] `kind:6505` - Agent Execution * (autonomous agent task execution)
+- [ ] `kind:6519` - Task Planning * (task decomposition and plan generation)
+
+**Foundation Models Primitives:**
+- [ ] `kind:6508` - Classification/Categorization * (sentiment, intent, topic, entity, safety)
+- [ ] `kind:6509` - Structured Data Extraction * (JSON from text, entities, key-value pairs)
+- [ ] `kind:6510` - Tool/Function Calling * (single tool invocation with parameters)
+- [ ] `kind:6511` - Embedding Generation * (text and code embeddings for RAG/search)
+
+**Safety & Content:**
+- [ ] `kind:6513` - Content Moderation/Safety Check * (AUP compliance and safety filters)
+
+_* All 65xx kinds are **OpenAgents custom kinds** for agent/coding-specific workflows_
 
 **Rationale for custom range:**
 - Official DVM kinds (5000-5999) are reserved for standardized, cross-platform tasks
@@ -308,7 +337,37 @@ public enum JobKind: Int, Codable, CaseIterable {
     /// Nostr People Discovery (Official DVM)
     case nostrPeopleDiscovery = 5301
 
-    // MARK: - OpenAgents Custom Kinds (65xx)
+    /// Nostr Content Search (Official DVM)
+    case nostrContentSearch = 5302
+
+    /// Nostr People Search (Official DVM)
+    case nostrPeopleSearch = 5303
+
+    // MARK: - Official DVM Kinds (Analytics - 54xx)
+
+    /// Nostr Event Count (Official DVM)
+    case nostrEventCount = 5400
+
+    // MARK: - Official DVM Kinds (Software Analysis - 55xx)
+
+    /// Malware Scanning (Official DVM)
+    case malwareScanning = 5500
+
+    // MARK: - Official DVM Kinds (Other/Miscellaneous - 59xx)
+
+    /// Nostr Event Timestamping - NIP-03 (Official DVM)
+    case eventTimestamping = 5900
+
+    /// Bitcoin OP_RETURN Creation (Official DVM)
+    case opReturnCreation = 5901
+
+    /// Event Publish Schedule (Official DVM)
+    case eventPublishSchedule = 5905
+
+    /// Event PoW Delegation (Official DVM)
+    case eventPowDelegation = 5970
+
+    // MARK: - OpenAgents Custom Kinds (65xx) - Agent/Coding Workflows
 
     /// Code Generation - Generate code from natural language (OpenAgents custom)
     case codeGeneration = 6500
@@ -333,6 +392,24 @@ public enum JobKind: Int, Codable, CaseIterable {
 
     /// Test Generation - Generate unit/integration tests (OpenAgents custom)
     case testGeneration = 6507
+
+    /// Classification/Categorization - Sentiment, intent, topic, entity, safety (OpenAgents custom)
+    case classification = 6508
+
+    /// Structured Data Extraction - JSON from text, entities, key-value pairs (OpenAgents custom)
+    case structuredExtraction = 6509
+
+    /// Tool/Function Calling - Single tool invocation with parameters (OpenAgents custom)
+    case toolCalling = 6510
+
+    /// Embedding Generation - Text and code embeddings for RAG/search (OpenAgents custom)
+    case embeddingGeneration = 6511
+
+    /// Content Moderation/Safety Check - AUP compliance and safety filters (OpenAgents custom)
+    case contentModeration = 6513
+
+    /// Task Planning - Task decomposition and plan generation (OpenAgents custom)
+    case taskPlanning = 6519
 
     // MARK: - Computed Properties
 
@@ -365,6 +442,14 @@ public enum JobKind: Int, Codable, CaseIterable {
         case .textToSpeech: return "text-to-speech"
         case .nostrContentDiscovery: return "nostr-content-discovery"
         case .nostrPeopleDiscovery: return "nostr-people-discovery"
+        case .nostrContentSearch: return "nostr-content-search"
+        case .nostrPeopleSearch: return "nostr-people-search"
+        case .nostrEventCount: return "nostr-event-count"
+        case .malwareScanning: return "malware-scanning"
+        case .eventTimestamping: return "event-timestamping"
+        case .opReturnCreation: return "op-return-creation"
+        case .eventPublishSchedule: return "event-publish-schedule"
+        case .eventPowDelegation: return "event-pow-delegation"
         // OpenAgents custom kinds
         case .codeGeneration: return "code-generation"
         case .codeReview: return "code-review"
@@ -374,6 +459,12 @@ public enum JobKind: Int, Codable, CaseIterable {
         case .agentExecution: return "agent-execution"
         case .codeExplanation: return "code-explanation"
         case .testGeneration: return "test-generation"
+        case .classification: return "classification"
+        case .structuredExtraction: return "structured-extraction"
+        case .toolCalling: return "tool-calling"
+        case .embeddingGeneration: return "embedding-generation"
+        case .contentModeration: return "content-moderation"
+        case .taskPlanning: return "task-planning"
         }
     }
 
@@ -391,6 +482,14 @@ public enum JobKind: Int, Codable, CaseIterable {
         case .textToSpeech: return "Text-to-Speech"
         case .nostrContentDiscovery: return "Nostr Content Discovery"
         case .nostrPeopleDiscovery: return "Nostr People Discovery"
+        case .nostrContentSearch: return "Nostr Content Search"
+        case .nostrPeopleSearch: return "Nostr People Search"
+        case .nostrEventCount: return "Nostr Event Count"
+        case .malwareScanning: return "Malware Scanning"
+        case .eventTimestamping: return "Event Timestamping"
+        case .opReturnCreation: return "Bitcoin OP_RETURN Creation"
+        case .eventPublishSchedule: return "Event Publish Schedule"
+        case .eventPowDelegation: return "Event PoW Delegation"
         // OpenAgents custom kinds
         case .codeGeneration: return "Code Generation"
         case .codeReview: return "Code Review"
@@ -400,6 +499,12 @@ public enum JobKind: Int, Codable, CaseIterable {
         case .agentExecution: return "Agent Execution"
         case .codeExplanation: return "Code Explanation"
         case .testGeneration: return "Test Generation"
+        case .classification: return "Classification/Categorization"
+        case .structuredExtraction: return "Structured Data Extraction"
+        case .toolCalling: return "Tool/Function Calling"
+        case .embeddingGeneration: return "Embedding Generation"
+        case .contentModeration: return "Content Moderation/Safety Check"
+        case .taskPlanning: return "Task Planning"
         }
     }
 
