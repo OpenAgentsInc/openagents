@@ -144,17 +144,7 @@ public class DesktopWebSocketServer {
 
     // MARK: - Handler Registration Methods
 
-    private func registerSessionNewHandler() {
-        router.register(method: ACPRPC.sessionNew) { [weak self] id, _, _ in
-            guard let self = self, let client = self.currentClient else { return }
-            let sid = ACPSessionId(UUID().uuidString)
-            let result = ACP.Agent.SessionNewResponse(session_id: sid)
-
-            JsonRpcRouter.sendResponse(id: id, result: result) { text in
-                client.send(text: text)
-            }
-        }
-    }
+    // moved to DesktopWebSocketServer+Session.swift: registerSessionNewHandler
 
     private func registerHistoryHandlers() {
         // tinyvex/history.recentSessions
@@ -219,504 +209,37 @@ public class DesktopWebSocketServer {
         }
     }
 
-    private func registerThreadHandlers() {
-        // threads/list
-        router.register(method: "threads/list") { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            // Delegate to existing implementation (will refactor later)
-            await self.handleThreadsList(id: id, params: params, rawDict: rawDict, client: client)
-        }
+    // moved to DesktopWebSocketServer+Threads.swift: registerThreadHandlers
 
-        // thread/load_latest_typed
-        router.register(method: "thread/load_latest_typed") { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleThreadLoadLatestTyped(id: id, params: params, rawDict: rawDict, client: client)
-        }
+    // moved to DesktopWebSocketServer+Session.swift: registerSessionHandlers
 
-        // index.status
-        router.register(method: "index.status") { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleIndexStatus(id: id, params: params, rawDict: rawDict, client: client)
-        }
-    }
+    // moved to DesktopWebSocketServer+FileSystem.swift: registerFileSystemHandlers
 
-    private func registerSessionHandlers() {
-        // session/prompt
-        router.register(method: ACPRPC.sessionPrompt) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleSessionPrompt(id: id, params: params, rawDict: rawDict, client: client)
-        }
+    // moved to DesktopWebSocketServer+Terminal.swift: registerTerminalHandler
 
-        // session/set_mode
-        router.register(method: ACPRPC.sessionSetMode) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleSessionSetMode(id: id, params: params, rawDict: rawDict, client: client)
-        }
-
-        // session/cancel
-        router.register(method: ACPRPC.sessionCancel) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleSessionCancel(id: id, params: params, rawDict: rawDict, client: client)
-        }
-    }
-
-    private func registerFileSystemHandlers() {
-        // fs/readTextFile
-        router.register(method: ACPRPC.fsReadTextFile) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleFsReadTextFile(id: id, params: params, rawDict: rawDict, client: client)
-        }
-
-        // fs/writeTextFile
-        router.register(method: ACPRPC.fsWriteTextFile) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleFsWriteTextFile(id: id, params: params, rawDict: rawDict, client: client)
-        }
-    }
-
-    private func registerTerminalHandler() {
-        router.register(method: ACPRPC.terminalRun) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            await self.handleTerminalRun(id: id, params: params, rawDict: rawDict, client: client)
-        }
-    }
-
-    private func registerOrchestrationHandler() {
-        router.register(method: ACPRPC.orchestrateExploreStart) { [weak self] id, params, rawDict in
-            guard let self = self, let client = self.currentClient else { return }
-            // Gate on negotiated extension capability
-            if self.advertisedExtCapabilities.orchestrate_explore == false {
-                OpenAgentsLog.server.warning("orchestrate.explore.* called but not advertised; gating with error")
-                JsonRpcRouter.sendError(id: id, code: -32601, message: "orchestrate.explore not supported") { text in
-                    client.send(text: text)
-                }
-                return
-            }
-            await self.handleOrchestrationStart(id: id, params: params, rawDict: rawDict, client: client)
-        }
-    }
+    // moved to DesktopWebSocketServer+Orchestration.swift: registerOrchestrationHandler
 
     // MARK: - Handler Implementation Methods (delegate to existing logic)
 
-    private func handleThreadsList(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Extract logic from switch case "threads/list" (lines ~814-834)
-        struct Params: Codable { let topK: Int? }
-        let topK: Int = {
-            if let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let pr = try? JSONDecoder().decode(Params.self, from: d) { return pr.topK ?? 10 }
-            return 10
-        }()
-        let limit = min(10, max(1, topK))
-        let base = CodexScanner.defaultBaseDir()
-        let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
-        var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
-        items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
-        struct Result: Codable { let items: [ThreadSummary] }
-        let result = Result(items: items)
-        JsonRpcRouter.sendResponse(id: id, result: result) { text in
-            client.send(text: text)
-        }
-    }
+    // moved to DesktopWebSocketServer+Threads.swift: handleThreadsList
 
-    private func handleThreadLoadLatestTyped(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        struct LatestTypedResult: Codable {
-            let id: String
-            let updates: [ACP.Client.SessionUpdate]
-        }
+    // moved to DesktopWebSocketServer+Threads.swift: handleThreadLoadLatestTyped
 
-        // Load Claude Code sessions ONLY (fall back to Codex if none found)
-        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
-        let claudeFiles = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+    // moved to DesktopWebSocketServer+Threads.swift: handleIndexStatus
 
-        var file: URL?
-        var provider: String = "claude-code"
-        var base: URL = claudeBase
+    // moved to DesktopWebSocketServer+Session.swift: handleSessionPrompt
 
-        if let clf = claudeFiles.first {
-            // Use Claude Code session
-            file = clf
-            provider = "claude-code"
-            base = claudeBase
-        } else {
-            // Fallback to Codex only if no Claude Code sessions exist
-            let codexBase = CodexScanner.defaultBaseDir()
-            let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
-            if let cf = codexFiles.first {
-                file = cf
-                provider = "codex"
-                base = codexBase
-            }
-        }
+    // moved to DesktopWebSocketServer+Session.swift: handleSessionSetMode
 
-        if let file = file {
-            let tid: String
-            if provider == "codex" {
-                tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
-            } else {
-                tid = ClaudeCodeScanner.scanForSessionID(file) ?? ClaudeCodeScanner.relativeId(for: file, base: base)
-            }
+    // moved to DesktopWebSocketServer+Session.swift: handleSessionCancel
 
-            // Read and translate to ACP
-            let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
-            let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines, provider: provider)
+    // moved to DesktopWebSocketServer+FileSystem.swift: handleFsReadTextFile
 
-            let result = LatestTypedResult(id: tid, updates: updates)
-            JsonRpcRouter.sendResponse(id: id, result: result) { text in
-                OpenAgentsLog.server.debug("send rpc result method=thread/load_latest_typed id=\(id.value) provider=\(provider) bytes=\(text.utf8.count)")
-                client.send(text: text)
-            }
-        } else {
-            JsonRpcRouter.sendError(id: id, code: -32002, message: "No threads found") { text in
-                client.send(text: text)
-            }
-        }
-    }
+    // moved to DesktopWebSocketServer+FileSystem.swift: handleFsWriteTextFile
 
-    private func handleIndexStatus(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Minimal Phase-1: respond and emit a tiny synthetic stream for visibility
-        // Params may contain session_id to stream under
-        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
-        let sid = ACPSessionId(sidStr)
+    // moved to DesktopWebSocketServer+Terminal.swift: handleTerminalRun
 
-        struct StatusResult: Codable {
-            let workspace_path: String
-            let exists: Bool
-            let files_indexed: Int?
-            let chunks: Int?
-        }
-
-        // Default workspace path (env override TEST_WORKSPACE_ROOT)
-        let ws = ProcessInfo.processInfo.environment["TEST_WORKSPACE_ROOT"] ?? "\(NSHomeDirectory())/code/openagents"
-        let exists = FileManager.default.fileExists(atPath: ws)
-
-        let result = StatusResult(workspace_path: ws, exists: exists, files_indexed: nil, chunks: nil)
-        JsonRpcRouter.sendResponse(id: id, result: result) { text in
-            OpenAgentsLog.server.debug("send rpc result method=index.status id=\(id.value) text=\(text)")
-            client.send(text: text)
-        }
-
-        // Emit synthetic tool stream: index.rebuild started→completed
-        let call = ACPToolCallWire(call_id: UUID().uuidString, name: "index.rebuild", arguments: [
-            "workspace": AnyEncodable(ws)
-        ])
-        await sendSessionUpdate(sessionId: sid, update: .toolCall(call))
-
-        // started
-        let started = ACPToolCallUpdateWire(call_id: call.call_id, status: .started, output: nil, error: nil, _meta: ["progress": AnyEncodable(0.0)])
-        await sendSessionUpdate(sessionId: sid, update: .toolCallUpdate(started))
-
-        // completed with tiny payload
-        let payload: [String: AnyEncodable] = [
-            "workspace": AnyEncodable(ws),
-            "indexed": AnyEncodable(false)
-        ]
-        let completed = ACPToolCallUpdateWire(call_id: call.call_id, status: .completed, output: AnyEncodable(payload), error: nil, _meta: nil)
-        await sendSessionUpdate(sessionId: sid, update: .toolCallUpdate(completed))
-    }
-
-    private func handleSessionPrompt(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Parse request
-        guard let data = try? JSONSerialization.data(withJSONObject: rawDict),
-              let req = try? JSONDecoder().decode(JSONRPC.Request<ACP.Agent.SessionPromptRequest>.self, from: data) else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid session/prompt parameters") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        let sessionId = req.params.session_id
-        let sidStr = sessionId.value
-
-        // Extract prompt text from content blocks
-        let promptText = req.params.content.compactMap { block -> String? in
-            if case .text(let textBlock) = block {
-                return textBlock.text
-            }
-            return nil
-        }.joined(separator: "\n")
-
-        guard !promptText.isEmpty else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Empty prompt") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        OpenAgentsLog.server.debug("handleSessionPrompt session=\(sidStr, privacy: .public) prompt=\(promptText.prefix(50), privacy: .private)...")
-
-        // Get mode (defaults to .default_mode if not set)
-        let mode = modeBySession[sidStr] ?? .default_mode
-
-        // Get provider from registry
-        guard let provider = await agentRegistry.provider(for: mode) else {
-            JsonRpcRouter.sendError(id: id, code: -32601, message: "No agent provider for mode: \(mode.rawValue)") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Check if provider is available
-        guard await provider.isAvailable() else {
-            JsonRpcRouter.sendError(id: id, code: -32601, message: "\(provider.displayName) is not available. Please install the required CLI.") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Build context
-        let context = AgentContext(
-            workingDirectory: workingDirectory,
-            mcpServers: nil,
-            client: client,
-            metadata: [:]
-        )
-
-        // Get update hub
-        guard let updateHub = self.updateHub else {
-            JsonRpcRouter.sendError(id: id, code: -32603, message: "Update hub not initialized") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Check if we have an existing handle (resume scenario)
-        if let existingHandle = await agentRegistry.handle(for: sessionId) {
-            // Resume existing session
-            do {
-                try await provider.resume(
-                    sessionId: sessionId,
-                    prompt: promptText,
-                    handle: existingHandle,
-                    context: context,
-                    updateHub: updateHub
-                )
-
-                // Send success response
-                JsonRpcRouter.sendResponse(id: id, result: ["status": "resumed"]) { text in
-                    client.send(text: text)
-                }
-            } catch {
-                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to resume: \(error.localizedDescription)") { text in
-                    client.send(text: text)
-                }
-            }
-        } else {
-            // Start new session
-            do {
-                let handle = try await provider.start(
-                    sessionId: sessionId,
-                    prompt: promptText,
-                    context: context,
-                    updateHub: updateHub
-                )
-
-                // Store handle
-                await agentRegistry.setHandle(handle, for: sessionId)
-
-                // Send success response
-                JsonRpcRouter.sendResponse(id: id, result: ["status": "started"]) { text in
-                    client.send(text: text)
-                }
-            } catch {
-                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to start: \(error.localizedDescription)") { text in
-                    client.send(text: text)
-                }
-            }
-        }
-    }
-
-    private func handleSessionSetMode(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Update current mode and broadcast a current_mode_update
-        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
-        let sid = ACPSessionId(sidStr)
-
-        // Store mode for this session
-        let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
-        let modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
-        self.modeBySession[sidStr] = modeId
-
-        // Echo a current_mode_update via SessionUpdateHub
-        let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: modeId))
-        await sendSessionUpdate(sessionId: sid, update: update)
-
-        // Respond with an empty SetSessionModeResponse
-        let result = ACP.Agent.SetSessionModeResponse()
-        JsonRpcRouter.sendResponse(id: id, result: result) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.sessionSetMode) id=\(id.value) text=\(responseText, privacy: .public)")
-            client.send(text: responseText)
-        }
-    }
-
-    private func handleSessionCancel(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Parse session ID from params
-        guard let sessionIdStr = params?["session_id"] as? String else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing session_id") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        let sessionId = ACPSessionId(sessionIdStr)
-
-        // Get handle
-        guard let handle = await agentRegistry.handle(for: sessionId) else {
-            // No active session, send success anyway
-            JsonRpcRouter.sendResponse(id: id, result: ["status": "no_active_session"]) { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Get provider
-        guard let provider = await agentRegistry.provider(for: handle.mode) else {
-            JsonRpcRouter.sendError(id: id, code: -32601, message: "Provider not found for mode: \(handle.mode.rawValue)") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Cancel the session
-        await provider.cancel(sessionId: sessionId, handle: handle)
-
-        // Remove handle from registry
-        await agentRegistry.removeHandle(for: sessionId)
-
-        // Send success response
-        JsonRpcRouter.sendResponse(id: id, result: ["status": "cancelled"]) { text in
-            client.send(text: text)
-        }
-    }
-
-    private func handleFsReadTextFile(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        struct ReqURI: Codable { let session_id: ACPSessionId; let uri: String }
-        struct ReqPath: Codable { let session_id: ACPSessionId; let path: String; let line: UInt32?; let limit: UInt32? }
-        struct Resp: Codable { let content: String }
-
-        if let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p) {
-            var text: String? = nil
-            var attempted: String? = nil
-            if let req = try? JSONDecoder().decode(ReqPath.self, from: d) {
-                attempted = req.path
-                text = DesktopWebSocketServer.readText(fromURI: req.path)
-            } else if let req = try? JSONDecoder().decode(ReqURI.self, from: d) {
-                attempted = req.uri
-                text = DesktopWebSocketServer.readText(fromURI: req.uri)
-            }
-            if let text = text {
-                JsonRpcRouter.sendResponse(id: id, result: Resp(content: text)) { responseText in
-                    OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.fsReadTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
-                    client.send(text: responseText)
-                }
-            } else {
-                let msg = "Resource not found"
-                JsonRpcRouter.sendError(id: id, code: -32002, message: attempted.map { "\(msg): \($0)" } ?? msg) { text in
-                    client.send(text: text)
-                }
-            }
-        } else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
-                client.send(text: text)
-            }
-        }
-    }
-
-    private func handleFsWriteTextFile(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        struct ReqPath: Codable { let session_id: ACPSessionId; let path: String; let content: String }
-        struct ReqURI: Codable { let session_id: ACPSessionId; let uri: String; let text: String }
-        struct Resp: Codable { let _meta: [String:String]? }
-
-        if let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p) {
-            var ok = false
-            if let req = try? JSONDecoder().decode(ReqPath.self, from: d) {
-                ok = DesktopWebSocketServer.writeText(toURI: req.path, text: req.content)
-            } else if let req = try? JSONDecoder().decode(ReqURI.self, from: d) {
-                ok = DesktopWebSocketServer.writeText(toURI: req.uri, text: req.text)
-            }
-            if ok {
-                JsonRpcRouter.sendResponse(id: id, result: Resp(_meta: nil)) { responseText in
-                    OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.fsWriteTextFile) id=\(id.value) bytes=\(responseText.utf8.count)")
-                    client.send(text: responseText)
-                }
-            } else {
-                JsonRpcRouter.sendError(id: id, code: -32603, message: "Write failed") { text in
-                    client.send(text: text)
-                }
-            }
-        } else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
-                client.send(text: text)
-            }
-        }
-    }
-
-    private func handleTerminalRun(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        struct Req: Codable { let session_id: ACPSessionId; let command: [String]; let cwd: String?; let env: [String:String]?; let output_byte_limit: Int? }
-        struct Resp: Codable { let output: String; let truncated: Bool; let exit_status: Int32? }
-
-        guard let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        let result = DesktopWebSocketServer.runCommand(req.command, cwd: req.cwd, env: req.env, limit: req.output_byte_limit)
-        JsonRpcRouter.sendResponse(id: id, result: Resp(output: result.output, truncated: result.truncated, exit_status: result.exitStatus)) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=\(ACPRPC.terminalRun) id=\(id.value) bytes=\(responseText.utf8.count)")
-            client.send(text: responseText)
-        }
-    }
-
-    private func handleOrchestrationStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
-        // Phase 2: On-device Foundation Models orchestrator
-        OpenAgentsLog.server.info("recv orchestrate.explore.start")
-
-        // Parse request
-        guard let p = rawDict["params"],
-              let d = try? JSONSerialization.data(withJSONObject: p),
-              let req = try? JSONDecoder().decode(OrchestrateExploreStartRequest.self, from: d) else {
-            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
-                client.send(text: text)
-            }
-            return
-        }
-
-        // Generate session and plan IDs
-        let sessionId = ACPSessionId(UUID().uuidString)
-        let planId = UUID().uuidString
-
-        // Send immediate response
-        let response = OrchestrateExploreStartResponse(
-            session_id: sessionId.value,
-            plan_id: planId,
-            status: "started"
-        )
-        JsonRpcRouter.sendResponse(id: id, result: response) { responseText in
-            OpenAgentsLog.server.debug("send rpc result method=orchestrate.explore.start id=\(id.value)")
-            client.send(text: responseText)
-        }
-
-        // Start orchestration async (non-blocking)
-        if #available(macOS 26.0, *) {
-            Task.detached {
-                await self.runOrchestration(
-                    request: req,
-                    sessionId: sessionId,
-                    planId: planId,
-                    client: client
-                )
-            }
-        } else {
-            // Foundation Models not available on this OS version
-            OpenAgentsLog.server.warning("orchestrate.explore.start requires macOS 26.0+")
-            JsonRpcRouter.sendError(
-                id: id,
-                code: -32603,
-                message: "orchestrate.explore.start requires macOS 26.0+ for Foundation Models"
-            ) { text in
-                client.send(text: text)
-            }
-        }
-    }
+    // moved to DesktopWebSocketServer+Orchestration.swift: handleOrchestrationStart
 
     public func setTinyvexDb(path: String) {
         if let db = try? TinyvexDbLayer(path: path) {
@@ -960,123 +483,7 @@ public class DesktopWebSocketServer {
 
     // MARK: - Orchestration (Phase 2)
 
-    @available(macOS 26.0, *)
-    private func runOrchestration(
-        request: OrchestrateExploreStartRequest,
-        sessionId: ACPSessionId,
-        planId: String,
-        client: Client
-    ) async {
-        OpenAgentsLog.orchestration.info("Starting exploration of \(request.root, privacy: .private)")
-
-        // Policy defaults to on-device only
-        let policy = request.policy ?? ExplorationPolicy(allow_external_llms: false, allow_network: false)
-
-        // Create stream handler that sends updates via WebSocket
-        let streamHandler: ACPUpdateStreamHandler = { [weak self] update in
-            await self?.sendSessionUpdate(sessionId: sessionId, update: update)
-        }
-
-        // Create and run orchestrator
-        let orchestrator = ExploreOrchestrator(
-            workspaceRoot: request.root,
-            goals: request.goals ?? ["Understand workspace structure"],
-            policy: policy,
-            streamHandler: streamHandler
-        )
-
-        do {
-            let summary = try await orchestrator.startExploration()
-            OpenAgentsLog.orchestration.info("Completed exploration: \(summary.repo_name)")
-
-            // Send summary as final agent message (no leading title/header)
-            var sections: [String] = []
-
-            sections.append("**Repository:** \(summary.repo_name)")
-
-            if false { // removed deterministic languages block {
-                let langs = summary.languages.map { "\($0.key): \($0.value) lines" }.joined(separator: ", ")
-                sections.append("**Languages:** \(langs)")
-            }
-
-            if false { // removed deterministic entrypoints block {
-                sections.append("**Entry points:** \(summary.entrypoints.joined(separator: ", "))")
-            }
-
-            if false { // removed deterministic top files block {
-                sections.append("\n**Top Files:**")
-                summary.top_files.forEach { sections.append("- `\($0)`") }
-            }
-
-            if false { // removed deterministic insights block {
-                sections.append("\n**Insights:**")
-                summary.followups.forEach { sections.append("• \($0)") }
-            }
-
-            // FM-only: inferred intent with visible status (tool call) while it prepares
-            if #available(macOS 26.0, *) {
-                let callId = UUID().uuidString
-                // Announce analysis start
-                let toolCall = ACPToolCallWire(
-                    call_id: callId,
-                    name: "fm.analysis",
-                    arguments: nil,
-                    _meta: ["stage": AnyEncodable("summary")] 
-                )
-                await sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCall))
-                let started = ACPToolCallUpdateWire(
-                    call_id: callId,
-                    status: .started,
-                    output: nil,
-                    error: nil,
-                    _meta: ["progress": AnyEncodable(0.0)]
-                )
-                await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(started))
-
-                if let analysis = await orchestrator.fmAnalysis(), !analysis.text.isEmpty {
-                    let heading = (analysis.source == .sessionAnalyze) ? "\n**Intent From Session History:**" : "\n**Inferred Intent (FM):**"
-                    sections.append(heading)
-                    sections.append(analysis.text)
-                    let outPayload: [String: AnyEncodable] = [
-                        "summary_bytes": AnyEncodable(analysis.text.utf8.count),
-                        "source": AnyEncodable(analysis.source.rawValue)
-                    ]
-                    let completed = ACPToolCallUpdateWire(
-                        call_id: callId,
-                        status: .completed,
-                        output: AnyEncodable(outPayload),
-                        error: nil,
-                        _meta: nil
-                    )
-                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed))
-                } else {
-                    let completed = ACPToolCallUpdateWire(
-                        call_id: callId,
-                        status: .completed,
-                        output: AnyEncodable(["summary_bytes": 0]),
-                        error: nil,
-                        _meta: nil
-                    )
-                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed))
-                }
-            }
-
-            let summaryText = sections.joined(separator: "\n")
-
-            let summaryChunk = ACP.Client.ContentChunk(
-                content: .text(.init(text: summaryText))
-            )
-            await sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(summaryChunk))
-        } catch {
-            OpenAgentsLog.orchestration.error("Error: \(error)")
-
-            // Send error message
-            let errorChunk = ACP.Client.ContentChunk(
-                content: .text(.init(text: "❌ Orchestration failed: \(error.localizedDescription)"))
-            )
-            await sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
-        }
-    }
+    // moved to DesktopWebSocketServer+Orchestration.swift: runOrchestration
 
     /// Send session update via WebSocket (delegates to SessionUpdateHub)
     func sendSessionUpdate(
@@ -1114,18 +521,18 @@ public class DesktopWebSocketServer {
 
 // MARK: - Service helpers & error sender
 extension DesktopWebSocketServer {
-    fileprivate static func urlFromURI(_ uri: String) -> URL? {
+    static func urlFromURI(_ uri: String) -> URL? {
         if let u = URL(string: uri), u.scheme != nil { return u }
         return URL(fileURLWithPath: uri)
     }
-    fileprivate static func readText(fromURI uri: String) -> String? {
+    static func readText(fromURI uri: String) -> String? {
         guard let url = urlFromURI(uri) else { return nil }
         if url.isFileURL {
             return try? String(contentsOf: url, encoding: .utf8)
         }
         return nil
     }
-    fileprivate static func writeText(toURI uri: String, text: String) -> Bool {
+    static func writeText(toURI uri: String, text: String) -> Bool {
         guard let url = urlFromURI(uri) else { return false }
         if url.isFileURL {
             guard let data = text.data(using: .utf8) else { return false }
@@ -1133,7 +540,7 @@ extension DesktopWebSocketServer {
         }
         return false
     }
-    fileprivate static func runCommand(_ cmd: [String], cwd: String?, env: [String:String]?, limit: Int?) -> (output: String, truncated: Bool, exitStatus: Int32?) {
+    static func runCommand(_ cmd: [String], cwd: String?, env: [String:String]?, limit: Int?) -> (output: String, truncated: Bool, exitStatus: Int32?) {
         guard let prog = cmd.first else { return ("", false, nil) }
         let args = Array(cmd.dropFirst())
         let p = Process()
@@ -1163,7 +570,7 @@ extension DesktopWebSocketServer {
         let truncated = data.count > (limit ?? Int.max)
         return (outStr, truncated, p.terminationStatus)
     }
-    fileprivate static func sendJSONRPCError(client: DesktopWebSocketServer.Client, id: JSONRPC.ID, code: Int, message: String) {
+    static func sendJSONRPCError(client: DesktopWebSocketServer.Client, id: JSONRPC.ID, code: Int, message: String) {
         let idAny: Any = Int(id.value) ?? id.value
         let envelope: [String: Any] = [
             "jsonrpc": "2.0",
