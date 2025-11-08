@@ -8,7 +8,6 @@ struct SimplifiedMacOSView: View {
     @EnvironmentObject var bridge: BridgeManager
     @EnvironmentObject var tinyvex: TinyvexManager
     @State private var showInstructions = false
-    @State private var showMorningBriefing = false
 
     // Coding agents state
     @State private var claudeDetected = false
@@ -21,12 +20,13 @@ struct SimplifiedMacOSView: View {
     #endif
 
     var body: some View {
-        ZStack {
-            // Background
-            OATheme.Colors.background
+        NavigationStack {
+            ZStack {
+                // Background
+                OATheme.Colors.background
 
-            // Main content - centered
-            VStack(spacing: 40) {
+                // Main content - centered
+                VStack(spacing: 40) {
                 Spacer()
 
                 // App title
@@ -369,16 +369,14 @@ struct SimplifiedMacOSView: View {
                 Spacer()
             }
             .padding(40)
+            }
+            .frame(minWidth: 650)
+            .preferredColorScheme(.dark)
         }
-        .frame(minWidth: 650)
         .sheet(isPresented: $showInstructions) {
             BridgeSetupInstructionsSheet()
                 .environmentObject(bridge)
         }
-        .sheet(isPresented: $showMorningBriefing) {
-            MorningBriefingDemoView()
-        }
-        .preferredColorScheme(.dark)
     }
 
     private var bridgeStatusText: String {
@@ -538,9 +536,7 @@ struct SimplifiedMacOSView: View {
                 .font(OAFonts.ui(.body, 14))
                 .foregroundStyle(OATheme.Colors.textSecondary.opacity(0.7))
 
-            Button {
-                showMorningBriefing = true
-            } label: {
+            NavigationLink(destination: MorningBriefingDemoView()) {
                 Text("Open Demo")
                     .font(OAFonts.ui(.body, 14))
                     .foregroundColor(.white)
