@@ -24,7 +24,7 @@ final class DecisionEngineTests: XCTestCase {
         )
 
         // Then: Should choose refactor task
-        XCTAssert Continued(decision.task.contains("Refactor"), "Task should be a refactor")
+        XCTAssertTrue(decision.task.contains("Refactor"), "Task should be a refactor")
         XCTAssertTrue(decision.task.contains("BridgeManager"), "Should mention top file")
         XCTAssertEqual(decision.agentMode, .claude_code, "Claude Code excels at refactoring")
         XCTAssertEqual(decision.priority, .high, "Refactor with strong signal is high priority")
