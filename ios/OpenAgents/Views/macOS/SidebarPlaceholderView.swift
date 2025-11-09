@@ -20,26 +20,22 @@ struct SidebarPlaceholderView: View {
             }
             .scrollDisabled(true)
 
-            // Apply Liquid Glass when available (under content overlays)
+            // Glass shape that "hovers" into the toolbar area
             if #available(macOS 15.0, *) {
-                Rectangle()
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .inset(by: 6)
                     .fill(.clear)
-                    .glassEffect(.regular, in: Rectangle())
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .offset(y: -14) // hover into toolbar
                     .ignoresSafeArea(.container, edges: .top)
                     .allowsHitTesting(false)
             }
 
-            // Trailing edge: cover NSSplitView divider completely
+            // Trailing edge: cover NSSplitView divider completely (over glass)
             Rectangle()
                 .fill(OATheme.Colors.background)
                 .frame(width: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .allowsHitTesting(false)
-            // Top overlay to unify tone under the window toolbar
-            Rectangle()
-                .fill(OATheme.Colors.sidebarBackground)
-                .frame(height: 32)
-                .frame(maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(false)
         }
         .clipped()
