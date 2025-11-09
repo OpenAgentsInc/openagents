@@ -6,6 +6,7 @@ struct ChatMacOSView: View {
     @State private var showInspector: Bool = false
     private let defaultSidebarWidth: CGFloat = 260
     @State private var showSettings: Bool = false
+    @State private var showDeveloper: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -24,9 +25,18 @@ struct ChatMacOSView: View {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { showDeveloper = true }) {
+                    Image(systemName: "wrench.and.screwdriver")
+                }
+                .keyboardShortcut("d", modifiers: [.command, .option])
+            }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+        }
+        .sheet(isPresented: $showDeveloper) {
+            DeveloperView()
         }
     }
 
