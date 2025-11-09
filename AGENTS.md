@@ -20,9 +20,11 @@
 
 - **macOS App** (`ios/OpenAgents/`)
   - Native Swift macOS app (same Xcode project, different targets)
+  - Three‑pane chat interface (NavigationSplitView: sidebar + chat + inspector)
   - WebSocket server for iOS pairing and bridge communication
   - Desktop agent session management (Codex/Claude Code CLI integration)
   - Bonjour/mDNS discovery for zero-config LAN pairing
+  - Settings and Developer tools accessible via toolbar/menu (⌘,, ⌥⌘D)
 
 - **Shared Core** (`ios/OpenAgentsCore/`)
   - SwiftPM package with shared logic for both platforms
@@ -37,6 +39,15 @@
 ios/                              # Xcode project root
 ├── OpenAgents/                   # Main app target
 │   ├── Views/                    # SwiftUI views
+│   │   ├── macOS/                # macOS-specific views
+│   │   │   ├── ChatMacOSView.swift      # Root NavigationSplitView
+│   │   │   ├── SessionSidebarView.swift # Session history sidebar
+│   │   │   ├── ChatAreaView.swift       # Main chat timeline
+│   │   │   ├── ComposerMac.swift        # NSTextView-based composer
+│   │   │   ├── Settings/                # Settings sheets (gear)
+│   │   │   │   └── SettingsView.swift
+│   │   │   └── Developer/               # Developer tools (wrench)
+│   │   │       └── DeveloperView.swift
 │   ├── Bridge/                   # Bridge integration
 │   └── ACP/                      # ACP renderers and components
 ├── OpenAgentsCore/               # Shared SwiftPM package
@@ -72,6 +83,16 @@ packages/tricoder/                # DEPRECATED npm package (kept for responsible
 - **Bonjour Discovery**: Zero-config LAN pairing via mDNS (`_openagents._tcp`)
 - **Foundation Models**: On-device Apple Intelligence for conversation titles and summaries
 - **Liquid Glass UI**: Apple's translucent material system for structural UI (iOS 26+, macOS 15+)
+
+### macOS Chat Interface (v0.3.1+)
+
+The macOS app uses a NavigationSplitView‑based chat layout (sidebar + content, with inspector reserved for future use). The root is `ChatMacOSView` and adopts OATheme black surfaces by default.
+
+- Sidebar: `SessionSidebarView` lists recent sessions (Tinyvex), supports search, ⌘N for New Chat, and Delete with confirmation.
+- Chat: `ChatAreaView` renders ACP updates with shared renderers; `ComposerMac` provides a Berkeley Mono input (Return = send, Shift+Return = newline).
+- Inspector: reserved for tool details; currently hidden.
+
+Bridge on macOS uses a local JSON‑RPC adapter (Option A) that calls `DesktopWebSocketServer` handlers directly and subscribes to `session/update` via a Combine publisher. See ADR‑0007.
 
 ### ACP Implementation
 
@@ -341,6 +362,28 @@ Open standard for agent communication.
 4. Import necessary dependencies (e.g., `OpenAgentsCore`)
 5. Build (⌘B) and preview in Xcode Canvas
 
+### Adding a New Chat Message Renderer (shared ACP UI)
+
+1. Implement a renderer in `ios/OpenAgents/ACP/` using OATheme/OAFonts.
+2. Integrate in the appropriate switch (e.g., message row) with minimal logic.
+3. Add an optional detail sheet for rich/structured content.
+4. Verify on iOS and macOS.
+5. Add a focused unit/integration test if applicable.
+
+Example snippet:
+```
+// inside a message row switch
+case .custom(let payload):
+    CustomMessageView(payload: payload)
+        .font(OAFonts.mono(.body, 14))
+        .foregroundStyle(OATheme.Colors.textPrimary)
+```
+
+### Accessing Settings or Developer Tools (macOS)
+
+- Settings: Toolbar gear or ⌘, (Connection, Workspace, Agents, Orchestration)
+- Developer Tools: Menu Developer → Developer Tools or ⌥⌘D (Database, Nostr, Logs, Diagnostics)
+
 ### Modifying Bridge Protocol
 
 1. Update message definitions in `ios/OpenAgentsCore/Sources/OpenAgentsCore/Bridge/BridgeMessages.swift`
@@ -449,9 +492,18 @@ If you were familiar with v0.2:
 
 The repository was cleaned up in PR #1414. See that PR and issue #1413 for the full deletion list and rationale.
 
+### v0.3.0 Dashboard (Deprecated in v0.3.1)
+
+The original macOS dashboard view (`SimplifiedMacOSView`) has been replaced by the chat‑first layout:
+
+- Dashboard cards (Bridge Status, Working Directory, Agent Config, Dev Tools) moved into Settings (⌘,) and Developer (⌥⌘D) views.
+- The main window now opens into `ChatMacOSView` with a session sidebar and chat area.
+- See ADR‑0007 for the rationale and architecture details.
+
 ## Additional Documentation
 
 - **ADRs**: `docs/adr/` - All architectural decisions
+  - ADR‑0007: macOS Chat Interface Architecture
 - **Liquid Glass**: `docs/liquid-glass/` - Visual design, APIs, examples
 - **iOS Bridge**: `docs/ios-bridge/` - WebSocket protocol specification
 - **Logs**: `docs/logs/` - Historical development logs and decisions
