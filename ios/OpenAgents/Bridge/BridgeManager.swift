@@ -26,6 +26,20 @@ final class BridgeManager: ObservableObject {
     // Shared collaborators
     var connection: ConnectionManaging?
 
+    // macOS/iOS shared chat state
+    @Published var threads: [ThreadSummary] = []
+    @Published var updates: [ACP.Client.SessionNotificationWire] = []
+    @Published var availableCommands: [ACP.Client.AvailableCommand] = []
+    @Published var currentMode: ACPSessionModeId = .default_mode
+    @Published var toolCallNames: [String: String] = [:]
+    @Published var rawJSONByCallId: [String: String] = [:]
+    @Published var outputJSONByCallId: [String: String] = [:]
+    @Published var recentSessions: [RecentSession] = []
+
+    // Shared collaborators for chat state
+    var timeline = TimelineStore()
+    var dispatcher: PromptDispatcher?
+    
     // macOS state
     #if os(macOS)
     @Published var connectedClientCount: Int = 0
@@ -34,18 +48,6 @@ final class BridgeManager: ObservableObject {
 
     // iOS state
     #if os(iOS)
-    @Published var threads: [ThreadSummary] = []
-    @Published var updates: [ACP.Client.SessionNotificationWire] = []
-    @Published var availableCommands: [ACP.Client.AvailableCommand] = []
-    @Published var currentMode: ACPSessionModeId = .default_mode
     @Published var workingDirectory: String? = nil
-    @Published var toolCallNames: [String: String] = [:]
-    @Published var rawJSONByCallId: [String: String] = [:]
-    @Published var outputJSONByCallId: [String: String] = [:]
-    @Published var recentSessions: [RecentSession] = []
-
-    // iOS collaborators
-    var timeline = TimelineStore()
-    var dispatcher: PromptDispatcher?
     #endif
 }

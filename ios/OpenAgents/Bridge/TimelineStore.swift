@@ -2,7 +2,6 @@ import Foundation
 import Combine
 import OpenAgentsCore
 
-#if os(iOS)
 final class TimelineStore: ObservableObject, TimelineStoring {
     // Published state
     @Published private(set) var updates: [ACP.Client.SessionNotificationWire] = []
@@ -108,4 +107,3 @@ final class TimelineStore: ObservableObject, TimelineStoring {
         return nil
     }
 }
-#endif
