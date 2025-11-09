@@ -132,5 +132,25 @@ extension BridgeManager {
         }
     }
 
+    func deleteSession(_ sessionId: String, completion: (() -> Void)? = nil) {
+        struct Params: Codable { let session_id: String }
+        connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.deleteSession", params: Params(session_id: sessionId), id: "delete-session-\(UUID().uuidString)") { (resp: [String: Bool]?) in
+            DispatchQueue.main.async { [weak self] in
+                // Refresh recent sessions after delete
+                self?.fetchRecentSessions()
+                // Clear timeline if deleting the active session
+                if self?.currentSessionId?.value == sessionId {
+                    self?.currentSessionId = nil
+                    self?.timeline.clearAll()
+                }
+                completion?()
+            }
+        }
+    }
+
+    func setSessionMode(_ mode: ACPSessionModeId) {
+        dispatcher?.setSessionMode(mode, getSessionId: { self.currentSessionId })
+    }
+
 }
 #endif

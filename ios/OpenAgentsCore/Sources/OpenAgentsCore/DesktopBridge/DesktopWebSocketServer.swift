@@ -217,6 +217,27 @@ public class DesktopWebSocketServer {
                 }
             }
         }
+
+        // tinyvex/history.deleteSession
+        router.register(method: "tinyvex/history.deleteSession") { [weak self] id, params, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            guard let db = self.tinyvexDb else {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "History API not initialized") { text in client.send(text: text) }
+                return
+            }
+            guard let sessionId = params?["session_id"] as? String else {
+                JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing required parameter: session_id") { text in client.send(text: text) }
+                return
+            }
+            Task {
+                do {
+                    try await db.execute("DELETE FROM acp_events WHERE session_id = ?;", params: [sessionId])
+                    JsonRpcRouter.sendResponse(id: id, result: ["deleted": true]) { text in client.send(text: text) }
+                } catch {
+                    JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to delete session: \(error)") { text in client.send(text: text) }
+                }
+            }
+        }
     }
 
     // moved to DesktopWebSocketServer+Threads.swift: registerThreadHandlers
