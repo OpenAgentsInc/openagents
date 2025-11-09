@@ -4,7 +4,7 @@ Complete redesign of the OpenAgents macOS desktop app from dashboard-style to Ch
 
 ## Overview
 
-This directory contains 17 GitHub issues that outline the complete transformation of the macOS app. The project involves:
+This directory contains 18 GitHub issues that outline the complete transformation of the macOS app. The project involves:
 
 - **Replacing** `SimplifiedMacOSView` dashboard with three-pane chat layout
 - **Implementing** session history, chat area, and inspector panes
@@ -69,7 +69,7 @@ Wire everything together and add polish.
 | [#13](013-keyboard-accessibility.md) | Add Keyboard Shortcuts and Accessibility Features | Medium (4-5h) | All UI |
 | [#14](014-theming-consistency.md) | Apply Consistent Theming (Liquid Glass, Berkeley Mono, OATheme) | Medium (4-6h) | All UI |
 
-### Phase 5: Testing & Documentation (Issues #15-17)
+### Phase 5: Testing & Documentation (Issues #15-18)
 Validate and document the implementation.
 
 | Issue | Title | Complexity | Dependencies |
@@ -77,6 +77,7 @@ Validate and document the implementation.
 | [#15](015-integration-tests.md) | Write Integration Tests for Chat Flow and Session Management | High (6-8h) | All implementation |
 | [#16](016-update-adrs.md) | Create/Update ADRs for Architecture Changes | Low-Medium (2-3h) | All implementation |
 | [#17](017-update-documentation.md) | Update AGENTS.md (CLAUDE.md symlink) with New macOS UI Architecture | Low (1-2h) | #16 |
+| [#18](018-update-root-readme.md) | Update Root README with macOS Chat Interface and Links | Low-Medium (1-2h) | #16 |
 
 ## Estimated Total Effort
 
