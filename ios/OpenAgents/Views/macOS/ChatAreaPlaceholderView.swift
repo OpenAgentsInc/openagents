@@ -19,7 +19,7 @@ struct ChatAreaPlaceholderView: View {
             .padding(32)
         }
         .background(backgroundMaterial)
-        .scrollEdgeEffect(.hard)
+        // Hard scroll edge effect (optional visual polish)
     }
 
     @ViewBuilder
