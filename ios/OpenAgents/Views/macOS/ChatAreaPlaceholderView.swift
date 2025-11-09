@@ -18,7 +18,7 @@ struct ChatAreaPlaceholderView: View {
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(OATheme.Colors.background)
-                .frame(width: 1)
+                .frame(width: 12)
         }
         // Hard scroll edge effect (optional visual polish)
     }
