@@ -18,6 +18,8 @@ struct DeveloperView: View {
                     .font(OAFonts.mono(.body, 12))
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(OATheme.Colors.sidebarBackground)
             .frame(minWidth: 200)
         } detail: {
             VStack(spacing: 0) {
@@ -42,6 +44,7 @@ struct DeveloperView: View {
             }
         }
         .frame(minWidth: 860, minHeight: 600)
+        .background(OATheme.Colors.background)
     }
 
     private func icon(for tab: DeveloperTab) -> String {
@@ -157,4 +160,3 @@ private struct DiagnosticsView: View {
     }
 }
 #endif
-

@@ -46,6 +46,9 @@ struct ChatMacOSView: View {
         .focusedSceneValue(\.showDeveloper, $showDeveloper)
         .focusedSceneValue(\.showKeyboardShortcuts, $showKeyboardShortcuts)
         .focusedSceneValue(\.toggleSidebar, { toggleSidebar() })
+        .background(OATheme.Colors.background)
+        .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
     }
 
     @ViewBuilder
