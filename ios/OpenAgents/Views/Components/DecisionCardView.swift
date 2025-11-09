@@ -176,6 +176,7 @@ struct DecisionCardView: View {
         case .claude_code: return "Claude Code"
         case .codex: return "Codex"
         case .default_mode: return "Default"
+        case .orchestrator: return "Orchestrator"
         }
     }
 
@@ -184,6 +185,7 @@ struct DecisionCardView: View {
         case .claude_code: return Color.purple
         case .codex: return Color.teal
         case .default_mode: return Color.blue
+        case .orchestrator: return Color.green
         }
     }
 

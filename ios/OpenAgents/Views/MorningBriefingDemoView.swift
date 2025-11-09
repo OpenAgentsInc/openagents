@@ -305,6 +305,7 @@ struct MorningBriefingDemoView: View {
         case .claude_code: return "Claude Code"
         case .codex: return "Codex"
         case .default_mode: return "Default"
+        case .orchestrator: return "Orchestrator"
         }
     }
 }
