@@ -37,6 +37,16 @@ public actor TinyvexDbLayer {
         );
         CREATE INDEX IF NOT EXISTS acp_events_by_session_seq ON acp_events (session_id, seq);
         CREATE INDEX IF NOT EXISTS acp_events_by_ts ON acp_events (ts);
+
+        CREATE TABLE IF NOT EXISTS orchestration_configs (
+          id TEXT NOT NULL,
+          workspace_root TEXT NOT NULL,
+          json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (id, workspace_root)
+        );
+        CREATE INDEX IF NOT EXISTS idx_orchestration_configs_workspace ON orchestration_configs(workspace_root);
+        CREATE INDEX IF NOT EXISTS idx_orchestration_configs_updated_at ON orchestration_configs(updated_at);
         """
         try exec(create)
     }
@@ -298,5 +308,60 @@ public actor TinyvexDbLayer {
             out.append(updateJson)
         }
         return out
+    }
+
+    // MARK: - Orchestration Config CRUD
+
+    /// Insert or update an orchestration configuration
+    public func insertOrUpdateOrchestrationConfig(_ configJSON: String, id: String, workspaceRoot: String, updatedAt: Int64) throws {
+        let sql = """
+        INSERT INTO orchestration_configs (id, workspace_root, json, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id, workspace_root) DO UPDATE SET
+          json = excluded.json,
+          updated_at = excluded.updated_at;
+        """
+
+        try execute(sql, params: [id, workspaceRoot, configJSON, updatedAt])
+    }
+
+    /// Get an orchestration configuration by id and workspace root
+    public func getOrchestrationConfig(id: String, workspaceRoot: String) throws -> String? {
+        let sql = "SELECT json FROM orchestration_configs WHERE id = ? AND workspace_root = ? LIMIT 1;"
+
+        guard let row = try queryOne(sql, params: [id, workspaceRoot]),
+              let json = row["json"] as? String else {
+            return nil
+        }
+
+        return json
+    }
+
+    /// List all orchestration configurations for a workspace
+    public func listOrchestrationConfigs(workspaceRoot: String) throws -> [String] {
+        let sql = "SELECT json FROM orchestration_configs WHERE workspace_root = ? ORDER BY updated_at DESC;"
+
+        let rows = try queryAll(sql, params: [workspaceRoot])
+        return rows.compactMap { $0["json"] as? String }
+    }
+
+    /// List all orchestration configurations (all workspaces)
+    public func listAllOrchestrationConfigs() throws -> [String] {
+        let sql = "SELECT json FROM orchestration_configs ORDER BY workspace_root, updated_at DESC;"
+
+        let rows = try queryAll(sql, params: [])
+        return rows.compactMap { $0["json"] as? String }
+    }
+
+    /// Delete an orchestration configuration
+    public func deleteOrchestrationConfig(id: String, workspaceRoot: String) throws {
+        let sql = "DELETE FROM orchestration_configs WHERE id = ? AND workspace_root = ?;"
+        try execute(sql, params: [id, workspaceRoot])
+    }
+
+    /// Delete all orchestration configurations (use with caution!)
+    public func deleteAllOrchestrationConfigs() throws {
+        let sql = "DELETE FROM orchestration_configs;"
+        try execute(sql, params: [])
     }
 }

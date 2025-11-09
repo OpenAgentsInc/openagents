@@ -219,6 +219,11 @@ public actor AgentCoordinator {
 
     // MARK: - Private Helpers
 
+    /// Increment tasksFailed counter (for use from detached tasks)
+    private func incrementTasksFailed() {
+        tasksFailed += 1
+    }
+
     /// Make a decision for the next task and enqueue it
     private func makeDecision(timeBudgetSeconds: TimeInterval) async -> CycleResult {
         do {
@@ -359,7 +364,7 @@ public actor AgentCoordinator {
             tt.error = "Timed out after \(Int(allowance))s"
             tt.completedAt = Date()
             try? await self.taskQueue.update(tt)
-            self.tasksFailed += 1
+            await self.incrementTasksFailed()
             OpenAgentsLog.orchestration.warning("AgentCoordinator Timed out task: \(tt.id) after \(Int(allowance))s")
         }
     }
