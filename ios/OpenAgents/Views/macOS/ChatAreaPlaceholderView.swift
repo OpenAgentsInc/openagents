@@ -7,18 +7,17 @@ struct ChatAreaPlaceholderView: View {
     @State private var inputText: String = ""
     @State private var isSending: Bool = false
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                OATheme.Colors.background
-                    .ignoresSafeArea()
-                Text("Hello")
-                    .font(OAFonts.ui(.title, 48))
-                    .foregroundStyle(OATheme.Colors.textPrimary)
-                    .opacity(fadeIn ? 1.0 : 0.0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack(alignment: .bottom) {
+            OATheme.Colors.background
+                .ignoresSafeArea()
 
-            // Composer anchored at bottom (non-scrolling main area)
+            // Centered content remains fixed regardless of composer height
+            Text("Hello")
+                .font(OAFonts.ui(.title, 48))
+                .foregroundStyle(OATheme.Colors.textPrimary)
+                .opacity(fadeIn ? 1.0 : 0.0)
+
+            // Composer overlaid at bottom without affecting layout of center content
             HStack {
                 Spacer()
                 ComposerMac(text: $inputText, isSending: isSending) {
@@ -29,7 +28,6 @@ struct ChatAreaPlaceholderView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(OATheme.Colors.background)
         }
         .navigationTitle("")
         .onAppear {
