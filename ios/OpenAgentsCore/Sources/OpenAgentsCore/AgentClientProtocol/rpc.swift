@@ -46,4 +46,9 @@ public enum ACPRPC {
     // Orchestration Scheduler (Phase 3: lightweight stubs)
     public static let orchestrateSchedulerReload = "orchestrate/scheduler.reload"
     public static let orchestrateSchedulerStatus = "orchestrate/scheduler.status"
+
+    // Orchestration Setup (conversational config creation)
+    public static let orchestrateSetupStart = "orchestrate/setup.start"
+    public static let orchestrateSetupStatus = "orchestrate/setup.status"
+    public static let orchestrateSetupAbort = "orchestrate/setup.abort"
 }
