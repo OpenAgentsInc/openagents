@@ -30,13 +30,13 @@ Build the left sidebar that displays session history with search functionality, 
 - [ ] Create `SessionSidebarView.swift` for the left pane
 - [ ] Display sessions grouped by date
 - [ ] Implement search bar with live filtering
-- [ ] Show "New Chat" button at top (use capsule shape per Liquid Glass)
+- [ ] Show "New Chat" button at top (capsule button in OATheme dark variant)
 - [ ] Highlight currently active session
 - [ ] Click session to load it in chat area
 - [ ] Hover shows delete button (or context menu)
 - [ ] Use Foundation Models for auto-generated titles (fallback to snippet)
-- [ ] Apply Liquid Glass material to sidebar background
-- [ ] Use hard scroll edge effect for macOS (pinned section headers)
+- [ ] Apply OATheme dark gray background (no Liquid Glass for now)
+- [ ] Optional: pinned section headers (avoid `.scrollEdgeEffect` until we re‑enable glass)
 - [ ] Empty state when no sessions exist
 - [ ] Keyboard navigation (↑/↓ arrows, Enter to select)
 
@@ -110,18 +110,8 @@ struct SessionSidebarView: View {
             Spacer()
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280)
-        .background {
-            // Liquid Glass sidebar material
-            if #available(macOS 15.0, *) {
-                Rectangle()
-                    .fill(.clear)
-                    .glassEffect(.regular, in: Rectangle())
-            } else {
-                Color.clear
-                    .background(.ultraThinMaterial)
-            }
-        }
-        .scrollEdgeEffect(.hard)  // macOS hard edge effect for text/pinned headers
+        .background(OATheme.Colors.sidebarBackground)
+        // Avoid scroll edge effects for now; keep surfaces pure OATheme dark
         .onAppear(perform: loadSessions)
     }
 
