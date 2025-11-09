@@ -61,6 +61,8 @@ struct OpenAgentsApp: App {
                 PerformanceWarmup.prewarmHaptics()
                 PerformanceWarmup.prewarmKeyboardAndTextInput()
                 PerformanceWarmup.prewarmResponderSilently()
+                #else
+                MacWindowUtils.fitToScreen(margin: 24)
                 #endif
             }
             .environment(\.font, OAFonts.ui(.body, 16))
@@ -81,8 +83,7 @@ struct OpenAgentsApp: App {
         .modelContainer(sharedModelContainer)
         #if os(macOS)
         .windowStyle(.titleBar)
-        .defaultSize(width: 600, height: 800)
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         #endif
     }
 }

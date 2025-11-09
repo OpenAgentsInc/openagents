@@ -7,32 +7,10 @@ struct ChatMacOSView: View {
 
     var body: some View {
         Group {
-            if #available(macOS 15.0, *) {
-                GlassEffectContainer {
-                    splitView
-                }
-            } else {
-                splitView
-            }
+            splitView
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    toggleSidebar()
-                } label: {
-                    Label("Toggle Sidebar", systemImage: "sidebar.left")
-                }
-                .keyboardShortcut("b", modifiers: .command)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showInspector.toggle()
-                } label: {
-                    Label("Toggle Inspector", systemImage: "sidebar.right")
-                }
-                .keyboardShortcut("i", modifiers: .command)
-            }
-        }
+        // Ensure our palette is the base surface
+        .background(OATheme.Colors.background.ignoresSafeArea())
     }
 
     @ViewBuilder
