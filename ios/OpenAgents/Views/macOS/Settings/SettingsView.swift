@@ -18,6 +18,8 @@ struct SettingsView: View {
                     .font(OAFonts.mono(.body, 12))
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(OATheme.Colors.sidebarBackground)
             .frame(minWidth: 180, idealWidth: 200)
         } detail: {
             VStack(spacing: 0) {
@@ -45,6 +47,7 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .background(OATheme.Colors.background)
     }
 
     private func icon(for tab: SettingsTab) -> String {
@@ -210,4 +213,3 @@ private struct SectionHeader: View {
     }
 }
 #endif
-
