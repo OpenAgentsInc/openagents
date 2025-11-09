@@ -46,6 +46,8 @@ public enum ACPRPC {
     // Orchestration Scheduler (Phase 3: lightweight stubs)
     public static let orchestrateSchedulerReload = "orchestrate/scheduler.reload"
     public static let orchestrateSchedulerStatus = "orchestrate/scheduler.status"
+    public static let orchestrateSchedulerRunNow = "orchestrate/scheduler.run_now"       // trigger immediate run (testing/ops)
+    public static let orchestrateSchedulerAdvance = "orchestrate/scheduler.advance"      // test-only alias for run_now
 
     // Orchestration Setup (conversational config creation)
     public static let orchestrateSetupStart = "orchestrate/setup.start"
