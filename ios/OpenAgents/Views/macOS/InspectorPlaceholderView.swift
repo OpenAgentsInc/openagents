@@ -14,7 +14,7 @@ struct InspectorPlaceholderView: View {
             .padding()
         }
         .background(backgroundMaterial)
-        .scrollEdgeEffect(.hard)
+        // Hard scroll edge effect (optional visual polish)
     }
 
     @ViewBuilder

@@ -40,16 +40,13 @@ struct ChatMacOSView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarPlaceholderView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
-                .modifier(GlassTag("sidebar"))
         } content: {
             ChatAreaPlaceholderView()
                 .navigationSplitViewColumnWidth(min: 400, ideal: 600)
-                .modifier(GlassTag("chat-area"))
         } detail: {
             if showInspector {
                 InspectorPlaceholderView()
                     .navigationSplitViewColumnWidth(min: 280, ideal: 300, max: 350)
-                    .modifier(GlassTag("inspector"))
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -64,17 +61,4 @@ struct ChatMacOSView: View {
         }
     }
 }
-
-private struct GlassTag: ViewModifier {
-    let id: String
-    init(_ id: String) { self.id = id }
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.glassEffectID(id)
-        } else {
-            content
-        }
-    }
-}
 #endif
-
