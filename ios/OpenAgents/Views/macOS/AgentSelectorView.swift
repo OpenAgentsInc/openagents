@@ -29,52 +29,35 @@ struct AgentSelectorView: View {
         .buttonStyle(.plain)
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             AgentSelectorPopover(
-                available: availableOptions,
-                currentMode: bridge.currentMode,
-                onSelectMode: { mode in
+                selected: $bridge.selectedAgent,
+                commands: bridge.availableCommands,
+                onSelect: { cmd in
                     showPopover = false
-                    // Update selection state for UI persistence
-                    bridge.selectedAgent = bridge.availableCommands.first { cmd in
-                        let n = cmd.name.lowercased()
-                        return (mode == .claude_code && n.contains("claude")) || (mode == .codex && n.contains("codex"))
-                    }
+                    bridge.selectedAgent = cmd
+                    let mode = modeForCommand(cmd)
                     if bridge.currentSessionId == nil { bridge.startNewSession(desiredMode: mode) }
                     else { bridge.setSessionMode(mode) }
                 }
             )
-            .frame(width: 280, height: 200)
+            .frame(width: 320, height: 240)
         }
         .keyboardShortcut("k", modifiers: .command)
         .onAppear { initializeSelectionIfNeeded() }
         .onChange(of: bridge.availableCommands) { _, _ in initializeSelectionIfNeeded() }
     }
 
-    private var availableOptions: [ACPSessionModeId] {
-        // Map availableCommands to modes when possible; fallback to common modes
-        let names = bridge.availableCommands.map { $0.name.lowercased() }
-        var modes: [ACPSessionModeId] = []
-        if names.contains(where: { $0.contains("claude") }) { modes.append(.claude_code) }
-        if names.contains(where: { $0.contains("codex") }) { modes.append(.codex) }
-        if modes.isEmpty { modes = [.claude_code, .codex] }
-        return modes
-    }
-
     private var selectedLabel: String {
-        switch bridge.currentMode {
-        case .claude_code: return "Claude Code"
-        case .codex: return "Codex"
-        case .orchestrator: return "Orchestrator"
-        default: return "Default Agent"
-        }
+        if let a = bridge.selectedAgent { return a.name }
+        switch bridge.currentMode { case .claude_code: return "Claude Code"; case .codex: return "Codex"; case .orchestrator: return "Orchestrator"; default: return "Default Agent" }
     }
 
     private var agentIcon: String {
-        switch bridge.currentMode {
-        case .claude_code: return "sparkles"
-        case .codex: return "chevron.left.slash.chevron.right"
-        case .orchestrator: return "gear"
-        default: return "cpu"
+        if let a = bridge.selectedAgent {
+            let n = a.name.lowercased()
+            if n.contains("claude") { return "sparkles" }
+            if n.contains("codex") { return "chevron.left.slash.chevron.right" }
         }
+        switch bridge.currentMode { case .claude_code: return "sparkles"; case .codex: return "chevron.left.slash.chevron.right"; case .orchestrator: return "gear"; default: return "cpu" }
     }
 
     private func initializeSelectionIfNeeded() {
@@ -90,12 +73,19 @@ struct AgentSelectorView: View {
             }
         }
     }
+
+    private func modeForCommand(_ cmd: ACP.Client.AvailableCommand) -> ACPSessionModeId {
+        let n = cmd.name.lowercased()
+        if n.contains("claude") { return .claude_code }
+        if n.contains("codex") { return .codex }
+        return .default_mode
+    }
 }
 
 private struct AgentSelectorPopover: View {
-    let available: [ACPSessionModeId]
-    let currentMode: ACPSessionModeId
-    let onSelectMode: (ACPSessionModeId) -> Void
+    @Binding var selected: ACP.Client.AvailableCommand?
+    let commands: [ACP.Client.AvailableCommand]
+    let onSelect: (ACP.Client.AvailableCommand) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -106,28 +96,43 @@ private struct AgentSelectorPopover: View {
                 .padding(.vertical, 10)
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(available, id: \.rawValue) { mode in
-                        Button(action: { onSelectMode(mode) }) {
-                            HStack(spacing: 10) {
-                                Image(systemName: icon(for: mode))
-                                    .foregroundStyle(OATheme.Colors.accent)
-                                Text(label(for: mode))
-                                    .font(OAFonts.mono(.body, 12))
-                                    .foregroundStyle(OATheme.Colors.textPrimary)
-                                Spacer()
-                                if mode == currentMode {
-                                    Image(systemName: "checkmark")
+                VStack(alignment: .leading, spacing: 4) {
+                    if commands.isEmpty {
+                        Text("No agents available")
+                            .font(OAFonts.mono(.body, 12))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                            .padding()
+                    } else {
+                        ForEach(commands, id: \.name) { cmd in
+                            Button(action: { onSelect(cmd) }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: icon(for: cmd))
                                         .foregroundStyle(OATheme.Colors.accent)
-                                        .font(.system(size: 12, weight: .semibold))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(cmd.name)
+                                            .font(OAFonts.mono(.body, 12))
+                                            .foregroundStyle(OATheme.Colors.textPrimary)
+                                        if !cmd.description.isEmpty {
+                                            Text(cmd.description)
+                                                .font(OAFonts.mono(.caption, 11))
+                                                .foregroundStyle(OATheme.Colors.textSecondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer()
+                                    if selected?.name == cmd.name {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(OATheme.Colors.accent)
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
                                 }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background((selected?.name == cmd.name) ? OATheme.Colors.accent.opacity(0.1) : Color.clear)
+                                .cornerRadius(6)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(mode == currentMode ? OATheme.Colors.accent.opacity(0.1) : Color.clear)
-                            .cornerRadius(6)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.vertical, 8)
@@ -136,22 +141,11 @@ private struct AgentSelectorPopover: View {
         }
         .background(OATheme.Colors.sidebarBackground)
     }
-
-    private func label(for mode: ACPSessionModeId) -> String {
-        switch mode {
-        case .claude_code: return "Claude Code"
-        case .codex: return "Codex"
-        case .orchestrator: return "Orchestrator"
-        default: return "Default Agent"
-        }
-    }
-    private func icon(for mode: ACPSessionModeId) -> String {
-        switch mode {
-        case .claude_code: return "sparkles"
-        case .codex: return "chevron.left.slash.chevron.right"
-        case .orchestrator: return "gear"
-        default: return "cpu"
-        }
+    private func icon(for cmd: ACP.Client.AvailableCommand) -> String {
+        let n = cmd.name.lowercased()
+        if n.contains("claude") { return "sparkles" }
+        if n.contains("codex") { return "chevron.left.slash.chevron.right" }
+        return "cpu"
     }
 }
 #endif
