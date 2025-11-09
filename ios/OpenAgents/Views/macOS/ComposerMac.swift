@@ -26,8 +26,8 @@ struct ComposerMac: View {
                     Text(placeholder)
                         .font(OAFonts.mono(.body, 14))
                         .foregroundStyle(OATheme.Colors.textSecondary)
-                        .padding(.leading, 6)
-                        .padding(.top, 8)
+                        .padding(.leading, 18)
+                        .padding(.top, 10)
                         .allowsHitTesting(false)
                 }
             }
@@ -85,8 +85,13 @@ private struct NSTextViewWrapper: NSViewRepresentable {
         tv.isAutomaticTextReplacementEnabled = false
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.textColor = NSColor.white
-        tv.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        tv.textContainerInset = NSSize(width: 4, height: 6)
+        if let berkeley = NSFont(name: BerkeleyFont.defaultName(), size: fontSize) {
+            tv.font = berkeley
+        } else {
+            tv.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        }
+        tv.textContainerInset = NSSize(width: 10, height: 8)
+        tv.textContainer?.lineFragmentPadding = 8
 
         tv.isVerticallyResizable = true
         tv.isHorizontallyResizable = false
@@ -142,4 +147,3 @@ private struct NSTextViewWrapper: NSViewRepresentable {
     }
 }
 #endif
-

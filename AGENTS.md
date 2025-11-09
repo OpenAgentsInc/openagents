@@ -165,6 +165,11 @@ Key test suites:
 - **Language**: Swift 5.9+ (strict mode)
 - **Formatting**: Follow Swift standard conventions (SwiftFormat/SwiftLint configs if present)
 - **Indentation**: 4 spaces (Xcode default for Swift)
+- **Fonts**:
+  - All monospace text MUST use Berkeley Mono across iOS and macOS.
+  - SwiftUI: use `OAFonts.mono(...)` (which resolves to Berkeley Mono).
+  - AppKit/UIKit: resolve via `BerkeleyFont.defaultName()` and construct `NSFont/UIFont` with that family.
+  - Do NOT use system monospace (`.monospacedSystemFont`, SF Mono) in app code.
 - **Naming**:
   - Types: `PascalCase` (e.g., `BridgeManager`, `DesktopWebSocketServer`)
   - Functions/properties: `camelCase` (e.g., `connectToServer()`, `isConnected`)
