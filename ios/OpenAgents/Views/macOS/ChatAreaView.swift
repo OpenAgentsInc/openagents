@@ -112,11 +112,15 @@ private struct ChatUpdateRow: View {
                     .foregroundStyle(OATheme.Colors.textSecondary)
             case .toolCall(let callWire):
                 ToolCallView(call: mapCall(callWire), result: findResult(for: callWire.call_id))
+                    .contentShape(Rectangle())
+                    .onTapGesture { bridge.selectedToolCallId = callWire.call_id }
             case .toolCallUpdate(let upd):
                 // Re-render with current status/result
                 if let name = bridge.toolCallNames[upd.call_id] {
                     let call = ACPToolCall(id: upd.call_id, tool_name: name, arguments: .object([:]))
                     ToolCallView(call: call, result: mapResult(upd))
+                        .contentShape(Rectangle())
+                        .onTapGesture { bridge.selectedToolCallId = upd.call_id }
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.6)
@@ -124,6 +128,8 @@ private struct ChatUpdateRow: View {
                             .font(OAFonts.mono(.caption, 11))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { bridge.selectedToolCallId = upd.call_id }
                 }
             }
         }

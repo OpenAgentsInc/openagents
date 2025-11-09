@@ -6,6 +6,7 @@ struct OpenAgentsCommands: Commands {
     @FocusedBinding(\.showDeveloper) var showDeveloper: Bool?
     @FocusedBinding(\.showKeyboardShortcuts) var showKeyboardShortcuts: Bool?
     @FocusedValue(\.toggleSidebar) var toggleSidebar: (() -> Void)?
+    @FocusedValue(\.toggleInspector) var toggleInspector: (() -> Void)?
     @FocusedValue(\.deleteSelectedSession) var deleteSelectedSession: (() -> Void)?
 
     var body: some Commands {
@@ -19,6 +20,8 @@ struct OpenAgentsCommands: Commands {
         CommandMenu("View") {
             Button("Toggle Sidebar") { toggleSidebar?() }
                 .keyboardShortcut("b", modifiers: .command)
+            Button("Toggle Inspector") { toggleInspector?() }
+                .keyboardShortcut("i", modifiers: .command)
         }
 
         // Help menu additions
@@ -56,6 +59,7 @@ extension FocusedValues {
     struct ShowDeveloperKey: FocusedValueKey { typealias Value = Binding<Bool> }
     struct ShowKeyboardShortcutsKey: FocusedValueKey { typealias Value = Binding<Bool> }
     struct ToggleSidebarKey: FocusedValueKey { typealias Value = () -> Void }
+    struct ToggleInspectorKey: FocusedValueKey { typealias Value = () -> Void }
     struct DeleteSelectedSessionKey: FocusedValueKey { typealias Value = () -> Void }
     var showSettings: Binding<Bool>? {
         get { self[ShowSettingsKey.self] }
@@ -72,6 +76,10 @@ extension FocusedValues {
     var toggleSidebar: (() -> Void)? {
         get { self[ToggleSidebarKey.self] }
         set { self[ToggleSidebarKey.self] = newValue }
+    }
+    var toggleInspector: (() -> Void)? {
+        get { self[ToggleInspectorKey.self] }
+        set { self[ToggleInspectorKey.self] = newValue }
     }
     var deleteSelectedSession: (() -> Void)? {
         get { self[DeleteSelectedSessionKey.self] }
