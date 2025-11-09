@@ -114,6 +114,7 @@ private struct ChatUpdateRow: View {
                 ToolCallView(call: mapCall(callWire), result: findResult(for: callWire.call_id))
                     .contentShape(Rectangle())
                     .onTapGesture { bridge.selectedToolCallId = callWire.call_id }
+                    .overlay(selectionOverlay(for: callWire.call_id))
             case .toolCallUpdate(let upd):
                 // Re-render with current status/result
                 if let name = bridge.toolCallNames[upd.call_id] {
@@ -121,6 +122,7 @@ private struct ChatUpdateRow: View {
                     ToolCallView(call: call, result: mapResult(upd))
                         .contentShape(Rectangle())
                         .onTapGesture { bridge.selectedToolCallId = upd.call_id }
+                        .overlay(selectionOverlay(for: upd.call_id))
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.6)
@@ -130,6 +132,7 @@ private struct ChatUpdateRow: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { bridge.selectedToolCallId = upd.call_id }
+                    .overlay(selectionOverlay(for: upd.call_id))
                 }
             }
         }
@@ -181,6 +184,15 @@ private struct ChatUpdateRow: View {
             return ACPToolResult(call_id: callId, ok: true)
         }
         return nil
+    }
+
+    private func selectionOverlay(for callId: String) -> some View {
+        Group {
+            if bridge.selectedToolCallId == callId {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(OATheme.Colors.accent.opacity(0.6), lineWidth: 1)
+            } else { EmptyView() }
+        }
     }
 }
 

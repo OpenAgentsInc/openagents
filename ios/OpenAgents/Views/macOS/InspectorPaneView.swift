@@ -1,10 +1,15 @@
 import SwiftUI
 import OpenAgentsCore
+#if os(macOS)
+import AppKit
+import UniformTypeIdentifiers
+#endif
 
 #if os(macOS)
 struct InspectorPaneView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var mode: ViewMode = .formatted
+    @State private var lastSavedURLByCallId: [String: URL] = [:]
 
     enum ViewMode: String, CaseIterable { case formatted = "Formatted", raw = "Raw" }
 
@@ -23,7 +28,7 @@ struct InspectorPaneView: View {
                 .font(OAFonts.mono(.body, 12))
                 .foregroundStyle(OATheme.Colors.textSecondary)
             Spacer()
-            if bridge.selectedToolCallId != nil {
+            if let id = bridge.selectedToolCallId {
                 Picker("", selection: $mode) {
                     ForEach(ViewMode.allCases, id: \.self) { m in
                         Text(m.rawValue).tag(m)
@@ -35,10 +40,25 @@ struct InspectorPaneView: View {
                     Image(systemName: "xmark.circle")
                 }
                 .buttonStyle(.plain)
-                Button(action: { if let id = bridge.selectedToolCallId { copyJSON(for: id) } }) {
+                Button(action: { copyJSON(for: id) }) {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.plain)
+                Button(action: { saveJSON(for: id) }) {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .buttonStyle(.plain)
+                .disabled(currentJSON(for: id) == nil)
+                Button(action: { revealInFinder(for: id) }) {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.plain)
+                .disabled(lastSavedURLByCallId[id] == nil)
+                Button(action: { openInEditor(for: id) }) {
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .buttonStyle(.plain)
+                .disabled(lastSavedURLByCallId[id] == nil)
             }
         }
         .padding(.horizontal, 12)
@@ -116,6 +136,39 @@ struct InspectorPaneView: View {
             }
         }
         return nil
+    }
+
+    private func suggestedFileName(for id: String) -> String {
+        let tool = bridge.toolCallNames[id] ?? "tool"
+        return "\(tool)-\(id.prefix(8)).json"
+    }
+
+    private func saveJSON(for id: String) {
+        #if os(macOS)
+        guard let text = currentJSON(for: id), let data = text.data(using: .utf8) else { return }
+        let panel = NSSavePanel()
+        panel.title = "Save JSON"
+        panel.nameFieldStringValue = suggestedFileName(for: id)
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        if panel.runModal() == .OK, let url = panel.url {
+            do { try data.write(to: url); lastSavedURLByCallId[id] = url } catch { }
+        }
+        #endif
+    }
+
+    private func revealInFinder(for id: String) {
+        #if os(macOS)
+        guard let url = lastSavedURLByCallId[id] else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        #endif
+    }
+
+    private func openInEditor(for id: String) {
+        #if os(macOS)
+        guard let url = lastSavedURLByCallId[id] else { return }
+        NSWorkspace.shared.open(url)
+        #endif
     }
 }
 
