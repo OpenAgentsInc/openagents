@@ -26,8 +26,18 @@ extension BridgeManager {
             .sink { [weak self] count in self?.connectedClientCount = count }
             .store(in: &subscriptions)
 
-        // TODO(mac chat state): wire server notifications -> timeline when
-        // DesktopConnectionManager exposes notificationPublisher.
+        // Forward session/update notifications into TimelineStore
+        conn.notificationPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] evt in
+                guard let self = self else { return }
+                if evt.method == ACPRPC.sessionUpdate {
+                    self.timeline.applySessionUpdatePayload(evt.payload)
+                } else if let s = String(data: evt.payload, encoding: .utf8) {
+                    self.log("client", "notify \(evt.method): \(s)")
+                }
+            }
+            .store(in: &subscriptions)
 
         // Mirror timeline state to published fields
         timeline.updatesPublisher
@@ -55,9 +65,8 @@ extension BridgeManager {
             .sink { [weak self] in self?.outputJSONByCallId = $0 }
             .store(in: &subscriptions)
 
-        // TODO(mac chat state): initialize dispatcher with LocalJsonRpcClient when
-        // DesktopConnectionManager exposes a local rpcClient compatible with JSONRPCSending.
-        dispatcher = nil
+        // Initialize dispatcher with local RPC client
+        dispatcher = PromptDispatcher(rpc: conn.rpcClient, timeline: timeline)
         conn.start()
     }
 

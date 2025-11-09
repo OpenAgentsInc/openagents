@@ -1,6 +1,7 @@
 #if os(macOS)
 import Foundation
 import Network
+import Combine
 
 /// Delegate protocol to notify connection and handshake results
 public protocol DesktopWebSocketServerDelegate: AnyObject {
@@ -85,6 +86,12 @@ public class DesktopWebSocketServer {
     var currentClient: Client?
     // Agent registry for provider management
     let agentRegistry = AgentRegistry()
+
+    // MARK: - Local app broadcast (Combine)
+    private let broadcastSubject = PassthroughSubject<(method: String, payload: Data), Never>()
+    public var notificationPublisher: AnyPublisher<(method: String, payload: Data), Never> {
+        broadcastSubject.eraseToAnyPublisher()
+    }
 
     // Ext capabilities negotiated/advertised during initialize
     private(set) var advertisedExtCapabilities: ACP.Agent.ExtCapabilities = .init(orchestrate_explore: false)
@@ -249,7 +256,12 @@ public class DesktopWebSocketServer {
             self.tinyvexDb = db
             // Initialize SessionUpdateHub with broadcast callback
             self.updateHub = SessionUpdateHub(tinyvexDb: db) { [weak self] notificationJSON in
-                await self?.broadcastToClients(notificationJSON)
+                // Broadcast to any connected WebSocket clients
+                Task { [weak self] in
+                    await self?.broadcastToClients(notificationJSON)
+                }
+                // Also publish to local app subscribers
+                self?.publishNotificationToApp(notificationJSON)
             }
             // Initialize HistoryApi for Tinyvex queries
             self.historyApi = HistoryApi(tinyvexDb: db)
@@ -519,6 +531,17 @@ public class DesktopWebSocketServer {
                 c.send(text: notificationJSON)
             }
         }
+    }
+
+    /// Publish a JSON-RPC notification to the local app via Combine
+    private func publishNotificationToApp(_ notificationJSON: String) {
+        guard let data = notificationJSON.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let method = root["method"] as? String,
+              let params = root["params"],
+              let payload = try? JSONSerialization.data(withJSONObject: params)
+        else { return }
+        broadcastSubject.send((method: method, payload: payload))
     }
 }
 

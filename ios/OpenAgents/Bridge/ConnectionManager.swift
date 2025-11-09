@@ -119,16 +119,22 @@ final class DesktopConnectionManager: ConnectionManaging, DesktopWebSocketServer
     private let statusSubject = PassthroughSubject<BridgeManager.Status, Never>()
     private let logSubject = PassthroughSubject<String, Never>()
     private let connectedClientCountSubject = CurrentValueSubject<Int, Never>(0)
+    private let notificationSubject = PassthroughSubject<(method: String, payload: Data), Never>()
+    private var cancellables: Set<AnyCancellable> = []
 
     var statusPublisher: AnyPublisher<BridgeManager.Status, Never> { statusSubject.eraseToAnyPublisher() }
     var logPublisher: AnyPublisher<String, Never> { logSubject.eraseToAnyPublisher() }
     var connectedClientCountPublisher: AnyPublisher<Int, Never> { connectedClientCountSubject.eraseToAnyPublisher() }
+    var notificationPublisher: AnyPublisher<(method: String, payload: Data), Never> { notificationSubject.eraseToAnyPublisher() }
+
+    var rpcClient: JSONRPCSending? { localRpc }
 
     var workingDirectoryURL: URL? {
         didSet { server?.workingDirectory = workingDirectoryURL }
     }
 
     private var server: DesktopWebSocketServer?
+    private var localRpc: LocalJsonRpcClient?
 
     func start() {
         let srv = DesktopWebSocketServer()
@@ -139,6 +145,13 @@ final class DesktopConnectionManager: ConnectionManaging, DesktopWebSocketServer
             srv.workingDirectory = workingDirectoryURL
             try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
             server = srv
+            // Forward server notifications to app subscribers
+            srv.notificationPublisher
+                .receive(on: RunLoop.main)
+                .sink { [weak self] evt in self?.notificationSubject.send(evt) }
+                .store(in: &cancellables)
+            // Provide local JSON-RPC adapter
+            localRpc = LocalJsonRpcClient(server: srv)
             log("server", "DesktopWebSocketServer on ws://0.0.0.0:\(BridgeConfig.defaultPort)")
             statusSubject.send(.advertising(port: BridgeConfig.defaultPort))
         } catch {
