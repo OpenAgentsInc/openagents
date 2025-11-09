@@ -67,6 +67,13 @@ final class LocalJsonRpcClient: JSONRPCSending {
                 } else {
                     result = nil
                 }
+            case "tinyvex/history.clearSessionTitle":
+                if let obj = Self.asDict(params), let sid = obj["session_id"] as? String {
+                    await server.localClearSessionTitle(sessionId: sid)
+                    result = Self.bridge(OkResp(ok: true), as: R.self)
+                } else {
+                    result = nil
+                }
 
             case ACPRPC.orchestrateExploreStart:
                 // Not implemented locally yet; allow caller to treat as unavailable
