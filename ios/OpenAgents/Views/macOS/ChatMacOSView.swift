@@ -16,11 +16,6 @@ struct ChatMacOSView: View {
                 .navigationTitle("")
         }
         .navigationSplitViewStyle(.balanced)
-        .background(OATheme.Colors.background.ignoresSafeArea())
-        .toolbar(.visible, for: .windowToolbar)
-        .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-        .toolbarColorScheme(.dark, for: .windowToolbar)
     }
 
     @ViewBuilder
