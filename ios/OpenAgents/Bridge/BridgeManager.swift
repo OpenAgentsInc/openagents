@@ -35,6 +35,7 @@ final class BridgeManager: ObservableObject {
     @Published var rawJSONByCallId: [String: String] = [:]
     @Published var outputJSONByCallId: [String: String] = [:]
     @Published var recentSessions: [RecentSession] = []
+    @Published var selectedAgent: ACP.Client.AvailableCommand? = nil
 
     // Shared collaborators for chat state
     var timeline = TimelineStore()

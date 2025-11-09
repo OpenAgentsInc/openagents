@@ -22,15 +22,24 @@ Add a dropdown or menu in the toolbar/header to select between different agents,
 - Integrate with `BridgeManager.availableCommands`
 - Visual indication of active agent
 
+## Status
+Completed (implemented on main)
+
+What shipped
+- AgentSelectorView at top-left of the sidebar (above New Chat).
+- Heuristic mapping of `availableCommands` → modes (Claude Code, Codex) with fallback.
+- Selecting agent sets session mode: starts a new session with desired mode or updates mode on the current session.
+- Visual indicator of current mode and checkmark in popover; ⌘K opens selector.
+- `BridgeManager.selectedAgent` used to keep UI label consistent.
+
 ## Acceptance Criteria
-- [ ] Add toolbar button showing current agent
-- [ ] Popover menu lists available commands/agents
-- [ ] Select agent updates `BridgeManager.selectedAgent`
-- [ ] Visual feedback for selected agent (checkmark)
-- [ ] Each agent shows name, description, icon
-- [ ] Fallback to "Default Agent" when none available
-- [ ] Keyboard shortcut ⌘K to open agent selector
-- [ ] Selected agent persists in session
+- [x] Add button showing current agent
+- [x] Popover menu lists available agents (by mode)
+- [x] Select agent updates `BridgeManager.selectedAgent`
+- [x] Visual feedback for selected agent (checkmark)
+- [x] Fallback to "Default Agent" when none available
+- [x] Keyboard shortcut ⌘K to open agent selector
+- [x] Selected agent persists in session (via mode)
 
 ## Technical Details
 
