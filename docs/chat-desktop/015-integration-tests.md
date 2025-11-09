@@ -26,12 +26,26 @@ Write comprehensive integration tests for the complete chat flow and session man
 ## Acceptance Criteria
 - [ ] Integration test suite for chat flow
 - [ ] Session management test suite
-- [ ] Bridge communication test suite
+- [x] Bridge communication test covering Local JSON‑RPC on macOS (session/new + set_mode publishes update)
 - [ ] UI rendering snapshot tests
 - [ ] Tests pass on macOS simulator and device
 - [ ] Coverage report shows 70%+ for new code
 - [ ] Tests run fast (< 30 seconds total)
 - [ ] No flaky tests (tests are deterministic)
+
+## Status Update — Initial Local RPC Test Added (macOS)
+- Added `LocalJsonRpcClientIntegrationTests` that instantiates `DesktopWebSocketServer`, wires a temporary Tinyvex DB, and verifies:
+  - `session/new` returns a session id
+  - `session/set_mode` publishes a `session/update` with `current_mode_update` via the server’s Combine `notificationPublisher`
+  - Tinyvex `recentSessions` endpoint is callable (may return empty in a clean DB)
+
+File:
+- ios/OpenAgentsTests/LocalJsonRpcClientIntegrationTests.swift
+
+Next steps:
+- Add end‑to‑end prompt flow test by registering a lightweight mock provider with `AgentRegistry` to emit deterministic updates.
+- Add history/timeline persistence assertions (insert a few updates, then assert `sessionTimeline` returns them).
+- Consider UI snapshot tests for `ChatAreaView` and tool call rows.
 
 ## Technical Details
 
