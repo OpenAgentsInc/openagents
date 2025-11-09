@@ -132,6 +132,12 @@ public class DesktopWebSocketServer {
         registerHandlers()
     }
 
+    /// Register an additional agent provider (primarily for tests or custom providers).
+    /// If a provider with the same `id` exists, it will be replaced.
+    public func registerProvider(_ provider: AgentProvider) async {
+        await agentRegistry.register(provider)
+    }
+
     /// Register all available agent providers
     private func registerAgentProviders() async {
         await agentRegistry.register(CodexAgentProvider())
