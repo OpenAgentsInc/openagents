@@ -3,7 +3,7 @@ import SwiftUI
 #if os(macOS)
 struct ChatMacOSView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showInspector: Bool = true
+    @State private var showInspector: Bool = false
 
     var body: some View {
         Group {
@@ -15,19 +15,32 @@ struct ChatMacOSView: View {
 
     @ViewBuilder
     private var splitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarPlaceholderView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
-        } content: {
-            ChatAreaPlaceholderView()
-                .navigationSplitViewColumnWidth(min: 400, ideal: 600)
-        } detail: {
-            if showInspector {
-                InspectorPlaceholderView()
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 300, max: 350)
-            }
+        if showInspector {
+            AnyView(
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
+                } content: {
+                    ChatAreaPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+                } detail: {
+                    InspectorPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
+                }
+                .navigationSplitViewStyle(.balanced)
+            )
+        } else {
+            AnyView(
+                NavigationSplitView {
+                    SidebarPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
+                } detail: {
+                    ChatAreaPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
+                }
+                .navigationSplitViewStyle(.balanced)
+            )
         }
-        .navigationSplitViewStyle(.balanced)
     }
 
     private func toggleSidebar() {
