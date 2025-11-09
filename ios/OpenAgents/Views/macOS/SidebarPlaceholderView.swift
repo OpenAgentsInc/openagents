@@ -14,11 +14,11 @@ struct SidebarPlaceholderView: View {
             .padding()
         }
         .background(OATheme.Colors.sidebarBackground)
-        // Mask the system split divider with our theme color
+        // Mask the system split divider with our theme color (make it thicker to cover glow)
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(OATheme.Colors.background)
-                .frame(width: 1)
+                .frame(width: 12)
         }
     }
 
