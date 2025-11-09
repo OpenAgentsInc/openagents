@@ -20,9 +20,12 @@ struct ChatAreaPlaceholderView: View {
 
             // Composer anchored at bottom (non-scrolling main area)
             HStack {
+                Spacer()
                 ComposerMac(text: $inputText, isSending: isSending) {
                     send()
                 }
+                .frame(width: 768)
+                Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
