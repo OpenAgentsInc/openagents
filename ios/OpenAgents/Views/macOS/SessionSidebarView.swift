@@ -7,6 +7,7 @@ struct SessionSidebarView: View {
     @State private var searchText: String = ""
     @State private var hoveredId: String? = nil
     @State private var selectedSessionId: String? = nil
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(spacing: 8) {
@@ -39,6 +40,7 @@ struct SessionSidebarView: View {
                 TextField("Search sessions...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(OAFonts.mono(.body, 12))
+                    .focused($isSearchFocused)
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
@@ -54,6 +56,10 @@ struct SessionSidebarView: View {
                     .fill(OATheme.Colors.background)
             )
             .padding(.horizontal, 12)
+            .onExitCommand {
+                // Clear search on Escape if focused
+                if isSearchFocused && !searchText.isEmpty { searchText = "" }
+            }
 
             Divider().background(OATheme.Colors.textTertiary.opacity(0.15))
 
@@ -128,6 +134,8 @@ struct SessionSidebarView: View {
                 confirmDelete(s)
             }
         }
+        // Expose focus action for Cmd-F
+        .focusedSceneValue(\.focusSidebarSearch, { isSearchFocused = true })
     }
 
     private var filtered: [RecentSession] {
