@@ -70,6 +70,7 @@ Keyboard shortcuts (macOS): ⌘N, ⌘K, ⌘B, ⌘, ⌥⌘D, ⌘/.
 Links:
 - ADR‑0007: docs/adr/0007-macos-chat-interface-architecture.md
 - Chat Desktop docs: docs/chat-desktop/
+- Screenshots (macOS chat): docs/images/chat-desktop/
 
 ## Getting Started
 

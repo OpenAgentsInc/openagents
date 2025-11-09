@@ -92,7 +92,7 @@ The macOS app uses a NavigationSplitView‑based chat layout (sidebar + content,
 - Chat: `ChatAreaView` renders ACP updates with shared renderers; `ComposerMac` provides a Berkeley Mono input (Return = send, Shift+Return = newline).
 - Inspector: reserved for tool details; currently hidden.
 
-Bridge on macOS uses a local JSON‑RPC adapter (Option A) that calls `DesktopWebSocketServer` handlers directly and subscribes to `session/update` via a Combine publisher. See ADR‑0007.
+Bridge on macOS uses a local JSON‑RPC adapter (Option A) that calls `DesktopWebSocketServer` handlers directly and subscribes to `session/update` via a Combine publisher. See ADR‑0007. Screenshots live under `docs/images/chat-desktop/`.
 
 ### ACP Implementation
 
