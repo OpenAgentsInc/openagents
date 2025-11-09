@@ -238,4 +238,198 @@ final class DecisionEngineTests: XCTestCase {
         // Then: Should select Codex
         XCTAssertEqual(decision.agentMode, .codex, "Codex for test generation")
     }
+
+    // MARK: - Config-Aware Decision Tests
+
+    func testConfigBias_refactorKeywordsIncreaseConfidence() async throws {
+        // Given: Config with refactor goal keyword + insights with refactor signal
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor error handling in BridgeManager"]
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["BridgeManager.swift": 25],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: "improve code"
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should choose refactor with boosted confidence
+        XCTAssertEqual(decision.metadata?["decision_path"], "refactor")
+        XCTAssertGreaterThanOrEqual(decision.confidence, 0.7, "Confidence should be boosted by config bias")
+        XCTAssertEqual(decision.metadata?["config_id"], config.id)
+        XCTAssertEqual(decision.metadata?["goals_hash"], config.goalsHash())
+    }
+
+    func testConfigBias_testsKeywordsIncreaseConfidence() async throws {
+        // Given: Config with test keyword
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["increase test coverage"]
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["Service.swift": 15],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: nil
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should choose tests with boosted confidence
+        XCTAssertEqual(decision.metadata?["decision_path"], "tests")
+        XCTAssertGreaterThanOrEqual(decision.confidence, 0.8, "Tests bias should boost confidence")
+        XCTAssertEqual(decision.metadata?["config_id"], config.id)
+    }
+
+    func testConfigAgentPreference_preferIsRespected() async throws {
+        // Given: Config with prefer = codex
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor code"]
+        config.agentPreferences.prefer = .codex
+        config.agentPreferences.allow = [.codex, .claude_code]
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 25],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: "refactor"
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should use preferred agent
+        XCTAssertEqual(decision.agentMode, .codex, "Should respect prefer setting")
+    }
+
+    func testConfigAgentPreference_allowListIsRespected() async throws {
+        // Given: Config with only Codex in allow list
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor code"]
+        config.agentPreferences.allow = [.codex]  // Only Codex allowed
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 25],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: "refactor"
+        )
+
+        // When: Decide with config (normally would choose Claude Code for refactor)
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should use allowed agent
+        XCTAssertEqual(decision.agentMode, .codex, "Should respect allow list restriction")
+    }
+
+    func testConfigAgentPreference_preferNotInAllowIsIgnored() async throws {
+        // Given: Config with prefer not in allow list
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["generate tests"]
+        config.agentPreferences.prefer = .claude_code
+        config.agentPreferences.allow = [.codex]  // Claude Code not allowed
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 15],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: nil
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should ignore invalid prefer and use allowed agent
+        XCTAssertEqual(decision.agentMode, .codex, "Should ignore prefer if not in allow list")
+    }
+
+    func testConfigBias_bothRefactorAndTests_prefersRefactor() async throws {
+        // Given: Config with both refactor and test keywords, prefer Claude Code
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor error handling", "add test coverage"]
+        config.agentPreferences.prefer = .claude_code
+        config.agentPreferences.allow = [.claude_code, .codex]
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 25],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: "improve code"
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should choose refactor (file frequency >20 + prefer Claude Code)
+        XCTAssertEqual(decision.metadata?["decision_path"], "refactor")
+        XCTAssertEqual(decision.agentMode, .claude_code)
+    }
+
+    func testConfigMetadata_includesConfigIdAndGoalsHash() async throws {
+        // Given: Config with goals
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.id = "test-config-123"
+        config.goals = ["refactor", "add tests"]
+        config.timeBudgetSec = 1800
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 15],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: nil
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Metadata should include config_id and goals_hash
+        XCTAssertEqual(decision.metadata?["config_id"], "test-config-123")
+        XCTAssertEqual(decision.metadata?["goals_hash"], config.goalsHash())
+        XCTAssertNotNil(decision.metadata?["decision_path"])
+    }
+
+    func testConfigTimeBudget_usedForEstimatedDuration() async throws {
+        // Given: Config with specific time budget
+        let engine = DecisionEngine()
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor code"]
+        config.timeBudgetSec = 3600  // 1 hour
+
+        let insights = SessionAnalyzeResult(
+            fileFrequency: ["File.swift": 25],
+            toolFrequency: [:],
+            goalPatterns: [],
+            avgConversationLength: 10.0,
+            userIntent: "refactor"
+        )
+
+        // When: Decide with config
+        let decision = try await engine.decideNextTask(from: insights, config: config)
+
+        // Then: Should use config time budget (clamped to valid range)
+        XCTAssertEqual(decision.estimatedDuration, TimeInterval(config.timeBudgetSec))
+    }
 }
