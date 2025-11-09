@@ -8,7 +8,7 @@ struct ChatMacOSView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarPlaceholderView()
+            SessionSidebarView()
                 .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
         } detail: {
             ChatAreaPlaceholderView()

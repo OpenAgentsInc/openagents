@@ -94,5 +94,42 @@ extension BridgeManager {
     }
 
     // Published properties are defined in BridgeManager
+
+    // MARK: - Chat controls (shared with iOS patterns)
+    func startNewSession(desiredMode: ACPSessionModeId? = nil) {
+        // Clear local state immediately
+        timeline.clearAll()
+        objectWillChange.send()
+        currentSessionId = nil
+
+        guard let rpc = connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
+            guard let resp = resp else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.currentSessionId = resp.session_id
+                if let mode = desiredMode {
+                    struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
+                    rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in }
+                }
+            }
+        }
+    }
+
+    func fetchRecentSessions() {
+        dispatcher?.fetchRecentSessions { [weak self] items in
+            self?.recentSessions = items
+        }
+    }
+
+    func loadSessionTimeline(sessionId: String) {
+        currentSessionId = nil
+        timeline.clearAll()
+        dispatcher?.loadSessionTimeline(sessionId: sessionId) { [weak self] arr in
+            self?.timeline.replaceAll(with: arr)
+            self?.currentSessionId = ACPSessionId(sessionId)
+            self?.log("history", "Loaded timeline for session \(sessionId): \(arr.count) updates")
+        }
+    }
 }
 #endif
