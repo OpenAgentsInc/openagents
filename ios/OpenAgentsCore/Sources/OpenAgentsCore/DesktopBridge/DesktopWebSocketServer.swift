@@ -128,6 +128,8 @@ public class DesktopWebSocketServer {
     /// Active orchestration configuration cached in-memory after `orchestrate/config.activate`.
     /// Scheduler RPCs (status/run_now) consult this.
     var activeOrchestrationConfig: OrchestrationConfig? = nil
+    /// Background scheduler service
+    var schedulerService: SchedulerService? = nil
 
     public init() {
         // Register agent providers

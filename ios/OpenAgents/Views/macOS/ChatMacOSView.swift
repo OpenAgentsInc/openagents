@@ -89,7 +89,7 @@ struct ChatMacOSView: View {
     private func exportTranscriptJSON() {
         guard let sid = bridge.currentSessionId?.value else { return }
         let updates = bridge.updates.filter { $0.session_id.value == sid }
-        guard let data = try? JSONEncoder().encode(updates) else { return }
+        guard let data = try? TranscriptExport.exportJSONData(updates: updates) else { return }
         let panel = NSSavePanel()
         panel.title = "Export Transcript (JSON)"
         panel.nameFieldStringValue = "openagents-\(sid.prefix(8)).json"
@@ -101,7 +101,7 @@ struct ChatMacOSView: View {
     private func exportTranscriptMarkdown() {
         guard let sid = bridge.currentSessionId?.value else { return }
         let updates = bridge.updates.filter { $0.session_id.value == sid }
-        let md = makeMarkdown(from: updates)
+        let md = TranscriptExport.exportMarkdown(updates: updates)
         guard let data = md.data(using: .utf8) else { return }
         let panel = NSSavePanel()
         panel.title = "Export Transcript (Markdown)"
@@ -114,33 +114,9 @@ struct ChatMacOSView: View {
     private func copyTranscriptMarkdown() {
         guard let sid = bridge.currentSessionId?.value else { return }
         let updates = bridge.updates.filter { $0.session_id.value == sid }
-        let md = makeMarkdown(from: updates)
+        let md = TranscriptExport.exportMarkdown(updates: updates)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(md, forType: .string)
-    }
-
-    private func makeMarkdown(from updates: [ACP.Client.SessionNotificationWire]) -> String {
-        var out: [String] = ["# OpenAgents Transcript\n"]
-        for note in updates {
-            switch note.update {
-            case .userMessageChunk(let chunk):
-                if case .text(let t) = chunk.content { out.append("\n**User**\n\n" + t.text + "\n") }
-            case .agentMessageChunk(let chunk):
-                if case .text(let t) = chunk.content { out.append("\n**Assistant**\n\n" + t.text + "\n") }
-            case .agentThoughtChunk(let chunk):
-                if case .text(let t) = chunk.content { out.append("\n> _Thinking:_ " + t.text.replacingOccurrences(of: "\n", with: " ") + "\n") }
-            case .plan(let plan):
-                let bullets = plan.entries.map { "- " + $0.content }.joined(separator: "\n")
-                out.append("\n**Plan**\n\n" + bullets + "\n")
-            case .toolCall(let call):
-                out.append("\n`tool_call` \(call.name) id=\(call.call_id)\n")
-            case .toolCallUpdate(let upd):
-                out.append("`tool_call_update` id=\(upd.call_id) status=\(upd.status.rawValue)\n")
-            case .availableCommandsUpdate, .currentModeUpdate:
-                continue
-            }
-        }
-        return out.joined(separator: "\n")
     }
 }
 #endif
