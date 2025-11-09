@@ -12,8 +12,11 @@ Apply consistent theming across all macOS views using Liquid Glass materials, Be
 ## Current State
 - Theme system exists (`OATheme`, `OAFonts`)
 - Liquid Glass APIs available (macOS 15+)
-- Inconsistent application across components
-- Some views use default SwiftUI materials/fonts
+- Inconsistent application across components (was)
+- Some views used default SwiftUI materials/fonts (was)
+
+Status (macOS): Implemented OATheme-black pass with explicit toolbar background.
+We are deferring Liquid Glass per current product direction (strict black surfaces).
 
 ## Target State
 - All views use `OATheme.Colors` for consistent colors
@@ -25,21 +28,19 @@ Apply consistent theming across all macOS views using Liquid Glass materials, Be
 - Smooth animations and transitions
 
 ## Acceptance Criteria
-- [ ] All text uses Berkeley Mono via `OAFonts.mono()`
-- [ ] All colors use `OATheme.Colors` semantic colors
-- [ ] Sidebars, chat area, and inspector use Liquid Glass `.regular` material
-- [ ] Use single `GlassEffectContainer` wrapping NavigationSplitView
-- [ ] All glass shapes tagged with `.glassEffectID(_:)` for transitions
-- [ ] Scroll edge effects applied (hard style for macOS)
-- [ ] Sheets/modals use Liquid Glass backgrounds
-- [ ] Concentric shapes used for nested components (fixed/capsule/concentric)
-- [ ] Consistent spacing (8pt grid: 4, 8, 12, 16, 20, 24px)
-- [ ] Capsule buttons for primary actions, rounded rects for dense controls
-- [ ] Floating buttons use Liquid Glass capsule pattern
-- [ ] Hover states implemented with smooth animations
-- [ ] Animations smooth (0.2-0.3s ease, 0.3s spring for interactive)
-- [ ] Dark mode polished, Light mode supported
-- [ ] Accessibility: Clear vs Tinted glass modes respected
+- [x] All text uses Berkeley Mono via `OAFonts` (mono/ui) across macOS views
+- [x] All colors use `OATheme.Colors` semantic colors
+- [ ] Sidebars, chat area, and inspector use Liquid Glass `.regular` material (Deferred by product choice)
+- [ ] Use single `GlassEffectContainer` wrapping NavigationSplitView (Deferred)
+- [ ] All glass shapes tagged with `.glassEffectID(_:)` for transitions (Deferred)
+- [ ] Scroll edge effects applied (hard style for macOS) (Deferred; using flat black surfaces now)
+- [x] Toolbar background forced to OATheme black (no gray vibrancy)
+- [x] Sidebar list hides system background; uses OATheme sidebar background
+- [x] Consistent spacing on 8pt grid
+- [x] Hover states for sidebar rows
+- [x] Animations smooth (.easeInOut where applied)
+- [x] Dark mode polished (strict black surfaces)
+- [ ] Accessibility: Clear vs Tinted glass modes respected (Not applicable until Glass reintroduced)
 
 ## Technical Details
 
@@ -296,41 +297,51 @@ SomeView()
 Go through each view and ensure:
 
 #### ✅ SessionSidebarView
-- [ ] Background uses `.sidebarMaterial()`
-- [ ] Text uses `OAFonts.mono()`
-- [ ] Colors use `OATheme.Colors`
-- [ ] Session rows have hover states
-- [ ] Spacing follows 8pt grid
+- [x] Background uses OATheme.Colors.sidebarBackground (no system material)
+- [x] Text uses `OAFonts.mono()`
+- [x] Colors use `OATheme.Colors`
+- [x] Session rows have hover states
+- [x] Spacing follows 8pt grid
 
 #### ✅ ChatAreaView
-- [ ] Background uses `OATheme.Colors.background`
-- [ ] Messages use Berkeley Mono
-- [ ] Tool calls use theme colors for status
-- [ ] Consistent padding (16px)
+- [x] Background uses `OATheme.Colors.background`
+- [x] Messages use Berkeley Mono
+- [x] Tool calls use theme colors for status
+- [x] Consistent padding (16px)
 
-#### ✅ InspectorPaneView
-- [ ] Background uses `.backgroundMaterial()`
-- [ ] Section headers use theme colors
-- [ ] JSON viewer has proper contrast
-- [ ] Collapsible sections animate smoothly
+#### ✅ InspectorPaneView (hidden for now)
+- [ ] Background to adopt OATheme or Glass when inspector is enabled
+- [x] JSON/tool outputs themed in `TimelineStore` consumers (where shown)
 
 #### ✅ ComposerMac
-- [ ] Input uses Berkeley Mono
-- [ ] Background uses translucent material
-- [ ] Send button uses accent color
-- [ ] Placeholder uses `textSecondary`
+- [x] Input uses Berkeley Mono
+- [x] Background uses OATheme dark gray (no material)
+- [x] Send button uses accent color
+- [x] Placeholder uses `textSecondary`
 
 #### ✅ SettingsView
-- [ ] All form controls use theme
-- [ ] Consistent section headers
-- [ ] Proper spacing between sections
-- [ ] Buttons use standard styles
+- [x] Sidebar hides system background; uses OATheme colors
+- [x] Consistent headers and spacing
+- [x] Themed backgrounds for grouped rows
+- [x] Buttons use platform styles
 
 #### ✅ DeveloperView
-- [ ] Code blocks use Berkeley Mono
-- [ ] Logs use appropriate colors
-- [ ] Database query editor themed
-- [ ] Export buttons consistent
+- [x] Sidebar hides system background
+- [x] Code/logs use Berkeley Mono
+- [x] Controls use OATheme colors
+- [x] Export buttons consistent
+
+## Status Update — Implemented (macOS)
+- Forced black toolbar background on macOS window toolbar to remove gray vibrancy.
+- Sidebar/List backgrounds hide system material and use OATheme surfaces.
+- Root window background uses OATheme black.
+- Deferring Liquid Glass until requested (keeps UI strictly black as per direction).
+
+Files:
+- ios/OpenAgents/Views/macOS/ChatMacOSView.swift — toolbar background + window background
+- ios/OpenAgents/Views/macOS/Settings/SettingsView.swift — sidebar background hiding + OATheme surfaces
+- ios/OpenAgents/Views/macOS/Developer/DeveloperView.swift — sidebar background hiding + OATheme surfaces
+
 
 ### Animation Standards (Liquid Glass Guidelines)
 
