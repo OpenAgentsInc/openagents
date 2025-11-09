@@ -11,7 +11,10 @@ struct ChatMacOSView: View {
         }
         // Ensure our palette is the base surface
         .background(OATheme.Colors.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .windowToolbar)
+        .toolbar(.visible, for: .windowToolbar)
+        .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .toolbarColorScheme(.dark, for: .windowToolbar)
     }
 
     @ViewBuilder
