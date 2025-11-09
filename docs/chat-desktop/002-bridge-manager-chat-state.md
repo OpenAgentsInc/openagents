@@ -20,7 +20,7 @@ Extend `BridgeManager` to include the iOS chat state properties (`updates`, `thr
 - macOS tracks and renders chat messages via `updates` (mirrored from `TimelineStore`)
 - Session management works identically on iOS and macOS
 - Shared update processing logic across platforms via `TimelineStore`
-- Shared prompt dispatching (generalize `PromptDispatcher` or provide `DesktopPromptDispatcher` with the same interface)
+- Shared prompt dispatching via a local JSON‑RPC adapter on macOS (`LocalJsonRpcClient`)
 
 ## Acceptance Criteria
 - [ ] Add iOS chat properties to macOS BridgeManager build target (remove `#if os(iOS)` guards for chat state)
@@ -62,14 +62,26 @@ class BridgeManager: ObservableObject {
 ```
 
 ### Methods to Implement/Update
-- Mirror iOS wiring in `BridgeManager+iOS.swift`:
-  - Subscribe to a connection’s `notificationPublisher` (if using WS) OR wire the dispatcher to push updates into `TimelineStore` directly on macOS.
-  - Mirror `TimelineStore` publishers to `@Published` fields (see iOS).
-- Provide helpers for recent sessions and timeline loading via Tinyvex history RPCs (already defined on the server and used on iOS via `PromptDispatcher`).
+- Preferred (Option A): Keep ACP/JSON‑RPC semantics and adapt locally on macOS
+  - DesktopWebSocketServer: add a Combine broadcast publisher for JSON‑RPC notifications (method + payload `Data`).
+  - DesktopConnectionManager: expose `notificationPublisher` that relays server broadcasts.
+  - DesktopConnectionManager: expose `rpcClient` using `LocalJsonRpcClient` which conforms to `JSONRPCSending` and dispatches requests through the server’s `JsonRpcRouter`/direct handlers.
+  - BridgeManager+Mac: subscribe to `notificationPublisher` and forward `ACPRPC.sessionUpdate` payloads to `TimelineStore.applySessionUpdatePayload(_:)`.
+  - BridgeManager+Mac: initialize `dispatcher = PromptDispatcher(rpc: conn.rpcClient, timeline: timeline)`.
+- Mirror `TimelineStore` publishers to `@Published` fields (same as iOS).
+- Provide helpers for recent sessions and timeline via Tinyvex history RPCs (`tinyvex/history.recentSessions`, `tinyvex/history.sessionTimeline`).
 
 ### JSON-RPC Integration
-- Continue to send `session/update` via `SessionUpdateHub` on the server (`DesktopWebSocketServer`).
-- On macOS, prefer direct integration through `TimelineStore`/dispatcher rather than attempting to route updates back from server to UI via JSON‑RPC.
+- Server continues broadcasting `session/update` via `SessionUpdateHub`.
+- Add a server‑side broadcast publisher so the mac app can subscribe without a socket.
+- Use `LocalJsonRpcClient` to call the same JSON‑RPC methods that iOS calls, but locally (no WebSocket), preserving ACP/JSON‑RPC behavior.
+
+### LocalJsonRpcClient (macOS)
+- Conforms to `JSONRPCSending`.
+- Implements `sendJSONRPC` by dispatching through `DesktopWebSocketServer` internals:
+  - Prefer routing directly to registered handlers or thin public helpers (e.g., `session/new`, `session/prompt`, history methods).
+  - Capture the router’s encoded response and decode to `R` for the completion.
+- Implements `sendJSONRPCNotification` to invoke server’s notification paths when needed (rare for mac UI).
 
 ### Platform Considerations
 - All properties should compile for both iOS and macOS targets
@@ -77,7 +89,7 @@ class BridgeManager: ObservableObject {
 - Both platforms benefit from unified state management
 
 ## Dependencies
-None - Core infrastructure change
+- Minimal: add a Combine publisher to the mac server path and a small local RPC adapter.
 
 ## Blocked By
 None
@@ -94,11 +106,14 @@ Medium (2-4 hours)
 
 ## Testing Requirements
 - [ ] Build succeeds for both iOS and macOS targets
-- [ ] `handleSessionUpdate()` correctly populates `updates` array
-- [ ] Tool call metadata extracted properly (`toolCallNames`, `outputJSONByCallId`)
-- [ ] Session management methods work (new session, load session)
+- [ ] `BridgeManager+Mac` subscribes to server broadcasts and `TimelineStore` updates reflect incoming `session/update`
+- [ ] Prompt send/setMode/cancel round‑trip via `LocalJsonRpcClient`
+- [ ] History endpoints return data via `LocalJsonRpcClient`
 - [ ] Existing iOS chat functionality not broken
-- [ ] Unit tests for update processing logic
+- [ ] Unit tests for local RPC adapter and timeline application
+
+## Notes
+- Temporary build fix: mac wiring that referenced `notificationPublisher` and `rpcClient` was gated to compile until the server publisher + local RPC adapter land. Implement Option A to re‑enable those lines.
 
 ## References
 - Current iOS BridgeManager: `ios/OpenAgents/Bridge/BridgeManager.swift`
