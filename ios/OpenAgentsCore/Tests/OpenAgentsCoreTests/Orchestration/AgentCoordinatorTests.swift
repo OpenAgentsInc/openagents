@@ -293,6 +293,179 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertEqual(updatedTask?.status, .cancelled)
     }
 
+    // MARK: - Config-Aware Cycle Tests
+
+    func testRunCycleWithConfig_makesDecisionWithConfig() async throws {
+        // Given: Coordinator with mock agent and config with goals
+        let db = try createTestDB()
+        let taskQueue = try await TaskQueue(db: db)
+        let decisionEngine = DecisionEngine()
+        let agentRegistry = AgentRegistry()
+
+        let mockProvider = MockAgentProvider(
+            id: .claude_code,
+            displayName: "Mock Claude Code",
+            available: true
+        )
+        await agentRegistry.register(mockProvider)
+
+        let coordinator = AgentCoordinator(
+            taskQueue: taskQueue,
+            decisionEngine: decisionEngine,
+            agentRegistry: agentRegistry
+        )
+
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["refactor error handling"]
+        config.timeBudgetSec = 1800
+
+        // When: Run cycle with config
+        let result = await coordinator.runCycle(config: config, workingDirectory: nil)
+
+        // Then: Should make decision and enqueue
+        guard case .decisionMade(let taskId) = result else {
+            XCTFail("Expected .decisionMade, got \(result)")
+            return
+        }
+
+        // Verify task was enqueued with config metadata
+        let task = try await taskQueue.get(taskId)
+        XCTAssertNotNil(task)
+        XCTAssertEqual(task?.metadata["config_id"], config.id)
+        XCTAssertEqual(task?.metadata["goals_hash"], config.goalsHash())
+    }
+
+    func testRunCycleWithConfig_executesTaskWithConfigTimeout() async throws {
+        // Given: Queue with pending task and config with specific time budget
+        let db = try createTestDB()
+        let taskQueue = try await TaskQueue(db: db)
+        let decisionEngine = DecisionEngine()
+        let agentRegistry = AgentRegistry()
+
+        let mockProvider = MockAgentProvider(
+            id: .claude_code,
+            displayName: "Mock Claude Code",
+            available: true
+        )
+        await agentRegistry.register(mockProvider)
+
+        let coordinator = AgentCoordinator(
+            taskQueue: taskQueue,
+            decisionEngine: decisionEngine,
+            agentRegistry: agentRegistry
+        )
+
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.timeBudgetSec = 3600  // 1 hour
+
+        // Enqueue a pending task manually
+        let decision = createTestDecision()
+        let task = OvernightTask(opHash: "test-hash", decision: decision)
+        let taskId = try await taskQueue.enqueue(task)
+
+        // When: Run cycle with config
+        let result = await coordinator.runCycle(config: config, workingDirectory: nil)
+
+        // Then: Should execute task (timeout uses config.timeBudgetSec)
+        guard case .taskExecuted(let executedId, _) = result else {
+            XCTFail("Expected .taskExecuted, got \(result)")
+            return
+        }
+
+        XCTAssertEqual(executedId, taskId)
+
+        // Verify task status changed to in_progress
+        let updatedTask = try await taskQueue.get(taskId)
+        XCTAssertEqual(updatedTask?.status, .in_progress)
+    }
+
+    func testRunCycleWithConfig_respectsAgentPreferences() async throws {
+        // Given: Coordinator with both agents registered, config prefers Codex
+        let db = try createTestDB()
+        let taskQueue = try await TaskQueue(db: db)
+        let decisionEngine = DecisionEngine()
+        let agentRegistry = AgentRegistry()
+
+        let mockClaudeCode = MockAgentProvider(
+            id: .claude_code,
+            displayName: "Mock Claude Code",
+            available: true
+        )
+        let mockCodex = MockAgentProvider(
+            id: .codex,
+            displayName: "Mock Codex",
+            available: true
+        )
+        await agentRegistry.register(mockClaudeCode)
+        await agentRegistry.register(mockCodex)
+
+        let coordinator = AgentCoordinator(
+            taskQueue: taskQueue,
+            decisionEngine: decisionEngine,
+            agentRegistry: agentRegistry
+        )
+
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.goals = ["generate tests"]
+        config.agentPreferences.prefer = .codex
+        config.agentPreferences.allow = [.codex, .claude_code]
+        config.timeBudgetSec = 1800
+
+        // When: Run cycle with config
+        let result = await coordinator.runCycle(config: config, workingDirectory: nil)
+
+        // Then: Should make decision (agent preference applied in DecisionEngine)
+        guard case .decisionMade(let taskId) = result else {
+            XCTFail("Expected .decisionMade, got \(result)")
+            return
+        }
+
+        // Verify task exists with config metadata
+        let task = try await taskQueue.get(taskId)
+        XCTAssertNotNil(task)
+        XCTAssertEqual(task?.metadata["config_id"], config.id)
+    }
+
+    func testRunCycleWithConfig_storesConfigMetadata() async throws {
+        // Given: Coordinator with config
+        let db = try createTestDB()
+        let taskQueue = try await TaskQueue(db: db)
+        let decisionEngine = DecisionEngine()
+        let agentRegistry = AgentRegistry()
+
+        let mockProvider = MockAgentProvider(
+            id: .claude_code,
+            displayName: "Mock Claude Code",
+            available: true
+        )
+        await agentRegistry.register(mockProvider)
+
+        let coordinator = AgentCoordinator(
+            taskQueue: taskQueue,
+            decisionEngine: decisionEngine,
+            agentRegistry: agentRegistry
+        )
+
+        var config = OrchestrationConfig.createDefault(workspaceRoot: "/test")
+        config.id = "test-config-123"
+        config.goals = ["refactor", "add tests"]
+        config.timeBudgetSec = 1800
+
+        // When: Run cycle with config
+        let result = await coordinator.runCycle(config: config, workingDirectory: nil)
+
+        // Then: Should store config_id and goals_hash in task metadata
+        guard case .decisionMade(let taskId) = result else {
+            XCTFail("Expected .decisionMade, got \(result)")
+            return
+        }
+
+        let task = try await taskQueue.get(taskId)
+        XCTAssertNotNil(task)
+        XCTAssertEqual(task?.metadata["config_id"], "test-config-123")
+        XCTAssertEqual(task?.metadata["goals_hash"], config.goalsHash())
+    }
+
     // MARK: - Metrics Tests
 
     func testMetrics() async throws {

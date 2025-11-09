@@ -151,6 +151,49 @@ public actor AgentCoordinator {
         return await makeDecision(timeBudgetSeconds: timeBudgetSeconds)
     }
 
+    /// Run one orchestration cycle with configuration
+    ///
+    /// This overload accepts an OrchestrationConfig which influences:
+    /// - Decision logic (goals bias refactor vs tests)
+    /// - Agent selection (prefer/allow filtering)
+    /// - Time budget and timeout
+    ///
+    /// Cycle logic:
+    /// 1. Check if any agents are available
+    /// 2. Check for pending tasks in queue
+    /// 3. If pending task exists, execute it
+    /// 4. If no pending tasks, make new decision using config and enqueue
+    /// 5. Return result of cycle
+    ///
+    /// - Parameters:
+    ///   - config: Orchestration configuration with goals, agent preferences, time budget
+    ///   - workingDirectory: Working directory for agent execution
+    /// - Returns: Result of the cycle
+    public func runCycle(
+        config: OrchestrationConfig,
+        workingDirectory: URL?
+    ) async -> CycleResult {
+        cyclesRun += 1
+        lastCycleTimestamp = Date()
+
+        // 1. Check if any agents are available
+        let availableProviders = await agentRegistry.availableProviders()
+        guard !availableProviders.isEmpty else {
+            OpenAgentsLog.orchestration.warning("AgentCoordinator No agents available for orchestration")
+            return .noAgentsAvailable
+        }
+
+        // 2. Check for pending tasks
+        if let pendingTask = try? await taskQueue.dequeue() {
+            OpenAgentsLog.orchestration.info("AgentCoordinator Found pending task: \(pendingTask.id)")
+            return await executeTask(pendingTask, workingDirectory: workingDirectory, config: config)
+        }
+
+        // 3. No pending tasks - make new decision using config
+        OpenAgentsLog.orchestration.info("AgentCoordinator No pending tasks, making new decision with config: \(config.id)")
+        return await makeDecision(config: config)
+    }
+
     /// Complete a task with success or failure
     /// - Parameters:
     ///   - taskId: The task ID to complete
@@ -255,6 +298,41 @@ public actor AgentCoordinator {
         }
     }
 
+    /// Make a decision for the next task using config and enqueue it
+    private func makeDecision(config: OrchestrationConfig) async -> CycleResult {
+        do {
+            // Analyze recent sessions to get insights
+            let insights = try await decisionEngine.analyzeSessions()
+
+            // Decide next task based on insights AND config
+            let decision = try await decisionEngine.decideNextTask(
+                from: insights,
+                config: config
+            )
+
+            // Create task from decision (metadata already includes config_id and goals_hash)
+            let opHash = computeOpHash(decision: decision)
+            var metadata = decision.metadata ?? [:]
+            metadata["config_id"] = config.id
+            metadata["goals_hash"] = config.goalsHash()
+
+            let task = OvernightTask(
+                opHash: opHash,
+                decision: decision,
+                metadata: metadata
+            )
+
+            // Enqueue task
+            let taskId = try await taskQueue.enqueue(task)
+            OpenAgentsLog.orchestration.info("AgentCoordinator Decision made with config \(config.id), task enqueued: \(taskId)")
+
+            return .decisionMade(taskId: taskId)
+        } catch {
+            OpenAgentsLog.orchestration.error("AgentCoordinator Decision failed: \(error)")
+            return .idle
+        }
+    }
+
     /// Execute a pending task
     private func executeTask(
         _ task: OvernightTask,
@@ -323,6 +401,75 @@ public actor AgentCoordinator {
         }
     }
 
+    /// Execute a pending task with config (for timeout calculation)
+    private func executeTask(
+        _ task: OvernightTask,
+        workingDirectory: URL?,
+        config: OrchestrationConfig
+    ) async -> CycleResult {
+        do {
+            // Get provider for the agent mode
+            guard let provider = await agentRegistry.provider(for: task.decision.agentMode) else {
+                throw AgentProviderError.notAvailable("Agent \(task.decision.agentMode.rawValue) not registered")
+            }
+
+            // Check if agent is available
+            guard await provider.isAvailable() else {
+                throw AgentProviderError.notAvailable("Agent \(task.decision.agentMode.rawValue) not available")
+            }
+
+            // Create session ID for this task
+            let sessionId = "overnight_\(task.id)_\(UUID().uuidString)"
+
+            // Create agent context
+            let context = AgentContext(
+                workingDirectory: workingDirectory,
+                metadata: task.metadata
+            )
+
+            // Use injected update hub if provided; otherwise a no-op hub
+            let hub: SessionUpdateHub = self.updateHub ?? SessionUpdateHub(tinyvexDb: nil, broadcastCallback: { _ in })
+
+            // Start the agent
+            let handle = try await provider.start(
+                sessionId: ACPSessionId(sessionId),
+                prompt: task.decision.task,
+                context: context,
+                updateHub: hub
+            )
+
+            // Update task status to in_progress
+            var updatedTask = task
+            updatedTask.status = .in_progress
+            updatedTask.sessionId = sessionId
+            updatedTask.startedAt = Date()
+            try await taskQueue.update(updatedTask)
+
+            // Store handle in registry
+            await agentRegistry.setHandle(handle, for: ACPSessionId(sessionId))
+
+            tasksExecuted += 1
+            OpenAgentsLog.orchestration.info("AgentCoordinator Task executing: \(task.id) session=\(sessionId) with config: \(config.id)")
+
+            // Schedule timeout enforcement using config time budget
+            await scheduleTimeout(for: updatedTask, sessionId: sessionId, timeBudgetOverride: Double(config.timeBudgetSec))
+
+            return .taskExecuted(taskId: task.id, sessionId: sessionId)
+        } catch {
+            // Mark task as failed
+            var failedTask = task
+            failedTask.status = .failed
+            failedTask.error = error.localizedDescription
+            failedTask.completedAt = Date()
+            try? await taskQueue.update(failedTask)
+
+            tasksFailed += 1
+            OpenAgentsLog.orchestration.error("AgentCoordinator Task execution failed: \(task.id) - \(error)")
+
+            return .taskFailed(taskId: task.id, error: error.localizedDescription)
+        }
+    }
+
     /// Compute operation hash for deduplication
     private func computeOpHash(decision: DecisionOutput) -> String {
         // Stable hash: SHA-256 of task + agent mode, truncated
@@ -343,8 +490,9 @@ public actor AgentCoordinator {
     }
 
     /// Schedule a timeout to cancel long-running tasks that exceed budget
-    private func scheduleTimeout(for task: OvernightTask, sessionId: String) async {
-        let allowance = max(1.0, min(task.decision.estimatedDuration * 1.25, 3 * 3600))
+    private func scheduleTimeout(for task: OvernightTask, sessionId: String, timeBudgetOverride: Double? = nil) async {
+        let baseTimeout = timeBudgetOverride ?? task.decision.estimatedDuration
+        let allowance = max(1.0, min(baseTimeout * 1.25, 3 * 3600))
         Task.detached { [weak self] in
             // Sleep for the allowance
             try? await Task.sleep(nanoseconds: UInt64(allowance * 1_000_000_000))
