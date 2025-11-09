@@ -160,6 +160,13 @@ extension BridgeManager {
         connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.setSessionTitle", params: Params(session_id: sessionId, title: title), id: "set-title-\(UUID().uuidString)") { (_: [String: Bool]?) in }
     }
 
+    func clearSessionTitle(sessionId: String) {
+        struct Params: Codable { let session_id: String }
+        connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.clearSessionTitle", params: Params(session_id: sessionId), id: "clear-title-\(UUID().uuidString)") { (_: [String: Bool]?) in
+            DispatchQueue.main.async { [weak self] in self?.conversationTitles.removeValue(forKey: sessionId) }
+        }
+    }
+
     private func syncSessionTitleFromDB(sessionId: String) {
         struct Params: Codable { let session_id: String }
         struct Resp: Codable { let title: String? }

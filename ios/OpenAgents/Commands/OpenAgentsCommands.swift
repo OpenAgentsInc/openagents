@@ -9,6 +9,9 @@ struct OpenAgentsCommands: Commands {
     @FocusedValue(\.toggleInspector) var toggleInspector: (() -> Void)?
     @FocusedValue(\.focusSidebarSearch) var focusSidebarSearch: (() -> Void)?
     @FocusedValue(\.deleteSelectedSession) var deleteSelectedSession: (() -> Void)?
+    @FocusedValue(\.exportTranscriptJSON) var exportTranscriptJSON: (() -> Void)?
+    @FocusedValue(\.exportTranscriptMarkdown) var exportTranscriptMarkdown: (() -> Void)?
+    @FocusedValue(\.copyTranscriptMarkdown) var copyTranscriptMarkdown: (() -> Void)?
 
     var body: some Commands {
         // Replace default settings menu
@@ -42,6 +45,14 @@ struct OpenAgentsCommands: Commands {
             Button("Open Logs Folder") { openLogsFolder() }
         }
 
+        // File menu additions (Export / Copy Transcript)
+        CommandMenu("File") {
+            Button("Export Transcript (JSON)…") { exportTranscriptJSON?() }
+            Button("Export Transcript (Markdown)…") { exportTranscriptMarkdown?() }
+            Divider()
+            Button("Copy Transcript (Markdown)") { copyTranscriptMarkdown?() }
+        }
+
         // Global delete mapping (acts on focused sidebar)
         CommandGroup(after: .textEditing) {
             Button("Delete Session") { deleteSelectedSession?() }
@@ -66,6 +77,9 @@ extension FocusedValues {
     struct ToggleInspectorKey: FocusedValueKey { typealias Value = () -> Void }
     struct DeleteSelectedSessionKey: FocusedValueKey { typealias Value = () -> Void }
     struct FocusSidebarSearchKey: FocusedValueKey { typealias Value = () -> Void }
+    struct ExportTranscriptJSONKey: FocusedValueKey { typealias Value = () -> Void }
+    struct ExportTranscriptMarkdownKey: FocusedValueKey { typealias Value = () -> Void }
+    struct CopyTranscriptMarkdownKey: FocusedValueKey { typealias Value = () -> Void }
     var showSettings: Binding<Bool>? {
         get { self[ShowSettingsKey.self] }
         set { self[ShowSettingsKey.self] = newValue }
@@ -93,6 +107,18 @@ extension FocusedValues {
     var focusSidebarSearch: (() -> Void)? {
         get { self[FocusSidebarSearchKey.self] }
         set { self[FocusSidebarSearchKey.self] = newValue }
+    }
+    var exportTranscriptJSON: (() -> Void)? {
+        get { self[ExportTranscriptJSONKey.self] }
+        set { self[ExportTranscriptJSONKey.self] = newValue }
+    }
+    var exportTranscriptMarkdown: (() -> Void)? {
+        get { self[ExportTranscriptMarkdownKey.self] }
+        set { self[ExportTranscriptMarkdownKey.self] = newValue }
+    }
+    var copyTranscriptMarkdown: (() -> Void)? {
+        get { self[CopyTranscriptMarkdownKey.self] }
+        set { self[CopyTranscriptMarkdownKey.self] = newValue }
     }
 }
 #endif

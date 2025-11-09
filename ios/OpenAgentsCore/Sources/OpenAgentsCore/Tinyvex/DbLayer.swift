@@ -338,6 +338,11 @@ public actor TinyvexDbLayer {
         return nil
     }
 
+    public func clearSessionTitle(sessionId: String) throws {
+        let sql = "DELETE FROM conversation_titles WHERE session_id = ?;"
+        try execute(sql, params: [sessionId])
+    }
+
     // MARK: - Orchestration Config CRUD
 
     /// Insert or update an orchestration configuration
