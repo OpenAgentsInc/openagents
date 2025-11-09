@@ -51,7 +51,7 @@ struct OpenAgentsApp: App {
                 #if os(iOS)
                 ChatHomeView()
                 #else
-                ContentView()
+                ChatMacOSView()
                 #endif
             }
             .onAppear {
