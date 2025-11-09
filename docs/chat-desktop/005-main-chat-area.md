@@ -10,6 +10,7 @@ Critical - Core chat functionality
 Create the main chat area in the center pane by adapting iOS's `UpdatesListView` and `ACPTimelineView` components for macOS.
 
 ## Current State
+- macOS chat area implemented on main as `ChatAreaView`.
 - iOS has fully functional chat components:
   - `UpdatesListView.swift` - Renders ACP updates as message stream
   - `ACPTimelineView.swift` - Alternative timeline-based renderer
@@ -28,18 +29,18 @@ Create the main chat area in the center pane by adapting iOS's `UpdatesListView`
 - Smooth animations for new messages
 
 ## Acceptance Criteria
-- [ ] Create `ChatAreaView.swift` for center pane
-- [ ] Integrate `ComposerMac` at bottom
-- [ ] Render messages from `bridgeManager.updates`
-- [ ] Reuse existing ACP renderers (`ToolCallView`, `PlanView`, `ReasoningDetailSheet`)
-- [ ] Auto-scroll to bottom on new message
-- [ ] Show typing indicator when agent is processing
-- [ ] Empty state when no messages ("Start a conversation...")
-- [ ] Use scroll edge effect (hard style for macOS)
-- [ ] Use Liquid Glass background for message area
-- [ ] Proper spacing and padding for readability
-- [ ] Handle long messages with scrolling/wrapping
-- [ ] Click tool calls/plans to open detail sheets
+- [x] Create `ChatAreaView.swift` for center pane (macOS)
+- [x] Integrate `ComposerMac` at bottom
+- [x] Render messages from `bridgeManager.updates`
+- [x] Reuse existing ACP renderers where feasible (ToolCallView)
+- [x] Auto-scroll to bottom on new messages
+- [x] Empty state when no messages (prompt and icon)
+- [x] Proper spacing and padding for readability
+- [x] Handle long messages with wrapping, text selection enabled
+- [ ] Typing indicator (deferred)
+- [ ] Plan rendering via PlanStateView (deferred; currently hidden inline)
+- [ ] Detail sheets for full inspection (deferred)
+- [ ] Scroll edge effect and glass background (deferred; using OATheme dark surfaces per current directive)
 
 ## Technical Details
 
@@ -310,17 +311,9 @@ Medium-High (5-7 hours)
 - [ ] Detail sheets open on click
 - [ ] Text selection works for messages
 
-### Liquid Glass Chat Area
+### Surface and Scroll Effects
 
-**Background Material**
-- Chat scrollable area uses Liquid Glass `.regular` variant
-- Composer has its own glass background (see Issue #3)
-- Content sits on glass material, not directly on window background
-
-**Scroll Edge Effect**
-- Use `.scrollEdgeEffect(.hard)` for macOS
-- Hard edge appropriate for text content and message boundaries
-- Edge effect clarifies transition between composer (fixed) and messages (scrollable)
+For now, use OATheme dark surfaces (no glass) to match current app direction. We can revisit hard scroll edge effects and glass once the theme settles.
 
 **Message Bubbles**
 - User messages: subtle accent color background with concentric rounded rect
