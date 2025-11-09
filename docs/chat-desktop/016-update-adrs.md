@@ -23,14 +23,25 @@ Create or update Architecture Decision Records (ADRs) to document the significan
 - Links to related issues and code references
 
 ## Acceptance Criteria
-- [ ] Create ADR-0007: "macOS Chat Interface Architecture"
+- [x] Create ADR-0007: "macOS Chat Interface Architecture"
 - [ ] Update ADR-0003 if needed (Swift app architecture)
-- [ ] Follow existing ADR format and tone
-- [ ] Include alternatives considered
-- [ ] Document consequences (positive and negative)
-- [ ] Link to relevant GitHub issues
+- [x] Follow existing ADR format and tone
+- [x] Include alternatives considered
+- [x] Document consequences (positive and negative)
+- [x] Link to relevant GitHub issues/docs
 - [ ] Review by team/maintainers (if applicable)
-- [ ] Follow guidelines in `docs/adr/AGENTS.md`
+- [x] Follow guidelines in `docs/adr/AGENTS.md`
+
+## Status Update — ADR Created
+- Added `docs/adr/0007-macos-chat-interface-architecture.md` documenting:
+  - NavigationSplitView desktop layout (sidebar + chat; inspector deferred)
+  - Shared chat state via BridgeManager/TimelineStore
+  - macOS Option A (local JSON‑RPC adapter + server publisher)
+  - Tinyvex persistence via SessionUpdateHub
+  - Alternatives considered and consequences
+
+Next:
+- Review if ADR‑0003 needs a brief addendum to reference Option A on macOS; if so, update and cross‑link to ADR‑0007.
 
 ## Technical Details
 
