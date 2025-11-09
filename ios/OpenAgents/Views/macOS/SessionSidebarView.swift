@@ -223,6 +223,7 @@ struct SessionSidebarView: View {
     private func commitEditTitle(for id: String) {
         let newTitle = editingTitleText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !newTitle.isEmpty { bridge.conversationTitles[id] = newTitle }
+        if !newTitle.isEmpty { bridge.setSessionTitle(sessionId: id, title: newTitle) }
         editingTitleId = nil
         editingTitleText = ""
     }

@@ -45,6 +45,27 @@ final class LocalJsonRpcClient: JSONRPCSending {
                 let arr = (try? await server.localHistorySessionTimeline(sessionId: sessionId ?? "", limit: limit)) ?? []
                 result = Self.bridge(arr, as: R.self)
 
+            case "tinyvex/history.setSessionTitle":
+                if let obj = Self.asDict(params),
+                   let sid = obj["session_id"] as? String,
+                   let title = obj["title"] as? String {
+                    let now = Int64(Date().timeIntervalSince1970 * 1000)
+                    await server.localSetSessionTitle(sessionId: sid, title: title, updatedAt: now)
+                    struct OkResp: Codable { let ok: Bool }
+                    result = Self.bridge(OkResp(ok: true), as: R.self)
+                } else {
+                    result = nil
+                }
+
+            case "tinyvex/history.getSessionTitle":
+                if let obj = Self.asDict(params), let sid = obj["session_id"] as? String {
+                    let t = await server.localGetSessionTitle(sessionId: sid)
+                    struct TitleResp: Codable { let title: String? }
+                    result = Self.bridge(TitleResp(title: t ?? nil), as: R.self)
+                } else {
+                    result = nil
+                }
+
             case ACPRPC.orchestrateExploreStart:
                 // Not implemented locally yet; allow caller to treat as unavailable
                 result = nil
@@ -104,6 +125,12 @@ final class LocalJsonRpcClient: JSONRPCSending {
         return (sid, limit)
     }
 
+    private static func asDict<P: Codable>(_ p: P) -> [String: Any]? {
+        guard let data = try? JSONEncoder().encode(p),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj
+    }
+
     private static func decodeCancel<P: Codable>(_ p: P) -> ACPSessionId? {
         guard let data = try? JSONEncoder().encode(p),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -113,4 +140,3 @@ final class LocalJsonRpcClient: JSONRPCSending {
     }
 }
 #endif
-

@@ -47,6 +47,13 @@ public actor TinyvexDbLayer {
         );
         CREATE INDEX IF NOT EXISTS idx_orchestration_configs_workspace ON orchestration_configs(workspace_root);
         CREATE INDEX IF NOT EXISTS idx_orchestration_configs_updated_at ON orchestration_configs(updated_at);
+        
+        -- Conversation titles (optional user-provided display names)
+        CREATE TABLE IF NOT EXISTS conversation_titles (
+          session_id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
         """
         try exec(create)
     }
@@ -308,6 +315,27 @@ public actor TinyvexDbLayer {
             out.append(updateJson)
         }
         return out
+    }
+
+    // MARK: - Conversation Titles
+
+    public func setSessionTitle(sessionId: String, title: String, updatedAt: Int64) throws {
+        let sql = """
+        INSERT INTO conversation_titles (session_id, title, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          title = excluded.title,
+          updated_at = excluded.updated_at;
+        """
+        try execute(sql, params: [sessionId, title, updatedAt])
+    }
+
+    public func getSessionTitle(sessionId: String) throws -> String? {
+        let sql = "SELECT title FROM conversation_titles WHERE session_id = ? LIMIT 1;"
+        if let row = try queryOne(sql, params: [sessionId]) {
+            return row["title"] as? String
+        }
+        return nil
     }
 
     // MARK: - Orchestration Config CRUD

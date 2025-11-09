@@ -74,5 +74,13 @@ extension DesktopWebSocketServer {
         guard let api = self.historyApi else { return [] }
         return try await api.sessionTimeline(sessionId: sessionId, limit: limit)
     }
+
+    // Conversation titles (local path)
+    public func localSetSessionTitle(sessionId: String, title: String, updatedAt: Int64) async {
+        try? await self.tinyvexDb?.setSessionTitle(sessionId: sessionId, title: title, updatedAt: updatedAt)
+    }
+    public func localGetSessionTitle(sessionId: String) async -> String? {
+        return try? await self.tinyvexDb?.getSessionTitle(sessionId: sessionId)
+    }
 }
 #endif
