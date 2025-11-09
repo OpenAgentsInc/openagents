@@ -1,6 +1,28 @@
 #if os(macOS)
 import Foundation
 
+// MARK: - Setup Orchestrator Storage
+
+/// Global actor for storing active setup orchestrators
+/// (Extensions cannot have stored properties, so we use a global actor)
+actor SetupOrchestratorRegistry {
+    static let shared = SetupOrchestratorRegistry()
+
+    private var orchestrators: [String: SetupOrchestrator] = [:]
+
+    func store(_ orchestrator: SetupOrchestrator, for conversationId: String) {
+        orchestrators[conversationId] = orchestrator
+    }
+
+    func get(_ conversationId: String) -> SetupOrchestrator? {
+        return orchestrators[conversationId]
+    }
+
+    func remove(_ conversationId: String) {
+        orchestrators.removeValue(forKey: conversationId)
+    }
+}
+
 // MARK: - Response Types
 
 private struct ConfigGetResponse: Codable {
@@ -32,6 +54,32 @@ private struct SchedulerStatusResponse: Codable {
     let active_config_id: String?
     let next_wake_time: Int?
     let message: String
+}
+
+private struct SetupStartRequest: Codable {
+    let workspace_root: String?
+    let session_id: String?
+    let initial_prompt: String?
+}
+
+private struct SetupStartResponse: Codable {
+    let status: String
+    let session_id: String
+    let conversation_id: String
+}
+
+private struct SetupStatusRequest: Codable {
+    let conversation_id: String
+}
+
+private struct SetupStatusResponse: Codable {
+    let conversation_id: String
+    let state: String
+    let draft: SetupDraft?
+}
+
+private struct SetupAbortRequest: Codable {
+    let conversation_id: String
 }
 
 extension DesktopWebSocketServer {
@@ -81,6 +129,22 @@ extension DesktopWebSocketServer {
         router.register(method: ACPRPC.orchestrateSchedulerStatus) { [weak self] id, params, rawDict in
             guard let self = self, let client = self.currentClient else { return }
             await self.handleSchedulerStatus(id: id, client: client)
+        }
+
+        // Setup Handlers (conversational config creation)
+        router.register(method: ACPRPC.orchestrateSetupStart) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSetupStart(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        router.register(method: ACPRPC.orchestrateSetupStatus) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSetupStatus(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        router.register(method: ACPRPC.orchestrateSetupAbort) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSetupAbort(id: id, params: params, rawDict: rawDict, client: client)
         }
     }
 
@@ -473,6 +537,162 @@ extension DesktopWebSocketServer {
         JsonRpcRouter.sendResponse(id: id, result: response) { text in
             OpenAgentsLog.bridgeServer.debug("send orchestrate/scheduler.status result")
             client.send(text: text)
+        }
+    }
+
+    // MARK: - Setup Handlers (Conversational Config Creation)
+    /// Active setup orchestrators (conversation_id -> orchestrator)
+    func handleSetupStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        OpenAgentsLog.bridgeServer.info("recv orchestrate/setup.start")
+
+        // Parse params
+        guard let p = rawDict["params"],
+              let data = try? JSONSerialization.data(withJSONObject: p),
+              let req = try? JSONDecoder().decode(SetupStartRequest.self, from: data) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Create session ID
+        let sessionId = req.session_id.map { ACPSessionId($0) } ?? ACPSessionId(UUID().uuidString)
+
+        // Ensure updateHub is available
+        guard let updateHub = self.updateHub else {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "SessionUpdateHub not available") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Create SetupOrchestrator
+        let orchestrator = SetupOrchestrator(
+            conversationId: UUID().uuidString,
+            sessionId: sessionId,
+            initialWorkspace: req.workspace_root,
+            updateHub: updateHub,
+            completionHandler: { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let config):
+                    OpenAgentsLog.bridgeServer.info("Setup completed: \(config.id)")
+                    // Save config via existing config.set handler
+                    await self.saveCompletedConfig(config)
+                case .failure(let error):
+                    OpenAgentsLog.bridgeServer.error("Setup failed: \(error.localizedDescription)")
+                }
+            }
+        )
+
+        // Store orchestrator
+        let conversationId = await orchestrator.conversationId
+        await SetupOrchestratorRegistry.shared.store(orchestrator, for: conversationId)
+
+        // Start conversational setup
+        await orchestrator.start()
+
+        // Return response
+        let response = SetupStartResponse(
+            status: "started",
+            session_id: sessionId.value,
+            conversation_id: conversationId
+        )
+        JsonRpcRouter.sendResponse(id: id, result: response) { text in
+            OpenAgentsLog.bridgeServer.debug("send orchestrate/setup.start result")
+            client.send(text: text)
+        }
+    }
+
+    func handleSetupStatus(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        OpenAgentsLog.bridgeServer.info("recv orchestrate/setup.status")
+
+        // Parse params
+        guard let p = rawDict["params"],
+              let data = try? JSONSerialization.data(withJSONObject: p),
+              let req = try? JSONDecoder().decode(SetupStatusRequest.self, from: data) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Find orchestrator
+        guard let orchestrator = await SetupOrchestratorRegistry.shared.get(req.conversation_id) else {
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "Conversation not found: \(req.conversation_id)") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Get current state
+        let state = await orchestrator.getCurrentState()
+        let draft = await orchestrator.getCurrentDraft()
+
+        let response = SetupStatusResponse(
+            conversation_id: req.conversation_id,
+            state: state.rawValue,
+            draft: draft
+        )
+        JsonRpcRouter.sendResponse(id: id, result: response) { text in
+            OpenAgentsLog.bridgeServer.debug("send orchestrate/setup.status result")
+            client.send(text: text)
+        }
+    }
+
+    func handleSetupAbort(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        OpenAgentsLog.bridgeServer.info("recv orchestrate/setup.abort")
+
+        // Parse params
+        guard let p = rawDict["params"],
+              let data = try? JSONSerialization.data(withJSONObject: p),
+              let req = try? JSONDecoder().decode(SetupAbortRequest.self, from: data) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        // Find and abort orchestrator
+        if let orchestrator = await SetupOrchestratorRegistry.shared.get(req.conversation_id) {
+            await orchestrator.abort()
+            await SetupOrchestratorRegistry.shared.remove(req.conversation_id)
+
+            let response = ["status": "aborted"]
+            JsonRpcRouter.sendResponse(id: id, result: response) { text in
+                OpenAgentsLog.bridgeServer.debug("send orchestrate/setup.abort result")
+                client.send(text: text)
+            }
+        } else {
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "Conversation not found: \(req.conversation_id)") { text in
+                client.send(text: text)
+            }
+        }
+    }
+
+    /// Save completed config to database
+    private func saveCompletedConfig(_ config: OrchestrationConfig) async {
+        guard let db = self.tinyvexDb else {
+            OpenAgentsLog.bridgeServer.error("Cannot save config: database not available")
+            return
+        }
+
+        do {
+            let jsonData = try JSONEncoder().encode(config)
+            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+                OpenAgentsLog.bridgeServer.error("Failed to encode config as JSON string")
+                return
+            }
+
+            try await db.insertOrUpdateOrchestrationConfig(
+                jsonString,
+                id: config.id,
+                workspaceRoot: config.workspaceRoot,
+                updatedAt: config.updatedAt
+            )
+            OpenAgentsLog.bridgeServer.info("Saved completed config: \(config.id)")
+        } catch {
+            OpenAgentsLog.bridgeServer.error("Failed to save config: \(error.localizedDescription)")
         }
     }
 }
