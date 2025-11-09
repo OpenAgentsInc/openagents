@@ -113,7 +113,17 @@ Medium (2-4 hours)
 - [ ] Unit tests for local RPC adapter and timeline application
 
 ## Notes
-- Temporary build fix: mac wiring that referenced `notificationPublisher` and `rpcClient` was gated to compile until the server publisher + local RPC adapter land. Implement Option A to re‑enable those lines.
+Addendum (Status): Option A is implemented and active in main.
+
+What’s in now
+- Server broadcasts: `DesktopWebSocketServer` now exposes a Combine `notificationPublisher` that emits JSON‑RPC `(method, payload)` params for local app subscribers; still broadcasts over WebSocket as before.
+- Local adapter: `LocalJsonRpcClient` implements `JSONRPCSending` for mac, dispatching to server internals for `session/new`, `session/prompt`, `session/set_mode`, and Tinyvex history.
+- Mac connection manager: exposes `rpcClient` and `notificationPublisher` and wires them to `BridgeManager+Mac`.
+- BridgeManager+Mac: subscribes to updates and initializes `PromptDispatcher(rpc:…, timeline:…)` mirroring iOS.
+
+Remaining
+- Add minimal UI to trigger `session/new` + `session/prompt` from mac to validate end‑to‑end (covered in Issue #5/005-main-chat-area.md).
+- Optional: Add unit tests for LocalJsonRpcClient.
 
 ## References
 - Current iOS BridgeManager: `ios/OpenAgents/Bridge/BridgeManager.swift`
