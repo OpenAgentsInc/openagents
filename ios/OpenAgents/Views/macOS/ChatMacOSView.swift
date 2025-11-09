@@ -13,10 +13,15 @@ struct ChatMacOSView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionSidebarView()
                 .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
-        } detail: {
+        } content: {
             ChatAreaView()
                 .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
                 .navigationTitle("")
+        } detail: {
+            if showInspector {
+                InspectorPaneView()
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
@@ -32,6 +37,12 @@ struct ChatMacOSView: View {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .option])
             }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { toggleInspector() }) {
+                    Image(systemName: "sidebar.trailing")
+                }
+                .keyboardShortcut("i", modifiers: .command)
+            }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -46,6 +57,7 @@ struct ChatMacOSView: View {
         .focusedSceneValue(\.showDeveloper, $showDeveloper)
         .focusedSceneValue(\.showKeyboardShortcuts, $showKeyboardShortcuts)
         .focusedSceneValue(\.toggleSidebar, { toggleSidebar() })
+        .focusedSceneValue(\.toggleInspector, { toggleInspector() })
         .background(OATheme.Colors.background)
         .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
@@ -61,6 +73,10 @@ struct ChatMacOSView: View {
         default:
             columnVisibility = .all
         }
+    }
+
+    private func toggleInspector() {
+        withAnimation { showInspector.toggle() }
     }
 }
 #endif
