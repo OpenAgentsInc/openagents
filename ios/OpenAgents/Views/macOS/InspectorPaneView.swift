@@ -4,6 +4,9 @@ import OpenAgentsCore
 #if os(macOS)
 struct InspectorPaneView: View {
     @EnvironmentObject private var bridge: BridgeManager
+    @State private var mode: ViewMode = .formatted
+
+    enum ViewMode: String, CaseIterable { case formatted = "Formatted", raw = "Raw" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,13 +18,27 @@ struct InspectorPaneView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Inspector").font(OAFonts.mono(.body, 12)).foregroundStyle(OATheme.Colors.textSecondary)
+        HStack(spacing: 8) {
+            Text("Inspector")
+                .font(OAFonts.mono(.body, 12))
+                .foregroundStyle(OATheme.Colors.textSecondary)
             Spacer()
-            if let id = bridge.selectedToolCallId {
-                Button(action: { copyJSON(for: id) }) {
+            if bridge.selectedToolCallId != nil {
+                Picker("", selection: $mode) {
+                    ForEach(ViewMode.allCases, id: \.self) { m in
+                        Text(m.rawValue).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+                Button(action: clearSelection) {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.plain)
+                Button(action: { if let id = bridge.selectedToolCallId { copyJSON(for: id) } }) {
                     Image(systemName: "doc.on.doc")
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
@@ -36,8 +53,12 @@ struct InspectorPaneView: View {
                     if let name = bridge.toolCallNames[id] {
                         LabeledRow(label: "Tool", value: name)
                     }
-                    if let pretty = bridge.outputJSONByCallId[id] ?? bridge.rawJSONByCallId[id] {
-                        Text(pretty)
+                    if let status = findStatus(for: id) {
+                        LabeledRow(label: "Status", value: status)
+                    }
+                    LabeledRow(label: "Call ID", value: id)
+                    if let text = currentJSON(for: id) {
+                        Text(text)
                             .font(OAFonts.mono(.caption, 11))
                             .foregroundStyle(OATheme.Colors.textPrimary)
                             .textSelection(.enabled)
@@ -68,10 +89,33 @@ struct InspectorPaneView: View {
 
     private func copyJSON(for id: String) {
         #if os(macOS)
-        let s = bridge.outputJSONByCallId[id] ?? bridge.rawJSONByCallId[id] ?? ""
+        let s = currentJSON(for: id) ?? ""
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
         #endif
+    }
+
+    private func clearSelection() { bridge.selectedToolCallId = nil }
+
+    private func currentJSON(for id: String) -> String? {
+        switch mode {
+        case .formatted:
+            return bridge.outputJSONByCallId[id] ?? bridge.rawJSONByCallId[id]
+        case .raw:
+            return bridge.rawJSONByCallId[id] ?? bridge.outputJSONByCallId[id]
+        }
+    }
+
+    private func findStatus(for id: String) -> String? {
+        for note in bridge.updates.reversed() {
+            switch note.update {
+            case .toolCallUpdate(let upd) where upd.call_id == id:
+                return upd.status.rawValue
+            default:
+                continue
+            }
+        }
+        return nil
     }
 }
 
@@ -90,4 +134,3 @@ private struct LabeledRow: View {
     }
 }
 #endif
-
