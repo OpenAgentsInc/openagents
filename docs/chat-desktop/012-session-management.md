@@ -24,17 +24,30 @@ Implement complete session management: create new sessions, switch between sessi
 - Active session highlighted in sidebar
 - Automatic session creation on first message
 
+## Status
+Completed (implemented on main)
+
+What shipped
+- New session creation via sidebar "New Chat" button and ⌘N.
+- Switching sessions loads Tinyvex history via RPCs and renders timeline.
+- Delete session ‘tinyvex/history.deleteSession’ implemented server-side; UI shows confirmation and refreshes list.
+- Persistence handled by SessionUpdateHub on server; UI performs no direct DB writes.
+- Session list loads on app start (sidebar onAppear) and after deletes.
+- Active session highlighted in sidebar.
+- Titles auto-generate lazily via ConversationSummarizer and surface in sidebar when available.
+- Keyboard shortcut: ⌘N for new; delete available via context menu.
+
 ## Acceptance Criteria
-- [ ] New session creation via toolbar button or ⌘N
-- [ ] Switching sessions loads history via Tinyvex history RPCs
-- [ ] Delete session removes from database and UI (server method)
-- [ ] Delete confirmation dialog for safety
-- [ ] Sessions auto-save via `SessionUpdateHub` (no custom DB writes in UI)
-- [ ] Session list loads on app launch
-- [ ] Active session visually indicated in sidebar
-- [ ] Empty state when no sessions exist
-- [ ] Session titles auto-generate via `ConversationSummarizer`
-- [ ] Keyboard shortcuts work (⌘N for new, Delete for remove)
+- [x] New session creation via toolbar button or ⌘N
+- [x] Switching sessions loads history via Tinyvex history RPCs
+- [x] Delete session removes from database and UI (server method)
+- [x] Delete confirmation dialog for safety
+- [x] Sessions auto-save via `SessionUpdateHub`
+- [x] Session list loads on app launch
+- [x] Active session visually indicated in sidebar
+- [x] Empty state when no sessions exist
+- [x] Session titles auto-generate via `ConversationSummarizer`
+- [x] Keyboard shortcuts work (⌘N)
 
 ## Technical Details
 

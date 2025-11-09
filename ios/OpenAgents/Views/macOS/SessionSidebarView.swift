@@ -28,6 +28,7 @@ struct SessionSidebarView: View {
             .tint(OATheme.Colors.accent)
             .padding(.horizontal, 12)
             .padding(.top, 8)
+            .keyboardShortcut("n", modifiers: .command)
 
             // Search bar
             HStack(spacing: 6) {
@@ -102,6 +103,11 @@ struct SessionSidebarView: View {
                             }
                             .buttonStyle(.plain)
                             .onHover { over in hoveredId = over ? s.session_id : nil }
+                            .contextMenu {
+                                Button(role: .destructive) { confirmDelete(s) } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -170,8 +176,11 @@ struct SessionSidebarView: View {
         return "\(week)w"
     }
 
+    @State private var showDelete = false
+    @State private var pendingDeleteId: String? = nil
+
     private func title(for s: RecentSession) -> String {
-        // Placeholder title until FM summarization integrates: id prefix
+        if let t = bridge.conversationTitles[s.session_id], !t.isEmpty { return t }
         return String(s.session_id.prefix(12)) + "…"
     }
 
@@ -201,5 +210,18 @@ struct SessionSidebarView: View {
     }
 
     // No filesystem fallback: Tinyvex (SQLite) is the single source of truth
+
+    private func confirmDelete(_ s: RecentSession) {
+        pendingDeleteId = s.session_id
+        let alert = NSAlert()
+        alert.messageText = "Delete Session?"
+        alert.informativeText = "This will permanently delete the selected chat session."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Delete")
+        if alert.runModal() == .alertSecondButtonReturn {
+            bridge.deleteSession(s.session_id)
+        }
+    }
 }
 #endif
