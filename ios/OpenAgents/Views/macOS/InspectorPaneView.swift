@@ -77,19 +77,34 @@ struct InspectorPaneView: View {
                         LabeledRow(label: "Status", value: status)
                     }
                     LabeledRow(label: "Call ID", value: id)
-                    if let text = currentJSON(for: id) {
-                        Text(text)
-                            .font(OAFonts.mono(.caption, 11))
-                            .foregroundStyle(OATheme.Colors.textPrimary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(OATheme.Colors.background.opacity(0.3))
-                            .cornerRadius(6)
-                    } else {
-                        Text("No output yet")
-                            .font(OAFonts.mono(.caption, 11))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
+                    // Arguments section
+                    if let argsPretty = findArgumentsJSON(for: id) {
+                        DisclosureGroup("Arguments") {
+                            codeBlock(argsPretty)
+                        }
+                        .disclosureGroupStyle(.automatic)
+                    }
+
+                    // Output section
+                    DisclosureGroup("Output") {
+                        if let text = currentJSON(for: id) {
+                            codeBlock(text)
+                        } else {
+                            Text("No output yet")
+                                .font(OAFonts.mono(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                        }
+                    }
+
+                    // Error section
+                    if let err = findError(for: id) {
+                        DisclosureGroup("Error") {
+                            Text(err)
+                                .font(OAFonts.mono(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.danger)
+                                .textSelection(.enabled)
+                        }
+                        .disclosureGroupStyle(.automatic)
                     }
                 }
                 .padding(12)
@@ -138,6 +153,18 @@ struct InspectorPaneView: View {
         return nil
     }
 
+    private func findError(for id: String) -> String? {
+        for note in bridge.updates.reversed() {
+            switch note.update {
+            case .toolCallUpdate(let upd) where upd.call_id == id:
+                if let e = upd.error, !e.isEmpty { return e }
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
     private func suggestedFileName(for id: String) -> String {
         let tool = bridge.toolCallNames[id] ?? "tool"
         return "\(tool)-\(id.prefix(8)).json"
@@ -169,6 +196,39 @@ struct InspectorPaneView: View {
         guard let url = lastSavedURLByCallId[id] else { return }
         NSWorkspace.shared.open(url)
         #endif
+    }
+
+    // MARK: - Pretty code helpers
+    private func codeBlock(_ text: String) -> some View {
+        Text(text)
+            .font(OAFonts.mono(.caption, 11))
+            .foregroundStyle(OATheme.Colors.textPrimary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(OATheme.Colors.background.opacity(0.3))
+            .cornerRadius(6)
+    }
+
+    private func findArgumentsJSON(for id: String) -> String? {
+        for note in bridge.updates.reversed() {
+            switch note.update {
+            case .toolCall(let call) where call.call_id == id:
+                if let args = call.arguments,
+                   let data = try? JSONEncoder().encode(args),
+                   let text = String(data: data, encoding: .utf8) {
+                    // Pretty print
+                    if let obj = try? JSONSerialization.jsonObject(with: Data(text.utf8)),
+                       let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]) {
+                        return String(decoding: pretty, as: UTF8.self)
+                    }
+                    return text
+                }
+            default:
+                continue
+            }
+        }
+        return nil
     }
 }
 
