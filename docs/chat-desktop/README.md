@@ -40,7 +40,7 @@ Foundation for the three-pane layout and core components.
 | [#2](002-bridge-manager-chat-state.md) | Extend BridgeManager with iOS Chat State Properties for macOS | Medium (2-4h) | None |
 | [#3](003-macos-composer.md) | Build macOS Composer Component (NSTextView-based Input) | Medium (3-4h) | #2 |
 
-### Phase 2: Main UI Components (Issues #4-7, #21-27)
+### Phase 2: Main UI Components (Issues #4-7, #21-28)
 Build the three panes and agent selector.
 
 | Issue | Title | Complexity | Dependencies |
@@ -56,6 +56,7 @@ Build the three panes and agent selector.
 | [#25](025-sidebar-inline-title-edit.md) | Sidebar Inline Title Edit (Local) | Low-Medium (2h) | #4 |
 | [#26](026-persist-session-titles.md) | Persist Session Titles to Tinyvex | Medium (3-4h) | #25 |
 | [#27](027-sidebar-persisted-titles.md) | Load Persisted Titles from Tinyvex | Medium (2h) | #26 |
+| [#28](028-export-transcript.md) | Export Transcript (JSON/Markdown) | Medium (2-3h) | #11 |
 
 ### Phase 3: Settings & Developer Pages (Issues #8-10)
 Migrate dashboard content to dedicated views.
