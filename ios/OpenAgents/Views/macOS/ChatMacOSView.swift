@@ -4,33 +4,18 @@ import SwiftUI
 struct ChatMacOSView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector: Bool = false
+    private let defaultSidebarWidth: CGFloat = 260
 
     var body: some View {
-        Group {
-            if #available(macOS 15.0, *) {
-                GlassEffectContainer {
-                    NavigationSplitView(columnVisibility: $columnVisibility) {
-                        SidebarPlaceholderView()
-                            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
-                    } detail: {
-                        ChatAreaPlaceholderView()
-                            .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
-                            .navigationTitle("")
-                    }
-                    .navigationSplitViewStyle(.balanced)
-                }
-            } else {
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-                    SidebarPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
-                } detail: {
-                    ChatAreaPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
-                        .navigationTitle("")
-                }
-                .navigationSplitViewStyle(.balanced)
-            }
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SidebarPlaceholderView()
+                .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
+        } detail: {
+            ChatAreaPlaceholderView()
+                .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
+                .navigationTitle("")
         }
+        .navigationSplitViewStyle(.balanced)
         .background(OATheme.Colors.background.ignoresSafeArea())
         .toolbar(.visible, for: .windowToolbar)
         .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
