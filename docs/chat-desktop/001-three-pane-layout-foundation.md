@@ -162,3 +162,24 @@ Medium (2-3 hours)
 - GlassEffectContainer: https://developer.apple.com/documentation/swiftui/glasseffectcontainer
 - Existing iOS navigation: `ios/OpenAgents/Views/NewChatView.swift`
 - Current macOS view: `ios/OpenAgents/SimplifiedMacOSView.swift`
+
+## Addendum (Status, deviations, and implementation notes)
+
+Status: Implemented as root on macOS with a two-column initial layout (sidebar + content). Inspector is intentionally hidden for now per product direction.
+
+What shipped
+- Root view: `ios/OpenAgents/Views/macOS/ChatMacOSView.swift` uses `NavigationSplitView` as the scene root.
+- Sidebar: `ios/OpenAgents/Views/macOS/SidebarPlaceholderView.swift` — List styled, pure OATheme black, no gray overlays.
+- Content: `ios/OpenAgents/Views/macOS/ChatAreaPlaceholderView.swift` — fixed, non-scroll, centered “Hello” with slow fade-in.
+- Entry point: `ios/OpenAgents/OpenAgentsApp.swift:54` selects `ChatMacOSView()` for macOS and fits window to screen on appear.
+- Toolbar: kept, themed to OATheme black.
+- Right inspector: hidden for now; main area fills the space.
+
+Deviations from original plan
+- Liquid Glass removed at user request; all surfaces use OATheme black (no glass/vibrancy/overlays).
+- Three panes deferred; we will reintroduce the right inspector as Issue #6 once chat content exists.
+- No scroll in the main area until we have real content.
+
+Notes
+- Column visibility is controlled via `NavigationSplitViewVisibility`; current default is `.all` (with only sidebar + detail active).
+- Sidebar width fixed at ~260pt for stability; can be tuned when history is wired (Issue #4).

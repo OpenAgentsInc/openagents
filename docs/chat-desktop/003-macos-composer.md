@@ -9,6 +9,11 @@ Critical - Required for chat interaction
 ## Description
 Create a macOS-native text input component for sending messages to agents, adapting the iOS `Composer` component for AppKit/NSTextView.
 
+## Addendum (Status and constraints)
+- Status: BridgeManager chat-state unification (Issue #2) is complete, so the composer can call the shared `PromptDispatcher` on mac.
+- Visual constraint: For initial delivery, use OATheme black surfaces only (no Liquid Glass) to match the current mac root UI direction. Keep glass as an optional variant later.
+- Scroll behavior: Composer should not introduce scrolling to the main area when empty; it auto-grows up to ~6 lines.
+
 ## Current State
 - iOS has `Composer.swift` using UIKit's `UITextView`
 - No text input component exists for macOS
@@ -80,17 +85,10 @@ struct ComposerMac: View {
             )
         }
         .padding(12)
-        .background {
-            // Liquid Glass background for composer
-            if #available(macOS 15.0, *) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.clear)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
-            } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
-        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(OATheme.Colors.background)
+        )
     }
 
     private func handleReturn() {
@@ -199,7 +197,7 @@ struct ComposerMac: View {
             .disabled(text.isEmpty || isSending)
         }
         .padding(12)
-        .background(OATheme.Colors.background.opacity(0.8))
+        .background(OATheme.Colors.background)
         .cornerRadius(12)
     }
 }
@@ -207,9 +205,9 @@ struct ComposerMac: View {
 
 **Recommendation: Use Approach A (NSTextView)** for better keyboard control and consistency with iOS.
 
-### Floating Send Button (Liquid Glass Pattern)
+### Floating Send Button (Dark theme variant)
 
-Based on `docs/liquid-glass/floating-buttons.md`, create a capsule button with glass background:
+Create a capsule button consistent with the all-black OATheme directive:
 
 ```swift
 struct FloatingSendButton: View {
@@ -227,33 +225,7 @@ struct FloatingSendButton: View {
                 .frame(width: 36, height: 36)  // Square hit area
         }
         .buttonStyle(.plain)
-        .background {
-            // Glass effect layer
-            if #available(macOS 15.0, *) {
-                GlassEffectContainer {
-                    Capsule()
-                        .fill(.clear)
-                        .glassEffect(.regular, in: Capsule())
-                }
-            } else {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-            }
-        }
-        .background {
-            // Gentle gradient overlay for dark theme
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.black.opacity(0.16),
-                            Color.black.opacity(0.06)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
+        .background(Capsule().fill(OATheme.Colors.background))
         .overlay {
             // Subtle border for separation
             Capsule()
@@ -276,11 +248,11 @@ struct FloatingSendButton: View {
 ```
 
 **Why this works:**
-- Foreground (icon) is rendered above the glass, keeping it bright
-- Glass background hugs the button's intrinsic size (no expansion)
-- Template symbol with explicit color avoids environment tint darkening
-- Gentle gradient overlay fits dark theme without crushing contrast
-- Border and shadow lift the button over varied backdrops
+- Matches all-black OATheme (no glass/vibrancy).
+- Template symbol with explicit color avoids environment tint darkening.
+- Subtle border and shadow lift the button on dark surfaces.
+
+Optional later: reintroduce a `GlassEffectContainer` if/when Liquid Glass returns.
 
 ### Files to Create
 - `ios/OpenAgents/Views/macOS/ComposerMac.swift`
