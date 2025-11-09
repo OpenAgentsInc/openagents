@@ -25,16 +25,32 @@ Create a Developer view that consolidates advanced/debugging tools from the curr
 - Sheet or separate window presentation
 - Monospaced fonts, JSON viewers, copy buttons
 
+## Status
+Completed (Phase 1 skeleton on main)
+
+What shipped
+- DeveloperView with tabs: Database, Nostr, Logs, Diagnostics.
+- Toolbar button (wrench) and ⌘⌥D shortcut to open.
+- Logs tab uses BridgeManager.logs with a filter and Copy All.
+- Diagnostics shows OS, bridge status, clients, session; Copy Debug Info.
+- Database tab shows DB path and a stubbed query editor (execution placeholder for now).
+- Nostr tab provides a relay URL field, connect stub, and event JSON editor with Copy.
+
+Remaining (follow-up iterations)
+- Database: wire a safe query executor and schema browser to Tinyvex.
+- Nostr: add real relay tests and event parsing/validation.
+- Logs: export to file.
+- Diagnostics: more system fields and export bundle.
+
 ## Acceptance Criteria
-- [ ] Create `DeveloperView.swift` with tabbed layout
-- [ ] **Database tab**: Tinyvex schema, query executor, table browser
-- [ ] **Nostr tab**: Event inspector, relay connection tester
-- [ ] **Logs tab**: Filterable log viewer (bridge, agent, system)
-- [ ] **Diagnostics tab**: System info, BridgeManager state, debug info
-- [ ] Keyboard shortcut ⌘⌥D to open developer view
-- [ ] Copy buttons for JSON, logs, debug info
+- [x] Create `DeveloperView.swift` with tabbed layout
+- [x] **Logs tab**: Filterable log viewer (bridge logs)
+- [x] **Diagnostics tab**: System info, BridgeManager state, copy debug info
+- [x] Keyboard shortcut ⌘⌥D to open developer view
+- [x] Copy buttons for logs/debug info
+- [ ] **Database tab**: Tinyvex schema, query executor, table browser (stubbed, execution TODO)
+- [ ] **Nostr tab**: Event inspector, relay tester (stubbed)
 - [ ] Export functionality for logs and data
-- [ ] Search/filter capabilities
 
 ## Technical Details
 
