@@ -357,12 +357,25 @@ extension DesktopWebSocketServer {
             }
 
             // Parse each JSON string to config objects
+            var failedDecodes = 0
             let configs = configJSONs.compactMap { jsonString -> OrchestrationConfig? in
-                guard let data = jsonString.data(using: .utf8),
-                      let config = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) else {
+                guard let data = jsonString.data(using: .utf8) else {
+                    OpenAgentsLog.bridgeServer.warning("Failed to convert config JSON to data")
+                    failedDecodes += 1
                     return nil
                 }
-                return config
+
+                do {
+                    return try JSONDecoder().decode(OrchestrationConfig.self, from: data)
+                } catch {
+                    OpenAgentsLog.bridgeServer.warning("Failed to decode OrchestrationConfig: \(error.localizedDescription)")
+                    failedDecodes += 1
+                    return nil
+                }
+            }
+
+            if failedDecodes > 0 {
+                OpenAgentsLog.bridgeServer.warning("orchestrate/config.list: \(failedDecodes) config(s) failed to decode")
             }
 
             let response = ConfigListResponse(configs: configs)
