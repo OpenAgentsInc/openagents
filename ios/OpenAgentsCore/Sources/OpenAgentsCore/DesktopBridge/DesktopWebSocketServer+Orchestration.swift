@@ -44,17 +44,9 @@ private struct ConfigActivateResponse: Codable {
     let active_config_id: String
 }
 
-private struct SchedulerReloadResponse: Codable {
-    let success: Bool
-    let message: String
-}
+    private struct SchedulerReloadResponse: Codable { let success: Bool; let message: String }
 
-    private struct SchedulerStatusResponse: Codable {
-        let running: Bool
-        let active_config_id: String?
-        let next_wake_time: Int?
-        let message: String
-    }
+    private struct SchedulerStatusResponse: Codable { let running: Bool; let active_config_id: String?; let next_wake_time: Int?; let message: String }
     
     private struct SchedulerRunNowResponse: Codable {
         let started: Bool
@@ -126,7 +118,7 @@ extension DesktopWebSocketServer {
             await self.handleConfigActivate(id: id, params: params, rawDict: rawDict, client: client)
         }
 
-        // Scheduler Handlers (lightweight stubs for Phase 3)
+        // Scheduler Handlers
         router.register(method: ACPRPC.orchestrateSchedulerReload) { [weak self] id, params, rawDict in
             guard let self = self, let client = self.currentClient else { return }
             await self.handleSchedulerReload(id: id, client: client)
@@ -529,41 +521,40 @@ extension DesktopWebSocketServer {
 
     func handleSchedulerReload(id: JSONRPC.ID, client: Client) async {
         OpenAgentsLog.bridgeServer.info("recv orchestrate/scheduler.reload")
-
-        // TODO: When SchedulerService is implemented, re-read active config and apply
-        // For now, return success stub
-        OpenAgentsLog.bridgeServer.warning("orchestrate/scheduler.reload is a stub (SchedulerService not yet implemented)")
-
-        let response = SchedulerReloadResponse(
-            success: true,
-            message: "Scheduler reload requested (stub implementation)"
-        )
-        JsonRpcRouter.sendResponse(id: id, result: response) { text in
-            OpenAgentsLog.bridgeServer.debug("send orchestrate/scheduler.reload result")
-            client.send(text: text)
+        guard let cfg = self.activeOrchestrationConfig else {
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "No active orchestration config") { text in client.send(text: text) }
+            return
         }
+        // Stop any running service and start a fresh one
+        if let svc = self.schedulerService { await svc.stop() }
+        let svc = SchedulerService()
+        await svc.configure(config: cfg) { [weak self] in
+            guard let self = self else { return }
+            _ = await self.localSchedulerRunNow() // triggers a run immediately at wake
+        }
+        await svc.start()
+        self.schedulerService = svc
+        let response = SchedulerReloadResponse(success: true, message: "Scheduler started")
+        JsonRpcRouter.sendResponse(id: id, result: response) { text in client.send(text: text) }
     }
 
     func handleSchedulerStatus(id: JSONRPC.ID, client: Client) async {
         OpenAgentsLog.bridgeServer.info("recv orchestrate/scheduler.status")
 
-        // Compute a best-effort next wake from active config using SchedulePreview
+        // Compute status via scheduler or fallback to preview
         var next: Int? = nil
+        var running = false
         var msg = ""
-        if let cfg = self.activeOrchestrationConfig,
-           let candidate = SchedulePreview.nextRuns(schedule: cfg.schedule, count: 1, from: Date()).first {
-            next = Int(candidate.timeIntervalSince1970)
-            msg = SchedulePreview.humanReadable(schedule: cfg.schedule)
-        } else {
-            msg = "No active orchestration config"
+        if let svc = self.schedulerService {
+            running = true
+            if case let .running(nextWake) = await svc.status(), let nw = nextWake { next = Int(nw.timeIntervalSince1970) }
         }
+        if next == nil, let cfg = self.activeOrchestrationConfig, let candidate = SchedulePreview.nextRuns(schedule: cfg.schedule, count: 1, from: Date()).first {
+            next = Int(candidate.timeIntervalSince1970)
+        }
+        msg = self.activeOrchestrationConfig.map { SchedulePreview.humanReadable(schedule: $0.schedule) } ?? "No active orchestration config"
 
-        let response = SchedulerStatusResponse(
-            running: false, // background scheduler loop not implemented yet
-            active_config_id: self.activeOrchestrationConfig?.id,
-            next_wake_time: next,
-            message: msg
-        )
+        let response = SchedulerStatusResponse(running: running, active_config_id: self.activeOrchestrationConfig?.id, next_wake_time: next, message: msg)
         JsonRpcRouter.sendResponse(id: id, result: response) { text in
             OpenAgentsLog.bridgeServer.debug("send orchestrate/scheduler.status result")
             client.send(text: text)
