@@ -36,6 +36,12 @@ Top risks (with priority):
   - Tests: `OrchestrationSchedulerTests` validates set → activate → status → run_now → receives `session/update`.
 - Tinyvex titles: add clear title (DB + RPC + UI) and Issue #29 doc.
 
+## Completed Follow-ups (this pass)
+
+- Continuous Integration: added GitHub Actions workflow to build and run macOS tests on pushes/PRs to main (`.github/workflows/ci.yml`).
+- Tinyvex titles: added unit test for set/get/clear via LocalJsonRpcClient (TinyvexTitleTests).
+- Env-dependent tests: Claude CLI test now soft-skips when the CLI cannot execute, avoiding unrelated failures.
+
 ## Quick Wins (1–2 days)
 
 - Split server concerns into subtypes (Router, History, Orchestration, Sessions) and move long handler bodies out of files with 500+ LOC blocks.
@@ -84,4 +90,3 @@ Top risks (with priority):
 - Orchestration run_now produces at least one ACP `session/update` (heartbeat) and persists to Tinyvex.
 - Status returns active_config_id and a plausible next_wake_time from the schedule.
 - No new stubs without tracking issues.
-
