@@ -3,6 +3,8 @@ import OpenAgentsCore
 
 #if os(macOS)
 final class LocalJsonRpcClient: JSONRPCSending {
+    private struct OkResp: Codable { let ok: Bool }
+    private struct TitleResp: Codable { let title: String? }
     private let server: DesktopWebSocketServer
 
     init(server: DesktopWebSocketServer) {
@@ -51,7 +53,6 @@ final class LocalJsonRpcClient: JSONRPCSending {
                    let title = obj["title"] as? String {
                     let now = Int64(Date().timeIntervalSince1970 * 1000)
                     await server.localSetSessionTitle(sessionId: sid, title: title, updatedAt: now)
-                    struct OkResp: Codable { let ok: Bool }
                     result = Self.bridge(OkResp(ok: true), as: R.self)
                 } else {
                     result = nil
@@ -60,7 +61,6 @@ final class LocalJsonRpcClient: JSONRPCSending {
             case "tinyvex/history.getSessionTitle":
                 if let obj = Self.asDict(params), let sid = obj["session_id"] as? String {
                     let t = await server.localGetSessionTitle(sessionId: sid)
-                    struct TitleResp: Codable { let title: String? }
                     result = Self.bridge(TitleResp(title: t ?? nil), as: R.self)
                 } else {
                     result = nil
