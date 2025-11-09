@@ -6,6 +6,7 @@ struct ChatAreaView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var messageText: String = ""
     @State private var isSending: Bool = false
+    @State private var isAgentProcessing: Bool = false
     @State private var scrollProxy: ScrollViewProxy? = nil
 
     var body: some View {
@@ -37,15 +38,29 @@ struct ChatAreaView: View {
             // Composer at bottom, centered to 768 width
             HStack {
                 Spacer()
-                ComposerMac(text: $messageText, isSending: isSending) {
-                    send()
-                }
+                ComposerMac(text: $messageText, isSending: isSending) { send() }
                 .frame(width: 768)
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(OATheme.Colors.background)
+        }
+        .onChange(of: bridge.updates.count) { _, _ in
+            guard let last = bridge.updates.last else {
+                isAgentProcessing = false
+                return
+            }
+            switch last.update {
+            case .userMessageChunk:
+                isAgentProcessing = true
+            case .toolCallUpdate(let upd):
+                isAgentProcessing = upd.status != .completed && upd.status != .error
+            case .agentMessageChunk, .plan, .availableCommandsUpdate, .currentModeUpdate, .toolCall, .agentThoughtChunk:
+                isAgentProcessing = false
+            }
+            // Generate a title if needed when new content arrives
+            bridge.generateConversationTitleIfNeeded()
         }
     }
 
@@ -55,12 +70,7 @@ struct ChatAreaView: View {
         isSending = true
         let old = messageText
         messageText = ""
-        bridge.dispatcher?.sendPrompt(
-            text: trimmed,
-            desiredMode: nil,
-            getSessionId: { bridge.currentSessionId },
-            setSessionId: { bridge.currentSessionId = $0 }
-        )
+        bridge.sendPrompt(text: trimmed)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             isSending = false
             scrollToBottom(animated: true)
@@ -90,8 +100,8 @@ private struct ChatUpdateRow: View {
                 bubble(text: extractText(from: chunk), isUser: false)
             case .agentThoughtChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: false, italic: true, secondary: true)
-            case .plan(_):
-                EmptyView()
+            case .plan(let plan):
+                PlanView(plan: plan)
             case .availableCommandsUpdate(let ac):
                 Text("Available: \(ac.available_commands.count) commands")
                     .font(OAFonts.mono(.caption, 11))
