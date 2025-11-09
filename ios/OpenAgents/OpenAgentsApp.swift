@@ -82,7 +82,7 @@ struct OpenAgentsApp: App {
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         #endif
     }
