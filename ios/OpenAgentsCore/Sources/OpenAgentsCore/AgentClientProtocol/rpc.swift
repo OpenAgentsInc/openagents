@@ -36,4 +36,14 @@ public enum ACPRPC {
     public static let orchestrateExploreStart = "orchestrate.explore.start"
     public static let orchestrateExploreStatus = "orchestrate.explore.status"
     public static let orchestrateExploreAbort = "orchestrate.explore.abort"
+
+    // Orchestration Config (Phase 3: configuration & aiming)
+    public static let orchestrateConfigGet = "orchestrate/config.get"
+    public static let orchestrateConfigSet = "orchestrate/config.set"
+    public static let orchestrateConfigList = "orchestrate/config.list"
+    public static let orchestrateConfigActivate = "orchestrate/config.activate"
+
+    // Orchestration Scheduler (Phase 3: lightweight stubs)
+    public static let orchestrateSchedulerReload = "orchestrate/scheduler.reload"
+    public static let orchestrateSchedulerStatus = "orchestrate/scheduler.status"
 }
