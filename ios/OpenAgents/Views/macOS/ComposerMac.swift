@@ -4,7 +4,7 @@ import AppKit
 #if os(macOS)
 struct ComposerMac: View {
     @Binding var text: String
-    var placeholder: String = "Ask an agent..."
+    var placeholder: String = "Ask OpenAgents"
     var isSending: Bool = false
     var onSend: () -> Void
 
@@ -85,6 +85,7 @@ private struct NSTextViewWrapper: NSViewRepresentable {
         tv.isAutomaticTextReplacementEnabled = false
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.textColor = NSColor.white
+        tv.insertionPointColor = NSColor.white
         if let berkeley = NSFont(name: BerkeleyFont.defaultName(), size: fontSize) {
             tv.font = berkeley
         } else {
