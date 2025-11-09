@@ -15,28 +15,99 @@ iOS users need to **buy compute** by creating jobs. This enables the buyer side 
 
 ## Acceptance Criteria
 
-### Job Creation UI
-- [ ] Job kind selector (browse from Job Schema Registry)
-- [ ] Input field (text, URL, or file upload)
-- [ ] Parameter editor (dynamic based on job schema)
-- [ ] Bid amount input (msats, with sat/BTC conversion)
-- [ ] Encryption toggle (encrypt params via NIP-04)
-- [ ] Provider selection (choose specific provider or broadcast)
-- [ ] Preview job request before submission
+### Job Creation UI (Pattern 3: Core Interactions + Pattern 5: Progressive Complexity)
+- [ ] **Job kind selector** with clear categorization
+  - Browse from Job Schema Registry (issue #004)
+  - **Categories**: "Text", "Code", "Media", "Custom" (not raw kind numbers)
+  - **Visual cards** with icons, not just dropdown list
+  - **Popular jobs** section at top (summarize, translate, code review)
+  - **Search** job kinds by keyword or description
+- [ ] **Input field** with contextual help (Pattern 1: Onboarding)
+  - **Placeholder text**: Show example based on selected job kind
+    - Text summarization: "Paste article or URL to summarize..."
+    - Code review: "Paste code or link to repository..."
+  - **Input type auto-detection**: URL vs text vs file
+  - **File upload**: Drag-and-drop area with clear file type/size limits
+  - **Input validation**: Show character count, file size, format requirements
+- [ ] **Parameter editor** (dynamic based on job schema)
+  - **Smart defaults**: Pre-fill common parameters (don't make users configure everything)
+  - **Collapsible sections**: Basic parameters (always visible) vs Advanced parameters (collapsed)
+  - **Helper text**: Explain what each parameter does in plain language
+  - **Real-time validation**: Show validation errors immediately, not on submit
+  - **Parameter presets**: "Quick", "Balanced", "Quality" for complex params
+- [ ] **Bid amount input** with clear pricing guidance (Pattern 5: Hide Complexity)
+  - **Default suggestion**: "Recommended: 1000 sats" based on job kind
+  - **Visual slider** for common amounts (100, 500, 1000, 5000 sats)
+  - **Currency conversion**: Show both msats and sats (hide BTC conversion in Advanced)
+  - **Price comparison**: "Similar jobs cost 500-2000 sats"
+  - **Balance check**: Warn if bid exceeds wallet balance
+- [ ] **Encryption toggle** with clear explanation (Pattern 1: Gradual Education)
+  - **Default**: OFF (don't encrypt by default - adds complexity)
+  - **Label**: "Private parameters" (not "Encrypt via NIP-04")
+  - **Help text**: "Hide your parameters from others. Required for sensitive data."
+  - **Trade-off warning**: "Encrypted jobs may have fewer providers"
+- [ ] **Provider selection** (Pattern 5: Progressive Complexity)
+  - **Default**: "Any provider" (broadcast to all)
+  - **Show recommended providers** based on job kind and user history
+  - **Provider cards**: Show name, success rate, price, turnaround time
+  - **Advanced option**: "Choose specific provider" (collapsed by default)
+- [ ] **Preview job request before submission** (Pattern 3: Clear Feedback)
+  - **Summary card**: Job kind, input preview, parameters, bid, provider
+  - **Edit buttons**: Quick access to edit each section
+  - **Cost estimate**: "Total cost: ~1000 sats + network fees"
+  - **Warnings**: Show any issues (low bid, no providers, etc.)
 
-### Job Submission
-- [ ] Validate inputs against job schema (issue #004)
-- [ ] Sign job request event (NIP-90 kind:5000-5999)
-- [ ] Encrypt params if requested (NIP-04 with provider pubkey)
-- [ ] Publish to marketplace relays
-- [ ] Subscribe to feedback (kind:7000) for submitted job
-- [ ] Subscribe to result (kind:6000-6999)
-- [ ] Handle payment-required response (show BOLT11 invoice)
+### Job Submission (Pattern 3: Core Interactions - Clear Visual Feedback)
+- [ ] **Validate inputs** against job schema (issue #004)
+  - **Real-time validation**: Show errors as user types (don't wait for submit)
+  - **Clear error messages**: "Input too long (5000 chars max)" not "Validation error"
+  - **Inline errors**: Show errors next to the field that failed
+  - **Block submit**: Disable submit button until all errors resolved
+- [ ] **Sign job request event** (NIP-90 kind:5000-5999)
+  - **Loading state**: Show spinner with "Signing job request..."
+  - **Biometric prompt**: If required by security settings
+  - **Error handling**: "Signing failed. Try again." with retry button
+- [ ] **Encrypt params** if requested (NIP-04 with provider pubkey)
+  - **Loading state**: "Encrypting parameters..."
+  - **Progress indicator**: Show percentage if large data
+- [ ] **Publish to marketplace relays** with clear progress
+  - **Multi-step progress**:
+    1. "Signing job request..." (0-30%)
+    2. "Publishing to relays..." (30-70%)
+    3. "Waiting for confirmation..." (70-100%)
+  - **Relay status**: Show which relays accepted the job (2 of 3 relays)
+  - **Partial success**: "Published to 2 of 3 relays. Waiting for providers..."
+- [ ] **Subscribe to feedback** (kind:7000) for submitted job
+  - **Status updates**: Show feedback events as they arrive
+  - **Push notifications**: "Your job is processing" (if enabled)
+- [ ] **Subscribe to result** (kind:6000-6999)
+  - **Auto-navigate**: Go to job detail view after submission
+  - **Real-time updates**: Show status changes in job list
+- [ ] **Handle payment-required response** (show BOLT11 invoice)
+  - **Clear prompt**: "Provider requires payment: 1000 sats"
+  - **Invoice display**: QR code + copy button + "Pay in wallet" button
+  - **Timeout indicator**: "Invoice expires in 10 minutes"
+  - **Payment confirmation**: "Payment sent! Waiting for provider..."
+  - **Cancel option**: "Cancel job" if user doesn't want to pay
 
-### Job Templates
-- [ ] Save job as template (reusable configs)
-- [ ] Load template for quick submission
-- [ ] Pre-populated common jobs (summarize, translate, code review)
+### Job Templates (Pattern 5: Progressive Complexity)
+- [ ] **Save job as template** (reusable configs)
+  - **Prompt after first submission**: "Save this job as a template?" (opt-in, not automatic)
+  - **Template name**: User-friendly name (e.g., "Article summarizer")
+  - **Template preview**: Show icon, name, job kind, parameters
+  - **Edit template**: Allow user to modify saved templates
+  - **Delete template**: Swipe to delete with confirmation
+- [ ] **Load template** for quick submission
+  - **Templates section**: Show saved templates at top of job creation screen
+  - **One-tap loading**: Select template → auto-fill all fields
+  - **Editable after load**: Users can modify template values before submit
+  - **Visual distinction**: "From template: [name]" indicator
+- [ ] **Pre-populated common jobs** (Pattern 1: Onboarding)
+  - **Built-in templates**: 3-5 popular jobs (summarize, translate, code review)
+  - **"Try it" button**: Quick way to test the marketplace
+  - **Sample data**: Include example input so users can submit immediately
+  - **Clear labeling**: "Template" badge to distinguish from user's saved templates
+  - **Progressive disclosure**: Hide templates after user creates their own (80/20 rule)
 
 ## Technical Design
 

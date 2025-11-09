@@ -22,13 +22,22 @@ Without identity management, users cannot interact with the marketplace.
 
 ## Acceptance Criteria
 
-### Key Generation & Import
+### Key Generation & Import (Pattern 1: Onboarding UX)
 - [ ] Generate new Nostr keypair (secp256k1, Secure Enclave)
+- [ ] **Progressive key exposure**: Don't show private key (nsec) during initial setup
+  - Show only npub initially with simple "Your identity is secured" message
+  - Defer nsec backup to separate "Backup" flow after user has used the app
+  - Use Gradual Key Education pattern: explain WHY keys matter before showing them
 - [ ] Import existing private key (nsec format)
+  - Clear validation with user-friendly error messages
+  - Explain what will happen (not just "import")
 - [ ] Export public key (npub format with QR code)
-- [ ] **Never** export private key in plaintext (warn user)
+- [ ] **Never** export private key in plaintext (warn user strongly with confirmation dialog)
 - [ ] Multiple identity support (default + additional)
 - [ ] Set active identity
+- [ ] **Smart defaults**: No configuration required to get started
+  - Auto-connect to default relays immediately
+  - Single-click identity creation without overwhelming options
 
 ### Key Storage
 - [ ] Store private keys in Secure Enclave (or Keychain fallback)
@@ -36,27 +45,59 @@ Without identity management, users cannot interact with the marketplace.
 - [ ] Accessibility: `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
 - [ ] No iCloud keychain sync for Nostr keys (security)
 
-### Identity Display
-- [ ] Show npub (truncated: npub1abc...xyz with copy)
+### Identity Display (Pattern 5: Hide Protocol Terminology)
+- [ ] Show npub (truncated: npub1abc...xyz with copy button)
+  - **User-facing label**: "Your Nostr ID" or "Public Key" (not "npub")
+  - Copy button with toast confirmation: "Copied to clipboard"
 - [ ] QR code for npub (share with others)
-- [ ] Identity avatar (generated from pubkey hash)
+  - **User-facing label**: "Share Your ID" (not "Share npub")
+  - Standard share sheet integration
+- [ ] Identity avatar (generated from pubkey hash - identicon)
 - [ ] Optional display name (local only, not published)
-- [ ] NIP-05 verification status (future: link to domain)
+  - Make it easy to set a name (don't require it)
+  - Show placeholder: "Set a name (optional)"
+- [ ] **Verification status** (future: NIP-05)
+  - **User-facing label**: "Verified" with checkmark (not "NIP-05 verified")
+  - Explain benefit: "Links your identity to a domain name"
 
-### Relay Management
-- [ ] Default relay list (3-5 popular relays)
-- [ ] Add custom relay (URL validation)
-- [ ] Remove relay
-- [ ] Test relay connection (ping/pong)
-- [ ] Relay status indicators (connected, disconnected, error)
-- [ ] Per-relay stats (events sent/received, latency)
+### Relay Management (Pattern 5: Progressive Complexity)
+- [ ] **Smart default relays** (3-5 popular, reliable relays)
+  - Auto-connect on first launch (no relay picker during onboarding)
+  - Choose based on: uptime >95%, low latency, large user base
+  - Default to wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band
+- [ ] **Hide relay configuration in Advanced settings** (Pattern 5: 80/20 rule)
+  - Settings → Advanced → Network
+  - Most users (80%) never need to configure relays
+  - Only show to power users who explicitly seek it
+- [ ] Add custom relay (URL validation with clear error messages)
+- [ ] Remove relay with confirmation
+- [ ] Test relay connection (ping/pong) with visual feedback states
+- [ ] **Relay health indicators** (Pattern 6: Sync State Visibility)
+  - Connected (green), connecting (yellow), disconnected (gray), error (red)
+  - Show "Last connected" timestamp
+  - Display error messages in plain language (not technical jargon)
+- [ ] Per-relay stats in Advanced mode only (events sent/received, latency)
+- [ ] **Auto-reconnection** with exponential backoff (1s, 2s, 4s, 8s, 16s max)
 
-### Settings UI
-- [ ] Identity list (with active indicator)
-- [ ] Create/import/delete identity
-- [ ] Relay list (add/remove/test)
-- [ ] Security settings (biometric requirement)
-- [ ] Backup/export warning UI
+### Settings UI (Pattern 5: Settings Hierarchy - Max 10-15 items per screen)
+- [ ] **Basic Settings** (visible to all, <10 items):
+  - Identity list (with active indicator)
+  - Create/import/delete identity
+  - Security settings (biometric requirement)
+  - Backup account button (prominent)
+  - Theme (Light/Dark/Auto)
+- [ ] **Advanced Settings** (collapsed by default):
+  - Network configuration (relay management)
+  - Key management (view nsec with biometric auth)
+  - Data & storage options
+- [ ] **Progressive disclosure for backup warnings**:
+  - Don't show "NEVER SHARE THIS" on first screen
+  - Show contextual help when relevant
+  - Explain benefits ("Your account works everywhere") before showing scary warnings
+- [ ] **Clear visual feedback states** (Pattern 3: Core Interactions):
+  - Creating identity: Show spinner with "Generating secure keys..."
+  - Import: Show progress "Validating..." → "Success ✓" or "Error: Invalid key"
+  - Delete: Confirmation dialog with clear consequences
 
 ## Technical Design
 

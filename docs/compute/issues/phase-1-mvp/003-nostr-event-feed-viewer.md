@@ -29,27 +29,41 @@ Without this tool, debugging would require:
 
 ## Acceptance Criteria
 
-### Relay Connection Management
+### Relay Connection Management (Pattern 6: Sync State Visibility)
 
 - [ ] Connect to configurable set of Nostr relays
-  - [ ] Default relays (hardcoded for MVP):
+  - [ ] **Smart default relays** (hardcoded for MVP):
     - `wss://relay.damus.io` (high uptime, popular)
     - `wss://relay.nostr.band` (NIP-90 support, testing-friendly)
     - `wss://nos.lol` (developer-friendly, low latency)
   - [ ] Additional relays configurable in DEBUG builds only
-- [ ] Display connection status for each relay
-  - [ ] States: connecting, connected, disconnected, error
-  - [ ] Color indicators (green=connected, yellow=connecting, red=error)
-  - [ ] Last connected timestamp
-  - [ ] Error message display on failure
-- [ ] Automatic reconnection on disconnect
+- [ ] **Display connection status with clear visual feedback**
+  - [ ] States with icons and colors:
+    - 🔵 Connecting (blue, animated pulse)
+    - 🟢 Connected (green, solid)
+    - ⚪ Disconnected (gray)
+    - 🔴 Error (red)
+  - [ ] **Status text in plain language**:
+    - ✅ "Connected to relay.damus.io"
+    - 🔄 "Connecting to nos.lol..."
+    - ⚠️ "relay.nostr.band failed: Connection timeout"
+    - ℹ️ "Disconnected (stopped by user)"
+  - [ ] **Last connected timestamp**: "Last connected 2 minutes ago"
+  - [ ] **Overall status indicator**: "2 of 3 relays connected"
+- [ ] **Automatic reconnection with visible feedback**
   - [ ] Exponential backoff (1s, 2s, 4s, 8s, 16s max)
+  - [ ] **Show reconnection attempts**: "Retrying in 4s... (attempt 3/5)"
   - [ ] Cancel reconnection when feed is stopped
-- [ ] Relay management UI (DEBUG mode only)
+  - [ ] **User control**: "Cancel reconnection" button during retry
+- [ ] Relay management UI (DEBUG mode only, Pattern 5: Progressive Complexity)
   - [ ] Add relay by URL
-  - [ ] Remove relay from list
+    - **URL validation** with clear error messages
+    - **Test connection** before adding
+  - [ ] Remove relay from list with confirmation
   - [ ] Persist relay list to UserDefaults
+  - [ ] **Relay stats** (advanced): Events received, avg latency, uptime %
 - [ ] Clean disconnection when feed is stopped
+  - [ ] **Status message**: "Disconnected" (not silent disconnection)
 
 ### NIP-90 Event Subscription
 
@@ -80,24 +94,30 @@ Without this tool, debugging would require:
   - [ ] Unsubscribe when feed stops or collapses
   - [ ] Clean up resources on view disappear
 
-### Event Display
+### Event Display (Pattern 3: Core Interactions - Clear Visual Feedback)
 
 - [ ] Real-time event feed (newest first chronological order)
 - [ ] Event card UI for each event showing:
-  - [ ] Event type badge (color-coded):
+  - [ ] Event type badge (color-coded with consistent semantics):
     - Blue badge: Job Request (kinds 5000-5999)
     - Green badge: Job Result (kinds 6000-6999)
     - Orange badge: Job Feedback (kind 7000)
     - Purple accent: OpenAgents custom kinds
+    - **Badge should have icon + text** (not just color for accessibility)
   - [ ] Event kind with human-readable name
     - Lookup from JobKind enum (issue #004)
     - Fallback to "Kind XXXX" if not in registry
     - Indicate "(Custom)" for OpenAgents kinds
   - [ ] Event ID (truncated to 8 chars with "..." + copy button)
+    - **Copy button feedback**: Show checkmark ✓ briefly after copy
+    - **Tooltip**: "Copy event ID" on hover
   - [ ] Author pubkey (truncated to 8 chars npub format + copy button)
+    - **Copy button feedback**: Show checkmark ✓ briefly after copy
+    - **Tooltip**: "Copy author public key" on hover
   - [ ] Timestamp
     - Relative time: "Just now", "2m ago", "3h ago", "2d ago"
-    - Absolute time on hover tooltip
+    - Absolute time on hover tooltip: "Jan 15, 2025 at 3:45 PM"
+    - **Auto-update** relative time every minute for visible events
   - [ ] Content preview
     - First 200 characters for plain text
     - "[JSON content]" indicator if starts with `{` or `[`
@@ -105,10 +125,11 @@ Without this tool, debugging would require:
     - Line limit: 2 lines when collapsed
   - [ ] Tag summary
     - Show first 5 tag names: "Tags: i, param, bid, output, relays ..."
-    - Full tag count if more than 5
+    - Full tag count if more than 5: "Tags (12): i, param, bid..."
   - [ ] Expand/collapse button
-    - "Show more" when collapsed
-    - "Show less" when expanded
+    - **Clear labels**: "Show more" when collapsed, "Show less" when expanded
+    - **Smooth animation**: 200ms ease-in-out when expanding/collapsing
+    - **Icon**: Chevron down/up to indicate state
 - [ ] Event detail view (when expanded)
   - [ ] Full event fields:
     - Event ID (full hex + copy button)
@@ -130,19 +151,60 @@ Without this tool, debugging would require:
     - Monospace font
     - Show all tags (not just first 5)
     - Display tag count header: "Tags (12):"
-  - [ ] Action buttons
-    - "Copy Event JSON" - copies entire event as JSON to clipboard
-    - "View in Explorer" - opens njump.me link (if supported)
-- [ ] Event list states
-  - [ ] Loading state: "Subscribing to Nostr relays..." with spinner
-  - [ ] Empty state: "No events yet. Waiting for marketplace activity..."
-  - [ ] Error state: Display error message with "Retry" button
-  - [ ] Normal state: Scrollable list of events
-- [ ] Performance optimizations
-  - [ ] Lazy loading (LazyVStack)
-  - [ ] Virtual scrolling for large lists
+  - [ ] Action buttons (Pattern 3: Core Interactions)
+    - **"Copy Event JSON"**:
+      - Copies entire event as JSON to clipboard
+      - **Feedback**: Button changes to "Copied ✓" for 2 seconds
+      - **Error handling**: Show "Copy failed" if clipboard unavailable
+    - **"View in Explorer"**:
+      - Opens njump.me link in default browser (if supported)
+      - **Loading state**: Show spinner while opening browser
+      - **Disabled state**: Grayed out if explorer doesn't support this kind
+- [ ] Event list states (Pattern 4: Performance - Perceived Performance)
+  - [ ] **Loading state**:
+    - Show **skeleton screens** (3-5 placeholder event cards with shimmer animation)
+    - Text: "Connecting to relays..." (first 2s) → "Listening for events..." (after 2s)
+    - **Progress indicator**: Show which relays are connected (e.g., "2 of 3 relays connected")
+    - Keep header and filter bar visible during load (don't block entire UI)
+  - [ ] **Empty state** (Pattern 2: Content Discovery - Empty States):
+    - Icon: Magnifying glass or radio waves icon
+    - Title: "No events yet"
+    - Message: "Waiting for marketplace activity. This may take a minute..."
+    - **Helpful context**: Show relay connection status below message
+    - **Action button** (optional): "Refresh" button to retry subscription
+  - [ ] **Error state**:
+    - Icon: Warning triangle
+    - Title: "Connection failed"
+    - **Clear error message** in plain language (not technical jargon)
+      - ❌ "WebSocket error 1006"
+      - ✅ "Can't connect to relays. Check your internet connection."
+    - **Action button**: Prominent "Retry" button
+    - **Secondary action**: "Check relay status" to see which relays failed
+  - [ ] **Normal state**: Scrollable list of events with smooth scrolling
+- [ ] Performance optimizations (Pattern 4: Performance)
+  - [ ] **Lazy loading** (LazyVStack)
+    - Only render visible event cards
+    - Pre-render 5 cards above/below viewport for smooth scrolling
+  - [ ] **Virtual scrolling** for large lists
+    - Recycle view components for off-screen events
+    - Maintain scroll position during updates
+  - [ ] **Skeleton screens** during initial load
+    - Show placeholder cards with shimmer animation
+    - Replace with real content as events arrive
+  - [ ] **Optimistic UI updates**
+    - Insert new events immediately (don't wait for re-sort)
+    - Smooth animation when new events appear
   - [ ] Max height: 600px with scroll
-  - [ ] Debounce rapid updates (max 10 events/second)
+  - [ ] **Debounce rapid updates** (max 10 events/second)
+    - Batch multiple events into single UI update
+    - Prevents UI thrashing during high-volume periods
+  - [ ] **Background processing**
+    - Parse events on background thread
+    - Update UI on main thread only
+  - [ ] **Perceived performance**
+    - Show "Listening for events..." immediately (don't wait for connection)
+    - Update status as relays connect progressively
+    - Display partial results (don't wait for all relays)
 
 ### Dev-Only UI Integration
 

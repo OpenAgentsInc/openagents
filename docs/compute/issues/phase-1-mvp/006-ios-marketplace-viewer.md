@@ -21,12 +21,27 @@ This read-only view validates marketplace UX before implementing full buyer/sell
 
 ## Acceptance Criteria
 
-### Provider Discovery (NIP-89)
+### Provider Discovery (NIP-89) - (Pattern 2: Content Discovery)
 - [ ] Subscribe to NIP-89 capability advertisement events (kind:31990)
-- [ ] Display list of active providers (pubkey, supported job kinds, pricing)
-- [ ] Filter providers by job kind
-- [ ] Sort providers by reputation, price, availability
-- [ ] Provider detail view (capabilities, stats, recent jobs)
+- [ ] **Display list of active providers** with scannable cards
+  - Show pubkey (truncated with identicon for visual recognition)
+  - Supported job kinds with icons (max 3-5 visible, "+X more" for overflow)
+  - **Pricing preview**: "From 100 sats" or "Free" badge
+  - **Availability indicator**: Green dot for "online", gray for "offline/unknown"
+- [ ] **Filter providers by job kind** (Pattern 5: Progressive Complexity)
+  - Default: Show all providers
+  - Filter dropdown: "All Services", "Text Processing", "Code", "Media", etc.
+  - **Filter chips** (show active filters, tap to remove)
+  - Clear all filters button when multiple filters active
+- [ ] **Sort providers** with clear options
+  - Options: "Recommended" (default), "Lowest Price", "Most Jobs", "Newest"
+  - **Visual indicator** showing current sort order
+  - **Sticky sort** (remember user preference)
+- [ ] **Provider detail view** (Pattern 5: Progressive Disclosure)
+  - Summary view (top): Avatar, name, verification status, total jobs
+  - Capabilities section (expandable list of job kinds with pricing)
+  - Stats section (jobs completed, success rate, avg turnaround)
+  - Recent jobs section (last 5-10 jobs with status)
 
 ### Job Browser
 - [ ] List available job kinds from registry (issue #004)
@@ -34,29 +49,94 @@ This read-only view validates marketplace UX before implementing full buyer/sell
 - [ ] Filter by category (text, code, image, etc.)
 - [ ] Search job kinds by keyword
 
-### Activity Feed
+### Activity Feed (Pattern 2: Content Discovery + Pattern 4: Performance)
 - [ ] Subscribe to recent job requests (kind:5000-5999)
 - [ ] Subscribe to job results (kind:6000-6999)
 - [ ] Subscribe to feedback events (kind:7000)
-- [ ] Display activity timeline (jobs submitted → processing → completed)
-- [ ] Filter by job kind or provider
-- [ ] Encrypted content indicator (don't show private params)
+- [ ] **Display activity timeline** with clear visual hierarchy
+  - **Activity cards** showing: Job type icon, status badge, timestamp, provider
+  - **Status flow visualization**: "Submitted → Processing → Completed" with progress indicator
+  - **Relative timestamps**: "2m ago", "1h ago", "Yesterday"
+  - **Color-coded status**: Blue (submitted), Yellow (processing), Green (completed), Red (error)
+- [ ] **Filter by job kind or provider** (Pattern 5: Progressive Complexity)
+  - Default: Show all activity
+  - **Quick filters** (chips): "My Jobs", "Completed", "In Progress", "Failed"
+  - **Advanced filters** (collapsed): Job kind, Provider, Date range
+  - **Active filter indicator**: Show count of active filters
+- [ ] **Encrypted content indicator** with clear messaging
+  - Don't show private params (privacy-safe)
+  - Show icon with tooltip: "🔒 Encrypted parameters (not visible)"
+  - **Not an error**: Use neutral gray color, not red/warning
+- [ ] **Performance optimizations**:
+  - **Lazy loading**: Load 20 items initially, load more on scroll
+  - **Skeleton screens**: Show placeholder cards while loading
+  - **Pull-to-refresh**: Refresh activity feed with haptic feedback
+  - **Infinite scroll**: Load more items as user scrolls (max 200 cached)
 
-### Provider Stats
-- [ ] Calculate stats from Nostr events:
-  - Jobs completed (count of kind:6000-6999 results)
-  - Success rate (success feedback / total jobs)
-  - Avg turnaround time (estimate from timestamps)
-  - Active since (first capability ad)
-- [ ] Display stats on provider detail view
-- [ ] Cache stats (refresh periodically)
+### Provider Stats (Pattern 6: Sync State Visibility)
+- [ ] **Calculate stats from Nostr events** with clear data sources:
+  - **Jobs completed**: Count of kind:6000-6999 results
+  - **Success rate**: success feedback / total jobs (show percentage + count)
+  - **Avg turnaround time**: Estimate from timestamps (show in human-readable format: "~5 min", "~2 hours")
+  - **Active since**: First capability ad (relative: "Active for 3 months")
+- [ ] **Display stats on provider detail view** with context
+  - Use **visual indicators**: Progress bars for success rate, sparklines for trend
+  - Show **confidence level**: "Based on 50 jobs" or "Limited data (5 jobs)" for new providers
+  - **Empty state**: "No stats yet" for providers with no completed jobs (not "0%" which looks bad)
+- [ ] **Cache stats with visible refresh status** (Pattern 6)
+  - **Last updated timestamp**: "Updated 5 minutes ago"
+  - **Refresh indicator**: Small spinner during refresh
+  - **Refresh periodically**: Every 5 minutes when view is visible
+  - **Manual refresh**: Pull-to-refresh gesture
+  - **Stale data indicator**: Show "Stats may be outdated" if >30 minutes old
 
-### UI/UX
-- [ ] Marketplace tab in bottom navigation
-- [ ] Pull-to-refresh for latest data
-- [ ] Empty states (no providers, no activity)
-- [ ] Loading indicators during Nostr subscription
-- [ ] Error states (relay disconnected, no data)
+### UI/UX (Pattern 3: Core Interactions + Pattern 2: Content Discovery)
+- [ ] **Marketplace tab in bottom navigation**
+  - Icon: Store or network icon
+  - Label: "Marketplace" (not "Nostr Marketplace" - avoid jargon)
+  - **Badge**: Show count of new providers or activity (optional)
+- [ ] **Pull-to-refresh** for latest data (Pattern 3)
+  - **Haptic feedback** when refresh starts
+  - **Progress indicator** during refresh (spinner in nav bar)
+  - **Success feedback**: Brief "Updated" toast or checkmark
+  - **Error feedback**: "Update failed. Pull to retry." with error icon
+- [ ] **Empty states** (Pattern 2: Content Discovery)
+  - **No providers found**:
+    - Icon: Magnifying glass or network icon
+    - Title: "No providers yet"
+    - Message: "The marketplace is just getting started. Check back soon!"
+    - **Action button**: "Refresh" to retry
+  - **No activity**:
+    - Icon: Clock or activity icon
+    - Title: "No recent activity"
+    - Message: "Marketplace activity will appear here once jobs are submitted."
+    - **No action needed** (passive state)
+  - **No search results**:
+    - Icon: Magnifying glass
+    - Title: "No providers found"
+    - Message: "Try different search terms or filters"
+    - **Action button**: "Clear filters"
+- [ ] **Loading indicators** during Nostr subscription (Pattern 4: Performance)
+  - **Skeleton screens** (3-5 placeholder provider cards) during initial load
+  - **Progressive loading**: Show providers as they arrive (don't wait for all relays)
+  - **Loading text**: "Discovering providers..." → "Found X providers" when complete
+  - **Don't block UI**: Show header and tabs immediately, load content below
+- [ ] **Error states** with clear recovery actions (Pattern 3)
+  - **Relay disconnected**:
+    - Icon: Warning triangle or disconnected icon
+    - Title: "Connection lost"
+    - Message: "Can't connect to marketplace. Check your internet connection."
+    - **Action button**: "Retry" (prominent)
+  - **No data (timeout)**:
+    - Icon: Clock or timeout icon
+    - Title: "Taking longer than expected"
+    - Message: "Still searching for providers. This may take a minute."
+    - **Action button**: "Keep waiting" or "Cancel"
+  - **Permission error** (if applicable):
+    - Icon: Lock icon
+    - Title: "Access denied"
+    - Message: Clear explanation of what permission is needed and why
+    - **Action button**: "Open Settings"
 
 ## Technical Design
 
