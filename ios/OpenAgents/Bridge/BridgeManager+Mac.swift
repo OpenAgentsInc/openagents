@@ -152,5 +152,10 @@ extension BridgeManager {
         dispatcher?.setSessionMode(mode, getSessionId: { self.currentSessionId })
     }
 
+    func setSessionTitle(sessionId: String, title: String) {
+        struct Params: Codable { let session_id: String; let title: String }
+        connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.setSessionTitle", params: Params(session_id: sessionId, title: title), id: "set-title-\(UUID().uuidString)") { (_: [String: Bool]?) in }
+    }
+
 }
 #endif

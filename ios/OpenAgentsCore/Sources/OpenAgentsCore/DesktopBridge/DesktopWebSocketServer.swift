@@ -244,6 +244,51 @@ public class DesktopWebSocketServer {
                 }
             }
         }
+
+        // tinyvex/history.setSessionTitle
+        router.register(method: "tinyvex/history.setSessionTitle") { [weak self] id, params, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            guard let db = self.tinyvexDb else {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "History API not initialized") { text in client.send(text: text) }
+                return
+            }
+            guard let sessionId = params?["session_id"] as? String,
+                  let title = params?["title"] as? String else {
+                JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing required parameters: session_id, title") { text in client.send(text: text) }
+                return
+            }
+            Task {
+                do {
+                    let now = Int64(Date().timeIntervalSince1970 * 1000)
+                    try await db.setSessionTitle(sessionId: sessionId, title: title, updatedAt: now)
+                    JsonRpcRouter.sendResponse(id: id, result: ["ok": true]) { text in client.send(text: text) }
+                } catch {
+                    JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to set title: \(error)") { text in client.send(text: text) }
+                }
+            }
+        }
+
+        // tinyvex/history.getSessionTitle
+        router.register(method: "tinyvex/history.getSessionTitle") { [weak self] id, params, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            guard let db = self.tinyvexDb else {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "History API not initialized") { text in client.send(text: text) }
+                return
+            }
+            guard let sessionId = params?["session_id"] as? String else {
+                JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing required parameter: session_id") { text in client.send(text: text) }
+                return
+            }
+            Task {
+                do {
+                    let t = try await db.getSessionTitle(sessionId: sessionId)
+                    struct TitleResp: Codable { let title: String? }
+                    JsonRpcRouter.sendResponse(id: id, result: TitleResp(title: t)) { text in client.send(text: text) }
+                } catch {
+                    JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to get title: \(error)") { text in client.send(text: text) }
+                }
+            }
+        }
     }
 
     // moved to DesktopWebSocketServer+Threads.swift: registerThreadHandlers
