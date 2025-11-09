@@ -6,7 +6,6 @@ struct SessionSidebarView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var searchText: String = ""
     @State private var hoveredId: String? = nil
-    @State private var fallbackSessions: [RecentSession] = []
 
     var body: some View {
         VStack(spacing: 8) {
@@ -108,16 +107,11 @@ struct SessionSidebarView: View {
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
         .background(OATheme.Colors.sidebarBackground)
-        .onAppear {
-            bridge.fetchRecentSessions()
-            if bridge.recentSessions.isEmpty {
-                loadFallbackFromFilesystem()
-            }
-        }
+        .onAppear { bridge.fetchRecentSessions() }
     }
 
     private var filtered: [RecentSession] {
-        let source = bridge.recentSessions.isEmpty ? fallbackSessions : bridge.recentSessions
+        let source = bridge.recentSessions
         guard !searchText.isEmpty else { return source }
         let q = searchText.lowercased()
         return source.filter { s in
@@ -189,13 +183,7 @@ struct SessionSidebarView: View {
     private func loadSession(_ sessionId: String) {
         bridge.currentSessionId = nil
         bridge.timeline.clearAll()
-        if let hit = (bridge.recentSessions.first { $0.session_id == sessionId }) {
-            bridge.loadSessionTimeline(sessionId: hit.session_id)
-        } else if let fb = (fallbackSessions.first { $0.session_id == sessionId }) {
-            bridge.loadFilesystemSessionTimeline(sessionId: fb.session_id, mode: fb.mode)
-        } else {
-            bridge.loadSessionTimeline(sessionId: sessionId)
-        }
+        bridge.loadSessionTimeline(sessionId: sessionId)
     }
 
     private func modeLabel(_ mode: String) -> String {
@@ -207,24 +195,6 @@ struct SessionSidebarView: View {
         }
     }
 
-    private func loadFallbackFromFilesystem() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Scan Claude and Codex default locations for top recent sessions
-            let claude = ClaudeScanner.scanTopK(topK: 20)
-            let codex = CodexScanner.scanTopK(topK: 20)
-            let rows = (claude + codex).sorted { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
-            let mapped: [RecentSession] = rows.map { r in
-                RecentSession(
-                    session_id: r.id,
-                    last_ts: r.last_message_ts ?? r.updated_at,
-                    message_count: Int64(r.message_count ?? 0),
-                    mode: r.source
-                )
-            }
-            DispatchQueue.main.async {
-                self.fallbackSessions = mapped
-            }
-        }
-    }
+    // No filesystem fallback: Tinyvex (SQLite) is the single source of truth
 }
 #endif
