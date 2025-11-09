@@ -28,11 +28,11 @@ protocol ConnectionManaging: AnyObject {
     var logPublisher: AnyPublisher<String, Never> { get }
     func start()
     func stop()
+    var rpcClient: JSONRPCSending? { get }
+    var notificationPublisher: AnyPublisher<(method: String, payload: Data), Never> { get }
     #if os(iOS)
     func performManualConnect(host: String, port: Int)
-    var rpcClient: JSONRPCSending? { get }
     var workingDirectoryPublisher: AnyPublisher<String?, Never> { get }
-    var notificationPublisher: AnyPublisher<(method: String, payload: Data), Never> { get }
     #endif
     #if os(macOS)
     var connectedClientCountPublisher: AnyPublisher<Int, Never> { get }
