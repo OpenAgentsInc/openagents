@@ -13,20 +13,10 @@ struct SidebarPlaceholderView: View {
             }
             .padding()
         }
-        .background(backgroundMaterial)
+        .background(OATheme.Colors.sidebarBackground)
         // Hard scroll edge effect (optional visual polish)
     }
 
-    @ViewBuilder
-    private var backgroundMaterial: some View {
-        if #available(macOS 15.0, *) {
-            Rectangle()
-                .fill(.clear)
-                .glassEffect(.regular, in: Rectangle())
-        } else {
-            Color.clear
-                .background(.ultraThinMaterial)
-        }
-    }
+    // No extra material; rely on OATheme surfaces
 }
 #endif

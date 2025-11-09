@@ -18,19 +18,10 @@ struct ChatAreaPlaceholderView: View {
             .frame(maxWidth: .infinity)
             .padding(32)
         }
-        .background(backgroundMaterial)
+        .background(OATheme.Colors.background)
         // Hard scroll edge effect (optional visual polish)
     }
 
-    @ViewBuilder
-    private var backgroundMaterial: some View {
-        if #available(macOS 15.0, *) {
-            Rectangle()
-                .fill(.clear)
-                .glassEffect(.regular, in: Rectangle())
-        } else {
-            OATheme.Colors.background
-        }
-    }
+    // No extra material; rely on OATheme surfaces
 }
 #endif
