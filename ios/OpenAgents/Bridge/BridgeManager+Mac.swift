@@ -118,7 +118,10 @@ extension BridgeManager {
 
     func fetchRecentSessions() {
         dispatcher?.fetchRecentSessions { [weak self] items in
-            self?.recentSessions = items
+            guard let self = self else { return }
+            self.recentSessions = items
+            // Load any persisted titles from Tinyvex
+            for s in items { self.syncSessionTitleFromDB(sessionId: s.session_id) }
         }
     }
 
@@ -155,6 +158,15 @@ extension BridgeManager {
     func setSessionTitle(sessionId: String, title: String) {
         struct Params: Codable { let session_id: String; let title: String }
         connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.setSessionTitle", params: Params(session_id: sessionId, title: title), id: "set-title-\(UUID().uuidString)") { (_: [String: Bool]?) in }
+    }
+
+    private func syncSessionTitleFromDB(sessionId: String) {
+        struct Params: Codable { let session_id: String }
+        struct Resp: Codable { let title: String? }
+        connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.getSessionTitle", params: Params(session_id: sessionId), id: "get-title-\(UUID().uuidString)") { (resp: Resp?) in
+            guard let t = resp?.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            DispatchQueue.main.async { [weak self] in self?.conversationTitles[sessionId] = t }
+        }
     }
 
 }
