@@ -111,6 +111,9 @@ public class DesktopWebSocketServer {
     // Session mode selection (per session)
     var modeBySession: [String: ACPSessionModeId] = [:]
 
+    // Setup session tracking (session_id -> conversation_id for conversational orchestration)
+    var setupSessionById: [String: String] = [:]
+
     // Session file tracking (for optional tailer)
     var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
 

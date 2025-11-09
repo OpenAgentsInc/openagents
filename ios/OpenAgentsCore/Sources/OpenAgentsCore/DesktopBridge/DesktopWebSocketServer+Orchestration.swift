@@ -579,8 +579,18 @@ extension DesktopWebSocketServer {
                     OpenAgentsLog.bridgeServer.info("Setup completed: \(config.id)")
                     // Save config via existing config.set handler
                     await self.saveCompletedConfig(config)
+                    // Cleanup registries
+                    if let conversationId = self.setupSessionById[sessionId.value] {
+                        self.setupSessionById.removeValue(forKey: sessionId.value)
+                        await SetupOrchestratorRegistry.shared.remove(conversationId)
+                    }
                 case .failure(let error):
                     OpenAgentsLog.bridgeServer.error("Setup failed: \(error.localizedDescription)")
+                    // Cleanup registries
+                    if let conversationId = self.setupSessionById[sessionId.value] {
+                        self.setupSessionById.removeValue(forKey: sessionId.value)
+                        await SetupOrchestratorRegistry.shared.remove(conversationId)
+                    }
                 }
             }
         )
@@ -588,6 +598,9 @@ extension DesktopWebSocketServer {
         // Store orchestrator
         let conversationId = await orchestrator.conversationId
         await SetupOrchestratorRegistry.shared.store(orchestrator, for: conversationId)
+
+        // Store session→conversation mapping for routing session/prompt
+        self.setupSessionById[sessionId.value] = conversationId
 
         // Start conversational setup
         await orchestrator.start()
@@ -656,7 +669,13 @@ extension DesktopWebSocketServer {
         // Find and abort orchestrator
         if let orchestrator = await SetupOrchestratorRegistry.shared.get(req.conversation_id) {
             await orchestrator.abort()
+
+            // Cleanup registries
             await SetupOrchestratorRegistry.shared.remove(req.conversation_id)
+            // Find and remove session mapping
+            if let sessionId = setupSessionById.first(where: { $0.value == req.conversation_id })?.key {
+                setupSessionById.removeValue(forKey: sessionId)
+            }
 
             let response = ["status": "aborted"]
             JsonRpcRouter.sendResponse(id: id, result: response) { text in
@@ -691,6 +710,10 @@ extension DesktopWebSocketServer {
                 updatedAt: config.updatedAt
             )
             OpenAgentsLog.bridgeServer.info("Saved completed config: \(config.id)")
+
+            // TODO: Trigger scheduler reload when SchedulerService is implemented
+            // This will re-read configs and apply the new schedule
+            OpenAgentsLog.bridgeServer.info("Config saved, scheduler reload would be triggered here")
         } catch {
             OpenAgentsLog.bridgeServer.error("Failed to save config: \(error.localizedDescription)")
         }
