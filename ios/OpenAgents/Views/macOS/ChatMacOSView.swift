@@ -15,6 +15,14 @@ struct ChatMacOSView: View {
         .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         .toolbarColorScheme(.dark, for: .windowToolbar)
+        // Make the sidebar visually "hover" over the toolbar: paint a strip in sidebar color
+        .overlay(alignment: .topLeading) {
+            Rectangle()
+                .fill(OATheme.Colors.sidebarBackground)
+                .frame(width: 360, height: 48)
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder
