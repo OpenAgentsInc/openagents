@@ -124,7 +124,9 @@ struct SessionSidebarView: View {
         }
         // Expose delete action for Commands via focused scene value
         .focusedSceneValue(\.deleteSelectedSession) { [selectedSessionId] in
-            if let sid = selectedSessionId { bridge.deleteSession(sid) }
+            if let sid = selectedSessionId, let s = bridge.recentSessions.first(where: { $0.session_id == sid }) {
+                confirmDelete(s)
+            }
         }
     }
 
