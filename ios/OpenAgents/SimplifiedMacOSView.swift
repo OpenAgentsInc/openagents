@@ -50,6 +50,7 @@ struct SimplifiedMacOSView: View {
                         configureAgentsCard
                         #if DEBUG
                         nostrDevCard
+                        orchestrationConsoleCard
                         morningBriefingDemoCard
                         #endif
                     }
@@ -524,6 +525,32 @@ struct SimplifiedMacOSView: View {
                 .padding(20)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(OATheme.Colors.border.opacity(0.3)))
         }
+    }
+
+    @ViewBuilder private var orchestrationConsoleCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Orchestration Console")
+                .font(OAFonts.ui(.headline, 16))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+
+            Text("Configure overnight orchestration settings and goals")
+                .font(OAFonts.ui(.body, 14))
+                .foregroundStyle(OATheme.Colors.textSecondary.opacity(0.7))
+
+            NavigationLink(destination: OrchestrationConsoleView()) {
+                Text("Open Console")
+                    .font(OAFonts.ui(.body, 14))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(OATheme.Colors.accent)
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(OATheme.Colors.border.opacity(0.3)))
     }
 
     @ViewBuilder private var morningBriefingDemoCard: some View {

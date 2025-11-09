@@ -9,6 +9,9 @@ struct MorningBriefingDemoView: View {
                 // Hero stats
                 MorningBriefingStatsView(summary: MockOrchestrationData.overnightRun)
 
+                // Config summary section
+                configSummarySection
+
                 // Agent performance
                 AgentPerformanceView(summary: MockOrchestrationData.overnightRun)
 
@@ -26,6 +29,20 @@ struct MorningBriefingDemoView: View {
         .navigationTitle("Morning Briefing")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OATheme.Colors.background)
+    }
+
+    @ViewBuilder
+    private var configSummarySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Orchestration Goals")
+                .font(OAFonts.ui(.headline, 18))
+                .foregroundStyle(OATheme.Colors.textPrimary)
+
+            // Group tasks by config
+            ForEach(groupedByConfig(), id: \.configId) { group in
+                configGroupCard(group)
+            }
+        }
     }
 
     @ViewBuilder
@@ -210,6 +227,76 @@ struct MorningBriefingDemoView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
+        )
+    }
+
+    // MARK: - Config Grouping Helpers
+
+    private struct ConfigGroup {
+        let configId: String
+        let goalsHash: String
+        let goals: String
+        let tasks: [OrchestrationTask]
+    }
+
+    private func groupedByConfig() -> [ConfigGroup] {
+        let tasksWithConfig = MockOrchestrationData.tasks.filter {
+            $0.metadata["config_id"] != nil && $0.status == .completed
+        }
+
+        let grouped = Dictionary(grouping: tasksWithConfig) {
+            $0.metadata["config_id"] ?? "unknown"
+        }
+
+        return grouped.map { (configId, tasks) in
+            let goals = tasks.first?.metadata["goals"] ?? ""
+            let goalsHash = tasks.first?.metadata["goals_hash"] ?? ""
+            return ConfigGroup(
+                configId: configId,
+                goalsHash: goalsHash,
+                goals: goals,
+                tasks: tasks
+            )
+        }.sorted { $0.tasks.count > $1.tasks.count }
+    }
+
+    @ViewBuilder
+    private func configGroupCard(_ group: ConfigGroup) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "target")
+                    .font(.system(size: 14))
+                    .foregroundStyle(OATheme.Colors.accent)
+
+                Text("Ran \(group.tasks.count) task\(group.tasks.count == 1 ? "" : "s") for goals:")
+                    .font(OAFonts.ui(.body, 14))
+                    .foregroundStyle(OATheme.Colors.textPrimary)
+            }
+
+            Text(group.goals)
+                .font(OAFonts.ui(.body, 14))
+                .fontWeight(.medium)
+                .foregroundStyle(OATheme.Colors.accent)
+                .padding(.leading, 22)
+
+            HStack(spacing: 8) {
+                Text("Config: \(group.configId)")
+                    .font(OAFonts.mono(.caption, 11))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+
+                Text("•")
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+
+                Text("Hash: \(group.goalsHash)")
+                    .font(OAFonts.mono(.caption, 11))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+            }
+            .padding(.leading, 22)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(OATheme.Colors.border.opacity(0.3))
         )
     }
 

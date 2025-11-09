@@ -177,7 +177,10 @@ enum MockOrchestrationData {
                 "files_changed": "3",
                 "lines_added": "145",
                 "lines_removed": "67",
-                "branch": "agent/overnight/bridge-error-handling"
+                "branch": "agent/overnight/bridge-error-handling",
+                "config_id": "nightly",
+                "goals_hash": "8a7f3c91e5d2",
+                "goals": "refactor error handling, improve code quality"
             ]
         ),
 
@@ -209,7 +212,10 @@ enum MockOrchestrationData {
                 "files_changed": "5",
                 "lines_added": "423",
                 "lines_removed": "12",
-                "branch": "agent/overnight/websocket-tests"
+                "branch": "agent/overnight/websocket-tests",
+                "config_id": "nightly",
+                "goals_hash": "8a7f3c91e5d2",
+                "goals": "refactor error handling, improve code quality"
             ]
         ),
 
@@ -241,7 +247,10 @@ enum MockOrchestrationData {
                 "files_changed": "2",
                 "lines_added": "98",
                 "lines_removed": "145",
-                "branch": "agent/overnight/concurrency-refactor"
+                "branch": "agent/overnight/concurrency-refactor",
+                "config_id": "weekly",
+                "goals_hash": "4b9e2d7f1c8a",
+                "goals": "increase test coverage, add documentation"
             ]
         ),
 
