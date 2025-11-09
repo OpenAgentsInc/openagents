@@ -20,16 +20,10 @@ struct SidebarPlaceholderView: View {
             }
             .scrollDisabled(true)
 
-            // Leading edge normalize (in case of shadow/glow)
-            Rectangle()
-                .fill(OATheme.Colors.sidebarBackground)
-                .frame(width: 8)
-                .allowsHitTesting(false)
-
             // Trailing edge: cover NSSplitView divider completely
             Rectangle()
                 .fill(OATheme.Colors.background)
-                .frame(width: 16)
+                .frame(width: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .allowsHitTesting(false)
         }
