@@ -177,7 +177,7 @@ enum MockOrchestrationData {
                 "files_changed": "3",
                 "lines_added": "145",
                 "lines_removed": "67",
-                "branch": "agent/overnight/bridge-error-handling",
+                "branch": "agent/orchestration/bridge-error-handling",
                 "config_id": "nightly",
                 "goals_hash": "8a7f3c91e5d2",
                 "goals": "refactor error handling, improve code quality"
@@ -212,7 +212,7 @@ enum MockOrchestrationData {
                 "files_changed": "5",
                 "lines_added": "423",
                 "lines_removed": "12",
-                "branch": "agent/overnight/websocket-tests",
+                "branch": "agent/orchestration/websocket-tests",
                 "config_id": "nightly",
                 "goals_hash": "8a7f3c91e5d2",
                 "goals": "refactor error handling, improve code quality"
@@ -247,7 +247,7 @@ enum MockOrchestrationData {
                 "files_changed": "2",
                 "lines_added": "98",
                 "lines_removed": "145",
-                "branch": "agent/overnight/concurrency-refactor",
+                "branch": "agent/orchestration/concurrency-refactor",
                 "config_id": "weekly",
                 "goals_hash": "4b9e2d7f1c8a",
                 "goals": "increase test coverage, add documentation"
@@ -281,7 +281,7 @@ enum MockOrchestrationData {
                 "files_changed": "4",
                 "lines_added": "234",
                 "lines_removed": "45",
-                "branch": "agent/overnight/fm-caching"
+                "branch": "agent/orchestration/fm-caching"
             ]
         ),
 
@@ -312,7 +312,7 @@ enum MockOrchestrationData {
                 "files_changed": "8",
                 "lines_added": "567",
                 "lines_removed": "23",
-                "branch": "agent/overnight/api-docs"
+                "branch": "agent/orchestration/api-docs"
             ]
         ),
 
@@ -343,7 +343,7 @@ enum MockOrchestrationData {
                 "files_changed": "2",
                 "lines_added": "89",
                 "lines_removed": "156",
-                "branch": "agent/overnight/taskqueue-optimization"
+                "branch": "agent/orchestration/taskqueue-optimization"
             ]
         ),
 
@@ -414,7 +414,7 @@ enum MockOrchestrationData {
             filesChanged: 3,
             linesAdded: 145,
             linesRemoved: 67,
-            branch: "agent/overnight/bridge-error-handling",
+            branch: "agent/orchestration/bridge-error-handling",
             taskId: "task_001",
             duration: 1680,  // 28 minutes
             ciStatus: .success
@@ -432,7 +432,7 @@ enum MockOrchestrationData {
             filesChanged: 5,
             linesAdded: 423,
             linesRemoved: 12,
-            branch: "agent/overnight/websocket-tests",
+            branch: "agent/orchestration/websocket-tests",
             taskId: "task_002",
             duration: 1080,  // 18 minutes
             ciStatus: .success
@@ -450,7 +450,7 @@ enum MockOrchestrationData {
             filesChanged: 2,
             linesAdded: 98,
             linesRemoved: 145,
-            branch: "agent/overnight/concurrency-refactor",
+            branch: "agent/orchestration/concurrency-refactor",
             taskId: "task_003",
             duration: 1920,  // 32 minutes
             ciStatus: .pending
@@ -468,7 +468,7 @@ enum MockOrchestrationData {
             filesChanged: 4,
             linesAdded: 234,
             linesRemoved: 45,
-            branch: "agent/overnight/fm-caching",
+            branch: "agent/orchestration/fm-caching",
             taskId: "task_004",
             duration: 1500,  // 25 minutes
             ciStatus: .success
@@ -486,7 +486,7 @@ enum MockOrchestrationData {
             filesChanged: 8,
             linesAdded: 567,
             linesRemoved: 23,
-            branch: "agent/overnight/api-docs",
+            branch: "agent/orchestration/api-docs",
             taskId: "task_005",
             duration: 900,  // 15 minutes
             ciStatus: .success
@@ -504,7 +504,7 @@ enum MockOrchestrationData {
             filesChanged: 2,
             linesAdded: 89,
             linesRemoved: 156,
-            branch: "agent/overnight/taskqueue-optimization",
+            branch: "agent/orchestration/taskqueue-optimization",
             taskId: "task_006",
             duration: 1320,  // 22 minutes
             ciStatus: .success

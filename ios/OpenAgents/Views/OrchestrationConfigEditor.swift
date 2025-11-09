@@ -436,7 +436,7 @@ struct OrchestrationConfigEditor: View {
             prAutomation: OrchestrationConfig.PRAutomation(
                 enabled: false,
                 draft: true,
-                branchPrefix: "agent/overnight/"
+                branchPrefix: "agent/orchestration/"
             ),
             updatedAt: Int64(Date().timeIntervalSince1970 * 1000)
         )
