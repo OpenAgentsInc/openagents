@@ -14,7 +14,12 @@ struct SidebarPlaceholderView: View {
             .padding()
         }
         .background(OATheme.Colors.sidebarBackground)
-        // Hard scroll edge effect (optional visual polish)
+        // Mask the system split divider with our theme color
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(OATheme.Colors.background)
+                .frame(width: 1)
+        }
     }
 
     // No extra material; rely on OATheme surfaces
