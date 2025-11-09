@@ -38,6 +38,8 @@ struct ChatMacOSView: View {
         .sheet(isPresented: $showDeveloper) {
             DeveloperView()
         }
+        .focusedSceneValue(\.showSettings, $showSettings)
+        .focusedSceneValue(\.showDeveloper, $showDeveloper)
     }
 
     @ViewBuilder

@@ -84,6 +84,7 @@ struct OpenAgentsApp: App {
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .commands { OpenAgentsCommands() }
         #endif
     }
 }

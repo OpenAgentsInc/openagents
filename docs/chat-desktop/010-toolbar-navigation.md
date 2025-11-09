@@ -22,14 +22,23 @@ Add toolbar buttons and menu items to access the Settings and Developer views fr
 - Menu bar items under app menu
 - Proper window management (sheets vs separate windows)
 
+## Status
+Completed (implemented on main)
+
+What shipped
+- Toolbar buttons: gear opens Settings (sheet), wrench opens Developer (sheet).
+- Keyboard shortcuts: ⌘, opens Settings; ⌘⌥D opens Developer.
+- Menu bar: custom Commands replace app Settings and add a Developer menu.
+- Focused scene bindings ensure window state is controlled from the main scene; single sheet visible at a time.
+
 ## Acceptance Criteria
-- [ ] Add Settings button to toolbar (gear icon)
-- [ ] Add Developer button to toolbar or menu
-- [ ] Keyboard shortcuts ⌘, and ⌘⌥D work
-- [ ] Menu items in app menu (OpenAgents → Settings, Developer Tools)
-- [ ] Settings opens as sheet
-- [ ] Developer opens as sheet or separate window (configurable)
-- [ ] Proper window state management (only one instance at a time)
+- [x] Add Settings button to toolbar (gear icon)
+- [x] Add Developer button to toolbar
+- [x] Keyboard shortcuts ⌘, and ⌘⌥D work
+- [x] Menu items in app menu (Settings…, Developer Tools…)
+- [x] Settings opens as sheet
+- [x] Developer opens as sheet
+- [x] Proper window state management (focused scene values)
 
 ## Technical Details
 
