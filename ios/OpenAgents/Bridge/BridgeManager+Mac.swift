@@ -11,6 +11,8 @@ extension BridgeManager {
         let conn = DesktopConnectionManager()
         conn.workingDirectoryURL = workingDirectory
         connection = conn
+
+        // Connection events
         conn.statusPublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] st in self?.status = st }
@@ -23,6 +25,39 @@ extension BridgeManager {
             .receive(on: RunLoop.main)
             .sink { [weak self] count in self?.connectedClientCount = count }
             .store(in: &subscriptions)
+
+        // TODO(mac chat state): wire server notifications -> timeline when
+        // DesktopConnectionManager exposes notificationPublisher.
+
+        // Mirror timeline state to published fields
+        timeline.updatesPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.updates = $0 }
+            .store(in: &subscriptions)
+        timeline.availableCommandsPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.availableCommands = $0 }
+            .store(in: &subscriptions)
+        timeline.currentModePublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.currentMode = $0 }
+            .store(in: &subscriptions)
+        timeline.toolCallNamesPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.toolCallNames = $0 }
+            .store(in: &subscriptions)
+        timeline.rawJSONByCallIdPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.rawJSONByCallId = $0 }
+            .store(in: &subscriptions)
+        timeline.outputJSONByCallIdPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.outputJSONByCallId = $0 }
+            .store(in: &subscriptions)
+
+        // TODO(mac chat state): initialize dispatcher with LocalJsonRpcClient when
+        // DesktopConnectionManager exposes a local rpcClient compatible with JSONRPCSending.
+        dispatcher = nil
         conn.start()
     }
 

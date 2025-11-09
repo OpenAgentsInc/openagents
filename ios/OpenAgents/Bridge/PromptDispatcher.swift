@@ -1,10 +1,10 @@
 import Foundation
 import OpenAgentsCore
 
-#if os(iOS)
 final class PromptDispatcher: PromptDispatching {
     private weak var rpc: JSONRPCSending?
     private let timeline: TimelineStoring
+    private struct EmptyResult: Codable {}
 
     // Track optimistic echo index to adjust session id when server creates a new session
     private var pendingUserEchoIndex: Int?
@@ -25,7 +25,7 @@ final class PromptDispatcher: PromptDispatching {
         if let existing = getSessionId() {
             if let mode = desiredMode { self.setSessionMode(mode, getSessionId: { existing }) }
             let req = ACP.Agent.SessionPromptRequest(session_id: existing, content: parts)
-            rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: BridgeManager.EmptyResult?) in }
+            rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
             return
         }
 
@@ -45,11 +45,11 @@ final class PromptDispatcher: PromptDispatching {
                 struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
                 rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in
                     let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
-                    rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: BridgeManager.EmptyResult?) in }
+                    rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
                 }
             } else {
                 let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
-                rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: BridgeManager.EmptyResult?) in }
+                rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
             }
         }
     }
@@ -57,7 +57,7 @@ final class PromptDispatcher: PromptDispatching {
     func setSessionMode(_ mode: ACPSessionModeId, getSessionId: () -> ACPSessionId?) {
         guard let sid = getSessionId(), let rpc = self.rpc else { return }
         struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
-        rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: sid, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: BridgeManager.EmptyResult?) in }
+        rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: sid, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: EmptyResult?) in }
     }
 
     func cancelCurrentSession(getSessionId: () -> ACPSessionId?) {
@@ -101,5 +101,3 @@ final class PromptDispatcher: PromptDispatching {
         // For now, we do nothing here; BridgeManager mirrors conversion by re-sending objectWillChange when needed.
     }
 }
-#endif
-
