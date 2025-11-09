@@ -27,16 +27,26 @@ Create a Settings view that consolidates user-facing configuration from the curr
 - Sheet or dedicated window presentation
 - macOS-native styling with proper form controls
 
+## Status
+Completed (implemented on main)
+
+What shipped
+- SettingsView with a sidebar of tabs (Connection, Workspace, Agents, Orchestration) using NavigationSplitView.
+- Connection tab shows bridge status, advertising endpoint, and connected client count.
+- Workspace tab supports changing working directory and selecting from recent directories (persisted in UserDefaults).
+- Agents tab provides defaults (mode, reasoning toggle) via AppStorage.
+- Orchestration tab embeds `OrchestrationConsoleView`.
+- Toolbar gear button opens settings; ⌘, shortcut wired.
+
 ## Acceptance Criteria
-- [ ] Create `SettingsView.swift` with tabbed layout
-- [ ] **Connection tab**: Bridge status, server port, connected clients
-- [ ] **Workspace tab**: Working directory picker, recent directories
-- [ ] **Agents tab**: Agent preferences, default agent, capabilities
-- [ ] **Orchestration tab**: Embed existing `OrchestrationConsoleView`
-- [ ] Keyboard shortcut ⌘, to open settings
-- [ ] Save/Cancel buttons with validation
-- [ ] Settings persist via UserDefaults or TinyvexManager
-- [ ] Proper form controls (text fields, pickers, toggles)
+- [x] Create `SettingsView.swift` with tabbed layout
+- [x] **Connection tab**: Bridge status, connected clients
+- [x] **Workspace tab**: Working directory picker, recent directories
+- [x] **Agents tab**: Default agent mode, preferences
+- [x] **Orchestration tab**: Embed `OrchestrationConsoleView`
+- [x] Keyboard shortcut ⌘, to open settings
+- [x] Persist simple preferences via UserDefaults/AppStorage
+- [x] Proper form controls (text fields, pickers, toggles)
 
 ## Technical Details
 

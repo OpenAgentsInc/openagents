@@ -9,6 +9,11 @@ struct SessionSidebarView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // Agent selector at top-left
+            AgentSelectorView()
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+
             // New Chat button
             Button(action: { bridge.startNewSession() }) {
                 HStack(spacing: 8) {
