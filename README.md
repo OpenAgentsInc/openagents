@@ -55,6 +55,22 @@ The v0.3 architecture is Swift-only:
 
 All ACP translation and processing happens in Swift. No Rust, no TypeScript, no web technologies.
 
+### macOS Chat Interface
+
+The macOS app uses a NavigationSplitView-based chat layout:
+
+- Left sidebar: session history (Tinyvex-backed), search, New Chat (⌘N), Delete
+- Center: chat timeline (ACP updates) and composer (Return = send, Shift+Return = newline)
+- Right inspector (reserved): tool call details and JSON output (hidden by default)
+
+On macOS, the app talks to the in-process `DesktopWebSocketServer` via a local JSON‑RPC adapter and subscribes to `session/update` notifications via Combine. Updates are persisted to Tinyvex by `SessionUpdateHub`. See ADR‑0007 for details.
+
+Keyboard shortcuts (macOS): ⌘N, ⌘K, ⌘B, ⌘, ⌥⌘D, ⌘/.
+
+Links:
+- ADR‑0007: docs/adr/0007-macos-chat-interface-architecture.md
+- Chat Desktop docs: docs/chat-desktop/
+
 ## Getting Started
 
 ### iOS
