@@ -82,5 +82,9 @@ extension DesktopWebSocketServer {
     public func localGetSessionTitle(sessionId: String) async -> String? {
         return try? await self.tinyvexDb?.getSessionTitle(sessionId: sessionId)
     }
+
+    public func localClearSessionTitle(sessionId: String) async {
+        try? await self.tinyvexDb?.clearSessionTitle(sessionId: sessionId)
+    }
 }
 #endif

@@ -58,6 +58,12 @@ Build the three panes and agent selector.
 | [#27](027-sidebar-persisted-titles.md) | Load Persisted Titles from Tinyvex | Medium (2h) | #26 |
 | [#28](028-export-transcript.md) | Export Transcript (JSON/Markdown) | Medium (2-3h) | #11 |
 
+### Phase 4.1: Follow-ups (Issues #29+)
+
+| Issue | Title | Complexity | Dependencies |
+|-------|-------|------------|--------------|
+| [#29](029-reset-session-title.md) | Reset/Clear Session Title (Tinyvex) | Low-Medium (1-2h) | #26 |
+
 ### Phase 3: Settings & Developer Pages (Issues #8-10)
 Migrate dashboard content to dedicated views.
 

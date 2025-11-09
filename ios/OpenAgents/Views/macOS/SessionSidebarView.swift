@@ -121,6 +121,9 @@ struct SessionSidebarView: View {
                                 Button { startEditTitle(for: s.session_id) } label: {
                                     Label("Rename…", systemImage: "pencil")
                                 }
+                                Button { bridge.clearSessionTitle(sessionId: s.session_id) } label: {
+                                    Label("Reset Title", systemImage: "arrow.uturn.backward")
+                                }
                             }
                             .onHover { over in hoveredId = over ? s.session_id : nil }
                         }
