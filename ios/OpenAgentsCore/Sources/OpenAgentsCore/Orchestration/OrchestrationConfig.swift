@@ -85,6 +85,19 @@ public struct OrchestrationConfig: Codable, Sendable, Equatable {
     public func validate() -> [String] {
         var errors: [String] = []
 
+        // Validate workspace root
+        if workspaceRoot.isEmpty {
+            errors.append("workspaceRoot cannot be empty")
+        } else {
+            let fm = FileManager.default
+            var isDirectory: ObjCBool = false
+            if !fm.fileExists(atPath: workspaceRoot, isDirectory: &isDirectory) {
+                errors.append("workspaceRoot does not exist: \(workspaceRoot)")
+            } else if !isDirectory.boolValue {
+                errors.append("workspaceRoot must be a directory: \(workspaceRoot)")
+            }
+        }
+
         // Validate time budget (15 min - 2 hours)
         if timeBudgetSec < 900 || timeBudgetSec > 7200 {
             errors.append("timeBudgetSec must be between 900 (15 min) and 7200 (2 hours)")
@@ -225,12 +238,10 @@ extension OrchestrationConfig {
                 }
             }
 
-            // Validate window start < end if both present
-            if let start = windowStart, let end = windowEnd {
-                if start >= end {
-                    errors.append("schedule.windowStart must be before windowEnd")
-                }
-            }
+            // Validate window relationship if both present
+            // Note: Allow cross-midnight windows (e.g., "23:00" to "05:00")
+            // If windowStart >= windowEnd, we interpret this as crossing midnight
+            // which is a valid overnight orchestration pattern
 
             // Validate jitter range
             if let jitter = jitterMs {
