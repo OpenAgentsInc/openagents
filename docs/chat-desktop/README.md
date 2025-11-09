@@ -69,7 +69,7 @@ Wire everything together and add polish.
 | [#13](013-keyboard-accessibility.md) | Add Keyboard Shortcuts and Accessibility Features | Medium (4-5h) | All UI |
 | [#14](014-theming-consistency.md) | Apply Consistent Theming (Liquid Glass, Berkeley Mono, OATheme) | Medium (4-6h) | All UI |
 
-### Phase 5: Testing & Documentation (Issues #15-18)
+### Phase 5: Testing & Documentation (Issues #15-19)
 Validate and document the implementation.
 
 | Issue | Title | Complexity | Dependencies |
@@ -78,6 +78,7 @@ Validate and document the implementation.
 | [#16](016-update-adrs.md) | Create/Update ADRs for Architecture Changes | Low-Medium (2-3h) | All implementation |
 | [#17](017-update-documentation.md) | Update AGENTS.md (CLAUDE.md symlink) with New macOS UI Architecture | Low (1-2h) | #16 |
 | [#18](018-update-root-readme.md) | Update Root README with macOS Chat Interface and Links | Low-Medium (1-2h) | #16 |
+| [#19](019-macos-quickstart-and-troubleshooting.md) | macOS Chat — Quickstart & Troubleshooting | Low-Medium (1-2h) | #17 |
 
 ## Estimated Total Effort
 
