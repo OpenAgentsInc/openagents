@@ -11,7 +11,7 @@ struct ChatMacOSView: View {
             SessionSidebarView()
                 .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
         } detail: {
-            ChatAreaPlaceholderView()
+            ChatAreaView()
                 .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
                 .navigationTitle("")
         }
