@@ -66,6 +66,22 @@ extension DesktopWebSocketServer {
 
         OpenAgentsLog.bridgeServer.debug("handleSessionPrompt session=\(sidStr, privacy: .public) prompt=\(promptText.prefix(50), privacy: .private)...")
 
+        // Check if this is a setup session (conversational orchestration setup)
+        if let conversationId = setupSessionById[sidStr] {
+            if let orchestrator = await SetupOrchestratorRegistry.shared.get(conversationId) {
+                OpenAgentsLog.bridgeServer.info("Routing to SetupOrchestrator conversation=\(conversationId)")
+                await orchestrator.handleUserResponse(promptText)
+                JsonRpcRouter.sendResponse(id: id, result: ["status": "accepted"]) { text in
+                    client.send(text: text)
+                }
+                return
+            } else {
+                // Cleanup stale mapping
+                OpenAgentsLog.bridgeServer.warning("Stale setup session mapping for session=\(sidStr), removing")
+                setupSessionById.removeValue(forKey: sidStr)
+            }
+        }
+
         // Get mode (defaults to .default_mode if not set)
         let mode = modeBySession[sidStr] ?? .default_mode
 

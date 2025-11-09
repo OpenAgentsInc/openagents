@@ -19,7 +19,7 @@ struct ChatAreaPlaceholderView: View {
             .padding(32)
         }
         .background(backgroundMaterial)
-        .modifier(ScrollEdgeHardIfAvailable())
+        .scrollEdgeEffect(.hard)
     }
 
     @ViewBuilder

@@ -14,7 +14,7 @@ struct SidebarPlaceholderView: View {
             .padding()
         }
         .background(backgroundMaterial)
-        .modifier(ScrollEdgeHardIfAvailable())
+        .scrollEdgeEffect(.hard)
     }
 
     @ViewBuilder
