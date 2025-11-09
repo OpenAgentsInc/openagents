@@ -9,10 +9,19 @@ High - Core ChatGPT-style feature
 ## Description
 Build the left sidebar that displays session history with search functionality, mimicking ChatGPT's session list UI.
 
-## Current State
-- No session history UI on macOS
-- iOS has `HistoryListView` but designed for mobile sheet presentation
-- `TinyvexManager` can store/retrieve sessions but no desktop UI
+## Status
+Partially completed (core UI and data wiring implemented on main)
+
+What shipped
+- Component: `ios/OpenAgents/Views/macOS/SessionSidebarView.swift`.
+- Integration: `ChatMacOSView` sidebar uses `SessionSidebarView`.
+- Data: Uses `BridgeManager.fetchRecentSessions()` via the shared dispatcher (LocalJsonRpcClient) and displays `RecentSession` items.
+- Features: New Chat button, search field, date grouping (Today/Yesterday/Last 7/Last 30/Older), hover highlight, active session highlight, click to load timeline.
+- Styling: OATheme dark gray background (no glass), Berkeley Mono, compact row layout.
+
+Remaining
+- Generated titles via Foundation Models (fallback to snippet) — currently shows id prefix; FM integration to follow.
+- Keyboard navigation — add arrow/enter handling in a follow-up.
 
 ## Target State
 - Left sidebar showing all chat sessions
@@ -27,16 +36,16 @@ Build the left sidebar that displays session history with search functionality, 
 - Smooth animations for selection changes
 
 ## Acceptance Criteria
-- [ ] Create `SessionSidebarView.swift` for the left pane
-- [ ] Display sessions grouped by date
-- [ ] Implement search bar with live filtering
-- [ ] Show "New Chat" button at top (capsule button in OATheme dark variant)
-- [ ] Highlight currently active session
-- [ ] Click session to load it in chat area
+- [x] Create `SessionSidebarView.swift` for the left pane
+- [x] Display sessions grouped by date
+- [x] Implement search bar with live filtering
+- [x] Show "New Chat" button at top (OATheme dark variant)
+- [x] Highlight currently active session
+- [x] Click session to load it in chat area
 - [ ] Hover shows delete button (or context menu)
 - [ ] Use Foundation Models for auto-generated titles (fallback to snippet)
-- [ ] Apply OATheme dark gray background (no Liquid Glass for now)
-- [ ] Optional: pinned section headers (avoid `.scrollEdgeEffect` until we re‑enable glass)
+- [x] Apply OATheme dark gray background (no Liquid Glass)
+- [ ] Optional: pinned section headers (deferred; no `.scrollEdgeEffect` for now)
 - [ ] Empty state when no sessions exist
 - [ ] Keyboard navigation (↑/↓ arrows, Enter to select)
 
