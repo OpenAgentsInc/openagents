@@ -86,5 +86,84 @@ extension DesktopWebSocketServer {
     public func localClearSessionTitle(sessionId: String) async {
         try? await self.tinyvexDb?.clearSessionTitle(sessionId: sessionId)
     }
+
+    // MARK: - Orchestration Scheduler (local helpers)
+    public struct LocalSchedulerStatus: Codable { public let running: Bool; public let active_config_id: String?; public let next_wake_time: Int?; public let message: String }
+
+    public func localSchedulerStatus() -> LocalSchedulerStatus {
+        var next: Int? = nil
+        var msg = ""
+        if let cfg = self.activeOrchestrationConfig,
+           let candidate = SchedulePreview.nextRuns(schedule: cfg.schedule, count: 1, from: Date()).first {
+            next = Int(candidate.timeIntervalSince1970)
+            msg = SchedulePreview.humanReadable(schedule: cfg.schedule)
+        } else {
+            msg = "No active orchestration config"
+        }
+        return .init(running: false, active_config_id: self.activeOrchestrationConfig?.id, next_wake_time: next, message: msg)
+    }
+
+    public struct LocalRunNowResult: Codable { public let started: Bool; public let session_id: String? }
+
+    public func localSchedulerRunNow() async -> LocalRunNowResult {
+        guard let cfg = self.activeOrchestrationConfig else { return .init(started: false, session_id: nil) }
+        guard let updateHub = self.updateHub else { return .init(started: false, session_id: nil) }
+        let sessionId = ACPSessionId(UUID().uuidString)
+        if #available(macOS 26.0, *) {
+            Task.detached { [weak self] in
+                guard let self = self else { return }
+                let policy = ExplorationPolicy(allow_external_llms: false, allow_network: false, use_native_tool_calling: false)
+                let streamHandler: ACPUpdateStreamHandler = { [weak self] update in
+                    await self?.sendSessionUpdate(sessionId: sessionId, update: update)
+                }
+                // Immediate heartbeat so tests and ops see a quick update
+                let startChunk = ACP.Client.ContentChunk(content: .text(.init(text: "⏱️ Orchestration run starting…")))
+                await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(startChunk))
+                let orchestrator = ExploreOrchestrator(
+                    workspaceRoot: cfg.workspaceRoot,
+                    goals: cfg.goals.isEmpty ? ["Automated maintenance run"] : cfg.goals,
+                    policy: policy,
+                    streamHandler: streamHandler
+                )
+                do {
+                    let summary = try await orchestrator.startExploration()
+                    // Emit a simple summary message like runOrchestration
+                    var sections: [String] = []
+                    sections.append("**Repository:** \(summary.repo_name)")
+                    let summaryText = sections.joined(separator: "\n")
+                    let summaryChunk = ACP.Client.ContentChunk(content: .text(.init(text: summaryText)))
+                    await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(summaryChunk))
+                } catch {
+                    let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Orchestration failed: \(error.localizedDescription)")))
+                    await self.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
+                }
+            }
+            return .init(started: true, session_id: sessionId.value)
+        } else {
+            return .init(started: false, session_id: nil)
+        }
+    }
+
+    // MARK: - Orchestration Config (local helpers)
+    @discardableResult
+    public func localConfigSet(_ config: OrchestrationConfig) async -> Bool {
+        guard let db = self.tinyvexDb, let json = try? String(data: JSONEncoder().encode(config), encoding: .utf8) else { return false }
+        do {
+            try await db.insertOrUpdateOrchestrationConfig(json ?? "{}", id: config.id, workspaceRoot: config.workspaceRoot, updatedAt: config.updatedAt)
+            return true
+        } catch { return false }
+    }
+
+    @discardableResult
+    public func localConfigActivate(id: String, workspaceRoot: String) async -> Bool {
+        guard let db = self.tinyvexDb else { return false }
+        do {
+            guard let json = try await db.getOrchestrationConfig(id: id, workspaceRoot: workspaceRoot),
+                  let data = json.data(using: .utf8),
+                  let cfg = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) else { return false }
+            self.activeOrchestrationConfig = cfg
+            return true
+        } catch { return false }
+    }
 }
 #endif

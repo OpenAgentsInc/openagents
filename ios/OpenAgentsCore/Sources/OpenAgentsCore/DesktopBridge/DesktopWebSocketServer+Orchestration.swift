@@ -49,12 +49,18 @@ private struct SchedulerReloadResponse: Codable {
     let message: String
 }
 
-private struct SchedulerStatusResponse: Codable {
-    let running: Bool
-    let active_config_id: String?
-    let next_wake_time: Int?
-    let message: String
-}
+    private struct SchedulerStatusResponse: Codable {
+        let running: Bool
+        let active_config_id: String?
+        let next_wake_time: Int?
+        let message: String
+    }
+    
+    private struct SchedulerRunNowResponse: Codable {
+        let started: Bool
+        let message: String
+        let session_id: String?
+    }
 
 private struct SetupStartRequest: Codable {
     let workspace_root: String?
@@ -129,6 +135,18 @@ extension DesktopWebSocketServer {
         router.register(method: ACPRPC.orchestrateSchedulerStatus) { [weak self] id, params, rawDict in
             guard let self = self, let client = self.currentClient else { return }
             await self.handleSchedulerStatus(id: id, client: client)
+        }
+
+        // Immediate trigger (ops/testing): run scheduled orchestration now
+        router.register(method: ACPRPC.orchestrateSchedulerRunNow) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSchedulerRunNow(id: id, client: client)
+        }
+
+        // Test alias: advance time (implemented as run_now)
+        router.register(method: ACPRPC.orchestrateSchedulerAdvance) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSchedulerRunNow(id: id, client: client)
         }
 
         // Setup Handlers (conversational config creation)
@@ -483,9 +501,14 @@ extension DesktopWebSocketServer {
                 return
             }
 
-            // TODO: When SchedulerService is implemented, actually activate the config
-            // For now, just return success
-            OpenAgentsLog.bridgeServer.info("Activated config: \(configId) (no-op for MVP)")
+            // Cache active config in memory for scheduler RPCs
+            if let json = try await db.getOrchestrationConfig(id: configId, workspaceRoot: workspaceRoot),
+               let data = json.data(using: .utf8),
+               let cfg = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) {
+                self.activeOrchestrationConfig = cfg
+            }
+
+            OpenAgentsLog.bridgeServer.info("Activated config: \(configId)")
 
             let response = ConfigActivateResponse(
                 success: true,
@@ -524,19 +547,62 @@ extension DesktopWebSocketServer {
     func handleSchedulerStatus(id: JSONRPC.ID, client: Client) async {
         OpenAgentsLog.bridgeServer.info("recv orchestrate/scheduler.status")
 
-        // TODO: When SchedulerService is implemented, return actual status
-        // For now, return stub status
-        OpenAgentsLog.bridgeServer.warning("orchestrate/scheduler.status is a stub (SchedulerService not yet implemented)")
+        // Compute a best-effort next wake from active config using SchedulePreview
+        var next: Int? = nil
+        var msg = ""
+        if let cfg = self.activeOrchestrationConfig,
+           let candidate = SchedulePreview.nextRuns(schedule: cfg.schedule, count: 1, from: Date()).first {
+            next = Int(candidate.timeIntervalSince1970)
+            msg = SchedulePreview.humanReadable(schedule: cfg.schedule)
+        } else {
+            msg = "No active orchestration config"
+        }
 
         let response = SchedulerStatusResponse(
-            running: false,
-            active_config_id: nil,
-            next_wake_time: nil,
-            message: "SchedulerService not yet implemented"
+            running: false, // background scheduler loop not implemented yet
+            active_config_id: self.activeOrchestrationConfig?.id,
+            next_wake_time: next,
+            message: msg
         )
         JsonRpcRouter.sendResponse(id: id, result: response) { text in
             OpenAgentsLog.bridgeServer.debug("send orchestrate/scheduler.status result")
             client.send(text: text)
+        }
+    }
+
+    // MARK: - Run Now (immediate trigger)
+    func handleSchedulerRunNow(id: JSONRPC.ID, client: Client) async {
+        guard let cfg = self.activeOrchestrationConfig else {
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "No active orchestration config") { text in
+                client.send(text: text)
+            }
+            return
+        }
+
+        let sessionId = ACPSessionId(UUID().uuidString)
+        let planId = UUID().uuidString
+
+        // Respond immediately
+        let resp = SchedulerRunNowResponse(started: true, message: "Triggered run_now", session_id: sessionId.value)
+        JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+
+        // Kick off orchestration asynchronously
+        if #available(macOS 26.0, *) {
+            Task.detached { [weak self] in
+                guard let self = self else { return }
+                let req = OrchestrateExploreStartRequest(
+                    root: cfg.workspaceRoot,
+                    remote_url: nil,
+                    branch: nil,
+                    policy: cfg.agentPreferences.prefer == .codex
+                        ? ExplorationPolicy(allow_external_llms: false, allow_network: false, use_native_tool_calling: false)
+                        : ExplorationPolicy(allow_external_llms: false, allow_network: false, use_native_tool_calling: false),
+                    goals: cfg.goals.isEmpty ? ["Automated maintenance run"] : cfg.goals
+                )
+                await self.runOrchestration(request: req, sessionId: sessionId, planId: planId, client: client)
+            }
+        } else {
+            OpenAgentsLog.bridgeServer.warning("run_now requires macOS 26.0+")
         }
     }
 

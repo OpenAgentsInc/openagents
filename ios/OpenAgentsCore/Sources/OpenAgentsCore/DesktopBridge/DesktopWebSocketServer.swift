@@ -124,6 +124,11 @@ public class DesktopWebSocketServer {
     // Session file tracking (for optional tailer)
     var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
 
+    // MARK: - Orchestration (active config cache)
+    /// Active orchestration configuration cached in-memory after `orchestrate/config.activate`.
+    /// Scheduler RPCs (status/run_now) consult this.
+    var activeOrchestrationConfig: OrchestrationConfig? = nil
+
     public init() {
         // Register agent providers
         Task {

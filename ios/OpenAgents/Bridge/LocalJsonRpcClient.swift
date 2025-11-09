@@ -5,6 +5,8 @@ import OpenAgentsCore
 final class LocalJsonRpcClient: JSONRPCSending {
     private struct OkResp: Codable { let ok: Bool }
     private struct TitleResp: Codable { let title: String? }
+    private struct ConfigSetResp: Codable { let success: Bool; let config_id: String; let updated_at: Int64 }
+    private struct ConfigActivateResp: Codable { let success: Bool; let active_config_id: String }
     private let server: DesktopWebSocketServer
 
     init(server: DesktopWebSocketServer) {
@@ -69,6 +71,29 @@ final class LocalJsonRpcClient: JSONRPCSending {
             case ACPRPC.orchestrateExploreStart:
                 // Not implemented locally yet; allow caller to treat as unavailable
                 result = nil
+            case ACPRPC.orchestrateConfigSet:
+                if let data = try? JSONEncoder().encode(params),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let cfgObj = obj["config"],
+                   let cfgData = try? JSONSerialization.data(withJSONObject: cfgObj),
+                   let cfg = try? JSONDecoder().decode(OrchestrationConfig.self, from: cfgData) {
+                    let ok = await server.localConfigSet(cfg)
+                    result = Self.bridge(ConfigSetResp(success: ok, config_id: cfg.id, updated_at: cfg.updatedAt), as: R.self)
+                } else { result = nil }
+            case ACPRPC.orchestrateConfigActivate:
+                if let data = try? JSONEncoder().encode(params),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let id = obj["id"] as? String,
+                   let root = obj["workspace_root"] as? String {
+                    let ok = await server.localConfigActivate(id: id, workspaceRoot: root)
+                    result = Self.bridge(ConfigActivateResp(success: ok, active_config_id: id), as: R.self)
+                } else { result = nil }
+            case ACPRPC.orchestrateSchedulerStatus:
+                let status = server.localSchedulerStatus()
+                result = Self.bridge(status, as: R.self)
+            case ACPRPC.orchestrateSchedulerRunNow, ACPRPC.orchestrateSchedulerAdvance:
+                let out = await server.localSchedulerRunNow()
+                result = Self.bridge(out, as: R.self)
 
             default:
                 result = nil
