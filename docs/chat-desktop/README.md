@@ -40,7 +40,7 @@ Foundation for the three-pane layout and core components.
 | [#2](002-bridge-manager-chat-state.md) | Extend BridgeManager with iOS Chat State Properties for macOS | Medium (2-4h) | None |
 | [#3](003-macos-composer.md) | Build macOS Composer Component (NSTextView-based Input) | Medium (3-4h) | #2 |
 
-### Phase 2: Main UI Components (Issues #4-7, #21-24)
+### Phase 2: Main UI Components (Issues #4-7, #21-25)
 Build the three panes and agent selector.
 
 | Issue | Title | Complexity | Dependencies |
@@ -53,6 +53,7 @@ Build the three panes and agent selector.
 | [#22](022-inspector-actions-ux.md) | Inspector Actions & UX Refinements | Low-Medium (2-3h) | #21 |
 | [#23](023-sidebar-search-focus.md) | Sidebar Search Focus & UX | Low (1h) | #4 |
 | [#24](024-inspector-structured-sections.md) | Inspector Structured Sections | Medium (2-3h) | #21 |
+| [#25](025-sidebar-inline-title-edit.md) | Sidebar Inline Title Edit (Local) | Low-Medium (2h) | #4 |
 
 ### Phase 3: Settings & Developer Pages (Issues #8-10)
 Migrate dashboard content to dedicated views.

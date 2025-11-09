@@ -8,6 +8,8 @@ struct SessionSidebarView: View {
     @State private var hoveredId: String? = nil
     @State private var selectedSessionId: String? = nil
     @FocusState private var isSearchFocused: Bool
+    @State private var editingTitleId: String? = nil
+    @State private var editingTitleText: String = ""
 
     var body: some View {
         VStack(spacing: 8) {
@@ -74,10 +76,19 @@ struct SessionSidebarView: View {
                         ForEach(grouped[label] ?? [], id: \.session_id) { s in
                             HStack(alignment: .center, spacing: 8) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(title(for: s))
-                                        .font(OAFonts.mono(.body, 12))
-                                        .foregroundStyle(OATheme.Colors.textPrimary)
-                                        .lineLimit(1)
+                                    if editingTitleId == s.session_id {
+                                        TextField("Title", text: $editingTitleText, onCommit: { commitEditTitle(for: s.session_id) })
+                                            .textFieldStyle(.plain)
+                                            .font(OAFonts.mono(.body, 12))
+                                            .foregroundStyle(OATheme.Colors.textPrimary)
+                                            .onExitCommand { cancelEditTitle() }
+                                    } else {
+                                        Text(title(for: s))
+                                            .font(OAFonts.mono(.body, 12))
+                                            .foregroundStyle(OATheme.Colors.textPrimary)
+                                            .lineLimit(1)
+                                            .onTapGesture(count: 2) { startEditTitle(for: s.session_id) }
+                                    }
                                     HStack(spacing: 6) {
                                         Text(relativeTime(ms: s.last_ts))
                                             .font(OAFonts.mono(.caption, 11))
@@ -106,6 +117,9 @@ struct SessionSidebarView: View {
                             .contextMenu {
                                 Button(role: .destructive) { confirmDelete(s) } label: {
                                     Label("Delete", systemImage: "trash")
+                                }
+                                Button { startEditTitle(for: s.session_id) } label: {
+                                    Label("Rename…", systemImage: "pencil")
                                 }
                             }
                             .onHover { over in hoveredId = over ? s.session_id : nil }
@@ -199,6 +213,23 @@ struct SessionSidebarView: View {
     private func title(for s: RecentSession) -> String {
         if let t = bridge.conversationTitles[s.session_id], !t.isEmpty { return t }
         return String(s.session_id.prefix(12)) + "…"
+    }
+
+    private func startEditTitle(for id: String) {
+        editingTitleId = id
+        editingTitleText = bridge.conversationTitles[id] ?? ""
+    }
+
+    private func commitEditTitle(for id: String) {
+        let newTitle = editingTitleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !newTitle.isEmpty { bridge.conversationTitles[id] = newTitle }
+        editingTitleId = nil
+        editingTitleText = ""
+    }
+
+    private func cancelEditTitle() {
+        editingTitleId = nil
+        editingTitleText = ""
     }
 
     private func rowBackground(for s: RecentSession) -> Color { // retained for hover styling in List
