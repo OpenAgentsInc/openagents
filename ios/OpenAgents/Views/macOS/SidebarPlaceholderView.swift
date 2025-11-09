@@ -12,21 +12,7 @@ struct SidebarPlaceholderView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .background {
-            if #available(macOS 15.0, *) {
-                Rectangle()
-                    .fill(.clear)
-                    .glassEffect(.regular, in: Rectangle())
-                    .ignoresSafeArea(.container, edges: .top)
-            } else {
-                OATheme.Colors.sidebarBackground
-            }
-        }
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(OATheme.Colors.background)
-                .frame(width: 2)
-        }
+        .background(OATheme.Colors.sidebarBackground.ignoresSafeArea(.container, edges: .top))
     }
 
     // No extra material; rely on OATheme surfaces

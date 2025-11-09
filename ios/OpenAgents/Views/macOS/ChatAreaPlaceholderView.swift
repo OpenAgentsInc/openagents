@@ -14,12 +14,6 @@ struct ChatAreaPlaceholderView: View {
             .frame(maxWidth: .infinity)
         }
         .background(OATheme.Colors.background)
-        // Ensure no split divider shows against main content
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(OATheme.Colors.background)
-                .frame(width: 2)
-        }
         .navigationTitle("")
         // Hard scroll edge effect (optional visual polish)
     }
