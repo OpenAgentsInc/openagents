@@ -3,43 +3,30 @@ import SwiftUI
 #if os(macOS)
 struct SidebarPlaceholderView: View {
     var body: some View {
-        ZStack(alignment: .leading) {
-            // Base surface (fallback)
-            OATheme.Colors.sidebarBackground
-
-            // Content (no scroll effects in placeholder)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Sidebar Placeholder")
-                        .font(OAFonts.ui(.headline, 14))
-                    Text("Session history will appear here.")
-                        .font(OAFonts.ui(.subheadline, 12))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-                }
-                .padding()
+        List {
+            Section("Sidebar") {
+                Text("Session history will appear here.")
+                    .font(OAFonts.ui(.subheadline, 12))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
             }
-            .scrollDisabled(true)
-
-            // Glass shape that "hovers" into the toolbar area
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background {
             if #available(macOS 15.0, *) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .inset(by: 6)
+                Rectangle()
                     .fill(.clear)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .offset(y: -14) // hover into toolbar
+                    .glassEffect(.regular, in: Rectangle())
                     .ignoresSafeArea(.container, edges: .top)
-                    .allowsHitTesting(false)
+            } else {
+                OATheme.Colors.sidebarBackground
             }
-
-            // Trailing edge: cover NSSplitView divider completely (over glass)
+        }
+        .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(OATheme.Colors.background)
                 .frame(width: 2)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .allowsHitTesting(false)
         }
-        .clipped()
-        .ignoresSafeArea(.container, edges: .top)
     }
 
     // No extra material; rely on OATheme surfaces

@@ -8,12 +8,29 @@ struct ChatMacOSView: View {
     var body: some View {
         Group {
             if #available(macOS 15.0, *) {
-                GlassEffectContainer { splitView }
+                GlassEffectContainer {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        SidebarPlaceholderView()
+                            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
+                    } detail: {
+                        ChatAreaPlaceholderView()
+                            .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
+                            .navigationTitle("")
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                }
             } else {
-                splitView
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
+                } detail: {
+                    ChatAreaPlaceholderView()
+                        .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
+                        .navigationTitle("")
+                }
+                .navigationSplitViewStyle(.balanced)
             }
         }
-        // Ensure our palette is the base surface
         .background(OATheme.Colors.background.ignoresSafeArea())
         .toolbar(.visible, for: .windowToolbar)
         .toolbarBackground(OATheme.Colors.background, for: .windowToolbar)
@@ -22,34 +39,7 @@ struct ChatMacOSView: View {
     }
 
     @ViewBuilder
-    private var splitView: some View {
-        if showInspector {
-            AnyView(
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-                    SidebarPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
-                } content: {
-                    ChatAreaPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 600, ideal: 900)
-                } detail: {
-                    InspectorPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
-                }
-                .navigationSplitViewStyle(.balanced)
-            )
-        } else {
-            AnyView(
-                NavigationSplitView {
-                    SidebarPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
-                } detail: {
-                    ChatAreaPlaceholderView()
-                        .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
-                }
-                .navigationSplitViewStyle(.balanced)
-            )
-        }
-    }
+    private var splitView: some View { EmptyView() }
 
     private func toggleSidebar() {
         switch columnVisibility {
