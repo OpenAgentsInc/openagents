@@ -84,3 +84,16 @@ Top risks (with recommended priority):
 - ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/ExploreOrchestrator.swift (~1,150)
 - See metrics.md for the full top list.
 
+---
+
+## Addendum — 2025-11-09 (Status Update)
+
+The following audit actions have been completed and merged to main:
+
+- Programmatic orchestration control: added JSON‑RPC methods `orchestrate/scheduler.run_now` and enhanced `orchestrate/scheduler.status` (with `next_wake_time`), plus an alias `orchestrate/scheduler.advance` for tests. Desktop server now caches the active orchestration config on `config.activate` and computes status using `SchedulePreview`.
+- macOS local adapter: `LocalJsonRpcClient` implements orchestration config set/activate and scheduler status/run_now locally (no socket) for tests and operator flows.
+- Test harness: new `OrchestrationSchedulerTests` validates config set → activate → status → run_now and observes ACP `session/update` via the server’s Combine publisher.
+- Environment‑dependent tests: Claude CLI execution test now soft‑skips when the CLI exists but cannot execute (e.g., missing Node runtime), preventing unrelated failures.
+- Tinyvex titles: implemented clear title end‑to‑end (DB + RPC + sidebar UI); documented in chat‑desktop Issue #29.
+
+Remaining medium/long‑term items from this audit were either addressed separately or slated for follow‑ups (e.g., modularizing large files, CI/lint). See 2025‑11‑09 audit for next steps.

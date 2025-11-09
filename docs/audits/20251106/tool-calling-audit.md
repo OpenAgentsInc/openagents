@@ -383,3 +383,12 @@ The path forward is clear: let the model call tools directly, maintain session s
 - `docs/adr/0006-foundation-models.md` - ADR for FM adoption
 - `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/FMTools.swift` - Current tool definitions
 - `ios/OpenAgentsCore/Sources/OpenAgentsCore/Orchestration/ExploreOrchestrator.swift` - Current orchestrator implementation
+
+
+---
+
+## Addendum — 2025-11-09 (Status Update)
+
+- Orchestration runs are now observable end-to-end via ACP using `scheduler.run_now` and status RPCs, enabling rapid validation of tool-call rendering and persistence in Tinyvex.
+- The macOS app uses a local JSON‑RPC adapter to exercise the same code paths programmatically (no socket), which supports repeatable tests and developer workflows.
+- Native FM tool-calling loop remains the target; recent work focused on testability and observability first. With the harness in place, adopting the loop can proceed behind tests.
