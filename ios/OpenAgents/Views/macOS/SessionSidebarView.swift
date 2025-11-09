@@ -6,6 +6,7 @@ struct SessionSidebarView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var searchText: String = ""
     @State private var hoveredId: String? = nil
+    @State private var fallbackSessions: [RecentSession] = []
 
     var body: some View {
         VStack(spacing: 8) {
@@ -107,13 +108,19 @@ struct SessionSidebarView: View {
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
         .background(OATheme.Colors.sidebarBackground)
-        .onAppear { bridge.fetchRecentSessions() }
+        .onAppear {
+            bridge.fetchRecentSessions()
+            if bridge.recentSessions.isEmpty {
+                loadFallbackFromFilesystem()
+            }
+        }
     }
 
     private var filtered: [RecentSession] {
-        guard !searchText.isEmpty else { return bridge.recentSessions }
+        let source = bridge.recentSessions.isEmpty ? fallbackSessions : bridge.recentSessions
+        guard !searchText.isEmpty else { return source }
         let q = searchText.lowercased()
-        return bridge.recentSessions.filter { s in
+        return source.filter { s in
             let idMatch = s.session_id.lowercased().contains(q)
             let modeMatch = (s.mode ?? "").lowercased().contains(q)
             return idMatch || modeMatch
@@ -191,6 +198,26 @@ struct SessionSidebarView: View {
         case "claude-code", "claude_code": return "Claude"
         case "default_mode": return "Claude"
         default: return mode.capitalized
+        }
+    }
+
+    private func loadFallbackFromFilesystem() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Scan Claude and Codex default locations for top recent sessions
+            let claude = ClaudeScanner.scanTopK(topK: 20)
+            let codex = CodexScanner.scanTopK(topK: 20)
+            let rows = (claude + codex).sorted { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+            let mapped: [RecentSession] = rows.map { r in
+                RecentSession(
+                    session_id: r.id,
+                    last_ts: r.last_message_ts ?? r.updated_at,
+                    message_count: Int64(r.message_count ?? 0),
+                    mode: r.source
+                )
+            }
+            DispatchQueue.main.async {
+                self.fallbackSessions = mapped
+            }
         }
     }
 }
