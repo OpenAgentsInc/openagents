@@ -52,7 +52,7 @@ struct ComposerMac: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(OATheme.Colors.background)
+                .fill(OATheme.Colors.sidebarBackground) // dark gray theme surface
         )
     }
 
