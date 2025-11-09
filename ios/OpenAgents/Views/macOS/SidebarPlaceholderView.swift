@@ -4,7 +4,7 @@ import SwiftUI
 struct SidebarPlaceholderView: View {
     var body: some View {
         ZStack(alignment: .leading) {
-            // Solid theme surface to avoid system vibrancy edges
+            // Base surface (fallback)
             OATheme.Colors.sidebarBackground
 
             // Content (no scroll effects in placeholder)
@@ -19,6 +19,15 @@ struct SidebarPlaceholderView: View {
                 .padding()
             }
             .scrollDisabled(true)
+
+            // Apply Liquid Glass when available (under content overlays)
+            if #available(macOS 15.0, *) {
+                Rectangle()
+                    .fill(.clear)
+                    .glassEffect(.regular, in: Rectangle())
+                    .ignoresSafeArea(.container, edges: .top)
+                    .allowsHitTesting(false)
+            }
 
             // Trailing edge: cover NSSplitView divider completely
             Rectangle()
