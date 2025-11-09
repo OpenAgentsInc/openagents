@@ -189,7 +189,13 @@ struct SessionSidebarView: View {
     private func loadSession(_ sessionId: String) {
         bridge.currentSessionId = nil
         bridge.timeline.clearAll()
-        bridge.loadSessionTimeline(sessionId: sessionId)
+        if let hit = (bridge.recentSessions.first { $0.session_id == sessionId }) {
+            bridge.loadSessionTimeline(sessionId: hit.session_id)
+        } else if let fb = (fallbackSessions.first { $0.session_id == sessionId }) {
+            bridge.loadFilesystemSessionTimeline(sessionId: fb.session_id, mode: fb.mode)
+        } else {
+            bridge.loadSessionTimeline(sessionId: sessionId)
+        }
     }
 
     private func modeLabel(_ mode: String) -> String {
