@@ -24,14 +24,14 @@ Update `AGENTS.md` (project instructions; `CLAUDE.md` is a symlink) to reflect t
 - Examples reference new components
 
 ## Acceptance Criteria
-- [ ] Update "Key Components" section with macOS chat UI
-- [ ] Update "Repository Layout" with new views structure
-- [ ] Update "Architecture" section to mention three-pane layout
-- [ ] Update "Common Tasks" with chat-related examples
-- [ ] Remove/update outdated SimplifiedMacOSView references
-- [ ] Add navigation to settings/developer views
+- [x] Update "Key Components" section with macOS chat UI
+- [x] Update "Repository Layout" with new views structure
+- [x] Update "Architecture" section to mention three-pane layout
+- [x] Update "Common Tasks" with chat-related examples
+- [x] Remove/update outdated SimplifiedMacOSView references
+- [x] Add navigation to settings/developer views
 - [ ] Update screenshots or diagrams (if any)
-- [ ] Verify all file paths are correct
+- [x] Verify all file paths are correct
 
 ## Technical Details
 
@@ -199,13 +199,17 @@ None - Final documentation step
 Low (1-2 hours)
 
 ## Testing Requirements
-- [ ] All file paths referenced exist
-- [ ] All keyboard shortcuts are correct
-- [ ] All feature descriptions match implementation
-- [ ] Links to ADRs work
-- [ ] No outdated references remain
-- [ ] AGENTS.md renders correctly in GitHub/editors
-- [ ] AI agents can understand new architecture from AGENTS.md
+- [x] All file paths referenced exist
+- [x] All keyboard shortcuts are correct
+- [x] All feature descriptions match implementation
+- [x] Links to ADRs work (ADR‑0007 referenced)
+- [x] No outdated references remain (dashboard text moved to deprecation)
+- [x] AGENTS.md renders correctly in GitHub/editors
+- [x] AI agents can understand new architecture from AGENTS.md
+
+## Status Update — Completed
+- AGENTS.md updated to include macOS chat interface (NavigationSplitView), repository layout for macOS views, Option A local JSON‑RPC note, new common tasks, and v0.3.0 dashboard deprecation.
+- CLAUDE.md symlink automatically reflects these changes.
 
 ## References
 - Current AGENTS.md: `AGENTS.md` (CLAUDE.md symlink exists)
