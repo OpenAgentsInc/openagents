@@ -9,10 +9,13 @@ Critical - Required for chat interaction
 ## Description
 Create a macOS-native text input component for sending messages to agents, adapting the iOS `Composer` component for AppKit/NSTextView.
 
-## Addendum (Status and constraints)
-- Status: BridgeManager chat-state unification (Issue #2) is complete, so the composer can call the shared `PromptDispatcher` on mac.
-- Visual constraint: For initial delivery, use OATheme black surfaces only (no Liquid Glass) to match the current mac root UI direction. Keep glass as an optional variant later.
-- Scroll behavior: Composer should not introduce scrolling to the main area when empty; it auto-grows up to ~6 lines.
+## Status
+Completed (implemented on main)
+
+Addendum
+- BridgeManager chat-state unification (Issue #2) is complete, so the composer calls the shared `PromptDispatcher` on mac.
+- Visual: OATheme dark surfaces only (no Liquid Glass) per current directive; glass can return later.
+- Layout: Composer overlays bottom of content so centered content remains fixed while input grows.
 
 ## Current State
 - iOS has `Composer.swift` using UIKit's `UITextView`
@@ -31,17 +34,17 @@ Create a macOS-native text input component for sending messages to agents, adapt
   - Disabled state during agent processing
 
 ## Acceptance Criteria
-- [ ] Create `ComposerMac.swift` component
-- [ ] Use `NSViewRepresentable` wrapping `NSTextView` OR pure SwiftUI `TextEditor`
-- [ ] Apply Berkeley Mono font via `OAFonts.mono()`
-- [ ] Implement return key = send, shift+return = newline
-- [ ] Add placeholder overlay when empty ("Ask an agent...")
-- [ ] Auto-grow height with max of ~6 lines
-- [ ] Add send button using Liquid Glass floating button pattern (capsule with glass background)
-- [ ] Disable input when `isSending` is true
-- [ ] Use Liquid Glass material for composer background
-- [ ] Integrate with `BridgeManager.sendPrompt(text:)` (shared dispatcher)
-- [ ] Match iOS composer styling and UX
+- [x] Create `ComposerMac.swift` component
+- [x] Use `NSViewRepresentable` wrapping `NSTextView`
+- [x] Apply Berkeley Mono font (AppKit via `BerkeleyFont.defaultName()`; see AGENTS.md)
+- [x] Implement return key = send, shift+return = newline
+- [x] Add placeholder overlay when empty ("Ask OpenAgents")
+- [x] Auto-grow height with max of ~6 lines
+- [x] Add send button (dark OATheme capsule variant; glass optional later)
+- [x] Disable input when `isSending` is true
+- [x] Use OATheme dark gray background (no glass)
+- [x] Integrate with `BridgeManager` shared dispatcher
+- [x] Basic styling aligns with iOS composer
 
 ## Technical Details
 
