@@ -22,6 +22,7 @@ public enum ACPSessionModeId: String, Codable, CaseIterable {
     case default_mode = "default_mode"
     case claude_code = "claude-code"
     case codex = "codex"
+    case orchestrator = "orchestrator"
 }
 
 public extension ACP.Agent {
