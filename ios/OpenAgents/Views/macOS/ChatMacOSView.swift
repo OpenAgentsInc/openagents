@@ -7,6 +7,7 @@ struct ChatMacOSView: View {
     private let defaultSidebarWidth: CGFloat = 260
     @State private var showSettings: Bool = false
     @State private var showDeveloper: Bool = false
+    @State private var showKeyboardShortcuts: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -38,8 +39,13 @@ struct ChatMacOSView: View {
         .sheet(isPresented: $showDeveloper) {
             DeveloperView()
         }
+        .sheet(isPresented: $showKeyboardShortcuts) {
+            KeyboardShortcutsView()
+        }
         .focusedSceneValue(\.showSettings, $showSettings)
         .focusedSceneValue(\.showDeveloper, $showDeveloper)
+        .focusedSceneValue(\.showKeyboardShortcuts, $showKeyboardShortcuts)
+        .focusedSceneValue(\.toggleSidebar, { toggleSidebar() })
     }
 
     @ViewBuilder

@@ -27,6 +27,7 @@ struct AgentSelectorView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Choose Agent")
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
             AgentSelectorPopover(
                 selected: $bridge.selectedAgent,

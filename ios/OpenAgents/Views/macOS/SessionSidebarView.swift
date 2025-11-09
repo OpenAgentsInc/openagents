@@ -6,6 +6,7 @@ struct SessionSidebarView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var searchText: String = ""
     @State private var hoveredId: String? = nil
+    @State private var selectedSessionId: String? = nil
 
     var body: some View {
         VStack(spacing: 8) {
@@ -29,6 +30,7 @@ struct SessionSidebarView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .keyboardShortcut("n", modifiers: .command)
+            .accessibilityLabel("New Chat")
 
             // Search bar
             HStack(spacing: 6) {
@@ -55,70 +57,75 @@ struct SessionSidebarView: View {
 
             Divider().background(OATheme.Colors.textTertiary.opacity(0.15))
 
-            // Session list
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(grouped.keys.sorted(by: groupSort), id: \.self) { label in
-                        Text(label)
-                            .font(OAFonts.mono(.caption, 11))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-
+            // Session list with keyboard selection
+            List(selection: $selectedSessionId) {
+                ForEach(grouped.keys.sorted(by: groupSort), id: \.self) { label in
+                    Section(header:
+                                Text(label)
+                                .font(OAFonts.mono(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                    ) {
                         ForEach(grouped[label] ?? [], id: \.session_id) { s in
-                            Button(action: { loadSession(s.session_id) }) {
-                                HStack(alignment: .center, spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(title(for: s))
-                                            .font(OAFonts.mono(.body, 12))
-                                            .foregroundStyle(OATheme.Colors.textPrimary)
-                                            .lineLimit(1)
-                                        HStack(spacing: 6) {
-                                            Text(relativeTime(ms: s.last_ts))
-                                                .font(OAFonts.mono(.caption, 11))
-                                                .foregroundStyle(OATheme.Colors.textTertiary)
-                                            if let m = s.mode {
-                                                Text(modeLabel(m))
-                                                    .font(OAFonts.mono(.caption, 10))
-                                                    .foregroundStyle(OATheme.Colors.textSecondary)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(OATheme.Colors.border.opacity(0.25))
-                                                    )
-                                            }
-                                            Spacer(minLength: 0)
-                                            Text("\(s.message_count) msgs")
+                            HStack(alignment: .center, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(title(for: s))
+                                        .font(OAFonts.mono(.body, 12))
+                                        .foregroundStyle(OATheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    HStack(spacing: 6) {
+                                        Text(relativeTime(ms: s.last_ts))
+                                            .font(OAFonts.mono(.caption, 11))
+                                            .foregroundStyle(OATheme.Colors.textTertiary)
+                                        if let m = s.mode {
+                                            Text(modeLabel(m))
                                                 .font(OAFonts.mono(.caption, 10))
-                                                .foregroundStyle(OATheme.Colors.textTertiary)
+                                                .foregroundStyle(OATheme.Colors.textSecondary)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                        .fill(OATheme.Colors.border.opacity(0.25))
+                                                )
                                         }
+                                        Spacer(minLength: 0)
+                                        Text("\(s.message_count) msgs")
+                                            .font(OAFonts.mono(.caption, 10))
+                                            .foregroundStyle(OATheme.Colors.textTertiary)
                                     }
-                                    Spacer(minLength: 0)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(rowBackground(for: s))
-                                .cornerRadius(8)
+                                Spacer(minLength: 0)
                             }
-                            .buttonStyle(.plain)
-                            .onHover { over in hoveredId = over ? s.session_id : nil }
+                            .tag(Optional(s.session_id))
+                            .listRowBackground(Color.clear)
                             .contextMenu {
                                 Button(role: .destructive) { confirmDelete(s) } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
                             }
+                            .onHover { over in hoveredId = over ? s.session_id : nil }
                         }
                     }
                 }
-                .padding(.vertical, 6)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(OATheme.Colors.sidebarBackground)
+            .onChange(of: selectedSessionId) { _, newValue in
+                guard let sid = newValue else { return }
+                loadSession(sid)
             }
 
             Spacer(minLength: 0)
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
         .background(OATheme.Colors.sidebarBackground)
-        .onAppear { bridge.fetchRecentSessions() }
+        .onAppear {
+            bridge.fetchRecentSessions()
+        }
+        // Expose delete action for Commands via focused scene value
+        .focusedSceneValue(\.deleteSelectedSession) { [selectedSessionId] in
+            if let sid = selectedSessionId { bridge.deleteSession(sid) }
+        }
     }
 
     private var filtered: [RecentSession] {
@@ -184,13 +191,8 @@ struct SessionSidebarView: View {
         return String(s.session_id.prefix(12)) + "…"
     }
 
-    private func rowBackground(for s: RecentSession) -> Color {
-        if let current = bridge.currentSessionId?.value, current == s.session_id {
-            return OATheme.Colors.accent.opacity(0.18)
-        }
-        if hoveredId == s.session_id {
-            return OATheme.Colors.textSecondary.opacity(0.06)
-        }
+    private func rowBackground(for s: RecentSession) -> Color { // retained for hover styling in List
+        if hoveredId == s.session_id { return OATheme.Colors.textSecondary.opacity(0.06) }
         return Color.clear
     }
 
