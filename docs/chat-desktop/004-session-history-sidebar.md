@@ -15,7 +15,7 @@ Partially completed (core UI and data wiring implemented on main)
 What shipped
 - Component: `ios/OpenAgents/Views/macOS/SessionSidebarView.swift`.
 - Integration: `ChatMacOSView` sidebar uses `SessionSidebarView`.
-- Data: Uses `BridgeManager.fetchRecentSessions()` via the shared dispatcher (LocalJsonRpcClient) and displays `RecentSession` items.
+- Data: Uses `BridgeManager.fetchRecentSessions()` via the shared dispatcher (LocalJsonRpcClient) and displays `RecentSession` items from Tinyvex (SQLite) only.
 - Features: New Chat button, search field, date grouping (Today/Yesterday/Last 7/Last 30/Older), hover highlight, active session highlight, click to load timeline.
 - Styling: OATheme dark gray background (no glass), Berkeley Mono, compact row layout.
 
@@ -120,7 +120,7 @@ struct SessionSidebarView: View {
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280)
         .background(OATheme.Colors.sidebarBackground)
-        // Avoid scroll edge effects for now; keep surfaces pure OATheme dark
+        // Tinyvex-only: no filesystem scan fallback; sessions appear once indexed in DB
         .onAppear(perform: loadSessions)
     }
 
