@@ -356,6 +356,21 @@ Medium (4-5 hours)
 - [ ] No keyboard traps (can always navigate away)
 - [ ] Accessibility audit in Xcode passes
 
+## Status Update — Implemented (macOS)
+- Implemented sidebar keyboard navigation via `List(selection:)` and selection handling.
+- Wired Delete to remove selected session (confirmation alert), bound to Delete key via Commands.
+- Added Cmd-B (Toggle Sidebar) and Cmd-/ (Keyboard Shortcuts…) menu commands.
+- Implemented `KeyboardShortcutsView` and sheet presentation.
+- Added basic accessibility labels to key controls (New Chat, Agent selector).
+- Verified macOS build success for OpenAgents scheme (Debug).
+
+Files:
+- ios/OpenAgents/Views/macOS/SessionSidebarView.swift
+- ios/OpenAgents/Views/macOS/KeyboardShortcutsView.swift
+- ios/OpenAgents/Views/macOS/ChatMacOSView.swift
+- ios/OpenAgents/Commands/OpenAgentsCommands.swift
+- ios/OpenAgents/Views/macOS/AgentSelectorView.swift
+
 ## References
 - macOS Human Interface Guidelines: Keyboard
 - Apple Accessibility: https://developer.apple.com/accessibility/
