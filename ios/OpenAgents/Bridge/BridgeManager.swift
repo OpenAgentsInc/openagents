@@ -36,6 +36,7 @@ final class BridgeManager: ObservableObject {
     @Published var outputJSONByCallId: [String: String] = [:]
     @Published var recentSessions: [RecentSession] = []
     @Published var selectedAgent: ACP.Client.AvailableCommand? = nil
+    @Published var conversationTitles: [String: String] = [:]
 
     // Shared collaborators for chat state
     var timeline = TimelineStore()
@@ -51,4 +52,46 @@ final class BridgeManager: ObservableObject {
     #if os(iOS)
     @Published var workingDirectory: String? = nil
     #endif
+}
+
+// MARK: - Shared convenience APIs
+extension BridgeManager {
+    func sendPrompt(text: String, desiredMode: ACPSessionModeId? = nil) {
+        dispatcher?.sendPrompt(
+            text: text,
+            desiredMode: desiredMode,
+            getSessionId: { self.currentSessionId },
+            setSessionId: { self.currentSessionId = $0 }
+        )
+    }
+
+    /// Generate a short conversation title for the current session, if missing.
+    func generateConversationTitleIfNeeded() {
+        guard let sid = currentSessionId?.value else { return }
+        if conversationTitles[sid] != nil { return }
+        // Build minimal ACPMessage list from updates for summarization
+        var ts: Int64 = 0
+        var messages: [ACPMessage] = []
+        for note in updates where note.session_id.value == sid {
+            ts += 1000
+            switch note.update {
+            case .userMessageChunk(let chunk):
+                if case let .text(t) = chunk.content {
+                    let parts: [ACPContentPart] = [.text(ACPText(text: t.text))]
+                    messages.append(ACPMessage(id: UUID().uuidString, role: .user, parts: parts, ts: ts))
+                }
+            case .agentMessageChunk(let chunk):
+                if case let .text(t) = chunk.content {
+                    let parts: [ACPContentPart] = [.text(ACPText(text: t.text))]
+                    messages.append(ACPMessage(id: UUID().uuidString, role: .assistant, parts: parts, ts: ts))
+                }
+            default:
+                continue
+            }
+        }
+        Task { @MainActor in
+            let title = await ConversationSummarizer.summarizeTitle(messages: messages)
+            self.conversationTitles[sid] = title
+        }
+    }
 }

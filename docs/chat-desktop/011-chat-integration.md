@@ -23,17 +23,30 @@ Connect all chat UI components to `BridgeManager` using the shared prompt dispat
 - Error handling for failed sends/receives
 - Loading states during agent processing
 
+## Status
+Completed (implemented on main)
+
+What shipped
+- Composer wired to `BridgeManager.sendPrompt(text:)` convenience (shared dispatcher path).
+- `TimelineStore` mirrors `session/update` notifications to `BridgeManager.updates` (already in place).
+- ChatAreaView renders updates, including tool call status and reasoning blocks.
+- Plan updates render via `PlanView` (entries).
+- Loading indicator shows when agent is processing (based on latest update).
+- Auto-scrolls to bottom on new messages.
+- Session history and timeline load via Tinyvex history RPCs.
+- Conversation titles generated on-demand via `ConversationSummarizer` and stored in `BridgeManager.conversationTitles`.
+
 ## Acceptance Criteria
-- [ ] Composer sends messages via `BridgeManager.sendPrompt(text:)` (dispatcher handles session create/prompt)
-- [ ] `TimelineStore` receives `session/update` and mirrors to `BridgeManager.updates`
-- [ ] Chat area reactively renders new updates
-- [ ] Tool calls update status (running → complete/error)
-- [ ] Plans update step-by-step progress
-- [ ] Thinking blocks render correctly
-- [ ] Error messages display in chat
-- [ ] Loading indicator shows during agent processing
-- [ ] Auto-scroll on new messages
-- [ ] Session history/timeline loads via Tinyvex history RPCs (`tinyvex/history.recentSessions`, `tinyvex/history.sessionTimeline`)
+- [x] Composer sends messages via `BridgeManager.sendPrompt(text:)`
+- [x] `TimelineStore` receives `session/update` and mirrors to `BridgeManager.updates`
+- [x] Chat area reactively renders new updates
+- [x] Tool calls update status (running → complete/error)
+- [x] Plans update step-by-step progress (rendered as entries)
+- [x] Thinking blocks render correctly
+- [x] Error messages display in chat (tool update error state)
+- [x] Loading indicator shows during agent processing
+- [x] Auto-scroll on new messages
+- [x] Session history/timeline loads via Tinyvex history RPCs
 
 ## Technical Details
 
