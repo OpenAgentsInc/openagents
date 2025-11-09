@@ -29,11 +29,9 @@ final class BridgeCoordinatorIntegrationTests: XCTestCase {
         let fake = FakeConnectionManager()
         bridge.wireConnection(fake)
 
-        // Construct a simple message update
-        let content = ACP.Client.ContentBlock.text(.init(text: "hello"))
-        let msg = ACP.Client.Message(role: .assistant, content: [content])
-        let update = ACP.Client.SessionUpdate.messageUpdated(.init(message: msg))
-        let note = ACP.Client.SessionNotificationWire(session_id: ACPSessionId("s1"), update: update)
+        // Construct a simple agent message chunk update
+        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "hello")))
+        let note = ACP.Client.SessionNotificationWire(session_id: ACPSessionId("s1"), update: .agentMessageChunk(chunk))
         let payload = try JSONEncoder().encode(note)
 
         // Emit the notification
@@ -41,13 +39,10 @@ final class BridgeCoordinatorIntegrationTests: XCTestCase {
 
         // Assert BridgeManager mirrored state updated
         XCTAssertEqual(bridge.updates.count, 1)
-        if case .messageUpdated(let mu) = bridge.updates[0].update,
-           case .text(let t) = mu.message.content.first {
+        if case .agentMessageChunk(let mu) = bridge.updates[0].update,
+           case .text(let t) = mu.content {
             XCTAssertEqual(t.text, "hello")
-        } else {
-            XCTFail("Expected text message update")
-        }
+        } else { XCTFail("Expected agentMessageChunk") }
     }
 }
 #endif
-

@@ -1,6 +1,8 @@
 import SwiftUI
 import OpenAgentsCore
+#if os(macOS)
 import AppKit
+#endif
 
 #if os(macOS)
 struct DeveloperView: View {

@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 #if os(macOS)
 struct ComposerMac: View {

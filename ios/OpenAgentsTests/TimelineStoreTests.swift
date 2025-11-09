@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import OpenAgents
 @testable import OpenAgentsCore
 
@@ -36,20 +37,20 @@ final class TimelineStoreTests: XCTestCase {
     }
 
     func testAvailableCommandsUpdateReflects() throws {
-        let command = ACP.Client.AvailableCommand(id: ACP.CommandId("cmd-1"), command_name: "Test Command", mode_id: .default_mode)
+        let command = ACP.Client.AvailableCommand(name: "Test Command", description: "desc", input: .unstructured(hint: ""))
         let update = TestHelpers.makeAvailableCommandsUpdate(commands: [command])
         let wire = TestHelpers.makeSessionUpdateNotification(update: update)
         store.applySessionUpdatePayload(try JSONEncoder().encode(wire))
         let ac = try waitForValue(store.availableCommandsPublisher, timeout: 1.0)
         XCTAssertEqual(ac.count, 1)
-        XCTAssertEqual(ac[0].command_name, "Test Command")
+        XCTAssertEqual(ac[0].name, "Test Command")
     }
 
     // Helper: await first emission
-    private func waitForValue<T: Publisher>(_ publisher: T, timeout: TimeInterval) throws -> T.Output {
+    private func waitForValue<T: Publisher>(_ publisher: T, timeout: TimeInterval) throws -> T.Output where T.Failure == Never {
         let exp = expectation(description: "await publisher")
         var output: T.Output!
-        let c = publisher.sink { _ in } receiveValue: { value in output = value; exp.fulfill() }
+        let c = publisher.sink { value in output = value; exp.fulfill() }
         wait(for: [exp], timeout: timeout)
         c.cancel()
         return output

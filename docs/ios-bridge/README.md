@@ -82,6 +82,12 @@ All methods follow JSON-RPC 2.0 format. See `rpc.swift` for complete list:
 - `tinyvex/history.sessionTimeline` - Load session timeline
 - `fs/read_text_file`, `fs/write_text_file` - File system (client-handled)
 - `terminal/run` - Terminal execution (client-handled)
+- Scheduler (desktop orchestration)
+  - `orchestrate/scheduler.status` — Return running state, `active_config_id`, `next_wake_time`, and a human-readable message.
+  - `orchestrate/scheduler.reload` — Start/restart the background scheduler using the active orchestration config.
+  - `orchestrate/scheduler.run_now` — Trigger an immediate orchestration run (also available via local adapter on macOS).
+
+See also: `orchestrate/config.*` methods for setting/activating orchestration configs.
 
 ### Extension Capabilities
 
