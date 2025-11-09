@@ -26,8 +26,15 @@ struct SidebarPlaceholderView: View {
                 .frame(width: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .allowsHitTesting(false)
+            // Top overlay to unify tone under the window toolbar
+            Rectangle()
+                .fill(OATheme.Colors.sidebarBackground)
+                .frame(height: 32)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(false)
         }
         .clipped()
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     // No extra material; rely on OATheme surfaces
