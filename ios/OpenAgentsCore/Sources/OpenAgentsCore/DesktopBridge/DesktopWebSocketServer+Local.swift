@@ -195,14 +195,20 @@ extension DesktopWebSocketServer {
         switch result {
         case .taskExecuted(let taskId, let sessionId):
             var modeStr: String? = nil
-            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
-                modeStr = task?.decision.agentMode.rawValue
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db) {
+                do {
+                    let taskOpt = try await tq.get(taskId)
+                    if let task = taskOpt { modeStr = task.decision.agentMode.rawValue }
+                } catch { /* ignore */ }
             }
             return .init(status: "executing", task_id: taskId, session_id: sessionId, agent_mode: modeStr)
         case .decisionMade(let taskId):
             var modeStr: String? = nil
-            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
-                modeStr = task?.decision.agentMode.rawValue
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db) {
+                do {
+                    let taskOpt = try await tq.get(taskId)
+                    if let task = taskOpt { modeStr = task.decision.agentMode.rawValue }
+                } catch { /* ignore */ }
             }
             return .init(status: "enqueued", task_id: taskId, session_id: nil, agent_mode: modeStr)
         case .noAgentsAvailable:

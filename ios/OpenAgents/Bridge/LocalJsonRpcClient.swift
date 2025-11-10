@@ -7,6 +7,8 @@ final class LocalJsonRpcClient: JSONRPCSending {
     private struct TitleResp: Codable { let title: String? }
     private struct ConfigSetResp: Codable { let success: Bool; let config_id: String; let updated_at: Int64 }
     private struct ConfigActivateResp: Codable { let success: Bool; let active_config_id: String }
+    private struct ReloadResp: Codable { let success: Bool; let message: String }
+    private struct BindResp: Codable { let success: Bool; let active_config_id: String }
     private let server: DesktopWebSocketServer
 
     init(server: DesktopWebSocketServer) {
@@ -100,7 +102,6 @@ final class LocalJsonRpcClient: JSONRPCSending {
                 result = Self.bridge(status, as: R.self)
             case ACPRPC.orchestrateSchedulerReload:
                 let out = await server.localSchedulerReload()
-                struct ReloadResp: Codable { let success: Bool; let message: String }
                 result = Self.bridge(ReloadResp(success: out.success, message: out.message), as: R.self)
             case ACPRPC.orchestrateSchedulerRunNow, ACPRPC.orchestrateSchedulerAdvance:
                 let out = await server.localSchedulerRunNow()
@@ -129,7 +130,6 @@ final class LocalJsonRpcClient: JSONRPCSending {
                    let id = obj["config_id"] as? String,
                    let root = obj["workspace_root"] as? String {
                     let ok = await server.localConfigActivate(id: id, workspaceRoot: root)
-                    struct BindResp: Codable { let success: Bool; let active_config_id: String }
                     result = Self.bridge(BindResp(success: ok, active_config_id: id), as: R.self)
                 } else {
                     result = nil

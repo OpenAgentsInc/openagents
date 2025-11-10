@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import OpenAgentsCore
 #if os(macOS)
 import AppKit
@@ -273,6 +274,16 @@ private struct OrchestrationDevView: View {
         struct Empty: Codable {}
         guard let rpc = bridgeManager.connection?.rpcClient else { return }
         rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerRunNow, params: Empty(), id: "dev-sched-run-\(UUID().uuidString)") { (_: [String: AnyCodable]?) in }
+    }
+}
+
+// MARK: - Common UI
+private struct SectionHeader: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(OAFonts.mono(.body, 12))
+            .foregroundStyle(OATheme.Colors.textSecondary)
     }
 }
 #endif
