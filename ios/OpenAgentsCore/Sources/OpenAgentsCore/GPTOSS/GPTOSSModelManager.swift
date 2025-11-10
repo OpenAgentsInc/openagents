@@ -178,7 +178,7 @@ public actor GPTOSSModelManager {
         return .init(ok: ok, shardCount: shardCount, totalBytes: total, missing: missing, expectedShardCount: expectedShards)
     }
 
-    public func repairSnapshot() async throws {
+    public func repairSnapshot(progressHandler: ((DownloadProgress) -> Void)? = nil) async throws {
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         print("[GPTOSS] Re-syncing missing files from https://huggingface.co/\(config.modelID)")
@@ -191,6 +191,15 @@ public actor GPTOSSModelManager {
                 : p.completedUnitCount
             let pct = Int((p.fractionCompleted * 100).rounded())
             print("[GPTOSS] Re-sync progress: \(pct)% (\(self.fmtBytes(completedBytes)) / \(self.fmtBytes(totalBytes)))")
+            if let progressHandler = progressHandler {
+                let prog = DownloadProgress(
+                    fractionCompleted: p.fractionCompleted,
+                    bytesDownloaded: completedBytes,
+                    totalBytes: totalBytes,
+                    estimatedTimeRemaining: nil
+                )
+                progressHandler(prog)
+            }
         }
     }
 
