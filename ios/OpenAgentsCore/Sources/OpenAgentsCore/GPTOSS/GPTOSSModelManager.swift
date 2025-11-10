@@ -81,6 +81,9 @@ public actor GPTOSSModelManager {
         let link = "https://huggingface.co/\(config.modelID)"
         print("[GPTOSS] Starting download from \(link)")
         print("[GPTOSS] Files: \(files.joined(separator: ", "))")
+        let env = ProcessInfo.processInfo.environment
+        if let off = env["HF_HUB_OFFLINE"], !off.isEmpty { print("[GPTOSS] HF_HUB_OFFLINE=\(off)") }
+        if let off = env["TRANSFORMERS_OFFLINE"], !off.isEmpty { print("[GPTOSS] TRANSFORMERS_OFFLINE=\(off)") }
 
         let modelDir = try await Hub.snapshot(from: repo, matching: files) { p in
             // Heuristic: if totalUnitCount is tiny, treat it as "file count" and estimate bytes from percent
@@ -125,15 +128,15 @@ public actor GPTOSSModelManager {
             let dir = docs.appendingPathComponent("huggingface/models/\(modelId)")
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue {
-                // Sum .safetensors + key config files sizes
+                // Recursively sum relevant files
                 var total: Int64 = 0
-                if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
-                    for url in files {
-                        let name = url.lastPathComponent
-                        if name.hasSuffix(".safetensors") || ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
-                            if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) {
-                                total += size
-                            }
+                let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles])
+                while let item = enumerator?.nextObject() as? URL {
+                    let name = item.lastPathComponent
+                    if name.hasSuffix(".safetensors") || ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
+                        if let vals = try? item.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true,
+                           let size = vals.fileSize.map(Int64.init) {
+                            total += size
                         }
                     }
                 }

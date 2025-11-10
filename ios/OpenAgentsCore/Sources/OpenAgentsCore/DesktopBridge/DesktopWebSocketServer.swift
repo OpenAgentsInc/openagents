@@ -88,6 +88,8 @@ public class DesktopWebSocketServer {
     var currentClient: Client?
     // Agent registry for provider management
     let agentRegistry = AgentRegistry()
+    /// Preferred default mode for new sessions (auto-selected if client doesn't choose)
+    private var preferredDefaultMode: ACPSessionModeId = .default_mode
 
     // MARK: - Local app broadcast (Combine)
     private let broadcastSubject = PassthroughSubject<(method: String, payload: Data), Never>()
@@ -159,6 +161,7 @@ public class DesktopWebSocketServer {
         // Register agent providers
         Task {
             await registerAgentProviders()
+            await refreshPreferredDefaultMode()
         }
         registerHandlers()
     }
@@ -191,6 +194,22 @@ public class DesktopWebSocketServer {
         registerTerminalHandler()
         registerOrchestrationHandler()
         registerEmbeddingHandlers()
+    }
+
+    /// Determine and cache a preferred default agent mode based on availability.
+    /// If GPT‑OSS 20B is installed and available, prefer it; otherwise use `.default_mode`.
+    private func refreshPreferredDefaultMode() async {
+        #if os(macOS)
+        // Lightweight check using the GPTOSS model manager's detector
+        let mgr = GPTOSSModelManager()
+        if let res = await mgr.detectInstalled(), res.installed {
+            preferredDefaultMode = .gptoss_20b
+            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (installed model detected)")
+            return
+        }
+        #endif
+        preferredDefaultMode = .default_mode
+        OpenAgentsLog.bridgeServer.info("Preferred default agent set to default_mode")
     }
 
     // MARK: - Handler Registration Methods

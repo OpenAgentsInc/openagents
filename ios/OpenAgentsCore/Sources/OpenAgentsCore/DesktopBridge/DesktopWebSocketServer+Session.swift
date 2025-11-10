@@ -82,8 +82,8 @@ extension DesktopWebSocketServer {
             }
         }
 
-        // Get mode (defaults to .default_mode if not set)
-        let mode = modeBySession[sidStr] ?? .default_mode
+        // Get mode (defaults to server's preferred default if not set)
+        let mode = modeBySession[sidStr] ?? self.preferredDefaultMode
 
         // Get provider from registry
         guard let provider = await agentRegistry.provider(for: mode) else {
@@ -160,7 +160,12 @@ extension DesktopWebSocketServer {
         let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
         let sid = ACPSessionId(sidStr)
         let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
-        let modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
+        var modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
+        // If client requests default_mode but GPT‑OSS is installed, prefer GPT‑OSS transparently
+        if modeId == .default_mode && self.preferredDefaultMode == .gptoss_20b {
+            modeId = .gptoss_20b
+            OpenAgentsLog.bridgeServer.info("session/set_mode requested default_mode; overriding to gptoss_20b (preferred)")
+        }
         self.modeBySession[sidStr] = modeId
 
         let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: modeId))

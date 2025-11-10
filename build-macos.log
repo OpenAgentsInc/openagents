@@ -1,0 +1,9 @@
+/Users/christopherdavid/code/openagents/ios/OpenAgents/Views/OrchestrationConsoleView.swift:221:23: warning: no calls to throwing functions occur within 'try' expression
+            configs = try jsonConfigs.compactMap { jsonString in
+                      ^
+/Users/christopherdavid/code/openagents/ios/OpenAgents/TinyvexManager.swift:47:17: warning: call to actor-isolated instance method 'stop()' in a synchronous main actor-isolated context
+        server?.stop(); server = nil
+                ^
+OpenAgentsCore.TinyvexServer.stop:2:13: note: calls to instance method 'stop()' from outside of its actor context are implicitly asynchronous
+public func stop()}
+            ^
