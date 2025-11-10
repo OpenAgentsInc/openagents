@@ -42,7 +42,14 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         updateHub: SessionUpdateHub
     ) async throws { await streamResponse(prompt: prompt, sessionId: sessionId, updateHub: updateHub, context: context) }
 
-    public func cancel(sessionId: ACPSessionId, handle: AgentHandle) async { cancelled.insert(sessionId.value) }
+    public func cancel(sessionId: ACPSessionId, handle: AgentHandle) async {
+        cancelled.insert(sessionId.value)
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, * ) {
+            OpenAgentsLocalProvider.fmSessions.removeValue(forKey: sessionId.value)
+        }
+        #endif
+    }
 
     // MARK: - Internal
     private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, context: AgentContext?) async {
@@ -111,10 +118,10 @@ import FoundationModels
 
 @available(iOS 26.0, macOS 26.0, * )
 extension OpenAgentsLocalProvider {
-    private static var fmSession: LanguageModelSession?
+    private static var fmSessions: [String: LanguageModelSession]
 
-    private func ensureSession() async throws -> LanguageModelSession {
-        if let s = Self.fmSession { return s }
+    private func ensureSession(for sessionId: ACPSessionId) async throws -> LanguageModelSession {
+        if let s = Self.fmSessions[sessionId.value] { return s }
         let model = SystemLanguageModel.default
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
@@ -138,12 +145,12 @@ extension OpenAgentsLocalProvider {
         """)
         let s = LanguageModelSession(model: model, tools: [], instructions: instructions)
         s.prewarm(promptPrefix: nil)
-        Self.fmSession = s
+        Self.fmSessions[sessionId.value] = s
         return s
     }
 
     private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub) async throws {
-        let session = try await ensureSession()
+        let session = try await ensureSession(for: sessionId)
         let options = GenerationOptions(temperature: 0.15, maximumResponseTokens: 140)
         var last = ""
         let stream = session.streamResponse(to: prompt, options: options)
