@@ -191,11 +191,12 @@ private struct AgentSettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Default Agent")
             Picker("", selection: $defaultAgentMode) {
+                Text("OpenAgents").tag(ACPSessionModeId.default_mode.rawValue)
                 Text("Claude Code").tag(ACPSessionModeId.claude_code.rawValue)
                 Text("Codex").tag(ACPSessionModeId.codex.rawValue)
             }
             .pickerStyle(.segmented)
-            .frame(width: 260)
+            .frame(width: 420)
             Divider()
             Toggle("Enable thinking/reasoning display", isOn: $enableThinking)
                 .font(OAFonts.mono(.body, 13))

@@ -5,6 +5,7 @@ import OpenAgentsCore
 struct AgentSelectorView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var showPopover = false
+    @AppStorage("defaultAgentMode") private var defaultAgentMode: String = ACPSessionModeId.claude_code.rawValue
 
     var body: some View {
         Button(action: { showPopover.toggle() }) {
@@ -29,18 +30,30 @@ struct AgentSelectorView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Choose Agent")
         .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-            AgentSelectorPopover(
-                selected: $bridge.selectedAgent,
-                commands: bridge.availableCommands,
-                onSelect: { cmd in
-                    showPopover = false
-                    bridge.selectedAgent = cmd
-                    let mode = modeForCommand(cmd)
-                    if bridge.currentSessionId == nil { bridge.startNewSession(desiredMode: mode) }
-                    else { bridge.setSessionMode(mode) }
+            VStack(alignment: .leading, spacing: 0) {
+                // Primary agent choices
+                VStack(alignment: .leading, spacing: 0) {
+                    selectorRow(title: "OpenAgents", mode: .default_mode, icon: "cpu")
+                    selectorRow(title: "Claude Code", mode: .claude_code, icon: "sparkles")
+                    selectorRow(title: "Codex", mode: .codex, icon: "chevron.left.slash.chevron.right")
                 }
-            )
-            .frame(width: 320, height: 240)
+                .padding(.vertical, 6)
+                Divider().padding(.vertical, 4)
+                // Optional: list of available commands (secondary)
+                AgentSelectorPopover(
+                    selected: $bridge.selectedAgent,
+                    commands: bridge.availableCommands,
+                    onSelect: { cmd in
+                        showPopover = false
+                        bridge.selectedAgent = cmd
+                        let mode = modeForCommand(cmd)
+                        persistAndApply(mode: mode)
+                    }
+                )
+                .frame(maxHeight: 200)
+            }
+            .frame(width: 340, height: 280)
+            .background(OATheme.Colors.sidebarBackground)
         }
         .keyboardShortcut("k", modifiers: .command)
         .onAppear { initializeSelectionIfNeeded() }
@@ -49,7 +62,11 @@ struct AgentSelectorView: View {
 
     private var selectedLabel: String {
         if let a = bridge.selectedAgent { return a.name }
-        switch bridge.currentMode { case .claude_code: return "Claude Code"; case .codex: return "Codex"; case .orchestrator: return "Orchestrator"; default: return "Default Agent" }
+        // Prefer persisted default when no explicit selection
+        if let mode = ACPSessionModeId(rawValue: defaultAgentMode) {
+            return label(for: mode)
+        }
+        return label(for: bridge.currentMode)
     }
 
     private var agentIcon: String {
@@ -58,7 +75,8 @@ struct AgentSelectorView: View {
             if n.contains("claude") { return "sparkles" }
             if n.contains("codex") { return "chevron.left.slash.chevron.right" }
         }
-        switch bridge.currentMode { case .claude_code: return "sparkles"; case .codex: return "chevron.left.slash.chevron.right"; case .orchestrator: return "gear"; default: return "cpu" }
+        let mode = ACPSessionModeId(rawValue: defaultAgentMode) ?? bridge.currentMode
+        switch mode { case .claude_code: return "sparkles"; case .codex: return "chevron.left.slash.chevron.right"; case .orchestrator: return "gear"; default: return "cpu" }
     }
 
     private func initializeSelectionIfNeeded() {
@@ -80,6 +98,50 @@ struct AgentSelectorView: View {
         if n.contains("claude") { return .claude_code }
         if n.contains("codex") { return .codex }
         return .default_mode
+    }
+
+    private func label(for mode: ACPSessionModeId) -> String {
+        switch mode {
+        case .claude_code: return "Claude Code"
+        case .codex: return "Codex"
+        case .orchestrator: return "Orchestrator"
+        default: return "OpenAgents"
+        }
+    }
+
+    @ViewBuilder
+    private func selectorRow(title: String, mode: ACPSessionModeId, icon: String) -> some View {
+        Button(action: {
+            persistAndApply(mode: mode)
+            showPopover = false
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: icon).foregroundStyle(OATheme.Colors.accent)
+                Text(title)
+                    .font(OAFonts.mono(.body, 12))
+                    .foregroundStyle(OATheme.Colors.textPrimary)
+                Spacer()
+                if ACPSessionModeId(rawValue: defaultAgentMode) == mode {
+                    Image(systemName: "checkmark").foregroundStyle(OATheme.Colors.accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background((ACPSessionModeId(rawValue: defaultAgentMode) == mode) ? OATheme.Colors.accent.opacity(0.08) : Color.clear)
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func persistAndApply(mode: ACPSessionModeId) {
+        defaultAgentMode = mode.rawValue
+        // Clear explicit command selection when choosing a mode
+        bridge.selectedAgent = nil
+        if bridge.currentSessionId == nil {
+            bridge.startNewSession(desiredMode: mode)
+        } else {
+            bridge.setSessionMode(mode)
+        }
     }
 }
 

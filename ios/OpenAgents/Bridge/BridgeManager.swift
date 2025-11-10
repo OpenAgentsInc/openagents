@@ -68,14 +68,13 @@ extension BridgeManager {
             if n.contains("claude") { return .claude_code }
             if n.contains("codex") { return .codex }
         }
-        // If an explicit mode is already active, prefer it over nil
-        switch currentMode {
-        case .default_mode:
-            // Pick a sensible default provider for first send
-            return .codex
-        default:
-            return currentMode
-        }
+        // If a session already has a mode, use it
+        if currentMode != .default_mode { return currentMode }
+        // Else, consult persisted default
+        if let stored = UserDefaults.standard.string(forKey: "defaultAgentMode"),
+           let mode = ACPSessionModeId(rawValue: stored) { return mode }
+        // Fallback: OpenAgents (default_mode)
+        return .default_mode
     }
 
     func sendPrompt(text: String, desiredMode: ACPSessionModeId? = nil) {
