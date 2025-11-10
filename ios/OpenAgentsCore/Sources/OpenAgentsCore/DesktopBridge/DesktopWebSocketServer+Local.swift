@@ -222,5 +222,23 @@ extension DesktopWebSocketServer {
         let ts = m.lastCycleTimestamp.map { Int64($0.timeIntervalSince1970 * 1000) }
         return .init(cycles_run: m.cyclesRun, tasks_executed: m.tasksExecuted, tasks_completed: m.tasksCompleted, tasks_failed: m.tasksFailed, tasks_cancelled: m.tasksCancelled, last_cycle_ts: ts)
     }
+
+    // MARK: - Scheduler Reload (local helper)
+    public struct LocalSchedulerReloadResult: Codable { public let success: Bool; public let message: String }
+    public func localSchedulerReload() async -> LocalSchedulerReloadResult {
+        guard let cfg = self.activeOrchestrationConfig else {
+            return .init(success: false, message: "No active orchestration config")
+        }
+        if let svc = self.schedulerService { await svc.stop() }
+        let svc = SchedulerService()
+        await svc.configure(config: cfg) { [weak self] in
+            guard let self = self else { return }
+            guard let coord = await self.ensureCoordinator() else { return }
+            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
+        }
+        await svc.start()
+        self.schedulerService = svc
+        return .init(success: true, message: "Scheduler started")
+    }
 }
 #endif
