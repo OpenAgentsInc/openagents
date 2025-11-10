@@ -53,4 +53,9 @@ public enum ACPRPC {
     public static let orchestrateSetupStart = "orchestrate/setup.start"
     public static let orchestrateSetupStatus = "orchestrate/setup.status"
     public static let orchestrateSetupAbort = "orchestrate/setup.abort"
+
+    // Orchestration Coordinator (decision engine + provider delegation)
+    public static let orchestrateCoordinatorRunOnce = "orchestrate/coordinator.run_once"
+    public static let orchestrateCoordinatorStatus = "orchestrate/coordinator.status"
+    public static let orchestrateSchedulerBind = "orchestrate/scheduler.bind"
 }

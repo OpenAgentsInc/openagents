@@ -156,6 +156,20 @@ extension DesktopWebSocketServer {
             guard let self = self, let client = self.currentClient else { return }
             await self.handleSetupAbort(id: id, params: params, rawDict: rawDict, client: client)
         }
+
+        // Coordinator (decision engine + provider delegation)
+        router.register(method: ACPRPC.orchestrateCoordinatorRunOnce) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleCoordinatorRunOnce(id: id, params: params, rawDict: rawDict, client: client)
+        }
+        router.register(method: ACPRPC.orchestrateCoordinatorStatus) { [weak self] id, _, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleCoordinatorStatus(id: id, client: client)
+        }
+        router.register(method: ACPRPC.orchestrateSchedulerBind) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSchedulerBind(id: id, params: params, rawDict: rawDict, client: client)
+        }
     }
 
     func handleOrchestrationStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
@@ -517,7 +531,7 @@ extension DesktopWebSocketServer {
         }
     }
 
-    // MARK: - Scheduler Handlers (Lightweight Stubs)
+    // MARK: - Scheduler Handlers (Coordinator-backed)
 
     func handleSchedulerReload(id: JSONRPC.ID, client: Client) async {
         OpenAgentsLog.bridgeServer.info("recv orchestrate/scheduler.reload")
@@ -530,7 +544,9 @@ extension DesktopWebSocketServer {
         let svc = SchedulerService()
         await svc.configure(config: cfg) { [weak self] in
             guard let self = self else { return }
-            _ = await self.localSchedulerRunNow() // triggers a run immediately at wake
+            guard let coord = await self.ensureCoordinator() else { return }
+            // Fire-and-forget one cycle using active config
+            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
         }
         await svc.start()
         self.schedulerService = svc
@@ -564,36 +580,142 @@ extension DesktopWebSocketServer {
     // MARK: - Run Now (immediate trigger)
     func handleSchedulerRunNow(id: JSONRPC.ID, client: Client) async {
         guard let cfg = self.activeOrchestrationConfig else {
-            JsonRpcRouter.sendError(id: id, code: -32000, message: "No active orchestration config") { text in
-                client.send(text: text)
-            }
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "No active orchestration config") { text in client.send(text: text) }
             return
         }
 
-        let sessionId = ACPSessionId(UUID().uuidString)
-        let planId = UUID().uuidString
-
-        // Respond immediately
-        let resp = SchedulerRunNowResponse(started: true, message: "Triggered run_now", session_id: sessionId.value)
+        // Respond immediately; execution happens asynchronously
+        let resp = SchedulerRunNowResponse(started: true, message: "Triggered run_now", session_id: nil)
         JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
 
-        // Kick off orchestration asynchronously
-        if #available(macOS 26.0, *) {
-            Task.detached { [weak self] in
-                guard let self = self else { return }
-                let req = OrchestrateExploreStartRequest(
-                    root: cfg.workspaceRoot,
-                    remote_url: nil,
-                    branch: nil,
-                    policy: cfg.agentPreferences.prefer == .codex
-                        ? ExplorationPolicy(allow_external_llms: false, allow_network: false, use_native_tool_calling: false)
-                        : ExplorationPolicy(allow_external_llms: false, allow_network: false, use_native_tool_calling: false),
-                    goals: cfg.goals.isEmpty ? ["Automated maintenance run"] : cfg.goals
-                )
-                await self.runOrchestration(request: req, sessionId: sessionId, planId: planId, client: client)
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            guard let coord = await self.ensureCoordinator() else { return }
+            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
+        }
+    }
+
+    // MARK: - Coordinator RPCs
+    private struct CoordinatorRunOnceRequest: Codable {
+        let config_id: String?
+        let config_inline: OrchestrationConfig?
+    }
+    private struct CoordinatorRunOnceResponse: Codable {
+        let status: String
+        let task_id: String?
+        let session_id: String?
+        let agent_mode: String?
+    }
+    private struct CoordinatorStatusResponse: Codable {
+        let cycles_run: Int
+        let tasks_executed: Int
+        let tasks_completed: Int
+        let tasks_failed: Int
+        let tasks_cancelled: Int
+        let last_cycle_ts: Int64?
+    }
+    private struct SchedulerBindRequest: Codable {
+        let config_id: String
+        let workspace_root: String
+    }
+
+    func handleCoordinatorRunOnce(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        OpenAgentsLog.bridgeServer.info("recv orchestrate/coordinator.run_once")
+        guard let coord = await ensureCoordinator() else {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "Coordinator unavailable (DB or hub not initialized)") { text in client.send(text: text) }
+            return
+        }
+        // Parse params
+        var inlineCfg: OrchestrationConfig? = nil
+        var cfgId: String? = nil
+        if let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(CoordinatorRunOnceRequest.self, from: d) {
+            inlineCfg = req.config_inline
+            cfgId = req.config_id
+        }
+
+        // Resolve config
+        var cfg: OrchestrationConfig? = inlineCfg ?? self.activeOrchestrationConfig
+        if cfg == nil, let idStr = cfgId, let db = self.tinyvexDb {
+            if let json = try? await db.getOrchestrationConfig(id: idStr, workspaceRoot: self.workingDirectory?.path ?? ""), let data = json.data(using: .utf8), let loaded = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) {
+                cfg = loaded
             }
-        } else {
-            OpenAgentsLog.bridgeServer.warning("run_now requires macOS 26.0+")
+        }
+
+        guard let finalCfg = cfg else {
+            JsonRpcRouter.sendError(id: id, code: -32000, message: "No orchestration config resolved") { text in client.send(text: text) }
+            return
+        }
+
+        // Run one cycle
+        let result = await coord.runCycle(config: finalCfg, workingDirectory: self.workingDirectory)
+
+        // Build response
+        switch result {
+        case .taskExecuted(let taskId, let sessionId):
+            var modeStr: String? = nil
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
+                modeStr = task?.decision.agentMode.rawValue
+            }
+            let resp = CoordinatorRunOnceResponse(status: "executing", task_id: taskId, session_id: sessionId, agent_mode: modeStr)
+            JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+        case .decisionMade(let taskId):
+            var modeStr: String? = nil
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
+                modeStr = task?.decision.agentMode.rawValue
+            }
+            let resp = CoordinatorRunOnceResponse(status: "enqueued", task_id: taskId, session_id: nil, agent_mode: modeStr)
+            JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+        case .noAgentsAvailable:
+            JsonRpcRouter.sendError(id: id, code: -32001, message: "No agents available") { text in client.send(text: text) }
+        case .taskFailed(let taskId, let error):
+            let resp = CoordinatorRunOnceResponse(status: "failed", task_id: taskId, session_id: nil, agent_mode: nil)
+            JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+            OpenAgentsLog.orchestration.error("Coordinator run_once failed: \(error)")
+        case .idle:
+            let resp = CoordinatorRunOnceResponse(status: "idle", task_id: nil, session_id: nil, agent_mode: nil)
+            JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+        }
+    }
+
+    func handleCoordinatorStatus(id: JSONRPC.ID, client: Client) async {
+        guard let coord = await ensureCoordinator() else {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "Coordinator unavailable") { text in client.send(text: text) }
+            return
+        }
+        let m = await coord.metrics()
+        let ts = m.lastCycleTimestamp.map { Int64($0.timeIntervalSince1970 * 1000) }
+        let resp = CoordinatorStatusResponse(
+            cycles_run: m.cyclesRun,
+            tasks_executed: m.tasksExecuted,
+            tasks_completed: m.tasksCompleted,
+            tasks_failed: m.tasksFailed,
+            tasks_cancelled: m.tasksCancelled,
+            last_cycle_ts: ts
+        )
+        JsonRpcRouter.sendResponse(id: id, result: resp) { text in client.send(text: text) }
+    }
+
+    func handleSchedulerBind(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        OpenAgentsLog.bridgeServer.info("recv orchestrate/scheduler.bind")
+        guard let db = self.tinyvexDb else {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "Database not available") { text in client.send(text: text) }
+            return
+        }
+        guard let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(SchedulerBindRequest.self, from: d) else {
+            JsonRpcRouter.sendError(id: id, code: -32602, message: "Invalid params") { text in client.send(text: text) }
+            return
+        }
+        do {
+            guard let json = try await db.getOrchestrationConfig(id: req.config_id, workspaceRoot: req.workspace_root), let data = json.data(using: .utf8), let cfg = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) else {
+                JsonRpcRouter.sendError(id: id, code: -32000, message: "Config not found: \(req.config_id)") { text in client.send(text: text) }
+                return
+            }
+            self.activeOrchestrationConfig = cfg
+            // Optionally reload scheduler with the new binding but do not auto-start
+            let response = ConfigActivateResponse(success: true, active_config_id: cfg.id)
+            JsonRpcRouter.sendResponse(id: id, result: response) { text in client.send(text: text) }
+        } catch {
+            JsonRpcRouter.sendError(id: id, code: -32603, message: "Database error: \(error.localizedDescription)") { text in client.send(text: text) }
         }
     }
 
