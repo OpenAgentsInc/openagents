@@ -173,3 +173,96 @@ If you want, tell me roughly how many files you’ll index and your language mix
 [14]: https://developer.apple.com/documentation/naturallanguage/nlcontextualembedding?utm_source=chatgpt.com "NLContextualEmbedding | Apple Developer Documentation"
 [15]: https://huggingface.co/BAAI/bge-small-en-v1.5 "BAAI/bge-small-en-v1.5 · Hugging Face"
 [16]: https://huggingface.co/mlx-community/all-MiniLM-L6-v2-4bit "mlx-community/all-MiniLM-L6-v2-4bit · Hugging Face"
+
+---
+
+## ADDENDUM (2025-11-10): Actual MLX Swift Embedders API
+
+**Note:** The simplified API shown in the "How to wire into a Swift app" section above was based on initial research. The actual **MLX Swift Examples v2.29** API is more low-level and requires additional steps.
+
+### Actual API Pattern (as of MLX Swift Examples 2.29.1)
+
+**Package Information:**
+- Package: `https://github.com/ml-explore/mlx-swift-examples.git`
+- Version: 2.29.0+ (not 0.18.0 as initially researched)
+- Product: `MLXEmbedders`
+- Platform requirement: macOS 14.0+ (not 13.0)
+
+**Correct Usage Pattern:**
+
+```swift
+import MLX
+import MLXEmbedders
+import MLXNN
+import Tokenizers
+
+// 1. Create model configuration
+let config = ModelConfiguration(id: "mlx-community/bge-small-en-v1.5-6bit")
+
+// 2. Load model container (handles download, caching, and provides thread-safe access)
+let container = try await loadModelContainer(configuration: config)
+
+// 3. Generate embeddings within the container's perform closure
+let embeddings = try await container.perform { model, tokenizer, pooler in
+    // Tokenize
+    let tokens = tokenizer.encode(text: "Hello world", addSpecialTokens: true)
+    let padToken = tokenizer.eosTokenId!
+    
+    // Prepare batch (with padding for multiple texts)
+    let inputIds = MLXArray(tokens)
+    let mask = (inputIds .!= padToken)
+    let tokenTypeIds = MLXArray.zeros(like: inputIds)
+    
+    // Run model
+    let outputs = model(inputIds, positionIds: nil, 
+                        tokenTypeIds: tokenTypeIds, 
+                        attentionMask: mask)
+    
+    // Apply pooling (includes normalization)
+    let pooled = pooler(outputs, mask: mask, normalize: true, applyLayerNorm: false)
+    pooled.eval()
+    
+    // Extract Float arrays
+    let vectors = pooled.map { $0.asArray(Float.self) }
+    return vectors
+}
+```
+
+### Key Differences from Simplified Description
+
+1. **No `Embedder.from()` method** - Use `loadModelContainer()` instead
+2. **No `encode()` method** - Must manually tokenize, run model, and pool
+3. **`ModelContainer`** - Required for thread-safe actor-based access
+4. **Manual tokenization** - Use `Tokenizer.encode()`, handle padding
+5. **Manual pooling** - Apply `Pooling` module with strategy (mean, cls, etc.)
+6. **MLXArray conversion** - Use `.asArray(Float.self)` to convert to Swift arrays
+7. **Shape handling** - Pooling can return 2D (batch, dim) or 3D (batch, seq, dim) shapes
+
+### Dependencies Pulled In
+
+Adding `MLXEmbedders` transitively imports:
+- `mlx-swift` (v0.29.1) - Core MLX framework
+- `mlx-nn` - Neural network operations  
+- `swift-transformers` (v1.0.0) - Tokenizer support
+- `swift-jinja` (v2.1.1) - Template rendering
+- `swift-numerics` (v1.1.1) - Numeric utilities
+- `GzipSwift` (v6.0.1) - Compression
+
+### Implementation Reference
+
+See the actual implementation in:
+- `Tools/embedder-tool/EmbedderRuntime+Embedding.swift` - Shows complete embedding flow
+- `Libraries/Embedders/EmbeddingModel.swift` - Model protocol and container
+- `Libraries/Embedders/Pooling.swift` - Pooling strategies
+- `Libraries/Embedders/Load.swift` - Model loading and configuration
+
+### Gotchas
+
+1. **Platform requirement**: Must set macOS 14.0+ (MLX requirement)
+2. **Thread safety**: All MLX operations must happen within `container.perform { }` closure
+3. **@Sendable**: The perform closure is `@Sendable`, so helper functions must be static or nonisolated
+4. **MLXArray eval**: Must call `.eval()` to actually compute results
+5. **Padding**: Batch processing requires padding all sequences to same length
+6. **Empty tokenization**: Handle texts that fail to tokenize (empty token arrays)
+
+This addendum corrects the simplified high-level description with the actual low-level API as implemented in the OpenAgents embeddings system.

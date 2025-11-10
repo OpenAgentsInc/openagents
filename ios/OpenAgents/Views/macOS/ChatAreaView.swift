@@ -16,9 +16,8 @@ struct ChatAreaView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         if bridge.updates.isEmpty {
-                            EmptyStateView()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .padding(.vertical, 80)
+                            // No center placeholder; keep area empty and retain bottom anchor for scroll
+                            Color.clear.frame(height: 1).id("bottom")
                         } else {
                             ForEach(Array(bridge.updates.enumerated()), id: \.offset) { (idx, note) in
                                 ChatUpdateRow(note: note)
