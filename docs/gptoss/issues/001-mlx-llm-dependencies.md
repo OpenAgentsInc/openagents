@@ -138,6 +138,19 @@ From `mlx-swift-examples` (v2.29.0+):
 
 ## Rollback Plan
 
+If build or dependency resolution regresses:
+
+1. Remove the new products from `OpenAgentsCore` target in `Package.swift`.
+2. Run `xcodebuild -resolvePackageDependencies` to refresh the lock.
+3. Rebuild macOS target to confirm restoration.
+
+## Action Log (2025-11-10)
+
+- Added SPM products: MLXLLM, MLXLMCommon, Tokenizers to `OpenAgentsCore` target.
+- Verified macOS build via `xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk macosx`.
+- Added temporary `_Imports.swift` to verify imports during development.
+- Related commits: f56a0217, 4e503257.
+
 If build fails or dependencies conflict:
 
 1. Revert `Package.swift` changes
