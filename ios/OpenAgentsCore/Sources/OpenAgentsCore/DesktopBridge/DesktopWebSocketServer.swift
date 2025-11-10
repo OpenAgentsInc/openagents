@@ -200,11 +200,12 @@ public class DesktopWebSocketServer {
     /// If GPT‑OSS 20B is installed and available, prefer it; otherwise use `.default_mode`.
     private func refreshPreferredDefaultMode() async {
         #if os(macOS)
-        // Lightweight check using the GPTOSS model manager's detector
+        // Only prefer GPT‑OSS if snapshot is fully verified
         let mgr = GPTOSSModelManager()
-        if let res = await mgr.detectInstalled(), res.installed {
+        let info = await mgr.verifyLocalSnapshot()
+        if info.ok {
             preferredDefaultMode = .gptoss_20b
-            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (installed model detected)")
+            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (snapshot verified; shards=\(info.shardCount))")
             return
         }
         #endif

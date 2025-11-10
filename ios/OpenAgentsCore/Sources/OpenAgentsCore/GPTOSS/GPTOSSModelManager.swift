@@ -245,36 +245,10 @@ public actor GPTOSSModelManager {
     /// Try to detect if the model is already installed in the default Hub snapshot location.
     /// Returns (installed, totalBytes) if found.
     public func detectInstalled() async -> (installed: Bool, totalBytes: Int64)? {
-        let modelId = config.modelID
-        let fm = FileManager.default
-        if let docs = try? fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
-            let dir = docs.appendingPathComponent("huggingface/models/\(modelId)")
-            var isDir: ObjCBool = false
-            if fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue {
-                // Count shards and sum bytes; require >=1 shard to consider installed
-                var total: Int64 = 0
-                var shardCount = 0
-                let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles])
-                while let item = enumerator?.nextObject() as? URL {
-                    let name = item.lastPathComponent
-                    if name.hasSuffix(".safetensors") {
-                        shardCount += 1
-                        if let vals = try? item.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true,
-                           let size = vals.fileSize.map(Int64.init) {
-                            total += size
-                        }
-                    } else if ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
-                        if let vals = try? item.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true,
-                           let size = vals.fileSize.map(Int64.init) {
-                            total += size
-                        }
-                    }
-                }
-                if shardCount > 0 {
-                    print("[GPTOSS] Detected installed model at \(dir.path); shards=\(shardCount) total bytes ~\(total)")
-                    return (true, total)
-                }
-            }
+        let info = await verifyLocalSnapshot()
+        if info.ok {
+            print("[GPTOSS] Detected complete snapshot; shards=\(info.shardCount) total=\(fmtBytes(info.totalBytes))")
+            return (true, info.totalBytes)
         }
         return nil
     }
