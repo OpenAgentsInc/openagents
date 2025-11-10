@@ -130,6 +130,28 @@ public class DesktopWebSocketServer {
     var activeOrchestrationConfig: OrchestrationConfig? = nil
     /// Background scheduler service
     var schedulerService: SchedulerService? = nil
+    /// Coordinator for decision-driven orchestration (delegates to providers)
+    var coordinator: AgentCoordinator? = nil
+
+    /// Ensure the AgentCoordinator is initialized
+    func ensureCoordinator() async -> AgentCoordinator? {
+        if let c = coordinator { return c }
+        guard let db = self.tinyvexDb else {
+            OpenAgentsLog.orchestration.error("AgentCoordinator unavailable: Tinyvex DB not initialized")
+            return nil
+        }
+        do {
+            let tq = try await TaskQueue(db: db)
+            let de = DecisionEngine()
+            let hub = self.updateHub
+            let c = AgentCoordinator(taskQueue: tq, decisionEngine: de, agentRegistry: self.agentRegistry, updateHub: hub)
+            self.coordinator = c
+            return c
+        } catch {
+            OpenAgentsLog.orchestration.error("Failed to create TaskQueue: \(error.localizedDescription)")
+            return nil
+        }
+    }
 
     public init() {
         // Register agent providers
