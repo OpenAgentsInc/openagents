@@ -102,6 +102,10 @@ struct GPTOSSStatusCard: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
         )
+        .task {
+            // On first appear, see if the model is already installed and mark Ready
+            await viewModel.refreshInstalled()
+        }
     }
 
     private var statusIndicator: some View {
