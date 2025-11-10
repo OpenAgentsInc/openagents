@@ -57,6 +57,27 @@ final class BridgeManager: ObservableObject {
 
 // MARK: - Shared convenience APIs
 extension BridgeManager {
+    /// Determine the preferred session mode for sending a prompt.
+    /// Priority:
+    /// - If a specific agent is selected, map its name to a mode.
+    /// - Else, if currentMode is set (non-default), use it.
+    /// - Else, return nil (server default).
+    func preferredModeForSend() -> ACPSessionModeId? {
+        if let agent = selectedAgent {
+            let n = agent.name.lowercased()
+            if n.contains("claude") { return .claude_code }
+            if n.contains("codex") { return .codex }
+        }
+        // If an explicit mode is already active, prefer it over nil
+        switch currentMode {
+        case .default_mode:
+            // Pick a sensible default provider for first send
+            return .codex
+        default:
+            return currentMode
+        }
+    }
+
     func sendPrompt(text: String, desiredMode: ACPSessionModeId? = nil) {
         dispatcher?.sendPrompt(
             text: text,

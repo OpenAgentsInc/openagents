@@ -34,8 +34,24 @@ extension DesktopWebSocketServer {
         guard !promptText.isEmpty else { return }
 
         let mode = modeBySession[sidStr] ?? .default_mode
-        guard let provider = await agentRegistry.provider(for: mode) else { return }
-        guard await provider.isAvailable() else { return }
+        guard let provider = await agentRegistry.provider(for: mode) else {
+            // No provider for the chosen mode → inform UI
+            if let hub = self.updateHub {
+                let msg = "No agent provider for mode: \(mode.rawValue). Choose an agent in the sidebar."
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(msg)")))
+                await hub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+            }
+            return
+        }
+        guard await provider.isAvailable() else {
+            // Provider not available (CLI missing) → inform UI
+            if let hub = self.updateHub {
+                let msg = "\(provider.displayName) is not available. Please install the \((provider as? CLIAgentProvider)?.binaryName ?? provider.displayName) CLI."
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(msg)")))
+                await hub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+            }
+            return
+        }
 
         guard let updateHub = self.updateHub else { return }
         let context = AgentContext(

@@ -70,7 +70,10 @@ struct ChatAreaView: View {
         isSending = true
         let old = messageText
         messageText = ""
-        bridge.sendPrompt(text: trimmed)
+        // Respect the selected agent/mode when sending first prompt
+        let desired = bridge.preferredModeForSend()
+        bridge.log("ui", "composer send pressed len=\(trimmed.count) desired=\(desired?.rawValue ?? "nil") hasSession=\(bridge.currentSessionId != nil)")
+        bridge.sendPrompt(text: trimmed, desiredMode: desired)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             isSending = false
             scrollToBottom(animated: true)
