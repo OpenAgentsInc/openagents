@@ -13,6 +13,16 @@ extension DesktopWebSocketServer {
             JsonRpcRouter.sendResponse(id: id, result: result) { text in
                 client.send(text: text)
             }
+
+            // Set a preferred default mode immediately for this session and broadcast to client
+            Task { [weak self] in
+                guard let self = self else { return }
+                let sidStr = sid.value
+                self.modeBySession[sidStr] = self.preferredDefaultMode
+                let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: self.preferredDefaultMode))
+                await self.sendSessionUpdate(sessionId: sid, update: update)
+                OpenAgentsLog.bridgeServer.info("session/new: defaulting mode to \(self.preferredDefaultMode.rawValue) for session=\(sidStr)")
+            }
         }
     }
 
@@ -84,6 +94,7 @@ extension DesktopWebSocketServer {
 
         // Get mode (defaults to server's preferred default if not set)
         let mode = modeBySession[sidStr] ?? self.preferredDefaultMode
+        OpenAgentsLog.bridgeServer.info("handleSessionPrompt session=\(sidStr) using mode=\(mode.rawValue)")
 
         // Get provider from registry
         guard let provider = await agentRegistry.provider(for: mode) else {

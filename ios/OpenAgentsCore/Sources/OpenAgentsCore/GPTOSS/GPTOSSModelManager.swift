@@ -24,6 +24,10 @@ public actor GPTOSSModelManager {
         try checkSystemRequirements()
         state = .loading
         do {
+            // If installed is detected, Hub/MLX will load from cache; otherwise it will download.
+            if let detected = await detectInstalled(), detected.installed {
+                print("[GPTOSS] Local snapshot detected; loading by id from cache")
+            }
             let model = try await MLXLMCommon.loadModel(id: config.modelID)
             self.chat = ChatSession(model)
             state = .ready
@@ -44,6 +48,18 @@ public actor GPTOSSModelManager {
             // Harmony compliance: ChatSession applies chat template internally
             let text = try await chat.respond(to: prompt)
             return text
+        } catch {
+            throw GPTOSSError.generationFailed(underlying: error)
+        }
+    }
+
+    /// Stream a response token-by-token and invoke the handler for each delta.
+    public func stream(prompt: String, onToken: @escaping (String) async -> Void) async throws {
+        guard let chat = chat else { throw GPTOSSError.modelNotLoaded }
+        do {
+            for try await delta in chat.streamResponse(to: prompt) {
+                await onToken(delta)
+            }
         } catch {
             throw GPTOSSError.generationFailed(underlying: error)
         }
