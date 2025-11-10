@@ -12,7 +12,7 @@ struct ToolCallView: View {
                 statusIcon
                     .imageScale(.small)
 
-                Text(call.tool_name)
+                Text(displayName)
                     .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .fixedSize()
@@ -103,6 +103,31 @@ struct ToolCallView: View {
 
     // MARK: - Inline Display
 
+    /// Display name for the tool (with special handling for delegate.run)
+    private var displayName: String {
+        let toolName = call.tool_name.lowercased()
+
+        // delegate.run - show "Delegate to {Provider}: {description}"
+        if toolName == "delegate.run" {
+            let args = unwrapArgumentsJSON(call.arguments)
+            if case .object(let obj) = args {
+                let provider = (obj["provider"].flatMap { v -> String? in
+                    if case .string(let s) = v { return s.capitalized }
+                    return nil
+                }) ?? "Codex"
+
+                if let desc = obj["description"], case .string(let descStr) = desc {
+                    let shortDesc = descStr.components(separatedBy: " ").prefix(5).joined(separator: " ")
+                    return "Delegate to \(provider): \(shortDesc)"
+                }
+
+                return "Delegate to \(provider)"
+            }
+        }
+
+        return call.tool_name
+    }
+
     /// Command shown inline next to tool name (Bash only)
     private var inlineCommand: String? {
         return ShellCommandFormatter.format(call: call)
@@ -122,14 +147,14 @@ struct ToolCallView: View {
             return nil
         }
 
-        // Codex delegation summary
-        if toolName == "codex.run" {
+        // Delegation summary (codex.run or delegate.run)
+        if toolName == "codex.run" || toolName == "delegate.run" {
             if case .object(let obj) = args {
-                var parts: [String] = []
-                if case .string(let task)? = obj["task"] { parts.append(task) }
-                if case .string(let desc)? = obj["description"] { parts.append(desc) }
-                if case .string(let up)? = obj["user_prompt"] { parts.append(String(up.prefix(60))) }
-                if !parts.isEmpty { return parts.joined(separator: " — ") }
+                // For delegate.run, the main display name already shows provider + description
+                // Just show user_prompt in the inline params
+                if case .string(let up)? = obj["user_prompt"] {
+                    return String(up.prefix(80))
+                }
             }
         }
 
