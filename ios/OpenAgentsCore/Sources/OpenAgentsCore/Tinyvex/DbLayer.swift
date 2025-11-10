@@ -1,6 +1,9 @@
 import Foundation
 import SQLite3
 
+// SQLite transient destructor helper for bind APIs (forces SQLite to copy data)
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
 // MARK: - Tinyvex DbLayer (SQLite3)
 
 public actor TinyvexDbLayer {
