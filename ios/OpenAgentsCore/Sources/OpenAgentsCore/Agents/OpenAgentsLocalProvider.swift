@@ -94,24 +94,27 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents. Respond with 2-3 clear, well-formatted sentences. Use proper spacing between sentences and paragraphs.
+        You are OpenAgents. Respond concisely (2-3 sentences max).
 
         - Identify as \"We are OpenAgents.\" when asked who you are. Always respond in the first-person plural ("We ___", not "I ___".)
-        - When describing actions or results, use clear sentence breaks and proper spacing.
-        - Decision rubric for tools:
-          • Use delegate.run only for actionable coding tasks (read/write files, run searches, generate code/tests, repo analysis).
-          • Do NOT call tools to answer meta/capability questions (e.g., "who can you delegate to?", "what can you do?"). Answer those inline.
-          • Mentioning an agent by name is NOT a reason to use delegate.run. Choose it only when execution is actually needed.
+        - When delegating tasks, first acknowledge briefly, then call delegate.run.
+        - Decision rubric for delegate.run:
+          • Use delegate.run ONLY for actionable coding tasks (read/write files, generate code/tests, repo analysis).
+          • Do NOT call delegate.run for meta questions (\"who can you delegate to?\", \"what can you do?\"). Answer those inline.
+          • Mentioning an agent by name is NOT a reason to call delegate.run. Only call it when execution is needed.
 
-        Examples:
+        Format examples (note the newlines):
         Q: who are you?
-        A: We are OpenAgents. Ready to assist.
+        A: We are OpenAgents.
+        Ready to assist.
 
         Q: what can you do?
-        A: We command other agents and can help with coding tasks. (No tool calls.)
+        A: We command other agents and help with coding tasks.
+        (No delegate.run call.)
 
-        Q: who can you delegate to?
-        A: We can delegate to Codex and Claude Code via delegate.run. (No tool calls.)
+        Q: delegate to codex
+        A: Dispatching to Codex.
+        (Then call delegate.run with provider=\"codex\".)
         """)
         // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
@@ -133,24 +136,11 @@ extension OpenAgentsLocalProvider {
                 let delta = text.hasPrefix(last) ? String(text.dropFirst(last.count)) : text
                 last = text
                 if !delta.isEmpty {
-                    // Add line breaks after sentence boundaries for better formatting
-                    let formatted = addLineBreaksAtSentenceBoundaries(delta)
-                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: formatted)))
+                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
                     await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
                 }
             }
         }
-    }
-
-    private func addLineBreaksAtSentenceBoundaries(_ text: String) -> String {
-        var result = text
-        // Add newline after period followed by capital letter (sentence boundary)
-        result = result.replacingOccurrences(of: #"\.([A-Z])"#, with: ".\n$1", options: .regularExpression)
-        // Add newline after question mark followed by capital letter
-        result = result.replacingOccurrences(of: #"\?([A-Z])"#, with: "?\n$1", options: .regularExpression)
-        // Add newline after exclamation mark followed by capital letter
-        result = result.replacingOccurrences(of: #"!([A-Z])"#, with: "!\n$1", options: .regularExpression)
-        return result
     }
 
     private func extractText(from snapshot: Any) -> String? {
@@ -286,7 +276,7 @@ extension OpenAgentsLocalProvider {
         //     return false
         // }
         
-        private static func composeDelegationPrompt(provider: String, description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
+        static func composeDelegationPrompt(provider: String, description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
             var parts: [String] = []
             parts.append("OpenAgents → \(provider) delegation")
             if let d = description, !d.isEmpty { parts.append("Description: \(d)") }

@@ -115,7 +115,6 @@ private struct ChatUpdateRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     bubble(text: text, isUser: false)
                         .modifier(FadeInOnAppear(duration: 0.10))
-                        .modifier(FadeOnChange(value: text, from: 0.35, to: 1.0, duration: 0.10))
                     CopyMarkdownRow(markdown: text, alignRight: false, visible: hovering)
                 }
                 .onHover { hovering = $0 }
@@ -195,13 +194,9 @@ private struct ChatUpdateRow: View {
     }
 
     private func markdownText(_ text: String) -> Text {
-        // Render markdown while preserving line breaks during streaming
-        let options: AttributedString.MarkdownParsingOptions
-        if #available(macOS 14.0, *) {
-            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        } else {
-            options = .init(interpretedSyntax: .inlineOnly)
-        }
+        // Render full markdown including block-level elements (paragraphs, lists, code blocks)
+        // to properly preserve spacing and structure from agents
+        let options: AttributedString.MarkdownParsingOptions = .init(interpretedSyntax: .full)
         if let md = try? AttributedString(markdown: text, options: options) {
             return Text(md)
         }

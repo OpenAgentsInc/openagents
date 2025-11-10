@@ -74,5 +74,32 @@ final class OpenAgentsLocalProviderFMToolTests: XCTestCase {
         }
         #endif
     }
+
+    func testComposeDelegationPromptIncludesMetadata() throws {
+        #if canImport(FoundationModels)
+        let text = OpenAgentsLocalProvider.FMTool_DelegateRun.composeDelegationPrompt(
+            provider: "codex",
+            description: "Codex delegation smoke test",
+            userPrompt: "list files and summarize results",
+            workspaceRoot: "/tmp/openagents",
+            includeGlobs: ["**/*", "docs/**/*.md"],
+            summarize: true,
+            maxFiles: 250
+        )
+
+        let expected = """
+        OpenAgents → codex delegation
+        Description: Codex delegation smoke test
+        Workspace: /tmp/openagents
+        Include: **/*, docs/**/*.md
+        Summarize: yes
+        Max files: 250
+
+        list files and summarize results
+        """
+
+        XCTAssertEqual(text, expected)
+        #endif
+    }
     #endif
 }
