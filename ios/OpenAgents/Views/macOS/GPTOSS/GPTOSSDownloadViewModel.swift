@@ -121,11 +121,22 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         task = Task { [weak self] in
             guard let self = self else { return }
             do {
-                try await self.manager.downloadModel { prog in
-                    Task { @MainActor in
-                        self.progress = prog.fractionCompleted
-                        self.downloadedBytes = prog.bytesDownloaded
-                        self.totalBytes = prog.totalBytes
+                if preserveExisting {
+                    print("[GPTOSS UI] Auto-repair started")
+                    try await self.manager.repairSnapshot { prog in
+                        Task { @MainActor in
+                            self.progress = prog.fractionCompleted
+                            self.downloadedBytes = prog.bytesDownloaded
+                            self.totalBytes = prog.totalBytes
+                        }
+                    }
+                } else {
+                    try await self.manager.downloadModel { prog in
+                        Task { @MainActor in
+                            self.progress = prog.fractionCompleted
+                            self.downloadedBytes = prog.bytesDownloaded
+                            self.totalBytes = prog.totalBytes
+                        }
                     }
                 }
                 await MainActor.run {
