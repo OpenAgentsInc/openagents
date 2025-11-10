@@ -63,6 +63,9 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         do {
             if let detected = await gptossManager.detectInstalled(), detected.installed {
                 OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (installed detected)")
+                // Emit a small placeholder so UI shows immediate activity
+                let starting = ACP.Client.ContentChunk(content: .text(.init(text: "⏳ Loading GPT‑OSS 20B…")))
+                await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(starting))
                 try await gptossManager.loadModel()
                 OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS model loaded; starting stream")
                 var total = 0

@@ -38,6 +38,10 @@ public final class GPTOSSAgentProvider: AgentProvider, @unchecked Sendable {
         context: AgentContext,
         updateHub: SessionUpdateHub
     ) async throws -> AgentHandle {
+        // Inform UI immediately
+        let starting = ACP.Client.ContentChunk(content: .text(.init(text: "⏳ Loading GPT‑OSS 20B…")))
+        await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(starting))
+
         try await modelManager.loadModel()
 
         // Phase 2: streaming via ACP chunks
