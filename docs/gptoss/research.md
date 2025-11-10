@@ -2,6 +2,26 @@ Below is a **tested, app‑friendly plan** to let users **download and run *GPT�
 
 ---
 
+## 1.1 Harmony Compliance (Required)
+
+GPT‑OSS models are trained on the Harmony response format. Always construct requests through the tokenizer’s chat template (or MLX’s `ChatSession`, which applies the template internally). Do not hand‑roll prompts — outputs will degrade or break.
+
+- Prefer `ChatSession(model)` with `respond`/`streamResponse` to handle the template.
+- If you must build raw prompts, call `tokenizer.applyChatTemplate(messages:)` to render a Harmony prompt from structured messages with roles: `system`, `developer`, `user`, `assistant` (and tool‑related roles when applicable).
+- Add a unit test that asserts the first token IDs prefix matches the Harmony template for a trivial conversation.
+
+Message construction sketch:
+```swift
+let messages: [ChatMessage] = [
+  .system("You are a helpful coding agent."),
+  .developer("Follow project conventions in OpenAgents."),
+  .user("Write a Swift actor that streams tokens.")
+]
+
+let chat = ChatSession(model)
+let text = try await chat.respond(messages: messages)
+```
+
 ## 1) What’s available (and what to ship)
 
 * **Official model**: `openai/gpt-oss-20b` (Apache‑2.0, MoE; ~21B params, ~3.6B active per token). The model **must** be used with OpenAI’s **Harmony** chat format (via the tokenizer’s chat template). ([Hugging Face][1])
