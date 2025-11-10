@@ -96,14 +96,17 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         // Set up environment
         var environment = ProcessInfo.processInfo.environment
         let binDir = (execPath as NSString).deletingLastPathComponent
-        let fnmNodePath = (binDir as NSString).deletingLastPathComponent
-
-        if let existingPath = environment["PATH"] {
-            environment["PATH"] = "\(binDir):\(fnmNodePath):\(existingPath)"
-        } else {
-            environment["PATH"] = "\(binDir):\(fnmNodePath):/usr/local/bin:/usr/bin:/bin"
+        // Prefer the user's login shell PATH so node and other tools resolve identically to Terminal
+        let loginPath = Self.captureLoginShellPATH()
+        let nodeDir = Self.captureLoginShellNodeDir()
+        var path = environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin"
+        if let lp = loginPath, !lp.isEmpty { path = lp }
+        if let nd = nodeDir, !nd.isEmpty, !path.split(separator: ":").contains(where: { $0 == nd }) {
+            path = "\(nd):\(path)"
         }
-
+        // Ensure the directory of the executable is first
+        environment["PATH"] = "\(binDir):\(path)"
+        
         process.environment = environment
 
         // Set working directory
@@ -184,13 +187,14 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         // Environment setup (same as start)
         var environment = ProcessInfo.processInfo.environment
         let binDir = (execPath as NSString).deletingLastPathComponent
-        let fnmNodePath = (binDir as NSString).deletingLastPathComponent
-
-        if let existingPath = environment["PATH"] {
-            environment["PATH"] = "\(binDir):\(fnmNodePath):\(existingPath)"
-        } else {
-            environment["PATH"] = "\(binDir):\(fnmNodePath):/usr/local/bin:/usr/bin:/bin"
+        let loginPath = Self.captureLoginShellPATH()
+        let nodeDir = Self.captureLoginShellNodeDir()
+        var path = environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin"
+        if let lp = loginPath, !lp.isEmpty { path = lp }
+        if let nd = nodeDir, !nd.isEmpty, !path.split(separator: ":").contains(where: { $0 == nd }) {
+            path = "\(nd):\(path)"
         }
+        environment["PATH"] = "\(binDir):\(path)"
 
         process.environment = environment
 
@@ -217,6 +221,45 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             activeProcesses.removeValue(forKey: sidStr)
             throw AgentProviderError.resumeFailed("Failed to resume: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Login shell helpers
+    private static func captureLoginShellPATH() -> String? {
+        let shells = ["/bin/zsh", "/bin/bash"]
+        for sh in shells {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: sh)
+            p.arguments = ["-l", "-c", "print -r -- $PATH 2>/dev/null || echo -n $PATH"]
+            let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+            do {
+                try p.run(); p.waitUntilExit()
+                if let d = try? pipe.fileHandleForReading.readToEnd(), let s = String(data: d, encoding: .utf8) {
+                    let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { return trimmed }
+                }
+            } catch { continue }
+        }
+        return nil
+    }
+
+    private static func captureLoginShellNodeDir() -> String? {
+        let shells = ["/bin/zsh", "/bin/bash"]
+        for sh in shells {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: sh)
+            p.arguments = ["-l", "-c", "dirname \"$(command -v node)\" 2>/dev/null"]
+            let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+            do {
+                try p.run(); p.waitUntilExit()
+                if p.terminationStatus == 0,
+                   let d = try? pipe.fileHandleForReading.readToEnd(),
+                   let s = String(data: d, encoding: .utf8) {
+                    let dir = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !dir.isEmpty { return dir }
+                }
+            } catch { continue }
+        }
+        return nil
     }
 
     public func cancel(
