@@ -133,11 +133,24 @@ extension OpenAgentsLocalProvider {
                 let delta = text.hasPrefix(last) ? String(text.dropFirst(last.count)) : text
                 last = text
                 if !delta.isEmpty {
-                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
+                    // Add line breaks after sentence boundaries for better formatting
+                    let formatted = addLineBreaksAtSentenceBoundaries(delta)
+                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: formatted)))
                     await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
                 }
             }
         }
+    }
+
+    private func addLineBreaksAtSentenceBoundaries(_ text: String) -> String {
+        var result = text
+        // Add newline after period followed by capital letter (sentence boundary)
+        result = result.replacingOccurrences(of: #"\.([A-Z])"#, with: ".\n$1", options: .regularExpression)
+        // Add newline after question mark followed by capital letter
+        result = result.replacingOccurrences(of: #"\?([A-Z])"#, with: "?\n$1", options: .regularExpression)
+        // Add newline after exclamation mark followed by capital letter
+        result = result.replacingOccurrences(of: #"!([A-Z])"#, with: "!\n$1", options: .regularExpression)
+        return result
     }
 
     private func extractText(from snapshot: Any) -> String? {
