@@ -98,6 +98,10 @@ final class LocalJsonRpcClient: JSONRPCSending {
             case ACPRPC.orchestrateSchedulerStatus:
                 let status = server.localSchedulerStatus()
                 result = Self.bridge(status, as: R.self)
+            case ACPRPC.orchestrateSchedulerReload:
+                let out = await server.localSchedulerReload()
+                struct ReloadResp: Codable { let success: Bool; let message: String }
+                result = Self.bridge(ReloadResp(success: out.success, message: out.message), as: R.self)
             case ACPRPC.orchestrateSchedulerRunNow, ACPRPC.orchestrateSchedulerAdvance:
                 let out = await server.localSchedulerRunNow()
                 result = Self.bridge(out, as: R.self)

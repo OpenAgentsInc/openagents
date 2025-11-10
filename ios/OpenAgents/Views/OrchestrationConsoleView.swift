@@ -14,6 +14,13 @@ struct OrchestrationConsoleView: View {
     @State private var editingConfig: OrchestrationConfig?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    // Live status
+    @State private var schedulerRunning = false
+    @State private var schedulerNextWake: Int? = nil
+    @State private var schedulerMessage: String = ""
+    @State private var activeConfigId: String? = nil
+    @State private var lastCoordinatorStatus: (cycles: Int, executed: Int, completed: Int, failed: Int, cancelled: Int, lastTs: Int64?) = (0,0,0,0,0,nil)
+    @State private var statusTimer = Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +42,10 @@ struct OrchestrationConsoleView: View {
         .background(OATheme.Colors.background)
         .task {
             await loadConfigs()
+            await refreshStatuses()
+        }
+        .onReceive(statusTimer) { _ in
+            Task { await refreshStatuses() }
         }
         .sheet(isPresented: $showingEditor) {
             OrchestrationConfigEditor(
@@ -57,31 +68,55 @@ struct OrchestrationConsoleView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(OATheme.Colors.textPrimary)
 
-                Text("\(configs.count) config\(configs.count == 1 ? "" : "s")")
+                Text("\(configs.count) config\(configs.count == 1 ? "" : "s") • Active: \(activeConfigId ?? "—") • Scheduler: \(schedulerRunning ? "running" : "stopped")")
                     .font(OAFonts.ui(.caption, 13))
                     .foregroundStyle(OATheme.Colors.textSecondary)
+                if let next = schedulerNextWake {
+                    Text("Next: \(Date(timeIntervalSince1970: TimeInterval(next))) • \(schedulerMessage)")
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textTertiary)
+                }
+                let metrics = lastCoordinatorStatus
+                Text("Cycles: \(metrics.cycles) • Executed: \(metrics.executed) • Completed: \(metrics.completed) • Failed: \(metrics.failed)")
+                    .font(OAFonts.ui(.caption, 12))
+                    .foregroundStyle(OATheme.Colors.textTertiary)
             }
 
             Spacer()
 
-            Button {
-                editingConfig = nil
-                showingEditor = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                    Text("New Config")
+            HStack(spacing: 12) {
+                Button {
+                    Task { await reloadScheduler() }
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise.circle.fill")
                 }
-                .font(OAFonts.ui(.body, 14))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(OATheme.Colors.accent)
-                )
+                .buttonStyle(.bordered)
+                Button {
+                    Task { await runNow() }
+                } label: {
+                    Label("Run Now", systemImage: "play.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(OATheme.Colors.accent)
+                Button {
+                    editingConfig = nil
+                    showingEditor = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("New Config")
+                    }
+                    .font(OAFonts.ui(.body, 14))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(OATheme.Colors.accent)
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(20)
     }
@@ -233,6 +268,54 @@ struct OrchestrationConsoleView: View {
             await loadConfigs()
         } catch {
             errorMessage = "Failed to delete config: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Status Refresh
+    private func refreshStatuses() async {
+        await fetchSchedulerStatus()
+        await fetchCoordinatorStatus()
+    }
+
+    private func fetchSchedulerStatus() async {
+        struct Empty: Codable {}
+        struct Status: Codable { let running: Bool; let active_config_id: String?; let next_wake_time: Int?; let message: String }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerStatus, params: Empty(), id: "sched-status-\(UUID().uuidString)") { (resp: Status?) in
+            guard let r = resp else { return }
+            schedulerRunning = r.running
+            schedulerNextWake = r.next_wake_time
+            schedulerMessage = r.message
+            activeConfigId = r.active_config_id
+        }
+    }
+
+    private func fetchCoordinatorStatus() async {
+        struct Empty: Codable {}
+        struct Coord: Codable { let cycles_run: Int; let tasks_executed: Int; let tasks_completed: Int; let tasks_failed: Int; let tasks_cancelled: Int; let last_cycle_ts: Int64? }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateCoordinatorStatus, params: Empty(), id: "coord-status-\(UUID().uuidString)") { (resp: Coord?) in
+            guard let r = resp else { return }
+            lastCoordinatorStatus = (r.cycles_run, r.tasks_executed, r.tasks_completed, r.tasks_failed, r.tasks_cancelled, r.last_cycle_ts)
+        }
+    }
+
+    // MARK: - Actions
+    private func reloadScheduler() async {
+        struct Empty: Codable {}
+        struct Reload: Codable { let success: Bool; let message: String }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerReload, params: Empty(), id: "sched-reload-\(UUID().uuidString)") { (_: Reload?) in
+            Task { await refreshStatuses() }
+        }
+    }
+
+    private func runNow() async {
+        struct Empty: Codable {}
+        struct RunNow: Codable { let started: Bool; let message: String; let session_id: String? }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerRunNow, params: Empty(), id: "sched-run-\(UUID().uuidString)") { (_: RunNow?) in
+            Task { await refreshStatuses() }
         }
     }
 
