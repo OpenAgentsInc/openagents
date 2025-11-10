@@ -123,40 +123,23 @@ extension OpenAgentsLocalProvider {
     private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) async throws {
         let session = try await ensureSession(for: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server)
         let options = GenerationOptions(temperature: 0.7, maximumResponseTokens: 200)
-        var last = ""
-        let stream = session.streamResponse(to: prompt, options: options)
-        for try await snapshot in stream {
-            if await isCancelled(sessionId) { break }
-            if let text = extractText(from: snapshot) {
-                // Filter out tool call syntax that FM outputs as text
-                let cleaned = filterToolCallSyntax(text)
-                let delta = cleaned.hasPrefix(last) ? String(cleaned.dropFirst(last.count)) : cleaned
-                last = cleaned
-                if !delta.isEmpty {
-                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
-                    await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
-                }
-            }
-        }
-    }
 
-    private func filterToolCallSyntax(_ text: String) -> String {
-        // Remove FM's internal tool call syntax that sometimes leaks into text stream
-        // Pattern: [{"name": "tool", "arguments": {...}}]```<executable_end>
-        var cleaned = text
+        // Use respond() not streamResponse() - respond() properly invokes tools
+        print("[FM] Calling respond(to:) with prompt: \(prompt.prefix(100))...")
+        let response = try await session.respond(to: prompt, options: options)
+        print("[FM] Response received (\(response.content.count) chars)")
+        print("[FM] Response content: \(response.content.prefix(300))")
 
-        // Remove <executable_end> tags
-        cleaned = cleaned.replacingOccurrences(of: "```<executable_end>", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "<executable_end>", with: "")
-
-        // Remove inline JSON tool call arrays
-        let toolCallPattern = #"\[\{"name":\s*"[^"]+",\s*"arguments":\s*\{[^\]]*\}\}\]"#
-        if let regex = try? NSRegularExpression(pattern: toolCallPattern, options: []) {
-            let range = NSRange(cleaned.startIndex..., in: cleaned)
-            cleaned = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+        // Check transcript for tool calls
+        print("[FM] Transcript has \(session.transcript.count) entries")
+        for (index, entry) in session.transcript.enumerated() {
+            let desc = String(describing: entry).prefix(200)
+            print("[FM] Transcript[\(index)]: \(desc)")
         }
 
-        return cleaned
+        // Send response as agent message
+        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: response.content)))
+        await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
     }
 
     private func extractText(from snapshot: Any) -> String? {
