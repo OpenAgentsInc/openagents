@@ -9,172 +9,132 @@ struct ToolCallDetailSheet: View {
     let call: ACPToolCall
     let result: ACPToolResult?
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var bridge: BridgeManager
 
-    // Pre-compute JSON strings to avoid pasteboard timeout
-    private let argumentsJSON: String
-    private let resultJSON: String?
-    private let errorText: String?
-
-    init(call: ACPToolCall, result: ACPToolResult?) {
-        self.call = call
-        self.result = result
-
-        // Pre-compute arguments JSON (sync, but only once)
-        self.argumentsJSON = (try? prettyJSON(call.arguments)) ?? "{}"
-
-        // Pre-compute result JSON if available
-        if let resultValue = result?.result {
-            self.resultJSON = try? prettyJSON(resultValue)
-        } else {
-            self.resultJSON = nil
+    // Resolve arguments from the call or from the timeline (when update rows lack args)
+    private var resolvedArgumentsJSON: String {
+        if let s = try? prettyJSON(call.arguments), s != "{}" { return s }
+        if let wire = bridge.updates.compactMap({ note -> ACPToolCallWire? in
+            if case .toolCall(let w) = note.update, w.call_id == call.id { return w }
+            return nil
+        }).first, let args = wire.arguments {
+            var obj: [String: JSONValue] = [:]
+            for (k, v) in args { obj[k] = v.toJSONValue() }
+            if let s = try? prettyJSON(.object(obj)) { return s }
         }
-
-        self.errorText = result?.error
+        return "{}"
     }
 
+    private var resolvedResultJSON: String? {
+        if let r = result?.result, let s = try? prettyJSON(r) { return s }
+        if let s = bridge.outputJSONByCallId[call.id], !s.isEmpty { return s }
+        return nil
+    }
+
+    private var errorText: String? { result?.error }
+
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(call.tool_name)
+                        .font(OAFonts.ui(.headline, 18))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    HStack(spacing: 10) {
+                        DetailBadge(label: "ID", value: call.id)
+                        if let ts = call.ts { DetailBadge(label: "TS", value: String(ts)) }
+                        if let r = result { DetailBadge(label: "Status", value: r.ok ? "completed" : "error", color: r.ok ? OATheme.Colors.success : OATheme.Colors.danger) }
+                    }
+                }
+                Spacer()
+                HStack(spacing: 8) {
+                    Button("Copy raw JSON") { copyRawJSON() }
+                        .buttonStyle(.plain)
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.plain)
+                        .font(OAFonts.ui(.caption, 12))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(OATheme.Colors.background)
+
+            Divider().overlay(OATheme.Colors.border)
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Tool Call Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Tool Call")
-                            .font(OAFonts.ui(.headline, 16))
-                            .foregroundStyle(OATheme.Colors.textPrimary)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            DetailRow(label: "ID", value: call.id)
-                            DetailRow(label: "Tool", value: call.tool_name)
-                            if let ts = call.ts {
-                                DetailRow(label: "Timestamp", value: String(ts))
+                    // Arguments
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Arguments")
+                                .font(OAFonts.ui(.subheadline, 14))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                            Spacer()
+                            Button(action: { copyToClipboard(resolvedArgumentsJSON) }) {
+                                Label("Copy", systemImage: "doc.on.doc")
+                                    .font(OAFonts.ui(.caption, 12))
                             }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
                         }
+                        if resolvedArgumentsJSON.trimmingCharacters(in: .whitespacesAndNewlines) == "{}" {
+                            Text("(no structured arguments)")
+                                .font(OAFonts.mono(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.textTertiary)
+                        }
+                        JSONTextView(text: resolvedArgumentsJSON)
+                    }
 
+                    // Result
+                    if let resultJSON = resolvedResultJSON {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Arguments")
+                                Text("Output")
                                     .font(OAFonts.ui(.subheadline, 14))
                                     .foregroundStyle(OATheme.Colors.textSecondary)
                                 Spacer()
-                                Button(action: { copyToClipboard(argumentsJSON) }) {
+                                Button(action: { copyToClipboard(resultJSON) }) {
                                     Label("Copy", systemImage: "doc.on.doc")
                                         .font(OAFonts.ui(.caption, 12))
                                 }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(OATheme.Colors.textSecondary)
                             }
-
-                            if argumentsJSON.trimmingCharacters(in: .whitespacesAndNewlines) == "{}" {
-                                Text("(no structured arguments)")
-                                    .font(OAFonts.mono(.caption, 11))
-                                    .foregroundStyle(OATheme.Colors.textTertiary)
-                            }
-                            JSONTextView(text: argumentsJSON)
+                            JSONTextView(text: resultJSON)
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.6)
+                            Text("Awaiting result…")
+                                .font(OAFonts.mono(.footnote, 12))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
                         }
                     }
 
-                    // Result Section
-                    if let result = result {
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Tool Result")
-                                .font(OAFonts.ui(.headline, 16))
-                                .foregroundStyle(OATheme.Colors.textPrimary)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                DetailRow(label: "Call ID", value: result.call_id)
-                                DetailRow(
-                                    label: "Status",
-                                    value: result.ok ? "Success" : "Error",
-                                    valueColor: result.ok ? OATheme.Colors.success : OATheme.Colors.danger
-                                )
-                                if let ts = result.ts {
-                                    DetailRow(label: "Timestamp", value: String(ts))
-                                }
-                            }
-
-                            if let error = errorText, !error.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text("Error")
-                                            .font(OAFonts.ui(.subheadline, 14))
-                                            .foregroundStyle(OATheme.Colors.textSecondary)
-                                        Spacer()
-                                        Button(action: { copyToClipboard(error) }) {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                                .font(OAFonts.ui(.caption, 12))
-                                        }
-                                    }
-
-                                    Text(error)
-                                        .font(OAFonts.mono(.footnote, 12))
-                                        .foregroundStyle(OATheme.Colors.danger)
-                                        .textSelection(.enabled)
-                                        .padding(12)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(OATheme.Colors.danger.opacity(0.1))
-                                        .cornerRadius(8)
-                                }
-                            }
-
-                            if let resultJSON = resultJSON {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text("Result Data")
-                                            .font(OAFonts.ui(.subheadline, 14))
-                                            .foregroundStyle(OATheme.Colors.textSecondary)
-                                        Spacer()
-                                        Button(action: { copyToClipboard(resultJSON) }) {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                                .font(OAFonts.ui(.caption, 12))
-                                        }
-                                    }
-
-                                    JSONTextView(text: resultJSON)
-                                }
-                            }
+                    if let error = errorText, !error.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Error")
+                                .font(OAFonts.ui(.subheadline, 14))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                            Text(error)
+                                .font(OAFonts.mono(.footnote, 12))
+                                .foregroundStyle(OATheme.Colors.danger)
+                                .textSelection(.enabled)
                         }
                     }
-
-                    Spacer()
                 }
                 .padding(20)
             }
-            .navigationTitle("Tool Call Details")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                #if os(iOS)
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Copy raw JSON") {
-                        copyRawJSON()
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-                #else
-                ToolbarItem(placement: .navigation) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button("Copy raw JSON") {
-                        copyRawJSON()
-                    }
-                }
-                #endif
-            }
         }
-        .frame(minWidth: 820, minHeight: 560) // macOS: ensure a proper sheet size
+        .frame(minWidth: 820, minHeight: 560)
         .background(OATheme.Colors.background)
     }
 
     // MARK: - Helper Methods
-
     private func copyToClipboard(_ text: String) {
         #if os(iOS)
         UIPasteboard.general.string = text
@@ -185,12 +145,9 @@ struct ToolCallDetailSheet: View {
     }
 
     private func copyRawJSON() {
-        // Combine tool call and result into single JSON structure
-        struct ToolCallWithResult: Codable {
-            let call: ACPToolCall
-            let result: ACPToolResult?
-        }
-
+        // Prefer raw tool_call_update from timeline; else synthesize combined object
+        if let raw = bridge.rawJSONByCallId[call.id] { copyToClipboard(raw); return }
+        struct ToolCallWithResult: Codable { let call: ACPToolCall; let result: ACPToolResult? }
         let combined = ToolCallWithResult(call: call, result: result)
         let json = encodeJSONPretty(combined)
         copyToClipboard(json)
@@ -252,3 +209,26 @@ private func prettyJSON(_ v: JSONValue) throws -> String {
     let pd = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
     return String(data: pd, encoding: .utf8) ?? String(decoding: pd, as: UTF8.self)
 }
+
+// MARK: - Badges
+
+private struct DetailBadge: View {
+    let label: String
+    let value: String
+    var color: Color = OATheme.Colors.textSecondary
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(OAFonts.ui(.caption, 11))
+                .foregroundStyle(OATheme.Colors.textTertiary)
+            Text(value.isEmpty ? "—" : value)
+                .font(OAFonts.mono(.caption, 11))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(OATheme.Colors.card.opacity(0.5))
+        .cornerRadius(6)
+    }
+}
+
