@@ -150,7 +150,7 @@ private struct ChatUpdateRow: View {
                 .italic(italic)
                 .textSelection(.enabled)
                 .padding(12)
-                .background(isUser ? OATheme.Colors.accent.opacity(0.1) : OATheme.Colors.sidebarBackground)
+                .background(isUser ? OATheme.Colors.bgQuaternary : OATheme.Colors.bgTertiary)
                 .cornerRadius(12)
                 .frame(maxWidth: 820, alignment: .leading)
             if !isUser { Spacer(minLength: 40) }
