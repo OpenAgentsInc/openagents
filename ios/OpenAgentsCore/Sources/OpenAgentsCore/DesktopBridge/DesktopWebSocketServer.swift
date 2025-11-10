@@ -147,6 +147,8 @@ public class DesktopWebSocketServer {
 
     /// Register all available agent providers
     private func registerAgentProviders() async {
+        // Register native OpenAgents (default_mode) first so the UI has a sane default
+        await agentRegistry.register(OpenAgentsLocalProvider())
         await agentRegistry.register(CodexAgentProvider())
         await agentRegistry.register(ClaudeCodeAgentProvider())
         let count = await agentRegistry.allProviders().count
