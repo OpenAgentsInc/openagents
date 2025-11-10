@@ -10,6 +10,7 @@ struct SessionSidebarView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var editingTitleId: String? = nil
     @State private var editingTitleText: String = ""
+    @StateObject private var gptossVM = GPTOSSDownloadViewModel()
 
     var body: some View {
         VStack(spacing: 8) {
@@ -155,6 +156,11 @@ struct SessionSidebarView: View {
             }
 
             Spacer(minLength: 0)
+
+            // GPTOSS model status card at bottom
+            GPTOSSStatusCard(viewModel: gptossVM)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
         .background(

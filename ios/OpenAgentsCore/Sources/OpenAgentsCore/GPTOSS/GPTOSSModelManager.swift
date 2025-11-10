@@ -3,6 +3,7 @@
 import Foundation
 import MLXLLM
 import MLXLMCommon
+import Hub
 
 public actor GPTOSSModelManager {
     private let config: GPTOSSConfig
@@ -56,6 +57,37 @@ public actor GPTOSSModelManager {
         guard mem >= Self.minimumMemoryBytes else {
             throw GPTOSSError.insufficientMemory(available: mem, required: Self.minimumMemoryBytes)
         }
+    }
+
+    // MARK: - Download (Hub.snapshot)
+
+    public struct DownloadProgress: Sendable {
+        public var fractionCompleted: Double
+        public var bytesDownloaded: Int64
+        public var totalBytes: Int64
+        public var estimatedTimeRemaining: TimeInterval?
+        public init(fractionCompleted: Double, bytesDownloaded: Int64, totalBytes: Int64, estimatedTimeRemaining: TimeInterval? = nil) {
+            self.fractionCompleted = fractionCompleted
+            self.bytesDownloaded = bytesDownloaded
+            self.totalBytes = totalBytes
+            self.estimatedTimeRemaining = estimatedTimeRemaining
+        }
+    }
+
+    /// Download model artifacts with resumable snapshot and report progress.
+    public func downloadModel(progressHandler: @escaping (DownloadProgress) -> Void) async throws {
+        let repo = Hub.Repo(id: config.modelID)
+        let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
+        let _ = try await Hub.snapshot(from: repo, matching: files) { p in
+            let prog = DownloadProgress(
+                fractionCompleted: p.fractionCompleted,
+                bytesDownloaded: p.completedUnitCount,
+                totalBytes: p.totalUnitCount
+            )
+            progressHandler(prog)
+        }
+        // Optional: verify by attempting a load
+        do { try await loadModel() } catch { /* leave to caller if load on demand */ }
     }
 }
 #endif
