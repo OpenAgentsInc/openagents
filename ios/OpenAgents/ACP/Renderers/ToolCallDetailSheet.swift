@@ -164,6 +164,8 @@ struct ToolCallDetailSheet: View {
                 #endif
             }
         }
+        .frame(minWidth: 820, minHeight: 560) // macOS: ensure a proper sheet size
+        .background(OATheme.Colors.background)
     }
 
     // MARK: - Helper Methods

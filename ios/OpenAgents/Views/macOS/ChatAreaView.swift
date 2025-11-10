@@ -172,8 +172,12 @@ private struct ChatUpdateRow: View {
     }
 
     private func mapCall(_ w: ACPToolCallWire) -> ACPToolCall {
-        // Map to ACPToolCall, ignoring structured args for now (keeps UI responsive)
-        return ACPToolCall(id: w.call_id, tool_name: w.name, arguments: .object([:]))
+        // Map wire args [String: AnyEncodable] → JSONValue for UI rendering
+        var jsonObj: [String: JSONValue] = [:]
+        if let args = w.arguments {
+            for (k, v) in args { jsonObj[k] = v.toJSONValue() }
+        }
+        return ACPToolCall(id: w.call_id, tool_name: w.name, arguments: .object(jsonObj))
     }
 
     private func mapResult(_ w: ACPToolCallUpdateWire) -> ACPToolResult {

@@ -30,7 +30,7 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         updateHub: SessionUpdateHub
     ) async throws -> AgentHandle {
         let handle = AgentHandle(sessionId: sessionId, mode: id, isStarted: true)
-        await streamResponse(prompt: prompt, sessionId: sessionId, updateHub: updateHub)
+        await streamResponse(prompt: prompt, sessionId: sessionId, updateHub: updateHub, context: context)
         return handle
     }
 
@@ -40,13 +40,47 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         handle: AgentHandle,
         context: AgentContext,
         updateHub: SessionUpdateHub
-    ) async throws { await streamResponse(prompt: prompt, sessionId: sessionId, updateHub: updateHub) }
+    ) async throws { await streamResponse(prompt: prompt, sessionId: sessionId, updateHub: updateHub, context: context) }
 
     public func cancel(sessionId: ACPSessionId, handle: AgentHandle) async { cancelled.insert(sessionId.value) }
 
     // MARK: - Internal
-    private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub) async {
+    private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, context: AgentContext?) async {
         if await isCancelled(sessionId) { return }
+
+        // Stubbed tool-calling demo: if the user mentions "codex", emit a tool call with arguments
+        let lower = prompt.lowercased()
+        if lower.contains("codex") {
+            let callId = UUID().uuidString
+            var args: [String: AnyEncodable] = [
+                "provider": AnyEncodable("codex"),
+                "task": AnyEncodable("delegate"),
+                "description": AnyEncodable("OpenAgents → Codex delegation"),
+                "user_prompt": AnyEncodable(prompt),
+                "files_include_glob": AnyEncodable(["**/*"]),
+                "summarize": AnyEncodable(true),
+                "max_files": AnyEncodable(5000)
+            ]
+            if let wd = context?.workingDirectory?.path, !wd.isEmpty {
+                args["workspace_root"] = AnyEncodable(wd)
+            }
+            let call = ACPToolCallWire(call_id: callId, name: "codex.run", arguments: args)
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
+
+            // Immediately follow with a stubbed completion update so UI shows output/args
+            let argsJSON: String = {
+                if let data = try? JSONEncoder().encode(args), let s = String(data: data, encoding: .utf8) { return s }
+                return "{}"
+            }()
+            let output: [String: AnyEncodable] = [
+                "status": AnyEncodable("stubbed"),
+                "command": AnyEncodable("codex exec --json"),
+                "arguments_json": AnyEncodable(argsJSON)
+            ]
+            let upd = ACPToolCallUpdateWire(call_id: callId, status: .completed, output: AnyEncodable(output), error: nil)
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(upd))
+            return
+        }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
