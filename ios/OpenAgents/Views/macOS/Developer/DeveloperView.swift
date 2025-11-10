@@ -10,7 +10,7 @@ struct DeveloperView: View {
     @EnvironmentObject var bridgeManager: BridgeManager
     @Environment(\.dismiss) var dismiss
 
-    enum DeveloperTab: String, CaseIterable { case database = "Database", nostr = "Nostr", logs = "Logs", diagnostics = "Diagnostics" }
+    enum DeveloperTab: String, CaseIterable { case database = "Database", orchestration = "Orchestration", nostr = "Nostr", logs = "Logs", diagnostics = "Diagnostics" }
     @State private var selectedTab: DeveloperTab = .database
 
     var body: some View {
@@ -37,6 +37,7 @@ struct DeveloperView: View {
                 ScrollView {
                     switch selectedTab {
                     case .database: DatabaseDevToolsView()
+                    case .orchestration: OrchestrationDevView()
                     case .nostr: NostrDevToolsView()
                     case .logs: LogsViewerView()
                     case .diagnostics: DiagnosticsView()
@@ -50,7 +51,13 @@ struct DeveloperView: View {
     }
 
     private func icon(for tab: DeveloperTab) -> String {
-        switch tab { case .database: return "cylinder"; case .nostr: return "antenna.radiowaves.left.and.right"; case .logs: return "doc.text"; case .diagnostics: return "stethoscope" }
+        switch tab {
+        case .database: return "cylinder"
+        case .orchestration: return "gearshape.2"
+        case .nostr: return "antenna.radiowaves.left.and.right"
+        case .logs: return "doc.text"
+        case .diagnostics: return "stethoscope"
+        }
     }
 }
 
@@ -159,6 +166,113 @@ private struct DiagnosticsView: View {
     case .handshaking(let h, let p): return "Handshaking with \(h):\(p)"
     case .connected(let h, let p): return "Connected to \(h):\(p)"
     case .error(let e): return "Error: \(e)"
+    }
+}
+
+// MARK: - Orchestration Dev View
+private struct OrchestrationDevView: View {
+    @EnvironmentObject var bridgeManager: BridgeManager
+    @State private var schedulerRunning = false
+    @State private var activeConfigId: String? = nil
+    @State private var schedulerNextWake: Int? = nil
+    @State private var schedulerMessage: String = ""
+    @State private var cycles = 0
+    @State private var executed = 0
+    @State private var completed = 0
+    @State private var failed = 0
+    @State private var cancelled = 0
+    @State private var lastTs: Int64? = nil
+    @State private var timer = Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Scheduler")
+            HStack(spacing: 16) {
+                Label("Status: \(schedulerRunning ? "running" : "stopped")", systemImage: schedulerRunning ? "play.circle.fill" : "pause.circle")
+                if let next = schedulerNextWake {
+                    Label("Next: \(Date(timeIntervalSince1970: TimeInterval(next)))", systemImage: "clock")
+                }
+            }
+            .font(OAFonts.ui(.body, 13))
+            .foregroundStyle(OATheme.Colors.textSecondary)
+            Text(schedulerMessage)
+                .font(OAFonts.ui(.caption, 12))
+                .foregroundStyle(OATheme.Colors.textTertiary)
+            HStack(spacing: 12) {
+                Button("Reload") { Task { await reloadScheduler() } }
+                    .buttonStyle(.bordered)
+                Button("Run Now") { Task { await runNow() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(OATheme.Colors.accent)
+            }
+
+            Divider().padding(.vertical, 4)
+            SectionHeader(title: "Coordinator")
+            HStack(spacing: 16) {
+                Label("Cycles: \(cycles)", systemImage: "arrow.2.circlepath")
+                Label("Executed: \(executed)", systemImage: "hammer")
+                Label("Completed: \(completed)", systemImage: "checkmark.circle")
+                Label("Failed: \(failed)", systemImage: "xmark.circle")
+                Label("Cancelled: \(cancelled)", systemImage: "stop.circle")
+            }
+            .font(OAFonts.ui(.body, 13))
+            .foregroundStyle(OATheme.Colors.textSecondary)
+            if let ts = lastTs {
+                Text("Last Cycle: \(Date(timeIntervalSince1970: TimeInterval(ts)/1000.0))")
+                    .font(OAFonts.ui(.caption, 12))
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { Task { await refresh() } }
+        .onReceive(timer) { _ in Task { await refresh() } }
+    }
+
+    private func refresh() async {
+        await fetchSchedulerStatus()
+        await fetchCoordinatorStatus()
+    }
+
+    private func fetchSchedulerStatus() async {
+        struct Empty: Codable {}
+        struct Status: Codable { let running: Bool; let active_config_id: String?; let next_wake_time: Int?; let message: String }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerStatus, params: Empty(), id: "dev-sched-status-\(UUID().uuidString)") { (resp: Status?) in
+            guard let r = resp else { return }
+            schedulerRunning = r.running
+            schedulerNextWake = r.next_wake_time
+            schedulerMessage = r.message
+            activeConfigId = r.active_config_id
+        }
+    }
+
+    private func fetchCoordinatorStatus() async {
+        struct Empty: Codable {}
+        struct Coord: Codable { let cycles_run: Int; let tasks_executed: Int; let tasks_completed: Int; let tasks_failed: Int; let tasks_cancelled: Int; let last_cycle_ts: Int64? }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateCoordinatorStatus, params: Empty(), id: "dev-coord-status-\(UUID().uuidString)") { (resp: Coord?) in
+            guard let r = resp else { return }
+            cycles = r.cycles_run
+            executed = r.tasks_executed
+            completed = r.tasks_completed
+            failed = r.tasks_failed
+            cancelled = r.tasks_cancelled
+            lastTs = r.last_cycle_ts
+        }
+    }
+
+    private func reloadScheduler() async {
+        struct Empty: Codable {}
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerReload, params: Empty(), id: "dev-sched-reload-\(UUID().uuidString)") { (_: [String: AnyCodable]?) in }
+    }
+
+    private func runNow() async {
+        struct Empty: Codable {}
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerRunNow, params: Empty(), id: "dev-sched-run-\(UUID().uuidString)") { (_: [String: AnyCodable]?) in }
     }
 }
 #endif
