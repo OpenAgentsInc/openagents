@@ -172,10 +172,10 @@ extension DesktopWebSocketServer {
         let sid = ACPSessionId(sidStr)
         let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
         var modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
-        // If client requests default_mode but GPT‑OSS is installed, prefer GPT‑OSS transparently
-        if modeId == .default_mode && self.preferredDefaultMode == .gptoss_20b {
-            modeId = .gptoss_20b
-            OpenAgentsLog.bridgeServer.info("session/set_mode requested default_mode; overriding to gptoss_20b (preferred)")
+        // If client requests default_mode but a preferred agent is available, use it transparently
+        if modeId == .default_mode && self.preferredDefaultMode != .default_mode {
+            modeId = self.preferredDefaultMode
+            OpenAgentsLog.bridgeServer.info("session/set_mode requested default_mode; overriding to \(self.preferredDefaultMode.rawValue) (preferred)")
         }
         self.modeBySession[sidStr] = modeId
 
