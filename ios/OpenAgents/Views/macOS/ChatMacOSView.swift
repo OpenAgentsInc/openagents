@@ -9,25 +9,20 @@ import OpenAgentsCore
 struct ChatMacOSView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showInspector: Bool = false
     private let defaultSidebarWidth: CGFloat = 260
     @State private var showSettings: Bool = false
     @State private var showDeveloper: Bool = false
     @State private var showKeyboardShortcuts: Bool = false
 
     var body: some View {
+        // Two-column split (sidebar + detail) to match known-good structure
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionSidebarView()
                 .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
-        } content: {
+        } detail: {
             ChatAreaView()
                 .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
                 .navigationTitle("")
-        } detail: {
-            if showInspector {
-                InspectorPaneView()
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
-            }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
@@ -43,12 +38,7 @@ struct ChatMacOSView: View {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .option])
             }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { toggleInspector() }) {
-                    Image(systemName: "sidebar.trailing")
-                }
-                .keyboardShortcut("i", modifiers: .command)
-            }
+            // Inspector toggle removed in two-column layout
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -63,7 +53,7 @@ struct ChatMacOSView: View {
         .focusedSceneValue(\.showDeveloper, $showDeveloper)
         .focusedSceneValue(\.showKeyboardShortcuts, $showKeyboardShortcuts)
         .focusedSceneValue(\.toggleSidebar, { toggleSidebar() })
-        .focusedSceneValue(\.toggleInspector, { toggleInspector() })
+        // Inspector is currently disabled in two-column layout
         .focusedSceneValue(\.exportTranscriptJSON, { exportTranscriptJSON() })
         .focusedSceneValue(\.exportTranscriptMarkdown, { exportTranscriptMarkdown() })
         .focusedSceneValue(\.copyTranscriptMarkdown, { copyTranscriptMarkdown() })
@@ -82,10 +72,6 @@ struct ChatMacOSView: View {
         default:
             columnVisibility = .all
         }
-    }
-
-    private func toggleInspector() {
-        withAnimation { showInspector.toggle() }
     }
 
     private func exportTranscriptJSON() {
