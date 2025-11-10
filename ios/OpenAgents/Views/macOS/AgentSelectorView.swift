@@ -137,11 +137,8 @@ struct AgentSelectorView: View {
         defaultAgentMode = mode.rawValue
         // Clear explicit command selection when choosing a mode
         bridge.selectedAgent = nil
-        if bridge.currentSessionId == nil {
-            bridge.startNewSession(desiredMode: mode)
-        } else {
-            bridge.setSessionMode(mode)
-        }
+        // Always start a new chat when switching modes mid-conversation
+        bridge.startNewSession(desiredMode: mode)
     }
 }
 
