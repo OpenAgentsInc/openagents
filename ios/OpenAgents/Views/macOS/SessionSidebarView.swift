@@ -13,10 +13,12 @@ struct SessionSidebarView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Agent selector at top-left
+            /*
+            // Agent selector at top-left (temporarily hidden)
             AgentSelectorView()
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
+            */
 
             // New Chat button
             Button(action: { bridge.startNewSession() }) {
@@ -35,7 +37,8 @@ struct SessionSidebarView: View {
             .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("New Chat")
 
-            // Search bar
+            /*
+            // Search bar (temporarily hidden)
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(OATheme.Colors.textSecondary)
@@ -59,11 +62,12 @@ struct SessionSidebarView: View {
             )
             .padding(.horizontal, 12)
             .onExitCommand {
-                // Clear search on Escape if focused
                 if isSearchFocused && !searchText.isEmpty { searchText = "" }
             }
+            */
 
-            Divider().background(OATheme.Colors.textTertiary.opacity(0.15))
+            /* Divider hidden to simplify sidebar */
+            // Divider().background(OATheme.Colors.textTertiary.opacity(0.15))
 
             // Session list with keyboard selection
             List(selection: $selectedSessionId) {
@@ -157,8 +161,8 @@ struct SessionSidebarView: View {
                 confirmDelete(s)
             }
         }
-        // Expose focus action for Cmd-F
-        .focusedSceneValue(\.focusSidebarSearch, { isSearchFocused = true })
+        /* Temporarily disable Cmd-F search focus without a search field */
+        // .focusedSceneValue(\.focusSidebarSearch, { isSearchFocused = true })
     }
 
     private var filtered: [RecentSession] {
