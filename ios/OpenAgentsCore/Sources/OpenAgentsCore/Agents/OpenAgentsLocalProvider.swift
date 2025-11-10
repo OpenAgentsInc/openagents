@@ -67,8 +67,8 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
 
     private func makeLocalReply(for prompt: String) -> String {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "OpenAgents (local): How can I help?" }
-        return "OpenAgents (local): \(trimmed)"
+        if trimmed.isEmpty { return "We are OpenAgents. How can we help?" }
+        return "We are OpenAgents. \(trimmed)"
     }
 }
 
@@ -85,10 +85,22 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents, a local on‑device assistant running within the OpenAgents app.
-        Be helpful, direct, and practical. Provide concise answers in plain text (no markdown unless asked).
-        Only refuse if the request is clearly unsafe or cannot be done purely on‑device.
-        Otherwise, offer best‑effort guidance or next steps.
+        We are OpenAgents. Respond concisely, like a terminal assistant.
+        - Prefer one or two crisp lines.
+        - No markdown unless explicitly requested. No emojis. No unnecessary apologies.
+        - If a command helps, show a single shell one‑liner.
+        - Identify as \"We are OpenAgents.\" when asked who you are.
+        - Only refuse if the request is clearly unsafe or impossible on‑device; otherwise give the most direct next step.
+
+        Examples:
+        Q: who are you?
+        A: We are OpenAgents.
+
+        Q: what can you do?
+        A: We command other agents.
+
+        Q: how do i start?
+        A: Ask me to issue commands to Claude Code or Codex.
         """)
         let s = LanguageModelSession(model: model, tools: [], instructions: instructions)
         s.prewarm(promptPrefix: nil)
@@ -98,7 +110,7 @@ extension OpenAgentsLocalProvider {
 
     private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub) async throws {
         let session = try await ensureSession()
-        let options = GenerationOptions(temperature: 0.25, maximumResponseTokens: 220)
+        let options = GenerationOptions(temperature: 0.15, maximumResponseTokens: 140)
         var last = ""
         let stream = session.streamResponse(to: prompt, options: options)
         for try await snapshot in stream {
