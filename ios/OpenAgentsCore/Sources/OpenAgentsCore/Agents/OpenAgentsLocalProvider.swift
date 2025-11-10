@@ -103,17 +103,16 @@ extension OpenAgentsLocalProvider {
           • Do NOT call delegate.run for meta questions (\"who can you delegate to?\", \"what can you do?\"). Answer those inline.
           • Mentioning an agent by name is NOT a reason to call delegate.run. Only call it when execution is needed.
 
-        Format examples (note the newlines):
-        Q: who are you?
-        A: We are OpenAgents.
-        Ready to assist.
+        Format examples:
+        User: who are you?
+        Agent: We are OpenAgents.Ready to assist.
 
-        Q: what can you do?
-        A: We command other agents and help with coding tasks.
+        User: what can you do?
+        Agent: We command other agents and help with coding tasks.
         (No delegate.run call.)
 
-        Q: delegate to codex
-        A: Dispatching to Codex.
+        User: delegate to codex
+        Agent: Dispatching to Codex.
         (Then call delegate.run with provider=\"codex\".)
         """)
         // Register delegate tool for routing to external agents
@@ -256,7 +255,7 @@ extension OpenAgentsLocalProvider {
             default: return .codex  // fallback
             }
         }
-        
+
         // MARK: - Delegation heuristics (disabled)
         // Keeping for reference; not used in "agent decides" mode.
         // private func shouldDispatch(userPrompt: String, task: String?) -> Bool {
@@ -275,7 +274,7 @@ extension OpenAgentsLocalProvider {
         //     }
         //     return false
         // }
-        
+
         static func composeDelegationPrompt(provider: String, description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
             var parts: [String] = []
             parts.append("OpenAgents → \(provider) delegation")

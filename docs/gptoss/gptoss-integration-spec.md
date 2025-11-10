@@ -170,14 +170,14 @@ mlx-community/gpt-oss-20b-MXFP4-Q8/
 
 **Example Prompts:**
 ```
-Q: who are you?
-A: We are OpenAgents. Ready to assist.
+User: who are you?
+Agent: We are OpenAgents. Ready to assist.
 
-Q: Generate a title for this conversation: [...]
-A: Fix Authentication Error
+User: Generate a title for this conversation: [...]
+Agent: Fix Authentication Error
 
-Q: Should this task use GPTOSS? [task description]
-A: Yes, code generation requires GPTOSS.
+User: Should this task use GPTOSS? [task description]
+Agent: Yes, code generation requires GPTOSS.
 ```
 
 ### 4.2 GPTOSS 20B (New)
