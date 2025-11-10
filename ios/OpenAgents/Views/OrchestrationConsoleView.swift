@@ -6,6 +6,7 @@ import OpenAgentsCore
 /// macOS Orchestration Console - manage overnight orchestration configs
 struct OrchestrationConsoleView: View {
     @EnvironmentObject var tinyvex: TinyvexManager
+    @EnvironmentObject var bridgeManager: BridgeManager
 
     @State private var configs: [OrchestrationConfig] = []
     @State private var selectedConfig: OrchestrationConfig?
@@ -157,9 +158,9 @@ struct OrchestrationConsoleView: View {
                             editingConfig = config
                             showingEditor = true
                         },
-                        onDelete: {
-                            await deleteConfig(config)
-                        }
+                        onDelete: { await deleteConfig(config) },
+                        onActivate: { await activateConfig(config) },
+                        onRunPlan: { await runPlan(config) }
                     )
                 }
             }
@@ -234,6 +235,19 @@ struct OrchestrationConsoleView: View {
             errorMessage = "Failed to delete config: \(error.localizedDescription)"
         }
     }
+
+    // MARK: - RPC actions (Coordinator/Scheduler)
+    private func activateConfig(_ config: OrchestrationConfig) async {
+        struct BindParams: Codable { let config_id: String; let workspace_root: String }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerBind, params: BindParams(config_id: config.id, workspace_root: config.workspaceRoot), id: "bind-\(UUID().uuidString)") { (_: [String: AnyCodable]?) in }
+    }
+
+    private func runPlan(_ config: OrchestrationConfig) async {
+        struct RunParams: Codable { let config_id: String?; let config_inline: OrchestrationConfig? }
+        guard let rpc = bridgeManager.connection?.rpcClient else { return }
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateCoordinatorRunOnce, params: RunParams(config_id: config.id, config_inline: nil), id: "run-once-\(UUID().uuidString)") { (_: [String: AnyCodable]?) in }
+    }
 }
 
 // MARK: - Config Row View
@@ -244,6 +258,8 @@ private struct ConfigRowView: View {
     let onSelect: () -> Void
     let onEdit: () -> Void
     let onDelete: () async -> Void
+    let onActivate: () async -> Void
+    let onRunPlan: () async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -262,6 +278,22 @@ private struct ConfigRowView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
+                    Button {
+                        Task { await onActivate() }
+                    } label: {
+                        Label("Activate", systemImage: "bolt.horizontal.circle.fill")
+                            .font(OAFonts.ui(.footnote, 12))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(OATheme.Colors.accent)
+
+                    Button {
+                        Task { await onRunPlan() }
+                    } label: {
+                        Label("Run Plan", systemImage: "play.circle.fill")
+                            .font(OAFonts.ui(.footnote, 12))
+                    }
+                    .buttonStyle(.bordered)
                     Button {
                         onEdit()
                     } label: {
