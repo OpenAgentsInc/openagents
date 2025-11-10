@@ -64,6 +64,22 @@ final class TimelineStore: ObservableObject, TimelineStoring {
                 pushUpdate(note)
                 lastUpdateRowIndexByCallId[upd.call_id] = updates.count - 1
             }
+        case .agentMessageChunk(let chunk):
+            // Coalesce streaming agent chunks into the last agent bubble for this session
+            if let last = updates.last, last.session_id == note.session_id {
+                if case .agentMessageChunk(let prevChunk) = last.update,
+                   case .text(let prevText) = prevChunk.content,
+                   case .text(let newText) = chunk.content {
+                    let merged = ACP.Client.ContentChunk(content: .text(.init(text: prevText.text + newText.text)))
+                    let mergedNote = ACP.Client.SessionNotificationWire(session_id: note.session_id, update: .agentMessageChunk(merged))
+                    updates[updates.count - 1] = mergedNote
+                    objectWillChange.send()
+                } else {
+                    pushUpdate(note)
+                }
+            } else {
+                pushUpdate(note)
+            }
         default:
             pushUpdate(note)
         }

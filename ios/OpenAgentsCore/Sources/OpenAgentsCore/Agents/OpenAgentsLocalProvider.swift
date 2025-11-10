@@ -84,7 +84,12 @@ extension OpenAgentsLocalProvider {
         let model = SystemLanguageModel.default
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
-        let instructions = Instructions("You are OpenAgents (local). Answer succinctly in plain text without markdown unless asked.")
+        let instructions = Instructions("""
+        You are OpenAgents, a local on‑device assistant running within the OpenAgents app.
+        Be helpful, direct, and practical. Provide concise answers in plain text (no markdown unless asked).
+        Only refuse if the request is clearly unsafe or cannot be done purely on‑device.
+        Otherwise, offer best‑effort guidance or next steps.
+        """)
         let s = LanguageModelSession(model: model, tools: [], instructions: instructions)
         s.prewarm(promptPrefix: nil)
         Self.fmSession = s
