@@ -49,6 +49,14 @@ struct GPTOSSStatusCard: View {
                                 .buttonStyle(.borderless)
                                 .font(OAFonts.ui(.caption, 10))
                                 .foregroundStyle(Color.red)
+                            Spacer()
+                            Button("Repair") { Task { await viewModel.repairDownload() } }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            Button("Purge & Restart") { Task { await viewModel.purgeAndRestart() } }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                                .controlSize(.small)
                         }
                     } else if case .paused = viewModel.status {
                         HStack(spacing: 6) {
@@ -66,6 +74,14 @@ struct GPTOSSStatusCard: View {
                                 .buttonStyle(.borderless)
                                 .font(OAFonts.ui(.caption, 10))
                                 .foregroundStyle(Color.red)
+                            Spacer()
+                            Button("Repair") { Task { await viewModel.repairDownload() } }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            Button("Purge & Restart") { Task { await viewModel.purgeAndRestart() } }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                                .controlSize(.small)
                         }
                     } else if !viewModel.isDownloaded {
                         Button("Download Model") {
@@ -83,6 +99,15 @@ struct GPTOSSStatusCard: View {
                             }
                             .font(OAFonts.ui(.caption, 10))
                             .foregroundStyle(OATheme.Colors.textSecondary)
+                        }
+                        HStack(spacing: 8) {
+                            Button("Repair") { Task { await viewModel.repairDownload() } }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            Button("Purge & Restart") { Task { await viewModel.purgeAndRestart() } }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                                .controlSize(.small)
                         }
                     } else {
                         Text("Ready for use")
