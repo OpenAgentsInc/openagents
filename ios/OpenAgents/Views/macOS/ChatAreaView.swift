@@ -145,18 +145,23 @@ private struct ChatUpdateRow: View {
     }
 
     private func bubble(text: String, isUser: Bool, italic: Bool = false, secondary: Bool = false) -> some View {
-        return HStack {
-            if isUser { Spacer(minLength: 40) }
-            Text(text)
-                .font(OAFonts.mono(.body, 14))
-                .foregroundStyle(secondary ? OATheme.Colors.textSecondary : OATheme.Colors.textPrimary)
-                .italic(italic)
-                .textSelection(.enabled)
-                .padding(12)
-                .background(isUser ? OATheme.Colors.bgQuaternary : OATheme.Colors.bgTertiary)
-                .cornerRadius(12)
-                .frame(maxWidth: 820, alignment: .leading)
-            if !isUser { Spacer(minLength: 40) }
+        let content = Text(text)
+            .font(OAFonts.mono(.body, 14))
+            .foregroundStyle(secondary ? OATheme.Colors.textSecondary : OATheme.Colors.textPrimary)
+            .italic(italic)
+            .textSelection(.enabled)
+            .padding(isUser ? 12 : 0)
+            .background(isUser ? OATheme.Colors.bgQuaternary : Color.clear)
+            .cornerRadius(isUser ? 12 : 0)
+
+        return HStack(spacing: 0) {
+            if isUser {
+                Spacer(minLength: 0)
+                content
+            } else {
+                content
+                Spacer(minLength: 0)
+            }
         }
     }
 
