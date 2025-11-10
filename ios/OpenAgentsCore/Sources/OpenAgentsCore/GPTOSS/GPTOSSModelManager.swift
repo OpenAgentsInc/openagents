@@ -83,14 +83,29 @@ public actor GPTOSSModelManager {
         print("[GPTOSS] Files: \(files.joined(separator: ", "))")
 
         let modelDir = try await Hub.snapshot(from: repo, matching: files) { p in
+            // Heuristic: if totalUnitCount is tiny, treat it as "file count" and estimate bytes from percent
+            let fallbackTotalBytes: Int64 = Int64(12.1 * 1_073_741_824.0) // ~12.1 GiB
+            let looksLikeFileCount = p.totalUnitCount > 0 && p.totalUnitCount < (128 * 1024 * 1024)
+            let totalBytes = looksLikeFileCount ? fallbackTotalBytes : p.totalUnitCount
+            let completedBytes = (looksLikeFileCount || p.completedUnitCount == 0)
+                ? Int64(Double(totalBytes) * p.fractionCompleted)
+                : p.completedUnitCount
+
             let prog = DownloadProgress(
                 fractionCompleted: p.fractionCompleted,
-                bytesDownloaded: p.completedUnitCount,
-                totalBytes: p.totalUnitCount
+                bytesDownloaded: completedBytes,
+                totalBytes: totalBytes
             )
             progressHandler(prog)
+
             let pct = Int((p.fractionCompleted * 100).rounded())
-            print("[GPTOSS] Download progress: \(pct)% (\(p.completedUnitCount)/\(p.totalUnitCount))")
+            func fmt(_ b: Int64) -> String {
+                if b >= 1_073_741_824 { return String(format: "%.1f GB", Double(b)/1_073_741_824.0) }
+                if b >= 1_048_576 { return String(format: "%.1f MB", Double(b)/1_048_576.0) }
+                if b >= 1024 { return String(format: "%.1f KB", Double(b)/1024.0) }
+                return "\(b) B"
+            }
+            print("[GPTOSS] Download progress: \(pct)% (~\(fmt(completedBytes)) / \(fmt(totalBytes)))")
         }
         // Optional: verify by attempting a load
         print("[GPTOSS] Download complete at \(modelDir.path)")
