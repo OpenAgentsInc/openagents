@@ -17,7 +17,7 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(hex: "#1c1c1f") // color-bg-secondary
+            return Color(hex: "#0e0e12") // matches good commit palette
             #endif
         }
         static var border: Color {
@@ -59,7 +59,7 @@ struct OATheme {
         }
 
         // Accents and states
-        static var accent: Color { Color(hex: "#7170ff") } // color-accent
+        static var accent: Color { Color.accentColor }
         static var success: Color { Color(hex: "#04A545") }  // green from palette
         static var warning: Color { Color(hex: "#FEBF00") }  // yellow from palette
         static var danger: Color { Color(hex: "#e7040f") }   // brightRed from palette
@@ -69,7 +69,7 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(hex: "#232326") // color-bg-tertiary
+            return Color(hex: "#08090a") // same as background in good commit
             #endif
         }
         static var popover: Color { card }
@@ -81,7 +81,7 @@ struct OATheme {
             #endif
         }
 
-        // Extended grayscale surfaces (for chat UI neutrality)
+        // Extended grayscale surfaces (retain for newer views if present)
         static var bgTertiary: Color { Color(hex: "#232326") }
         static var bgQuaternary: Color { Color(hex: "#28282c") }
         static var borderSecondary: Color { Color(hex: "#34343a") }
