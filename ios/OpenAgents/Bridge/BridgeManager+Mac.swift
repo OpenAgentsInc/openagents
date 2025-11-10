@@ -15,7 +15,19 @@ extension BridgeManager {
         // Connection events
         conn.statusPublisher
             .receive(on: RunLoop.main)
-            .sink { [weak self] st in self?.status = st }
+            .sink { [weak self] st in
+                guard let self = self else { return }
+                self.status = st
+                // If RPC becomes available after start, (re)initialize dispatcher
+                if self.dispatcher == nil, let rpc = self.connection?.rpcClient {
+                    self.dispatcher = PromptDispatcher(
+                        rpc: rpc,
+                        timeline: self.timeline,
+                        logger: { [weak self] tag, msg in self?.log(tag, msg) }
+                    )
+                    self.log("dispatcher", "ready (rpc available post-start)")
+                }
+            }
             .store(in: &subscriptions)
         conn.logPublisher
             .receive(on: RunLoop.main)
@@ -65,9 +77,19 @@ extension BridgeManager {
             .sink { [weak self] in self?.outputJSONByCallId = $0 }
             .store(in: &subscriptions)
 
-        // Initialize dispatcher with local RPC client
-        dispatcher = PromptDispatcher(rpc: conn.rpcClient, timeline: timeline)
+        // Start server first so local RPC is created
         conn.start()
+        // Initialize dispatcher after start, when rpcClient is set
+        if let rpc = conn.rpcClient {
+            dispatcher = PromptDispatcher(
+                rpc: rpc,
+                timeline: timeline,
+                logger: { [weak self] tag, msg in self?.log(tag, msg) }
+            )
+            log("dispatcher", "initialized (rpc available)")
+        } else {
+            log("dispatcher", "deferred init: rpc not yet available")
+        }
     }
 
     func stop() { connection?.stop(); connection = nil }

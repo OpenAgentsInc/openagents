@@ -4,33 +4,50 @@ import OpenAgentsCore
 final class PromptDispatcher: PromptDispatching {
     private weak var rpc: JSONRPCSending?
     private let timeline: TimelineStoring
+    private let logger: ((String, String) -> Void)?
     private struct EmptyResult: Codable {}
 
     // Track optimistic echo index to adjust session id when server creates a new session
     private var pendingUserEchoIndex: Int?
 
-    init(rpc: JSONRPCSending?, timeline: TimelineStoring) {
+    init(rpc: JSONRPCSending?, timeline: TimelineStoring, logger: ((String, String) -> Void)? = nil) {
         self.rpc = rpc
         self.timeline = timeline
+        self.logger = logger
     }
 
     func sendPrompt(text: String, desiredMode: ACPSessionModeId?, getSessionId: () -> ACPSessionId?, setSessionId: @escaping (ACPSessionId) -> Void) {
-        guard let rpc = self.rpc else { return }
+        guard let rpc = self.rpc else {
+            logger?("send", "aborted: rpc unavailable")
+            return
+        }
 
         let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
         // Optimistic UI echo
         let sid = getSessionId() ?? ACPSessionId("pending")
         pendingUserEchoIndex = timeline.appendOptimisticUserMessage(text: text, sessionId: sid)
+        logger?("send", "optimistic echo appended session=\(sid.value)")
 
         if let existing = getSessionId() {
-            if let mode = desiredMode { self.setSessionMode(mode, getSessionId: { existing }) }
+            if let mode = desiredMode {
+                logger?("send", "existing session: set_mode=\(mode.rawValue)")
+                self.setSessionMode(mode, getSessionId: { existing })
+            } else {
+                logger?("send", "existing session: keep current mode")
+            }
             let req = ACP.Agent.SessionPromptRequest(session_id: existing, content: parts)
-            rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
+            let rid = "session-prompt-\(UUID().uuidString)"
+            logger?("send", "rpc \(ACPRPC.sessionPrompt) id=\(rid) len=\(text.count)")
+            rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: rid) { (_: EmptyResult?) in
+                self.logger?("send", "ack \(ACPRPC.sessionPrompt) id=\(rid)")
+            }
             return
         }
 
         // No session yet: create one then prompt
-        rpc.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
+        let newId = "session-new-\(UUID().uuidString)"
+        logger?("send", "rpc \(ACPRPC.sessionNew) id=\(newId)")
+        rpc.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: newId) { (resp: ACP.Agent.SessionNewResponse?) in
             guard let resp = resp else { return }
             DispatchQueue.main.async {
                 setSessionId(resp.session_id)
@@ -39,17 +56,29 @@ final class PromptDispatcher: PromptDispatching {
                     self.rewriteSessionId(at: idx, to: resp.session_id)
                     self.pendingUserEchoIndex = nil
                 }
+                self.logger?("send", "session created id=\(resp.session_id.value)")
             }
             // Optionally set mode then prompt
             if let mode = desiredMode {
                 struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
-                rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in
+                let mid = "session-set-mode-\(UUID().uuidString)"
+                self.logger?("send", "rpc \(ACPRPC.sessionSetMode) id=\(mid) mode=\(mode.rawValue)")
+                rpc.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: mid) { (_: ACP.Agent.SetSessionModeResponse?) in
+                    self.logger?("send", "ack \(ACPRPC.sessionSetMode) id=\(mid)")
                     let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
-                    rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
+                    let pid = "session-prompt-\(UUID().uuidString)"
+                    self.logger?("send", "rpc \(ACPRPC.sessionPrompt) id=\(pid) len=\(text.count)")
+                    rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: pid) { (_: EmptyResult?) in
+                        self.logger?("send", "ack \(ACPRPC.sessionPrompt) id=\(pid)")
+                    }
                 }
             } else {
                 let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
-                rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
+                let pid = "session-prompt-\(UUID().uuidString)"
+                self.logger?("send", "rpc \(ACPRPC.sessionPrompt) id=\(pid) len=\(text.count)")
+                rpc.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: pid) { (_: EmptyResult?) in
+                    self.logger?("send", "ack \(ACPRPC.sessionPrompt) id=\(pid)")
+                }
             }
         }
     }
