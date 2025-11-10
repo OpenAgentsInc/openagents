@@ -37,8 +37,23 @@ final class GPTOSSDownloadViewModel: ObservableObject {
     var isDownloading: Bool { if case .downloading = status { return true } else { return false } }
     var isDownloaded: Bool { if case .ready = status { return true } else { return false } }
 
-    var downloadedGB: String { String(format: "%.1f", Double(downloadedBytes) / 1_073_741_824.0) }
-    var totalGB: String { totalBytes > 0 ? String(format: "%.1f", Double(totalBytes) / 1_073_741_824.0) : "12.1" }
+    private var fallbackTotalBytes: Int64 {
+        // Approx 12.1 GiB for MXFP4 build
+        Int64(12.1 * 1_073_741_824.0)
+    }
+
+    private var computedTotalBytes: Int64 {
+        totalBytes > 0 ? totalBytes : fallbackTotalBytes
+    }
+
+    var downloadedGB: String {
+        let bytes = downloadedBytes > 0 ? downloadedBytes : Int64(Double(computedTotalBytes) * progress)
+        return String(format: "%.1f", Double(bytes) / 1_073_741_824.0)
+    }
+
+    var totalGB: String {
+        String(format: "%.1f", Double(computedTotalBytes) / 1_073_741_824.0)
+    }
 
     var hasSufficientSpace: Bool { (freeDiskBytes() ?? 0) >= requiredFreeBytes }
 
@@ -88,4 +103,3 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         return nil
     }
 }
-
