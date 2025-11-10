@@ -183,7 +183,7 @@ public actor GPTOSSModelManager {
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         print("[GPTOSS] Re-syncing missing files from https://huggingface.co/\(config.modelID)")
-        _ = try await Hub.snapshot(from: repo, matching: files) { p in
+        let modelDir = try await HubApi(useOfflineMode: false).snapshot(from: repo, matching: files) { p in
             let fallbackTotalBytes: Int64 = Int64(12.1 * 1_073_741_824.0)
             let looksLikeFileCount = p.totalUnitCount > 0 && p.totalUnitCount < (128 * 1024 * 1024)
             let totalBytes = looksLikeFileCount ? fallbackTotalBytes : p.totalUnitCount
@@ -202,6 +202,7 @@ public actor GPTOSSModelManager {
                 progressHandler(prog)
             }
         }
+        print("[GPTOSS] Re-sync complete; snapshot at \(modelDir.path)")
     }
 
     public func purgeSnapshot() throws {
@@ -271,7 +272,7 @@ public actor GPTOSSModelManager {
         if let off = env["HF_HUB_OFFLINE"], !off.isEmpty { print("[GPTOSS] HF_HUB_OFFLINE=\(off)") }
         if let off = env["TRANSFORMERS_OFFLINE"], !off.isEmpty { print("[GPTOSS] TRANSFORMERS_OFFLINE=\(off)") }
 
-        let modelDir = try await Hub.snapshot(from: repo, matching: files) { p in
+        let modelDir = try await HubApi(useOfflineMode: false).snapshot(from: repo, matching: files) { p in
             // Heuristic: if totalUnitCount is tiny, treat it as "file count" and estimate bytes from percent
             let fallbackTotalBytes: Int64 = Int64(12.1 * 1_073_741_824.0) // ~12.1 GiB
             let looksLikeFileCount = p.totalUnitCount > 0 && p.totalUnitCount < (128 * 1024 * 1024)
