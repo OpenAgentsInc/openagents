@@ -9,6 +9,7 @@ public actor GPTOSSModelManager {
     private let config: GPTOSSConfig
     private var chat: ChatSession?
     private var state: GPTOSSModelState = .notLoaded
+    private var warmedUp: Bool = false
 
     private static let minimumMemoryBytes: UInt64 = 16_000_000_000 // 16 GB
 
@@ -62,6 +63,9 @@ public actor GPTOSSModelManager {
             let dt = Date().timeIntervalSince(t0)
             print(String(format: "[GPTOSS] loadModel ready in %.2fs", dt))
             watchTask.cancel()
+
+            // One-time warmup to compile kernels so first user prompt is faster
+            await warmupIfNeeded()
         } catch {
             state = .error(error.localizedDescription)
             throw GPTOSSError.loadingFailed(underlying: error)
@@ -233,6 +237,24 @@ public actor GPTOSSModelManager {
     private func ensureOnline() {
         if getenv("HF_HUB_OFFLINE") != nil { unsetenv("HF_HUB_OFFLINE"); print("[GPTOSS] HF_HUB_OFFLINE was set; unsetting for download") }
         if getenv("TRANSFORMERS_OFFLINE") != nil { unsetenv("TRANSFORMERS_OFFLINE"); print("[GPTOSS] TRANSFORMERS_OFFLINE was set; unsetting for download") }
+    }
+
+    // MARK: - Warmup
+    private func warmupIfNeeded() async {
+        guard !warmedUp, let chat = self.chat else { return }
+        print("[GPTOSS] warmup start")
+        var steps = 0
+        do {
+            for try await delta in chat.streamResponse(to: "Warm up.") {
+                steps += 1
+                if steps >= 1 { break } // compile kernels, then stop early
+            }
+            warmedUp = true
+            print("[GPTOSS] warmup complete steps=\(steps)")
+        } catch {
+            // Warmup is best-effort; ignore errors
+            print("[GPTOSS] warmup skipped: \(error.localizedDescription)")
+        }
     }
 
     private func checkSystemRequirements() throws {
