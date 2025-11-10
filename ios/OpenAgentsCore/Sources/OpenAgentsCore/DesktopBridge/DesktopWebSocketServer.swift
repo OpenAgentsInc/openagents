@@ -175,6 +175,7 @@ public class DesktopWebSocketServer {
         await agentRegistry.register(OpenAgentsLocalProvider())
         await agentRegistry.register(CodexAgentProvider())
         await agentRegistry.register(ClaudeCodeAgentProvider())
+        await agentRegistry.register(GPTOSSAgentProvider())
         let count = await agentRegistry.allProviders().count
         OpenAgentsLog.bridgeServer.info("Registered \(count) agent providers")
     }
