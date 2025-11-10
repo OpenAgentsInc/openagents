@@ -65,7 +65,8 @@ public final class LlamaAgentProvider: CLIAgentProvider, @unchecked Sendable {
         OpenAgentsLog.orchestration.debug("[Llama] Using model: \(expandedPath, privacy: .private)")
 
         // 2. GPU acceleration (Metal on Apple Silicon)
-        args += ["-ngl", "35"]  // Offload layers to GPU
+        // Use fewer layers for M2 Pro to avoid OOM; M3 Max/Ultra can handle more
+        args += ["-ngl", "20"]  // Offload layers to GPU (reduced for M2 Pro)
 
         // 3. Context window
         args += ["-c", "8192"]  // 8K context (adjust based on model)
@@ -123,7 +124,7 @@ public final class LlamaAgentProvider: CLIAgentProvider, @unchecked Sendable {
         args += ["-m", expandedPath]
 
         // 2. GPU acceleration
-        args += ["-ngl", "35"]
+        args += ["-ngl", "20"]  // Reduced for M2 Pro
 
         // 3. Context window
         args += ["-c", "8192"]
