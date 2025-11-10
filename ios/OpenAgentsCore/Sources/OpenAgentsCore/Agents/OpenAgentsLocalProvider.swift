@@ -18,6 +18,9 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
     )
 
     private var cancelled: Set<String> = []
+    #if os(macOS)
+    private let gptossManager = GPTOSSModelManager()
+    #endif
 
     public init() {}
 
@@ -54,6 +57,24 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
     // MARK: - Internal
     private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, context: AgentContext?) async {
         if await isCancelled(sessionId) { return }
+
+        // Preferred path: GPT‑OSS if installed/available on macOS
+        #if os(macOS)
+        do {
+            if let detected = await gptossManager.detectInstalled(), detected.installed {
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: using GPT‑OSS for default_mode (installed detected)")
+                try await gptossManager.loadModel()
+                try await gptossManager.stream(prompt: prompt) { delta in
+                    if await self.isCancelled(sessionId) { return }
+                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
+                    await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+                }
+                return
+            }
+        } catch {
+            OpenAgentsLog.orchestration.error("OpenAgentsLocalProvider: GPT‑OSS path failed: \(error.localizedDescription). Falling back to FM/local.")
+        }
+        #endif
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
