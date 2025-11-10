@@ -23,6 +23,7 @@ public enum ACPSessionModeId: String, Codable, CaseIterable {
     case claude_code = "claude-code"
     case codex = "codex"
     case orchestrator = "orchestrator"
+    case gptoss_20b = "gptoss_20b"
 }
 
 public extension ACP.Agent {
