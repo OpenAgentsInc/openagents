@@ -24,17 +24,40 @@ public actor GPTOSSModelManager {
         try checkSystemRequirements()
         state = .loading
         do {
-            // If installed is detected, Hub/MLX will load from cache; otherwise it will download.
+            // Verify local snapshot before attempting to load
+            let info = await verifyLocalSnapshot()
+            if !info.ok {
+                print("[GPTOSS] Snapshot verification failed; attempting to re-sync missing files via Hub.snapshot")
+                try await redownloadMissing()
+            } else {
+                print("[GPTOSS] Snapshot verified: shards=\(info.shardCount) total=\(fmtBytes(info.totalBytes))")
+            }
+
+            // If installed is detected, Hub/MLX will load from cache; otherwise it may download.
             if let detected = await detectInstalled(), detected.installed {
                 print("[GPTOSS] Local snapshot detected; loading by id from cache")
             }
+
             let t0 = Date()
             print("[GPTOSS] loadModel begin id=\(config.modelID)")
+            // Watchdog: log every 2s while loading
+            var keepWatching = true
+            let watchTask = Task { [weak self] in
+                var n = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    n += 2
+                    let stillLoading = await self?.state == .loading
+                    if !stillLoading { break }
+                    print("[GPTOSS] loadModel waiting… t=\(n)s")
+                }
+            }
             let model = try await MLXLMCommon.loadModel(id: config.modelID)
             self.chat = ChatSession(model)
             state = .ready
             let dt = Date().timeIntervalSince(t0)
             print(String(format: "[GPTOSS] loadModel ready in %.2fs", dt))
+            watchTask.cancel()
         } catch {
             state = .error(error.localizedDescription)
             throw GPTOSSError.loadingFailed(underlying: error)
@@ -79,6 +102,70 @@ public actor GPTOSSModelManager {
         } catch {
             throw GPTOSSError.generationFailed(underlying: error)
         }
+    }
+
+    // MARK: - Snapshot verification & helpers
+    public struct SnapshotInfo: Sendable { public let ok: Bool; public let shardCount: Int; public let totalBytes: Int64; public let missing: [String] }
+
+    public func verifyLocalSnapshot() async -> SnapshotInfo {
+        let req = ["config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
+        var missing: [String] = []
+        var shardCount = 0
+        var total: Int64 = 0
+        let fm = FileManager.default
+        guard let dir = snapshotDir() else { return .init(ok: false, shardCount: 0, totalBytes: 0, missing: req) }
+        print("[GPTOSS] Verifying snapshot at \(dir.path)")
+        for f in req {
+            let p = dir.appendingPathComponent(f)
+            if !fm.fileExists(atPath: p.path) { missing.append(f) } else {
+                if let sz = try? p.resourceValues(forKeys: [.fileSizeKey]).fileSize { total += Int64(sz) }
+            }
+        }
+        if let en = fm.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]) {
+            for case let url as URL in en {
+                if url.pathExtension == "safetensors" {
+                    shardCount += 1
+                    if let vals = try? url.resourceValues(forKeys: [.fileSizeKey]), let sz = vals.fileSize {
+                        total += Int64(sz)
+                        print("[GPTOSS] shard \(url.lastPathComponent) size=\(fmtBytes(Int64(sz)))")
+                    } else {
+                        print("[GPTOSS] shard \(url.lastPathComponent) size=<unknown>")
+                    }
+                }
+            }
+        }
+        let ok = missing.isEmpty && shardCount > 0
+        if !ok { print("[GPTOSS] verify: missing=\(missing) shards=\(shardCount) total=\(fmtBytes(total))") }
+        return .init(ok: ok, shardCount: shardCount, totalBytes: total, missing: missing)
+    }
+
+    private func redownloadMissing() async throws {
+        let repo = Hub.Repo(id: config.modelID)
+        let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
+        print("[GPTOSS] Re-syncing missing files from https://huggingface.co/\(config.modelID)")
+        _ = try await Hub.snapshot(from: repo, matching: files) { p in
+            let fallbackTotalBytes: Int64 = Int64(12.1 * 1_073_741_824.0)
+            let looksLikeFileCount = p.totalUnitCount > 0 && p.totalUnitCount < (128 * 1024 * 1024)
+            let totalBytes = looksLikeFileCount ? fallbackTotalBytes : p.totalUnitCount
+            let completedBytes = (looksLikeFileCount || p.completedUnitCount == 0)
+                ? Int64(Double(totalBytes) * p.fractionCompleted)
+                : p.completedUnitCount
+            let pct = Int((p.fractionCompleted * 100).rounded())
+            print("[GPTOSS] Re-sync progress: \(pct)% (\(self.fmtBytes(completedBytes)) / \(self.fmtBytes(totalBytes)))")
+        }
+    }
+
+    private func snapshotDir() -> URL? {
+        let fm = FileManager.default
+        guard let docs = try? fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return nil }
+        return docs.appendingPathComponent("huggingface/models/\(config.modelID)")
+    }
+
+    private func fmtBytes(_ b: Int64) -> String {
+        if b >= 1_073_741_824 { return String(format: "%.1f GB", Double(b)/1_073_741_824.0) }
+        if b >= 1_048_576 { return String(format: "%.1f MB", Double(b)/1_048_576.0) }
+        if b >= 1024 { return String(format: "%.1f KB", Double(b)/1024.0) }
+        return "\(b) B"
     }
 
     private func checkSystemRequirements() throws {
