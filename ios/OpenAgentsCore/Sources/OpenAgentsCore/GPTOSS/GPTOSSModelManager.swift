@@ -113,5 +113,37 @@ public actor GPTOSSModelManager {
             print("[GPTOSS] Load after download failed (will defer to on‑demand): \(error)")
         }
     }
+
+    // MARK: - Detect installed (best-effort)
+
+    /// Try to detect if the model is already installed in the default Hub snapshot location.
+    /// Returns (installed, totalBytes) if found.
+    public func detectInstalled() async -> (installed: Bool, totalBytes: Int64)? {
+        let modelId = config.modelID
+        let fm = FileManager.default
+        if let docs = try? fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
+            let dir = docs.appendingPathComponent("huggingface/models/\(modelId)")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue {
+                // Sum .safetensors + key config files sizes
+                var total: Int64 = 0
+                if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
+                    for url in files {
+                        let name = url.lastPathComponent
+                        if name.hasSuffix(".safetensors") || ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
+                            if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) {
+                                total += size
+                            }
+                        }
+                    }
+                }
+                if total > 0 {
+                    print("[GPTOSS] Detected installed model at \(dir.path); total bytes ~\(total)")
+                    return (true, total)
+                }
+            }
+        }
+        return nil
+    }
 }
 #endif

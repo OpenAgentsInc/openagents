@@ -61,6 +61,17 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         String(format: "%.1f", Double(effectiveTotalBytes) / 1_073_741_824.0)
     }
 
+    func refreshInstalled() async {
+        if let res = await manager.detectInstalled() {
+            await MainActor.run {
+                self.totalBytes = res.totalBytes > 0 ? res.totalBytes : self.fallbackTotalBytes
+                self.downloadedBytes = res.totalBytes
+                self.progress = 1.0
+                self.status = .ready
+            }
+        }
+    }
+
     var hasSufficientSpace: Bool { (freeDiskBytes() ?? 0) >= requiredFreeBytes }
 
     func startDownload() async {
