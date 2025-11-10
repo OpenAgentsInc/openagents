@@ -83,24 +83,37 @@ final class GPTOSSDownloadViewModel: ObservableObject {
     }
 
     func refreshInstalled() async {
-        if let res = await manager.detectInstalled() {
+        let info = await manager.verifyLocalSnapshot()
+        if info.ok {
             await MainActor.run {
-                self.totalBytes = res.totalBytes > 0 ? res.totalBytes : self.fallbackTotalBytes
-                self.downloadedBytes = res.totalBytes
+                self.totalBytes = info.totalBytes
+                self.downloadedBytes = info.totalBytes
                 self.progress = 1.0
                 self.status = .ready
             }
+        } else if info.shardCount > 0 || info.totalBytes > 0 {
+            // Partial snapshot — auto-resume download
+            await MainActor.run {
+                self.totalBytes = self.fallbackTotalBytes
+                self.downloadedBytes = info.totalBytes
+                self.progress = min(0.99, Double(info.totalBytes) / Double(self.fallbackTotalBytes))
+                self.status = .downloading
+            }
+            print("[GPTOSS UI] Partial snapshot detected; auto-resuming download")
+            await startDownload(preserveExisting: true)
         }
     }
 
     var hasSufficientSpace: Bool { (freeDiskBytes() ?? 0) >= requiredFreeBytes }
 
-    func startDownload() async {
+    func startDownload(preserveExisting: Bool = false) async {
         guard !isDownloading else { return }
         status = .downloading
-        progress = 0
-        downloadedBytes = 0
-        totalBytes = 0
+        if !preserveExisting {
+            progress = 0
+            downloadedBytes = 0
+            totalBytes = 0
+        }
         paused = false
         let token = UUID()
         currentToken = token

@@ -61,7 +61,8 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         // Preferred path: GPT‑OSS if installed/available on macOS
         #if os(macOS)
         do {
-            if let detected = await gptossManager.detectInstalled(), detected.installed {
+            let info = await gptossManager.verifyLocalSnapshot()
+            if info.ok {
                 OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (installed detected)")
                 // Emit a small placeholder so UI shows immediate activity
                 let starting = ACP.Client.ContentChunk(content: .text(.init(text: "⏳ Loading GPT‑OSS 20B…")))
@@ -78,7 +79,7 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
                 OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS stream complete chars=\(total)")
                 return
             } else {
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS not detected; trying Foundation Models")
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS incomplete snapshot; trying Foundation Models or local fallback")
             }
         } catch {
             let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
