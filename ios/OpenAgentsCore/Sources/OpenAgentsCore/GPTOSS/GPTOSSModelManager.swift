@@ -179,6 +179,7 @@ public actor GPTOSSModelManager {
     }
 
     public func repairSnapshot(progressHandler: ((DownloadProgress) -> Void)? = nil) async throws {
+        ensureOnline()
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         print("[GPTOSS] Re-syncing missing files from https://huggingface.co/\(config.modelID)")
@@ -228,6 +229,11 @@ public actor GPTOSSModelManager {
         return "\(b) B"
     }
 
+    private func ensureOnline() {
+        if getenv("HF_HUB_OFFLINE") != nil { unsetenv("HF_HUB_OFFLINE"); print("[GPTOSS] HF_HUB_OFFLINE was set; unsetting for download") }
+        if getenv("TRANSFORMERS_OFFLINE") != nil { unsetenv("TRANSFORMERS_OFFLINE"); print("[GPTOSS] TRANSFORMERS_OFFLINE was set; unsetting for download") }
+    }
+
     private func checkSystemRequirements() throws {
         #if !os(macOS)
         throw GPTOSSError.unsupportedPlatform
@@ -255,6 +261,7 @@ public actor GPTOSSModelManager {
 
     /// Download model artifacts with resumable snapshot and report progress.
     public func downloadModel(progressHandler: @escaping (DownloadProgress) -> Void) async throws {
+        ensureOnline()
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         let link = "https://huggingface.co/\(config.modelID)"
