@@ -172,6 +172,9 @@ extension DesktopWebSocketServer {
         let sid = ACPSessionId(sidStr)
         let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
         var modeId = ACPSessionModeId(rawValue: modeStr) ?? .default_mode
+
+        OpenAgentsLog.bridgeServer.info("session/set_mode: received modeId=\(modeId.rawValue), preferredDefaultMode=\(self.preferredDefaultMode.rawValue)")
+
         // If client requests default_mode but a preferred agent is available, use it transparently
         if modeId == .default_mode && self.preferredDefaultMode != .default_mode {
             modeId = self.preferredDefaultMode

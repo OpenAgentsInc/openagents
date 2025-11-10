@@ -5,13 +5,32 @@ extension DesktopWebSocketServer {
     // Create a new session ID (local path)
     public func localSessionNew() -> ACP.Agent.SessionNewResponse {
         let sid = ACPSessionId(UUID().uuidString)
+
+        // Set preferred default mode for this session
+        Task { [weak self] in
+            guard let self = self else { return }
+            let sidStr = sid.value
+            self.modeBySession[sidStr] = self.preferredDefaultMode
+            let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: self.preferredDefaultMode))
+            await self.sendSessionUpdate(sessionId: sid, update: update)
+            OpenAgentsLog.bridgeServer.info("localSessionNew: defaulting mode to \(self.preferredDefaultMode.rawValue) for session=\(sidStr)")
+        }
+
         return ACP.Agent.SessionNewResponse(session_id: sid)
     }
 
     // Set the current session mode and broadcast an update (local path)
     public func localSessionSetMode(sessionId: ACPSessionId, mode: ACPSessionModeId) async {
-        modeBySession[sessionId.value] = mode
-        await sendSessionUpdate(sessionId: sessionId, update: .currentModeUpdate(.init(current_mode_id: mode)))
+        var actualMode = mode
+
+        // If client requests default_mode but a preferred agent is available, use it transparently
+        if mode == .default_mode && self.preferredDefaultMode != .default_mode {
+            actualMode = self.preferredDefaultMode
+            OpenAgentsLog.bridgeServer.info("localSessionSetMode requested default_mode; overriding to \(self.preferredDefaultMode.rawValue) (preferred)")
+        }
+
+        modeBySession[sessionId.value] = actualMode
+        await sendSessionUpdate(sessionId: sessionId, update: .currentModeUpdate(.init(current_mode_id: actualMode)))
     }
 
     // Cancel an active session if running (local path)
