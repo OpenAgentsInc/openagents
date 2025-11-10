@@ -63,7 +63,7 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         do {
             let info = await gptossManager.verifyLocalSnapshot()
             if info.ok {
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (installed detected)")
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (snapshot verified \(info.shardCount)/\(info.expectedShardCount))")
                 // Emit a small placeholder so UI shows immediate activity
                 let starting = ACP.Client.ContentChunk(content: .text(.init(text: "⏳ Loading GPT‑OSS 20B…")))
                 await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(starting))
