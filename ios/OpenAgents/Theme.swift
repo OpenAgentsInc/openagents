@@ -10,21 +10,21 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.systemBackground)
             #else
-            return Color(hex: "#08090a") // offblack from palette
+            return Color(hex: "#08090a") // color-bg-primary / level-0
             #endif
         }
         static var sidebarBackground: Color {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(hex: "#0e0e12") // slightly lighter offblack
+            return Color(hex: "#1c1c1f") // color-bg-secondary
             #endif
         }
         static var border: Color {
             #if os(iOS)
             return Color(UIColor.separator)
             #else
-            return Color(hex: "#23252a") // border from palette
+            return Color(hex: "#23252a") // color-border-primary
             #endif
         }
 
@@ -33,33 +33,33 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.label)
             #else
-            return Color(hex: "#f7f8f8") // primary from palette
+            return Color(hex: "#f7f8f8") // color-text-primary
             #endif
         }
         static var textSecondary: Color {
             #if os(iOS)
             return Color(UIColor.secondaryLabel)
             #else
-            return Color(hex: "#d0d6e0") // secondary from palette
+            return Color(hex: "#d0d6e0") // color-text-secondary
             #endif
         }
         static var textTertiary: Color {
             #if os(iOS)
             return Color(UIColor.tertiaryLabel)
             #else
-            return Color(hex: "#8a8f98") // tertiary from palette
+            return Color(hex: "#8a8f98") // color-text-tertiary
             #endif
         }
         static var textQuaternary: Color {
             #if os(iOS)
             return Color(UIColor.quaternaryLabel)
             #else
-            return Color(hex: "#62666d") // quaternary from palette
+            return Color(hex: "#62666d") // color-text-quaternary
             #endif
         }
 
         // Accents and states
-        static var accent: Color { Color.accentColor }
+        static var accent: Color { Color(hex: "#7170ff") } // color-accent
         static var success: Color { Color(hex: "#04A545") }  // green from palette
         static var warning: Color { Color(hex: "#FEBF00") }  // yellow from palette
         static var danger: Color { Color(hex: "#e7040f") }   // brightRed from palette
@@ -69,7 +69,7 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.secondarySystemBackground)
             #else
-            return Color(hex: "#08090a") // card from palette (same as background)
+            return Color(hex: "#232326") // color-bg-tertiary
             #endif
         }
         static var popover: Color { card }
@@ -77,9 +77,15 @@ struct OATheme {
             #if os(iOS)
             return Color(UIColor.systemGray5)
             #else
-            return Color(hex: "#23252a").opacity(0.5) // border color with opacity
+            return Color(hex: "#23252a").opacity(0.5) // border translucent
             #endif
         }
+
+        // Extended grayscale surfaces (for chat UI neutrality)
+        static var bgTertiary: Color { Color(hex: "#232326") }
+        static var bgQuaternary: Color { Color(hex: "#28282c") }
+        static var borderSecondary: Color { Color(hex: "#34343a") }
+        static var borderTertiary: Color { Color(hex: "#3e3e44") }
     }
 }
 
