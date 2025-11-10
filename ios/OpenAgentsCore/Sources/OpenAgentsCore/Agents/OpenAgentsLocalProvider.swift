@@ -182,6 +182,11 @@ extension OpenAgentsLocalProvider {
             if let s = a.summarize { args["summarize"] = AnyEncodable(s) }
             if let m = a.max_files { args["max_files"] = AnyEncodable(m) }
 
+            // Apply workspace root to server working directory if supplied
+            if let wr = a.workspace_root ?? workspaceRoot, let srv = self.server {
+                srv.workingDirectory = URL(fileURLWithPath: wr)
+            }
+
             // Emit ACP tool_call for UI visibility
             let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
             await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
@@ -189,12 +194,25 @@ extension OpenAgentsLocalProvider {
             // Trigger real Codex run via DesktopWebSocketServer local helpers
             if let server = self.server {
                 await server.localSessionSetMode(sessionId: sessionId, mode: .codex)
-                let text = (a.description ?? "OpenAgents → Codex delegation") + "\n\n" + a.user_prompt
+                let text = Self.composeDelegationPrompt(description: a.description, userPrompt: a.user_prompt, workspaceRoot: a.workspace_root ?? workspaceRoot, includeGlobs: a.files_include_glob, summarize: a.summarize, maxFiles: a.max_files)
                 let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
                 try? await server.localSessionPrompt(request: req)
             }
 
             return "codex.run dispatched"
+        }
+        
+        private static func composeDelegationPrompt(description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
+            var parts: [String] = []
+            parts.append("OpenAgents → Codex delegation")
+            if let d = description, !d.isEmpty { parts.append("Description: \(d)") }
+            if let wr = workspaceRoot { parts.append("Workspace: \(wr)") }
+            if let inc = includeGlobs, !inc.isEmpty { parts.append("Include: \(inc.joined(separator: ", "))") }
+            if let s = summarize { parts.append("Summarize: \(s ? "yes" : "no")") }
+            if let m = maxFiles { parts.append("Max files: \(m)") }
+            parts.append("")
+            parts.append(userPrompt)
+            return parts.joined(separator: "\n")
         }
     }
 }

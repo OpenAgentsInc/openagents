@@ -25,7 +25,7 @@ public actor VectorStore {
         guard embedding.count == dimensions else {
             throw EmbeddingError.invalidDimensions(expected: dimensions, got: embedding.count)
         }
-        try db.storeEmbedding(
+        try await db.storeEmbedding(
             id: id,
             collection: collection,
             embedding: embedding,
@@ -63,7 +63,7 @@ public actor VectorStore {
             throw EmbeddingError.invalidDimensions(expected: dimensions, got: query.count)
         }
 
-        let rows = try db.fetchEmbeddings(collection: collection)
+        let rows = try await db.fetchEmbeddings(collection: collection)
 
         var results: [(id: String, score: Float, metadata: [String: String]?)] = []
         results.reserveCapacity(rows.count)
@@ -92,4 +92,3 @@ public actor VectorStore {
         return out
     }
 }
-

@@ -20,7 +20,9 @@ public actor EmbeddingService {
         }
 
         try await provider.loadModel()
-        self.store = VectorStore(db: db, dimensions: provider.dimensions, modelID: provider.modelID)
+        let dims = await provider.dimensions
+        let mid = await provider.modelID
+        self.store = VectorStore(db: db, dimensions: dims, modelID: mid)
     }
 
     // MARK: - Generation
@@ -30,8 +32,8 @@ public actor EmbeddingService {
         let elapsed = Date().timeIntervalSince(start) * 1000.0
         return EmbedResponse(
             embeddings: vectors,
-            dimensions: provider.dimensions,
-            modelID: provider.modelID,
+            dimensions: await provider.dimensions,
+            modelID: await provider.modelID,
             processingTimeMs: elapsed
         )
     }
@@ -76,8 +78,7 @@ public actor EmbeddingService {
             minSimilarity: request.minSimilarity
         )
         let elapsed = Date().timeIntervalSince(start) * 1000.0
-        return SemanticSearchResponse(results: results, processingTimeMs: elapsed, modelID: provider.modelID)
+        return SemanticSearchResponse(results: results, processingTimeMs: elapsed, modelID: await provider.modelID)
     }
 }
 #endif
-
