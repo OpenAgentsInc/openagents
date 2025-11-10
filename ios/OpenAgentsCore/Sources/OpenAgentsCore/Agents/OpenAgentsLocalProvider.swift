@@ -95,12 +95,12 @@ extension OpenAgentsLocalProvider {
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
         You are OpenAgents. Respond with 2-3 sentences.
-        
+
         - Identify as \"We are OpenAgents.\" when asked who you are. Always respond in the first-person plural ("We ___", not "I ___".)
         - Decision rubric for tools:
-          • Use tools only for actionable coding tasks (read/write files, run searches, generate code/tests, repo analysis).
-          • Do NOT call tools to answer meta/capability questions (e.g., "who can you delegate to?", "what can you do?", "can you command codex?"). Answer those inline.
-          • Mentioning an agent by name is NOT a reason to use a tool. Choose a tool only when execution is actually needed to satisfy the user's task.
+          • Use delegate.run only for actionable coding tasks (read/write files, run searches, generate code/tests, repo analysis).
+          • Do NOT call tools to answer meta/capability questions (e.g., "who can you delegate to?", "what can you do?"). Answer those inline.
+          • Mentioning an agent by name is NOT a reason to use delegate.run. Choose it only when execution is actually needed.
 
         Examples:
         Q: who are you?
@@ -110,11 +110,11 @@ extension OpenAgentsLocalProvider {
         A: We command other agents and can help with coding tasks. (No tool calls.)
 
         Q: who can you delegate to?
-        A: We can delegate to Codex and Claude Code. (No tool calls.)
+        A: We can delegate to Codex and Claude Code via delegate.run. (No tool calls.)
         """)
-        // Register minimal tools for chat; allow the model to decide to delegate to Codex
+        // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
-        tools.append(FMTool_CodexRun(sessionId: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server))
+        tools.append(FMTool_DelegateRun(sessionId: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server))
         let s = LanguageModelSession(model: model, tools: tools, instructions: instructions)
         s.prewarm(promptPrefix: nil)
         Self.fmSessions[sessionId.value] = s
@@ -146,10 +146,10 @@ extension OpenAgentsLocalProvider {
         return FoundationModelSummarizer_extractFromDescription(desc)
     }
 
-    // MARK: - FM Tool: codex.run
-        struct FMTool_CodexRun: Tool {
-        let name = "codex.run"
-        let description = "Delegate a concrete coding task to the Codex agent. Not for questions about capabilities or availability; answer those inline. Provide a concise task description and the user's actionable prompt."
+    // MARK: - FM Tool: delegate.run
+        struct FMTool_DelegateRun: Tool {
+        let name = "delegate.run"
+        let description = "Route a concrete coding task to a configured agent provider when execution is needed. Not for meta questions about capabilities; answer those inline."
         typealias Output = String
 
         private let sessionId: ACPSessionId
@@ -166,51 +166,91 @@ extension OpenAgentsLocalProvider {
 
         @Generable
         struct Arguments {
-            @Guide(description: "Task type (e.g., delegate, search, run)") var task: String?
-            @Guide(description: "Short description of what Codex should do") var description: String?
-            @Guide(description: "The user's prompt to pass through") var user_prompt: String
+            @Guide(description: "Provider: auto (default), codex, gptoss, local_fm, custom:<id>") var provider: String?
+            @Guide(description: "Task type (e.g., delegate, search, run, generate)") var task: String?
+            @Guide(description: "Short one-liner description for the UI") var description: String?
+            @Guide(description: "The exact instruction to pass to the provider") var user_prompt: String
             @Guide(description: "Workspace root (absolute path)") var workspace_root: String?
             @Guide(description: "Include patterns (glob)") var files_include_glob: [String]?
-            @Guide(description: "Summarize results for user") var summarize: Bool?
-            @Guide(description: "File limit") var max_files: Int?
+            @Guide(description: "Request a succinct summary upon completion") var summarize: Bool?
+            @Guide(description: "Upper bound for files to scan/edit") var max_files: Int?
+            @Guide(description: "Priority: low, normal, high (advisory)") var priority: String?
+            @Guide(description: "Soft time budget in milliseconds") var time_budget_ms: Int?
+            @Guide(description: "Emit tool_call without dispatching (preview mode)") var dry_run: Bool?
         }
 
         func call(arguments a: Arguments) async throws -> Output {
             let callId = UUID().uuidString
+
+            // Resolve provider (auto defaults to codex for now)
+            let resolvedProvider = resolveProvider(requested: a.provider)
+
+            // Build args dict for ACP tool_call
             var args: [String: AnyEncodable] = [:]
-            args["provider"] = AnyEncodable("codex")
-            if let t = a.task { args["task"] = AnyEncodable(t) } else { args["task"] = AnyEncodable("delegate") }
+            args["provider"] = AnyEncodable(resolvedProvider)
+            if let t = a.task { args["task"] = AnyEncodable(t) }
             if let d = a.description { args["description"] = AnyEncodable(d) }
             args["user_prompt"] = AnyEncodable(a.user_prompt)
             if let wr = a.workspace_root ?? workspaceRoot { args["workspace_root"] = AnyEncodable(wr) }
             if let inc = a.files_include_glob { args["files_include_glob"] = AnyEncodable(inc) }
             if let s = a.summarize { args["summarize"] = AnyEncodable(s) }
             if let m = a.max_files { args["max_files"] = AnyEncodable(m) }
+            if let p = a.priority { args["priority"] = AnyEncodable(p) }
+            if let tb = a.time_budget_ms { args["time_budget_ms"] = AnyEncodable(tb) }
+            if let dr = a.dry_run { args["dry_run"] = AnyEncodable(dr) }
 
-            // Gating (disabled): previously required explicit delegation phrases.
-            // Keeping code for reference while running in "agent decides" mode.
-            // if !shouldDispatch(userPrompt: a.user_prompt, task: a.task) {
-            //     return "codex.run declined: no explicit delegation"
-            // }
+            // Emit ACP tool_call for UI visibility
+            let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
+
+            // Handle dry-run mode (preview only)
+            if a.dry_run == true {
+                return "delegate.run dry-run (not dispatched)"
+            }
 
             // Apply workspace root to server working directory if supplied
             if let wr = a.workspace_root ?? workspaceRoot, let srv = self.server {
                 srv.workingDirectory = URL(fileURLWithPath: wr)
             }
 
-            // Emit ACP tool_call for UI visibility only when dispatching
-            let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
-            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
-
-            // Trigger real Codex run via DesktopWebSocketServer local helpers
-            if let server = self.server {
-                await server.localSessionSetMode(sessionId: sessionId, mode: .codex)
-                let text = Self.composeDelegationPrompt(description: a.description, userPrompt: a.user_prompt, workspaceRoot: a.workspace_root ?? workspaceRoot, includeGlobs: a.files_include_glob, summarize: a.summarize, maxFiles: a.max_files)
-                let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
-                try? await server.localSessionPrompt(request: req)
+            // Route to the resolved provider
+            guard let server = self.server else {
+                return "delegate.run failed: server unavailable"
             }
 
-            return "codex.run dispatched"
+            let mode = modeForProvider(resolvedProvider)
+            await server.localSessionSetMode(sessionId: sessionId, mode: mode)
+
+            let text = Self.composeDelegationPrompt(
+                provider: resolvedProvider,
+                description: a.description,
+                userPrompt: a.user_prompt,
+                workspaceRoot: a.workspace_root ?? workspaceRoot,
+                includeGlobs: a.files_include_glob,
+                summarize: a.summarize,
+                maxFiles: a.max_files
+            )
+            let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
+            try? await server.localSessionPrompt(request: req)
+
+            return "delegate.run dispatched to \(resolvedProvider)"
+        }
+
+        private func resolveProvider(requested: String?) -> String {
+            let provider = requested ?? "auto"
+            if provider == "auto" {
+                // Default to codex for now; could add availability checks here
+                return "codex"
+            }
+            return provider
+        }
+
+        private func modeForProvider(_ provider: String) -> ACPSessionModeId {
+            switch provider {
+            case "codex": return .codex
+            case "claude_code": return .claude_code
+            default: return .codex  // fallback
+            }
         }
         
         // MARK: - Delegation heuristics (disabled)
@@ -232,9 +272,9 @@ extension OpenAgentsLocalProvider {
         //     return false
         // }
         
-        private static func composeDelegationPrompt(description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
+        private static func composeDelegationPrompt(provider: String, description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
             var parts: [String] = []
-            parts.append("OpenAgents → Codex delegation")
+            parts.append("OpenAgents → \(provider) delegation")
             if let d = description, !d.isEmpty { parts.append("Description: \(d)") }
             if let wr = workspaceRoot { parts.append("Workspace: \(wr)") }
             if let inc = includeGlobs, !inc.isEmpty { parts.append("Include: \(inc.joined(separator: ", "))") }

@@ -178,7 +178,6 @@ public class DesktopWebSocketServer {
         await agentRegistry.register(OpenAgentsLocalProvider())
         await agentRegistry.register(CodexAgentProvider())
         await agentRegistry.register(ClaudeCodeAgentProvider())
-        await agentRegistry.register(LlamaAgentProvider())  // llama.cpp with GGUF
         let count = await agentRegistry.allProviders().count
         OpenAgentsLog.bridgeServer.info("Registered \(count) agent providers")
     }
@@ -197,24 +196,8 @@ public class DesktopWebSocketServer {
     }
 
     /// Determine and cache a preferred default agent mode based on availability.
-    /// If llama.cpp is installed and GGUF model exists, prefer it; otherwise use `.default_mode`.
+    /// Set preferred default mode (currently always default_mode with Foundation Models)
     private func refreshPreferredDefaultMode() async {
-        #if os(macOS)
-        // Check if llama-cli is available and GGUF model exists
-        let provider = LlamaAgentProvider()
-        let available = await provider.isAvailable()
-
-        // Also check if model file exists
-        let modelPath = "~/.openagents/models/gpt-oss-20b-MXFP4.gguf"
-        let expandedPath = (modelPath as NSString).expandingTildeInPath
-        let modelExists = FileManager.default.fileExists(atPath: expandedPath)
-
-        if available && modelExists {
-            preferredDefaultMode = .llama_cpp
-            OpenAgentsLog.bridgeServer.info("Preferred default agent set to llama_cpp (llama-cli available + model exists)")
-            return
-        }
-        #endif
         preferredDefaultMode = .default_mode
         OpenAgentsLog.bridgeServer.info("Preferred default agent set to default_mode")
     }
