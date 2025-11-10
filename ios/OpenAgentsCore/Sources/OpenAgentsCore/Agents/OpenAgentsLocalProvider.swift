@@ -59,7 +59,7 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let wd = context?.workingDirectory?.path
-                try await fmStream(prompt: prompt, sessionId: sessionId, updateHub: updateHub, workspaceRoot: wd)
+                try await fmStream(prompt: prompt, sessionId: sessionId, updateHub: updateHub, workspaceRoot: wd, server: context?.server)
                 return
             } catch { /* fallback below */ }
         }
@@ -87,7 +87,7 @@ import FoundationModels
 extension OpenAgentsLocalProvider {
     private static var fmSessions: [String: LanguageModelSession] = [:]
 
-    private func ensureSession(for sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?) async throws -> LanguageModelSession {
+    private func ensureSession(for sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) async throws -> LanguageModelSession {
         if let s = Self.fmSessions[sessionId.value] { return s }
         let model = SystemLanguageModel.default
         switch model.availability { case .available: break; default:
@@ -109,15 +109,15 @@ extension OpenAgentsLocalProvider {
         """)
         // Register minimal tools for chat; allow the model to decide to delegate to Codex
         var tools: [any Tool] = []
-        tools.append(FMTool_CodexRun(sessionId: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot))
+        tools.append(FMTool_CodexRun(sessionId: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server))
         let s = LanguageModelSession(model: model, tools: tools, instructions: instructions)
         s.prewarm(promptPrefix: nil)
         Self.fmSessions[sessionId.value] = s
         return s
     }
 
-    private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?) async throws {
-        let session = try await ensureSession(for: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot)
+    private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) async throws {
+        let session = try await ensureSession(for: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server)
         let options = GenerationOptions(temperature: 0.15, maximumResponseTokens: 140)
         var last = ""
         let stream = session.streamResponse(to: prompt, options: options)
@@ -150,11 +150,13 @@ extension OpenAgentsLocalProvider {
         private let sessionId: ACPSessionId
         private let updateHub: SessionUpdateHub
         private let workspaceRoot: String?
+        private weak var server: DesktopWebSocketServer?
 
-        init(sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?) {
+        init(sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) {
             self.sessionId = sessionId
             self.updateHub = updateHub
             self.workspaceRoot = workspaceRoot
+            self.server = server
         }
 
         @Generable
@@ -180,24 +182,19 @@ extension OpenAgentsLocalProvider {
             if let s = a.summarize { args["summarize"] = AnyEncodable(s) }
             if let m = a.max_files { args["max_files"] = AnyEncodable(m) }
 
-            // Emit ACP tool_call
+            // Emit ACP tool_call for UI visibility
             let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
             await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
 
-            // Emit a stubbed completion update so UI shows output; real execution can be wired later
-            let argsJSON: String = {
-                if let data = try? JSONEncoder().encode(args), let s = String(data: data, encoding: .utf8) { return s }
-                return "{}"
-            }()
-            let output: [String: AnyEncodable] = [
-                "status": AnyEncodable("requested"),
-                "command": AnyEncodable("codex exec --json"),
-                "arguments_json": AnyEncodable(argsJSON)
-            ]
-            let upd = ACPToolCallUpdateWire(call_id: callId, status: .completed, output: AnyEncodable(output), error: nil)
-            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(upd))
+            // Trigger real Codex run via DesktopWebSocketServer local helpers
+            if let server = self.server {
+                await server.localSessionSetMode(sessionId: sessionId, mode: .codex)
+                let text = (a.description ?? "OpenAgents → Codex delegation") + "\n\n" + a.user_prompt
+                let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
+                try? await server.localSessionPrompt(request: req)
+            }
 
-            return "Delegated to Codex with provided parameters."
+            return "codex.run dispatched"
         }
     }
 }
