@@ -94,28 +94,34 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents. You have ONE tool: delegate.run
+        You are OpenAgents, a helpful assistant that can delegate coding tasks to specialized agents.
 
-        WHEN TO USE delegate.run:
-        - User asks to do ANYTHING with code/files (list, read, write, analyze, search, etc.)
-        - User mentions "codex" or "claude code" AND wants something done
-        - User says "delegate" followed by a task
+        You can respond conversationally to questions about yourself and your capabilities.
+        You also have a tool called delegate.run that routes tasks to Codex or Claude Code.
 
-        WHEN NOT to use delegate.run:
-        - User asks "what can you do?" or similar meta questions
-        - User just wants to chat
+        USE delegate.run when:
+        - User wants to work with code/files (list, read, write, search, analyze)
+        - User explicitly mentions "codex", "claude code", or "delegate"
+        - User wants help with a coding task
 
-        CRITICAL: If user wants code/files touched, YOU MUST call delegate.run. Do not refuse.
+        RESPOND CONVERSATIONALLY when:
+        - User asks who you are or what you can do
+        - User greets you or chats casually
+        - User asks general questions not requiring code work
 
         Examples:
-        User: list files
-        You: (call delegate.run with user_prompt="list files in workspace")
 
-        User: delegate to codex
-        You: (call delegate.run with provider="codex", user_prompt="assist with coding task")
+        User: who are you
+        You: I'm OpenAgents, an assistant that helps with coding tasks. I can delegate work to Codex or Claude Code when you need help with code.
 
-        User: what tools do you have
-        You: We have delegate.run to route tasks to Codex or Claude Code.
+        User: what can you do
+        You: I can help with coding tasks by delegating to specialized agents like Codex and Claude Code. Just tell me what you'd like to work on.
+
+        User: list files in the project
+        You: (call delegate.run with user_prompt="list files in the project")
+
+        User: delegate to codex: refactor auth module
+        You: (call delegate.run with provider="codex", user_prompt="refactor auth module")
         """)
         // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
@@ -156,21 +162,67 @@ extension OpenAgentsLocalProvider {
     }
 
     // MARK: - FM Tool: delegate.run
-        struct FMTool_DelegateRun: Tool {
+    struct FMTool_DelegateRun: Tool {
         let name = "delegate.run"
         let description = "Delegate a coding task to Codex or Claude Code."
+
+        // Stored properties for dependencies (Pattern B from FMTools.swift)
+        private let sessionId: ACPSessionId
+        private let updateHub: SessionUpdateHub
+        private let workspaceRoot: String?
+        private let server: DesktopWebSocketServer?
+
+        init(sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) {
+            self.sessionId = sessionId
+            self.updateHub = updateHub
+            self.workspaceRoot = workspaceRoot
+            self.server = server
+        }
+
         typealias Output = String
 
         @Generable
         struct Arguments {
-            @Guide(description: "The task to delegate to the agent") var user_prompt: String
-            @Guide(description: "Provider: codex or claude_code (defaults to codex)") var provider: String?
+            @Guide(description: "The task to delegate") var user_prompt: String
+            @Guide(description: "Provider: codex or claude_code") var provider: String?
+            @Guide(description: "Brief description of delegation") var description: String?
         }
 
         func call(arguments a: Arguments) async throws -> Output {
             // For now, just acknowledge the call - we'll wire up delegation next
             let provider = a.provider ?? "codex"
-            return "delegate.run called: provider=\(provider) prompt=\(a.user_prompt.prefix(50))"
+            let desc = a.description ?? "delegation"
+            return "delegate.run called: provider=\(provider) desc=\(desc) prompt=\(a.user_prompt.prefix(50))"
+        }
+
+        // Static method for composing delegation prompts (used by tests)
+        static func composeDelegationPrompt(
+            provider: String,
+            description: String,
+            userPrompt: String,
+            workspaceRoot: String?,
+            includeGlobs: [String]?,
+            summarize: Bool?,
+            maxFiles: Int?
+        ) -> String {
+            var lines: [String] = []
+            lines.append("OpenAgents → \(provider) delegation")
+            lines.append("Description: \(description)")
+            if let ws = workspaceRoot {
+                lines.append("Workspace: \(ws)")
+            }
+            if let globs = includeGlobs, !globs.isEmpty {
+                lines.append("Include: \(globs.joined(separator: ", "))")
+            }
+            if let sum = summarize {
+                lines.append("Summarize: \(sum ? "yes" : "no")")
+            }
+            if let max = maxFiles {
+                lines.append("Max files: \(max)")
+            }
+            lines.append("")
+            lines.append(userPrompt)
+            return lines.joined(separator: "\n")
         }
     }
 
