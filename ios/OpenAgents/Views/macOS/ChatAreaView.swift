@@ -98,17 +98,27 @@ private struct ChatUpdateRow: View {
     let note: ACP.Client.SessionNotificationWire
     @EnvironmentObject private var bridge: BridgeManager
     @State private var showDetail = false
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             switch note.update {
             case .userMessageChunk(let chunk):
-                bubble(text: extractText(from: chunk), isUser: true)
-            case .agentMessageChunk(let chunk):
+                let text = extractText(from: chunk)
                 VStack(alignment: .leading, spacing: 6) {
-                    bubble(text: extractText(from: chunk), isUser: false)
-                    CopyMarkdownRow(markdown: extractText(from: chunk))
+                    bubble(text: text, isUser: true)
+                    CopyMarkdownRow(markdown: text, alignRight: true, visible: hovering)
                 }
+                .onHover { hovering = $0 }
+            case .agentMessageChunk(let chunk):
+                let text = extractText(from: chunk)
+                VStack(alignment: .leading, spacing: 6) {
+                    bubble(text: text, isUser: false)
+                        .modifier(FadeInOnAppear(duration: 0.10))
+                        .modifier(FadeOnChange(value: text, from: 0.35, to: 1.0, duration: 0.10))
+                    CopyMarkdownRow(markdown: text, alignRight: false, visible: hovering)
+                }
+                .onHover { hovering = $0 }
             case .agentThoughtChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: false, italic: true, secondary: true)
             case .plan(let plan):
@@ -149,11 +159,12 @@ private struct ChatUpdateRow: View {
     }
 
     private func bubble(text: String, isUser: Bool, italic: Bool = false, secondary: Bool = false) -> some View {
-        let content = Text(text)
+        let content = markdownText(text)
             .font(OAFonts.mono(.body, 14))
             .foregroundStyle(secondary ? OATheme.Colors.textSecondary : OATheme.Colors.textPrimary)
             .italic(italic)
             .textSelection(.enabled)
+            .lineSpacing(4)
             .padding(isUser ? 12 : 0)
             .background(isUser ? OATheme.Colors.bgQuaternary : Color.clear)
             .cornerRadius(isUser ? 12 : 0)
@@ -183,6 +194,20 @@ private struct ChatUpdateRow: View {
         }
     }
 
+    private func markdownText(_ text: String) -> Text {
+        // Render markdown while preserving line breaks during streaming
+        let options: AttributedString.MarkdownParsingOptions
+        if #available(macOS 14.0, *) {
+            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        } else {
+            options = .init(interpretedSyntax: .inlineOnly)
+        }
+        if let md = try? AttributedString(markdown: text, options: options) {
+            return Text(md)
+        }
+        return Text(text)
+    }
+
     private func mapCall(_ w: ACPToolCallWire) -> ACPToolCall {
         // Map wire args [String: AnyEncodable] → JSONValue for UI rendering
         var jsonObj: [String: JSONValue] = [:]
@@ -193,15 +218,46 @@ private struct ChatUpdateRow: View {
     }
 
     private func mapResult(_ w: ACPToolCallUpdateWire) -> ACPToolResult {
-        let ok = (w.status != .error) && (w.error == nil)
+        let ok: Bool
+        switch w.status {
+        case .completed: ok = true
+        case .error: ok = false
+        case .started: ok = false
+        }
         return ACPToolResult(call_id: w.call_id, ok: ok)
     }
 
     private func findResult(for callId: String) -> ACPToolResult? {
-        // Look up a completed result from bridge state if available
-        if let _ = bridge.outputJSONByCallId[callId] {
-            return ACPToolResult(call_id: callId, ok: true)
+        // 1) Completed with explicit output captured
+        if let _ = bridge.outputJSONByCallId[callId] { return ACPToolResult(call_id: callId, ok: true) }
+
+        // 2) Heuristic: if an assistant message appears after the last event
+        //    referencing this call, treat the call as completed (agent returned
+        //    to chat and is waiting for user response).
+        var lastIdxForCall: Int? = nil
+        for (i, note) in bridge.updates.enumerated() {
+            switch note.update {
+            case .toolCall(let w) where w.call_id == callId:
+                lastIdxForCall = i
+            case .toolCallUpdate(let upd) where upd.call_id == callId:
+                lastIdxForCall = i
+            default:
+                break
+            }
         }
+        if let idx = lastIdxForCall {
+            let sessionId = bridge.updates[idx].session_id
+            if idx + 1 < bridge.updates.count {
+                for j in (idx + 1)..<bridge.updates.count {
+                    let n = bridge.updates[j]
+                    if n.session_id != sessionId { continue }
+                    if case .agentMessageChunk = n.update {
+                        return ACPToolResult(call_id: callId, ok: true)
+                    }
+                }
+            }
+        }
+
         return nil
     }
 
@@ -218,18 +274,23 @@ private struct ChatUpdateRow: View {
 // MARK: - Small action row under assistant messages
 private struct CopyMarkdownRow: View {
     let markdown: String
+    var alignRight: Bool = false
+    var visible: Bool = true
     @State private var didCopy = false
 
     var body: some View {
         HStack(spacing: 8) {
+            if alignRight { Spacer(minLength: 0) }
             Button(action: copy) {
                 Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 13, weight: .semibold))
             }
             .buttonStyle(.plain)
             .help(didCopy ? "Copied" : "Copy as Markdown")
-            Spacer(minLength: 0)
+            if !alignRight { Spacer(minLength: 0) }
         }
+        .opacity(visible ? 1 : 0)
+        .frame(height: visible ? nil : 0)
         .foregroundStyle(didCopy ? OATheme.Colors.accent : OATheme.Colors.textSecondary)
         .padding(.top, 2)
     }
@@ -242,6 +303,34 @@ private struct CopyMarkdownRow: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             withAnimation(.easeInOut(duration: 0.15)) { didCopy = false }
         }
+    }
+}
+
+// Simple fade-in for streaming tokens
+private struct FadeInOnAppear: ViewModifier {
+    @State private var visible = false
+    var duration: Double = 0.12
+    func body(content: Content) -> some View {
+        content
+            .opacity(visible ? 1 : 0)
+            .onAppear { withAnimation(.easeIn(duration: duration)) { visible = true } }
+    }
+}
+
+private struct FadeOnChange<Value: Equatable>: ViewModifier {
+    let value: Value
+    var from: Double = 0.3
+    var to: Double = 1.0
+    var duration: Double = 0.12
+    @State private var alpha: Double = 1.0
+    func body(content: Content) -> some View {
+        content
+            .opacity(alpha)
+            .onAppear { alpha = to }
+            .onChange(of: value) { _, _ in
+                alpha = from
+                withAnimation(.easeIn(duration: duration)) { alpha = to }
+            }
     }
 }
 
