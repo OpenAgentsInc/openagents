@@ -40,18 +40,21 @@ public final class GPTOSSAgentProvider: AgentProvider, @unchecked Sendable {
     ) async throws -> AgentHandle {
         try await modelManager.loadModel()
 
-        // Phase 1: single response (non-streaming)
-        let response = try await modelManager.generate(
-            prompt: prompt,
-            options: GPTOSSGenerationOptions(
-                temperature: config.temperature,
-                topP: config.topP,
-                maxTokens: config.maxTokens
-            )
-        )
+        // Phase 2: streaming via ACP chunks
+        var buffer = ""
+        do {
+            try await modelManager.stream(prompt: prompt) { delta in
+                buffer.append(delta)
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
+                await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+                if self.isCancelled(sessionId) { return }
+            }
+        } catch {
+            let err = "Generation failed: \(error.localizedDescription)"
+            let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(err)")))
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+        }
 
-        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: response)))
-        await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
         return AgentHandle(sessionId: sessionId, mode: id, isStarted: true)
     }
 
@@ -72,4 +75,3 @@ public final class GPTOSSAgentProvider: AgentProvider, @unchecked Sendable {
     private func isCancelled(_ sessionId: ACPSessionId) -> Bool { cancelled.contains(sessionId.value) }
 }
 #endif
-
