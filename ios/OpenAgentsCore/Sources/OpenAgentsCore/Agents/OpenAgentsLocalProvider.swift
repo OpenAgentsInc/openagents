@@ -81,7 +81,11 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
                 OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS not detected; trying Foundation Models")
             }
         } catch {
-            OpenAgentsLog.orchestration.error("OpenAgentsLocalProvider: GPT‑OSS path failed: \(error.localizedDescription). Falling back to FM/local.")
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            OpenAgentsLog.orchestration.error("OpenAgentsLocalProvider: GPT‑OSS path failed: \(msg). Falling back to FM/local.")
+            // Surface the reason to the chat timeline
+            let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ GPT‑OSS unavailable: \(msg)\nOpen the GPT‑OSS card in the sidebar and click Download/Repair.")))
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
         }
         #endif
 

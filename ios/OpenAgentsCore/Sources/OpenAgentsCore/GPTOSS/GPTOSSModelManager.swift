@@ -25,13 +25,17 @@ public actor GPTOSSModelManager {
         state = .loading
         do {
             // Verify local snapshot before attempting to load
-            let info = await verifyLocalSnapshot()
+            var info = await verifyLocalSnapshot()
             if !info.ok {
                 print("[GPTOSS] Snapshot verification failed; attempting to re-sync missing files via Hub.snapshot")
                 try await redownloadMissing()
-            } else {
-                print("[GPTOSS] Snapshot verified: shards=\(info.shardCount) total=\(fmtBytes(info.totalBytes))")
+                info = await verifyLocalSnapshot()
             }
+            guard info.ok else {
+                print("[GPTOSS] Snapshot still incomplete after re-sync; aborting load")
+                throw GPTOSSError.snapshotIncomplete(missing: info.missing, shards: info.shardCount)
+            }
+            print("[GPTOSS] Snapshot verified: shards=\(info.shardCount) total=\(fmtBytes(info.totalBytes))")
 
             // If installed is detected, Hub/MLX will load from cache; otherwise it may download.
             if let detected = await detectInstalled(), detected.installed {
@@ -247,20 +251,27 @@ public actor GPTOSSModelManager {
             let dir = docs.appendingPathComponent("huggingface/models/\(modelId)")
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue {
-                // Recursively sum relevant files
+                // Count shards and sum bytes; require >=1 shard to consider installed
                 var total: Int64 = 0
+                var shardCount = 0
                 let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles])
                 while let item = enumerator?.nextObject() as? URL {
                     let name = item.lastPathComponent
-                    if name.hasSuffix(".safetensors") || ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
+                    if name.hasSuffix(".safetensors") {
+                        shardCount += 1
+                        if let vals = try? item.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true,
+                           let size = vals.fileSize.map(Int64.init) {
+                            total += size
+                        }
+                    } else if ["config.json","tokenizer.json","tokenizer_config.json","generation_config.json"].contains(name) {
                         if let vals = try? item.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true,
                            let size = vals.fileSize.map(Int64.init) {
                             total += size
                         }
                     }
                 }
-                if total > 0 {
-                    print("[GPTOSS] Detected installed model at \(dir.path); total bytes ~\(total)")
+                if shardCount > 0 {
+                    print("[GPTOSS] Detected installed model at \(dir.path); shards=\(shardCount) total bytes ~\(total)")
                     return (true, total)
                 }
             }
