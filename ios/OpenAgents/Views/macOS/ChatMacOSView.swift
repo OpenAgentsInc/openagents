@@ -17,8 +17,13 @@ struct ChatMacOSView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebarView()
-                .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
+            ZStack(alignment: .topLeading) {
+                // Ensure sidebar color fills under the titlebar so the top-left corner looks continuous
+                OATheme.Colors.sidebarBackground
+                    .ignoresSafeArea(edges: .top)
+                SessionSidebarView()
+            }
+            .navigationSplitViewColumnWidth(min: defaultSidebarWidth, ideal: defaultSidebarWidth, max: defaultSidebarWidth)
         } content: {
             ChatAreaView()
                 .navigationSplitViewColumnWidth(min: 800, ideal: 1200)
