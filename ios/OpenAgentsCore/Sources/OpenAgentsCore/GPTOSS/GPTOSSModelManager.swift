@@ -78,16 +78,25 @@ public actor GPTOSSModelManager {
     public func downloadModel(progressHandler: @escaping (DownloadProgress) -> Void) async throws {
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
-        let _ = try await Hub.snapshot(from: repo, matching: files) { p in
+        let link = "https://huggingface.co/\(config.modelID)"
+        print("[GPTOSS] Starting download from \(link)")
+        print("[GPTOSS] Files: \(files.joined(separator: ", "))")
+
+        let modelDir = try await Hub.snapshot(from: repo, matching: files) { p in
             let prog = DownloadProgress(
                 fractionCompleted: p.fractionCompleted,
                 bytesDownloaded: p.completedUnitCount,
                 totalBytes: p.totalUnitCount
             )
             progressHandler(prog)
+            let pct = Int((p.fractionCompleted * 100).rounded())
+            print("[GPTOSS] Download progress: \(pct)% (\(p.completedUnitCount)/\(p.totalUnitCount))")
         }
         // Optional: verify by attempting a load
-        do { try await loadModel() } catch { /* leave to caller if load on demand */ }
+        print("[GPTOSS] Download complete at \(modelDir.path)")
+        do { try await loadModel() } catch {
+            print("[GPTOSS] Load after download failed (will defer to on‑demand): \(error)")
+        }
     }
 }
 #endif
