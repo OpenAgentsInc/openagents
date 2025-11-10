@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 final class GPTOSSDownloadViewModel: ObservableObject {
-    enum Status { case notDownloaded, downloading, ready, error(String) }
+    enum Status { case notDownloaded, downloading, paused, ready, error(String) }
 
     @Published var status: Status = .notDownloaded
     @Published var progress: Double = 0.0
@@ -13,6 +13,8 @@ final class GPTOSSDownloadViewModel: ObservableObject {
     @Published var totalBytes: Int64 = 0
 
     private var task: Task<Void, Never>?
+    private var currentToken: UUID?
+    private var paused: Bool = false
     private let manager = GPTOSSModelManager()
     private let requiredFreeBytes: Int64 = 25 * 1024 * 1024 * 1024 // 25 GB
 
@@ -20,6 +22,7 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         switch status {
         case .notDownloaded: return "Not Downloaded"
         case .downloading: return "Downloading…"
+        case .paused: return "Paused"
         case .ready: return "Ready"
         case .error(let msg): return "Error: \(msg)"
         }
@@ -29,6 +32,7 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         switch status {
         case .notDownloaded: return .gray
         case .downloading: return .blue
+        case .paused: return .orange
         case .ready: return .green
         case .error: return .red
         }
@@ -63,6 +67,9 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         progress = 0
         downloadedBytes = 0
         totalBytes = 0
+        paused = false
+        let token = UUID()
+        currentToken = token
 
         task = Task { [weak self] in
             guard let self = self else { return }
@@ -74,20 +81,38 @@ final class GPTOSSDownloadViewModel: ObservableObject {
                         self.totalBytes = prog.totalBytes
                     }
                 }
-                await MainActor.run { self.status = .ready }
+                await MainActor.run {
+                    // Only mark ready if this completion belongs to current token and user didn't pause
+                    if self.currentToken == token && !self.paused {
+                        self.status = .ready
+                    } else {
+                        print("[GPTOSS UI] Download finished but UI token changed or paused; ignoring ready state.")
+                    }
+                }
             } catch {
-                await MainActor.run { self.status = .error(error.localizedDescription) }
+                await MainActor.run {
+                    if self.paused {
+                        self.status = .paused
+                    } else {
+                        self.status = .error(error.localizedDescription)
+                    }
+                }
             }
         }
     }
 
     func pauseDownload() {
+        print("[GPTOSS UI] Pause requested")
+        paused = true
         task?.cancel()
-        status = .notDownloaded
+        status = .paused
     }
 
     func cancelDownload() {
+        print("[GPTOSS UI] Cancel requested")
+        paused = false
         task?.cancel()
+        currentToken = nil
         status = .notDownloaded
         progress = 0
         downloadedBytes = 0
