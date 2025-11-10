@@ -205,7 +205,7 @@ public class DesktopWebSocketServer {
         let info = await mgr.verifyLocalSnapshot()
         if info.ok {
             preferredDefaultMode = .gptoss_20b
-            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (snapshot verified; shards=\(info.shardCount))")
+            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (snapshot verified; shards=\(info.shardCount)/\(info.expectedShardCount))")
             return
         }
         #endif

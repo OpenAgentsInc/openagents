@@ -166,6 +166,13 @@ public actor GPTOSSModelManager {
                 }
             }
         }
+        if expectedShards == 0 {
+            // Conservative guard: treat tiny totals as incomplete even if shard filename pattern isn't parsed
+            let minBytes: Int64 = Int64(11.0 * 1_073_741_824.0) // ~11 GiB minimum for this model
+            if total < minBytes {
+                missing.append("vector shards (size below threshold)")
+            }
+        }
         let ok = missing.isEmpty && shardCount > 0 && (expectedShards == 0 || shardCount == expectedShards)
         if !ok { print("[GPTOSS] verify: missing=\(missing) shards=\(shardCount)/\(expectedShards) total=\(fmtBytes(total))") }
         return .init(ok: ok, shardCount: shardCount, totalBytes: total, missing: missing, expectedShardCount: expectedShards)
