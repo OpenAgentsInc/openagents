@@ -11,10 +11,10 @@ final class ChatSendWiringTests: XCTestCase {
     /// Verify BridgeManager.preferredModeForSend maps selection and currentMode correctly.
     func testPreferredModeForSendMapping() {
         let bm = BridgeManager()
-        // No selection, default mode → nil
+        // No selection, default mode → default_mode (persisted default applies)
         bm.selectedAgent = nil
         bm.currentMode = .default_mode
-        XCTAssertNil(bm.preferredModeForSend())
+        XCTAssertEqual(bm.preferredModeForSend(), .default_mode)
 
         // No selection, explicit current mode → that mode
         bm.currentMode = .claude_code

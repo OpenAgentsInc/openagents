@@ -62,6 +62,11 @@ struct ToolCallDetailSheet: View {
                                 }
                             }
 
+                            if argumentsJSON.trimmingCharacters(in: .whitespacesAndNewlines) == "{}" {
+                                Text("(no structured arguments)")
+                                    .font(OAFonts.mono(.caption, 11))
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+                            }
                             JSONTextView(text: argumentsJSON)
                         }
                     }
@@ -231,7 +236,7 @@ private struct DetailRow: View {
                 .foregroundStyle(OATheme.Colors.textSecondary)
                 .frame(width: 80, alignment: .leading)
 
-            Text(value)
+            Text(value.isEmpty ? "—" : value)
                 .font(OAFonts.mono(.subheadline, 13))
                 .foregroundStyle(valueColor)
                 .textSelection(.enabled)
