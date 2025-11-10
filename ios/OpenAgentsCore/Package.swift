@@ -27,9 +27,7 @@ let package = Package(
                 .target(name: "OpenAgentsNostr"),
                 // MLX embeddings library (macOS-only code uses #if os(macOS))
                 .product(name: "MLXEmbedders", package: "mlx-swift-examples"),
-                // MLX LLM dependencies for GPT-OSS integration (macOS-only usage behind #if os(macOS))
-                .product(name: "MLXLLM", package: "mlx-swift-examples"),
-                .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
+                // Tokenizers for potential future use
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ]
         ),

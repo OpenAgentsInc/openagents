@@ -46,3 +46,9 @@ packages/tricoder/src/types/generated/
 crates/packages/
 
 private
+
+# Model files (GGUF, safetensors, etc.) - never commit large model weights
+*.gguf
+*.safetensors
+*.bin
+models/

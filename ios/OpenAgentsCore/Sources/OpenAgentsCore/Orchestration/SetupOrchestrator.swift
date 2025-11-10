@@ -480,7 +480,8 @@ public actor SetupOrchestrator {
         case .codex: return "Codex"
         case .default_mode: return "Default"
         case .orchestrator: return "Orchestrator"
-        case .gptoss_20b: return "GPTOSS 20B"
+        case .gptoss_20b: return "GPTOSS 20B"  // Deprecated
+        case .llama_cpp: return "Llama.cpp"
         }
     }
 }
