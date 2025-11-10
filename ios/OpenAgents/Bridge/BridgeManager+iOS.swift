@@ -130,6 +130,12 @@ extension BridgeManager {
         dispatcher?.orchestrateExploreStart(root: root, goals: goals, onSessionId: { [weak self] sid in self?.currentSessionId = sid }, completion: completion)
     }
 
+    func orchestrateCoordinatorRunOnce(configId: String? = nil, configInline: OrchestrationConfig? = nil, completion: ((PromptDispatcher.CoordinatorRunOnceResponse?) -> Void)? = nil) {
+        dispatcher?.orchestrateCoordinatorRunOnce(configId: configId, configInline: configInline) { resp in
+            completion?(resp)
+        }
+    }
+
     // MARK: - History
     func fetchRecentSessions() {
         dispatcher?.fetchRecentSessions { [weak self] sessions in

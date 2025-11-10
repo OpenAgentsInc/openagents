@@ -181,5 +181,46 @@ extension DesktopWebSocketServer {
             return true
         } catch { return false }
     }
+
+    // MARK: - Coordinator (local helpers)
+    public struct LocalCoordinatorRunOnceResult: Codable { public let status: String; public let task_id: String?; public let session_id: String?; public let agent_mode: String? }
+    public struct LocalCoordinatorStatus: Codable { public let cycles_run: Int; public let tasks_executed: Int; public let tasks_completed: Int; public let tasks_failed: Int; public let tasks_cancelled: Int; public let last_cycle_ts: Int64? }
+
+    public func localCoordinatorRunOnce(config: OrchestrationConfig? = nil) async -> LocalCoordinatorRunOnceResult {
+        guard let coord = await ensureCoordinator() else {
+            return .init(status: "error", task_id: nil, session_id: nil, agent_mode: nil)
+        }
+        let cfg = config ?? self.activeOrchestrationConfig
+        let result = await coord.runCycle(config: cfg ?? OrchestrationConfig.createDefault(workspaceRoot: workingDirectory?.path ?? NSHomeDirectory()), workingDirectory: self.workingDirectory)
+        switch result {
+        case .taskExecuted(let taskId, let sessionId):
+            var modeStr: String? = nil
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
+                modeStr = task?.decision.agentMode.rawValue
+            }
+            return .init(status: "executing", task_id: taskId, session_id: sessionId, agent_mode: modeStr)
+        case .decisionMade(let taskId):
+            var modeStr: String? = nil
+            if let db = self.tinyvexDb, let tq = try? await TaskQueue(db: db), let task = try? await tq.get(taskId) {
+                modeStr = task?.decision.agentMode.rawValue
+            }
+            return .init(status: "enqueued", task_id: taskId, session_id: nil, agent_mode: modeStr)
+        case .noAgentsAvailable:
+            return .init(status: "no_agents", task_id: nil, session_id: nil, agent_mode: nil)
+        case .taskFailed(let taskId, _):
+            return .init(status: "failed", task_id: taskId, session_id: nil, agent_mode: nil)
+        case .idle:
+            return .init(status: "idle", task_id: nil, session_id: nil, agent_mode: nil)
+        }
+    }
+
+    public func localCoordinatorStatus() async -> LocalCoordinatorStatus {
+        guard let coord = await ensureCoordinator() else {
+            return .init(cycles_run: 0, tasks_executed: 0, tasks_completed: 0, tasks_failed: 0, tasks_cancelled: 0, last_cycle_ts: nil)
+        }
+        let m = await coord.metrics()
+        let ts = m.lastCycleTimestamp.map { Int64($0.timeIntervalSince1970 * 1000) }
+        return .init(cycles_run: m.cyclesRun, tasks_executed: m.tasksExecuted, tasks_completed: m.tasksCompleted, tasks_failed: m.tasksFailed, tasks_cancelled: m.tasksCancelled, last_cycle_ts: ts)
+    }
 }
 #endif
