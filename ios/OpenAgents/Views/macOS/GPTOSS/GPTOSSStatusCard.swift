@@ -34,9 +34,9 @@ struct GPTOSSStatusCard: View {
                         ProgressView(value: viewModel.progress)
                             .progressViewStyle(.linear)
                         HStack {
-                            Text("\(Int(viewModel.progress * 100))%")
+                            Text(viewModel.percent1dp)
                             Spacer()
-                            Text("\(viewModel.downloadedGB) / \(viewModel.totalGB) GB")
+                            Text("\(viewModel.downloadedGB2dp) / \(viewModel.totalGBNoSpaceUnit)")
                         }
                         .font(OAFonts.ui(.caption, 10))
                         .foregroundStyle(OATheme.Colors.textSecondary)
