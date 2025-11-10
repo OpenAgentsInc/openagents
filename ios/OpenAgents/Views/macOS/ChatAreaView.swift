@@ -14,18 +14,23 @@ struct ChatAreaView: View {
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        if bridge.updates.isEmpty {
-                            // No center placeholder; keep area empty and retain bottom anchor for scroll
-                            Color.clear.frame(height: 1).id("bottom")
-                        } else {
-                            ForEach(Array(bridge.updates.enumerated()), id: \.offset) { (idx, note) in
-                                ChatUpdateRow(note: note)
-                                    .id(idx)
-                                    .padding(.horizontal, 16)
+                    HStack { // center the message column
+                        Spacer()
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            if bridge.updates.isEmpty {
+                                // No center placeholder; keep area empty and retain bottom anchor for scroll
+                                Color.clear.frame(height: 1).id("bottom")
+                            } else {
+                                ForEach(Array(bridge.updates.enumerated()), id: \.offset) { (idx, note) in
+                                    ChatUpdateRow(note: note)
+                                        .id(idx)
+                                        .padding(.horizontal, 16)
+                                }
+                                Color.clear.frame(height: 1).id("bottom")
                             }
-                            Color.clear.frame(height: 1).id("bottom")
                         }
+                        .frame(maxWidth: 820)
+                        Spacer()
                     }
                     .padding(.top, 16)
                 }
@@ -108,10 +113,9 @@ private struct ChatUpdateRow: View {
                 Text("Available: \(ac.available_commands.count) commands")
                     .font(OAFonts.mono(.caption, 11))
                     .foregroundStyle(OATheme.Colors.textSecondary)
-            case .currentModeUpdate(let cur):
-                Text("Mode: \(cur.current_mode_id.rawValue)")
-                    .font(OAFonts.mono(.caption, 11))
-                    .foregroundStyle(OATheme.Colors.textSecondary)
+            case .currentModeUpdate:
+                // Hide mode change rows in chat transcript
+                EmptyView()
             case .toolCall(let callWire):
                 ToolCallView(call: mapCall(callWire), result: findResult(for: callWire.call_id))
                     .contentShape(Rectangle())
