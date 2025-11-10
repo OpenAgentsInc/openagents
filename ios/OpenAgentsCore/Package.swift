@@ -16,6 +16,9 @@ let package = Package(
 
         // MLX Swift Examples for embeddings support (BGE-small model via MLX)
         .package(url: "https://github.com/ml-explore/mlx-swift-examples.git", from: "2.29.0"),
+
+        // Hugging Face Swift Transformers for Hub downloads + Tokenizers
+        .package(url: "https://github.com/huggingface/swift-transformers.git", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -24,6 +27,10 @@ let package = Package(
                 .target(name: "OpenAgentsNostr"),
                 // MLX embeddings library (macOS-only code uses #if os(macOS))
                 .product(name: "MLXEmbedders", package: "mlx-swift-examples"),
+                // MLX LLM dependencies for GPT-OSS integration (macOS-only usage behind #if os(macOS))
+                .product(name: "MLXLLM", package: "mlx-swift-examples"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ]
         ),
         .target(
