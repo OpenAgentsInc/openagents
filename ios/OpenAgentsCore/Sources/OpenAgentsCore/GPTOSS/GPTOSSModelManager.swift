@@ -28,7 +28,7 @@ public actor GPTOSSModelManager {
             var info = await verifyLocalSnapshot()
             if !info.ok {
                 print("[GPTOSS] Snapshot verification failed; attempting to re-sync missing files via Hub.snapshot")
-                try await redownloadMissing()
+                try await repairSnapshot()
                 info = await verifyLocalSnapshot()
             }
             guard info.ok else {
@@ -109,15 +109,23 @@ public actor GPTOSSModelManager {
     }
 
     // MARK: - Snapshot verification & helpers
-    public struct SnapshotInfo: Sendable { public let ok: Bool; public let shardCount: Int; public let totalBytes: Int64; public let missing: [String] }
+    public struct SnapshotInfo: Sendable {
+        public let ok: Bool
+        public let shardCount: Int
+        public let totalBytes: Int64
+        public let missing: [String]
+        public let expectedShardCount: Int
+    }
 
     public func verifyLocalSnapshot() async -> SnapshotInfo {
         let req = ["config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         var missing: [String] = []
         var shardCount = 0
         var total: Int64 = 0
+        var presentIndices = Set<Int>()
+        var expectedShards: Int = 0
         let fm = FileManager.default
-        guard let dir = snapshotDir() else { return .init(ok: false, shardCount: 0, totalBytes: 0, missing: req) }
+        guard let dir = snapshotDir() else { return .init(ok: false, shardCount: 0, totalBytes: 0, missing: req, expectedShardCount: 0) }
         print("[GPTOSS] Verifying snapshot at \(dir.path)")
         for f in req {
             let p = dir.appendingPathComponent(f)
@@ -135,15 +143,35 @@ public actor GPTOSSModelManager {
                     } else {
                         print("[GPTOSS] shard \(url.lastPathComponent) size=<unknown>")
                     }
+                    // Parse e.g., model-00003-of-00003.safetensors
+                    let name = url.lastPathComponent
+                    if let match = name.range(of: #"model\\-(\d+)\-of\-(\d+)\.safetensors"#, options: .regularExpression) {
+                        let parts = String(name[match]).replacingOccurrences(of: "model-", with: "").replacingOccurrences(of: ".safetensors", with: "").split(separator: "-")
+                        if parts.count >= 3 {
+                            let idx = Int(parts[0]) ?? 0
+                            let of = Int(parts[2]) ?? 0
+                            if idx > 0 { presentIndices.insert(idx) }
+                            if of > 0 { expectedShards = max(expectedShards, of) }
+                        }
+                    }
                 }
             }
         }
-        let ok = missing.isEmpty && shardCount > 0
-        if !ok { print("[GPTOSS] verify: missing=\(missing) shards=\(shardCount) total=\(fmtBytes(total))") }
-        return .init(ok: ok, shardCount: shardCount, totalBytes: total, missing: missing)
+        if expectedShards > 0 {
+            for i in 1...expectedShards {
+                if !presentIndices.contains(i) {
+                    let idxPadded = String(format: "%05d", i)
+                    let ofPadded = String(format: "%05d", expectedShards)
+                    missing.append("model-\(idxPadded)-of-\(ofPadded).safetensors")
+                }
+            }
+        }
+        let ok = missing.isEmpty && shardCount > 0 && (expectedShards == 0 || shardCount == expectedShards)
+        if !ok { print("[GPTOSS] verify: missing=\(missing) shards=\(shardCount)/\(expectedShards) total=\(fmtBytes(total))") }
+        return .init(ok: ok, shardCount: shardCount, totalBytes: total, missing: missing, expectedShardCount: expectedShards)
     }
 
-    private func redownloadMissing() async throws {
+    public func repairSnapshot() async throws {
         let repo = Hub.Repo(id: config.modelID)
         let files = ["*.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json", "generation_config.json"]
         print("[GPTOSS] Re-syncing missing files from https://huggingface.co/\(config.modelID)")
@@ -159,7 +187,19 @@ public actor GPTOSSModelManager {
         }
     }
 
-    private func snapshotDir() -> URL? {
+    public func purgeSnapshot() throws {
+        let fm = FileManager.default
+        if let dir = snapshotDir(), fm.fileExists(atPath: dir.path) {
+            print("[GPTOSS] Purging snapshot directory: \(dir.path)")
+            try fm.removeItem(at: dir)
+        }
+    }
+
+    public func purgeSnapshotAsync() async {
+        do { try purgeSnapshot() } catch { print("[GPTOSS] Purge error: \(error.localizedDescription)") }
+    }
+
+    public func snapshotDir() -> URL? {
         let fm = FileManager.default
         guard let docs = try? fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return nil }
         return docs.appendingPathComponent("huggingface/models/\(config.modelID)")

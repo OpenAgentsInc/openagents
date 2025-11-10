@@ -162,6 +162,23 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         status = .paused
     }
 
+    func repairDownload() async {
+        status = .downloading
+        let token = UUID()
+        currentToken = token
+        do {
+            try await manager.repairSnapshot()
+            await refreshInstalled()
+        } catch {
+            await MainActor.run { self.status = .error(error.localizedDescription) }
+        }
+    }
+
+    func purgeAndRestart() async {
+        await manager.purgeSnapshotAsync()
+        await startDownload(preserveExisting: false)
+    }
+
     func cancelDownload() {
         print("[GPTOSS UI] Cancel requested")
         paused = false
