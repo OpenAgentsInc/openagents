@@ -69,6 +69,9 @@ public struct AgentContext: Sendable {
     /// Client that initiated the request (for sending responses)
     public var client: DesktopWebSocketServer.Client?
 
+    /// Server handling the session (used by in-process tools to invoke other agents)
+    public var server: DesktopWebSocketServer?
+
     /// Additional metadata
     public var metadata: [String: String]
 
@@ -76,11 +79,13 @@ public struct AgentContext: Sendable {
         workingDirectory: URL? = nil,
         mcpServers: [ACP.Agent.McpServer]? = nil,
         client: DesktopWebSocketServer.Client? = nil,
+        server: DesktopWebSocketServer? = nil,
         metadata: [String: String] = [:]
     ) {
         self.workingDirectory = workingDirectory
         self.mcpServers = mcpServers
         self.client = client
+        self.server = server
         self.metadata = metadata
     }
 }

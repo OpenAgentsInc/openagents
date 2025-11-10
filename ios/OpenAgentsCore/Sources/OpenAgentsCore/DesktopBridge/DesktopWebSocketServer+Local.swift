@@ -58,6 +58,7 @@ extension DesktopWebSocketServer {
             workingDirectory: workingDirectory,
             mcpServers: nil,
             client: nil,
+            server: self,
             metadata: [:]
         )
 
