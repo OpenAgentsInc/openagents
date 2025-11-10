@@ -19,12 +19,19 @@ final class OpenAgentsLocalProviderFMToolTests: XCTestCase {
             let expAgent = expectation(description: "agent response/error received")
             var sawToolCall = false
             var sawAgent = false
+            var seenGlobs: [String] = []
             let sub = server.notificationPublisher.sink { evt in
                 guard evt.method == ACPRPC.sessionUpdate else { return }
                 if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: evt.payload) {
                     switch note.update {
                     case .toolCall(let w):
-                        if w.name == "codex.run" { sawToolCall = true; expToolCall.fulfill() }
+                        if w.name == "codex.run" {
+                            sawToolCall = true
+                            if let args = w.arguments, let inc = args["files_include_glob"], case .array(let arr) = inc.toJSONValue() {
+                                seenGlobs = arr.compactMap { if case .string(let s) = $0 { return s } else { return nil } }
+                            }
+                            expToolCall.fulfill()
+                        }
                     case .agentMessageChunk(let chunk):
                         if case .text(let t) = chunk.content, t.text.contains("Codex") || t.text.contains("❌") {
                             sawAgent = true; expAgent.fulfill()
@@ -62,9 +69,10 @@ final class OpenAgentsLocalProviderFMToolTests: XCTestCase {
             XCTAssertTrue(sawAgent)
             // Ensure working directory was applied
             XCTAssertEqual(server.workingDirectory?.path, FileManager.default.currentDirectoryPath)
+            // Ensure globs mapped through in tool_call arguments
+            XCTAssertEqual(seenGlobs, ["**/*"]) 
         }
         #endif
     }
     #endif
 }
-
