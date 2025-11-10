@@ -41,22 +41,24 @@ final class GPTOSSDownloadViewModel: ObservableObject {
     var isDownloading: Bool { if case .downloading = status { return true } else { return false } }
     var isDownloaded: Bool { if case .ready = status { return true } else { return false } }
 
-    private var fallbackTotalBytes: Int64 {
-        // Approx 12.1 GiB for MXFP4 build
-        Int64(12.1 * 1_073_741_824.0)
-    }
-
-    private var computedTotalBytes: Int64 {
-        totalBytes > 0 ? totalBytes : fallbackTotalBytes
-    }
+    // Heuristic: if totalBytes is very small (e.g., 7), Hub.progress is reporting file count, not bytes.
+    // In that case, fall back to the known total size for display and estimate downloaded bytes from percent.
+    private var fallbackTotalBytes: Int64 { Int64(12.1 * 1_073_741_824.0) } // ~12.1 GiB
+    private var looksLikeFileCount: Bool { totalBytes > 0 && totalBytes < (128 * 1024 * 1024) }
+    private var effectiveTotalBytes: Int64 { (totalBytes > 0 && !looksLikeFileCount) ? totalBytes : fallbackTotalBytes }
 
     var downloadedGB: String {
-        let bytes = downloadedBytes > 0 ? downloadedBytes : Int64(Double(computedTotalBytes) * progress)
-        return String(format: "%.1f", Double(bytes) / 1_073_741_824.0)
+        let bytes: Int64
+        if looksLikeFileCount || downloadedBytes == 0 {
+            bytes = Int64(Double(effectiveTotalBytes) * progress)
+        } else {
+            bytes = downloadedBytes
+        }
+        return String(format: "%.1f", Double(max(bytes, 0)) / 1_073_741_824.0)
     }
 
     var totalGB: String {
-        String(format: "%.1f", Double(computedTotalBytes) / 1_073_741_824.0)
+        String(format: "%.1f", Double(effectiveTotalBytes) / 1_073_741_824.0)
     }
 
     var hasSufficientSpace: Bool { (freeDiskBytes() ?? 0) >= requiredFreeBytes }
