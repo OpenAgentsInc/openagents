@@ -122,6 +122,17 @@ struct ToolCallView: View {
             return nil
         }
 
+        // Codex delegation summary
+        if toolName == "codex.run" {
+            if case .object(let obj) = args {
+                var parts: [String] = []
+                if case .string(let task)? = obj["task"] { parts.append(task) }
+                if case .string(let desc)? = obj["description"] { parts.append(desc) }
+                if case .string(let up)? = obj["user_prompt"] { parts.append(String(up.prefix(60))) }
+                if !parts.isEmpty { return parts.joined(separator: " — ") }
+            }
+        }
+
         // Read - show relative file_path
         if toolName == "read" || toolName.hasSuffix(".read") {
             if case .object(let obj) = args,
