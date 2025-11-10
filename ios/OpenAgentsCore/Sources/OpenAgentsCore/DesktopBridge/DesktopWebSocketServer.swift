@@ -89,7 +89,7 @@ public class DesktopWebSocketServer {
     // Agent registry for provider management
     let agentRegistry = AgentRegistry()
     /// Preferred default mode for new sessions (auto-selected if client doesn't choose)
-    private var preferredDefaultMode: ACPSessionModeId = .default_mode
+    var preferredDefaultMode: ACPSessionModeId = .default_mode
 
     // MARK: - Local app broadcast (Combine)
     private let broadcastSubject = PassthroughSubject<(method: String, payload: Data), Never>()
