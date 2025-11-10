@@ -132,7 +132,10 @@ struct SessionSidebarView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(OATheme.Colors.sidebarBackground)
+            .background(
+                OATheme.Colors.sidebarBackground
+                    .ignoresSafeArea(.container, edges: .top)
+            )
             .onChange(of: selectedSessionId) { _, newValue in
                 guard let sid = newValue else { return }
                 loadSession(sid)
@@ -141,7 +144,10 @@ struct SessionSidebarView: View {
             Spacer(minLength: 0)
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
-        .background(OATheme.Colors.sidebarBackground)
+        .background(
+            OATheme.Colors.sidebarBackground
+                .ignoresSafeArea(.container, edges: .top)
+        )
         .onAppear {
             bridge.fetchRecentSessions()
         }
