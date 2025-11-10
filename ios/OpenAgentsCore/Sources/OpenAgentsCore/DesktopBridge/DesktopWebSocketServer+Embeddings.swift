@@ -138,7 +138,9 @@ extension DesktopWebSocketServer {
                 return (id: id, text: text, metadata: metadata)
             }
             try await service.storeBatch(items: mapped, collection: collection)
-            JsonRpcRouter.sendResponse(id: id, result: ["success": true, "count": mapped.count]) { text in
+            struct StoreBatchResp: Codable { let success: Bool; let count: Int }
+            let resp = StoreBatchResp(success: true, count: mapped.count)
+            JsonRpcRouter.sendResponse(id: id, result: resp) { text in
                 client.send(text: text)
             }
         } catch {
@@ -163,4 +165,3 @@ extension DesktopWebSocketServer {
     }
 }
 #endif
-
