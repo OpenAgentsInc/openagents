@@ -18,9 +18,6 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
     )
 
     private var cancelled: Set<String> = []
-    #if os(macOS)
-    private let gptossManager = GPTOSSModelManager()
-    #endif
 
     public init() {}
 
@@ -58,38 +55,7 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
     private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, context: AgentContext?) async {
         if await isCancelled(sessionId) { return }
 
-        // Preferred path: GPT‑OSS if installed/available on macOS
-        #if os(macOS)
-        do {
-            let info = await gptossManager.verifyLocalSnapshot()
-            if info.ok {
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (snapshot verified \(info.shardCount)/\(info.expectedShardCount))")
-                // Emit a small placeholder so UI shows immediate activity
-                let starting = ACP.Client.ContentChunk(content: .text(.init(text: "⏳ Loading GPT‑OSS 20B…")))
-                await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(starting))
-                try await gptossManager.loadModel()
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS model loaded; starting stream")
-                var total = 0
-                try await gptossManager.stream(prompt: prompt) { delta in
-                    total += delta.count
-                    if await self.isCancelled(sessionId) { return }
-                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
-                    await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
-                }
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS stream complete chars=\(total)")
-                return
-            } else {
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS incomplete snapshot; trying Foundation Models or local fallback")
-            }
-        } catch {
-            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            OpenAgentsLog.orchestration.error("OpenAgentsLocalProvider: GPT‑OSS path failed: \(msg). Falling back to FM/local.")
-            // Surface the reason to the chat timeline
-            let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ GPT‑OSS unavailable: \(msg)\nOpen the GPT‑OSS card in the sidebar and click Download/Repair.")))
-            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
-        }
-        #endif
-
+        // Use Foundation Models if available, otherwise fall back to local reply
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {

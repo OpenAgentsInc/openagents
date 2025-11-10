@@ -178,7 +178,7 @@ public class DesktopWebSocketServer {
         await agentRegistry.register(OpenAgentsLocalProvider())
         await agentRegistry.register(CodexAgentProvider())
         await agentRegistry.register(ClaudeCodeAgentProvider())
-        await agentRegistry.register(GPTOSSAgentProvider())
+        await agentRegistry.register(LlamaAgentProvider())  // llama.cpp with GGUF
         let count = await agentRegistry.allProviders().count
         OpenAgentsLog.bridgeServer.info("Registered \(count) agent providers")
     }
@@ -197,15 +197,21 @@ public class DesktopWebSocketServer {
     }
 
     /// Determine and cache a preferred default agent mode based on availability.
-    /// If GPT‑OSS 20B is installed and available, prefer it; otherwise use `.default_mode`.
+    /// If llama.cpp is installed and GGUF model exists, prefer it; otherwise use `.default_mode`.
     private func refreshPreferredDefaultMode() async {
         #if os(macOS)
-        // Only prefer GPT‑OSS if snapshot is fully verified
-        let mgr = GPTOSSModelManager()
-        let info = await mgr.verifyLocalSnapshot()
-        if info.ok {
-            preferredDefaultMode = .gptoss_20b
-            OpenAgentsLog.bridgeServer.info("Preferred default agent set to gptoss_20b (snapshot verified; shards=\(info.shardCount)/\(info.expectedShardCount))")
+        // Check if llama-cli is available and GGUF model exists
+        let provider = LlamaAgentProvider()
+        let available = await provider.isAvailable()
+
+        // Also check if model file exists
+        let modelPath = "~/.openagents/models/gpt-oss-20b-MXFP4.gguf"
+        let expandedPath = (modelPath as NSString).expandingTildeInPath
+        let modelExists = FileManager.default.fileExists(atPath: expandedPath)
+
+        if available && modelExists {
+            preferredDefaultMode = .llama_cpp
+            OpenAgentsLog.bridgeServer.info("Preferred default agent set to llama_cpp (llama-cli available + model exists)")
             return
         }
         #endif

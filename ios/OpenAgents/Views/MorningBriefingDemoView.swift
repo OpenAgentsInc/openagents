@@ -307,6 +307,7 @@ struct MorningBriefingDemoView: View {
         case .default_mode: return "Default"
         case .orchestrator: return "Orchestrator"
         case .gptoss_20b: return "GPTOSS 20B"
+        case .llama_cpp: return "Llama.cpp"
         }
     }
 }

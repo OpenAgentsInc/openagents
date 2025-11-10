@@ -129,6 +129,7 @@ struct PRCardView: View {
         case .default_mode: return "Default"
         case .orchestrator: return "Orchestrator"
         case .gptoss_20b: return "GPTOSS 20B"
+        case .llama_cpp: return "Llama.cpp"
         }
     }
 
@@ -139,6 +140,7 @@ struct PRCardView: View {
         case .default_mode: return Color.blue
         case .orchestrator: return Color.green
         case .gptoss_20b: return Color.indigo
+        case .llama_cpp: return Color.orange
         }
     }
 

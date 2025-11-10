@@ -1,14 +1,38 @@
 # GPTOSS 20B Integration Documentation
 
-This directory contains comprehensive documentation for integrating GPT-OSS 20B (via MLX Swift) as a native agent provider in OpenAgents.
+**⚠️ MIGRATION NOTICE:** As of 2025-11-10, we have migrated from MLX to llama.cpp for 2-3x faster inference. See [llama-cpp-migration.md](./llama-cpp-migration.md) for details.
 
-## Quick Start
+---
 
-**New to this integration?** Start here:
-1. Read [gptoss-integration-spec.md](./gptoss-integration-spec.md) for the full technical specification
-2. Review [next-steps-20251110.md](./next-steps-20251110.md) for gaps and revisions
-3. Check [research.md](./research.md) for MLX Swift implementation details
-4. Browse [issues/](./issues/) for implementation tasks
+This directory contains documentation for integrating GPT-OSS 20B local inference into OpenAgents.
+
+## Current Implementation: llama.cpp (2025-11-10)
+
+We now use **llama.cpp with GGUF weights** for local inference:
+
+- **Performance:** 2-3x faster than MLX (50-115 tok/sec vs 10-30 tok/sec)
+- **Architecture:** CLI-based agent provider (same pattern as Codex/Claude)
+- **Model:** gpt-oss-20b-MXFP4.gguf (11 GB)
+- **Location:** ~/.openagents/models/gpt-oss-20b-MXFP4.gguf
+- **Installation:** `brew install llama.cpp`
+
+**Quick Start:**
+1. Install llama-cli: `brew install llama.cpp`
+2. Ensure model file exists at `~/.openagents/models/gpt-oss-20b-MXFP4.gguf`
+3. Build and run the macOS app
+4. Select "Llama.cpp" mode in the UI
+
+## Documentation Index
+
+### Current (llama.cpp)
+- **[llama-cpp-migration.md](./llama-cpp-migration.md)** - Migration guide (START HERE)
+  - Why we switched
+  - Performance comparison
+  - Installation & setup
+  - Usage examples
+
+### Historical (MLX-based, deprecated)
+- **[gptoss-integration-spec.md](./gptoss-integration-spec.md)** - Original MLX specification (deprecated)
 
 ## Document Index
 
