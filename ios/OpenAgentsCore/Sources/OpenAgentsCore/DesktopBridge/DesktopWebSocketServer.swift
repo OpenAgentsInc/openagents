@@ -80,6 +80,8 @@ public class DesktopWebSocketServer {
     var updateHub: SessionUpdateHub?
     // History API for Tinyvex queries
     var historyApi: HistoryApi?
+    // Embeddings service for semantic operations
+    var embeddingService: EmbeddingService?
     // JSON-RPC router for method dispatch
     let router = JsonRpcRouter()
     // Current client context for handlers (set during routing)
@@ -187,6 +189,7 @@ public class DesktopWebSocketServer {
         registerFileSystemHandlers()
         registerTerminalHandler()
         registerOrchestrationHandler()
+        registerEmbeddingHandlers()
     }
 
     // MARK: - Handler Registration Methods
@@ -389,6 +392,7 @@ public class DesktopWebSocketServer {
             }
             // Initialize HistoryApi for Tinyvex queries
             self.historyApi = HistoryApi(tinyvexDb: db)
+            // Initialize EmbeddingService lazily; created on first use if needed
             OpenAgentsLog.bridgeServer.info("Tinyvex DB attached at \(path, privacy: .private)")
         } else {
             OpenAgentsLog.bridgeServer.error("Failed to open Tinyvex DB at \(path, privacy: .private)")

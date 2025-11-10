@@ -44,7 +44,7 @@ SearchKitService (macOS)
 ### SearchKitCore Library
 - [ ] Chunking engine (block-aware, token estimation)
 - [ ] FTS5 integration (SQLite full-text search, BM25)
-- [ ] Core ML embeddings (dim=384/768)
+- [ ] Embeddings via EmbeddingService (dim=384/768, provider-agnostic)
 - [ ] Vector storage (normalized Float32 blobs)
 - [ ] Hybrid search (RRF fusion of lexical + semantic)
 - [ ] Span reading (bounded results, highlight offsets)
@@ -80,7 +80,7 @@ SearchKitService (macOS)
 
 Chunker.swift                // Text chunking
 FTS5Index.swift              // Full-text search
-EmbeddingGenerator.swift     // Core ML embeddings
+// EmbeddingService is the semantic provider (no bespoke generator here)
 VectorStore.swift            // Vector storage + ANN
 HybridSearch.swift           // RRF fusion
 SpanReader.swift             // Bounded result extraction
