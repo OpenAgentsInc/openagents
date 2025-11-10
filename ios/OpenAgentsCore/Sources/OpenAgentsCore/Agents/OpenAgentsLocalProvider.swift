@@ -158,147 +158,22 @@ extension OpenAgentsLocalProvider {
     // MARK: - FM Tool: delegate.run
         struct FMTool_DelegateRun: Tool {
         let name = "delegate.run"
-        let description = "Delegate a coding task to Codex or Claude Code. Use this for ANY actionable request like 'list files', 'write code', 'analyze workspace', etc."
-
-        @Generable
-        struct Output {
-            let status: String
-            let message: String
-        }
-
-        private let sessionId: ACPSessionId
-        private let updateHub: SessionUpdateHub
-        private let workspaceRoot: String?
-        private weak var server: DesktopWebSocketServer?
-
-        init(sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) {
-            self.sessionId = sessionId
-            self.updateHub = updateHub
-            self.workspaceRoot = workspaceRoot
-            self.server = server
-        }
+        let description = "Delegate a coding task to Codex or Claude Code."
+        typealias Output = String
 
         @Generable
         struct Arguments {
-            @Guide(description: "Provider: auto (default), codex, claude_code") var provider: String?
-            @Guide(description: "Task type (e.g., delegate, search, run, generate)") var task: String?
-            @Guide(description: "Short one-liner description for the UI") var description: String?
-            @Guide(description: "The exact instruction to pass to the provider") var user_prompt: String
-            @Guide(description: "Workspace root (absolute path)") var workspace_root: String?
-            @Guide(description: "Include patterns (glob)") var files_include_glob: [String]?
-            @Guide(description: "Request a succinct summary upon completion") var summarize: Bool?
-            @Guide(description: "Upper bound for files to scan/edit") var max_files: Int?
-            @Guide(description: "Priority: low, normal, high (advisory)") var priority: String?
-            @Guide(description: "Soft time budget in milliseconds") var time_budget_ms: Int?
-            @Guide(description: "Emit tool_call without dispatching (preview mode)") var dry_run: Bool?
+            @Guide(description: "The task to delegate to the agent") var user_prompt: String
+            @Guide(description: "Provider: codex or claude_code (defaults to codex)") var provider: String?
         }
 
         func call(arguments a: Arguments) async throws -> Output {
-            let callId = UUID().uuidString
-
-            // Resolve provider (auto defaults to codex for now)
-            let resolvedProvider = resolveProvider(requested: a.provider)
-
-            // Build args dict for ACP tool_call
-            var args: [String: AnyEncodable] = [:]
-            args["provider"] = AnyEncodable(resolvedProvider)
-            if let t = a.task { args["task"] = AnyEncodable(t) }
-            if let d = a.description { args["description"] = AnyEncodable(d) }
-            args["user_prompt"] = AnyEncodable(a.user_prompt)
-            if let wr = a.workspace_root ?? workspaceRoot { args["workspace_root"] = AnyEncodable(wr) }
-            if let inc = a.files_include_glob { args["files_include_glob"] = AnyEncodable(inc) }
-            if let s = a.summarize { args["summarize"] = AnyEncodable(s) }
-            if let m = a.max_files { args["max_files"] = AnyEncodable(m) }
-            if let p = a.priority { args["priority"] = AnyEncodable(p) }
-            if let tb = a.time_budget_ms { args["time_budget_ms"] = AnyEncodable(tb) }
-            if let dr = a.dry_run { args["dry_run"] = AnyEncodable(dr) }
-
-            // Emit ACP tool_call for UI visibility
-            let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
-            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
-
-            // Handle dry-run mode (preview only)
-            if a.dry_run == true {
-                return Output(status: "preview", message: "delegate.run dry-run (not dispatched)")
-            }
-
-            // Apply workspace root to server working directory if supplied
-            if let wr = a.workspace_root ?? workspaceRoot, let srv = self.server {
-                srv.workingDirectory = URL(fileURLWithPath: wr)
-            }
-
-            // Route to the resolved provider
-            guard let server = self.server else {
-                return Output(status: "error", message: "server unavailable")
-            }
-
-            let mode = modeForProvider(resolvedProvider)
-            await server.localSessionSetMode(sessionId: sessionId, mode: mode)
-
-            let text = Self.composeDelegationPrompt(
-                provider: resolvedProvider,
-                description: a.description,
-                userPrompt: a.user_prompt,
-                workspaceRoot: a.workspace_root ?? workspaceRoot,
-                includeGlobs: a.files_include_glob,
-                summarize: a.summarize,
-                maxFiles: a.max_files
-            )
-            let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
-            try? await server.localSessionPrompt(request: req)
-
-            return Output(status: "dispatched", message: "delegated to \(resolvedProvider)")
-        }
-
-        private func resolveProvider(requested: String?) -> String {
-            let provider = requested ?? "auto"
-            if provider == "auto" {
-                // Default to codex for now; could add availability checks here
-                return "codex"
-            }
-            return provider
-        }
-
-        private func modeForProvider(_ provider: String) -> ACPSessionModeId {
-            switch provider {
-            case "codex": return .codex
-            case "claude_code": return .claude_code
-            default: return .codex  // fallback
-            }
-        }
-
-        // MARK: - Delegation heuristics (disabled)
-        // Keeping for reference; not used in "agent decides" mode.
-        // private func shouldDispatch(userPrompt: String, task: String?) -> Bool {
-        //     let p = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        //     let directivePrefixes = [
-        //         "delegate to codex:", "codex:", "send to codex:", "run on codex:", "run in codex:", "run with codex:"
-        //     ]
-        //     if directivePrefixes.contains(where: { p.hasPrefix($0) }) { return true }
-        //     let directivePhrases = [
-        //         "tell codex to", "ask codex to", "have codex ", "use codex to", "delegate to codex", "send this to codex"
-        //     ]
-        //     if directivePhrases.contains(where: { p.contains($0) }) { return true }
-        //     if let t = task?.lowercased(), ["delegate", "run", "execute"].contains(t) {
-        //         let looksQuestion = p.hasPrefix("can you") || p.hasPrefix("can codex") || p.hasPrefix("what can") || p.hasPrefix("are you able") || p.hasPrefix("how ")
-        //         if !looksQuestion { return true }
-        //     }
-        //     return false
-        // }
-
-        static func composeDelegationPrompt(provider: String, description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
-            var parts: [String] = []
-            parts.append("OpenAgents → \(provider) delegation")
-            if let d = description, !d.isEmpty { parts.append("Description: \(d)") }
-            if let wr = workspaceRoot { parts.append("Workspace: \(wr)") }
-            if let inc = includeGlobs, !inc.isEmpty { parts.append("Include: \(inc.joined(separator: ", "))") }
-            if let s = summarize { parts.append("Summarize: \(s ? "yes" : "no")") }
-            if let m = maxFiles { parts.append("Max files: \(m)") }
-            parts.append("")
-            parts.append(userPrompt)
-            return parts.joined(separator: "\n")
+            // For now, just acknowledge the call - we'll wire up delegation next
+            let provider = a.provider ?? "codex"
+            return "delegate.run called: provider=\(provider) prompt=\(a.user_prompt.prefix(50))"
         }
     }
+
 }
 #endif
 #endif
