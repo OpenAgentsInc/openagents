@@ -96,16 +96,20 @@ extension OpenAgentsLocalProvider {
         You are OpenAgents. Respond with 2-3 sentences.
         
         - Identify as \"We are OpenAgents.\" when asked who you are. Always respond in the first-person plural ("We ___", not "I ___".)
+        - Decision rubric for tools:
+          • Use tools only for actionable coding tasks (read/write files, run searches, generate code/tests, repo analysis).
+          • Do NOT call tools to answer meta/capability questions (e.g., "who can you delegate to?", "what can you do?", "can you command codex?"). Answer those inline.
+          • Mentioning an agent by name is NOT a reason to use a tool. Choose a tool only when execution is actually needed to satisfy the user's task.
 
         Examples:
         Q: who are you?
         A: We are OpenAgents. Ready to assist.
 
         Q: what can you do?
-        A: We command other agents. How can we help?
+        A: We command other agents and can help with coding tasks. (No tool calls.)
 
-        Q: how do i start?
-        A: Ask me to issue commands to Claude Code or Codex.
+        Q: who can you delegate to?
+        A: We can delegate to Codex and Claude Code. (No tool calls.)
         """)
         // Register minimal tools for chat; allow the model to decide to delegate to Codex
         var tools: [any Tool] = []
@@ -142,9 +146,9 @@ extension OpenAgentsLocalProvider {
     }
 
     // MARK: - FM Tool: codex.run
-    struct FMTool_CodexRun: Tool {
+        struct FMTool_CodexRun: Tool {
         let name = "codex.run"
-        let description = "Delegate a task to the Codex agent. Provide a concise description and the user's prompt."
+        let description = "Delegate a concrete coding task to the Codex agent. Not for questions about capabilities or availability; answer those inline. Provide a concise task description and the user's actionable prompt."
         typealias Output = String
 
         private let sessionId: ACPSessionId
@@ -182,12 +186,18 @@ extension OpenAgentsLocalProvider {
             if let s = a.summarize { args["summarize"] = AnyEncodable(s) }
             if let m = a.max_files { args["max_files"] = AnyEncodable(m) }
 
+            // Gating (disabled): previously required explicit delegation phrases.
+            // Keeping code for reference while running in "agent decides" mode.
+            // if !shouldDispatch(userPrompt: a.user_prompt, task: a.task) {
+            //     return "codex.run declined: no explicit delegation"
+            // }
+
             // Apply workspace root to server working directory if supplied
             if let wr = a.workspace_root ?? workspaceRoot, let srv = self.server {
                 srv.workingDirectory = URL(fileURLWithPath: wr)
             }
 
-            // Emit ACP tool_call for UI visibility
+            // Emit ACP tool_call for UI visibility only when dispatching
             let call = ACPToolCallWire(call_id: callId, name: name, arguments: args)
             await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(call))
 
@@ -201,6 +211,25 @@ extension OpenAgentsLocalProvider {
 
             return "codex.run dispatched"
         }
+        
+        // MARK: - Delegation heuristics (disabled)
+        // Keeping for reference; not used in "agent decides" mode.
+        // private func shouldDispatch(userPrompt: String, task: String?) -> Bool {
+        //     let p = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        //     let directivePrefixes = [
+        //         "delegate to codex:", "codex:", "send to codex:", "run on codex:", "run in codex:", "run with codex:"
+        //     ]
+        //     if directivePrefixes.contains(where: { p.hasPrefix($0) }) { return true }
+        //     let directivePhrases = [
+        //         "tell codex to", "ask codex to", "have codex ", "use codex to", "delegate to codex", "send this to codex"
+        //     ]
+        //     if directivePhrases.contains(where: { p.contains($0) }) { return true }
+        //     if let t = task?.lowercased(), ["delegate", "run", "execute"].contains(t) {
+        //         let looksQuestion = p.hasPrefix("can you") || p.hasPrefix("can codex") || p.hasPrefix("what can") || p.hasPrefix("are you able") || p.hasPrefix("how ")
+        //         if !looksQuestion { return true }
+        //     }
+        //     return false
+        // }
         
         private static func composeDelegationPrompt(description: String?, userPrompt: String, workspaceRoot: String?, includeGlobs: [String]?, summarize: Bool?, maxFiles: Int?) -> String {
             var parts: [String] = []

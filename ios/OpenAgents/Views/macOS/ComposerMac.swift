@@ -110,20 +110,24 @@ private struct NSTextViewWrapper: NSViewRepresentable {
         let tv = nsView.documentView as! NSTextView
         if tv.string != text { tv.string = text }
         tv.textContainer?.containerSize = NSSize(width: nsView.contentSize.width, height: .greatestFiniteMagnitude)
-        recalculateHeight(view: tv)
+        // Defer measurement to avoid triggering layout recursion inside SwiftUI updates
+        DispatchQueue.main.async { self.recalculateHeight(view: tv) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     private func recalculateHeight(view: NSTextView) {
-        guard let container = view.textContainer, let lm = view.layoutManager else { return }
-        lm.ensureLayout(for: container)
-        let used = lm.usedRect(for: container)
-        let inset = view.textContainerInset.height * 2
-        let newHeight = used.height + inset
-        let clamped = min(max(newHeight, 36), 144)
-        if abs(dynamicHeight - clamped) > 0.5 {
-            DispatchQueue.main.async { self.dynamicHeight = clamped }
+        // Always perform measurement outside the current layout pass.
+        DispatchQueue.main.async {
+            guard let container = view.textContainer, let lm = view.layoutManager else { return }
+            lm.ensureLayout(for: container)
+            let used = lm.usedRect(for: container)
+            let inset = view.textContainerInset.height * 2
+            let newHeight = used.height + inset
+            let clamped = min(max(newHeight, 36), 144)
+            if abs(self.dynamicHeight - clamped) > 0.5 {
+                self.dynamicHeight = clamped
+            }
         }
     }
 
@@ -134,7 +138,8 @@ private struct NSTextViewWrapper: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             parent.text = tv.string
-            parent.recalculateHeight(view: tv)
+            // Defer height calc to avoid layout recursion during text edits
+            DispatchQueue.main.async { self.parent.recalculateHeight(view: tv) }
         }
 
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
