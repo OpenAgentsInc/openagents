@@ -102,6 +102,35 @@ final class LocalJsonRpcClient: JSONRPCSending {
                 let out = await server.localSchedulerRunNow()
                 result = Self.bridge(out, as: R.self)
 
+            case ACPRPC.orchestrateCoordinatorRunOnce:
+                // Support optional inline config
+                if let obj = Self.asDict(params) {
+                    var cfg: OrchestrationConfig? = nil
+                    if let inline = obj["config_inline"],
+                       let data = try? JSONSerialization.data(withJSONObject: inline),
+                       let dec = try? JSONDecoder().decode(OrchestrationConfig.self, from: data) {
+                        cfg = dec
+                    }
+                    let out = await server.localCoordinatorRunOnce(config: cfg)
+                    result = Self.bridge(out, as: R.self)
+                } else {
+                    let out = await server.localCoordinatorRunOnce(config: nil)
+                    result = Self.bridge(out, as: R.self)
+                }
+            case ACPRPC.orchestrateCoordinatorStatus:
+                let out = await server.localCoordinatorStatus()
+                result = Self.bridge(out, as: R.self)
+            case ACPRPC.orchestrateSchedulerBind:
+                if let obj = Self.asDict(params),
+                   let id = obj["config_id"] as? String,
+                   let root = obj["workspace_root"] as? String {
+                    let ok = await server.localConfigActivate(id: id, workspaceRoot: root)
+                    struct BindResp: Codable { let success: Bool; let active_config_id: String }
+                    result = Self.bridge(BindResp(success: ok, active_config_id: id), as: R.self)
+                } else {
+                    result = nil
+                }
+
             default:
                 result = nil
             }

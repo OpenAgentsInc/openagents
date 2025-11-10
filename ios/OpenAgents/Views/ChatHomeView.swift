@@ -110,11 +110,18 @@ struct ChatHomeView: View {
                     onNewChat: { /* hook up compose/present flow here */ }
                 )
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Start") { startExploreFlow() }
-                        .buttonStyle(.glass)
-                        .tint(colorScheme == .dark ? .white : OATheme.Colors.accent)
-                        .foregroundStyle(colorScheme == .dark ? Color.white : OATheme.Colors.textPrimary)
-                        .accessibilityLabel("Start Workspace Exploration")
+                    HStack(spacing: 12) {
+                        Button("Run Plan") { startCoordinatorFlow() }
+                            .buttonStyle(.glass)
+                            .tint(colorScheme == .dark ? .white : OATheme.Colors.accent)
+                            .foregroundStyle(colorScheme == .dark ? Color.white : OATheme.Colors.textPrimary)
+                            .accessibilityLabel("Run Coordinator Once")
+                        Button("Start") { startExploreFlow() }
+                            .buttonStyle(.glass)
+                            .tint(colorScheme == .dark ? .white : OATheme.Colors.accent)
+                            .foregroundStyle(colorScheme == .dark ? Color.white : OATheme.Colors.textPrimary)
+                            .accessibilityLabel("Start Workspace Exploration")
+                    }
                 }
             }
             // iOS 26+ only: let the system render the Liquid Glass toolbar background
@@ -164,6 +171,21 @@ struct ChatHomeView: View {
                     OpenAgentsLog.ui.info("ChatHome Orchestration started: \(response.plan_id)")
                 } else {
                     OpenAgentsLog.ui.error("ChatHome Orchestration failed to start")
+                }
+            }
+        }
+    }
+
+    private func startCoordinatorFlow() {
+        Task { @MainActor in
+            bridge.updates.removeAll()
+            isWorking = true
+            workingStartedAt = Date()
+            workingSeconds = 0
+
+            bridge.orchestrateCoordinatorRunOnce(configId: nil, configInline: nil) { resp in
+                if resp == nil {
+                    OpenAgentsLog.ui.error("ChatHome Coordinator run_once failed to start")
                 }
             }
         }

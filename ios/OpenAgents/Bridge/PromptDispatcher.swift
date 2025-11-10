@@ -107,6 +107,16 @@ final class PromptDispatcher: PromptDispatching {
         }
     }
 
+    struct CoordinatorRunOnceParams: Codable { let config_id: String?; let config_inline: OrchestrationConfig? }
+    struct CoordinatorRunOnceResponse: Codable { let status: String; let task_id: String?; let session_id: String?; let agent_mode: String? }
+    func orchestrateCoordinatorRunOnce(configId: String?, configInline: OrchestrationConfig?, completion: ((CoordinatorRunOnceResponse?) -> Void)?) {
+        guard let rpc = self.rpc else { completion?(nil); return }
+        let params = CoordinatorRunOnceParams(config_id: configId, config_inline: configInline)
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateCoordinatorRunOnce, params: params, id: "coord-run-once-\(UUID().uuidString)") { (resp: CoordinatorRunOnceResponse?) in
+            DispatchQueue.main.async { completion?(resp) }
+        }
+    }
+
     func fetchRecentSessions(completion: @escaping ([RecentSession]) -> Void) {
         struct EmptyParams: Codable {}
         guard let rpc = self.rpc else { completion([]); return }
