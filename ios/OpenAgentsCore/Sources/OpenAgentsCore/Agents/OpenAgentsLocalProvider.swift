@@ -62,14 +62,20 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
         #if os(macOS)
         do {
             if let detected = await gptossManager.detectInstalled(), detected.installed {
-                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: using GPT‑OSS for default_mode (installed detected)")
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS path selected (installed detected)")
                 try await gptossManager.loadModel()
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS model loaded; starting stream")
+                var total = 0
                 try await gptossManager.stream(prompt: prompt) { delta in
+                    total += delta.count
                     if await self.isCancelled(sessionId) { return }
                     let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
                     await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
                 }
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS stream complete chars=\(total)")
                 return
+            } else {
+                OpenAgentsLog.orchestration.info("OpenAgentsLocalProvider: GPT‑OSS not detected; trying Foundation Models")
             }
         } catch {
             OpenAgentsLog.orchestration.error("OpenAgentsLocalProvider: GPT‑OSS path failed: \(error.localizedDescription). Falling back to FM/local.")

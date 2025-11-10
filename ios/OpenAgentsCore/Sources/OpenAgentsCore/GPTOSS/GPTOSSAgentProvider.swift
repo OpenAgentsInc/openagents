@@ -42,6 +42,7 @@ public final class GPTOSSAgentProvider: AgentProvider, @unchecked Sendable {
 
         // Phase 2: streaming via ACP chunks
         var buffer = ""
+        OpenAgentsLog.orchestration.info("[GPTOSS] provider.start streaming session=\(sessionId.value) prompt_len=\(prompt.count)")
         do {
             try await modelManager.stream(prompt: prompt) { delta in
                 buffer.append(delta)
@@ -49,10 +50,12 @@ public final class GPTOSSAgentProvider: AgentProvider, @unchecked Sendable {
                 await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
                 if self.isCancelled(sessionId) { return }
             }
+            OpenAgentsLog.orchestration.info("[GPTOSS] provider.start done session=\(sessionId.value) output_chars=\(buffer.count)")
         } catch {
             let err = "Generation failed: \(error.localizedDescription)"
             let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ \(err)")))
             await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+            OpenAgentsLog.orchestration.error("[GPTOSS] provider.start error session=\(sessionId.value) \(error.localizedDescription)")
         }
 
         return AgentHandle(sessionId: sessionId, mode: id, isStarted: true)
