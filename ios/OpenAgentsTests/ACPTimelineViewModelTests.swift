@@ -116,7 +116,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         bridge.currentSessionId = sid
 
         // Create a tool call
-        let toolCall = ACP.Client.ACPToolCallWire(
+        let toolCall = ACPToolCallWire(
             call_id: "call_123",
             name: "Read",
             arguments: ["file_path": AnyEncodable("/test/file.txt")],
@@ -125,7 +125,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         let callWire = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCall(toolCall))
 
         // Create a tool call update (completed)
-        let toolUpdate = ACP.Client.ACPToolCallUpdateWire(
+        let toolUpdate = ACPToolCallUpdateWire(
             call_id: "call_123",
             status: .completed,
             output: AnyEncodable("File contents here"),
@@ -170,7 +170,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         bridge.currentSessionId = sid
 
         // Create a TodoWrite tool call (should be filtered)
-        let todoCall = ACP.Client.ACPToolCallWire(
+        let todoCall = ACPToolCallWire(
             call_id: "call_todo",
             name: "TodoWrite",
             arguments: ["todos": AnyEncodable([["content": "test", "status": "pending"]])],
@@ -179,7 +179,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         let todoWire = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCall(todoCall))
 
         // Create a regular tool call (should appear)
-        let readCall = ACP.Client.ACPToolCallWire(
+        let readCall = ACPToolCallWire(
             call_id: "call_read",
             name: "Read",
             arguments: ["file_path": AnyEncodable("/test.txt")],
@@ -212,7 +212,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         bridge.currentSessionId = sid
 
         // Create only a tool update without the initial call
-        let toolUpdate = ACP.Client.ACPToolCallUpdateWire(
+        let toolUpdate = ACPToolCallUpdateWire(
             call_id: "orphan_123",
             status: .completed,
             output: AnyEncodable("Some output"),
@@ -247,7 +247,7 @@ final class ACPTimelineViewModelTests: XCTestCase {
         bridge.currentSessionId = sid
 
         // Create tool call exactly as bridge receives it
-        let toolCall = ACP.Client.ACPToolCallWire(
+        let toolCall = ACPToolCallWire(
             call_id: "item_1",
             name: "Bash",
             arguments: ["command": AnyEncodable("ls -la")],
