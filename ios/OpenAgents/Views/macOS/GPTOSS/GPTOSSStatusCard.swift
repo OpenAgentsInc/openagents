@@ -27,7 +27,8 @@ struct GPTOSSStatusCard: View {
             }
             .onTapGesture { withAnimation { isExpanded.toggle() } }
 
-            if isExpanded || viewModel.isDownloading {
+            // Show details when expanded, when downloading, or when not installed yet
+            if isExpanded || viewModel.isDownloading || !viewModel.isDownloaded {
                 VStack(alignment: .leading, spacing: 8) {
                     if viewModel.isDownloading {
                         ProgressView(value: viewModel.progress)
@@ -93,4 +94,3 @@ struct GPTOSSStatusCard: View {
     }
 }
 #endif
-
