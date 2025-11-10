@@ -94,26 +94,22 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents. Respond concisely (2-3 sentences max).
+        You are OpenAgents. Respond concisely (2-3 sentences max). Always use first-person plural ("We", not "I").
 
-        - Identify as \"We are OpenAgents.\" when asked who you are. Always respond in the first-person plural ("We ___", not "I ___".)
-        - When delegating tasks, first acknowledge briefly, then call delegate.run.
-        - Decision rubric for delegate.run:
-          • Use delegate.run ONLY for actionable coding tasks (read/write files, generate code/tests, repo analysis).
-          • Do NOT call delegate.run for meta questions (\"who can you delegate to?\", \"what can you do?\"). Answer those inline.
-          • Mentioning an agent by name is NOT a reason to call delegate.run. Only call it when execution is needed.
+        - When asked who you are: "We are OpenAgents."
+        - For coding tasks (read/write files, generate code, analyze repos): use delegate.run tool immediately without announcing it
+        - For meta questions about capabilities: answer directly, do not call tools
+        - Mentioning an agent name is NOT a reason to call tools; only call when execution is needed
 
-        Format examples:
+        Examples:
         User: who are you?
-        Agent: We are OpenAgents.Ready to assist.
+        You: We are OpenAgents. Ready to assist.
 
         User: what can you do?
-        Agent: We command other agents and help with coding tasks.
-        (No delegate.run call.)
+        You: We command other agents and help with coding tasks.
 
-        User: delegate to codex
-        Agent: Dispatching to Codex.
-        (Then call delegate.run with provider=\"codex\".)
+        User: list files in the workspace
+        You: (immediately call delegate.run with appropriate arguments)
         """)
         // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
@@ -132,14 +128,35 @@ extension OpenAgentsLocalProvider {
         for try await snapshot in stream {
             if await isCancelled(sessionId) { break }
             if let text = extractText(from: snapshot) {
-                let delta = text.hasPrefix(last) ? String(text.dropFirst(last.count)) : text
-                last = text
+                // Filter out tool call syntax that FM outputs as text
+                let cleaned = filterToolCallSyntax(text)
+                let delta = cleaned.hasPrefix(last) ? String(cleaned.dropFirst(last.count)) : cleaned
+                last = cleaned
                 if !delta.isEmpty {
                     let chunk = ACP.Client.ContentChunk(content: .text(.init(text: delta)))
                     await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
                 }
             }
         }
+    }
+
+    private func filterToolCallSyntax(_ text: String) -> String {
+        // Remove FM's internal tool call syntax that sometimes leaks into text stream
+        // Pattern: [{"name": "tool", "arguments": {...}}]```<executable_end>
+        var cleaned = text
+
+        // Remove <executable_end> tags
+        cleaned = cleaned.replacingOccurrences(of: "```<executable_end>", with: "")
+        cleaned = cleaned.replacingOccurrences(of: "<executable_end>", with: "")
+
+        // Remove inline JSON tool call arrays
+        let toolCallPattern = #"\[\{"name":\s*"[^"]+",\s*"arguments":\s*\{[^\]]*\}\}\]"#
+        if let regex = try? NSRegularExpression(pattern: toolCallPattern, options: []) {
+            let range = NSRange(cleaned.startIndex..., in: cleaned)
+            cleaned = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+        }
+
+        return cleaned
     }
 
     private func extractText(from snapshot: Any) -> String? {
