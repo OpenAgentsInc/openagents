@@ -86,6 +86,13 @@ final class GPTOSSDownloadViewModel: ObservableObject {
                 await MainActor.run {
                     // Only mark ready if this completion belongs to current token and user didn't pause
                     if self.currentToken == token && !self.paused {
+                        // Ensure UI reflects completion even if no byte totals were reported
+                        if self.progress < 1.0 { self.progress = 1.0 }
+                        if self.totalBytes == 0 { self.totalBytes = self.fallbackTotalBytes }
+                        if self.downloadedBytes < self.totalBytes {
+                            self.downloadedBytes = self.totalBytes
+                        }
+                        print("[GPTOSS UI] Download complete; marking Ready. totalBytes=\\(self.totalBytes) downloaded=\\(self.downloadedBytes)")
                         self.status = .ready
                     } else {
                         print("[GPTOSS UI] Download finished but UI token changed or paused; ignoring ready state.")
