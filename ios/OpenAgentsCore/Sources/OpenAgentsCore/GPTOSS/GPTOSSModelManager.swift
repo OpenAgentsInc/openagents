@@ -28,9 +28,13 @@ public actor GPTOSSModelManager {
             if let detected = await detectInstalled(), detected.installed {
                 print("[GPTOSS] Local snapshot detected; loading by id from cache")
             }
+            let t0 = Date()
+            print("[GPTOSS] loadModel begin id=\(config.modelID)")
             let model = try await MLXLMCommon.loadModel(id: config.modelID)
             self.chat = ChatSession(model)
             state = .ready
+            let dt = Date().timeIntervalSince(t0)
+            print(String(format: "[GPTOSS] loadModel ready in %.2fs", dt))
         } catch {
             state = .error(error.localizedDescription)
             throw GPTOSSError.loadingFailed(underlying: error)
@@ -57,9 +61,21 @@ public actor GPTOSSModelManager {
     public func stream(prompt: String, onToken: @escaping (String) async -> Void) async throws {
         guard let chat = chat else { throw GPTOSSError.modelNotLoaded }
         do {
+            print("[GPTOSS] stream start prompt_len=\(prompt.count)")
+            var lastLog = Date(timeIntervalSince1970: 0)
+            var totalChars = 0
+            var step = 0
             for try await delta in chat.streamResponse(to: prompt) {
+                step += 1
+                totalChars += delta.count
+                let now = Date()
+                if now.timeIntervalSince(lastLog) > 0.5 {
+                    print("[GPTOSS] stream progress steps=\(step) chars=\(totalChars)")
+                    lastLog = now
+                }
                 await onToken(delta)
             }
+            print("[GPTOSS] stream complete steps=\(step) chars=\(totalChars)")
         } catch {
             throw GPTOSSError.generationFailed(underlying: error)
         }
