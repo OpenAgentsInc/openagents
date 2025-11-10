@@ -43,6 +43,7 @@ public enum GPTOSSError: Error, LocalizedError {
     case unsupportedPlatform
     case serverUnavailable
     case cancelled
+    case snapshotIncomplete(missing: [String], shards: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -62,7 +63,9 @@ public enum GPTOSSError: Error, LocalizedError {
             return "Server reference unavailable for delegation"
         case .cancelled:
             return "Generation cancelled by user"
+        case .snapshotIncomplete(let missing, let shards):
+            let miss = missing.isEmpty ? "none" : missing.joined(separator: ", ")
+            return "Model files incomplete: missing=\(miss), shards=\(shards). Open the GPT‑OSS card to download/repair."
         }
     }
 }
-
