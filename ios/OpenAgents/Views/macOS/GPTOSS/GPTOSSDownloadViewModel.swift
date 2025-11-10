@@ -61,6 +61,27 @@ final class GPTOSSDownloadViewModel: ObservableObject {
         String(format: "%.1f", Double(effectiveTotalBytes) / 1_073_741_824.0)
     }
 
+    // UI: percentage with one decimal place (e.g., 3.4%)
+    var percent1dp: String {
+        String(format: "%.1f%%", progress * 100.0)
+    }
+
+    // UI: downloaded GB with two decimals (numerator precision)
+    var downloadedGB2dp: String {
+        let bytes: Int64
+        if looksLikeFileCount || downloadedBytes == 0 {
+            bytes = Int64(Double(effectiveTotalBytes) * progress)
+        } else {
+            bytes = downloadedBytes
+        }
+        return String(format: "%.2f", Double(max(bytes, 0)) / 1_073_741_824.0)
+    }
+
+    // UI: total GB with one decimal and no space before unit
+    var totalGBNoSpaceUnit: String {
+        String(format: "%.1fGB", Double(effectiveTotalBytes) / 1_073_741_824.0)
+    }
+
     func refreshInstalled() async {
         if let res = await manager.detectInstalled() {
             await MainActor.run {
