@@ -250,16 +250,28 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             return override
         }
 
-        // 2. Search fnm-managed paths
-        let fnmPaths = [
-            "\(NSHomeDirectory())/.local/state/fnm_multishells",
-            "\(NSHomeDirectory())/.fnm/node-versions"
-        ]
-
-        for basePath in fnmPaths {
-            if let found = searchForBinaryRecursive(in: basePath, maxDepth: 4) {
-                OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found in fnm: \(found, privacy: .private)")
-                return found
+        // 2. Prefer the same binary your login shell would use
+        let shells = ["/bin/zsh", "/bin/bash"]
+        for shell in shells {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: shell)
+            process.arguments = ["-l", "-c", "which \(self.binaryName)"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+            do {
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0,
+                   let data = try? pipe.fileHandleForReading.readToEnd(),
+                   let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !path.isEmpty,
+                   FileManager.default.fileExists(atPath: path) {
+                    OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found via \(shell): \(path, privacy: .private)")
+                    return path
+                }
+            } catch {
+                // continue
             }
         }
 
@@ -280,29 +292,15 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             }
         }
 
-        // 4. Try shell `which` command
-        let shells = ["/bin/zsh", "/bin/bash"]
-        for shell in shells {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: shell)
-            process.arguments = ["-l", "-c", "which \(self.binaryName)"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                if process.terminationStatus == 0,
-                   let data = try? pipe.fileHandleForReading.readToEnd(),
-                   let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !path.isEmpty {
-                    OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found via \(shell): \(path, privacy: .private)")
-                    return path
-                }
-            } catch {
-                continue
+        // 4. Fall back to searching fnm-managed paths (multishells installations)
+        let fnmPaths = [
+            "\(NSHomeDirectory())/.local/state/fnm_multishells",
+            "\(NSHomeDirectory())/.fnm/node-versions"
+        ]
+        for basePath in fnmPaths {
+            if let found = searchForBinaryRecursive(in: basePath, maxDepth: 4) {
+                OpenAgentsLog.orchestration.debug("[\(self.displayName)] Found in fnm: \(found, privacy: .private)")
+                return found
             }
         }
 
