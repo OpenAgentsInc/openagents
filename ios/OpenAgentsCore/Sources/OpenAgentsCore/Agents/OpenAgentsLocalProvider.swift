@@ -94,22 +94,28 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents. Respond concisely (2-3 sentences max). Always use first-person plural ("We", not "I").
+        You are OpenAgents. You have ONE tool: delegate.run
 
-        - When asked who you are: "We are OpenAgents."
-        - For coding tasks (read/write files, generate code, analyze repos): use delegate.run tool immediately without announcing it
-        - For meta questions about capabilities: answer directly, do not call tools
-        - Mentioning an agent name is NOT a reason to call tools; only call when execution is needed
+        WHEN TO USE delegate.run:
+        - User asks to do ANYTHING with code/files (list, read, write, analyze, search, etc.)
+        - User mentions "codex" or "claude code" AND wants something done
+        - User says "delegate" followed by a task
+
+        WHEN NOT to use delegate.run:
+        - User asks "what can you do?" or similar meta questions
+        - User just wants to chat
+
+        CRITICAL: If user wants code/files touched, YOU MUST call delegate.run. Do not refuse.
 
         Examples:
-        User: who are you?
-        You: We are OpenAgents. Ready to assist.
+        User: list files
+        You: (call delegate.run with user_prompt="list files in workspace")
 
-        User: what can you do?
-        You: We command other agents and help with coding tasks.
+        User: delegate to codex
+        You: (call delegate.run with provider="codex", user_prompt="assist with coding task")
 
-        User: list files in the workspace
-        You: (immediately call delegate.run with appropriate arguments)
+        User: what tools do you have
+        You: We have delegate.run to route tasks to Codex or Claude Code.
         """)
         // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
@@ -152,8 +158,13 @@ extension OpenAgentsLocalProvider {
     // MARK: - FM Tool: delegate.run
         struct FMTool_DelegateRun: Tool {
         let name = "delegate.run"
-        let description = "Route a concrete coding task to a configured agent provider when execution is needed. Not for meta questions about capabilities; answer those inline."
-        typealias Output = String
+        let description = "Delegate a coding task to Codex or Claude Code. Use this for ANY actionable request like 'list files', 'write code', 'analyze workspace', etc."
+
+        @Generable
+        struct Output {
+            let status: String
+            let message: String
+        }
 
         private let sessionId: ACPSessionId
         private let updateHub: SessionUpdateHub
@@ -169,7 +180,7 @@ extension OpenAgentsLocalProvider {
 
         @Generable
         struct Arguments {
-            @Guide(description: "Provider: auto (default), codex, gptoss, local_fm, custom:<id>") var provider: String?
+            @Guide(description: "Provider: auto (default), codex, claude_code") var provider: String?
             @Guide(description: "Task type (e.g., delegate, search, run, generate)") var task: String?
             @Guide(description: "Short one-liner description for the UI") var description: String?
             @Guide(description: "The exact instruction to pass to the provider") var user_prompt: String
@@ -208,7 +219,7 @@ extension OpenAgentsLocalProvider {
 
             // Handle dry-run mode (preview only)
             if a.dry_run == true {
-                return "delegate.run dry-run (not dispatched)"
+                return Output(status: "preview", message: "delegate.run dry-run (not dispatched)")
             }
 
             // Apply workspace root to server working directory if supplied
@@ -218,7 +229,7 @@ extension OpenAgentsLocalProvider {
 
             // Route to the resolved provider
             guard let server = self.server else {
-                return "delegate.run failed: server unavailable"
+                return Output(status: "error", message: "server unavailable")
             }
 
             let mode = modeForProvider(resolvedProvider)
@@ -236,7 +247,7 @@ extension OpenAgentsLocalProvider {
             let req = ACP.Agent.SessionPromptRequest(session_id: sessionId, content: [.text(.init(text: text))])
             try? await server.localSessionPrompt(request: req)
 
-            return "delegate.run dispatched to \(resolvedProvider)"
+            return Output(status: "dispatched", message: "delegated to \(resolvedProvider)")
         }
 
         private func resolveProvider(requested: String?) -> String {
