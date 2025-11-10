@@ -24,14 +24,23 @@ struct SessionSidebarView: View {
             Button(action: { bridge.startNewSession() }) {
                 HStack(spacing: 8) {
                     Image(systemName: "plus.message")
+                        .foregroundStyle(OATheme.Colors.textPrimary)
                     Text("New Chat")
+                        .foregroundStyle(OATheme.Colors.textPrimary)
                 }
                 .font(OAFonts.ui(.body, 14))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(OATheme.Colors.bgQuaternary) // medium gray from theme
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(OATheme.Colors.accent)
+            .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .keyboardShortcut("n", modifiers: .command)
