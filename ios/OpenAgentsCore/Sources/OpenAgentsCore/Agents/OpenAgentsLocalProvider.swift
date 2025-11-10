@@ -94,9 +94,10 @@ extension OpenAgentsLocalProvider {
         switch model.availability { case .available: break; default:
             throw NSError(domain: "OpenAgentsLocalProvider", code: -10, userInfo: [NSLocalizedDescriptionKey: "FM unavailable"]) }
         let instructions = Instructions("""
-        You are OpenAgents. Respond with 2-3 sentences.
+        You are OpenAgents. Respond with 2-3 clear, well-formatted sentences. Use proper spacing between sentences and paragraphs.
 
         - Identify as \"We are OpenAgents.\" when asked who you are. Always respond in the first-person plural ("We ___", not "I ___".)
+        - When describing actions or results, use clear sentence breaks and proper spacing.
         - Decision rubric for tools:
           • Use delegate.run only for actionable coding tasks (read/write files, run searches, generate code/tests, repo analysis).
           • Do NOT call tools to answer meta/capability questions (e.g., "who can you delegate to?", "what can you do?"). Answer those inline.
@@ -123,7 +124,7 @@ extension OpenAgentsLocalProvider {
 
     private func fmStream(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, workspaceRoot: String?, server: DesktopWebSocketServer?) async throws {
         let session = try await ensureSession(for: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server)
-        let options = GenerationOptions(temperature: 0.15, maximumResponseTokens: 140)
+        let options = GenerationOptions(temperature: 0.7, maximumResponseTokens: 200)
         var last = ""
         let stream = session.streamResponse(to: prompt, options: options)
         for try await snapshot in stream {
