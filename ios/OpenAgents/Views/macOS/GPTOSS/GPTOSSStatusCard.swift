@@ -50,6 +50,23 @@ struct GPTOSSStatusCard: View {
                                 .font(OAFonts.ui(.caption, 10))
                                 .foregroundStyle(Color.red)
                         }
+                    } else if case .paused = viewModel.status {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pause.fill").foregroundStyle(.orange)
+                            Text("Paused at \(Int(viewModel.progress * 100))%")
+                        }
+                        .font(OAFonts.ui(.caption, 10))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+
+                        HStack(spacing: 8) {
+                            Button("Resume") { Task { await viewModel.startDownload() } }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            Button("Cancel") { viewModel.cancelDownload() }
+                                .buttonStyle(.borderless)
+                                .font(OAFonts.ui(.caption, 10))
+                                .foregroundStyle(Color.red)
+                        }
                     } else if !viewModel.isDownloaded {
                         Button("Download Model") {
                             Task { await viewModel.startDownload() }
