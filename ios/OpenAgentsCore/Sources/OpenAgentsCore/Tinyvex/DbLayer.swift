@@ -56,6 +56,9 @@ public actor TinyvexDbLayer {
         );
         """
         try exec(create)
+
+        // Embeddings schema (vector storage)
+        try ensureVectorSchemaV2()
     }
 
     private func exec(_ sql: String) throws {
@@ -82,6 +85,11 @@ public actor TinyvexDbLayer {
             let idx = Int32(i + 1)
             if let s = param as? String {
                 sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, nil)
+            } else if let data = param as? Data {
+                data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+                    let ptr = bytes.bindMemory(to: UInt8.self).baseAddress
+                    sqlite3_bind_blob(stmt, idx, ptr, Int32(data.count), SQLITE_TRANSIENT)
+                }
             } else if let n = param as? Int {
                 sqlite3_bind_int64(stmt, idx, Int64(n))
             } else if let n = param as? Int64 {
@@ -142,6 +150,14 @@ public actor TinyvexDbLayer {
                 row[colName] = sqlite3_column_int64(stmt, i)
             case SQLITE_FLOAT:
                 row[colName] = sqlite3_column_double(stmt, i)
+            case SQLITE_BLOB:
+                if let bytes = sqlite3_column_blob(stmt, i) {
+                    let length = Int(sqlite3_column_bytes(stmt, i))
+                    let data = Data(bytes: bytes, count: length)
+                    row[colName] = data
+                } else {
+                    row[colName] = Data()
+                }
             case SQLITE_NULL:
                 row[colName] = NSNull()
             default:
@@ -184,20 +200,28 @@ public actor TinyvexDbLayer {
                 let colName = String(cString: sqlite3_column_name(stmt, i))
                 let colType = sqlite3_column_type(stmt, i)
 
-                switch colType {
-                case SQLITE_TEXT:
-                    row[colName] = String(cString: sqlite3_column_text(stmt, i))
-                case SQLITE_INTEGER:
-                    row[colName] = sqlite3_column_int64(stmt, i)
-                case SQLITE_FLOAT:
-                    row[colName] = sqlite3_column_double(stmt, i)
-                case SQLITE_NULL:
-                    row[colName] = NSNull()
-                default:
-                    row[colName] = NSNull()
+            switch colType {
+            case SQLITE_TEXT:
+                row[colName] = String(cString: sqlite3_column_text(stmt, i))
+            case SQLITE_INTEGER:
+                row[colName] = sqlite3_column_int64(stmt, i)
+            case SQLITE_FLOAT:
+                row[colName] = sqlite3_column_double(stmt, i)
+            case SQLITE_BLOB:
+                if let bytes = sqlite3_column_blob(stmt, i) {
+                    let length = Int(sqlite3_column_bytes(stmt, i))
+                    let data = Data(bytes: bytes, count: length)
+                    row[colName] = data
+                } else {
+                    row[colName] = Data()
                 }
+            case SQLITE_NULL:
+                row[colName] = NSNull()
+            default:
+                row[colName] = NSNull()
             }
-            rows.append(row)
+        }
+        rows.append(row)
         }
 
         return rows
@@ -396,5 +420,99 @@ public actor TinyvexDbLayer {
     public func deleteAllOrchestrationConfigs() throws {
         let sql = "DELETE FROM orchestration_configs;"
         try execute(sql, params: [])
+    }
+
+    // MARK: - Embeddings Schema & Helpers
+
+    /// Ensure the embeddings table and indexes exist
+    private func ensureVectorSchemaV2() throws {
+        let createEmbeddingsTable = """
+        CREATE TABLE IF NOT EXISTS embeddings (
+            id TEXT NOT NULL,
+            collection TEXT NOT NULL,
+            embedding_blob BLOB NOT NULL,
+            dimensions INTEGER NOT NULL,
+            model_id TEXT NOT NULL,
+            metadata_json TEXT NULL,
+            text TEXT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (id, collection)
+        );
+        """
+
+        let createIndexes = """
+        CREATE INDEX IF NOT EXISTS idx_embeddings_collection ON embeddings(collection);
+        CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model_id);
+        CREATE INDEX IF NOT EXISTS idx_embeddings_updated ON embeddings(updated_at);
+        """
+
+        try exec(createEmbeddingsTable)
+        try exec(createIndexes)
+    }
+
+    /// Store or replace an embedding row
+    public func storeEmbedding(
+        id: String,
+        collection: String,
+        embedding: [Float],
+        dimensions: Int,
+        modelID: String,
+        metadata: [String: String]?,
+        text: String?
+    ) throws {
+        let metadataJSON: String? = metadata.flatMap { dict in
+            (try? JSONSerialization.data(withJSONObject: dict)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+
+        // Serialize Float array to Data
+        let embeddingData = embedding.withUnsafeBytes { Data($0) }
+
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+
+        let sql = """
+        INSERT OR REPLACE INTO embeddings
+        (id, collection, embedding_blob, dimensions, model_id, metadata_json, text, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        try execute(sql, params: [
+            id,
+            collection,
+            embeddingData,
+            dimensions,
+            modelID,
+            metadataJSON ?? NSNull(),
+            text ?? NSNull(),
+            now,
+            now
+        ])
+    }
+
+    /// Fetch all embeddings for a collection
+    public func fetchEmbeddings(collection: String) throws -> [(id: String, embedding: [Float], dimensions: Int, metadata: [String: String]?)] {
+        let sql = "SELECT id, embedding_blob, dimensions, metadata_json FROM embeddings WHERE collection = ?"
+        let rows = try queryAll(sql, params: [collection])
+
+        return rows.compactMap { row in
+            guard let id = row["id"] as? String,
+                  let embeddingData = row["embedding_blob"] as? Data,
+                  let dimsAny = row["dimensions"],
+                  let dimensions = (dimsAny as? Int64).map(Int.init) ?? (dimsAny as? Int)
+            else { return nil }
+
+            let vec: [Float] = embeddingData.withUnsafeBytes {
+                let count = embeddingData.count / MemoryLayout<Float>.size
+                if count == 0 { return [] }
+                let ptr = $0.bindMemory(to: Float.self).baseAddress!
+                return Array(UnsafeBufferPointer(start: ptr, count: count))
+            }
+
+            let metadata: [String: String]? = (row["metadata_json"] as? String)
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] }
+
+            return (id: id, embedding: vec, dimensions: dimensions, metadata: metadata)
+        }
     }
 }

@@ -58,4 +58,10 @@ public enum ACPRPC {
     public static let orchestrateCoordinatorRunOnce = "orchestrate/coordinator.run_once"
     public static let orchestrateCoordinatorStatus = "orchestrate/coordinator.status"
     public static let orchestrateSchedulerBind = "orchestrate/scheduler.bind"
+
+    // Embeddings (dot naming for consistency with search/index)
+    public static let embeddingGenerate = "embedding.generate"
+    public static let embeddingStore = "embedding.store"
+    public static let embeddingSearch = "embedding.search"
+    public static let embeddingStoreBatch = "embedding.store_batch"
 }

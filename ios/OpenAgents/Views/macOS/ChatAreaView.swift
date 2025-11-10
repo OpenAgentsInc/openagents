@@ -2,6 +2,7 @@ import SwiftUI
 import OpenAgentsCore
 
 #if os(macOS)
+import AppKit
 struct ChatAreaView: View {
     @EnvironmentObject private var bridge: BridgeManager
     @State private var messageText: String = ""
@@ -104,7 +105,10 @@ private struct ChatUpdateRow: View {
             case .userMessageChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: true)
             case .agentMessageChunk(let chunk):
-                bubble(text: extractText(from: chunk), isUser: false)
+                VStack(alignment: .leading, spacing: 6) {
+                    bubble(text: extractText(from: chunk), isUser: false)
+                    CopyMarkdownRow(markdown: extractText(from: chunk))
+                }
             case .agentThoughtChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: false, italic: true, secondary: true)
             case .plan(let plan):
@@ -207,6 +211,36 @@ private struct ChatUpdateRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(OATheme.Colors.accent.opacity(0.6), lineWidth: 1)
             } else { EmptyView() }
+        }
+    }
+}
+
+// MARK: - Small action row under assistant messages
+private struct CopyMarkdownRow: View {
+    let markdown: String
+    @State private var didCopy = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: copy) {
+                Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help(didCopy ? "Copied" : "Copy as Markdown")
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(didCopy ? OATheme.Colors.accent : OATheme.Colors.textSecondary)
+        .padding(.top, 2)
+    }
+
+    private func copy() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(markdown, forType: .string)
+        withAnimation(.easeInOut(duration: 0.15)) { didCopy = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeInOut(duration: 0.15)) { didCopy = false }
         }
     }
 }
