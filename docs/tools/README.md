@@ -1,5 +1,7 @@
-So we're defining tools for OpenAgents.
+# OpenAgents Tools
 
-It will be its own agent, but also be able to delegate.
+OpenAgents tools are small, focused capabilities the runtime or a model can invoke with typed arguments and receive structured results from. Tools are visible in the chat timeline as ACP `tool_call` events, and are designed to be bounded, auditable, and workspace‑aware.
 
-## Delegate
+- [Delegate](./delegate.md)
+- [Grep](./grep.md)
+- [Edit](./edit.md)
