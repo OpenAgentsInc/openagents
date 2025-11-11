@@ -26,7 +26,9 @@ function App() {
       for await (const chunk of stream) {
         switch (chunk.type) {
           case "text-delta":
-            text += chunk.textDelta;
+            if (chunk.textDelta !== undefined) {
+              text += chunk.textDelta;
+            }
             yield {
               content: [{ type: "text", text }],
             };
