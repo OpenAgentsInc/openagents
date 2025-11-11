@@ -1,5 +1,3 @@
-"use client";
-
 import { ComponentPropsWithRef, forwardRef } from "react";
 import { Slottable } from "@radix-ui/react-slot";
 
