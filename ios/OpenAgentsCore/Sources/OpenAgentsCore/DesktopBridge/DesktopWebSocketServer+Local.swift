@@ -275,7 +275,15 @@ extension DesktopWebSocketServer {
     ///   - workspaceRoot: Optional workspace path to seed the conversation
     ///   - sessionId: Optional session to stream messages into (defaults to new)
     /// - Returns: Start response including chosen session and conversation id
-    public func localSetupStart(workspaceRoot: String?, sessionId: ACPSessionId? = nil) async -> LocalSetupStartResponse {
+    public func localSetupStart(
+        workspaceRoot: String?,
+        goals: [String]? = nil,
+        windowStart: String? = nil,
+        windowEnd: String? = nil,
+        preferAgent: String? = nil,
+        allowAgents: [String]? = nil,
+        sessionId: ACPSessionId? = nil
+    ) async -> LocalSetupStartResponse {
         let sid = sessionId ?? ACPSessionId(UUID().uuidString)
         guard let updateHub = self.updateHub else {
             return .init(status: "error", session_id: sid.value, conversation_id: "")
@@ -334,6 +342,16 @@ extension DesktopWebSocketServer {
         let convId = await orchestrator.conversationId
         await SetupOrchestratorRegistry.shared.store(orchestrator, for: convId)
         self.setupSessionById[sid.value] = convId
+        // Apply typed hints provided by FM tool
+        let preferId = preferAgent.flatMap { ACPSessionModeId(rawValue: $0) }
+        let allowIds = allowAgents?.compactMap { ACPSessionModeId(rawValue: $0) }
+        await orchestrator.applyHints(
+            goals: goals,
+            windowStart: windowStart,
+            windowEnd: windowEnd,
+            prefer: preferId,
+            allow: allowIds
+        )
         await orchestrator.start()
         return .init(status: "started", session_id: sid.value, conversation_id: convId)
     }
