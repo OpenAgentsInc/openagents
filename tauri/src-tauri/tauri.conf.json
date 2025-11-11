@@ -16,8 +16,7 @@
         "width": 2000,
         "height": 1200,
         "center": true,
-        "hiddenTitle": true,
-        "theme": "dark"
+        "hiddenTitle": true
       }
     ],
     "security": {
