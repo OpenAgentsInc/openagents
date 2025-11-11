@@ -70,7 +70,8 @@ final class TimelineStore: ObservableObject, TimelineStoring {
                 if case .agentMessageChunk(let prevChunk) = last.update,
                    case .text(let prevText) = prevChunk.content,
                    case .text(let newText) = chunk.content {
-                    let merged = ACP.Client.ContentChunk(content: .text(.init(text: prevText.text + newText.text)))
+                    // Concatenate with newline separator to preserve line breaks
+                    let merged = ACP.Client.ContentChunk(content: .text(.init(text: prevText.text + "\n" + newText.text)))
                     let mergedNote = ACP.Client.SessionNotificationWire(session_id: note.session_id, update: .agentMessageChunk(merged))
                     updates[updates.count - 1] = mergedNote
                     objectWillChange.send()
