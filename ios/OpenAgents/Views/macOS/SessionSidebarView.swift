@@ -96,8 +96,8 @@ struct SessionSidebarView: View {
             bridge.fetchRecentSessions()
             orchestrationVM.setRPC(bridge.connection?.rpcClient)
         }
-        .onChange(of: bridge.connection?.rpcClient) { _, newValue in
-            orchestrationVM.setRPC(newValue)
+        .onChange(of: bridge.status) { _, _ in
+            orchestrationVM.setRPC(bridge.connection?.rpcClient)
         }
         // Expose delete action for Commands via focused scene value
         .focusedSceneValue(\.deleteSelectedSession) { [selectedSessionId] in
