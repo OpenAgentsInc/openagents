@@ -85,9 +85,13 @@ The actual work happens asynchronously:
 
 4. **Codex responds**: Results stream back as `agentMessageChunk` updates
 
-5. **UI rendering**:
+5. **Mode restoration**: After Codex completes, mode switches back to `default_mode`
+
+6. **UI rendering**:
    - FM's acknowledgment: Normal assistant bubble (tagged with `_meta.source = "fm_orchestrator"`)
    - Codex's response: Distinct card with "Codex" header and accent border
+
+7. **Next user message**: Routes to FM (the orchestrator), not to Codex
 
 ## Message Tagging
 
@@ -254,7 +258,7 @@ User: what can you do?
 
 - **Workspace constraints**: All file operations are limited to the configured workspace
 - **Session isolation**: Each delegation happens in the same session for conversation continuity
-- **Mode switching**: Session mode changes to the delegated provider, then back to FM when user sends next message
+- **Mode switching**: Session mode changes to the delegated provider during execution, then automatically restores to `default_mode` (orchestrator) when delegation completes
 - **Cancellation**: Users can cancel at any time via UI; cancellation propagates to the provider
 
 ## Benefits
