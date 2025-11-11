@@ -13,8 +13,8 @@ export function AssistantSidebar() {
       setTesting(true)
       setLastStatus("Spawning agent…")
 
-      // Use codex-exec path for now to translate codex exec --json events into ACP state
-      const sessionId = await createSession("codex-exec")
+      // Use ACP agent (codex-acp preferred; see backend resolution)
+      const sessionId = await createSession("codex")
       setLastStatus(`Session: ${sessionId}`)
 
       await sendPrompt(sessionId, "Hello from OpenAgents Tauri (Phase 1 test)")
