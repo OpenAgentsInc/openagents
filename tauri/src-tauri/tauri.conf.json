@@ -16,8 +16,8 @@
         "width": 2000,
         "height": 1200,
         "center": true,
-        "titleBarStyle": "transparent",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "theme": "dark"
       }
     ],
     "security": {
