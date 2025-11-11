@@ -43,6 +43,7 @@ public class OrchestrationViewModel: ObservableObject {
     private let scheduler: SchedulerService
     private var rpc: JSONRPCSending?
     private var cancellables = Set<AnyCancellable>()
+    private var pollCancellable: AnyCancellable?
 
     // MARK: - Initialization
 
@@ -57,6 +58,7 @@ public class OrchestrationViewModel: ObservableObject {
         self.rpc = rpc
         // Start polling remote status immediately
         startStatePolling()
+        Task { await self.fetchRemoteSchedulerStatus() }
     }
 
     // MARK: - Public Methods
@@ -108,13 +110,46 @@ public class OrchestrationViewModel: ObservableObject {
     // MARK: - Private Methods
 
     private func startMonitoring() {
-        // Monitor for session updates that might be orchestration-related
-        NotificationCenter.default.publisher(for: .init("OrchestrationCycleStarted"))
+        // Visible runtime activity: listen for orchestration.cycle.* notifications
+        NotificationCenter.default.publisher(for: .init("orchestration.cycle.started"))
             .sink { [weak self] notification in
                 guard let self else { return }
                 Task { @MainActor in
-                    if let cycle = notification.object as? OrchestrationCycle {
-                        self.addCycle(cycle)
+                    let userInfo = notification.userInfo ?? [:]
+                    let cid = (userInfo["cycle_id"] as? String) ?? UUID().uuidString
+                    let start = (userInfo["start"] as? Date) ?? Date()
+                    let cfg = (userInfo["config_id"] as? String) ?? "(unknown)"
+                    let cycle = OrchestrationCycle(id: cid, startTime: start, endTime: nil, status: .running, configId: cfg)
+                    self.addCycle(cycle)
+                    self.schedulerState = .running(nextWake: self.nextRunTime)
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .init("orchestration.cycle.completed"))
+            .sink { [weak self] notification in
+                guard let self else { return }
+                Task { @MainActor in
+                    let userInfo = notification.userInfo ?? [:]
+                    guard let cid = userInfo["cycle_id"] as? String else { return }
+                    let end = (userInfo["end"] as? Date) ?? Date()
+                    let statusStr = (userInfo["status"] as? String) ?? "completed"
+                    let status: OrchestrationCycle.Status = {
+                        switch statusStr.lowercased() {
+                        case "failed": return .failed
+                        case "skipped": return .skipped
+                        default: return .completed
+                        }
+                    }()
+                    if let idx = self.recentCycles.firstIndex(where: { $0.id == cid }) {
+                        let existing = self.recentCycles[idx]
+                        let updated = OrchestrationCycle(id: existing.id, startTime: existing.startTime, endTime: end, status: status, configId: existing.configId)
+                        self.recentCycles[idx] = updated
+                    } else {
+                        // If we missed the start event, append a completed cycle
+                        let cfg = (userInfo["config_id"] as? String) ?? "(unknown)"
+                        let fallback = OrchestrationCycle(id: cid, startTime: Date(timeIntervalSinceNow: -1), endTime: end, status: status, configId: cfg)
+                        self.addCycle(fallback)
                     }
                 }
             }
@@ -122,14 +157,14 @@ public class OrchestrationViewModel: ObservableObject {
     }
 
     private func startStatePolling() {
-        // Poll scheduler state every 5 seconds
-        Timer.publish(every: 5.0, on: .main, in: .common)
+        // Cancel any existing poller to avoid duplicate timers
+        pollCancellable?.cancel()
+        pollCancellable = Timer.publish(every: 5.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self else { return }
                 Task { await self.fetchRemoteSchedulerStatus() }
             }
-            .store(in: &cancellables)
     }
 
     private func fetchRemoteSchedulerStatus() async {

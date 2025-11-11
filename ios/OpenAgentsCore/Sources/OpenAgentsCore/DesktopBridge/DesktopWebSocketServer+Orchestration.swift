@@ -544,9 +544,8 @@ extension DesktopWebSocketServer {
         let svc = SchedulerService()
         await svc.configure(config: cfg) { [weak self] in
             guard let self = self else { return }
-            guard let coord = await self.ensureCoordinator() else { return }
-            // Fire-and-forget one cycle using active config
-            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
+            // Fire-and-forget one cycle using active config (with UI notifications)
+            _ = await self.runCoordinatorCycleWithNotifications(config: cfg)
         }
         await svc.start()
         self.schedulerService = svc
@@ -591,7 +590,7 @@ extension DesktopWebSocketServer {
         Task.detached { [weak self] in
             guard let self = self else { return }
             guard let coord = await self.ensureCoordinator() else { return }
-            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
+            _ = await self.runCoordinatorCycleWithNotifications(config: cfg)
         }
     }
 
@@ -647,7 +646,7 @@ extension DesktopWebSocketServer {
         }
 
         // Run one cycle
-        let result = await coord.runCycle(config: finalCfg, workingDirectory: self.workingDirectory)
+        let result = await self.runCoordinatorCycleWithNotifications(config: finalCfg)
 
         // Build response
         switch result {
@@ -901,8 +900,7 @@ extension DesktopWebSocketServer {
             let svc = SchedulerService()
             await svc.configure(config: config) { [weak self] in
                 guard let self = self else { return }
-                guard let coord = await self.ensureCoordinator() else { return }
-                _ = await coord.runCycle(config: config, workingDirectory: self.workingDirectory)
+                _ = await self.runCoordinatorCycleWithNotifications(config: config)
             }
             await svc.start()
             self.schedulerService = svc

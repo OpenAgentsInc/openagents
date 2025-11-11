@@ -212,11 +212,8 @@ extension DesktopWebSocketServer {
     public struct LocalCoordinatorStatus: Codable { public let cycles_run: Int; public let tasks_executed: Int; public let tasks_completed: Int; public let tasks_failed: Int; public let tasks_cancelled: Int; public let last_cycle_ts: Int64? }
 
     public func localCoordinatorRunOnce(config: OrchestrationConfig? = nil) async -> LocalCoordinatorRunOnceResult {
-        guard let coord = await ensureCoordinator() else {
-            return .init(status: "error", task_id: nil, session_id: nil, agent_mode: nil)
-        }
-        let cfg = config ?? self.activeOrchestrationConfig
-        let result = await coord.runCycle(config: cfg ?? OrchestrationConfig.createDefault(workspaceRoot: workingDirectory?.path ?? NSHomeDirectory()), workingDirectory: self.workingDirectory)
+        let cfgResolved = config ?? self.activeOrchestrationConfig ?? OrchestrationConfig.createDefault(workspaceRoot: workingDirectory?.path ?? NSHomeDirectory())
+        let result = await self.runCoordinatorCycleWithNotifications(config: cfgResolved)
         switch result {
         case .taskExecuted(let taskId, let sessionId):
             var modeStr: String? = nil
@@ -264,8 +261,7 @@ extension DesktopWebSocketServer {
         let svc = SchedulerService()
         await svc.configure(config: cfg) { [weak self] in
             guard let self = self else { return }
-            guard let coord = await self.ensureCoordinator() else { return }
-            _ = await coord.runCycle(config: cfg, workingDirectory: self.workingDirectory)
+            _ = await self.runCoordinatorCycleWithNotifications(config: cfg)
         }
         await svc.start()
         self.schedulerService = svc
@@ -323,8 +319,7 @@ extension DesktopWebSocketServer {
                             let svc = SchedulerService()
                             await svc.configure(config: config) { [weak self] in
                                 guard let self = self else { return }
-                                guard let coord = await self.ensureCoordinator() else { return }
-                                _ = await coord.runCycle(config: config, workingDirectory: self.workingDirectory)
+                                _ = await self.runCoordinatorCycleWithNotifications(config: config)
                             }
                             await svc.start()
                             self.schedulerService = svc

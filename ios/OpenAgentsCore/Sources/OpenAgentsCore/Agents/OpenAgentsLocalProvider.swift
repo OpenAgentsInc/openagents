@@ -215,7 +215,7 @@ extension OpenAgentsLocalProvider {
             print("[FM] Created sub-session \(subSessionId.value) for delegation to \(providerName)")
 
             // Register session mapping so sub-session updates forward to parent session
-            server.registerSessionMapping(subSessionId: subSessionId, parentSessionId: parentSessionId)
+            await server.registerSessionMapping(subSessionId: subSessionId, parentSessionId: parentSessionId)
 
             // Switch the sub-session mode to the delegated provider
             await server.localSessionSetMode(sessionId: subSessionId, mode: modeId)
@@ -235,13 +235,13 @@ extension OpenAgentsLocalProvider {
                     // Clear the sub-session handle and mapping after delegation completes
                     print("[FM] Clearing sub-session \(subSessionId.value) handle after delegation completes")
                     await server.agentRegistry.removeHandle(for: subSessionId)
-                    server.unregisterSessionMapping(subSessionId: subSessionId)
+                    await server.unregisterSessionMapping(subSessionId: subSessionId)
                 } catch {
                     let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Delegation error: \(error.localizedDescription)")))
                     await parentUpdateHub.sendSessionUpdate(sessionId: parentSessionId, update: .agentMessageChunk(errorChunk))
                     // Clear sub-session handle and mapping on error
                     await server.agentRegistry.removeHandle(for: subSessionId)
-                    server.unregisterSessionMapping(subSessionId: subSessionId)
+                    await server.unregisterSessionMapping(subSessionId: subSessionId)
                 }
             }
 

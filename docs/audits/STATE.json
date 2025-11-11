@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 1,
+    "lastUpdated": "2025-11-11T07:07:16Z",
+    "description": "Tracks which audit slot (day vs overnight) should run next so alternating agents do not collide.",
+    "nextSlot": "overnight",
+    "slots": {
+        "day": {
+            "label": "Day Shift",
+            "window": "09:30 local",
+            "lastRun": {
+                "path": "docs/audits/20251111/0930",
+                "topic": "Deterministic Heuristics Audit",
+                "timestampLocal": "2025-11-11 09:30"
+            }
+        },
+        "overnight": {
+            "label": "Overnight Shift",
+            "window": "22:20 local",
+            "lastRun": {
+                "path": "docs/audits/20251110/2220",
+                "topic": "Overnight Orchestration Audit",
+                "timestampLocal": "2025-11-10 22:20"
+            }
+        }
+    },
+    "recentAudits": [
+        {
+            "slot": "day",
+            "path": "docs/audits/20251111/0930",
+            "topic": "Deterministic Heuristics Audit",
+            "timestampLocal": "2025-11-11 09:30"
+        },
+        {
+            "slot": "overnight",
+            "path": "docs/audits/20251110/2220",
+            "topic": "Overnight Orchestration Audit",
+            "timestampLocal": "2025-11-10 22:20"
+        }
+    ]
+}
