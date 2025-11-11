@@ -303,6 +303,7 @@ extension OpenAgentsLocalProvider {
             @Guide(description: "List of goals (strings)") var goals: [String]?
             @Guide(description: "Window start time (HH:mm)") var window_start: String?
             @Guide(description: "Window end time (HH:mm)") var window_end: String?
+            @Guide(description: "Interval in minutes (e.g., 1 for every minute)") var interval_minutes: Int?
             @Guide(description: "Preferred agent id: codex or claude-code") var prefer_agent: String?
             @Guide(description: "Allowed agents (ids)") var allow_agents: [String]?
             @Guide(description: "Finalize immediately without follow-up questions (default: true)") var auto_finalize: Bool?
@@ -316,6 +317,7 @@ extension OpenAgentsLocalProvider {
                 goals: a.goals,
                 windowStart: a.window_start,
                 windowEnd: a.window_end,
+                intervalMinutes: a.interval_minutes,
                 preferAgent: a.prefer_agent,
                 allowAgents: a.allow_agents,
                 autoFinalize: a.auto_finalize ?? true,

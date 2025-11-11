@@ -90,6 +90,7 @@ public actor SetupOrchestrator {
         goals: [String]?,
         windowStart: String?,
         windowEnd: String?,
+        intervalMinutes: Int?,
         prefer: ACPSessionModeId?,
         allow: [ACPSessionModeId]?
     ) async {
@@ -98,7 +99,8 @@ public actor SetupOrchestrator {
             if draft.workspaceRoot != nil { state = .gathering_schedule }
         }
         if let ws = windowStart, let we = windowEnd {
-            let cronExpr = SchedulePreview.deriveCron(windowStart: ws, windowEnd: we, interval: 30)
+            let interval = (intervalMinutes ?? 30)
+            let cronExpr = SchedulePreview.deriveCron(windowStart: ws, windowEnd: we, interval: max(1, min(interval, 60)))
             draft.schedule = SetupDraft.SchedulePatch(
                 type: "cron",
                 expression: cronExpr,
