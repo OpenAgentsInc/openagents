@@ -21,7 +21,6 @@ use crate::{ClientCapabilities, ContentBlock, ExtNotification, ProtocolVersion, 
 ///
 /// See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = INITIALIZE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeRequest {
     /// The latest protocol version supported by the client.
@@ -45,7 +44,6 @@ pub struct InitializeRequest {
 ///
 /// See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = INITIALIZE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResponse {
     /// The protocol version the client specified if supported by the agent,
@@ -93,7 +91,6 @@ pub struct Implementation {
 ///
 /// Specifies which authentication method to use.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = AUTHENTICATE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticateRequest {
     /// The ID of the authentication method to use.
@@ -107,7 +104,6 @@ pub struct AuthenticateRequest {
 /// Response to authenticate method
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "agent", "x-method" = AUTHENTICATE_METHOD_NAME))]
 pub struct AuthenticateResponse {
     /// Extension point for implementations
     #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
@@ -141,7 +137,6 @@ pub struct AuthMethod {
 ///
 /// See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_NEW_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionRequest {
     /// The working directory for this session. Must be an absolute path.
@@ -157,7 +152,6 @@ pub struct NewSessionRequest {
 ///
 /// See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_NEW_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionResponse {
     /// Unique identifier for the created session.
@@ -190,7 +184,6 @@ pub struct NewSessionResponse {
 ///
 /// See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_LOAD_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct LoadSessionRequest {
     /// List of MCP servers to connect to for this session.
@@ -206,7 +199,6 @@ pub struct LoadSessionRequest {
 
 /// Response from loading an existing session.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_LOAD_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct LoadSessionResponse {
     /// Initial mode state if supported by the Agent
@@ -270,7 +262,6 @@ impl std::fmt::Display for SessionModeId {
 
 /// Request parameters for setting a session mode.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_SET_MODE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct SetSessionModeRequest {
     /// The ID of the session to set the mode for.
@@ -284,7 +275,6 @@ pub struct SetSessionModeRequest {
 
 /// Response to `session/set_mode` method.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_SET_MODE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct SetSessionModeResponse {
     #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
@@ -301,7 +291,6 @@ pub struct SetSessionModeResponse {
 /// See protocol docs: [MCP Servers](https://agentclientprotocol.com/protocol/session-setup#mcp-servers)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[schemars(extend("discriminator" = {"propertyName": "type"}))]
 pub enum McpServer {
     /// HTTP transport configuration
     ///
@@ -377,7 +366,6 @@ pub struct HttpHeader {
 ///
 /// See protocol docs: [User Message](https://agentclientprotocol.com/protocol/prompt-turn#1-user-message)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_PROMPT_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct PromptRequest {
     /// The ID of the session to send this user message to
@@ -405,7 +393,6 @@ pub struct PromptRequest {
 ///
 /// See protocol docs: [Check for Completion](https://agentclientprotocol.com/protocol/prompt-turn#4-check-for-completion)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_PROMPT_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct PromptResponse {
     /// Indicates why the agent stopped processing the turn.
@@ -500,7 +487,6 @@ pub struct ModelInfo {
 /// Request parameters for setting a session model.
 #[cfg(feature = "unstable")]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_SET_MODEL_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct SetSessionModelRequest {
     /// The ID of the session to set the model for.
@@ -519,7 +505,6 @@ pub struct SetSessionModelRequest {
 /// Response to `session/set_model` method.
 #[cfg(feature = "unstable")]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_SET_MODEL_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct SetSessionModelResponse {
     /// Extension point for implementations
@@ -664,7 +649,6 @@ pub(crate) const SESSION_SET_MODEL_METHOD_NAME: &str = "session/set_model";
 /// This enum encompasses all method calls from client to agent.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum ClientRequest {
     /// Establishes the connection with a client and negotiates protocol capabilities.
     ///
@@ -761,7 +745,6 @@ pub enum ClientRequest {
 /// These are responses to the corresponding `ClientRequest` variants.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum AgentResponse {
     InitializeResponse(InitializeResponse),
     AuthenticateResponse(#[serde(default)] AuthenticateResponse),
@@ -782,7 +765,6 @@ pub enum AgentResponse {
 /// Notifications do not expect a response.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum ClientNotification {
     /// Cancels ongoing operations for a session.
     ///
@@ -809,7 +791,6 @@ pub enum ClientNotification {
 ///
 /// See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "agent", "x-method" = SESSION_CANCEL_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct CancelNotification {
     /// The ID of the session to cancel operations for.

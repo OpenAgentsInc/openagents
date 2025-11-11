@@ -22,4 +22,17 @@ tauri = { version = "2.0", features = [] }
 tauri-plugin-opener = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-util", "sync", "time"] }
+anyhow = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+shell-words = "1.1"
+which = "6"
+futures = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+once_cell = "1.19"
 
+# Local ACP schema crate
+agent-client-protocol = { path = "../../crates/agent-client-protocol" }
