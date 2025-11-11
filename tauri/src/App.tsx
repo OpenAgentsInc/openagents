@@ -1,22 +1,18 @@
 import "./App.css"
 import { Thread } from "@/components/assistant-ui/thread"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { useEdgeRuntime } from "@assistant-ui/react"
-import { ollama } from "ollama-ai-provider-v2"
-import { streamText } from "ai"
+import { useChatRuntime } from "@assistant-ui/react-ai-sdk"
+import { useChat } from "@ai-sdk/react"
 
 function App() {
-  const runtime = useEdgeRuntime({
-    api: async ({ messages, abortSignal }) => {
-      const result = streamText({
-        model: ollama("qwen2.5:32b"),
-        messages,
-        abortSignal,
-      });
-
-      return result.toDataStreamResponse();
+  const chat = useChat({
+    api: "http://127.0.0.1:11434/v1/chat/completions",
+    body: {
+      model: "qwen2.5:32b",
     },
   });
+
+  const runtime = useChatRuntime(chat);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
