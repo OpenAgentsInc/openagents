@@ -10,6 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.5.1",
     "@ai-sdk/openai": "^2.0.65",
     "@ai-sdk/react": "^2.0.92",
     "@assistant-ui/react": "^0.11.37",

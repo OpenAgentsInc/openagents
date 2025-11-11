@@ -19,12 +19,9 @@ use crate::{
 /// [1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.
 ///
 /// [2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions.
-#[derive(
-    Debug, PartialEq, Clone, Hash, Eq, Deserialize, Serialize, PartialOrd, Ord, Display, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, Deserialize, Serialize, PartialOrd, Ord, Display, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[serde(untagged)]
-#[schemars(inline)]
 pub enum RequestId {
     #[display("null")]
     #[schemars(title = "null")]
@@ -37,7 +34,6 @@ pub enum RequestId {
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(untagged)]
-#[schemars(inline)]
 pub enum OutgoingMessage<Local: Side, Remote: Side> {
     Request {
         id: RequestId,
@@ -58,7 +54,6 @@ pub enum OutgoingMessage<Local: Side, Remote: Side> {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-#[schemars(inline)]
 enum JsonRpcVersion {
     #[serde(rename = "2.0")]
     V2,
@@ -69,7 +64,6 @@ enum JsonRpcVersion {
 ///
 /// [1]: https://www.jsonrpc.org/specification#compatibility
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-#[schemars(inline)]
 pub struct JsonRpcMessage<M> {
     jsonrpc: JsonRpcVersion,
     #[serde(flatten)]

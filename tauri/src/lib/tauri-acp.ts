@@ -1,0 +1,13 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export async function createSession(agentType?: "claude-code" | "codex" | "codex-exec", cwd?: string): Promise<string> {
+  return invoke("create_session", { agentType, cwd });
+}
+
+export async function sendPrompt(sessionId: string, text: string): Promise<void> {
+  return invoke("send_prompt", { sessionId, text });
+}
+
+export async function getSession(sessionId: string): Promise<any> {
+  return invoke("get_session", { sessionId });
+}

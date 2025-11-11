@@ -23,7 +23,6 @@ use crate::{
 ///
 /// See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[schemars(extend("x-side" = "client", "x-method" = SESSION_UPDATE_NOTIFICATION))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionNotification {
     /// The ID of the session this update pertains to.
@@ -42,7 +41,6 @@ pub struct SessionNotification {
 /// See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "sessionUpdate", rename_all = "snake_case")]
-#[schemars(extend("discriminator" = {"propertyName": "sessionUpdate"}))]
 pub enum SessionUpdate {
     /// A chunk of the user's message being streamed.
     UserMessageChunk(ContentChunk),
@@ -70,7 +68,6 @@ pub enum SessionUpdate {
 /// See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(inline)]
 pub struct CurrentModeUpdate {
     /// The ID of the current mode
     pub current_mode_id: SessionModeId,
@@ -82,7 +79,6 @@ pub struct CurrentModeUpdate {
 /// A streamed item of content
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(inline)]
 pub struct ContentChunk {
     /// A single item of content
     pub content: ContentBlock,
@@ -94,7 +90,6 @@ pub struct ContentChunk {
 /// Available commands are ready or have changed
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(inline)]
 pub struct AvailableCommandsUpdate {
     /// Commands the agent can execute
     pub available_commands: Vec<AvailableCommand>,
@@ -138,7 +133,6 @@ pub enum AvailableCommandInput {
 ///
 /// See protocol docs: [Requesting Permission](https://agentclientprotocol.com/protocol/tool-calls#requesting-permission)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[schemars(extend("x-side" = "client", "x-method" = SESSION_REQUEST_PERMISSION_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct RequestPermissionRequest {
     /// The session ID for this request.
@@ -191,7 +185,6 @@ pub enum PermissionOptionKind {
 
 /// Response to a permission request.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "client", "x-method" = SESSION_REQUEST_PERMISSION_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct RequestPermissionResponse {
     /// The user's decision on the permission request.
@@ -205,7 +198,6 @@ pub struct RequestPermissionResponse {
 /// The outcome of a permission request.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
-#[schemars(extend("discriminator" = {"propertyName": "outcome"}))]
 pub enum RequestPermissionOutcome {
     /// The prompt turn was cancelled before the user responded.
     ///
@@ -229,7 +221,6 @@ pub enum RequestPermissionOutcome {
 ///
 /// Only available if the client supports the `fs.writeTextFile` capability.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "client", "x-method" = FS_WRITE_TEXT_FILE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct WriteTextFileRequest {
     /// The session ID for this request.
@@ -246,7 +237,6 @@ pub struct WriteTextFileRequest {
 /// Response to `fs/write_text_file`
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = FS_WRITE_TEXT_FILE_METHOD_NAME))]
 #[serde(default)]
 pub struct WriteTextFileResponse {
     /// Extension point for implementations
@@ -260,7 +250,6 @@ pub struct WriteTextFileResponse {
 ///
 /// Only available if the client supports the `fs.readTextFile` capability.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "client", "x-method" = FS_READ_TEXT_FILE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct ReadTextFileRequest {
     /// The session ID for this request.
@@ -280,7 +269,6 @@ pub struct ReadTextFileRequest {
 
 /// Response containing the contents of a text file.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[schemars(extend("x-side" = "client", "x-method" = FS_READ_TEXT_FILE_METHOD_NAME))]
 #[serde(rename_all = "camelCase")]
 pub struct ReadTextFileResponse {
     pub content: String,
@@ -299,7 +287,6 @@ pub struct TerminalId(pub Arc<str>);
 /// Request to create a new terminal and execute a command.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_CREATE_METHOD_NAME))]
 pub struct CreateTerminalRequest {
     /// The session ID for this request.
     pub session_id: SessionId,
@@ -332,7 +319,6 @@ pub struct CreateTerminalRequest {
 /// Response containing the ID of the created terminal.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_CREATE_METHOD_NAME))]
 pub struct CreateTerminalResponse {
     /// The unique identifier for the created terminal.
     pub terminal_id: TerminalId,
@@ -344,7 +330,6 @@ pub struct CreateTerminalResponse {
 /// Request to get the current output and status of a terminal.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_OUTPUT_METHOD_NAME))]
 pub struct TerminalOutputRequest {
     /// The session ID for this request.
     pub session_id: SessionId,
@@ -358,7 +343,6 @@ pub struct TerminalOutputRequest {
 /// Response containing the terminal output and exit status.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_OUTPUT_METHOD_NAME))]
 pub struct TerminalOutputResponse {
     /// The terminal output captured so far.
     pub output: String,
@@ -374,7 +358,6 @@ pub struct TerminalOutputResponse {
 /// Request to release a terminal and free its resources.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_RELEASE_METHOD_NAME))]
 pub struct ReleaseTerminalRequest {
     /// The session ID for this request.
     pub session_id: SessionId,
@@ -388,7 +371,6 @@ pub struct ReleaseTerminalRequest {
 /// Response to terminal/release method
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_RELEASE_METHOD_NAME))]
 pub struct ReleaseTerminalResponse {
     /// Extension point for implementations
     #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
@@ -398,7 +380,6 @@ pub struct ReleaseTerminalResponse {
 /// Request to kill a terminal command without releasing the terminal.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_KILL_METHOD_NAME))]
 pub struct KillTerminalCommandRequest {
     /// The session ID for this request.
     pub session_id: SessionId,
@@ -412,7 +393,6 @@ pub struct KillTerminalCommandRequest {
 /// Response to terminal/kill command method
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_KILL_METHOD_NAME))]
 pub struct KillTerminalCommandResponse {
     /// Extension point for implementations
     #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
@@ -422,7 +402,6 @@ pub struct KillTerminalCommandResponse {
 /// Request to wait for a terminal command to exit.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_WAIT_FOR_EXIT_METHOD_NAME))]
 pub struct WaitForTerminalExitRequest {
     /// The session ID for this request.
     pub session_id: SessionId,
@@ -436,7 +415,6 @@ pub struct WaitForTerminalExitRequest {
 /// Response containing the exit status of a terminal command.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[schemars(extend("x-side" = "client", "x-method" = TERMINAL_WAIT_FOR_EXIT_METHOD_NAME))]
 pub struct WaitForTerminalExitResponse {
     /// The exit status of the terminal command.
     #[serde(flatten)]
@@ -566,7 +544,6 @@ pub(crate) const TERMINAL_KILL_METHOD_NAME: &str = "terminal/kill";
 /// This enum encompasses all method calls from agent to client.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum AgentRequest {
     /// Writes content to a text file in the client's file system.
     ///
@@ -663,7 +640,6 @@ pub enum AgentRequest {
 /// These are responses to the corresponding `AgentRequest` variants.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum ClientResponse {
     WriteTextFileResponse(#[serde(default)] WriteTextFileResponse),
     ReadTextFileResponse(ReadTextFileResponse),
@@ -685,7 +661,6 @@ pub enum ClientResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
-#[schemars(extend("x-docs-ignore" = true))]
 pub enum AgentNotification {
     /// Handles session update notifications from the agent.
     ///
