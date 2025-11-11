@@ -4,6 +4,7 @@ import OpenAgentsCore
 #if os(macOS)
 struct SessionSidebarView: View {
     @EnvironmentObject private var bridge: BridgeManager
+    @StateObject private var orchestrationVM = OrchestrationViewModel()
     @State private var searchText: String = ""
     @State private var hoveredId: String? = nil
     @State private var selectedSessionId: String? = nil
@@ -156,7 +157,8 @@ struct SessionSidebarView: View {
 
             Spacer(minLength: 0)
 
-            // Note: GPTOSS UI removed - use agent selection instead
+            // Orchestration status at bottom
+            OrchestrationSidebarSection(viewModel: orchestrationVM)
         }
         .frame(minWidth: 220, idealWidth: 250, maxWidth: 280, maxHeight: .infinity)
         .background(
