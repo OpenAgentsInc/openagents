@@ -45,6 +45,9 @@ public final class CodexAgentProvider: CLIAgentProvider, @unchecked Sendable {
         let sidStr = sessionId.value
         if let thread = threadIdBySession[sidStr], !thread.isEmpty {
             args += ["resume", thread]
+            print("[Codex] RESUMING existing thread \(thread) for session \(sidStr)")
+        } else {
+            print("[Codex] STARTING NEW thread for session \(sidStr)")
         }
 
         // Prompt
@@ -102,9 +105,11 @@ public final class CodexAgentProvider: CLIAgentProvider, @unchecked Sendable {
         if type == "thread.started" || type == "session_meta" {
             let sidStr = sessionId.value
             if let threadId = obj["thread_id"] as? String {
+                print("[Codex] Captured thread ID \(threadId) for session \(sidStr)")
                 threadIdBySession[sidStr] = threadId
             } else if let payload = obj["payload"] as? [String: Any],
                       let threadId = payload["id"] as? String {
+                print("[Codex] Captured thread ID \(threadId) for session \(sidStr)")
                 threadIdBySession[sidStr] = threadId
             }
         }
