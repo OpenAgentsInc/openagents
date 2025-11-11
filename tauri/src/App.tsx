@@ -11,12 +11,12 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden">
       {/* Custom title bar drag region */}
       <div data-tauri-drag-region className="h-12 flex-shrink-0" />
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-hidden">
         <h1 className="text-4xl font-bold mb-8">OpenAgents</h1>
 
         <form
