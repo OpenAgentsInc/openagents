@@ -80,80 +80,7 @@ struct SessionSidebarView: View {
             // Divider().background(OATheme.Colors.textTertiary.opacity(0.15))
 
             // Session list with keyboard selection
-            List(selection: $selectedSessionId) {
-                ForEach(grouped.keys.sorted(by: groupSort), id: \.self) { label in
-                    Section(header:
-                                Text(label)
-                                .font(OAFonts.mono(.caption, 11))
-                                .foregroundStyle(OATheme.Colors.textSecondary)
-                    ) {
-                        ForEach(grouped[label] ?? [], id: \.session_id) { s in
-                            HStack(alignment: .center, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    if editingTitleId == s.session_id {
-                                        TextField("Title", text: $editingTitleText, onCommit: { commitEditTitle(for: s.session_id) })
-                                            .textFieldStyle(.plain)
-                                            .font(OAFonts.mono(.body, 12))
-                                            .foregroundStyle(OATheme.Colors.textPrimary)
-                                            .onExitCommand { cancelEditTitle() }
-                                    } else {
-                                        Text(title(for: s))
-                                            .font(OAFonts.mono(.body, 12))
-                                            .foregroundStyle(OATheme.Colors.textPrimary)
-                                            .lineLimit(1)
-                                            .onTapGesture(count: 2) { startEditTitle(for: s.session_id) }
-                                    }
-                                    HStack(spacing: 6) {
-                                        Text(relativeTime(ms: s.last_ts))
-                                            .font(OAFonts.mono(.caption, 11))
-                                            .foregroundStyle(OATheme.Colors.textTertiary)
-                                        if let m = s.mode {
-                                            Text(modeLabel(m))
-                                                .font(OAFonts.mono(.caption, 10))
-                                                .foregroundStyle(OATheme.Colors.textSecondary)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                        .fill(OATheme.Colors.border.opacity(0.25))
-                                                )
-                                        }
-                                        Spacer(minLength: 0)
-                                        Text("\(s.message_count) msgs")
-                                            .font(OAFonts.mono(.caption, 10))
-                                            .foregroundStyle(OATheme.Colors.textTertiary)
-                                    }
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .tag(Optional(s.session_id))
-                            .listRowBackground(Color.clear)
-                            .contextMenu {
-                                Button(role: .destructive) { confirmDelete(s) } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                Button { startEditTitle(for: s.session_id) } label: {
-                                    Label("Rename…", systemImage: "pencil")
-                                }
-                                Button { bridge.clearSessionTitle(sessionId: s.session_id) } label: {
-                                    Label("Reset Title", systemImage: "arrow.uturn.backward")
-                                }
-                            }
-                            .onHover { over in hoveredId = over ? s.session_id : nil }
-                        }
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(
-                OATheme.Colors.sidebarBackground
-                    .ignoresSafeArea(.container, edges: .top)
-            )
-            .onChange(of: selectedSessionId) { _, newValue in
-                guard let sid = newValue else { return }
-                loadSession(sid)
-            }
+            sessionsList
 
             Spacer(minLength: 0)
 
@@ -219,6 +146,79 @@ struct SessionSidebarView: View {
         if days < 7 { return "Last 7 Days" }
         if days < 30 { return "Last 30 Days" }
         return "Older"
+    }
+
+    // Extracted to reduce type-checking complexity in `body`
+    private var sessionsList: some View {
+        let keys = grouped.keys.sorted(by: groupSort)
+        return List(selection: $selectedSessionId) {
+            ForEach(keys, id: \.self) { label in
+                Section(header:
+                            Text(label)
+                                .font(OAFonts.mono(.caption, 11))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                ) {
+                    ForEach(grouped[label] ?? [], id: \.session_id) { s in
+                        HStack(alignment: .center, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                if editingTitleId == s.session_id {
+                                    TextField("Title", text: $editingTitleText, onCommit: { commitEditTitle(for: s.session_id) })
+                                        .textFieldStyle(.plain)
+                                        .font(OAFonts.mono(.body, 12))
+                                        .foregroundStyle(OATheme.Colors.textPrimary)
+                                        .onExitCommand { cancelEditTitle() }
+                                } else {
+                                    Text(title(for: s))
+                                        .font(OAFonts.mono(.body, 12))
+                                        .foregroundStyle(OATheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                        .onTapGesture(count: 2) { startEditTitle(for: s.session_id) }
+                                }
+                                HStack(spacing: 6) {
+                                    Text(relativeTime(ms: s.last_ts))
+                                        .font(OAFonts.mono(.caption, 11))
+                                        .foregroundStyle(OATheme.Colors.textTertiary)
+                                    if let m = s.mode {
+                                        Text(modeLabel(m))
+                                            .font(OAFonts.mono(.caption, 10))
+                                            .foregroundStyle(OATheme.Colors.textSecondary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                    .fill(OATheme.Colors.border.opacity(0.25))
+                                            )
+                                    }
+                                    Spacer(minLength: 0)
+                                    Text("\(s.message_count) msgs")
+                                        .font(OAFonts.mono(.caption, 10))
+                                        .foregroundStyle(OATheme.Colors.textTertiary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .tag(Optional(s.session_id))
+                        .listRowBackground(Color.clear)
+                        .contextMenu {
+                            Button(role: .destructive) { confirmDelete(s) } label: { Label("Delete", systemImage: "trash") }
+                            Button { startEditTitle(for: s.session_id) } label: { Label("Rename…", systemImage: "pencil") }
+                            Button { bridge.clearSessionTitle(sessionId: s.session_id) } label: { Label("Reset Title", systemImage: "arrow.uturn.backward") }
+                        }
+                        .onHover { over in hoveredId = over ? s.session_id : nil }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(
+            OATheme.Colors.sidebarBackground
+                .ignoresSafeArea(.container, edges: .top)
+        )
+        .onChange(of: selectedSessionId) { _, newValue in
+            guard let sid = newValue else { return }
+            loadSession(sid)
+        }
     }
 
     private func relativeTime(ms: Int64) -> String {
