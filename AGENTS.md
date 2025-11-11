@@ -69,6 +69,24 @@ docs/                             # Documentation
 └── logs/                         # Development logs
 
 packages/tricoder/                # DEPRECATED npm package (kept for responsible deprecation)
+
+tauri/                            # Experimental Tauri desktop app (TypeScript/React)
+├── src/                          # React application source
+├── src-tauri/                    # Tauri Rust backend
+└── package.json                  # Dependencies (use bun for install)
+```
+
+### Tauri Project (Experimental)
+
+The `tauri/` directory contains an experimental desktop app using Tauri + React + TypeScript. This is separate from the main Swift iOS/macOS app.
+
+**Package Management**: **ALWAYS use `bun` for installing packages in the Tauri project**. Never use `npm` or `yarn`.
+
+```bash
+cd tauri
+bun install              # Install dependencies
+bun run dev              # Start dev server
+bun run build            # Build for production
 ```
 
 ## Architecture
