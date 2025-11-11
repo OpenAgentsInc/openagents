@@ -177,6 +177,17 @@ extension BridgeManager {
         dispatcher?.setSessionMode(mode, getSessionId: { self.currentSessionId })
     }
 
+    // MARK: - Orchestration (Conversational Setup)
+    func startOrchestrationSetup() {
+        let ws = workingDirectory?.path
+        dispatcher?.orchestrateSetupStart(workspaceRoot: ws, onSessionId: { [weak self] sid in
+            DispatchQueue.main.async { self?.currentSessionId = sid }
+        }, completion: { [weak self] _ in
+            // Clear local timeline so the setup conversation renders in the current chat column
+            self?.timeline.clearAll()
+        })
+    }
+
     func setSessionTitle(sessionId: String, title: String) {
         struct Params: Codable { let session_id: String; let title: String }
         connection?.rpcClient?.sendJSONRPC(method: "tinyvex/history.setSessionTitle", params: Params(session_id: sessionId, title: title), id: "set-title-\(UUID().uuidString)") { (_: [String: Bool]?) in }

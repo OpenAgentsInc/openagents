@@ -9,6 +9,7 @@ final class LocalJsonRpcClient: JSONRPCSending {
     private struct ConfigActivateResp: Codable { let success: Bool; let active_config_id: String }
     private struct ReloadResp: Codable { let success: Bool; let message: String }
     private struct BindResp: Codable { let success: Bool; let active_config_id: String }
+    private struct SetupStartResp: Codable { let status: String; let session_id: String; let conversation_id: String }
     private let server: DesktopWebSocketServer
 
     init(server: DesktopWebSocketServer) {
@@ -79,6 +80,23 @@ final class LocalJsonRpcClient: JSONRPCSending {
 
             case ACPRPC.orchestrateExploreStart:
                 // Not implemented locally yet; allow caller to treat as unavailable
+                result = nil
+            case ACPRPC.orchestrateSetupStart:
+                // { workspace_root?: String, session_id?: String }
+                if let obj = Self.asDict(params) {
+                    let ws = obj["workspace_root"] as? String
+                    let sid = (obj["session_id"] as? String).map { ACPSessionId($0) }
+                    let out = await server.localSetupStart(workspaceRoot: ws, sessionId: sid)
+                    result = Self.bridge(out, as: R.self)
+                } else {
+                    let out = await server.localSetupStart(workspaceRoot: nil, sessionId: nil)
+                    result = Self.bridge(out, as: R.self)
+                }
+            case ACPRPC.orchestrateSetupStatus:
+                // Local status can be mapped via handleSetupStatus if needed later; return nil for now
+                result = nil
+            case ACPRPC.orchestrateSetupAbort:
+                // Not implemented in local client for now
                 result = nil
             case ACPRPC.orchestrateConfigSet:
                 if let data = try? JSONEncoder().encode(params),

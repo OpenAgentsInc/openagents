@@ -5,6 +5,7 @@ struct ChatMacOSView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector: Bool = false
     private let defaultSidebarWidth: CGFloat = 260
+    @EnvironmentObject private var bridge: BridgeManager
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -16,6 +17,16 @@ struct ChatMacOSView: View {
                 .navigationTitle("")
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    bridge.startOrchestrationSetup()
+                } label: {
+                    Label("Set Up Orchestration", systemImage: "calendar.badge.clock")
+                }
+                .help("Start conversational orchestration setup")
+            }
+        }
     }
 
     @ViewBuilder
