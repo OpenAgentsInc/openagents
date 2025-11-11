@@ -117,6 +117,19 @@ final class PromptDispatcher: PromptDispatching {
         }
     }
 
+    struct SetupStartParams: Codable { let workspace_root: String?; let session_id: String? }
+    struct SetupStartResponse: Codable { let status: String; let session_id: String; let conversation_id: String }
+    func orchestrateSetupStart(workspaceRoot: String?, onSessionId: @escaping (ACPSessionId) -> Void, completion: ((SetupStartResponse?) -> Void)?) {
+        guard let rpc = self.rpc else { completion?(nil); return }
+        let params = SetupStartParams(workspace_root: workspaceRoot, session_id: nil)
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSetupStart, params: params, id: "setup-start-\(UUID().uuidString)") { (resp: SetupStartResponse?) in
+            DispatchQueue.main.async {
+                if let resp = resp { onSessionId(ACPSessionId(resp.session_id)) }
+                completion?(resp)
+            }
+        }
+    }
+
     func fetchRecentSessions(completion: @escaping ([RecentSession]) -> Void) {
         struct EmptyParams: Codable {}
         guard let rpc = self.rpc else { completion([]); return }

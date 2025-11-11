@@ -73,6 +73,7 @@ protocol PromptDispatching: AnyObject {
     // Orchestrator
     func orchestrateExploreStart(root: String, goals: [String]?, onSessionId: @escaping (ACPSessionId) -> Void, completion: ((OrchestrateExploreStartResponse?) -> Void)?)
     func orchestrateCoordinatorRunOnce(configId: String?, configInline: OrchestrationConfig?, completion: ((PromptDispatcher.CoordinatorRunOnceResponse?) -> Void)?)
+    func orchestrateSetupStart(workspaceRoot: String?, onSessionId: @escaping (ACPSessionId) -> Void, completion: ((PromptDispatcher.SetupStartResponse?) -> Void)?)
 
     // History
     func fetchRecentSessions(completion: @escaping ([RecentSession]) -> Void)

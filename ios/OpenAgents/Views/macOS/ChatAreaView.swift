@@ -451,67 +451,101 @@ private struct DelegatedAgentCard: View {
     let provider: String?
     let taskDescription: String?
 
+    // Fixed height for the scrolling transcript inside the card
+    private let transcriptHeight: CGFloat = 180
+
     var body: some View {
         let currentStep = extractCurrentStep(from: text)
-        let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") currentStep=\(currentStep)")
+        let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") currentStep=\(currentStep) totalLen=\(text.count)")
 
-        HStack(spacing: 12) {
-            // Provider icon
-            if provider != nil {
-                Image(systemName: "arrow.right.circle.fill")
-                    .foregroundStyle(OATheme.Colors.accent)
-                    .font(.system(size: 16))
-            }
-
-            // Current reasoning step
-            VStack(alignment: .leading, spacing: 2) {
-                if let provider = provider {
-                    Text(provider)
-                        .font(OAFonts.mono(.caption, 11))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: 8) {
+            // Header row: provider label + one-line summary + spinner
+            HStack(spacing: 8) {
+                if provider != nil {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .foregroundStyle(OATheme.Colors.accent)
+                        .font(.system(size: 16))
                 }
-                Text(currentStep)
-                    .font(OAFonts.mono(.body, 13))
-                    .foregroundStyle(OATheme.Colors.textPrimary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if let provider = provider {
+                        Text(provider)
+                            .font(OAFonts.mono(.caption, 11))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                            .lineLimit(1)
+                    }
+                    // Summary of current step (one line)
+                    Text(currentStep)
+                        .font(OAFonts.mono(.body, 13))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                Spacer(minLength: 8)
+
+                // Subtle activity indicator
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .opacity(0.6)
             }
 
-            Spacer()
-
-            // Subtle activity indicator
-            ProgressView()
-                .scaleEffect(0.6)
-                .opacity(0.6)
+            // Scrollable transcript area showing full aggregated text
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(OATheme.Colors.bgTertiary.opacity(0.5))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(OATheme.Colors.accent.opacity(0.18), lineWidth: 1)
+                ScrollView {
+                    // Preserve single newlines and allow selection
+                    transcriptText(text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(minHeight: transcriptHeight, maxHeight: transcriptHeight)
+            }
         }
         .padding(12)
-        .background(OATheme.Colors.bgTertiary.opacity(0.5))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(OATheme.Colors.accent.opacity(0.2), lineWidth: 1)
-        )
     }
 
-    /// Extract the latest/current reasoning step from the text
+    /// Render transcript with inline markdown while preserving whitespace
+    private func transcriptText(_ text: String) -> some View {
+        let options: AttributedString.MarkdownParsingOptions
+        if #available(macOS 14.0, *) {
+            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        } else {
+            options = .init(interpretedSyntax: .inlineOnly)
+        }
+        if let md = try? AttributedString(markdown: text, options: options) {
+            return Text(md)
+                .font(OAFonts.mono(.body, 13))
+                .foregroundStyle(OATheme.Colors.textPrimary)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+        }
+        return Text(text)
+            .font(OAFonts.mono(.body, 13))
+            .foregroundStyle(OATheme.Colors.textPrimary)
+            .lineSpacing(3)
+            .textSelection(.enabled)
+    }
+
+    /// Extract the latest/current reasoning step from the text (one-line summary)
     private func extractCurrentStep(from text: String) -> String {
+        // Prefer a task description if available
+        if let task = taskDescription, !task.isEmpty { return summarize(task) }
+
         // Split by lines and find the last non-empty line
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard let lastLine = lines.last else { return "Processing..." }
+        return summarize(String(lastLine))
+    }
 
-        // Get the last line
-        guard let lastLine = lines.last else {
-            return taskDescription ?? "Processing..."
-        }
-
-        var line = String(lastLine).trimmingCharacters(in: .whitespaces)
-
-        // Remove markdown bold markers if present
+    private func summarize(_ s: String) -> String {
+        var line = s.trimmingCharacters(in: .whitespaces)
         line = line.replacingOccurrences(of: "**", with: "")
-
-        // If it's too long, truncate
-        if line.count > 100 {
-            line = String(line.prefix(97)) + "..."
-        }
-
-        return line.isEmpty ? (taskDescription ?? "Processing...") : line
+        if line.count > 100 { line = String(line.prefix(97)) + "..." }
+        return line.isEmpty ? "Processing..." : line
     }
 }
 

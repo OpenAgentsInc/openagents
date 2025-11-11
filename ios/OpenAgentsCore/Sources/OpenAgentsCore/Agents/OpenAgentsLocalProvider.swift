@@ -113,9 +113,12 @@ extension OpenAgentsLocalProvider {
 
         For general conversation, introductions, or capability questions, respond conversationally.
         """)
-        // Register delegate tool for routing to external agents
+        // Register tools available to this FM session
         var tools: [any Tool] = []
+        // Delegate coding tasks to specialized agents (Codex/Claude Code)
         tools.append(FMTool_DelegateRun(sessionId: sessionId, updateHub: updateHub, workspaceRoot: workspaceRoot, server: server))
+        // Start conversational orchestration setup in the current session
+        tools.append(FMTool_OrchestrateSetup(sessionId: sessionId, workspaceRoot: workspaceRoot, server: server))
         let s = LanguageModelSession(model: model, tools: tools, instructions: instructions)
         s.prewarm(promptPrefix: nil)
         Self.fmSessions[sessionId.value] = s
@@ -274,6 +277,36 @@ extension OpenAgentsLocalProvider {
             lines.append("")
             lines.append(userPrompt)
             return lines.joined(separator: "\n")
+        }
+    }
+
+    // MARK: - FM Tool: orchestrate.setup
+    struct FMTool_OrchestrateSetup: Tool {
+        let name = "orchestrate.setup"
+        let description = "Start a conversational setup to configure overnight orchestration (workspace, goals, schedule, agents)."
+
+        private let sessionId: ACPSessionId
+        private let workspaceRoot: String?
+        private let server: DesktopWebSocketServer?
+
+        init(sessionId: ACPSessionId, workspaceRoot: String?, server: DesktopWebSocketServer?) {
+            self.sessionId = sessionId
+            self.workspaceRoot = workspaceRoot
+            self.server = server
+        }
+
+        typealias Output = String
+
+        @Generable
+        struct Arguments {
+            @Guide(description: "Optional workspace root path to configure") var workspace_root: String?
+        }
+
+        func call(arguments a: Arguments) async throws -> Output {
+            guard let server = self.server else { return "❌ Server unavailable" }
+            let ws = a.workspace_root ?? self.workspaceRoot
+            let out = await server.localSetupStart(workspaceRoot: ws, sessionId: sessionId)
+            return out.status == "started" ? "✓ Orchestration setup started" : "❌ Failed to start setup"
         }
     }
 

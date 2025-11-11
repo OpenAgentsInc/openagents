@@ -266,5 +266,65 @@ extension DesktopWebSocketServer {
         self.schedulerService = svc
         return .init(success: true, message: "Scheduler started")
     }
+
+    // MARK: - Orchestration Setup (local helpers)
+    public struct LocalSetupStartResponse: Codable { public let status: String; public let session_id: String; public let conversation_id: String }
+
+    /// Start the conversational orchestration setup locally (no JSON-RPC envelope)
+    /// - Parameters:
+    ///   - workspaceRoot: Optional workspace path to seed the conversation
+    ///   - sessionId: Optional session to stream messages into (defaults to new)
+    /// - Returns: Start response including chosen session and conversation id
+    public func localSetupStart(workspaceRoot: String?, sessionId: ACPSessionId? = nil) async -> LocalSetupStartResponse {
+        let sid = sessionId ?? ACPSessionId(UUID().uuidString)
+        guard let updateHub = self.updateHub else {
+            return .init(status: "error", session_id: sid.value, conversation_id: "")
+        }
+
+        let orchestrator = SetupOrchestrator(
+            conversationId: UUID().uuidString,
+            sessionId: sid,
+            initialWorkspace: workspaceRoot,
+            updateHub: updateHub,
+            completionHandler: { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let config):
+                    OpenAgentsLog.bridgeServer.info("Setup completed: \(config.id)")
+                    
+                    if let db = self.tinyvexDb,
+                       let jsonData = try? JSONEncoder().encode(config),
+                       let jsonString = String(data: jsonData, encoding: .utf8) {
+                        do {
+                            try await db.insertOrUpdateOrchestrationConfig(
+                                jsonString,
+                                id: config.id,
+                                workspaceRoot: config.workspaceRoot,
+                                updatedAt: config.updatedAt
+                            )
+                            OpenAgentsLog.bridgeServer.info("Saved completed config: \(config.id)")
+                        } catch {
+                            OpenAgentsLog.bridgeServer.error("Failed to save config: \(error.localizedDescription)")
+                        }
+                    } else {
+                        OpenAgentsLog.bridgeServer.error("Cannot save config: database not available or encode failed")
+                    }
+                case .failure(let err):
+                    OpenAgentsLog.bridgeServer.error("Setup failed: \(err.localizedDescription)")
+                }
+                // Cleanup mapping
+                if let convId = self.setupSessionById[sid.value] {
+                    self.setupSessionById.removeValue(forKey: sid.value)
+                    await SetupOrchestratorRegistry.shared.remove(convId)
+                }
+            }
+        )
+
+        let convId = await orchestrator.conversationId
+        await SetupOrchestratorRegistry.shared.store(orchestrator, for: convId)
+        self.setupSessionById[sid.value] = convId
+        await orchestrator.start()
+        return .init(status: "started", session_id: sid.value, conversation_id: convId)
+    }
 }
 #endif
