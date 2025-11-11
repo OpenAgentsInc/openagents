@@ -305,6 +305,7 @@ extension OpenAgentsLocalProvider {
             @Guide(description: "Window end time (HH:mm)") var window_end: String?
             @Guide(description: "Preferred agent id: codex or claude-code") var prefer_agent: String?
             @Guide(description: "Allowed agents (ids)") var allow_agents: [String]?
+            @Guide(description: "Finalize immediately without follow-up questions (default: true)") var auto_finalize: Bool?
         }
 
         func call(arguments a: Arguments) async throws -> Output {
@@ -317,6 +318,7 @@ extension OpenAgentsLocalProvider {
                 windowEnd: a.window_end,
                 preferAgent: a.prefer_agent,
                 allowAgents: a.allow_agents,
+                autoFinalize: a.auto_finalize ?? true,
                 sessionId: sessionId
             )
             return out.status == "started" ? "✓ Orchestration setup started" : "❌ Failed to start setup"
