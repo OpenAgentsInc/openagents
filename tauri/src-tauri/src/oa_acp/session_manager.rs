@@ -163,12 +163,26 @@ fn resolve_agent_bin() -> anyhow::Result<PathBuf> {
         let p = PathBuf::from(val);
         if p.exists() { return Ok(p); }
     }
-    // 3) PATH search: prefer 'codex', then 'co'
+    // 3) Prefer local workspace build of codex-acp if present (dev-only convenience)
+    //    Try release then debug under crates/codex-acp
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let base = PathBuf::from(manifest_dir)
+            .parent()
+            .and_then(|p| p.parent()) // go to repo root
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        let release = base.join("crates/codex-acp/target/release/codex-acp");
+        let debug = base.join("crates/codex-acp/target/debug/codex-acp");
+        if release.exists() { return Ok(release); }
+        if debug.exists() { return Ok(debug); }
+    }
+    // 4) PATH search: prefer 'codex-acp', then 'codex', then 'co'
+    if let Ok(found) = which("codex-acp") { return Ok(found); }
     if let Ok(found) = which("codex") { return Ok(found); }
     if let Ok(found) = which("co") { return Ok(found); }
 
-    // 4) Helpful error
+    // 5) Helpful error
     Err(anyhow::anyhow!(
-        "Agent binary not found. Set OA_ACP_AGENT_CMD to your agent path or ensure 'codex' or 'co' is in PATH."
+        "Agent binary not found. Set OA_ACP_AGENT_CMD or ensure 'codex-acp' (preferred), 'codex', or 'co' is in PATH."
     ))
 }

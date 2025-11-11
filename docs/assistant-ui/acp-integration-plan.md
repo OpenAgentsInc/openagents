@@ -1511,12 +1511,15 @@ impl PermissionService {
 ### 4. Implementation Phases
 
 #### Phase 1: Basic ACP Integration (Week 1)
-- [ ] Copy Rust ACP schema crate into `crates/agent-client-protocol/`
-- [ ] Implement basic ACPClient with stdio transport
-- [ ] Create SessionManager with simple state tracking
-- [ ] Implement Tauri commands for create_session, send_prompt, get_session
-- [ ] Build basic TypeScript adapter that converts ACP messages to assistant-ui
-- [ ] Test with simple text prompts and responses
+- [x] Copy Rust ACP schema crate into `crates/agent-client-protocol/`
+- [x] Implement basic ACPClient with stdio transport
+- [x] Create SessionManager with simple state tracking
+- [x] Implement Tauri commands for `create_session`, `send_prompt`, `get_session`
+- [x] Build basic TypeScript plumbing and use published `@agentclientprotocol/sdk`
+- [x] Provide a sidebar “Test ACP” button (manual E2E)
+- [x] Add server-side tracing logs for spawn, events, and routing
+- [x] Add codex-exec adapter (temporary) mapping `exec --json` to ACP updates
+- [x] Switch default agent to `codex-acp` (local crate/binary) and keep `codex-exec` as fallback via env
 
 #### Phase 2: Streaming & Updates (Week 2)
 - [ ] Implement background update polling task
@@ -1625,11 +1628,11 @@ impl PermissionService {
 
 ### 7. Migration Path
 
-#### From Current Ollama Implementation
-1. Keep Ollama adapter as fallback
-2. Add agent selection UI (Ollama vs Claude Code vs Codex)
-3. Gradually deprecate Ollama once ACP agents stable
-4. Maintain compatibility with existing chat UI
+#### From codex-exec Adapter to codex-acp
+1. Prefer `codex-acp` (ACP-native agent) as the default spawned binary
+2. Keep `codex-exec` adapter behind `OA_USE_CODEX_EXEC=1` as dev fallback
+3. Maintain “Test ACP” flow, now running through `codex-acp`
+4. Retain logging to validate event flow; add streaming in Phase 2
 
 #### Data Migration
 - No migration needed (starting fresh)
