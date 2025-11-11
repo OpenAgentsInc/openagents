@@ -389,25 +389,43 @@ private struct DelegatedAgentCard: View {
 
     var body: some View {
         let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") textLen=\(text.count) text=\(text.prefix(100))...")
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header showing which agent is responding
-            if let provider = provider {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 12))
+            HStack {
+                if let provider = provider {
+                    Label(provider, systemImage: "arrow.right.circle.fill")
+                        .font(OAFonts.mono(.headline, 13))
                         .foregroundStyle(OATheme.Colors.accent)
-                    Text(provider)
-                        .font(OAFonts.mono(.caption, 11))
+                } else {
+                    Label("Agent Output", systemImage: "text.cursor")
+                        .font(OAFonts.mono(.headline, 13))
                         .foregroundStyle(OATheme.Colors.accent)
                 }
+                Spacer()
             }
 
-            // Agent response content
-            markdownText(text)
-                .font(OAFonts.mono(.body, 14))
-                .foregroundStyle(OATheme.Colors.textPrimary)
-                .textSelection(.enabled)
-                .lineSpacing(4)
+            // Streaming output container with fixed height
+            ScrollViewReader { proxy in
+                ScrollView {
+                    markdownText(text)
+                        .animation(.easeInOut(duration: 0.3), value: text)
+                        .font(OAFonts.mono(.body, 14))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                        .textSelection(.enabled)
+                        .lineSpacing(4)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(OATheme.Colors.bgQuaternary)
+                        .cornerRadius(8)
+                        .id("streamingText")
+                }
+                .frame(maxHeight: 300)
+                .onChange(of: text) { _ in
+                    withAnimation {
+                        proxy.scrollTo("streamingText", anchor: .bottom)
+                    }
+                }
+            }
         }
         .padding(12)
         .background(OATheme.Colors.bgTertiary.opacity(0.5))
