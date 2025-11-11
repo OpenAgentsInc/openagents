@@ -2,278 +2,234 @@
 
 ## Codebase Summary
 
-**OpenAgents v0.3+** is a native Swift application for iOS and macOS that enables mobile/desktop management of coding agents.
+**OpenAgents** is a desktop chat application for interacting with AI assistants, built with Tauri, React, TypeScript, and assistant-ui.
 
-- **Purpose**: Mobile and desktop command center for coding agents (OpenAI Codex, Claude Code CLI). Run agent sessions from your iPhone or Mac, stay updated on progress, and nudge agents along when needed.
-- **Architecture**: Native Swift using SwiftUI for UI, Foundation Models for on-device intelligence, and WebSocket-based bridge for iOS ↔ macOS connectivity
-- **Platforms**: iOS 16.0+, macOS 13.0+
-- **Previous versions**: v0.2 and earlier (Expo/React Native + Rust + Tauri) are deprecated and no longer maintained
+- **Purpose**: Desktop command center for AI assistants. Chat with local models via Ollama, with support for tools and rich UI interactions.
+- **Architecture**: Tauri (Rust + WebView) with React/TypeScript frontend, assistant-ui components, and Ollama for local LLM inference
+- **Platforms**: Windows, macOS, Linux (cross-platform desktop)
+- **Previous versions**: v0.3 (Swift iOS/macOS) is deprecated and no longer maintained. v0.2 (Expo/React Native + Rust) also deprecated.
 
 ### Key Components
 
-- **iOS App** (`ios/OpenAgents/`)
-  - Native Swift iOS app with SwiftUI views
-  - Agent Client Protocol (ACP) implementation for agent communication
-  - WebSocket client for connecting to macOS companion app
-  - Foundation Models integration for conversation titles and summaries
-  - Liquid Glass UI for Apple's new translucent material system
+- **Tauri Desktop App** (`tauri/`)
+  - Cross-platform desktop application (Windows, macOS, Linux)
+  - React + TypeScript frontend with assistant-ui components
+  - Ollama integration for local LLM inference (glm-4.6:cloud model)
+  - Tool system with makeAssistantTool for client-side tools
+  - Dark mode UI with Berkeley Mono font
+  - Sidebar with ThreadList for conversation history
 
-- **macOS App** (`ios/OpenAgents/`)
-  - Native Swift macOS app (same Xcode project, different targets)
-  - Three‑pane chat interface (NavigationSplitView: sidebar + chat + inspector)
-  - WebSocket server for iOS pairing and bridge communication
-  - Desktop agent session management (Codex/Claude Code CLI integration)
-  - Bonjour/mDNS discovery for zero-config LAN pairing
-  - Settings and Developer tools accessible via toolbar/menu (⌘,, ⌥⌘D)
+- **Frontend** (`tauri/src/`)
+  - React components using assistant-ui library
+  - AssistantRuntimeProvider with useLocalRuntime adapter
+  - ChatModelAdapter for streaming text from Ollama
+  - Tool definitions in `src/tools/`
+  - shadcn/ui components for UI primitives
 
-- **Shared Core** (`ios/OpenAgentsCore/`)
-  - SwiftPM package with shared logic for both platforms
-  - ACP protocol implementation (`AgentClientProtocol/`)
-  - WebSocket bridge components (`DesktopWebSocketServer`, `MobileWebSocketClient`)
-  - JSON-RPC 2.0 transport layer
-  - Bridge messages and configuration
+- **Backend** (`tauri/src-tauri/`)
+  - Rust-based Tauri application
+  - Native OS integration and window management
 
 ### Repository Layout
 
 ```
-ios/                              # Xcode project root
-├── OpenAgents/                   # Main app target
-│   ├── Views/                    # SwiftUI views
-│   │   ├── macOS/                # macOS-specific views
-│   │   │   ├── ChatMacOSView.swift      # Root NavigationSplitView
-│   │   │   ├── SessionSidebarView.swift # Session history sidebar
-│   │   │   ├── ChatAreaView.swift       # Main chat timeline
-│   │   │   ├── ComposerMac.swift        # NSTextView-based composer
-│   │   │   ├── Settings/                # Settings sheets (gear)
-│   │   │   │   └── SettingsView.swift
-│   │   │   └── Developer/               # Developer tools (wrench)
-│   │   │       └── DeveloperView.swift
-│   ├── Bridge/                   # Bridge integration
-│   └── ACP/                      # ACP renderers and components
-├── OpenAgentsCore/               # Shared SwiftPM package
-│   ├── Sources/
-│   │   └── OpenAgentsCore/
-│   │       ├── AgentClientProtocol/
-│   │       ├── DesktopBridge/
-│   │       ├── MobileBridge/
-│   │       └── Bridge/
-│   └── Tests/
-│       └── OpenAgentsCoreTests/
-├── OpenAgents.xcodeproj          # Xcode project file
-└── OpenAgents.xcworkspace        # Xcode workspace
+tauri/                            # Main Tauri desktop app (TypeScript/React)
+├── src/                          # React application source
+│   ├── App.tsx                   # Main app component with runtime setup
+│   ├── App.css                   # Global styles and CSS variables
+│   ├── components/               # React components
+│   │   ├── assistant-ui/         # assistant-ui components
+│   │   │   ├── assistant-sidebar.tsx    # Left sidebar with ThreadList
+│   │   │   ├── thread.tsx               # Main chat interface
+│   │   │   └── thread-list.tsx          # Conversation history list
+│   │   └── ui/                   # shadcn/ui components
+│   └── tools/                    # Tool definitions
+│       └── calculator.tsx        # Example calculator tool
+├── src-tauri/                    # Tauri Rust backend
+│   ├── src/                      # Rust source code
+│   └── Cargo.toml                # Rust dependencies
+├── package.json                  # JavaScript dependencies (use bun!)
+└── tsconfig.json                 # TypeScript configuration
 
 docs/                             # Documentation
 ├── adr/                          # Architecture Decision Records
-├── liquid-glass/                 # Liquid Glass UI documentation
-├── ios-bridge/                   # Bridge protocol documentation
 └── logs/                         # Development logs
 
-packages/tricoder/                # DEPRECATED npm package (kept for responsible deprecation)
-
-tauri/                            # Experimental Tauri desktop app (TypeScript/React)
-├── src/                          # React application source
-├── src-tauri/                    # Tauri Rust backend
-└── package.json                  # Dependencies (use bun for install)
+ios/                              # DEPRECATED Swift iOS/macOS app (v0.3)
+packages/tricoder/                # DEPRECATED npm package (v0.2)
 ```
 
-### Tauri Project (Experimental)
+### Package Management
 
-The `tauri/` directory contains an experimental desktop app using Tauri + React + TypeScript. This is separate from the main Swift iOS/macOS app.
-
-**Package Management**: **ALWAYS use `bun` for installing packages in the Tauri project**. Never use `npm` or `yarn`.
+**CRITICAL**: **ALWAYS use `bun` for installing packages**. Never use `npm` or `yarn`.
 
 ```bash
 cd tauri
 bun install              # Install dependencies
 bun run dev              # Start dev server
 bun run build            # Build for production
+bun add <package>        # Add new package
 ```
 
 ## Architecture
 
-### v0.3 Swift-Only Architecture
+### Tauri + React Architecture
 
-**No Expo. No Rust. No Tauri. No TypeScript.** All application code is native Swift.
+**Stack**: Tauri for native desktop, React + TypeScript for UI, assistant-ui for chat components, Ollama for local LLM.
 
-- **Native Swift**: iOS 16.0+ and macOS 13.0+ using SwiftUI and UIKit where needed
-- **Agent Client Protocol (ACP)**: Swift implementation of ACP for agent communication
-- **WebSocket Bridge**: JSON-RPC 2.0 over WebSocket for iOS ↔ macOS connectivity
-- **Bonjour Discovery**: Zero-config LAN pairing via mDNS (`_openagents._tcp`)
-- **Foundation Models**: On-device Apple Intelligence for conversation titles and summaries
-- **Liquid Glass UI**: Apple's translucent material system for structural UI (iOS 26+, macOS 15+)
+- **Tauri**: Rust-based desktop application framework with native OS integration
+- **React + TypeScript**: Modern frontend with full type safety
+- **assistant-ui**: Specialized React library for AI chat interfaces
+- **Ollama**: Local LLM inference server running glm-4.6:cloud model
+- **Tools**: Client-side tool execution using makeAssistantTool
+- **Styling**: Tailwind CSS with dark mode, Berkeley Mono font, zero border radius
 
-### macOS Chat Interface (v0.3.1+)
+### Tool System
 
-The macOS app uses a NavigationSplitView‑based chat layout (sidebar + content, with inspector reserved for future use). The root is `ChatMacOSView` and adopts OATheme black surfaces by default.
+Tools extend the assistant's capabilities with custom functions:
 
-- Sidebar: `SessionSidebarView` lists recent sessions (Tinyvex), supports search, ⌘N for New Chat, and Delete with confirmation.
-- Chat: `ChatAreaView` renders ACP updates with shared renderers; `ComposerMac` provides a Berkeley Mono input (Return = send, Shift+Return = newline).
-- Inspector: reserved for tool details; currently hidden.
+- **Definition**: Use `makeAssistantTool` to create client-side tools
+- **Parameters**: Zod schemas for type-safe parameter validation
+- **Execution**: Async functions that run in the browser
+- **Registration**: Place tool components inside AssistantRuntimeProvider
+- **Example**: See `src/tools/calculator.tsx` for reference implementation
 
-Bridge on macOS uses a local JSON‑RPC adapter (Option A) that calls `DesktopWebSocketServer` handlers directly and subscribes to `session/update` via a Combine publisher. See ADR‑0007. Screenshots live under `docs/images/chat-desktop/`.
+### Ollama Integration
 
-### ACP Implementation
+Local LLM inference powered by Ollama:
 
-The Swift ACP implementation is the canonical contract for agent communication:
-
-- All agent updates use ACP `SessionUpdate` messages
-- Tool calls, text content, thinking blocks all follow ACP schema
-- No custom JSONL or proprietary formats
-- See `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/` for implementation
-- Reference: ADR-0002 (Agent Client Protocol)
-
-### Bridge Protocol
-
-iOS and macOS communicate via WebSocket with JSON-RPC 2.0:
-
-- **Desktop (macOS)**: Runs `DesktopWebSocketServer`, advertises via Bonjour, accepts JSON-RPC methods
-- **Mobile (iOS)**: Runs `MobileWebSocketClient`, discovers via `NetServiceBrowser`, sends JSON-RPC requests
-- **Protocol**: `initialize`, `session/new`, `session/prompt`, `session/cancel`, `session/update` (notification)
-- **Discovery**: Automatic via `_openagents._tcp` Bonjour service
-- See `docs/ios-bridge/` for detailed protocol documentation
-- Reference: ADR-0004 (iOS ↔ Desktop WebSocket Bridge)
+- **Model**: Currently using `glm-4.6:cloud`
+- **Adapter**: Custom ChatModelAdapter that streams text chunks
+- **Accumulation**: Text chunks accumulated into single string for smooth rendering
+- **Configuration**: Ollama server at `http://127.0.0.1:11434/api`
 
 ## Development
 
 ### Prerequisites
 
-- **Xcode 16.0+** (required for Swift 5.9+ and iOS 16.0/macOS 13.0 SDKs)
-- **macOS 13.0+** (for Xcode and macOS target development)
-- **OpenAI Codex or Claude Code CLI** (for desktop agent integration)
+- **Bun** (JavaScript package manager - required)
+- **Node.js 18+** (for Tauri and Vite)
+- **Rust** (for Tauri build - will be installed automatically if missing)
+- **Ollama** (for local LLM inference)
 
-### Opening the Project
-
-```bash
-cd ios
-open OpenAgents.xcworkspace  # Use workspace (includes SwiftPM packages)
-```
-
-**Important**: Always use `OpenAgents.xcworkspace`, not `OpenAgents.xcodeproj` directly, to ensure SwiftPM packages are loaded.
-
-### Building
-
-#### iOS
+### Setting Up
 
 ```bash
-# Command line (simulator)
-cd ios
-xcodebuild -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk iphonesimulator -configuration Debug
+# Install bun if needed
+curl -fsSL https://bun.sh/install | bash
 
-# Or use Xcode UI: Product > Build (⌘B)
-# Select iOS simulator or device from scheme picker
+# Clone and setup
+cd tauri
+bun install              # Install all dependencies
 ```
 
-#### macOS
+### Running Ollama
 
 ```bash
-# Command line
-cd ios
-xcodebuild -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk macosx -configuration Debug
+# Start Ollama server (required for chat)
+OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" ollama serve
 
-# Or use Xcode UI: Product > Build (⌘B)
-# Select "My Mac" from scheme picker
+# In another terminal, pull the model if needed
+ollama pull glm-4.6:cloud
 ```
 
-### Running
+### Building and Running
 
-- **iOS**: Select an iOS simulator or connected device, then press ⌘R
-- **macOS**: Select "My Mac" scheme, then press ⌘R
-- **TestFlight**: iOS builds available at https://testflight.apple.com/join/dvQdns5B
+#### Development Mode
+
+```bash
+cd tauri
+bun run dev              # Start Vite dev server + Tauri app
+```
+
+This starts the Vite development server and launches the Tauri application. Changes to React code hot-reload automatically.
+
+#### Production Build
+
+```bash
+cd tauri
+bun run build            # Build optimized bundle
+bun run tauri build      # Build native app for your platform
+```
+
+Built applications will be in `src-tauri/target/release/`.
+
+### Type Checking
+
+```bash
+cd tauri
+bun run build            # Runs tsc + vite build
+```
+
+Always run type checking before committing to catch TypeScript errors early.
 
 ### Testing
 
-```bash
-# Run tests in Xcode
-# Product > Test (⌘U)
-
-# Or command line
-cd ios
-xcodebuild test -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk iphonesimulator
-```
-
-Key test suites:
-- `BridgeServerClientTests.swift` - WebSocket bridge integration tests
-- `DesktopWebSocketServerComprehensiveTests.swift` - Server-side bridge tests
-- `MessageClassificationRegressionTests.swift` - ACP message classification
-- `ToolCallViewRenderingIntegrationTests.swift` - UI rendering tests
+Currently no automated tests configured. Test manually by:
+1. Starting the dev server (`bun run dev`)
+2. Testing chat functionality with Ollama
+3. Testing tool execution (e.g., calculator tool)
+4. Verifying ThreadList and conversation history
 
 ## Coding Style & Conventions
 
-### Swift Style
+### TypeScript/React Style
 
-- **Language**: Swift 5.9+ (strict mode)
-- **Formatting**: Follow Swift standard conventions (SwiftFormat/SwiftLint configs if present)
-- **Indentation**: 4 spaces (Xcode default for Swift)
+- **Language**: TypeScript (strict mode enabled)
+- **Formatting**: Prettier with 2-space indentation
+- **Indentation**: 2 spaces for JavaScript/TypeScript/JSX
 - **Fonts**:
-  - All monospace text MUST use Berkeley Mono across iOS and macOS.
-  - SwiftUI: use `OAFonts.mono(...)` (which resolves to Berkeley Mono).
-  - AppKit/UIKit: resolve via `BerkeleyFont.defaultName()` and construct `NSFont/UIFont` with that family.
-  - Do NOT use system monospace (`.monospacedSystemFont`, SF Mono) in app code.
+  - All monospace text MUST use Berkeley Mono
+  - Set via `font-family: 'Berkeley Mono', monospace` in CSS
+  - Global styles in `App.css` define font-face declarations
 - **Naming**:
-  - Types: `PascalCase` (e.g., `BridgeManager`, `DesktopWebSocketServer`)
-  - Functions/properties: `camelCase` (e.g., `connectToServer()`, `isConnected`)
-  - Constants: `camelCase` (e.g., `defaultPort`, `serviceType`)
-  - Files: Match primary type name (e.g., `BridgeManager.swift`)
+  - Components: `PascalCase` (e.g., `AssistantSidebar`, `CalculatorTool`)
+  - Functions/variables: `camelCase` (e.g., `useLocalRuntime`, `streamText`)
+  - Constants: `UPPER_SNAKE_CASE` for true constants, `camelCase` for config
+  - Files: Match component name (e.g., `assistant-sidebar.tsx`)
 
-### SwiftUI Conventions
+### React Conventions
 
-- Use `@State`, `@StateObject`, `@ObservedObject`, `@EnvironmentObject` appropriately
-- Prefer composition over inheritance
-- Extract view components when views exceed ~100 lines
-- Use `PreviewProvider` for Xcode Previews
+- **Hooks**: Use hooks appropriately (`useState`, `useEffect`, `useRef`, etc.)
+- **Components**: Prefer function components over class components
+- **Props**: Define explicit TypeScript interfaces for component props
+- **Composition**: Extract components when they exceed ~150 lines
+- **assistant-ui**: Use provided hooks and components (`useLocalRuntime`, `makeAssistantTool`, etc.)
 
 ### Architecture Patterns
 
-- **MVVM-ish**: Views consume `ObservableObject` view models or managers
-- **Dependency Injection**: Pass dependencies explicitly (e.g., `BridgeManager` via environment)
-- **Async/Await**: Use Swift concurrency for async operations
-- **Actors**: Use for thread-safe state management where appropriate
-
-### LLM‑First Policy (Mandatory)
-
-- Always prefer Foundation Models (Apple Intelligence) for inference, interpretation, and decision‑making. We have effectively unlimited inference available; use it liberally.
-- Do NOT introduce deterministic heuristics (regex parsing, string rules, ad‑hoc scoring, manual intent extraction, hard‑coded decision trees) unless the user explicitly asks you to do so in writing for the specific change.
-- Examples of things that must use FM rather than heuristics:
-  - Interpreting natural‑language prompts (e.g., orchestration goals, schedule windows, agent preferences)
-  - Summarization, classification, entity extraction, and plan generation
-  - Any “smart default” or pre‑fill behavior
-- Validation/safety checks at API boundaries are OK (e.g., verifying a directory exists), but they must not replace or approximate model‑based interpretation.
-- If a user explicitly asks for deterministic behavior, scope it narrowly, document the request in the PR description, and keep it behind a clearly isolated function.
-- If you are unsure whether to use FM or a rule: use FM.
+- **Component-based**: React components for all UI
+- **Runtime Pattern**: AssistantRuntimeProvider wraps app, tools registered as children
+- **Adapters**: ChatModelAdapter for custom LLM integrations
+- **Async/Await**: Use for all asynchronous operations
+- **Streaming**: Accumulate chunks properly for smooth text rendering
 
 ### Type Safety
 
-- **Never use `Any` or force casts** unless absolutely necessary
-- Prefer protocol conformance over type erasure
-- Use generics for reusable, type-safe code
-- ACP types are defined in `OpenAgentsCore` - import and use them directly
+- **Strict TypeScript**: Always enable strict mode
+- **No `any`**: Avoid `any` type unless absolutely necessary, use `unknown` if type is truly unknown
+- **Zod schemas**: Use Zod for runtime validation (tool parameters, API responses)
+- **Type imports**: Use `import type` for type-only imports when possible
 
 ## Build Discipline (Mandatory)
 
 ### Before Committing
 
-1. **Build succeeds**: Press ⌘B in Xcode for both iOS and macOS schemes
-2. **Tests pass**: Press ⌘U to run full test suite
-3. **No warnings**: Fix or suppress warnings appropriately (don't leave them)
-4. **SwiftLint passes**: If configured, ensure no linter errors
+1. **Build succeeds**: Run `bun run build` to ensure TypeScript compiles
+2. **No type errors**: Fix all TypeScript errors before committing
+3. **Test manually**: Verify changes work in development mode
+4. **Ollama running**: Ensure Ollama is running if testing chat functionality
 
 ### Build Breakage Policy
 
 - If you break the build, **fix forward immediately** or revert the breaking change
 - Never leave the main branch in a broken state
-- Run a full build before pushing to shared branches
-- For large changes, test on a clean clone to catch missing files
+- Run `bun run build` before pushing to shared branches
+- For large changes, test on a clean `bun install` to catch missing dependencies
 
 ### Pre‑release Policy
 
-- avoid feature gates/flags and any backwards compability changes - since our app is still unreleased
-
-### iOS/macOS Testing
-
-- **Always test on both platforms** if you touch shared code (`OpenAgentsCore`)
-- Use iOS Simulator for quick iteration
-- Test on real devices periodically (especially for bridge/networking features)
-- macOS app must build and run without errors
+- Avoid feature gates/flags and backwards compatibility changes - app is still unreleased
 
 ## Git Workflow
 
@@ -308,136 +264,98 @@ Key test suites:
 
 ## Architecture Decision Records (ADRs)
 
-This project uses ADRs to document significant architectural decisions.
-
-### Reading ADRs
-
-- **Location**: `docs/adr/`
-- **Current ADRs**:
-  - ADR-0001: Adopt Architectural Decision Records
-  - ADR-0002: Agent Client Protocol (ACP) as Canonical Runtime Contract
-  - ADR-0003: Swift Cross-Platform App (macOS + iOS)
-  - ADR-0004: iOS ↔ Desktop WebSocket Bridge and Pairing
-  - ADR-0005: Adopt Liquid Glass for Apple Platforms
-  - ADR-0006: Use Apple Foundation Models for On-Device Intelligence
-
-### Creating ADRs
-
-Use the provided script for consistency:
-
-```bash
-cd docs/adr
-./new.sh "Your ADR Title Here"
-```
-
-**For AI Agents**: Read `docs/adr/AGENTS.md` before creating or modifying ADRs. It contains important guidelines on tone, voice, and content principles.
-
-### ADR Guidelines
-
-- Focus on **why**, not just what
-- Document alternatives considered and why they were rejected
-- Include consequences (both positive and negative)
-- Be direct and honest about trade-offs
-- Use specific examples from the OpenAgents codebase
-- See `docs/adr/AGENTS.md` for detailed AI agent guidelines
+ADRs are available in `docs/adr/` but most are for the deprecated Swift v0.3 implementation. They may be useful for historical context but do not apply to the current Tauri implementation.
 
 ## Key Technologies
 
-### Liquid Glass
+### Tauri
 
-Apple's new translucent material system for iOS 26+, iPadOS 26+, macOS 15+ (Sequoia).
+Rust-based framework for building native desktop apps with web technologies.
 
-- **Usage**: Structural UI (bars, sidebars, sheets, toolbars, cards)
-- **APIs**: `glassEffect(_:in:)`, `GlassEffectContainer`, `UIGlassEffect`
-- **Fallback**: Standard materials (`Material.regular`, `Material.ultraThin`) on older OS versions
-- **Docs**: `docs/liquid-glass/`
-- **Reference**: ADR-0005
+- **Version**: v2
+- **Benefits**: Small bundle size, native performance, security
+- **Backend**: Rust for system integration
+- **Frontend**: Standard web stack (React, TypeScript, Vite)
 
-### Foundation Models
+### assistant-ui
 
-Apple's on-device language models for local intelligence tasks.
+React library specialized for AI chat interfaces.
 
-- **Usage**: Conversation titles, summaries, tags/classification
-- **APIs**: `SystemLanguageModel`, `LanguageModelSession`, `GenerationOptions`
-- **Availability**: iOS 26+, macOS 15+ with Apple Intelligence enabled
-- **Fallback**: Deterministic local logic when unavailable
-- **Privacy**: All processing on-device, no network calls
-- **Reference**: ADR-0006
+- **Docs**: https://www.assistant-ui.com/
+- **Components**: Thread, ThreadList, AssistantSidebar
+- **Hooks**: useLocalRuntime, useAssistantTool
+- **Tools**: makeAssistantTool for client-side tool definitions
+- **Adapters**: Custom ChatModelAdapter for Ollama integration
 
-### Agent Client Protocol (ACP)
+### Ollama
 
-Open standard for agent communication.
+Local LLM inference server.
 
-- **Implementation**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/`
-- **Message Types**: `SessionUpdate`, `ToolCall`, `ContentBlock`, `ThinkingBlock`
-- **Transport**: JSON over WebSocket
-- **Spec**: https://agentclientprotocol.com/
-- **Reference**: ADR-0002
+- **Model**: glm-4.6:cloud (other models can be used)
+- **API**: REST API compatible with OpenAI format
+- **Integration**: ollama-ai-provider-v2 for Vercel AI SDK compatibility
+- **Performance**: Optimized with OLLAMA_FLASH_ATTENTION and q8_0 quantization
 
 ## Security & Privacy
 
-- **No secrets in code**: Use Xcode's secret management or environment variables
-- **iOS Bundle ID**: `com.openagents.app`
-- **TestFlight**: Managed via App Store Connect
-- **On-device processing**: Foundation Models run entirely on-device
-- **WebSocket security**: LAN-only by default; future: TLS + pairing tokens
+- **No secrets in code**: Use environment variables for API keys and sensitive data
+- **Local-first**: All LLM inference runs locally via Ollama
+- **No telemetry**: No analytics or tracking by default
+- **Tool safety**: Tools run in browser context with standard web security model
 
 ## Common Tasks
 
-### Adding a New SwiftUI View
+### Adding a New Tool
 
-1. Create `MyNewView.swift` in appropriate directory under `ios/OpenAgents/Views/`
-2. Define view conforming to `View` protocol
-3. Add Xcode Preview for development
-4. Import necessary dependencies (e.g., `OpenAgentsCore`)
-5. Build (⌘B) and preview in Xcode Canvas
+1. Create tool file in `src/tools/` (e.g., `my-tool.tsx`)
+2. Use `makeAssistantTool` with:
+   - `toolName`: Unique identifier
+   - `description`: Clear description for LLM
+   - `parameters`: Zod schema for parameters
+   - `execute`: Async function implementing the tool
+3. Import and render tool component in `App.tsx` inside `AssistantRuntimeProvider`
+4. Test by asking the assistant to use the tool
 
-### Adding a New Chat Message Renderer (shared ACP UI)
+Example:
+```typescript
+import { makeAssistantTool } from "@assistant-ui/react";
+import { z } from "zod";
 
-1. Implement a renderer in `ios/OpenAgents/ACP/` using OATheme/OAFonts.
-2. Integrate in the appropriate switch (e.g., message row) with minimal logic.
-3. Add an optional detail sheet for rich/structured content.
-4. Verify on iOS and macOS.
-5. Add a focused unit/integration test if applicable.
-
-Example snippet:
+export const MyTool = makeAssistantTool({
+  toolName: "myTool",
+  description: "What this tool does",
+  parameters: z.object({
+    param: z.string().describe("Parameter description"),
+  }),
+  execute: async ({ param }) => {
+    // Tool logic here
+    return { result: "value" };
+  },
+});
 ```
-// inside a message row switch
-case .custom(let payload):
-    CustomMessageView(payload: payload)
-        .font(OAFonts.mono(.body, 14))
-        .foregroundStyle(OATheme.Colors.textPrimary)
-```
 
-### Accessing Settings or Developer Tools (macOS)
+### Adding a New React Component
 
-- Settings: Toolbar gear or ⌘, (Connection, Workspace, Agents, Orchestration)
-- Developer Tools: Menu Developer → Developer Tools or ⌥⌘D (Database, Nostr, Logs, Diagnostics)
+1. Create component in appropriate directory under `src/components/`
+2. Use TypeScript with proper typing for props
+3. Follow React hooks conventions
+4. Import and use in parent components
+5. Test in development mode
 
-### Modifying Bridge Protocol
+### Modifying Ollama Configuration
 
-1. Update message definitions in `ios/OpenAgentsCore/Sources/OpenAgentsCore/Bridge/BridgeMessages.swift`
-2. Update server/client handlers in `DesktopWebSocketServer.swift` or `MobileWebSocketClient.swift`
-3. Update `docs/ios-bridge/` documentation
-4. Add/update tests in `OpenAgentsCoreTests/`
-5. Consider creating an ADR if it's a significant protocol change
+1. Update model in `App.tsx`: `ollama("model-name")`
+2. Ensure model is pulled: `ollama pull model-name`
+3. Adjust Ollama server flags in run command if needed
+4. Test chat functionality after changes
 
-### Adding Foundation Models Usage
+### Styling Components
 
-1. Check availability: `SystemLanguageModel.default.availability`
-2. Create session with instructions
-3. Implement fallback for unavailable/unsupported devices
-4. Cache results to avoid recomputation
-5. Add logging for diagnostics (development builds)
-6. Reference ADR-0006 for guidelines
-
-### Updating ADRs
-
-1. For new decisions: `cd docs/adr && ./new.sh "Your Title"`
-2. For updates to existing ADRs: Edit the markdown file directly
-3. Change status as appropriate (Proposed → In Review → Accepted)
-4. Update references in related ADRs
-5. Commit with clear message explaining the architectural change
+1. Use Tailwind CSS classes for styling
+2. Respect CSS variables in `App.css` (e.g., `--radius`)
+3. Use Berkeley Mono font for all text
+4. Maintain dark mode theme (zinc-900, zinc-800, etc.)
+5. Keep border radius at 0 for sharp corners
 
 ## Troubleshooting
 

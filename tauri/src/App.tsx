@@ -12,27 +12,60 @@ const ollama = createOllama({
 
 function App() {
   const adapter: ChatModelAdapter = {
-    async *run({ messages, abortSignal }) {
+    async *run({ messages, abortSignal, tools }) {
       const result = streamText({
         model: ollama("glm-4.6:cloud"),
         messages: messages as any,
+        tools: tools as any,
         abortSignal,
       });
 
-      const stream = result.textStream;
+      const stream = result.fullStream;
       let text = "";
 
       for await (const chunk of stream) {
-        text += chunk;
-        yield {
-          content: [{ type: "text", text }],
-        };
-      }
+        switch (chunk.type) {
+          case "text-delta":
+            text += chunk.textDelta;
+            yield {
+              content: [{ type: "text", text }],
+            };
+            break;
 
-      yield {
-        content: [{ type: "text", text }],
-        status: { type: "complete", reason: "stop" } as const,
-      };
+          case "tool-call":
+            yield {
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: chunk.toolCallId,
+                  toolName: chunk.toolName,
+                  args: chunk.args,
+                },
+              ],
+            };
+            break;
+
+          case "tool-result":
+            yield {
+              content: [
+                {
+                  type: "tool-result",
+                  toolCallId: chunk.toolCallId,
+                  toolName: chunk.toolName,
+                  result: chunk.result,
+                },
+              ],
+            };
+            break;
+
+          case "finish":
+            yield {
+              content: text ? [{ type: "text", text }] : [],
+              status: { type: "complete", reason: "stop" } as const,
+            };
+            break;
+        }
+      }
     },
   };
 
