@@ -1,18 +1,32 @@
 import "./App.css"
 import { Thread } from "@/components/assistant-ui/thread"
-import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk"
-import { useChat } from "@ai-sdk/react"
+import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
+import { ollama } from "ollama-ai-provider-v2"
+import { streamText } from "ai"
 
 function App() {
-  const chat = useChat({
-    api: "http://127.0.0.1:11434/v1/chat/completions",
-    body: {
-      model: "qwen2.5:32b",
+  const runtime = useLocalRuntime({
+    adapters: {
+      chatAdapter: {
+        async *run({ messages, abortSignal }) {
+          const result = streamText({
+            model: ollama("qwen2.5:32b"),
+            messages,
+            abortSignal,
+          });
+
+          const stream = result.textStream;
+
+          for await (const chunk of stream) {
+            yield {
+              type: "text-delta",
+              textDelta: chunk,
+            };
+          }
+        },
+      },
     },
   });
-
-  const runtime = useChatRuntime(chat);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
