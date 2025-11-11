@@ -12,12 +12,9 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden fixed inset-0">
-      {/* Custom title bar drag region - keeps traffic lights */}
-      <div data-tauri-drag-region className="h-12 flex-shrink-0 w-full bg-zinc-900" />
-
+    <div className="fixed inset-0 h-screen w-screen bg-zinc-900 text-white flex flex-col overflow-hidden">
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black overflow-hidden">
         <h1 className="text-4xl font-bold mb-8">OpenAgents</h1>
 
         <form
