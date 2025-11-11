@@ -288,7 +288,7 @@ extension DesktopWebSocketServer {
     ) async -> LocalSetupStartResponse {
         let sid = sessionId ?? ACPSessionId(UUID().uuidString)
         guard let updateHub = self.updateHub else {
-            return .init(status: "error", session_id: sid.value, conversation_id: "")
+            return .init(status: "error", session_id: sid.value, conversation_id: "", config_id: nil)
         }
 
         let orchestrator = SetupOrchestrator(
