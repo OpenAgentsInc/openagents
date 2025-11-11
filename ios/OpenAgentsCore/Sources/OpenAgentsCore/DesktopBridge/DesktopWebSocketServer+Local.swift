@@ -282,6 +282,7 @@ extension DesktopWebSocketServer {
         windowEnd: String? = nil,
         preferAgent: String? = nil,
         allowAgents: [String]? = nil,
+        autoFinalize: Bool? = nil,
         sessionId: ACPSessionId? = nil
     ) async -> LocalSetupStartResponse {
         let sid = sessionId ?? ACPSessionId(UUID().uuidString)
@@ -352,7 +353,11 @@ extension DesktopWebSocketServer {
             prefer: preferId,
             allow: allowIds
         )
-        await orchestrator.start()
+        if autoFinalize ?? true {
+            await orchestrator.finalizeImmediately()
+        } else {
+            await orchestrator.start()
+        }
         return .init(status: "started", session_id: sid.value, conversation_id: convId)
     }
 }

@@ -177,6 +177,48 @@ public actor SetupOrchestrator {
         await askNextQuestion()
     }
 
+    // MARK: - Finalize without Q&A
+
+    /// Complete the setup immediately by applying safe product defaults for any
+    /// missing fields and saving the configuration without further questions.
+    /// This does not perform heuristic interpretation; it only fills defaults.
+    public func finalizeImmediately() async {
+        // Ensure workspace is present
+        guard let workspace = draft.workspaceRoot, !workspace.isEmpty else {
+            await sendMessage("❌ Cannot finalize: workspace path is required.")
+            state = .failed
+            await completionHandler(.failure(SetupError.invalid("missing workspace")))
+            return
+        }
+
+        // Default schedule window if missing (1:00 → 5:00, */30)
+        if draft.schedule == nil {
+            draft.schedule = SetupDraft.SchedulePatch(
+                type: "cron",
+                expression: "*/30 1-5 * * *",
+                windowStart: "01:00",
+                windowEnd: "05:00",
+                jitterMs: 300000,
+                onMissed: "catch_up"
+            )
+        }
+
+        // Default constraints if missing (plugged in + Wi‑Fi)
+        if draft.constraints == nil {
+            draft.constraints = SetupDraft.ConstraintsPatch(pluggedIn: true, wifiOnly: true)
+        }
+
+        // Default PR + focus + meta if missing
+        if draft.prAutomation == nil { draft.prAutomation = SetupDraft.PRAutomationPatch(enabled: false, draft: true) }
+        if draft.focus == nil { draft.focus = SetupDraft.FocusPatch(include: ["."], exclude: nil) }
+        if draft.id == nil { draft.id = "default" }
+        if draft.timeBudgetSec == nil { draft.timeBudgetSec = 1800 }
+        if draft.maxConcurrent == nil { draft.maxConcurrent = 2 }
+
+        // Save
+        await saveConfig()
+    }
+
     private func handleGoalsResponse(_ response: String) async {
         // Parse goals from response (comma or newline separated)
         let goalsText = response.trimmingCharacters(in: .whitespacesAndNewlines)
