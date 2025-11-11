@@ -189,7 +189,7 @@ public actor SetupOrchestrator {
         guard let workspace = draft.workspaceRoot, !workspace.isEmpty else {
             await sendMessage("❌ Cannot finalize: workspace path is required.")
             state = .failed
-            await completionHandler(.failure(SetupError.invalid("missing workspace")))
+            await completionHandler(.failure(SetupError.validationFailed(["missing workspace"])))
             return
         }
 
