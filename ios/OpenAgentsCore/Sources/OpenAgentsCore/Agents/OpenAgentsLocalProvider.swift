@@ -55,30 +55,38 @@ public final class OpenAgentsLocalProvider: AgentProvider, @unchecked Sendable {
     private func streamResponse(prompt: String, sessionId: ACPSessionId, updateHub: SessionUpdateHub, context: AgentContext?) async {
         if await isCancelled(sessionId) { return }
 
-        // Use Foundation Models if available, otherwise fall back to local reply
+        // Use Foundation Models
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let wd = context?.workingDirectory?.path
                 try await fmStream(prompt: prompt, sessionId: sessionId, updateHub: updateHub, workspaceRoot: wd, server: context?.server)
                 return
-            } catch { /* fallback below */ }
+            } catch {
+                // Send error message to user
+                let errorMsg = """
+                ❌ Foundation Models error: \(error.localizedDescription)
+
+                This usually happens when:
+                - Apple Intelligence safety guardrails are triggered
+                - The on-device model is unavailable
+
+                Try rephrasing your request or file feedback at feedbackassistant.apple.com
+                """
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: errorMsg)))
+                await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
+                return
+            }
         }
         #endif
 
-        // Deterministic fallback
-        let reply = makeLocalReply(for: prompt)
-        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: reply)))
+        // FM not available on this OS version
+        let errorMsg = "❌ OpenAgents requires macOS 15+ with Apple Intelligence enabled"
+        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: errorMsg)))
         await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
     }
 
     private func isCancelled(_ sessionId: ACPSessionId) async -> Bool { cancelled.contains(sessionId.value) }
-
-    private func makeLocalReply(for prompt: String) -> String {
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "We are OpenAgents. How can we help?" }
-        return "We are OpenAgents. \(trimmed)"
-    }
 }
 
 #if canImport(FoundationModels)
