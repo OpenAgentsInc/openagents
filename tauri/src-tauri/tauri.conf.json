@@ -15,8 +15,7 @@
         "title": "OpenAgents",
         "width": 2000,
         "height": 1200,
-        "center": true,
-        "decorations": false
+        "center": true
       }
     ],
     "security": {
