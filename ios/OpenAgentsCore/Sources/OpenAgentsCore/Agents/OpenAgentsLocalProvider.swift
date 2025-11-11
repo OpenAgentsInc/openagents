@@ -169,10 +169,49 @@ extension OpenAgentsLocalProvider {
         }
 
         func call(arguments a: Arguments) async throws -> Output {
-            // For now, just acknowledge the call - we'll wire up delegation next
-            let provider = a.provider ?? "codex"
-            let desc = a.description ?? "delegation"
-            return "delegate.run called: provider=\(provider) desc=\(desc) prompt=\(a.user_prompt.prefix(50))"
+            let providerName = a.provider ?? "codex"
+            let modeId: ACPSessionModeId = (providerName.lowercased() == "claude_code" || providerName.lowercased() == "claude-code") ? .claude_code : .codex
+
+            guard let server = self.server else {
+                return "❌ Server not available for delegation"
+            }
+
+            let updateHub = self.updateHub  // Not optional
+
+            // Emit a tool call update to the UI showing delegation is happening
+            let toolCallWire = ACPToolCallWire(
+                call_id: UUID().uuidString,
+                name: modeId == .codex ? "codex.run" : "claude_code.run",
+                arguments: [
+                    "user_prompt": AnyEncodable(a.user_prompt),
+                    "provider": AnyEncodable(providerName)
+                ]
+            )
+            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCallWire))
+
+            // Use the SAME sessionId so responses appear in the current conversation
+            // Switch the mode for this session to the delegated provider
+            await server.localSessionSetMode(sessionId: sessionId, mode: modeId)
+
+            // Send the prompt to the delegated provider in the current session
+            let contentBlock = ACP.Client.ContentBlock.text(.init(text: a.user_prompt))
+            let promptRequest = ACP.Agent.SessionPromptRequest(
+                session_id: sessionId,
+                content: [contentBlock]
+            )
+
+            // Start the delegation in the background (don't await - let it stream naturally)
+            Task {
+                do {
+                    try await server.localSessionPrompt(request: promptRequest)
+                } catch {
+                    let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Delegation error: \(error.localizedDescription)")))
+                    await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
+                }
+            }
+
+            // Return acknowledgment to Foundation Models
+            return "✓ Delegated to \(providerName). Task: \(a.user_prompt)"
         }
 
         // Static method for composing delegation prompts (used by tests)
