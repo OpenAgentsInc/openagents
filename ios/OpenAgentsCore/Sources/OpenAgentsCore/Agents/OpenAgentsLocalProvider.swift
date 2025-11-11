@@ -97,31 +97,11 @@ extension OpenAgentsLocalProvider {
         You are OpenAgents, a helpful assistant that can delegate coding tasks to specialized agents.
 
         You can respond conversationally to questions about yourself and your capabilities.
-        You also have a tool called delegate.run that routes tasks to Codex or Claude Code.
 
-        USE delegate.run when:
-        - User wants to work with code/files (list, read, write, search, analyze)
-        - User explicitly mentions "codex", "claude code", or "delegate"
-        - User wants help with a coding task
+        When the user wants to work with code/files (list, read, write, search, analyze, refactor, etc.),
+        use the delegate.run tool to route the task to Codex or Claude Code.
 
-        RESPOND CONVERSATIONALLY when:
-        - User asks who you are or what you can do
-        - User greets you or chats casually
-        - User asks general questions not requiring code work
-
-        Examples:
-
-        User: who are you
-        You: I'm OpenAgents, an assistant that helps with coding tasks. I can delegate work to Codex or Claude Code when you need help with code.
-
-        User: what can you do
-        You: I can help with coding tasks by delegating to specialized agents like Codex and Claude Code. Just tell me what you'd like to work on.
-
-        User: list files in the project
-        You: (call delegate.run with user_prompt="list files in the project")
-
-        User: delegate to codex: refactor auth module
-        You: (call delegate.run with provider="codex", user_prompt="refactor auth module")
+        For general conversation, introductions, or capability questions, respond conversationally.
         """)
         // Register delegate tool for routing to external agents
         var tools: [any Tool] = []
@@ -164,7 +144,7 @@ extension OpenAgentsLocalProvider {
     // MARK: - FM Tool: delegate.run
     struct FMTool_DelegateRun: Tool {
         let name = "delegate.run"
-        let description = "Delegate a coding task to Codex or Claude Code."
+        let description = "Route a coding task to specialized agents (Codex or Claude Code) for execution. Use this for any file operations, code analysis, refactoring, or workspace exploration."
 
         // Stored properties for dependencies (Pattern B from FMTools.swift)
         private let sessionId: ACPSessionId
@@ -183,9 +163,9 @@ extension OpenAgentsLocalProvider {
 
         @Generable
         struct Arguments {
-            @Guide(description: "The task to delegate") var user_prompt: String
-            @Guide(description: "Provider: codex or claude_code") var provider: String?
-            @Guide(description: "Brief description of delegation") var description: String?
+            @Guide(description: "The specific coding task to perform (e.g., 'list files', 'refactor auth module')") var user_prompt: String
+            @Guide(description: "Which agent to use: 'codex' or 'claude_code' (default: codex)") var provider: String?
+            @Guide(description: "Optional brief description of the delegation") var description: String?
         }
 
         func call(arguments a: Arguments) async throws -> Output {

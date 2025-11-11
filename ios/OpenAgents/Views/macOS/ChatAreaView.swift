@@ -109,7 +109,6 @@ private struct ChatUpdateRow: View {
                     bubble(text: text, isUser: true)
                     CopyMarkdownRow(markdown: text, alignRight: true, visible: hovering)
                 }
-                .onHover { hovering = $0 }
             case .agentMessageChunk(let chunk):
                 let text = extractText(from: chunk)
                 VStack(alignment: .leading, spacing: 6) {
@@ -117,7 +116,6 @@ private struct ChatUpdateRow: View {
                         .modifier(FadeInOnAppear(duration: 0.10))
                     CopyMarkdownRow(markdown: text, alignRight: false, visible: hovering)
                 }
-                .onHover { hovering = $0 }
             case .agentThoughtChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: false, italic: true, secondary: true)
             case .plan(let plan):
@@ -155,6 +153,11 @@ private struct ChatUpdateRow: View {
                 }
             }
         }
+        // Expand the row to the full column width so hover covers the whole component,
+        // not just the bubble, keeping the copy button visible while moving to it.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
     }
 
     private func bubble(text: String, isUser: Bool, italic: Bool = false, secondary: Bool = false) -> some View {
@@ -194,9 +197,19 @@ private struct ChatUpdateRow: View {
     }
 
     private func markdownText(_ text: String) -> Text {
-        // Render full markdown including block-level elements (paragraphs, lists, code blocks)
-        // to properly preserve spacing and structure from agents
-        let options: AttributedString.MarkdownParsingOptions = .init(interpretedSyntax: .full)
+        // Use .inlineOnlyPreservingWhitespace to render inline markdown (bold, italic, code)
+        // while preserving ALL whitespace including single newlines.
+        //
+        // IMPORTANT: .full mode follows standard markdown rules where single newlines
+        // are treated as spaces (hard wrapping). Foundation Models generates text with
+        // single newlines between sentences/paragraphs, so we need to preserve those.
+        let options: AttributedString.MarkdownParsingOptions
+        if #available(macOS 14.0, *) {
+            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        } else {
+            options = .init(interpretedSyntax: .inlineOnly)
+        }
+
         if let md = try? AttributedString(markdown: text, options: options) {
             return Text(md)
         }
@@ -279,14 +292,18 @@ private struct CopyMarkdownRow: View {
             Button(action: copy) {
                 Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 13, weight: .semibold))
+                    // During feedback, keep the icon white regardless of theme.
+                    .foregroundStyle(didCopy ? OATheme.Colors.textPrimary : OATheme.Colors.textSecondary)
             }
             .buttonStyle(.plain)
             .help(didCopy ? "Copied" : "Copy as Markdown")
             if !alignRight { Spacer(minLength: 0) }
         }
-        .opacity(visible ? 1 : 0)
-        .frame(height: visible ? nil : 0)
-        .foregroundStyle(didCopy ? OATheme.Colors.accent : OATheme.Colors.textSecondary)
+        // Keep space reserved to avoid layout shifting; only hide visually.
+        // Also, keep the row visible while showing the copy confirmation (didCopy).
+        .opacity((visible || didCopy) ? 1 : 0)
+        .allowsHitTesting(visible)
+        .foregroundStyle(OATheme.Colors.textSecondary)
         .padding(.top, 2)
     }
 
