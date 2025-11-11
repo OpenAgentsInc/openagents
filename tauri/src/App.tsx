@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Button } from "@/components/ui/button";
 import "./App.css";
 
 function App() {
@@ -32,12 +33,9 @@ function App() {
             placeholder="Enter a name..."
             className="px-4 py-2 bg-zinc-900 text-white border border-zinc-700 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
           />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-white text-black rounded-md hover:bg-zinc-200 transition-colors"
-          >
+          <Button type="submit">
             Greet
-          </button>
+          </Button>
         </form>
 
         {greetMsg && (
