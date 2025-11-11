@@ -33,7 +33,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   };
 
   return (
-    <div className="aui-code-header-root mt-4 flex items-center justify-between gap-4 rounded-t-lg bg-muted-foreground/15 px-4 py-2 text-sm font-semibold text-foreground dark:bg-muted-foreground/20">
+    <div className="aui-code-header-root mt-4 flex items-center justify-between gap-4 rounded-t-[var(--radius-lg)] bg-muted-foreground/15 px-4 py-2 text-sm font-semibold text-foreground dark:bg-muted-foreground/20">
       <span className="aui-code-header-language lowercase [&>span]:text-xs">
         {language}
       </span>
@@ -170,7 +170,7 @@ const defaultComponents = memoizeMarkdownComponents({
   th: ({ className, ...props }) => (
     <th
       className={cn(
-        "aui-md-th bg-muted px-4 py-2 text-left font-bold first:rounded-tl-lg last:rounded-tr-lg [&[align=center]]:text-center [&[align=right]]:text-right",
+        "aui-md-th bg-muted px-4 py-2 text-left font-bold first:rounded-tl-[var(--radius-lg)] last:rounded-tr-[var(--radius-lg)] [&[align=center]]:text-center [&[align=right]]:text-right",
         className,
       )}
       {...props}
@@ -188,7 +188,7 @@ const defaultComponents = memoizeMarkdownComponents({
   tr: ({ className, ...props }) => (
     <tr
       className={cn(
-        "aui-md-tr m-0 border-b p-0 first:border-t [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg",
+        "aui-md-tr m-0 border-b p-0 first:border-t [&:last-child>td:first-child]:rounded-bl-[var(--radius-lg)] [&:last-child>td:last-child]:rounded-br-[var(--radius-lg)]",
         className,
       )}
       {...props}
@@ -203,7 +203,7 @@ const defaultComponents = memoizeMarkdownComponents({
   pre: ({ className, ...props }) => (
     <pre
       className={cn(
-        "aui-md-pre overflow-x-auto !rounded-t-none rounded-b-lg bg-black p-4 text-white",
+        "aui-md-pre overflow-x-auto !rounded-t-none rounded-b-[var(--radius-lg)] bg-black p-4 text-white",
         className,
       )}
       {...props}

@@ -23,7 +23,7 @@ const ThreadListNew: FC = () => {
   return (
     <ThreadListPrimitive.New asChild>
       <Button
-        className="aui-thread-list-new flex items-center justify-start gap-1 rounded-lg px-2.5 py-2 text-start hover:bg-muted data-active:bg-muted"
+        className="aui-thread-list-new flex items-center justify-start gap-1 rounded-[var(--radius-lg)] px-2.5 py-2 text-start hover:bg-muted data-active:bg-muted"
         variant="ghost"
       >
         <PlusIcon />
@@ -52,7 +52,7 @@ const ThreadListSkeleton: FC = () => {
           role="status"
           aria-label="Loading threads"
           aria-live="polite"
-          className="aui-thread-list-skeleton-wrapper flex items-center gap-2 rounded-md px-3 py-2"
+          className="aui-thread-list-skeleton-wrapper flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-2"
         >
           <Skeleton className="aui-thread-list-skeleton h-[22px] flex-grow" />
         </div>
@@ -63,7 +63,7 @@ const ThreadListSkeleton: FC = () => {
 
 const ThreadListItem: FC = () => {
   return (
-    <ThreadListItemPrimitive.Root className="aui-thread-list-item flex items-center gap-2 rounded-lg transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted">
+    <ThreadListItemPrimitive.Root className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted">
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
         <ThreadListItemTitle />
       </ThreadListItemPrimitive.Trigger>
