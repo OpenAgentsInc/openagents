@@ -90,6 +90,8 @@ public class DesktopWebSocketServer {
     let agentRegistry = AgentRegistry()
     /// Preferred default mode for new sessions (auto-selected if client doesn't choose)
     var preferredDefaultMode: ACPSessionModeId = .default_mode
+    /// Session mapping for delegations (sub-sessionId → parent-sessionId)
+    private var sessionMapping: [String: String] = [:]
 
     // MARK: - Local app broadcast (Combine)
     private let broadcastSubject = PassthroughSubject<(method: String, payload: Data), Never>()
@@ -638,14 +640,35 @@ public class DesktopWebSocketServer {
 
     // moved to DesktopWebSocketServer+Orchestration.swift: runOrchestration
 
+    /// Register a sub-session to forward its updates to a parent session
+    public func registerSessionMapping(subSessionId: ACPSessionId, parentSessionId: ACPSessionId) {
+        sessionMapping[subSessionId.value] = parentSessionId.value
+        OpenAgentsLog.bridgeServer.debug("Registered session mapping: \(subSessionId.value) → \(parentSessionId.value)")
+    }
+
+    /// Unregister a sub-session mapping
+    public func unregisterSessionMapping(subSessionId: ACPSessionId) {
+        sessionMapping.removeValue(forKey: subSessionId.value)
+        OpenAgentsLog.bridgeServer.debug("Unregistered session mapping for: \(subSessionId.value)")
+    }
+
     /// Send session update via WebSocket (delegates to SessionUpdateHub)
     func sendSessionUpdate(
         sessionId: ACPSessionId,
         update: ACP.Client.SessionUpdate
     ) async {
+        // Check if this sub-session should forward to a parent session
+        let targetSessionId: ACPSessionId
+        if let parentId = sessionMapping[sessionId.value] {
+            targetSessionId = ACPSessionId(parentId)
+            OpenAgentsLog.bridgeServer.debug("Forwarding update from sub-session \(sessionId.value) to parent \(parentId)")
+        } else {
+            targetSessionId = sessionId
+        }
+
         // Delegate to SessionUpdateHub if available
         if let hub = updateHub {
-            await hub.sendSessionUpdate(sessionId: sessionId, update: update)
+            await hub.sendSessionUpdate(sessionId: targetSessionId, update: update)
         } else {
             // Fallback: direct broadcast without persistence (for tests or if hub not initialized)
             let notification = ACP.Client.SessionNotificationWire(
