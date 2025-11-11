@@ -25,7 +25,7 @@ public enum FMToolsRegistry {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_SessionList: Tool {
-    let name = "session.list"
+    let name = ToolName.sessionList.rawValue
     let description = "List recent conversation sessions from Claude Code and/or Codex (bounded)."
     typealias Output = String
 
@@ -47,7 +47,7 @@ struct FMTool_SessionList: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_SessionSearch: Tool {
-    let name = "session.search"
+    let name = ToolName.sessionSearch.rawValue
     let description = "Search session history for a regex pattern with limited context (bounded)."
     typealias Output = String
 
@@ -64,7 +64,7 @@ struct FMTool_SessionSearch: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_SessionRead: Tool {
-    let name = "session.read"
+    let name = ToolName.sessionRead.rawValue
     let description = "Read a bounded slice of a session and extract event summaries + file references."
     typealias Output = String
 
@@ -81,7 +81,7 @@ struct FMTool_SessionRead: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_SessionAnalyze: Tool {
-    let name = "session.analyze"
+    let name = ToolName.sessionAnalyze.rawValue
     let description = "Aggregate insights across sessions: file frequency, tool usage, goals, avg length (bounded)."
     typealias Output = String
 
@@ -100,7 +100,7 @@ struct FMTool_SessionAnalyze: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_ReadSpan: Tool {
-    let name = "content.get_span"
+    let name = ToolName.contentGetSpan.rawValue
     let description = "Read a small span from a file in the workspace (bounded)."
     private let workspaceRoot: String
     init(workspaceRoot: String) { self.workspaceRoot = workspaceRoot }
@@ -120,7 +120,7 @@ struct FMTool_ReadSpan: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_Grep: Tool {
-    let name = "code.grep"
+    let name = ToolName.codeGrep.rawValue
     let description = "Search files in the workspace for a pattern (bounded)."
     private let workspaceRoot: String
     init(workspaceRoot: String) { self.workspaceRoot = workspaceRoot }
@@ -139,7 +139,7 @@ struct FMTool_Grep: Tool {
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FMTool_ListDir: Tool {
-    let name = "fs.list_dir"
+    let name = ToolName.fsListDir.rawValue
     let description = "List directory contents (non-recursive)."
     private let workspaceRoot: String
     init(workspaceRoot: String) { self.workspaceRoot = workspaceRoot }
