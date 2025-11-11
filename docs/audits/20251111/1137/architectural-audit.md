@@ -190,11 +190,11 @@ OpenAgentsCore/Sources/OpenAgentsCore/ (50,000+ LOC business logic)
 │   ├── TaskQueue.swift                 SQLite queue (344 LOC, actor)
 │   ├── OrchestrationConfig.swift       Config schema (441 LOC ⚠️)
 │   ├── OrchestrationTypes.swift        Tool result types (478 LOC ⚠️)
-│   ├── SchedulerService.swift          Cron scheduler (10,797 LOC ❌ MASSIVE)
+│   ├── SchedulerService.swift          Cron scheduler (306 LOC)
 │   ├── FMOrchestrator.swift            Native FM tool calling (76 LOC)
 │   ├── ExploreOrchestrator.swift       Workspace exploration
 │   ├── SetupOrchestrator.swift         Conversational config
-│   ├── SessionTools.swift              Session tools (19,790 LOC ❌ MASSIVE)
+│   ├── SessionTools.swift              Session tools (446 LOC)
 │   ├── ContentSpanTool.swift           File reading
 │   ├── GrepTool.swift                  Code search
 │   ├── WorkspaceScanner.swift          Workspace analysis
@@ -240,8 +240,7 @@ OpenAgentsCore/Sources/OpenAgentsCore/ (50,000+ LOC business logic)
 - ✅ Excellent separation of concerns across modules
 - ✅ Actor-based concurrency for thread safety (Registry, Coordinator, TaskQueue, Hub)
 - ✅ Protocol-oriented design (AgentProvider, EmbeddingProvider, JSONRPCSending)
-- ❌ **CRITICAL:** `SessionTools.swift` at **19,790 LOC** is 20% of the entire codebase
-- ❌ **CRITICAL:** `SchedulerService.swift` at **10,797 LOC** is 10% of the entire codebase
+- ✅ Well-sized orchestration files: `SessionTools.swift` (446 LOC), `SchedulerService.swift` (306 LOC)
 - ⚠️ `DesktopWebSocketServer.swift` at 880 LOC (already split via extensions, but still dense)
 - ⚠️ `AgentCoordinator.swift` (522 LOC), `DecisionEngine.swift` (425 LOC), `OrchestrationConfig.swift` (441 LOC) all approaching 500 LOC threshold
 
@@ -329,55 +328,9 @@ OpenAgentsCore/Sources/OpenAgentsCore/ (50,000+ LOC business logic)
 
 ## Code Organization Smells
 
-### Critical Issues (Immediate Attention Required)
-
-#### 1. SessionTools.swift - 19,790 LOC ❌
-**Location:** `OpenAgentsCore/Orchestration/SessionTools.swift`
-**Problem:** Implements 4 separate tools (session.list, session.search, session.read, session.analyze) in a single monolithic file. This is **20% of the entire codebase.**
-
-**Impact:**
-- ❌ Impossible to navigate or understand
-- ❌ High merge conflict probability
-- ❌ Poor compile times (changes recompile entire file)
-- ❌ Violates Single Responsibility Principle
-
-**Recommended Fix:**
-```
-OpenAgentsCore/Orchestration/
-└── SessionTools/
-    ├── SessionListTool.swift          # session.list implementation
-    ├── SessionSearchTool.swift        # session.search implementation
-    ├── SessionReadTool.swift          # session.read implementation
-    ├── SessionAnalyzeTool.swift       # session.analyze implementation
-    └── SessionToolsRegistry.swift     # Registration logic
-```
-
-**Priority:** 🔥 **CRITICAL** - Split before adding any new session tools
-
-#### 2. SchedulerService.swift - 10,797 LOC ❌
-**Location:** `OpenAgentsCore/Orchestration/SchedulerService.swift`
-**Problem:** Combines cron parsing, constraint checking, scheduler loop, and time window logic in a single file. This is **10% of the entire codebase.**
-
-**Impact:**
-- ❌ Hard to test individual concerns
-- ❌ Cron parsing mixed with scheduling logic
-- ❌ Constraint checking buried in scheduler
-
-**Recommended Fix:**
-```
-OpenAgentsCore/Orchestration/Scheduler/
-├── CronParser.swift                   # Parse cron expressions
-├── ConstraintChecker.swift            # Power, network, time window checks
-├── SchedulerService.swift             # Core scheduler loop (< 500 LOC)
-├── TimeWindowEvaluator.swift          # Time window logic
-└── SchedulerTypes.swift               # Shared types
-```
-
-**Priority:** 🔥 **CRITICAL** - Split before adding constraint types
-
 ### High-Priority Issues (Address Soon)
 
-#### 3. ChatAreaView.swift - 672 LOC ⚠️
+#### 1. ChatAreaView.swift - 672 LOC ⚠️
 **Location:** `ios/OpenAgents/Views/macOS/ChatAreaView.swift`
 **Problem:** Monolithic chat rendering logic. Growing toward "God View."
 
@@ -394,7 +347,7 @@ Views/macOS/Chat/
 
 **Priority:** 🟡 **HIGH** - Extract before adding more message types
 
-#### 4. BridgeManager - Tight Coupling ⚠️
+#### 2. BridgeManager - Tight Coupling ⚠️
 **Location:** `ios/OpenAgents/Bridge/BridgeManager.swift`
 **Problem:** Knows about `PromptDispatcher`, `TimelineStore`, `ConnectionManager`. Growing coordinator responsibilities.
 
@@ -405,7 +358,7 @@ Views/macOS/Chat/
 
 **Priority:** 🟡 **HIGH** - Refactor before adding more manager responsibilities
 
-#### 5. Platform-Specific Code Scattered ⚠️
+#### 3. Platform-Specific Code Scattered ⚠️
 **Problem:** `#if os(macOS)` guards throughout `OpenAgentsCore`
 
 **Examples:**
@@ -422,7 +375,7 @@ Views/macOS/Chat/
 
 ### Medium-Priority Issues
 
-#### 6. Large Orchestration Files ⚠️
+#### 4. Large Orchestration Files ⚠️
 - `AgentCoordinator.swift` - 522 LOC
 - `DecisionEngine.swift` - 425 LOC
 - `OrchestrationConfig.swift` - 441 LOC
@@ -436,7 +389,7 @@ Views/macOS/Chat/
 
 **Priority:** 🟢 **MEDIUM** - Monitor, split if they grow further
 
-#### 7. DesktopWebSocketServer - 880 LOC ⚠️
+#### 5. DesktopWebSocketServer - 880 LOC ⚠️
 **Location:** `OpenAgentsCore/DesktopBridge/DesktopWebSocketServer.swift`
 **Problem:** Already split via extensions, but main file is still dense.
 
@@ -609,16 +562,15 @@ Views → ViewModels → BridgeManager → DesktopWebSocketServer → AgentRegis
 ## Performance Considerations
 
 ### Current Bottlenecks
-- ⚠️ **SessionTools.swift compilation** - 19,790 LOC file impacts build times
-- ⚠️ **SchedulerService.swift compilation** - 10,797 LOC file impacts build times
 - ⚠️ **No pagination in history** - Loading all sessions could be slow for long-term users
 - ⚠️ **No incremental embedding** - Re-embeds all content on each search
+- ⚠️ **Large view files** - `ChatAreaView.swift` (672 LOC) could slow SwiftUI previews
 
 ### Recommended Optimizations
-1. **Split large files** - Reduce compilation time (SessionTools, SchedulerService)
-2. **Paginate history** - Load sessions in batches (e.g., 50 at a time)
-3. **Cache embeddings** - Store embeddings in Tinyvex, only embed new content
-4. **Background processing** - Move heavy tasks (summarization, embedding) to background threads
+1. **Paginate history** - Load sessions in batches (e.g., 50 at a time)
+2. **Cache embeddings** - Store embeddings in Tinyvex, only embed new content
+3. **Background processing** - Move heavy tasks (summarization, embedding) to background threads
+4. **Extract large views** - Split `ChatAreaView` to improve preview compilation
 
 ## Security Considerations
 
@@ -655,24 +607,23 @@ Views → ViewModels → BridgeManager → DesktopWebSocketServer → AgentRegis
 - ✅ Good test coverage for core modules
 - ✅ Protocol-oriented design for extensibility
 
-**Critical Issues Requiring Immediate Attention:**
-1. 🔥 **Split SessionTools.swift** (19,790 LOC → 4 files)
-2. 🔥 **Split SchedulerService.swift** (10,797 LOC → 5 files)
-3. 🔥 **Build plugin system** (PluginRegistry, PluginManifest, PluginLoader)
-4. 🔥 **Build payment system** (BillingService, PaymentProvider, UsageTracker)
-5. 🔥 **Build marketplace** (MarketplaceClient, AgentPackage, PackageInstaller)
+**Critical Infrastructure Gaps (For 10 Features):**
+1. 🔥 **Build plugin system** (PluginRegistry, PluginManifest, PluginLoader, MCP integration)
+2. 🔥 **Build payment system** (BillingService, PaymentProvider, UsageTracker, RevenueSplitter)
+3. 🔥 **Build marketplace** (MarketplaceClient, AgentPackage, PackageInstaller, reputation)
+4. 🔥 **Add workspace memory** (WorkspaceKnowledgeGraph, conventions, goals)
+5. 🔥 **Enhance history** (Semantic search, NL queries, cross-workspace)
 
-**High-Priority Enhancements:**
-1. 🟡 **Workspace memory** (WorkspaceKnowledgeGraph, WorkspaceSummarizer)
-2. 🟡 **Smart history recall** (SemanticHistorySearch, NL queries)
-3. 🟡 **Extract ChatAreaView** (672 LOC → 5 files)
-4. 🟡 **Decouple BridgeManager** (reduce dependencies)
+**Code Quality Improvements:**
+1. 🟡 **Extract ChatAreaView** (672 LOC → message row components)
+2. 🟡 **Decouple BridgeManager** (reduce dependencies, introduce coordinator protocol)
+3. 🟡 **Add PR automation** (GitOperations, PRService, GitHub/GitLab clients)
 
 **Medium-Priority Polish:**
-1. 🟢 **Orchestration audit log** (persist cycle history)
-2. 🟢 **Delegation UI** (show sub-agent hierarchy)
-3. 🟢 **PR automation** (GitOperations, PRService)
-4. 🟢 **Inference routing UI** (configure FM vs cloud preferences)
+1. 🟢 **Orchestration audit log** (persist cycle history to Tinyvex)
+2. 🟢 **Delegation UI** (show sub-agent hierarchy in timeline)
+3. 🟢 **Inference routing UI** (configure FM vs cloud preferences in Settings)
+4. 🟢 **Enhanced test coverage** (Settings views, Nostr, Embeddings)
 
 ### Next Steps
 
@@ -685,7 +636,7 @@ See companion audit documents:
 ---
 
 **Audit completed:** November 11, 2025
-**Codebase size:** ~54,000 LOC Swift
+**Codebase size:** ~25,000 LOC Swift (app + core)
 **Test coverage:** ~70% (core modules)
 **Build time:** ~30 seconds clean build (Xcode 16)
 **Platform support:** iOS 16.0+, macOS 13.0+
