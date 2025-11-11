@@ -214,11 +214,16 @@ extension OpenAgentsLocalProvider {
                     // After delegation completes, switch back to orchestrator mode
                     // so the next user message goes to Foundation Models, not the delegated agent
                     await server.localSessionSetMode(sessionId: sessionId, mode: .default_mode)
+
+                    // Clear the handle so next delegation starts fresh (prevent thread reuse)
+                    print("[FM] Clearing agent handle for session \(sessionId.value) to ensure next delegation starts fresh")
+                    await server.agentRegistry.removeHandle(for: sessionId)
                 } catch {
                     let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Delegation error: \(error.localizedDescription)")))
                     await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
-                    // Even on error, switch back to orchestrator
+                    // Even on error, switch back to orchestrator and clear handle
                     await server.localSessionSetMode(sessionId: sessionId, mode: .default_mode)
+                    await server.agentRegistry.removeHandle(for: sessionId)
                 }
             }
 
