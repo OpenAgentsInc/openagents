@@ -1,41 +1,27 @@
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CopyIcon,
-  PencilIcon,
-  RefreshCwIcon,
-  Square,
-} from "lucide-react";
-
+    ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon,
+    CopyIcon, PencilIcon, RefreshCwIcon, Square
+} from "lucide-react"
+import { domAnimation, LazyMotion, MotionConfig } from "motion/react"
+import * as m from "motion/react-m"
+import { useEffect, useRef } from "react"
 import {
-  ActionBarPrimitive,
-  BranchPickerPrimitive,
-  ComposerPrimitive,
-  ErrorPrimitive,
-  MessagePrimitive,
-  ThreadPrimitive,
-} from "@assistant-ui/react";
+    ComposerAddAttachment, ComposerAttachments, UserMessageAttachments
+} from "@/components/assistant-ui/attachment"
+import { MarkdownText } from "@/components/assistant-ui/markdown-text"
+import { ToolFallback } from "@/components/assistant-ui/tool-fallback"
+import {
+    TooltipIconButton
+} from "@/components/assistant-ui/tooltip-icon-button"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import {
+    ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
+    ErrorPrimitive, MessagePrimitive, ThreadPrimitive
+} from "@assistant-ui/react"
 
 import type { FC } from "react";
-import { useEffect, useRef } from "react";
-import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
-import * as m from "motion/react-m";
-
-import { Button } from "@/components/ui/button";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import {
-  ComposerAddAttachment,
-  ComposerAttachments,
-  UserMessageAttachments,
-} from "@/components/assistant-ui/attachment";
-
-import { cn } from "@/lib/utils";
-
+import { useAcpStore } from "@/lib/acp-store";
 export const Thread: FC = () => {
   return (
     <LazyMotion features={domAnimation}>
@@ -47,6 +33,7 @@ export const Thread: FC = () => {
           }}
         >
           <ThreadPrimitive.Viewport className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4">
+            <LiveAcpMessage />
             <ThreadPrimitive.If empty>
               <ThreadWelcome />
             </ThreadPrimitive.If>
@@ -68,6 +55,23 @@ export const Thread: FC = () => {
         </ThreadPrimitive.Root>
       </MotionConfig>
     </LazyMotion>
+  );
+};
+
+const LiveAcpMessage: FC = () => {
+  const live = useAcpStore((s) => s.liveText);
+  const streaming = useAcpStore((s) => s.isStreaming);
+  if (!live && !streaming) return null;
+  return (
+    <div className="relative mx-auto w-full max-w-[var(--thread-max-width)] py-4">
+      <div className="mx-2 rounded-[var(--radius-xl)] border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-100">
+        <div className="mb-1 flex items-center gap-2 text-xs text-zinc-400">
+          <div className="size-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
+          <span>{streaming ? "Assistant is responding…" : "Assistant output"}</span>
+        </div>
+        <div className="whitespace-pre-wrap break-words text-sm text-zinc-100">{live}</div>
+      </div>
+    </div>
   );
 };
 
@@ -119,25 +123,25 @@ const ThreadSuggestions: FC = () => {
     <div className="aui-thread-welcome-suggestions grid w-full gap-2 pb-4 @md:grid-cols-2">
       {[
         {
-          title: "What's the weather",
-          label: "in San Francisco?",
-          action: "What's the weather in San Francisco?",
+          title: "Audit my codebase",
+          label: "and suggest a refactor",
+          action: "Audit my codebase and suggest a refactor",
         },
         {
-          title: "Explain React hooks",
-          label: "like useState and useEffect",
-          action: "Explain React hooks like useState and useEffect",
+          title: "Review recent git commits",
+          label: "and summarize",
+          action: "Review recent git commits and summarize",
         },
-        {
-          title: "Write a SQL query",
-          label: "to find top customers",
-          action: "Write a SQL query to find top customers",
-        },
-        {
-          title: "Create a meal plan",
-          label: "for healthy weight loss",
-          action: "Create a meal plan for healthy weight loss",
-        },
+        // {
+        //   title: "Write a SQL query",
+        //   label: "to find top customers",
+        //   action: "Write a SQL query to find top customers",
+        // },
+        // {
+        //   title: "Create a meal plan",
+        //   label: "for healthy weight loss",
+        //   action: "Create a meal plan for healthy weight loss",
+        // },
       ].map((suggestedAction, index) => (
         <m.div
           initial={{ opacity: 0, y: 20 }}

@@ -2,20 +2,38 @@ import { Thread } from "@/components/assistant-ui/thread"
 import { ThreadList } from "@/components/assistant-ui/thread-list"
 import { Button } from "@/components/ui/button"
 import { useCallback, useState } from "react"
-import { createSession, sendPrompt, getSession } from "@/lib/tauri-acp"
+import { createSession, sendPrompt, getSession, resolveAcpAgentPath } from "@/lib/tauri-acp"
+import { useAcpStore } from "@/lib/acp-store"
 
 export function AssistantSidebar() {
   const [testing, setTesting] = useState(false)
   const [lastStatus, setLastStatus] = useState<string>("")
+  const startListening = useAcpStore((s) => s.startListening)
+  const setActiveSession = useAcpStore((s) => s.setActiveSession)
+  const liveText = useAcpStore((s) => s.liveText)
+  const isStreaming = useAcpStore((s) => s.isStreaming)
 
   const handleTestACP = useCallback(async () => {
     try {
       setTesting(true)
-      setLastStatus("Spawning agent…")
+      setLastStatus("Checking ACP agent…")
+
+      // Preflight: resolve codex-acp path for clearer errors
+      try {
+        const path = await resolveAcpAgentPath()
+        setLastStatus(`ACP: ${path}\nSpawning agent…`)
+      } catch (e) {
+        setLastStatus(String(e))
+        return
+      }
 
       // Use ACP agent (codex-acp preferred; see backend resolution)
       const sessionId = await createSession("codex")
       setLastStatus(`Session: ${sessionId}`)
+
+      // Begin streaming subscription for this session
+      await startListening(sessionId)
+      setActiveSession(sessionId)
 
       await sendPrompt(sessionId, "Hello from OpenAgents Tauri (Phase 1 test)")
       setLastStatus("Prompt sent. Fetching session…")
@@ -23,7 +41,13 @@ export function AssistantSidebar() {
       const s = await getSession(sessionId)
       console.log("ACP getSession:", s)
       const last = s.messages?.[s.messages.length - 1]
-      setLastStatus(last ? `Last message role=${last.role}` : "No messages yet")
+      if (last && last.content?.[0]?.type === "text") {
+        setLastStatus(`Assistant: ${(last.content[0] as any).text?.slice(0, 120) ?? ""}`)
+      } else if (last) {
+        setLastStatus(`Last message role=${last.role}`)
+      } else {
+        setLastStatus("No messages yet")
+      }
     } catch (err) {
       console.error("ACP test error", err)
       setLastStatus(`Error: ${String(err)}`)
@@ -62,7 +86,8 @@ export function AssistantSidebar() {
               {testing ? "Testing…" : "Test ACP"}
             </Button>
             <div className="text-xs text-zinc-400 whitespace-pre-wrap break-words" title={lastStatus}>
-              {lastStatus}
+              {isStreaming ? "Live… " : ""}{lastStatus}
+              {liveText ? `\n${liveText.slice(-200)}` : ""}
             </div>
           </div>
         </div>
