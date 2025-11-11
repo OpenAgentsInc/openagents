@@ -30,6 +30,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
     /// Stdout remainder buffers for JSONL parsing
     private var stdoutRemainders: [String: Data] = [:]
 
+    /// Lock for thread-safe access to mutable state
+    private let stateLock = NSLock()
+
     // MARK: - Initialization
 
     public init(
@@ -69,8 +72,12 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
     ) async throws -> AgentHandle {
         let sidStr = sessionId.value
 
-        // Check for existing process
-        if let existing = activeProcesses[sidStr], existing.isRunning {
+        // Check for existing process (thread-safe)
+        stateLock.lock()
+        let hasExisting = activeProcesses[sidStr]?.isRunning ?? false
+        stateLock.unlock()
+
+        if hasExisting {
             OpenAgentsLog.orchestration.error("[\(self.displayName)] Session \(sidStr) already has running process")
             throw AgentProviderError.startFailed("Session already has a running process")
         }
@@ -106,7 +113,7 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         }
         // Ensure the directory of the executable is first
         environment["PATH"] = "\(binDir):\(path)"
-        
+
         process.environment = environment
 
         // Set working directory
@@ -121,8 +128,10 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        // Store process
+        // Store process (thread-safe)
+        stateLock.lock()
         activeProcesses[sidStr] = process
+        stateLock.unlock()
 
         // Start process
         do {
@@ -153,7 +162,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
 
             return handle
         } catch {
+            stateLock.lock()
             activeProcesses.removeValue(forKey: sidStr)
+            stateLock.unlock()
             throw AgentProviderError.startFailed("Failed to start process: \(error.localizedDescription)")
         }
     }
@@ -208,8 +219,10 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        // Store process
+        // Store process (thread-safe)
+        stateLock.lock()
         activeProcesses[sidStr] = process
+        stateLock.unlock()
 
         do {
             try process.run()
@@ -218,7 +231,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             setupStdoutHandler(pipe: stdoutPipe, sessionId: sessionId, updateHub: updateHub)
             setupStderrHandler(pipe: stderrPipe, sessionId: sessionId, updateHub: updateHub)
         } catch {
+            stateLock.lock()
             activeProcesses.removeValue(forKey: sidStr)
+            stateLock.unlock()
             throw AgentProviderError.resumeFailed("Failed to resume: \(error.localizedDescription)")
         }
     }
@@ -268,15 +283,20 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
     ) async {
         let sidStr = sessionId.value
 
-        if let process = activeProcesses[sidStr] {
+        stateLock.lock()
+        let process = activeProcesses[sidStr]
+        stateLock.unlock()
+
+        if let process = process {
             if process.isRunning {
                 process.terminate()
                 OpenAgentsLog.orchestration.info("[\(self.displayName)] Terminated process for session \(sidStr)")
             }
+            stateLock.lock()
             activeProcesses.removeValue(forKey: sidStr)
+            stdoutRemainders.removeValue(forKey: sidStr)
+            stateLock.unlock()
         }
-
-        stdoutRemainders.removeValue(forKey: sidStr)
     }
 
     // MARK: - Binary Discovery
@@ -458,8 +478,11 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
             let data = handle.availableData
             guard !data.isEmpty else { return }
 
-            // Buffer handling for JSONL parsing
+            // Buffer handling for JSONL parsing (thread-safe)
+            self.stateLock.lock()
             var remainder = self.stdoutRemainders[sidStr] ?? Data()
+            self.stateLock.unlock()
+
             remainder.append(data)
 
             guard var text = String(data: remainder, encoding: .utf8) else { return }
@@ -471,7 +494,9 @@ open class CLIAgentProvider: AgentProvider, @unchecked Sendable {
                 text = String(text[..<text.index(after: lastNewline)])
             }
 
+            self.stateLock.lock()
             self.stdoutRemainders[sidStr] = keep
+            self.stateLock.unlock()
 
             let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
             for line in lines {

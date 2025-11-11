@@ -403,5 +403,367 @@ final class ConcurrentDelegationTests: XCTestCase {
         wait(for: [expectation], timeout: 2.0)
         XCTAssertEqual(receivedSessionId, parent2, "Re-registration should update to new parent")
     }
+
+    // MARK: - Interleaved Chunk Tests
+
+    func testInterleavedChunks_BothSessionsReceiveAllUpdates() async throws {
+        // Given - two concurrent delegations
+        let parentId = ACPSessionId("parent-interleaved")
+        let subId1 = ACPSessionId("sub-1")
+        let subId2 = ACPSessionId("sub-2")
+
+        server.registerSessionMapping(subSessionId: subId1, parentSessionId: parentId)
+        server.registerSessionMapping(subSessionId: subId2, parentSessionId: parentId)
+
+        var session1Updates: [String] = []
+        var session2Updates: [String] = []
+
+        let exp1 = expectation(description: "session 1 gets all chunks")
+        exp1.expectedFulfillmentCount = 3
+        let exp2 = expectation(description: "session 2 gets all chunks")
+        exp2.expectedFulfillmentCount = 3
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               case .agentMessageChunk(let chunk) = notification.update,
+               case .text(let textContent) = chunk.content {
+
+                // Track which original session this came from
+                if notification.session_id == parentId {
+                    // This was forwarded - check metadata to determine original session
+                    // For this test, we'll track by content
+                    if textContent.text.contains("Session1") {
+                        session1Updates.append(textContent.text)
+                        exp1.fulfill()
+                    } else if textContent.text.contains("Session2") {
+                        session2Updates.append(textContent.text)
+                        exp2.fulfill()
+                    }
+                }
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - send interleaved chunks
+        let chunk1a = ACP.Client.ContentChunk(content: .text(.init(text: "Session1-ChunkA")))
+        let chunk2a = ACP.Client.ContentChunk(content: .text(.init(text: "Session2-ChunkA")))
+        let chunk1b = ACP.Client.ContentChunk(content: .text(.init(text: "Session1-ChunkB")))
+        let chunk2b = ACP.Client.ContentChunk(content: .text(.init(text: "Session2-ChunkB")))
+        let chunk1c = ACP.Client.ContentChunk(content: .text(.init(text: "Session1-ChunkC")))
+        let chunk2c = ACP.Client.ContentChunk(content: .text(.init(text: "Session2-ChunkC")))
+
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(chunk1a))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(chunk2a))
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(chunk1b))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(chunk2b))
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(chunk1c))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(chunk2c))
+
+        // Then - both sessions receive all their chunks in order
+        await fulfillment(of: [exp1, exp2], timeout: 2.0)
+        XCTAssertEqual(session1Updates.count, 3, "Session 1 should receive all 3 chunks")
+        XCTAssertEqual(session2Updates.count, 3, "Session 2 should receive all 3 chunks")
+
+        // Verify order preserved
+        XCTAssertEqual(session1Updates[0], "Session1-ChunkA")
+        XCTAssertEqual(session1Updates[1], "Session1-ChunkB")
+        XCTAssertEqual(session1Updates[2], "Session1-ChunkC")
+
+        XCTAssertEqual(session2Updates[0], "Session2-ChunkA")
+        XCTAssertEqual(session2Updates[1], "Session2-ChunkB")
+        XCTAssertEqual(session2Updates[2], "Session2-ChunkC")
+    }
+
+    func testNonConsecutiveChunks_SameSessionAggregates() async throws {
+        // Given - parent with sub-session
+        let parentId = ACPSessionId("parent-nonconsec")
+        let subId = ACPSessionId("sub-nonconsec")
+        server.registerSessionMapping(subSessionId: subId, parentSessionId: parentId)
+
+        var receivedChunks: [String] = []
+        let exp = expectation(description: "all chunks received")
+        exp.expectedFulfillmentCount = 5
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == parentId,
+               case .agentMessageChunk(let chunk) = notification.update,
+               case .text(let textContent) = chunk.content {
+                receivedChunks.append(textContent.text)
+                exp.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - send 5 chunks (simulating non-consecutive arrival)
+        for i in 1...5 {
+            let chunk = ACP.Client.ContentChunk(content: .text(.init(text: "Chunk\(i)")))
+            await server.sendSessionUpdate(sessionId: subId, update: .agentMessageChunk(chunk))
+        }
+
+        // Then - all chunks forwarded to parent
+        await fulfillment(of: [exp], timeout: 2.0)
+        XCTAssertEqual(receivedChunks.count, 5, "Should receive all 5 chunks")
+        XCTAssertEqual(receivedChunks, ["Chunk1", "Chunk2", "Chunk3", "Chunk4", "Chunk5"], "Order should be preserved")
+    }
+
+    func testMultipleConcurrentSessions_IsolatedUpdates() async throws {
+        // Given - 3 concurrent delegations
+        let parentId = ACPSessionId("parent-multi")
+        let subId1 = ACPSessionId("sub-a")
+        let subId2 = ACPSessionId("sub-b")
+        let subId3 = ACPSessionId("sub-c")
+
+        server.registerSessionMapping(subSessionId: subId1, parentSessionId: parentId)
+        server.registerSessionMapping(subSessionId: subId2, parentSessionId: parentId)
+        server.registerSessionMapping(subSessionId: subId3, parentSessionId: parentId)
+
+        var allUpdates: [(sessionId: String, text: String)] = []
+        let exp = expectation(description: "all updates received")
+        exp.expectedFulfillmentCount = 9 // 3 chunks per session
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == parentId,
+               case .agentMessageChunk(let chunk) = notification.update,
+               case .text(let textContent) = chunk.content {
+                // Track which sub-session by content prefix
+                let sessionTag = String(textContent.text.prefix(1)) // A, B, or C
+                allUpdates.append((sessionTag, textContent.text))
+                exp.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - send interleaved chunks from 3 sessions
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "A1")))))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "B1")))))
+        await server.sendSessionUpdate(sessionId: subId3, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "C1")))))
+
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "A2")))))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "B2")))))
+        await server.sendSessionUpdate(sessionId: subId3, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "C2")))))
+
+        await server.sendSessionUpdate(sessionId: subId1, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "A3")))))
+        await server.sendSessionUpdate(sessionId: subId2, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "B3")))))
+        await server.sendSessionUpdate(sessionId: subId3, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "C3")))))
+
+        // Then - verify all updates received
+        await fulfillment(of: [exp], timeout: 3.0)
+        XCTAssertEqual(allUpdates.count, 9, "Should receive all 9 chunks")
+
+        // Verify each session's chunks are present
+        let aChunks = allUpdates.filter { $0.sessionId == "A" }.map { $0.text }
+        let bChunks = allUpdates.filter { $0.sessionId == "B" }.map { $0.text }
+        let cChunks = allUpdates.filter { $0.sessionId == "C" }.map { $0.text }
+
+        XCTAssertEqual(aChunks.count, 3)
+        XCTAssertEqual(bChunks.count, 3)
+        XCTAssertEqual(cChunks.count, 3)
+
+        // Verify order within each session
+        XCTAssertEqual(aChunks, ["A1", "A2", "A3"])
+        XCTAssertEqual(bChunks, ["B1", "B2", "B3"])
+        XCTAssertEqual(cChunks, ["C1", "C2", "C3"])
+    }
+
+    func testChunkAggregation_PreservesOrderAcrossGaps() async throws {
+        // Given - simulating real scenario where chunks arrive with gaps
+        let parentId = ACPSessionId("parent-gaps")
+        let subId = ACPSessionId("sub-gaps")
+        server.registerSessionMapping(subSessionId: subId, parentSessionId: parentId)
+
+        var orderedChunks: [String] = []
+        let exp = expectation(description: "chunks with gaps")
+        exp.expectedFulfillmentCount = 4
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == parentId,
+               case .agentMessageChunk(let chunk) = notification.update,
+               case .text(let textContent) = chunk.content {
+                orderedChunks.append(textContent.text)
+                exp.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - send chunks: 1, 2, [mode update], 3, 4
+        await server.sendSessionUpdate(sessionId: subId, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "Step1")))))
+        await server.sendSessionUpdate(sessionId: subId, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "Step2")))))
+
+        // Simulate a mode update or other non-chunk update
+        await server.sendSessionUpdate(sessionId: subId, update: .currentModeUpdate(ACP.Client.CurrentModeUpdate(current_mode_id: .codex)))
+
+        await server.sendSessionUpdate(sessionId: subId, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "Step3")))))
+        await server.sendSessionUpdate(sessionId: subId, update: .agentMessageChunk(ACP.Client.ContentChunk(content: .text(.init(text: "Step4")))))
+
+        // Then - all chunks received in order
+        await fulfillment(of: [exp], timeout: 2.0)
+        XCTAssertEqual(orderedChunks, ["Step1", "Step2", "Step3", "Step4"], "Chunks should maintain order even with gaps")
+    }
+
+    // MARK: - Mode Transition Tests
+
+    func testModeTransition_ToCodex_EmitsModeUpdate() async throws {
+        // Given
+        let sessionId = ACPSessionId("test-mode-transition")
+
+        var receivedUpdates: [ACP.Client.SessionUpdate] = []
+        let exp = expectation(description: "mode update received")
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == sessionId {
+                receivedUpdates.append(notification.update)
+                if case .currentModeUpdate = notification.update {
+                    exp.fulfill()
+                }
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - switch to Codex mode
+        await server.localSessionSetMode(sessionId: sessionId, mode: .codex)
+
+        // Then - mode update should be emitted
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        let modeUpdates = receivedUpdates.compactMap { update -> ACPSessionModeId? in
+            if case .currentModeUpdate(let modeUpdate) = update {
+                return modeUpdate.current_mode_id
+            }
+            return nil
+        }
+
+        XCTAssertTrue(modeUpdates.contains(.codex), "Should have emitted Codex mode update")
+    }
+
+    func testModeTransition_ToClaudeCode_EmitsModeUpdate() async throws {
+        // Given
+        let sessionId = ACPSessionId("test-claude-code-mode")
+
+        var modeUpdates: [ACPSessionModeId] = []
+        let exp = expectation(description: "Claude Code mode update")
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == sessionId,
+               case .currentModeUpdate(let update) = notification.update {
+                modeUpdates.append(update.current_mode_id)
+                if update.current_mode_id == .claude_code {
+                    exp.fulfill()
+                }
+            }
+        }
+        defer { sub.cancel() }
+
+        // When
+        await server.localSessionSetMode(sessionId: sessionId, mode: .claude_code)
+
+        // Then
+        await fulfillment(of: [exp], timeout: 1.0)
+        XCTAssertTrue(modeUpdates.contains(.claude_code), "Should emit Claude Code mode update")
+    }
+
+    func testDelegationVsDirectMode_BothShowIndicators() async throws {
+        // Given - parent session that will have both delegation and direct mode switch
+        let parentId = ACPSessionId("test-both-patterns")
+        guard let hub = server.updateHub else {
+            XCTFail("UpdateHub not initialized")
+            return
+        }
+
+        var toolCalls: [String] = []
+        var modeUpdates: [ACPSessionModeId] = []
+
+        let exp = expectation(description: "delegation and mode switch")
+        exp.expectedFulfillmentCount = 2 // 1 tool call + 1 mode update
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == parentId {
+                switch notification.update {
+                case .toolCall(let call):
+                    toolCalls.append(call.name)
+                    exp.fulfill()
+                case .currentModeUpdate(let update):
+                    modeUpdates.append(update.current_mode_id)
+                    if update.current_mode_id == .codex {
+                        exp.fulfill()
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - first do a delegation (creates tool call)
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let tool = OpenAgentsLocalProvider.FMTool_DelegateRun(
+                sessionId: parentId,
+                updateHub: hub,
+                workspaceRoot: FileManager.default.currentDirectoryPath,
+                server: server
+            )
+
+            // This creates a tool call and a sub-session
+            _ = try? await tool.call(arguments: .init(user_prompt: "test task", provider: "codex", description: nil))
+        }
+        #endif
+
+        // Then directly switch mode (creates mode update)
+        await server.localSessionSetMode(sessionId: parentId, mode: .codex)
+
+        // Then - should have both indicators
+        await fulfillment(of: [exp], timeout: 2.0)
+
+        // Verify we got the tool call from delegation
+        XCTAssertTrue(toolCalls.contains(ToolName.delegate.rawValue), "Should have delegate.run tool call")
+
+        // Verify we got the mode update from direct switch
+        XCTAssertTrue(modeUpdates.contains(.codex), "Should have Codex mode update")
+    }
+
+    func testMultipleModeSwitches_AllEmitted() async throws {
+        // Given
+        let sessionId = ACPSessionId("test-multi-mode")
+
+        var modeSequence: [ACPSessionModeId] = []
+        let exp = expectation(description: "multiple mode switches")
+        exp.expectedFulfillmentCount = 3
+
+        let sub = server.notificationPublisher.sink { event in
+            guard event.method == ACPRPC.sessionUpdate else { return }
+            if let notification = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: event.payload),
+               notification.session_id == sessionId,
+               case .currentModeUpdate(let update) = notification.update {
+                modeSequence.append(update.current_mode_id)
+                exp.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+
+        // When - switch modes multiple times
+        await server.localSessionSetMode(sessionId: sessionId, mode: .codex)
+        await server.localSessionSetMode(sessionId: sessionId, mode: .claude_code)
+        await server.localSessionSetMode(sessionId: sessionId, mode: .default_mode)
+
+        // Then - all switches should be recorded
+        await fulfillment(of: [exp], timeout: 2.0)
+        XCTAssertEqual(modeSequence.count, 3, "Should have 3 mode updates")
+        XCTAssertEqual(modeSequence[0], .codex)
+        XCTAssertEqual(modeSequence[1], .claude_code)
+        XCTAssertEqual(modeSequence[2], .default_mode)
+    }
 }
 #endif
