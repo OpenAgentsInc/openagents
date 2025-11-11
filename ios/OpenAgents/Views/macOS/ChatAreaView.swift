@@ -378,7 +378,7 @@ private struct ChatUpdateRow: View {
             texts.append(extractText(from: nextChunk))
         }
 
-        return texts.joined(separator: "\n")
+        return texts.joined(separator: "\n\n")
     }
 }
 
