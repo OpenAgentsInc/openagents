@@ -265,8 +265,11 @@ private struct ChatUpdateRow: View {
         // 2) Heuristic: if an assistant message appears after the last event
         //    referencing this call, treat the call as completed (agent returned
         //    to chat and is waiting for user response).
+        // Capture snapshot to avoid concurrent modification
+        let updates = bridge.updates
+
         var lastIdxForCall: Int? = nil
-        for (i, note) in bridge.updates.enumerated() {
+        for (i, note) in updates.enumerated() {
             switch note.update {
             case .toolCall(let w) where w.call_id == callId:
                 lastIdxForCall = i
@@ -277,10 +280,10 @@ private struct ChatUpdateRow: View {
             }
         }
         if let idx = lastIdxForCall {
-            let sessionId = bridge.updates[idx].session_id
-            if idx + 1 < bridge.updates.count {
-                for j in (idx + 1)..<bridge.updates.count {
-                    let n = bridge.updates[j]
+            let sessionId = updates[idx].session_id
+            if idx + 1 < updates.count {
+                for j in (idx + 1)..<updates.count {
+                    let n = updates[j]
                     if n.session_id != sessionId { continue }
                     if case .agentMessageChunk = n.update {
                         return ACPToolResult(call_id: callId, ok: true)
@@ -313,9 +316,12 @@ private struct ChatUpdateRow: View {
         // Look backwards in transcript to find most recent mode update or tool call for this session
         let sessionId = note.session_id
 
+        // Capture snapshot to avoid concurrent modification
+        let updates = bridge.updates
+
         // Search backwards for the last tool call or mode update in this session
-        for i in stride(from: bridge.updates.count - 1, through: 0, by: -1) {
-            let update = bridge.updates[i]
+        for i in stride(from: updates.count - 1, through: 0, by: -1) {
+            let update = updates[i]
             guard update.session_id == sessionId else { continue }
 
             switch update.update {
@@ -339,14 +345,18 @@ private struct ChatUpdateRow: View {
     /// Check if this message chunk should be aggregated with the previous chunk
     private func shouldAggregateWithPrevious(index: Int) -> Bool {
         guard index > 0 else { return false }
-        let note = bridge.updates[index]
+        // Capture snapshot to avoid concurrent modification
+        let updates = bridge.updates
+        guard index < updates.count else { return false }
+
+        let note = updates[index]
         guard case .agentMessageChunk(let chunk) = note.update else { return false }
 
         // Don't aggregate orchestrator messages
         if checkIsFromOrchestrator(chunk) { return false }
 
         // Check if previous update is also a delegated agent chunk
-        let prevNote = bridge.updates[index - 1]
+        let prevNote = updates[index - 1]
         guard case .agentMessageChunk(let prevChunk) = prevNote.update else { return false }
 
         // Don't aggregate if previous is from orchestrator
@@ -358,7 +368,11 @@ private struct ChatUpdateRow: View {
 
     /// Aggregate this chunk with all following consecutive delegated agent chunks
     private func aggregateFollowingChunks(startIndex: Int) -> String {
-        let note = bridge.updates[startIndex]
+        // Capture snapshot to avoid concurrent modification during iteration
+        let updates = bridge.updates
+
+        guard startIndex < updates.count else { return "" }
+        let note = updates[startIndex]
         guard case .agentMessageChunk(let firstChunk) = note.update else {
             return ""
         }
@@ -366,8 +380,8 @@ private struct ChatUpdateRow: View {
         var texts: [String] = [extractText(from: firstChunk)]
 
         // Collect following chunks from same session until we hit a different update type
-        for i in (startIndex + 1)..<bridge.updates.count {
-            let nextNote = bridge.updates[i]
+        for i in (startIndex + 1)..<updates.count {
+            let nextNote = updates[i]
             guard nextNote.session_id == note.session_id else { break }
 
             guard case .agentMessageChunk(let nextChunk) = nextNote.update else { break }
