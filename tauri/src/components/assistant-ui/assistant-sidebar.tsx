@@ -8,7 +8,7 @@ export function AssistantSidebar() {
       {/* Left Sidebar */}
       <div className="flex w-64 flex-col border-r border-zinc-800 bg-zinc-950">
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-zinc-800 p-4">
+        <div className="flex items-center gap-2 border-b border-zinc-800 p-4 pt-6">
           <div className="flex size-8 items-center justify-center rounded-[var(--radius-lg)] bg-zinc-800">
             <MessagesSquare className="size-4" />
           </div>
