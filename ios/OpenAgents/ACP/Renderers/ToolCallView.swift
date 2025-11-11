@@ -105,10 +105,10 @@ struct ToolCallView: View {
 
     /// Display name for the tool (with special handling for delegate.run)
     private var displayName: String {
-        let toolName = call.tool_name.lowercased()
+        let toolName = ToolName.fromString(call.tool_name)
 
         // delegate.run - show "Delegate to {Provider}: {description}"
-        if toolName == "delegate.run" {
+        if toolName == .delegate {
             let args = unwrapArgumentsJSON(call.arguments)
             if case .object(let obj) = args {
                 let provider = (obj["provider"].flatMap { v -> String? in
@@ -135,11 +135,11 @@ struct ToolCallView: View {
 
     /// Details shown below tool name
     private var inlineParams: String? {
-        let toolName = call.tool_name.lowercased()
+        let toolName = ToolName.fromString(call.tool_name)
         let args = unwrapArgumentsJSON(call.arguments)
 
         // Bash/Shell - show description
-        if toolName == "bash" || toolName == "shell" || toolName.hasSuffix(".shell") {
+        if toolName == .bash || toolName == .shell || toolName.hasSuffix(".shell") {
             if case .object(let obj) = args,
                case .string(let desc)? = obj["description"] {
                 return desc
@@ -148,7 +148,7 @@ struct ToolCallView: View {
         }
 
         // Delegation summary (codex.run or delegate.run)
-        if toolName == "codex.run" || toolName == "delegate.run" {
+        if toolName == .delegate || toolName.rawValue == "codex.run" {
             if case .object(let obj) = args {
                 // For delegate.run, the main display name already shows provider + description
                 // Just show user_prompt in the inline params
@@ -159,7 +159,7 @@ struct ToolCallView: View {
         }
 
         // Read - show relative file_path
-        if toolName == "read" || toolName.hasSuffix(".read") {
+        if toolName == .read || toolName.hasSuffix(".read") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
                 return "📄 \(makeRelativePath(path))"
@@ -167,7 +167,7 @@ struct ToolCallView: View {
         }
 
         // Write - show relative file_path
-        if toolName == "write" || toolName.hasSuffix(".write") {
+        if toolName == .write || toolName.hasSuffix(".write") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
                 return "✏️ \(makeRelativePath(path))"
@@ -175,7 +175,7 @@ struct ToolCallView: View {
         }
 
         // Edit - show relative file_path
-        if toolName == "edit" || toolName.hasSuffix(".edit") {
+        if toolName == .edit || toolName.hasSuffix(".edit") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
                 return "✏️ \(makeRelativePath(path))"
@@ -183,7 +183,7 @@ struct ToolCallView: View {
         }
 
         // Glob - show pattern
-        if toolName == "glob" || toolName.hasSuffix(".glob") {
+        if toolName == .glob || toolName.hasSuffix(".glob") {
             if case .object(let obj) = args,
                case .string(let pattern)? = obj["pattern"] {
                 return "🔍 \(pattern)"
@@ -191,7 +191,7 @@ struct ToolCallView: View {
         }
 
         // Grep - show pattern
-        if toolName == "grep" || toolName.hasSuffix(".grep") {
+        if toolName == .grep || toolName.hasSuffix(".grep") {
             if case .object(let obj) = args,
                case .string(let pattern)? = obj["pattern"] {
                 return "🔍 \(pattern)"

@@ -149,7 +149,7 @@ extension OpenAgentsLocalProvider {
 
     // MARK: - FM Tool: delegate.run
     struct FMTool_DelegateRun: Tool {
-        let name = "delegate.run"
+        let name = ToolName.delegate.rawValue
         let description = "Route a coding task to specialized agents (Codex or Claude Code) for execution. Use this for any file operations, code analysis, refactoring, or workspace exploration."
 
         // Stored properties for dependencies (Pattern B from FMTools.swift)
@@ -185,10 +185,9 @@ extension OpenAgentsLocalProvider {
             let updateHub = self.updateHub  // Not optional
 
             // Emit a tool call update to the UI showing delegation is happening
-            // Use "delegate.run" as the tool name (not "codex.run") to match the actual tool
             let toolCallWire = ACPToolCallWire(
                 call_id: UUID().uuidString,
-                name: "delegate.run",
+                name: ToolName.delegate.rawValue,
                 arguments: [
                     "user_prompt": AnyEncodable(a.user_prompt),
                     "provider": AnyEncodable(providerName),
