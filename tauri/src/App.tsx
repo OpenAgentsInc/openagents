@@ -20,54 +20,20 @@ function App() {
         abortSignal,
       });
 
-      const stream = result.fullStream;
+      const stream = result.textStream;
       let text = "";
 
       for await (const chunk of stream) {
-        switch (chunk.type) {
-          case "text-delta":
-            if (chunk.textDelta !== undefined) {
-              text += chunk.textDelta;
-            }
-            yield {
-              content: [{ type: "text", text }],
-            };
-            break;
-
-          case "tool-call":
-            yield {
-              content: [
-                {
-                  type: "tool-call",
-                  toolCallId: chunk.toolCallId,
-                  toolName: chunk.toolName,
-                  args: chunk.args,
-                },
-              ],
-            };
-            break;
-
-          case "tool-result":
-            yield {
-              content: [
-                {
-                  type: "tool-result",
-                  toolCallId: chunk.toolCallId,
-                  toolName: chunk.toolName,
-                  result: chunk.result,
-                },
-              ],
-            };
-            break;
-
-          case "finish":
-            yield {
-              content: text ? [{ type: "text", text }] : [],
-              status: { type: "complete", reason: "stop" } as const,
-            };
-            break;
-        }
+        text += chunk;
+        yield {
+          content: [{ type: "text", text }],
+        };
       }
+
+      yield {
+        content: [{ type: "text", text }],
+        status: { type: "complete", reason: "stop" } as const,
+      };
     },
   };
 
