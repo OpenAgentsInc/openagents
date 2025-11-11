@@ -1,132 +1,44 @@
 {
-  "$schema": "https://openagents.com/schemas/upgrade-manifest-v1.json",
-  "id": "nightly-refactor-v1",
-  "version": "1.0.0",
-  "title": "Nightly Code Refactoring Agent",
-  "description": "Autonomous Orchestration: refactoring with FM-driven decisions. Analyzes recent development patterns and refactors frequently-touched files for improved code quality.",
-
-  "author": {
-    "name": "OpenAgents",
-    "npub": "npub1openagentsexamplekey",
-    "url": "https://github.com/OpenAgentsInc/openagents"
-  },
-
-  "license": "MIT",
-  "categories": ["development", "code-quality", "refactoring"],
-  "tags": ["orchestration", "automation", "foundation-models", "claude-code"],
-
-  "capabilities": {
-    "platforms": ["macos"],
-    "min_macos_version": "26.0",
-    "backends": ["foundation_models"],
-    "required_tools": ["git", "gh", "swift", "xcodebuild"]
-  },
-
-  "permissions": {
-    "filesystem": {
-      "read": ["$WORKSPACE/**"],
-      "write": ["$WORKSPACE/**"],
-      "exclude": [".env", "*.key", "credentials.json", ".git/**", "*.p12", "*.pem"]
-    },
-    "network": {
-      "allowed_domains": ["github.com", "api.github.com"],
-      "ports": []
-    },
-    "tools": {
-      "allowed": ["git", "gh", "xcodebuild", "swift", "swiftc"],
-      "denied": ["rm", "curl", "wget", "chmod", "chown"]
-    }
-  },
-
+  "id": "nightly-refactor",
+  "workspace_root": "$WORKSPACE",
   "schedule": {
-    "type": "cron",
     "expression": "*/30 1-5 * * *",
-    "timezone": "America/Los_Angeles",
-    "window": {
-      "start": "01:00",
-      "end": "05:00"
-    },
-    "constraints": {
-      "plugged_in": true,
-      "wifi_only": true,
-      "cpu_max_percentage": 80,
-      "respect_dnd": false,
-      "suspend_if_active": true
-    },
+    "window_start": "01:00",
+    "window_end": "05:00",
     "jitter_ms": 300000,
-    "on_missed": "run_once_at_next_opportunity"
+    "on_missed": "skip"
   },
-
-  "triggers": [],
-
-  "pipeline": [
-    {
-      "op": "session.analyze",
-      "params": {
-        "providers": ["claude-code", "codex"],
-        "topK": 20,
-        "since": "7d"
-      },
-      "output_var": "session_insights"
-    },
-    {
-      "op": "repo.status",
-      "params": {
-        "working_dir": "$WORKSPACE"
-      },
-      "output_var": "repo_status"
-    },
-    {
-      "op": "orchestrate.decide",
-      "backend": "foundation_models",
-      "params": {
-        "context": {
-          "session_insights": "{session_insights}",
-          "repo_status": "{repo_status}"
-        },
-        "available_agents": ["claude-code", "codex"],
-        "time_budget": 1800,
-        "hint": "Focus on frequently-touched files that need refactoring for better error handling, code clarity, or Swift 6 concurrency compliance."
-      },
-      "output_var": "decision"
-    },
-    {
-      "op": "agent.execute",
-      "params": {
-        "agent": "{decision.agent}",
-        "task": "{decision.task}",
-        "working_dir": "$WORKSPACE",
-        "max_duration": 1800,
-        "resume_on_error": false,
-        "stream_updates": true
-      },
-      "output_var": "session_result"
-    },
-    {
-      "op": "pr.create",
-      "params": {
-        "branch_prefix": "agent/nightly-refactor/",
-        "base_branch": "main",
-        "title": "{decision.task}",
-        "body_template": "## Autonomous Agent Work\n\n**Task**: {decision.task}\n\n**Agent**: {session_result.agent}\n\n**Rationale**: {decision.rationale}\n\n**Session ID**: `{session_result.session_id}`\n\n**Duration**: {session_result.duration}\n\n**Tool Calls**: {session_result.tool_call_count}\n\n**Confidence**: {decision.confidence}\n\n---\n\n### Summary\n\nThis PR was created autonomously as part of the nightly refactoring upgrade. The Foundation Models orchestrator analyzed recent development patterns and identified this task as high-impact work.\n\n**Files Changed**: {session_result.files_changed}\n\n**Tests**: All tests passing ✅\n\n---\n\n*Generated with [OpenAgents Orchestration](https://github.com/OpenAgentsInc/openagents)*\n\n*Upgrade*: `nightly-refactor-v1`",
-        "auto_push": true,
-        "draft": false
-      },
-      "output_var": "pr_number"
-    }
+  "constraints": {
+    "plugged_in": true,
+    "wifi_only": true
+  },
+  "time_budget_sec": 1800,
+  "max_concurrent": 2,
+  "goals": [
+    "Refactor error handling to use proper Swift Result types",
+    "Increase test coverage for bridge and orchestration components",
+    "Improve logging and observability",
+    "Add documentation to public APIs"
   ],
-
-  "pricing": {
-    "model": "free",
-    "amount_sats": 0,
-    "revenue_split": []
+  "agent_preferences": {
+    "prefer": ["claude_code", "codex"],
+    "allow": ["claude_code", "codex"]
   },
-
-  "policy": {
-    "aup_compliance": true,
-    "data_retention": "30d",
-    "telemetry_level": "aggregate"
+  "focus": {
+    "include_globs": [
+      "ios/**/*.swift"
+    ],
+    "exclude_globs": [
+      "**/Tests/**",
+      "**/.build/**"
+    ]
   },
-
-  "signing": null
+  "pr_automation": {
+    "enabled": true,
+    "branch_prefix": "agent/",
+    "base_branch": "main",
+    "auto_push": true,
+    "create_draft": false
+  },
+  "updated_at": 1731283200000
 }
