@@ -1,11 +1,21 @@
 import "./App.css"
 import { Thread } from "@/components/assistant-ui/thread"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { useLocalRuntime } from "@assistant-ui/react"
+import { useEdgeRuntime } from "@assistant-ui/react"
+import { ollama } from "ollama-ai-provider-v2"
+import { streamText } from "ai"
 
 function App() {
-  const runtime = useLocalRuntime({
-    initialMessages: [],
+  const runtime = useEdgeRuntime({
+    api: async ({ messages, abortSignal }) => {
+      const result = streamText({
+        model: ollama("qwen2.5:32b"),
+        messages,
+        abortSignal,
+      });
+
+      return result.toDataStreamResponse();
+    },
   });
 
   return (
