@@ -341,7 +341,7 @@ private struct DelegatedAgentCard: View {
             }
 
             // Agent response content
-            Text(markdownText(text))
+            markdownText(text)
                 .font(OAFonts.mono(.body, 14))
                 .foregroundStyle(OATheme.Colors.textPrimary)
                 .textSelection(.enabled)
@@ -356,7 +356,7 @@ private struct DelegatedAgentCard: View {
         )
     }
 
-    private func markdownText(_ text: String) -> AttributedString {
+    private func markdownText(_ text: String) -> Text {
         let options: AttributedString.MarkdownParsingOptions
         if #available(macOS 14.0, *) {
             options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
@@ -365,9 +365,9 @@ private struct DelegatedAgentCard: View {
         }
 
         if let md = try? AttributedString(markdown: text, options: options) {
-            return md
+            return Text(md)
         }
-        return AttributedString(text)
+        return Text(text)
     }
 }
 
