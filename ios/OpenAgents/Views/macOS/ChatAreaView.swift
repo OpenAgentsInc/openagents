@@ -111,9 +111,18 @@ private struct ChatUpdateRow: View {
                 }
             case .agentMessageChunk(let chunk):
                 let text = extractText(from: chunk)
+                let isFromOrchestrator = checkIsFromOrchestrator(chunk)
+
                 VStack(alignment: .leading, spacing: 6) {
-                    bubble(text: text, isUser: false)
-                        .modifier(FadeInOnAppear(duration: 0.10))
+                    if isFromOrchestrator {
+                        // Foundation Models orchestrator response - render normally
+                        bubble(text: text, isUser: false)
+                            .modifier(FadeInOnAppear(duration: 0.10))
+                    } else {
+                        // Delegated agent response - render in a distinct card
+                        DelegatedAgentCard(text: text, provider: inferProvider(from: note))
+                            .modifier(FadeInOnAppear(duration: 0.10))
+                    }
                     CopyMarkdownRow(markdown: text, alignRight: false, visible: hovering)
                 }
             case .agentThoughtChunk(let chunk):
@@ -276,6 +285,89 @@ private struct ChatUpdateRow: View {
                     .stroke(OATheme.Colors.accent.opacity(0.6), lineWidth: 1)
             } else { EmptyView() }
         }
+    }
+
+    private func checkIsFromOrchestrator(_ chunk: ACP.Client.ContentChunk) -> Bool {
+        guard let sourceValue = chunk._meta?["source"] else { return false }
+        if case .string(let sourceStr) = sourceValue.toJSONValue() {
+            return sourceStr == "fm_orchestrator"
+        }
+        return false
+    }
+
+    private func inferProvider(from note: ACP.Client.SessionNotificationWire) -> String? {
+        // Look backwards in transcript to find most recent mode update or tool call for this session
+        let sessionId = note.session_id
+
+        // Search backwards for the last tool call or mode update in this session
+        for i in stride(from: bridge.updates.count - 1, through: 0, by: -1) {
+            let update = bridge.updates[i]
+            guard update.session_id == sessionId else { continue }
+
+            switch update.update {
+            case .toolCall(let call) where call.name == "codex.run":
+                return "Codex"
+            case .toolCall(let call) where call.name == "claude_code.run":
+                return "Claude Code"
+            case .currentModeUpdate(let mode) where mode.current_mode_id == ACPSessionModeId.codex:
+                return "Codex"
+            case .currentModeUpdate(let mode) where mode.current_mode_id == ACPSessionModeId.claude_code:
+                return "Claude Code"
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+}
+
+// MARK: - Delegated Agent Card
+private struct DelegatedAgentCard: View {
+    let text: String
+    let provider: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header showing which agent is responding
+            if let provider = provider {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(OATheme.Colors.accent)
+                    Text(provider)
+                        .font(OAFonts.mono(.caption, 11))
+                        .foregroundStyle(OATheme.Colors.accent)
+                }
+            }
+
+            // Agent response content
+            Text(markdownText(text))
+                .font(OAFonts.mono(.body, 14))
+                .foregroundStyle(OATheme.Colors.textPrimary)
+                .textSelection(.enabled)
+                .lineSpacing(4)
+        }
+        .padding(12)
+        .background(OATheme.Colors.bgTertiary.opacity(0.5))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(OATheme.Colors.accent.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func markdownText(_ text: String) -> AttributedString {
+        let options: AttributedString.MarkdownParsingOptions
+        if #available(macOS 14.0, *) {
+            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        } else {
+            options = .init(interpretedSyntax: .inlineOnly)
+        }
+
+        if let md = try? AttributedString(markdown: text, options: options) {
+            return md
+        }
+        return AttributedString(text)
     }
 }
 
