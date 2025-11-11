@@ -24,15 +24,33 @@ public enum HistoryLoader {
     }
 
     public static func loadSummaries(_ opts: Options = .init()) -> [ThreadSummary] {
+        let codexSummaries: [ThreadSummary] = opts.includeCodex
+            ? CodexScanner.scan(options: .init(baseDir: opts.codexBase, maxFiles: opts.maxFilesPerProvider))
+            : []
+        let claudeSummaries: [ThreadSummary] = opts.includeClaude
+            ? ClaudeScanner.scan(options: .init(baseDir: opts.claudeBase, maxFiles: opts.maxFilesPerProvider))
+            : []
+        return mergeSummaries(
+            opts: opts,
+            codexSummaries: codexSummaries,
+            claudeSummaries: claudeSummaries
+        )
+    }
+
+    /// Internal helper so tests can feed synthetic summaries without touching the filesystem.
+    static func mergeSummaries(
+        opts: Options,
+        codexSummaries: [ThreadSummary],
+        claudeSummaries: [ThreadSummary]
+    ) -> [ThreadSummary] {
         var rows: [ThreadSummary] = []
         if opts.includeCodex {
-            let c = CodexScanner.scan(options: .init(baseDir: opts.codexBase, maxFiles: opts.maxFilesPerProvider))
-            rows.append(contentsOf: c)
+            rows.append(contentsOf: codexSummaries)
         }
         if opts.includeClaude {
-            let c = ClaudeScanner.scan(options: .init(baseDir: opts.claudeBase, maxFiles: opts.maxFilesPerProvider))
-            rows.append(contentsOf: c)
+            rows.append(contentsOf: claudeSummaries)
         }
+
         // Deduplicate by (source,id), keeping the most recently updated
         var uniq: [String: ThreadSummary] = [:]
         for r in rows {
@@ -43,16 +61,17 @@ public enum HistoryLoader {
                 uniq[key] = r
             }
         }
-        rows = Array(uniq.values)
-        rows.sort { (a, b) in
+
+        var deduped = Array(uniq.values)
+        deduped.sort { (a, b) in
             let at = a.updated_at
             let bt = b.updated_at
             if at == bt { return (a.last_message_ts ?? at) > (b.last_message_ts ?? bt) }
             return at > bt
         }
-        if rows.count > opts.maxResults {
-            return Array(rows.prefix(opts.maxResults))
+        if deduped.count > opts.maxResults {
+            deduped = Array(deduped.prefix(opts.maxResults))
         }
-        return rows
+        return deduped
     }
 }
