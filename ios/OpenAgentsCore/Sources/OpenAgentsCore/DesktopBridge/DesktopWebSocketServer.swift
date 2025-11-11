@@ -91,7 +91,9 @@ public class DesktopWebSocketServer {
     /// Preferred default mode for new sessions (auto-selected if client doesn't choose)
     var preferredDefaultMode: ACPSessionModeId = .default_mode
     /// Session mapping for delegations (sub-sessionId → parent-sessionId)
-    private var sessionMapping: [String: String] = [:]
+    /// Guarded by an actor to avoid concurrent mutation crashes when FM creates
+    /// multiple delegated sub-sessions in parallel.
+    private let sessionMappingStore = SessionMappingStore()
 
     // MARK: - Local app broadcast (Combine)
     private let broadcastSubject = PassthroughSubject<(method: String, payload: Data), Never>()
@@ -641,14 +643,14 @@ public class DesktopWebSocketServer {
     // moved to DesktopWebSocketServer+Orchestration.swift: runOrchestration
 
     /// Register a sub-session to forward its updates to a parent session
-    public func registerSessionMapping(subSessionId: ACPSessionId, parentSessionId: ACPSessionId) {
-        sessionMapping[subSessionId.value] = parentSessionId.value
+    public func registerSessionMapping(subSessionId: ACPSessionId, parentSessionId: ACPSessionId) async {
+        await sessionMappingStore.set(subId: subSessionId.value, parentId: parentSessionId.value)
         OpenAgentsLog.bridgeServer.debug("Registered session mapping: \(subSessionId.value) → \(parentSessionId.value)")
     }
 
     /// Unregister a sub-session mapping
-    public func unregisterSessionMapping(subSessionId: ACPSessionId) {
-        sessionMapping.removeValue(forKey: subSessionId.value)
+    public func unregisterSessionMapping(subSessionId: ACPSessionId) async {
+        await sessionMappingStore.remove(subId: subSessionId.value)
         OpenAgentsLog.bridgeServer.debug("Unregistered session mapping for: \(subSessionId.value)")
     }
 
@@ -659,7 +661,7 @@ public class DesktopWebSocketServer {
     ) async {
         // Check if this sub-session should forward to a parent session
         let targetSessionId: ACPSessionId
-        if let parentId = sessionMapping[sessionId.value] {
+        if let parentId = await sessionMappingStore.get(subId: sessionId.value) {
             targetSessionId = ACPSessionId(parentId)
             OpenAgentsLog.bridgeServer.debug("Forwarding update from sub-session \(sessionId.value) to parent \(parentId)")
         } else {
@@ -798,5 +800,80 @@ extension DesktopWebSocketServer {
     // moved to DesktopWebSocketServer+Tailer.swift: jsonValueToAnyEncodable
 
     // moved to DesktopWebSocketServer+Tailer.swift: live tailer and JSON mapping helpers
+}
+
+// MARK: - Orchestration cycle notifications
+extension DesktopWebSocketServer {
+    /// Run a coordinator cycle and emit NotificationCenter events for UI sidebar
+    /// - Parameter config: Orchestration configuration to use
+    /// - Returns: CycleResult from AgentCoordinator
+    @discardableResult
+    func runCoordinatorCycleWithNotifications(config: OrchestrationConfig) async -> CycleResult {
+        let cycleId = UUID().uuidString
+        NotificationCenter.default.post(
+            name: .init("orchestration.cycle.started"),
+            object: nil,
+            userInfo: [
+                "cycle_id": cycleId,
+                "config_id": config.id,
+                "start": Date()
+            ]
+        )
+
+        guard let coord = await ensureCoordinator() else {
+            NotificationCenter.default.post(
+                name: .init("orchestration.cycle.completed"),
+                object: nil,
+                userInfo: [
+                    "cycle_id": cycleId,
+                    "config_id": config.id,
+                    "end": Date(),
+                    "status": "skipped"
+                ]
+            )
+            return .idle
+        }
+
+        let result = await coord.runCycle(config: config, workingDirectory: self.workingDirectory)
+
+        let status: String
+        switch result {
+        case .taskFailed:
+            status = "failed"
+        case .noAgentsAvailable, .idle:
+            status = "skipped"
+        default:
+            status = "completed"
+        }
+
+        NotificationCenter.default.post(
+            name: .init("orchestration.cycle.completed"),
+            object: nil,
+            userInfo: [
+                "cycle_id": cycleId,
+                "config_id": config.id,
+                "end": Date(),
+                "status": status
+            ]
+        )
+        return result
+    }
+}
+
+// MARK: - Thread-safe session mapping store
+actor SessionMappingStore {
+    private var map: [String: String] = [:]
+
+    func set(subId: String, parentId: String) {
+        map[subId] = parentId
+    }
+
+    func remove(subId: String) {
+        map.removeValue(forKey: subId)
+    }
+
+    func get(subId: String) -> String? {
+        map[subId]
+    }
 }
 #endif

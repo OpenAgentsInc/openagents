@@ -6,7 +6,7 @@ import os.log
 /// Bottom-left sidebar section showing orchestration status
 struct OrchestrationSidebarSection: View {
     @ObservedObject var viewModel: OrchestrationViewModel
-    @State private var isExpanded: Bool = false
+    @State private var isExpanded: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
