@@ -280,6 +280,7 @@ extension DesktopWebSocketServer {
         goals: [String]? = nil,
         windowStart: String? = nil,
         windowEnd: String? = nil,
+        intervalMinutes: Int? = nil,
         preferAgent: String? = nil,
         allowAgents: [String]? = nil,
         autoFinalize: Bool? = nil,
@@ -350,6 +351,7 @@ extension DesktopWebSocketServer {
             goals: goals,
             windowStart: windowStart,
             windowEnd: windowEnd,
+            intervalMinutes: intervalMinutes,
             prefer: preferId,
             allow: allowIds
         )
