@@ -35,7 +35,6 @@ final class BridgeManager: ObservableObject {
     @Published var rawJSONByCallId: [String: String] = [:]
     @Published var outputJSONByCallId: [String: String] = [:]
     @Published var recentSessions: [RecentSession] = []
-    @Published var selectedAgent: ACP.Client.AvailableCommand? = nil
     @Published var conversationTitles: [String: String] = [:]
     @Published var selectedToolCallId: String? = nil
 
@@ -57,40 +56,12 @@ final class BridgeManager: ObservableObject {
 
 // MARK: - Shared convenience APIs
 extension BridgeManager {
-    /// Determine the preferred session mode for sending a prompt.
-    /// Priority:
-    /// - If a specific agent is selected, map its name to a mode.
-    /// - Else, if currentMode is set (non-default), use it.
-    /// - Else, return nil (server default).
-    func preferredModeForSend() -> ACPSessionModeId? {
-        if let agent = selectedAgent {
-            let n = agent.name.lowercased()
-            if n.contains("claude") { return .claude_code }
-            if n.contains("codex") { return .codex }
-        }
-        // If a session already has a mode, use it
-        if currentMode != .default_mode { return currentMode }
-        // Else, consult persisted default
-        if let stored = UserDefaults.standard.string(forKey: "defaultAgentMode"),
-           let mode = ACPSessionModeId(rawValue: stored) { return mode }
-        // Fallback: OpenAgents (default_mode)
-        return .default_mode
-    }
-
-    func sendPrompt(text: String, desiredMode: ACPSessionModeId? = nil) {
-        // Auto-route conversational questions to OpenAgents orchestrator
-        // regardless of selected mode
-        var finalMode = desiredMode
-        if let mode = desiredMode,
-           mode != .default_mode,
-           ConversationalDetection.isConversational(text) {
-            log("routing", "auto-routing conversational question to orchestrator (overriding \(mode.rawValue))")
-            finalMode = .default_mode
-        }
-
+    func sendPrompt(text: String) {
+        // Always route to OpenAgents orchestrator (Foundation Models)
+        // which can delegate to specialized agents via delegate.run tool
         dispatcher?.sendPrompt(
             text: text,
-            desiredMode: finalMode,
+            desiredMode: .default_mode,
             getSessionId: { self.currentSessionId },
             setSessionId: { self.currentSessionId = $0 }
         )
