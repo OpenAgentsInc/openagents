@@ -116,7 +116,7 @@ final class LocalJsonRpcClient: JSONRPCSending {
                     result = Self.bridge(ConfigActivateResp(success: ok, active_config_id: id), as: R.self)
                 } else { result = nil }
             case ACPRPC.orchestrateSchedulerStatus:
-                let status = server.localSchedulerStatus()
+                let status = await server.localSchedulerStatus()
                 result = Self.bridge(status, as: R.self)
             case ACPRPC.orchestrateSchedulerReload:
                 let out = await server.localSchedulerReload()

@@ -126,7 +126,7 @@ extension DesktopWebSocketServer {
     // MARK: - Orchestration Scheduler (local helpers)
     public struct LocalSchedulerStatus: Codable { public let running: Bool; public let active_config_id: String?; public let next_wake_time: Int?; public let message: String }
 
-    public func localSchedulerStatus() -> LocalSchedulerStatus {
+    public func localSchedulerStatus() async -> LocalSchedulerStatus {
         var next: Int? = nil
         var msg = ""
         var running = false
