@@ -75,8 +75,11 @@ struct ChatAreaView: View {
         isSending = true
         let old = messageText
         messageText = ""
-        // Respect the selected agent/mode when sending first prompt
+
+        // Get the selected mode preference
+        // Note: BridgeManager.sendPrompt will auto-route conversational questions
         let desired = bridge.preferredModeForSend()
+
         bridge.log("ui", "composer send pressed len=\(trimmed.count) desired=\(desired?.rawValue ?? "nil") hasSession=\(bridge.currentSessionId != nil)")
         bridge.sendPrompt(text: trimmed, desiredMode: desired)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -132,9 +135,14 @@ private struct ChatUpdateRow: View {
                         } else {
                             // Delegated agent response - aggregate with following chunks
                             let aggregatedText = aggregateFollowingChunks(startIndex: index)
-                            let _ = print("[ChatUpdateRow] Rendering DelegatedAgentCard at idx=\(index) with aggregatedTextLen=\(aggregatedText.count)")
-                            DelegatedAgentCard(text: aggregatedText, provider: inferProvider(from: note))
-                                .modifier(FadeInOnAppear(duration: 0.10))
+                            let taskDesc = inferTaskDescription(from: note)
+                            let _ = print("[ChatUpdateRow] Rendering DelegatedAgentCard at idx=\(index) with aggregatedTextLen=\(aggregatedText.count) task=\(taskDesc ?? "nil")")
+                            DelegatedAgentCard(
+                                text: aggregatedText,
+                                provider: inferProvider(from: note),
+                                taskDescription: taskDesc
+                            )
+                            .modifier(FadeInOnAppear(duration: 0.10))
                         }
                         CopyMarkdownRow(markdown: isFromOrchestrator ? text : aggregateFollowingChunks(startIndex: index), alignRight: false, visible: hovering)
                     }
@@ -148,7 +156,7 @@ private struct ChatUpdateRow: View {
                     .font(OAFonts.mono(.caption, 11))
                     .foregroundStyle(OATheme.Colors.textSecondary)
             case .currentModeUpdate:
-                // Hide mode change rows in chat transcript
+                // Hide all mode change indicators
                 EmptyView()
             case .toolCall(let callWire):
                 ToolCallView(call: mapCall(callWire), result: findResult(for: callWire.call_id))
@@ -313,24 +321,37 @@ private struct ChatUpdateRow: View {
     }
 
     private func inferProvider(from note: ACP.Client.SessionNotificationWire) -> String? {
-        // Look backwards in transcript to find most recent mode update or tool call for this session
+        // Look backwards in transcript to find provider info
         let sessionId = note.session_id
 
         // Capture snapshot to avoid concurrent modification
         let updates = bridge.updates
 
-        // Search backwards for the last tool call or mode update in this session
+        // Search backwards for mode updates or tool calls
+        // Note: For forwarded sub-session chunks, we need to look for delegate.run tool calls
+        // with the parent sessionId, and extract provider from arguments
         for i in stride(from: updates.count - 1, through: 0, by: -1) {
             let update = updates[i]
-            guard update.session_id == sessionId else { continue }
 
             switch update.update {
-            case .toolCall(let call) where call.name == ToolName.delegate.rawValue:
-                return "Codex" // Default for delegate.run
-            case .toolCall(let call) where call.name == "codex.run":
+            // Check delegate.run tool calls (these are on parent session)
+            case .toolCall(let call) where call.name == ToolName.delegate.rawValue && update.session_id == sessionId:
+                // Extract provider from arguments
+                if let args = call.arguments,
+                   let providerArg = args["provider"],
+                   case .string(let providerStr) = providerArg.toJSONValue() {
+                    if providerStr.lowercased().contains("claude") {
+                        return "Claude Code"
+                    } else {
+                        return "Codex"
+                    }
+                }
+                return "Codex" // Default
+            case .toolCall(let call) where call.name == "codex.run" && update.session_id == sessionId:
                 return "Codex"
-            case .toolCall(let call) where call.name == "claude_code.run":
+            case .toolCall(let call) where call.name == "claude_code.run" && update.session_id == sessionId:
                 return "Claude Code"
+            // Check mode updates for ANY session (sub-sessions have their own mode updates)
             case .currentModeUpdate(let mode) where mode.current_mode_id == ACPSessionModeId.codex:
                 return "Codex"
             case .currentModeUpdate(let mode) where mode.current_mode_id == ACPSessionModeId.claude_code:
@@ -342,7 +363,28 @@ private struct ChatUpdateRow: View {
         return nil
     }
 
-    /// Check if this message chunk should be aggregated with the previous chunk
+    private func inferTaskDescription(from note: ACP.Client.SessionNotificationWire) -> String? {
+        // Look backwards to find the delegate.run tool call that started this task
+        let sessionId = note.session_id
+        let updates = bridge.updates
+
+        for i in stride(from: updates.count - 1, through: 0, by: -1) {
+            let update = updates[i]
+            guard update.session_id == sessionId else { continue }
+
+            if case .toolCall(let call) = update.update,
+               call.name == ToolName.delegate.rawValue,
+               let args = call.arguments,
+               let userPrompt = args["user_prompt"],
+               case .string(let task) = userPrompt.toJSONValue() {
+                return task
+            }
+        }
+        return nil
+    }
+
+    /// Check if this message chunk should be aggregated with a previous chunk
+    /// Returns true if there's ALREADY a card for this session (so skip rendering this chunk)
     private func shouldAggregateWithPrevious(index: Int) -> Bool {
         guard index > 0 else { return false }
         // Capture snapshot to avoid concurrent modification
@@ -355,38 +397,49 @@ private struct ChatUpdateRow: View {
         // Don't aggregate orchestrator messages
         if checkIsFromOrchestrator(chunk) { return false }
 
-        // Check if previous update is also a delegated agent chunk
-        let prevNote = updates[index - 1]
-        guard case .agentMessageChunk(let prevChunk) = prevNote.update else { return false }
+        // Look backwards to see if there's already a delegated agent card for this session
+        let sessionId = note.session_id
+        for i in stride(from: index - 1, through: 0, by: -1) {
+            let prevNote = updates[i]
+            guard case .agentMessageChunk(let prevChunk) = prevNote.update else { continue }
 
-        // Don't aggregate if previous is from orchestrator
-        if checkIsFromOrchestrator(prevChunk) { return true } // Skip this one, it's after orchestrator
+            // If we hit an orchestrator message, stop looking back
+            if checkIsFromOrchestrator(prevChunk) { break }
 
-        // Same session? Aggregate!
-        return prevNote.session_id == note.session_id
+            // If we find a previous chunk from the same session, this should aggregate with it
+            if prevNote.session_id == sessionId {
+                return true
+            }
+        }
+
+        return false
     }
 
-    /// Aggregate this chunk with all following consecutive delegated agent chunks
+    /// Aggregate this chunk with ALL following delegated agent chunks from the same session
+    /// (even if non-consecutive due to interleaved chunks from other sessions)
     private func aggregateFollowingChunks(startIndex: Int) -> String {
         // Capture snapshot to avoid concurrent modification during iteration
         let updates = bridge.updates
 
         guard startIndex < updates.count else { return "" }
         let note = updates[startIndex]
+        let sessionId = note.session_id
         guard case .agentMessageChunk(let firstChunk) = note.update else {
             return ""
         }
 
         var texts: [String] = [extractText(from: firstChunk)]
 
-        // Collect following chunks from same session until we hit a different update type
+        // Collect ALL following chunks from the same session (even if non-consecutive)
         for i in (startIndex + 1)..<updates.count {
             let nextNote = updates[i]
-            guard nextNote.session_id == note.session_id else { break }
 
-            guard case .agentMessageChunk(let nextChunk) = nextNote.update else { break }
+            // Skip chunks from other sessions
+            guard nextNote.session_id == sessionId else { continue }
 
-            // Stop if we hit an orchestrator message
+            guard case .agentMessageChunk(let nextChunk) = nextNote.update else { continue }
+
+            // Stop if we hit an orchestrator message from this session
             if checkIsFromOrchestrator(nextChunk) { break }
 
             texts.append(extractText(from: nextChunk))
@@ -400,46 +453,38 @@ private struct ChatUpdateRow: View {
 private struct DelegatedAgentCard: View {
     let text: String
     let provider: String?
+    let taskDescription: String?
 
     var body: some View {
-        let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") textLen=\(text.count) text=\(text.prefix(100))...")
-        VStack(alignment: .leading, spacing: 12) {
-            // Header showing which agent is responding
-            HStack {
-                if let provider = provider {
-                    Label(provider, systemImage: "arrow.right.circle.fill")
-                        .font(OAFonts.mono(.headline, 13))
-                        .foregroundStyle(OATheme.Colors.accent)
-                } else {
-                    Label("Agent Output", systemImage: "text.cursor")
-                        .font(OAFonts.mono(.headline, 13))
-                        .foregroundStyle(OATheme.Colors.accent)
-                }
-                Spacer()
+        let currentStep = extractCurrentStep(from: text)
+        let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") currentStep=\(currentStep)")
+
+        HStack(spacing: 12) {
+            // Provider icon
+            if provider != nil {
+                Image(systemName: "arrow.right.circle.fill")
+                    .foregroundStyle(OATheme.Colors.accent)
+                    .font(.system(size: 16))
             }
 
-            // Streaming output container with fixed height
-            ScrollViewReader { proxy in
-                ScrollView {
-                    markdownText(text)
-                        .animation(.easeInOut(duration: 0.3), value: text)
-                        .font(OAFonts.mono(.body, 14))
-                        .foregroundStyle(OATheme.Colors.textPrimary)
-                        .textSelection(.enabled)
-                        .lineSpacing(4)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(OATheme.Colors.bgQuaternary)
-                        .cornerRadius(8)
-                        .id("streamingText")
+            // Current reasoning step
+            VStack(alignment: .leading, spacing: 2) {
+                if let provider = provider {
+                    Text(provider)
+                        .font(OAFonts.mono(.caption, 11))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
                 }
-                .frame(maxHeight: 300)
-                .onChange(of: text) { _ in
-                    withAnimation {
-                        proxy.scrollTo("streamingText", anchor: .bottom)
-                    }
-                }
+                Text(currentStep)
+                    .font(OAFonts.mono(.body, 13))
+                    .foregroundStyle(OATheme.Colors.textPrimary)
             }
+
+            Spacer()
+
+            // Subtle activity indicator
+            ProgressView()
+                .scaleEffect(0.6)
+                .opacity(0.6)
         }
         .padding(12)
         .background(OATheme.Colors.bgTertiary.opacity(0.5))
@@ -450,18 +495,59 @@ private struct DelegatedAgentCard: View {
         )
     }
 
-    private func markdownText(_ text: String) -> Text {
-        let options: AttributedString.MarkdownParsingOptions
-        if #available(macOS 14.0, *) {
-            options = .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        } else {
-            options = .init(interpretedSyntax: .inlineOnly)
+    /// Extract the latest/current reasoning step from the text
+    private func extractCurrentStep(from text: String) -> String {
+        // Split by lines and find the last non-empty line
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+
+        // Get the last line
+        guard let lastLine = lines.last else {
+            return taskDescription ?? "Processing..."
         }
 
-        if let md = try? AttributedString(markdown: text, options: options) {
-            return Text(md)
+        var line = String(lastLine).trimmingCharacters(in: .whitespaces)
+
+        // Remove markdown bold markers if present
+        line = line.replacingOccurrences(of: "**", with: "")
+
+        // If it's too long, truncate
+        if line.count > 100 {
+            line = String(line.prefix(97)) + "..."
         }
-        return Text(text)
+
+        return line.isEmpty ? (taskDescription ?? "Processing...") : line
+    }
+}
+
+// MARK: - Mode Transition View
+private struct ModeTransitionView: View {
+    let mode: ACPSessionModeId
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.right.circle")
+                .foregroundStyle(OATheme.Colors.accent)
+                .font(.system(size: 14))
+
+            Text("Switched to \(modeName)")
+                .font(OAFonts.mono(.caption, 12))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(OATheme.Colors.bgTertiary.opacity(0.3))
+        .cornerRadius(6)
+    }
+
+    private var modeName: String {
+        switch mode {
+        case .codex:
+            return "Codex"
+        case .claude_code:
+            return "Claude Code"
+        default:
+            return mode.rawValue
+        }
     }
 }
 
