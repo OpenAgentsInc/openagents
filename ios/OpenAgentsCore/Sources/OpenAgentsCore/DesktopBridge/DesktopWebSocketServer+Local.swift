@@ -129,14 +129,19 @@ extension DesktopWebSocketServer {
     public func localSchedulerStatus() -> LocalSchedulerStatus {
         var next: Int? = nil
         var msg = ""
-        if let cfg = self.activeOrchestrationConfig,
+        var running = false
+        if let svc = self.schedulerService {
+            running = true
+            if case let .running(nextWake) = await svc.status(), let nw = nextWake {
+                next = Int(nw.timeIntervalSince1970)
+            }
+        }
+        if next == nil, let cfg = self.activeOrchestrationConfig,
            let candidate = SchedulePreview.nextRuns(schedule: cfg.schedule, count: 1, from: Date()).first {
             next = Int(candidate.timeIntervalSince1970)
-            msg = SchedulePreview.humanReadable(schedule: cfg.schedule)
-        } else {
-            msg = "No active orchestration config"
         }
-        return .init(running: false, active_config_id: self.activeOrchestrationConfig?.id, next_wake_time: next, message: msg)
+        msg = self.activeOrchestrationConfig.map { SchedulePreview.humanReadable(schedule: $0.schedule) } ?? "No active orchestration config"
+        return .init(running: running, active_config_id: self.activeOrchestrationConfig?.id, next_wake_time: next, message: msg)
     }
 
     public struct LocalRunNowResult: Codable { public let started: Bool; public let session_id: String? }
