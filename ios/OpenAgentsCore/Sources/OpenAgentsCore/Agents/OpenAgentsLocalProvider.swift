@@ -182,7 +182,8 @@ extension OpenAgentsLocalProvider {
                 return "❌ Server not available for delegation"
             }
 
-            let updateHub = self.updateHub  // Not optional
+            let parentSessionId = sessionId  // FM session
+            let parentUpdateHub = self.updateHub  // Not optional
 
             // Emit a tool call update to the UI showing delegation is happening
             let toolCallWire = ACPToolCallWire(
@@ -194,16 +195,22 @@ extension OpenAgentsLocalProvider {
                     "description": AnyEncodable(a.description)
                 ]
             )
-            await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCallWire))
+            await parentUpdateHub.sendSessionUpdate(sessionId: parentSessionId, update: .toolCall(toolCallWire))
 
-            // Use the SAME sessionId so responses appear in the current conversation
-            // Switch the mode for this session to the delegated provider
-            await server.localSessionSetMode(sessionId: sessionId, mode: modeId)
+            // Create unique sub-session for this delegation to allow concurrent tasks
+            let subSessionId = ACPSessionId(UUID().uuidString)
+            print("[FM] Created sub-session \(subSessionId.value) for delegation to \(providerName)")
 
-            // Send the prompt to the delegated provider in the current session
+            // Register session mapping so sub-session updates forward to parent session
+            server.registerSessionMapping(subSessionId: subSessionId, parentSessionId: parentSessionId)
+
+            // Switch the sub-session mode to the delegated provider
+            await server.localSessionSetMode(sessionId: subSessionId, mode: modeId)
+
+            // Send the prompt to the delegated provider in the sub-session
             let contentBlock = ACP.Client.ContentBlock.text(.init(text: a.user_prompt))
             let promptRequest = ACP.Agent.SessionPromptRequest(
-                session_id: sessionId,
+                session_id: subSessionId,  // Use sub-sessionId
                 content: [contentBlock]
             )
 
@@ -211,19 +218,17 @@ extension OpenAgentsLocalProvider {
             Task {
                 do {
                     try await server.localSessionPrompt(request: promptRequest)
-                    // After delegation completes, switch back to orchestrator mode
-                    // so the next user message goes to Foundation Models, not the delegated agent
-                    await server.localSessionSetMode(sessionId: sessionId, mode: .default_mode)
 
-                    // Clear the handle so next delegation starts fresh (prevent thread reuse)
-                    print("[FM] Clearing agent handle for session \(sessionId.value) to ensure next delegation starts fresh")
-                    await server.agentRegistry.removeHandle(for: sessionId)
+                    // Clear the sub-session handle and mapping after delegation completes
+                    print("[FM] Clearing sub-session \(subSessionId.value) handle after delegation completes")
+                    await server.agentRegistry.removeHandle(for: subSessionId)
+                    server.unregisterSessionMapping(subSessionId: subSessionId)
                 } catch {
                     let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Delegation error: \(error.localizedDescription)")))
-                    await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(errorChunk))
-                    // Even on error, switch back to orchestrator and clear handle
-                    await server.localSessionSetMode(sessionId: sessionId, mode: .default_mode)
-                    await server.agentRegistry.removeHandle(for: sessionId)
+                    await parentUpdateHub.sendSessionUpdate(sessionId: parentSessionId, update: .agentMessageChunk(errorChunk))
+                    // Clear sub-session handle and mapping on error
+                    await server.agentRegistry.removeHandle(for: subSessionId)
+                    server.unregisterSessionMapping(subSessionId: subSessionId)
                 }
             }
 
