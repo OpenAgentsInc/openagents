@@ -13,9 +13,8 @@ export function AssistantSidebar() {
   const setActiveSession = useAcpStore((s) => s.setActiveSession)
   const liveText = useAcpStore((s) => s.liveText)
   const isStreaming = useAcpStore((s) => s.isStreaming)
+  // Read selected model to decide behavior of Test ACP
   const model = useModelStore((s) => s.selected)
-  const setModel = useModelStore((s) => s.setSelected)
-  // const modelLabel = useMemo(() => (model === "codex" ? "Codex (ACP)" : "Ollama: glm-4.6:cloud"), [model])
 
   const handleTestACP = useCallback(async () => {
     if (model === "ollama") {
@@ -93,17 +92,7 @@ export function AssistantSidebar() {
             >
               {testing ? "Testing…" : "Test ACP"}
             </Button>
-            <div className="ml-auto flex items-center gap-2">
-              <label className="text-xs text-zinc-400">Model</label>
-              <select
-                className="bg-zinc-900 text-zinc-100 text-xs border border-zinc-700 rounded px-2 py-1"
-                value={model}
-                onChange={(e) => setModel(e.target.value as any)}
-              >
-                <option value="ollama">Ollama (glm-4.6:cloud)</option>
-                <option value="codex">Codex (ACP)</option>
-              </select>
-            </div>
+            {/* Model picker moved to top app header */}
             <div className="text-xs text-zinc-400 whitespace-pre-wrap break-words" title={lastStatus}>
               {isStreaming ? "Live… " : ""}{lastStatus}
               {liveText ? `\n${liveText.slice(-200)}` : ""}
