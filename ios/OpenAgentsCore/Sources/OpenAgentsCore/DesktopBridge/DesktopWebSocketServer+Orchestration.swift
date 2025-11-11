@@ -895,10 +895,18 @@ extension DesktopWebSocketServer {
                 updatedAt: config.updatedAt
             )
             OpenAgentsLog.bridgeServer.info("Saved completed config: \(config.id)")
-
-            // TODO: Trigger scheduler reload when SchedulerService is implemented
-            // This will re-read configs and apply the new schedule
-            OpenAgentsLog.bridgeServer.info("Config saved, scheduler reload would be triggered here")
+            // Activate and (re)start scheduler on new config
+            self.activeOrchestrationConfig = config
+            if let svc = self.schedulerService { await svc.stop() }
+            let svc = SchedulerService()
+            await svc.configure(config: config) { [weak self] in
+                guard let self = self else { return }
+                guard let coord = await self.ensureCoordinator() else { return }
+                _ = await coord.runCycle(config: config, workingDirectory: self.workingDirectory)
+            }
+            await svc.start()
+            self.schedulerService = svc
+            OpenAgentsLog.bridgeServer.info("Scheduler restarted with new config: \(config.id)")
         } catch {
             OpenAgentsLog.bridgeServer.error("Failed to save config: \(error.localizedDescription)")
         }

@@ -41,6 +41,7 @@ public class OrchestrationViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let scheduler: SchedulerService
+    private var rpc: JSONRPCSending?
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -118,26 +119,30 @@ public class OrchestrationViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self else { return }
-                Task {
-                    await self.pollSchedulerState()
-                }
+                Task { await self.fetchRemoteSchedulerStatus() }
             }
             .store(in: &cancellables)
     }
 
-    private func pollSchedulerState() async {
-        let state = await scheduler.status()
-        await MainActor.run {
-            self.schedulerState = state
-
-            // Extract next wake time from running state
-            if case .running(let nextWake) = state {
-                self.nextRunTime = nextWake
+    private func fetchRemoteSchedulerStatus() async {
+        struct Empty: Codable {}
+        struct Status: Codable { let running: Bool; let active_config_id: String?; let next_wake_time: Int?; let message: String }
+        guard let rpc = self.rpc else { return }
+        // Fetch scheduler status
+        rpc.sendJSONRPC(method: ACPRPC.orchestrateSchedulerStatus, params: Empty(), id: "sidebar-sched-status-\(UUID().uuidString)") { (resp: Status?) in
+            guard let r = resp else { return }
+            Task { @MainActor in
+                if r.running {
+                    let next = r.next_wake_time.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                    self.schedulerState = .running(nextWake: next)
+                    self.nextRunTime = next
+                    self.isEnabled = true
+                } else {
+                    self.schedulerState = .idle
+                    self.isEnabled = false
+                }
             }
         }
-
-        // Refresh metrics
-        await refreshMetrics()
     }
 
     private func addCycle(_ cycle: OrchestrationCycle) {
@@ -150,3 +155,9 @@ public class OrchestrationViewModel: ObservableObject {
     }
 }
 #endif
+    /// Bind a JSON-RPC client to pull scheduler/coordinator status from the Desktop server
+    public func setRPC(_ rpc: JSONRPCSending?) {
+        self.rpc = rpc
+        // Start polling remote status immediately
+        startStatePolling()
+    }
