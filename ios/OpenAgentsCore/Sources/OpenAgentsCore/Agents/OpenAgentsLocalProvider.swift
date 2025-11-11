@@ -129,8 +129,14 @@ extension OpenAgentsLocalProvider {
             print("[FM] Transcript[\(index)]: \(desc)")
         }
 
-        // Send response as agent message
-        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: response.content)))
+        // Send response as agent message with _meta indicating it's from FM orchestrator
+        let chunk = ACP.Client.ContentChunk(
+            content: .text(.init(text: response.content)),
+            _meta: [
+                "source": AnyEncodable("fm_orchestrator"),
+                "provider": AnyEncodable("foundation_models")
+            ]
+        )
         await updateHub.sendSessionUpdate(sessionId: sessionId, update: .agentMessageChunk(chunk))
     }
 
