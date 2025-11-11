@@ -156,7 +156,7 @@ static var simplifiedIOSUI: Bool {
 This allows easy toggling for development/testing:
 ```bash
 # Disable simplified UI
-defaults write com.openagents.app simplified_ios_ui -bool false
+defaults write com.openagents.desktop simplified_ios_ui -bool false
 
 # Or via environment variable
 OPENAGENTS_SIMPLIFIED_IOS=0 open OpenAgents.app
@@ -398,7 +398,7 @@ Users who want the full UI can re-enable it:
 OPENAGENTS_SIMPLIFIED_IOS=0 open OpenAgents.app
 
 # Permanently
-defaults write com.openagents.app simplified_ios_ui -bool false
+defaults write com.openagents.desktop simplified_ios_ui -bool false
 ```
 
 We may eventually add a settings toggle: "Advanced Mode" to switch between simplified and full UI at runtime.

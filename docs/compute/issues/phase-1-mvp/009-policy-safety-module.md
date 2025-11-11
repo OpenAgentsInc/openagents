@@ -442,7 +442,7 @@ import OSLog
 public class PolicyLogger {
     public static let shared = PolicyLogger()
 
-    private let logger = Logger(subsystem: "com.openagents.app", category: "policy")
+    private let logger = Logger(subsystem: "com.openagents.desktop", category: "policy")
     private var auditLog: [AuditEntry] = []
 
     private struct AuditEntry: Codable {

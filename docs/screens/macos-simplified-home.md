@@ -164,7 +164,7 @@ static var simplifiedMacOSUI: Bool {
 This allows easy toggling for development/testing:
 ```bash
 # Disable simplified UI
-defaults write com.openagents.app simplified_macos_ui -bool false
+defaults write com.openagents.desktop simplified_macos_ui -bool false
 
 # Or via environment variable
 OPENAGENTS_SIMPLIFIED_MACOS=0 open OpenAgents.app
@@ -487,7 +487,7 @@ Users who want the full UI can re-enable it:
 OPENAGENTS_SIMPLIFIED_MACOS=0 open OpenAgents.app
 
 # Permanently
-defaults write com.openagents.app simplified_macos_ui -bool false
+defaults write com.openagents.desktop simplified_macos_ui -bool false
 ```
 
 We may eventually add a menu bar option: "View → Show Chat History" to toggle between modes at runtime without restarting.

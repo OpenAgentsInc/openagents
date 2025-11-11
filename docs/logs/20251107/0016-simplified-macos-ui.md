@@ -316,7 +316,7 @@ Users/developers can restore the original chat history UI:
 
 **Option 1 - UserDefaults**:
 ```bash
-defaults write com.openagents.app simplified_macos_ui -bool false
+defaults write com.openagents.desktop simplified_macos_ui -bool false
 ```
 
 **Option 2 - Environment Variable**:
