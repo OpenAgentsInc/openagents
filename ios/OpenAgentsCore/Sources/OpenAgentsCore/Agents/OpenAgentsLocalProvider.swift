@@ -299,13 +299,26 @@ extension OpenAgentsLocalProvider {
 
         @Generable
         struct Arguments {
-            @Guide(description: "Optional workspace root path to configure") var workspace_root: String?
+            @Guide(description: "Workspace root path to configure") var workspace_root: String?
+            @Guide(description: "List of goals (strings)") var goals: [String]?
+            @Guide(description: "Window start time (HH:mm)") var window_start: String?
+            @Guide(description: "Window end time (HH:mm)") var window_end: String?
+            @Guide(description: "Preferred agent id: codex or claude-code") var prefer_agent: String?
+            @Guide(description: "Allowed agents (ids)") var allow_agents: [String]?
         }
 
         func call(arguments a: Arguments) async throws -> Output {
             guard let server = self.server else { return "❌ Server unavailable" }
             let ws = a.workspace_root ?? self.workspaceRoot
-            let out = await server.localSetupStart(workspaceRoot: ws, sessionId: sessionId)
+            let out = await server.localSetupStart(
+                workspaceRoot: ws,
+                goals: a.goals,
+                windowStart: a.window_start,
+                windowEnd: a.window_end,
+                preferAgent: a.prefer_agent,
+                allowAgents: a.allow_agents,
+                sessionId: sessionId
+            )
             return out.status == "started" ? "✓ Orchestration setup started" : "❌ Failed to start setup"
         }
     }

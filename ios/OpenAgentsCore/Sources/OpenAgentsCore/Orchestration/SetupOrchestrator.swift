@@ -84,6 +84,37 @@ public actor SetupOrchestrator {
         await askNextQuestion()
     }
 
+    /// Apply structured hints extracted by an FM tool to skip already‑answered
+    /// steps. This is not heuristic parsing; callers must supply typed values.
+    public func applyHints(
+        goals: [String]?,
+        windowStart: String?,
+        windowEnd: String?,
+        prefer: ACPSessionModeId?,
+        allow: [ACPSessionModeId]?
+    ) async {
+        if let g = goals, !g.isEmpty {
+            draft.goals = g
+            if draft.workspaceRoot != nil { state = .gathering_schedule }
+        }
+        if let ws = windowStart, let we = windowEnd {
+            let cronExpr = SchedulePreview.deriveCron(windowStart: ws, windowEnd: we, interval: 30)
+            draft.schedule = SetupDraft.SchedulePatch(
+                type: "cron",
+                expression: cronExpr,
+                windowStart: ws,
+                windowEnd: we,
+                jitterMs: 300000,
+                onMissed: "catch_up"
+            )
+            if draft.workspaceRoot != nil { state = .gathering_agents }
+        }
+        if prefer != nil || (allow?.isEmpty == false) {
+            draft.agentPreferences = SetupDraft.AgentPreferencesPatch(prefer: prefer, allow: allow ?? [])
+            if draft.workspaceRoot != nil { state = .gathering_constraints }
+        }
+    }
+
     /// Handle user response
     public func handleUserResponse(_ response: String) async {
         // Record in conversation history
