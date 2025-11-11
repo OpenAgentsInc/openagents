@@ -19,17 +19,17 @@ function App() {
       });
 
       const stream = result.textStream;
-      const content: { type: "text"; text: string }[] = [];
+      let text = "";
 
       for await (const chunk of stream) {
-        content.push({ type: "text", text: chunk });
+        text += chunk;
         yield {
-          content: [...content],
+          content: [{ type: "text", text }],
         };
       }
 
       yield {
-        content: [...content],
+        content: [{ type: "text", text }],
         status: { type: "complete", reason: "stop" } as const,
       };
     },
