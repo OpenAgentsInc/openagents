@@ -11,3 +11,7 @@ export async function sendPrompt(sessionId: string, text: string): Promise<void>
 export async function getSession(sessionId: string): Promise<any> {
   return invoke("get_session", { sessionId });
 }
+
+export async function resolveAcpAgentPath(): Promise<string> {
+  return invoke("resolve_acp_agent_path");
+}

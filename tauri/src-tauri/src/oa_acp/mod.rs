@@ -2,5 +2,4 @@ mod client;
 mod session_manager;
 
 pub use client::{ACPClient, AcpError};
-pub use session_manager::{Session, SessionManager, SessionMessage};
-
+pub use session_manager::{try_resolve_acp_agent, Session, SessionManager, SessionMessage};

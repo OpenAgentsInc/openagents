@@ -9,9 +9,11 @@ mod oa_acp;
 use oa_acp::{ACPClient, AcpError, SessionManager};
 mod codex_exec;
 use std::sync::Once;
+use once_cell::sync::OnceCell;
 use tracing::{debug, error, info, warn};
 
 static INIT_TRACING: Once = Once::new();
+pub static APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::new();
 
 fn init_tracing() {
     INIT_TRACING.call_once(|| {
@@ -116,6 +118,23 @@ async fn get_session(state: State<'_, AppState>, session_id: String) -> Result<A
     Ok(ACPSessionDto { id: s.id.0.to_string(), messages })
 }
 
+#[tauri::command]
+async fn resolve_acp_agent_path() -> Result<String, String> {
+    init_tracing();
+    match oa_acp::try_resolve_acp_agent() {
+        Ok(p) => {
+            info!(path=%p.display(), "resolved codex-acp");
+            Ok(p.display().to_string())
+        }
+        Err(e) => {
+            error!(?e, "failed to resolve codex-acp");
+            Err(format!(
+                "ACP agent not found. Build codex-acp (e.g. cargo build --manifest-path crates/codex-acp/Cargo.toml --release) or set OA_CODEX_ACP_ROOT / OA_ACP_AGENT_CMD. Error: {e}"
+            ))
+        }
+    }
+}
+
 pub struct AppState {
     sessions: SessionManager,
 }
@@ -128,7 +147,7 @@ pub fn run() {
         .manage(AppState {
             sessions: SessionManager::new(),
         })
-        .invoke_handler(tauri::generate_handler![create_session, send_prompt, get_session])
+        .invoke_handler(tauri::generate_handler![create_session, send_prompt, get_session, resolve_acp_agent_path])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
@@ -136,6 +155,7 @@ pub fn run() {
                 let window = app.get_webview_window("main").unwrap();
                 window.set_title_bar_style(TitleBarStyle::Transparent)?;
             }
+            let _ = APP_HANDLE.set(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

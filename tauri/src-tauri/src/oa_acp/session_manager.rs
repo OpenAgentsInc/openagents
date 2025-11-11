@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, path::PathBuf};
+use std::{collections::HashMap, sync::Arc, path::{Path, PathBuf}};
 
 use agent_client_protocol as acp;
 use anyhow::Result;
@@ -6,6 +6,8 @@ use tokio::sync::{mpsc, RwLock, Mutex};
 use uuid::Uuid;
 
 use super::ACPClient;
+use crate::APP_HANDLE;
+use tauri::Emitter;
 use which::which;
 use tracing::{debug, info, warn, error};
 use crate::codex_exec::{run_codex_exec_once, CodexExecOptions};
@@ -42,16 +44,62 @@ impl SessionManager {
     }
 
     pub async fn create_session(&self, agent_type: String, cwd: PathBuf) -> Result<acp::SessionId> {
-        // Resolve agent binary path with sensible fallbacks
-        let cmd = resolve_agent_bin()?;
-        let args = std::env::var("OA_ACP_AGENT_ARGS").unwrap_or_default();
-        let args: Vec<String> = if args.trim().is_empty() { vec![] } else { shell_words::split(&args).unwrap_or_else(|_| args.split_whitespace().map(|s| s.to_string()).collect()) };
+        // Decide path: ACP via codex-acp (default) or legacy codex-exec adapter (env/explicit)
         let use_codex_exec = agent_type == "codex-exec" || std::env::var("OA_USE_CODEX_EXEC").ok().as_deref() == Some("1");
-        info!(agent_type=%agent_type, bin=%cmd.display(), args=?args, cwd=%cwd.display(), use_codex_exec, "create_session resolved");
+        let (cmd, mut all_args) = if use_codex_exec {
+            // codex-exec path does not use ACP client spawn here
+            (PathBuf::from("codex-exec"), Vec::new())
+        } else {
+            let (cmd, pre) = resolve_codex_acp_exec()?;
+            let tail = std::env::var("OA_ACP_AGENT_ARGS").unwrap_or_default();
+            let mut args: Vec<String> = if tail.trim().is_empty() { vec![] } else { shell_words::split(&tail).unwrap_or_else(|_| tail.split_whitespace().map(|s| s.to_string()).collect()) };
+            let mut merged = pre;
+            merged.append(&mut args);
+            (cmd, merged)
+        };
+        info!(agent_type=%agent_type, bin=%cmd.display(), args=?all_args, cwd=%cwd.display(), use_codex_exec, "create_session resolved");
         let session_id = acp::SessionId(Arc::from(uuid::Uuid::new_v4().to_string()));
         if !use_codex_exec {
-            let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &args, &[], None).await?;
+            let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &all_args, &[], None).await?;
             let real_sid = client.new_session(cwd.clone()).await?;
+            // Start forwarding updates to frontend and updating state
+            let mut rx = client.take_update_receiver();
+            let inner = self.inner.clone();
+            let app = APP_HANDLE.get().cloned();
+            let sid_clone = real_sid.clone();
+            tokio::spawn(async move {
+                while let Some(notif) = rx.recv().await {
+                    // Update in-memory state
+                    let update_copy = notif.update.clone();
+                    let mut sessions = inner.sessions.write().await;
+                    if let Some(sess) = sessions.get_mut(&notif.session_id) {
+                        match &notif.update {
+                            acp::SessionUpdate::AgentMessageChunk(chunk) | acp::SessionUpdate::AgentThoughtChunk(chunk) => {
+                                let now = chrono::Utc::now().to_rfc3339();
+                                if let Some(last) = sess.messages.last_mut() {
+                                    if last.role == "assistant" {
+                                        last.content.push(chunk.content.clone());
+                                    } else {
+                                        sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "assistant".into(), content: vec![chunk.content.clone()], created_at: now });
+                                    }
+                                } else {
+                                    sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "assistant".into(), content: vec![chunk.content.clone()], created_at: now });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    drop(sessions);
+                    // Emit to frontend
+                    if let Some(app) = &app {
+                        let topic = format!("session:{}", notif.session_id.0);
+                        let out = acp::SessionNotification { session_id: notif.session_id.clone(), update: update_copy, meta: None };
+                        let _ = app.emit(&topic, &out);
+                        let _ = app.emit("acp:update", &out);
+                    }
+                }
+                info!(session_id=%sid_clone.0, "update stream ended");
+            });
             // override with real id
             let session = Session { id: real_sid.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: false };
             self.inner.sessions.write().await.insert(real_sid.clone(), session);
@@ -87,7 +135,7 @@ impl SessionManager {
                 let s = sessions.get(session_id).ok_or_else(|| anyhow::anyhow!("session not found"))?;
                 (s.cwd.clone(), s.id.clone())
             };
-            let bin = resolve_agent_bin()?; // re-use resolution; should find codex/co
+            let bin = resolve_codex_exec_bin()?; // resolve codex/co for exec fallback
             let extra_args = std::env::var("OA_CODEX_ARGS").ok().map(|s| s.split_whitespace().map(|x| x.to_string()).collect()).unwrap_or_else(|| vec!["exec".into(), "--json".into()]);
             let opts = CodexExecOptions { bin, cwd, extra_args };
             let inner = self.inner.clone();
@@ -97,23 +145,25 @@ impl SessionManager {
                     // Apply update to session state
                     let inner = inner.clone();
                     let sid = sid.clone();
+                    let app = APP_HANDLE.get().cloned();
                     // Blocking write in async task
                     futures::executor::block_on(async move {
+                        let update_copy = update.clone();
                         let mut sessions = inner.sessions.write().await;
                         if let Some(sess) = sessions.get_mut(&sid) {
                             debug!(?update, "codex-exec mapped update");
-                            match update {
+                            match &update {
                                 acp::SessionUpdate::AgentMessageChunk(chunk) | acp::SessionUpdate::AgentThoughtChunk(chunk) => {
                                     let now = chrono::Utc::now().to_rfc3339();
                                     if let Some(last) = sess.messages.last_mut() {
                                         if last.role == "assistant" {
-                                            last.content.push(chunk.content);
+                                            last.content.push(chunk.content.clone());
                                             return;
                                         }
                                     }
-                                    sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "assistant".into(), content: vec![chunk.content], created_at: now });
+                                    sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "assistant".into(), content: vec![chunk.content.clone()], created_at: now });
                                 }
-                                acp::SessionUpdate::Plan(_plan) => {
+                                acp::SessionUpdate::Plan(ref _plan) => {
                                     // For Phase 1, store as a thought line summarizing plan
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let summary = "[Plan updated]".to_string();
@@ -121,6 +171,12 @@ impl SessionManager {
                                 }
                                 _ => {}
                             }
+                        }
+                        // emit events
+                        if let Some(app) = &app {
+                            let notif = acp::SessionNotification { session_id: sid.clone(), update: update_copy, meta: None };
+                            let _ = app.emit(&format!("session:{}", sid.0), &notif);
+                            let _ = app.emit("acp:update", &notif);
                         }
                     });
                 }).await;
@@ -144,26 +200,27 @@ impl SessionManager {
     }
 }
 
-fn resolve_agent_bin() -> anyhow::Result<PathBuf> {
-    // 1) Explicit env override
+// Helper used by UI/diagnostics: resolve ACP agent path or return error
+pub fn try_resolve_acp_agent() -> anyhow::Result<PathBuf> {
+    let (bin, _args) = resolve_codex_acp_exec()?;
+    Ok(bin)
+}
+
+fn resolve_codex_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
+    // 1) Explicit env override (path or which)
     if let Ok(val) = std::env::var("OA_ACP_AGENT_CMD") {
         let val = val.trim();
         if !val.is_empty() {
             // If absolute/relative path, use directly; otherwise try which
             let p = PathBuf::from(val);
             if p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::CurDir | std::path::Component::ParentDir)) {
-                return Ok(p);
+                return Ok((p, Vec::new()));
             }
-            if let Ok(found) = which(val) { return Ok(found); }
+            if let Ok(found) = which(val) { return Ok((found, Vec::new())); }
             // fallthrough to other strategies
         }
     }
-    // 2) Alternate env from older code paths
-    if let Ok(val) = std::env::var("CODEX_BIN") {
-        let p = PathBuf::from(val);
-        if p.exists() { return Ok(p); }
-    }
-    // 3) Prefer local workspace build of codex-acp if present (dev-only convenience)
+    // 2) Prefer local workspace build of codex-acp if present (dev-only convenience)
     //    Try release then debug under crates/codex-acp
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let base = PathBuf::from(manifest_dir)
@@ -173,16 +230,61 @@ fn resolve_agent_bin() -> anyhow::Result<PathBuf> {
             .unwrap_or_else(|| PathBuf::from("."));
         let release = base.join("crates/codex-acp/target/release/codex-acp");
         let debug = base.join("crates/codex-acp/target/debug/codex-acp");
-        if release.exists() { return Ok(release); }
-        if debug.exists() { return Ok(debug); }
+        if release.exists() { return Ok((release, Vec::new())); }
+        if debug.exists() { return Ok((debug, Vec::new())); }
+        // Also support sibling/extern repo via env or conventional path
+        if let Ok(root) = std::env::var("OA_CODEX_ACP_ROOT") {
+            let root = PathBuf::from(root);
+            if let Some(bin) = ensure_codex_acp_built(&root) { return Ok((bin, Vec::new())); }
+        } else {
+            let sibling = base.parent().map(|p| p.join("codex-acp"));
+            if let Some(sib) = sibling {
+                if let Some(bin) = ensure_codex_acp_built(&sib) { return Ok((bin, Vec::new())); }
+            }
+        }
     }
-    // 4) PATH search: prefer 'codex-acp', then 'codex', then 'co'
-    if let Ok(found) = which("codex-acp") { return Ok(found); }
+    // 3) PATH search: prefer 'codex-acp'
+    if let Ok(found) = which("codex-acp") { return Ok((found, Vec::new())); }
+
+    // 4) Helpful error (do not fall back to 'codex' or 'co' for ACP)
+    Err(anyhow::anyhow!(
+        "ACP agent not found. Build crates/codex-acp (e.g. `cargo build --manifest-path crates/codex-acp/Cargo.toml --release`) or set OA_ACP_AGENT_CMD to the built codex-acp path; otherwise set OA_USE_CODEX_EXEC=1 to use the codex exec fallback."
+    ))
+}
+
+fn ensure_codex_acp_built(root: &Path) -> Option<PathBuf> {
+    let rel = root.join("target/release/codex-acp");
+    if rel.exists() { return Some(rel); }
+    let dbg = root.join("target/debug/codex-acp");
+    if dbg.exists() { return Some(dbg); }
+    // Try to build if Cargo.toml exists
+    let manifest = root.join("Cargo.toml");
+    if manifest.exists() {
+        let status = std::process::Command::new("cargo")
+            .current_dir(root)
+            .arg("build")
+            .arg("--release")
+            .status()
+            .ok()?;
+        if status.success() {
+            let rel = root.join("target/release/codex-acp");
+            if rel.exists() { return Some(rel); }
+        }
+    }
+    None
+}
+
+fn resolve_codex_exec_bin() -> anyhow::Result<PathBuf> {
+    // Prefer explicit env
+    if let Ok(val) = std::env::var("OA_ACP_AGENT_CMD") {
+        let p = PathBuf::from(val);
+        if p.exists() { return Ok(p); }
+    }
+    if let Ok(val) = std::env::var("CODEX_BIN") {
+        let p = PathBuf::from(val);
+        if p.exists() { return Ok(p); }
+    }
     if let Ok(found) = which("codex") { return Ok(found); }
     if let Ok(found) = which("co") { return Ok(found); }
-
-    // 5) Helpful error
-    Err(anyhow::anyhow!(
-        "Agent binary not found. Set OA_ACP_AGENT_CMD or ensure 'codex-acp' (preferred), 'codex', or 'co' is in PATH."
-    ))
+    Err(anyhow::anyhow!("codex exec fallback not found. Set CODEX_BIN or OA_ACP_AGENT_CMD to codex path, or install 'codex'/'co' in PATH."))
 }
