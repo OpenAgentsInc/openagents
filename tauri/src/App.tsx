@@ -2,8 +2,12 @@ import "./App.css"
 import { Thread } from "@/components/assistant-ui/thread"
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
-import { ollama } from "ollama-ai-provider-v2"
+import { createOllama } from "ollama-ai-provider-v2"
 import { streamText } from "ai"
+
+const ollama = createOllama({
+  baseURL: "http://127.0.0.1:11434/api",
+})
 
 function App() {
   const adapter: ChatModelAdapter = {
