@@ -185,12 +185,14 @@ extension OpenAgentsLocalProvider {
             let updateHub = self.updateHub  // Not optional
 
             // Emit a tool call update to the UI showing delegation is happening
+            // Use "delegate.run" as the tool name (not "codex.run") to match the actual tool
             let toolCallWire = ACPToolCallWire(
                 call_id: UUID().uuidString,
-                name: modeId == .codex ? "codex.run" : "claude_code.run",
+                name: "delegate.run",
                 arguments: [
                     "user_prompt": AnyEncodable(a.user_prompt),
-                    "provider": AnyEncodable(providerName)
+                    "provider": AnyEncodable(providerName),
+                    "description": AnyEncodable(a.description)
                 ]
             )
             await updateHub.sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCallWire))
