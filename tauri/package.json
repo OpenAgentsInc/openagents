@@ -10,17 +10,28 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.65",
+    "@assistant-ui/react": "^0.11.37",
+    "@assistant-ui/react-ai-sdk": "^1.1.9",
+    "@assistant-ui/react-markdown": "^0.11.4",
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.17",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "ai": "^5.0.92",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.553.0",
+    "motion": "^12.23.24",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.17",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
