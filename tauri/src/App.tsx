@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Button } from "@/components/ui/button";
-import "./App.css";
+import "./App.css"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { invoke } from "@tauri-apps/api/core"
 
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
@@ -12,9 +12,9 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden fixed inset-0">
       {/* Custom title bar drag region - keeps traffic lights */}
-      <div data-tauri-drag-region className="h-12 flex-shrink-0 w-full" />
+      <div data-tauri-drag-region className="h-12 flex-shrink-0 w-full bg-zinc-900" />
 
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center justify-center p-8">
@@ -33,7 +33,7 @@ function App() {
             placeholder="Enter a name..."
             className="px-4 py-2 bg-zinc-900 text-white border border-zinc-700 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
           />
-          <Button type="submit">
+          <Button type="submit" variant="secondary">
             Greet
           </Button>
         </form>
