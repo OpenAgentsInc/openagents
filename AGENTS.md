@@ -211,6 +211,18 @@ Key test suites:
 - **Async/Await**: Use Swift concurrency for async operations
 - **Actors**: Use for thread-safe state management where appropriate
 
+### LLM‑First Policy (Mandatory)
+
+- Always prefer Foundation Models (Apple Intelligence) for inference, interpretation, and decision‑making. We have effectively unlimited inference available; use it liberally.
+- Do NOT introduce deterministic heuristics (regex parsing, string rules, ad‑hoc scoring, manual intent extraction, hard‑coded decision trees) unless the user explicitly asks you to do so in writing for the specific change.
+- Examples of things that must use FM rather than heuristics:
+  - Interpreting natural‑language prompts (e.g., orchestration goals, schedule windows, agent preferences)
+  - Summarization, classification, entity extraction, and plan generation
+  - Any “smart default” or pre‑fill behavior
+- Validation/safety checks at API boundaries are OK (e.g., verifying a directory exists), but they must not replace or approximate model‑based interpretation.
+- If a user explicitly asks for deterministic behavior, scope it narrowly, document the request in the PR description, and keep it behind a clearly isolated function.
+- If you are unsure whether to use FM or a rule: use FM.
+
 ### Type Safety
 
 - **Never use `Any` or force casts** unless absolutely necessary
@@ -526,3 +538,4 @@ The original macOS dashboard view (`SimplifiedMacOSView`) has been replaced by t
 - Always build and test before committing
 - Commit frequently with explicit file staging
 - Never use destructive git operations unless explicitly requested
+- LLM‑First Policy: NEVER add deterministic heuristics unless the user explicitly requests it; use Foundation Models wherever interpretation is needed.
