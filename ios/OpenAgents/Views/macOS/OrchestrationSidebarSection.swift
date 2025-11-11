@@ -245,22 +245,12 @@ struct OrchestrationSidebarSection: View {
 
     private func relativeTime(_ date: Date) -> String {
         let diff = date.timeIntervalSinceNow
-        let absDiff = abs(diff)
-
-        if absDiff < 5 {
-            return "now"
-        } else if absDiff < 60 {
-            return "\(Int(absDiff))s"
-        } else if absDiff < 3600 {
-            let mins = Int(absDiff / 60)
-            return "\(mins)m"
-        } else if absDiff < 86400 {
-            let hours = Int(absDiff / 3600)
-            return "\(hours)h"
-        } else {
-            let days = Int(absDiff / 86400)
-            return "\(days)d"
-        }
+        // If time has passed, don't count up — show "now"
+        if diff <= 0 { return "now" }
+        if diff < 60 { return "\(Int(diff))s" }
+        if diff < 3600 { return "\(Int(diff / 60))m" }
+        if diff < 86400 { return "\(Int(diff / 3600))h" }
+        return "\(Int(diff / 86400))d"
     }
 
     private func absoluteTime(_ date: Date) -> String {
