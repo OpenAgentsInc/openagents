@@ -1,5 +1,6 @@
 import "./App.css"
 import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar"
+import { AppHeader } from "@/components/assistant-ui/app-header"
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
@@ -39,8 +40,11 @@ function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="dark fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
-        <AssistantSidebar />
+      <div className="dark fixed inset-0 flex h-screen w-screen flex-col bg-zinc-900 text-white">
+        <AppHeader />
+        <div className="flex-1 min-h-0">
+          <AssistantSidebar />
+        </div>
       </div>
     </AssistantRuntimeProvider>
   );
