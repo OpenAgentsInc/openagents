@@ -125,9 +125,15 @@ public struct SchedulePreview {
 
         // Handle cross-midnight
         if startHour >= endHour {
-            // Cross-midnight: use two ranges
-            // Example: 23:00-05:00 → "*/30 23,0-5 * * *"
-            return "*/\(interval) \(startHour),0-\(endHour) * * *"
+            // Cross-midnight or same hour
+            if startHour == endHour {
+                // Same-hour window: limit to the single hour to avoid weird ranges like 0,0-0
+                return "*/\(interval) \(startHour) * * *"
+            } else {
+                // Cross-midnight: use two ranges
+                // Example: 23:00-05:00 → "*/30 23,0-5 * * *"
+                return "*/\(interval) \(startHour),0-\(endHour) * * *"
+            }
         } else {
             // Normal range
             return "*/\(interval) \(startHour)-\(endHour) * * *"
