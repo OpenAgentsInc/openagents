@@ -4,7 +4,6 @@ import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
 import { streamText } from "ai"
-import { CalculatorTool } from "@/tools/calculator"
 
 const ollama = createOllama({
   baseURL: "http://127.0.0.1:11434/api",
@@ -40,7 +39,6 @@ function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <CalculatorTool />
       <div className="dark fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
         <AssistantSidebar />
       </div>
