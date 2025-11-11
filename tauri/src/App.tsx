@@ -10,7 +10,7 @@ function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
+      <div className="dark fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
         <Thread />
       </div>
     </AssistantRuntimeProvider>
