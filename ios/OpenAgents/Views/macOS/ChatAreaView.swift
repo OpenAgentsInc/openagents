@@ -76,12 +76,8 @@ struct ChatAreaView: View {
         let old = messageText
         messageText = ""
 
-        // Get the selected mode preference
-        // Note: BridgeManager.sendPrompt will auto-route conversational questions
-        let desired = bridge.preferredModeForSend()
-
-        bridge.log("ui", "composer send pressed len=\(trimmed.count) desired=\(desired?.rawValue ?? "nil") hasSession=\(bridge.currentSessionId != nil)")
-        bridge.sendPrompt(text: trimmed, desiredMode: desired)
+        bridge.log("ui", "composer send pressed len=\(trimmed.count) hasSession=\(bridge.currentSessionId != nil)")
+        bridge.sendPrompt(text: trimmed)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             isSending = false
             scrollToBottom(animated: true)
