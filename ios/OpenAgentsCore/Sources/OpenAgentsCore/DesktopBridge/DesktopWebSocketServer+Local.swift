@@ -268,7 +268,7 @@ extension DesktopWebSocketServer {
     }
 
     // MARK: - Orchestration Setup (local helpers)
-    public struct LocalSetupStartResponse: Codable { public let status: String; public let session_id: String; public let conversation_id: String }
+    public struct LocalSetupStartResponse: Codable { public let status: String; public let session_id: String; public let conversation_id: String; public let config_id: String? }
 
     /// Start the conversational orchestration setup locally (no JSON-RPC envelope)
     /// - Parameters:
@@ -360,7 +360,8 @@ extension DesktopWebSocketServer {
         } else {
             await orchestrator.start()
         }
-        return .init(status: "started", session_id: sid.value, conversation_id: convId)
+        let cfgId = self.activeOrchestrationConfig?.id
+        return .init(status: "started", session_id: sid.value, conversation_id: convId, config_id: cfgId)
     }
 }
 #endif

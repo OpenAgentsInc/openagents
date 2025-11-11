@@ -323,7 +323,9 @@ extension OpenAgentsLocalProvider {
                 autoFinalize: a.auto_finalize ?? true,
                 sessionId: sessionId
             )
-            return out.status == "started" ? "✓ Orchestration setup started" : "❌ Failed to start setup"
+            guard out.status == "started" else { return "❌ Failed to start setup" }
+            if let cid = out.config_id { return "✓ Orchestration setup saved (config_id=\(cid))" }
+            return "✓ Orchestration setup saved"
         }
     }
 

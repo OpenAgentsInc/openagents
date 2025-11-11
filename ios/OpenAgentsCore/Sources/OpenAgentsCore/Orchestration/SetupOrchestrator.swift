@@ -474,7 +474,7 @@ public actor SetupOrchestrator {
             }
 
             state = .completed
-            await sendMessage("✅ Configuration saved! Orchestration is now active.")
+            await sendMessage("✅ Configuration saved! Orchestration is now active.\n**Config ID:** \(config.id)")
             await completionHandler(.success(config))
         } catch {
             state = .failed
