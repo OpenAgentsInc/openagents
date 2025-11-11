@@ -5,7 +5,7 @@ export function AppHeader() {
   const setModel = useModelStore((s) => s.setSelected);
 
   return (
-    <div className="flex h-12 w-full items-center border-b border-zinc-800 bg-zinc-950 px-4">
+    <div className="flex h-12 w-full items-center border-b border-zinc-800 bg-zinc-950 pr-4 pl-16 md:pl-20">
       <div className="flex items-center gap-2">
         <img src="/oalogo.png" alt="OpenAgents" className="size-5" />
         <span className="font-semibold">OpenAgents</span>
@@ -24,4 +24,3 @@ export function AppHeader() {
     </div>
   );
 }
-
