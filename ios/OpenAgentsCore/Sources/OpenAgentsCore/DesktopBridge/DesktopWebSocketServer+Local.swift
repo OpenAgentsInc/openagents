@@ -291,7 +291,6 @@ extension DesktopWebSocketServer {
                 switch result {
                 case .success(let config):
                     OpenAgentsLog.bridgeServer.info("Setup completed: \(config.id)")
-                    
                     if let db = self.tinyvexDb,
                        let jsonData = try? JSONEncoder().encode(config),
                        let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -303,6 +302,18 @@ extension DesktopWebSocketServer {
                                 updatedAt: config.updatedAt
                             )
                             OpenAgentsLog.bridgeServer.info("Saved completed config: \(config.id)")
+                            // Activate and (re)start scheduler on new config (local path)
+                            self.activeOrchestrationConfig = config
+                            if let svc = self.schedulerService { await svc.stop() }
+                            let svc = SchedulerService()
+                            await svc.configure(config: config) { [weak self] in
+                                guard let self = self else { return }
+                                guard let coord = await self.ensureCoordinator() else { return }
+                                _ = await coord.runCycle(config: config, workingDirectory: self.workingDirectory)
+                            }
+                            await svc.start()
+                            self.schedulerService = svc
+                            OpenAgentsLog.bridgeServer.info("Scheduler restarted with new config (local): \(config.id)")
                         } catch {
                             OpenAgentsLog.bridgeServer.error("Failed to save config: \(error.localizedDescription)")
                         }

@@ -51,6 +51,14 @@ public class OrchestrationViewModel: ObservableObject {
         startMonitoring()
     }
 
+    /// Bind a JSON-RPC client to pull scheduler/coordinator status from the Desktop server
+    /// Access level intentionally internal to avoid exposing internal protocol type
+    func setRPC(_ rpc: JSONRPCSending?) {
+        self.rpc = rpc
+        // Start polling remote status immediately
+        startStatePolling()
+    }
+
     // MARK: - Public Methods
 
     /// Load orchestration configuration from file
@@ -155,9 +163,3 @@ public class OrchestrationViewModel: ObservableObject {
     }
 }
 #endif
-    /// Bind a JSON-RPC client to pull scheduler/coordinator status from the Desktop server
-    public func setRPC(_ rpc: JSONRPCSending?) {
-        self.rpc = rpc
-        // Start polling remote status immediately
-        startStatePolling()
-    }
