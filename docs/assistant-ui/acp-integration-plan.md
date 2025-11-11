@@ -1521,6 +1521,16 @@ impl PermissionService {
 - [x] Add codex-exec adapter (temporary) mapping `exec --json` to ACP updates
 - [x] Switch default agent to `codex-acp` (local crate/binary) and keep `codex-exec` as fallback via env
 
+Agent Setup (codex-acp)
+- Build the external codex-acp repo (preferred):
+  - `cd /Users/christopherdavid/code/codex-acp && cargo build --release`
+- Point the app to the built binary:
+  - `export OA_CODEX_ACP_ROOT=/Users/christopherdavid/code/codex-acp`
+  - or `export OA_ACP_AGENT_CMD=/Users/christopherdavid/code/codex-acp/target/release/codex-acp`
+- Backend resolves in this order:
+  - `OA_ACP_AGENT_CMD` → workspace `crates/codex-acp/target/{release,debug}/codex-acp` → `OA_CODEX_ACP_ROOT/target/{release,debug}/codex-acp` → PATH `codex-acp`.
+- The `crates/codex-acp` folder in this repo is a shim for reference only; do not build it here.
+
 #### Phase 2: Streaming & Updates (Week 2)
 - [ ] Implement background update polling task
 - [ ] Add Tauri event emission for session updates
