@@ -71,6 +71,10 @@ public actor SetupOrchestrator {
         self.completionHandler = completionHandler
     }
 
+    // Note: All interpretation of inline natural language should be performed
+    // by Foundation Models during the conversational flow, not via
+    // deterministic heuristics. See AGENTS.md LLM‑First Policy.
+
     // MARK: - Public API
 
     /// Start conversational setup
