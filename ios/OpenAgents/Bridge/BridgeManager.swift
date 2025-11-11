@@ -78,9 +78,19 @@ extension BridgeManager {
     }
 
     func sendPrompt(text: String, desiredMode: ACPSessionModeId? = nil) {
+        // Auto-route conversational questions to OpenAgents orchestrator
+        // regardless of selected mode
+        var finalMode = desiredMode
+        if let mode = desiredMode,
+           mode != .default_mode,
+           ConversationalDetection.isConversational(text) {
+            log("routing", "auto-routing conversational question to orchestrator (overriding \(mode.rawValue))")
+            finalMode = .default_mode
+        }
+
         dispatcher?.sendPrompt(
             text: text,
-            desiredMode: desiredMode,
+            desiredMode: finalMode,
             getSessionId: { self.currentSessionId },
             setSessionId: { self.currentSessionId = $0 }
         )
