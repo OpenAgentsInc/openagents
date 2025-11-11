@@ -199,6 +199,7 @@ public final class CodexAgentProvider: CLIAgentProvider, @unchecked Sendable {
         if itemType == "agent_message" || itemType == "assistant_message" || type == "agent_message" || itemType == "agent_reasoning" {
             let sourceDict = item ?? obj
             if let text = extractText(from: sourceDict), !text.isEmpty {
+                OpenAgentsLog.acp.debug("[Codex] Sending agent_message_chunk: textLen=\(text.count) text=\(text.prefix(80))...")
                 let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
                 await updateHub.sendSessionUpdate(
                     sessionId: sessionId,

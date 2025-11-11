@@ -23,7 +23,7 @@ struct ChatAreaView: View {
                                 Color.clear.frame(height: 1).id("bottom")
                             } else {
                                 ForEach(Array(bridge.updates.enumerated()), id: \.offset) { (idx, note) in
-                                    ChatUpdateRow(note: note)
+                                    ChatUpdateRow(note: note, index: idx)
                                         .id(idx)
                                         .padding(.horizontal, 16)
                                 }
@@ -96,6 +96,7 @@ struct ChatAreaView: View {
 // MARK: - Row renderer for ACP updates (macOS)
 private struct ChatUpdateRow: View {
     let note: ACP.Client.SessionNotificationWire
+    let index: Int
     @EnvironmentObject private var bridge: BridgeManager
     @State private var showDetail = false
     @State private var hovering = false
@@ -112,18 +113,31 @@ private struct ChatUpdateRow: View {
             case .agentMessageChunk(let chunk):
                 let text = extractText(from: chunk)
                 let isFromOrchestrator = checkIsFromOrchestrator(chunk)
+                let _ = print("[ChatUpdateRow] agentMessageChunk idx=\(index): isOrch=\(isFromOrchestrator) textLen=\(text.count) text=\(text.prefix(50))...")
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if isFromOrchestrator {
-                        // Foundation Models orchestrator response - render normally
-                        bubble(text: text, isUser: false)
-                            .modifier(FadeInOnAppear(duration: 0.10))
-                    } else {
-                        // Delegated agent response - render in a distinct card
-                        DelegatedAgentCard(text: text, provider: inferProvider(from: note))
-                            .modifier(FadeInOnAppear(duration: 0.10))
+                // Check if this should be aggregated with previous chunk
+                let shouldAggregate = shouldAggregateWithPrevious(index: index)
+
+                if shouldAggregate {
+                    // Skip this chunk - it will be aggregated into the previous one
+                    let _ = print("[ChatUpdateRow] Skipping aggregated chunk at idx=\(index)")
+                    EmptyView()
+                } else {
+                    // Render this chunk (possibly aggregating following chunks)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if isFromOrchestrator {
+                            // Foundation Models orchestrator response - render normally
+                            bubble(text: text, isUser: false)
+                                .modifier(FadeInOnAppear(duration: 0.10))
+                        } else {
+                            // Delegated agent response - aggregate with following chunks
+                            let aggregatedText = aggregateFollowingChunks(startIndex: index)
+                            let _ = print("[ChatUpdateRow] Rendering DelegatedAgentCard at idx=\(index) with aggregatedTextLen=\(aggregatedText.count)")
+                            DelegatedAgentCard(text: aggregatedText, provider: inferProvider(from: note))
+                                .modifier(FadeInOnAppear(duration: 0.10))
+                        }
+                        CopyMarkdownRow(markdown: isFromOrchestrator ? text : aggregateFollowingChunks(startIndex: index), alignRight: false, visible: hovering)
                     }
-                    CopyMarkdownRow(markdown: text, alignRight: false, visible: hovering)
                 }
             case .agentThoughtChunk(let chunk):
                 bubble(text: extractText(from: chunk), isUser: false, italic: true, secondary: true)
@@ -305,6 +319,8 @@ private struct ChatUpdateRow: View {
             guard update.session_id == sessionId else { continue }
 
             switch update.update {
+            case .toolCall(let call) where call.name == ToolName.delegate.rawValue:
+                return "Codex" // Default for delegate.run
             case .toolCall(let call) where call.name == "codex.run":
                 return "Codex"
             case .toolCall(let call) where call.name == "claude_code.run":
@@ -319,6 +335,51 @@ private struct ChatUpdateRow: View {
         }
         return nil
     }
+
+    /// Check if this message chunk should be aggregated with the previous chunk
+    private func shouldAggregateWithPrevious(index: Int) -> Bool {
+        guard index > 0 else { return false }
+        let note = bridge.updates[index]
+        guard case .agentMessageChunk(let chunk) = note.update else { return false }
+
+        // Don't aggregate orchestrator messages
+        if checkIsFromOrchestrator(chunk) { return false }
+
+        // Check if previous update is also a delegated agent chunk
+        let prevNote = bridge.updates[index - 1]
+        guard case .agentMessageChunk(let prevChunk) = prevNote.update else { return false }
+
+        // Don't aggregate if previous is from orchestrator
+        if checkIsFromOrchestrator(prevChunk) { return true } // Skip this one, it's after orchestrator
+
+        // Same session? Aggregate!
+        return prevNote.session_id == note.session_id
+    }
+
+    /// Aggregate this chunk with all following consecutive delegated agent chunks
+    private func aggregateFollowingChunks(startIndex: Int) -> String {
+        let note = bridge.updates[startIndex]
+        guard case .agentMessageChunk(let firstChunk) = note.update else {
+            return ""
+        }
+
+        var texts: [String] = [extractText(from: firstChunk)]
+
+        // Collect following chunks from same session until we hit a different update type
+        for i in (startIndex + 1)..<bridge.updates.count {
+            let nextNote = bridge.updates[i]
+            guard nextNote.session_id == note.session_id else { break }
+
+            guard case .agentMessageChunk(let nextChunk) = nextNote.update else { break }
+
+            // Stop if we hit an orchestrator message
+            if checkIsFromOrchestrator(nextChunk) { break }
+
+            texts.append(extractText(from: nextChunk))
+        }
+
+        return texts.joined(separator: "\n")
+    }
 }
 
 // MARK: - Delegated Agent Card
@@ -327,6 +388,7 @@ private struct DelegatedAgentCard: View {
     let provider: String?
 
     var body: some View {
+        let _ = print("[DelegatedAgentCard] Rendering: provider=\(provider ?? "nil") textLen=\(text.count) text=\(text.prefix(100))...")
         VStack(alignment: .leading, spacing: 8) {
             // Header showing which agent is responding
             if let provider = provider {
