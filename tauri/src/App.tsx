@@ -1,5 +1,5 @@
 import "./App.css"
-import { Thread } from "@/components/assistant-ui/thread"
+import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar"
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
@@ -40,7 +40,7 @@ function App() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="dark fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
-        <Thread />
+        <AssistantSidebar />
       </div>
     </AssistantRuntimeProvider>
   );
