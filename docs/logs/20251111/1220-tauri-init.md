@@ -1,7 +1,7 @@
 ```bash
 ➜  openagents git:(main) bun create tauri-app
 ✔ Project name · openagents
-✔ Identifier · com.openagents.app
+✔ Identifier · com.openagents.desktop
 ✔ Choose which language to use for your frontend · TypeScript / JavaScript - (pnpm, yarn, npm, deno, bun)
 ✔ Choose your package manager · bun
 ✔ Choose your UI template · React - (https://react.dev/)
