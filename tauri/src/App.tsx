@@ -1,45 +1,19 @@
 import "./App.css"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { invoke } from "@tauri-apps/api/core"
+import { Thread } from "@/components/assistant-ui/thread"
+import { AssistantRuntimeProvider } from "@assistant-ui/react"
+import { useLocalRuntime } from "@assistant-ui/react"
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const runtime = useLocalRuntime({
+    initialMessages: [],
+  });
 
   return (
-    <div className="fixed inset-0 h-screen w-screen bg-zinc-900 text-white flex flex-col overflow-hidden">
-      {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black overflow-hidden">
-        <h1 className="text-4xl font-bold mb-8">OpenAgents</h1>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            greet();
-          }}
-          className="flex flex-col gap-4 w-full max-w-md"
-        >
-          <input
-            id="greet-input"
-            onChange={(e) => setName(e.currentTarget.value)}
-            placeholder="Enter a name..."
-            className="px-4 py-2 bg-zinc-900 text-white border border-zinc-700 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-500"
-          />
-          <Button type="submit" variant="secondary">
-            Greet
-          </Button>
-        </form>
-
-        {greetMsg && (
-          <p className="mt-4 text-zinc-300">{greetMsg}</p>
-        )}
+    <AssistantRuntimeProvider runtime={runtime}>
+      <div className="fixed inset-0 h-screen w-screen bg-zinc-900 text-white">
+        <Thread />
       </div>
-    </div>
+    </AssistantRuntimeProvider>
   );
 }
 
