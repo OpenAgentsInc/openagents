@@ -12,11 +12,10 @@ const ollama = createOllama({
 
 function App() {
   const adapter: ChatModelAdapter = {
-    async *run({ messages, abortSignal, tools }) {
+    async *run({ messages, abortSignal }) {
       const result = streamText({
         model: ollama("glm-4.6:cloud"),
         messages: messages as any,
-        tools: tools as any,
         abortSignal,
       });
 
