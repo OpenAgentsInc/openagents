@@ -13,8 +13,9 @@
     "windows": [
       {
         "title": "OpenAgents",
-        "width": 800,
-        "height": 600,
+        "width": 2000,
+        "height": 1200,
+        "center": true,
         "titleBarStyle": "overlay",
         "hiddenTitle": true
       }
