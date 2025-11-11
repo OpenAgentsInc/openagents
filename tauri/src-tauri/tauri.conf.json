@@ -16,8 +16,7 @@
         "width": 2000,
         "height": 1200,
         "center": true,
-        "titleBarStyle": "overlay",
-        "hiddenTitle": true
+        "decorations": false
       }
     ],
     "security": {
