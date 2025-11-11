@@ -309,9 +309,12 @@ private struct ChatUpdateRow: View {
     }
 
     private func checkIsFromOrchestrator(_ chunk: ACP.Client.ContentChunk) -> Bool {
+        // Treat both FM-driven orchestrator output and conversational setup output
+        // as non-delegated system messages that should not be aggregated into
+        // a delegated agent card.
         guard let sourceValue = chunk._meta?["source"] else { return false }
         if case .string(let sourceStr) = sourceValue.toJSONValue() {
-            return sourceStr == "fm_orchestrator"
+            return sourceStr == "fm_orchestrator" || sourceStr == "conversational_setup"
         }
         return false
     }
