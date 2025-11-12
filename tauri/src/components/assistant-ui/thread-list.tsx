@@ -1,10 +1,9 @@
 import type { FC } from "react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAssistantState,
-  useAssistantActions,
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
@@ -13,35 +12,6 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const ThreadList: FC = () => {
-  const threads = useAssistantState((state) => state.threads.threads);
-  const currentThreadId = useAssistantState((state) => state.threads.threadId);
-  const { switchToThread } = useAssistantActions();
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-      if (!threads || threads.length === 0) return;
-
-      const currentIndex = threads.findIndex((t) => t.id === currentThreadId);
-      let nextIndex: number;
-
-      if (e.key === "ArrowDown") {
-        nextIndex = currentIndex + 1 >= threads.length ? 0 : currentIndex + 1;
-      } else {
-        nextIndex = currentIndex - 1 < 0 ? threads.length - 1 : currentIndex - 1;
-      }
-
-      const nextThread = threads[nextIndex];
-      if (nextThread) {
-        e.preventDefault();
-        switchToThread(nextThread.id);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [threads, currentThreadId, switchToThread]);
-
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col items-stretch gap-1.5">
       <ThreadListNew />
