@@ -209,3 +209,33 @@ Components covered
 Next batch candidates
 
 - Spinner, Sonner (toast), Form, NavigationMenu, Pagination done, Breadcrumb done; also: AspectRatio, Label, Progress done, RadioGroup done
+
+## 2025-11-12 12:34 — Shadcn UI Stories (batch 9, final)
+
+Components covered
+
+41) AspectRatio — `UI/AspectRatio`
+    - Ratio control with image/placeholder content
+
+42) Label — `UI/Label`
+    - With input and checkbox associations
+
+43) NavigationMenu — `UI/NavigationMenu`
+    - Two menus (Products, Docs) with viewport
+
+44) ScrollArea — `UI/ScrollArea`
+    - Vertical list with border and custom size controls
+
+45) Spinner — `UI/Spinner`
+    - Size variants (sm/md/lg)
+
+46) Sonner Toaster — `UI/Sonner`
+    - Buttons to trigger success/info/warning/error/promise toasts
+
+47) Form — `UI/Form`
+    - React Hook Form + zod validation (name/email)
+
+Status
+
+- All components under `src/components/ui/` now have Storybook coverage with at least one basic story.
+- Storybook builds cleanly after each batch.
