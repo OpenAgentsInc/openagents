@@ -8,7 +8,7 @@ const meta = {
   decorators: [
     (Story) => (
       <MyRuntimeProvider>
-        <div className="dark w-full min-h-[80vh] bg-background text-foreground">
+        <div className="dark w-full h-screen bg-background text-foreground">
           <Story />
         </div>
       </MyRuntimeProvider>
@@ -23,4 +23,10 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+
+export const Fullscreen: Story = {
+  parameters: {
+    layout: 'fullscreen',
+  },
+};
 
