@@ -22,22 +22,105 @@ type TinyvexMessageRow = {
   updatedAt: number | null;
 };
 
-function mapRowsToThreadMessages(rows: TinyvexMessageRow[]): ThreadMessageLike[] {
-  // Keep only finalized message rows (partial === 0) for stable history
+type TinyvexToolCallRow = {
+  thread_id: string;
+  tool_call_id: string;
+  title?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  content_json?: string | null;
+  locations_json?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+function toBaseTime(row: { createdAt?: number; created_at?: number; ts?: number; updated_at?: number }) {
+  return (row.ts as number | undefined) ?? (row.createdAt as number | undefined) ?? (row.created_at as number | undefined) ?? (row.updated_at as number | undefined) ?? Date.now();
+}
+
+function mapRowsToThreadMessages(
+  rows: TinyvexMessageRow[],
+  reasonRows: TinyvexMessageRow[],
+  toolCalls: TinyvexToolCallRow[],
+  planEvents: number[],
+  stateEvents: number[],
+): ThreadMessageLike[] {
+  const out: ThreadMessageLike[] = [];
+
+  // Finalized user/assistant messages
   const filtered = rows.filter((r) => r.kind === "message" && (r.partial ?? 0) === 0);
-  // Ensure ascending order by ts
-  const sorted = filtered.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  // Map to assistant-ui ThreadMessageLike
-  return sorted.map((row) => {
-    const role = row.role === "assistant" ? "assistant" : "user";
-    const content = [{ type: "text", text: row.text ?? "" } as const];
-    return {
+  for (const row of filtered) {
+    out.push({
       id: row.itemId ?? String(row.id),
-      role,
-      createdAt: new Date(row.createdAt || row.ts || Date.now()),
-      content,
-    } as ThreadMessageLike;
-  });
+      role: row.role === "assistant" ? "assistant" : "user",
+      createdAt: new Date(toBaseTime(row)),
+      content: [{ type: "text", text: row.text ?? "" }],
+    } as ThreadMessageLike);
+  }
+
+  // Reasoning rows as separate assistant messages with a reasoning part
+  const finalizedReason = reasonRows.filter((r) => (r.partial ?? 0) === 0);
+  for (const row of finalizedReason) {
+    out.push({
+      id: `reason:${row.id}`,
+      role: "assistant",
+      createdAt: new Date(toBaseTime(row)),
+      content: [{ type: "reasoning", text: row.text ?? "" } as any],
+    } as ThreadMessageLike);
+  }
+
+  // Tool calls as assistant tool-call parts
+  for (const tc of toolCalls) {
+    const toolName = (tc.kind ?? tc.title ?? "tool").toString();
+    const argsText = (() => {
+      if (tc.content_json) {
+        try {
+          const arr = JSON.parse(tc.content_json);
+          const firstText = Array.isArray(arr) ? arr.find((p: any) => p?.type === "text")?.text : undefined;
+          return typeof firstText === "string" && firstText.length > 0 ? firstText : "";
+        } catch {
+          return "";
+        }
+      }
+      return "";
+    })();
+    out.push({
+      id: `tool:${tc.tool_call_id}`,
+      role: "assistant",
+      createdAt: new Date(tc.updated_at ?? tc.created_at ?? Date.now()),
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: tc.tool_call_id,
+          toolName,
+          args: {},
+          argsText,
+        } as any,
+      ],
+    } as ThreadMessageLike);
+  }
+
+  // Plan/state events as simple assistant text markers (placeholder)
+  for (const ts of planEvents) {
+    out.push({
+      id: `plan:${ts}`,
+      role: "assistant",
+      createdAt: new Date(ts),
+      content: [{ type: "text", text: "[Plan updated]" }],
+    } as ThreadMessageLike);
+  }
+  for (const ts of stateEvents) {
+    out.push({
+      id: `state:${ts}`,
+      role: "assistant",
+      createdAt: new Date(ts),
+      content: [{ type: "text", text: "[State updated]" }],
+    } as ThreadMessageLike);
+  }
+
+  // Sort by time then id for stability
+  out.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || String(a.id).localeCompare(String(b.id)));
+  return out;
 }
 
 export function useAcpRuntime(options?: { initialThreadId?: string }) {
@@ -46,6 +129,10 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
   );
   const [isRunning, setIsRunning] = useState(false);
   const rowsRef = useRef<TinyvexMessageRow[]>([]);
+  const reasonRowsRef = useRef<TinyvexMessageRow[]>([]);
+  const toolCallsRef = useRef<TinyvexToolCallRow[]>([]);
+  const planEventsRef = useRef<number[]>([]);
+  const stateEventsRef = useRef<number[]>([]);
   const [version, setVersion] = useState(0);
 
   const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
@@ -73,6 +160,17 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           setIsRunning(true);
         }
       }
+      if (msg.type === "tinyvex.update" && msg.stream === "tool_calls") {
+        ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId, limit: 100 } });
+      }
+      if (msg.type === "tinyvex.update" && msg.stream === "plan") {
+        planEventsRef.current = [...planEventsRef.current, Date.now()];
+        setVersion((v) => v + 1);
+      }
+      if (msg.type === "tinyvex.update" && msg.stream === "state") {
+        stateEventsRef.current = [...stateEventsRef.current, Date.now()];
+        setVersion((v) => v + 1);
+      }
       if (
         msg.type === "tinyvex.finalize" &&
         msg.stream === "messages"
@@ -80,15 +178,20 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         setIsRunning(false);
         // Final rows included in the follow-up query_result below
       }
-      if (
-        msg.type === "tinyvex.query_result" &&
-        msg.name === "messages.list"
-      ) {
-        rowsRef.current = (msg.rows as TinyvexMessageRow[]) ?? [];
+      if (msg.type === "tinyvex.query_result" && msg.name === "messages.list") {
+        const all = (msg.rows as TinyvexMessageRow[]) ?? [];
+        rowsRef.current = all.filter((r) => r.kind === "message");
+        reasonRowsRef.current = all.filter((r) => r.kind === "reason");
+        setVersion((v) => v + 1);
+      }
+      if (msg.type === "tinyvex.query_result" && msg.name === "tool_calls.list") {
+        toolCallsRef.current = (msg.rows as TinyvexToolCallRow[]) ?? [];
         setVersion((v) => v + 1);
       }
       if (msg.type === "tinyvex.snapshot" && msg.stream === "messages") {
-        rowsRef.current = (msg.rows as TinyvexMessageRow[]) ?? [];
+        const all = (msg.rows as TinyvexMessageRow[]) ?? [];
+        rowsRef.current = all.filter((r) => r.kind === "message");
+        reasonRowsRef.current = all.filter((r) => r.kind === "reason");
         setVersion((v) => v + 1);
       }
     });
@@ -96,7 +199,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
   }, [threadId, ws.connected, ws.send, ws.subscribe]);
 
   const messages = useMemo(
-    () => mapRowsToThreadMessages(rowsRef.current),
+    () =>
+      mapRowsToThreadMessages(
+        rowsRef.current,
+        reasonRowsRef.current,
+        toolCallsRef.current,
+        planEventsRef.current,
+        stateEventsRef.current,
+      ),
     [version],
   );
 
