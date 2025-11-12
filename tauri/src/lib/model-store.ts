@@ -8,7 +8,6 @@ type ModelState = {
 };
 
 export const useModelStore = create<ModelState>((set) => ({
-  selected: "ollama",
+  selected: "codex",
   setSelected: (m) => set({ selected: m }),
 }));
-
