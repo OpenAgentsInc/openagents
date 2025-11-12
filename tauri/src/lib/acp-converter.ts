@@ -1,4 +1,4 @@
-import type { ThreadMessageLike, ThreadAssistantMessagePart, ThreadUserMessagePart } from "@assistant-ui/react";
+import type { ThreadMessageLike, ThreadAssistantMessagePart, ThreadUserMessagePart } from "@/ui/types/thread";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 
 export function convertACPToThreadMessage(acpMessage: { id: string; role: "user" | "assistant" | "system"; content: ContentBlock[]; createdAt?: string; metadata?: unknown }): ThreadMessageLike {
