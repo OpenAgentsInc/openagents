@@ -1,8 +1,8 @@
 import { ModelToolbar } from "@/components/assistant-ui/model-toolbar"
 import { Thread } from "@/components/assistant-ui/thread"
 import { NavChats } from "@/components/nav-chats"
-import { NavCodebases } from "@/components/nav-codebases"
-import { NavProjectsAssistant } from "@/components/nav-projects-assistant"
+// import { NavCodebases } from "@/components/nav-codebases"
+// import { NavProjectsAssistant } from "@/components/nav-projects-assistant"
 // import { NavUserAssistant } from "@/components/nav-user-assistant"
 import {
     Sidebar, SidebarContent, SidebarFooter, SidebarInset, SidebarProvider,
@@ -15,8 +15,8 @@ export function AssistantSidebar() {
       <Sidebar collapsible="icon">
         <SidebarContent className="pt-8">
           <NavChats />
-          <NavProjectsAssistant />
-          <NavCodebases />
+          {/** <NavProjectsAssistant /> */}
+          {/** <NavCodebases /> */}
         </SidebarContent>
         <SidebarFooter>
           {/** <NavUserAssistant /> */}
