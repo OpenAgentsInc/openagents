@@ -331,6 +331,20 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       // The WS subscription will pick up and refresh messages
       setIsRunning(true);
     },
+    adapters: {
+      threadList: {
+        onSwitchToNewThread: async () => {
+          // Clear current thread and reset state for new conversation
+          setThreadId(undefined);
+          rowsRef.current = [];
+          reasonRowsRef.current = [];
+          toolCallsRef.current = [];
+          planEventsRef.current = [];
+          stateEventsRef.current = [];
+          setVersion((v) => v + 1);
+        },
+      },
+    },
   };
 
   return useExternalStoreRuntime(store);
