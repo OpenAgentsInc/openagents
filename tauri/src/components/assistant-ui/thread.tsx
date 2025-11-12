@@ -4,7 +4,7 @@ import {
 } from "lucide-react"
 import { domAnimation, LazyMotion, MotionConfig } from "motion/react"
 import * as m from "motion/react-m"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import {
     ComposerAddAttachment, ComposerAttachments, UserMessageAttachments
 } from "@/components/assistant-ui/attachment"
@@ -285,15 +285,16 @@ const AssistantMessage: FC = () => {
 
 const AssistantActionBar: FC = () => {
   // Hide action bar for reasoning/tool-call only messages
-  const partTypes = useAssistantState((s: any) =>
-    (s.message?.parts ?? []).map((p: any) => p?.type)
-  ) as ReadonlyArray<string>;
+  const selectPartTypes = useCallback((s: any) =>
+    (s.message?.parts ?? []).map((p: any) => p?.type), []);
+  const partTypes = useAssistantState(selectPartTypes) as ReadonlyArray<string>;
   const hasReasoningOrTool = partTypes?.some(
     (t) => t === "reasoning" || t === "tool-call"
   );
 
   // In Codex (ACP) chats, show only Copy (no Replay)
-  const selectedModel = useModelStore((s: any) => s.selected);
+  const selectModel = useCallback((s: any) => s.selected, []);
+  const selectedModel = useModelStore(selectModel);
 
   if (hasReasoningOrTool) return null;
 
