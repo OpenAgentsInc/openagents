@@ -110,3 +110,30 @@ Components covered
 Next batch candidates
 
 - Remaining: Calendar, Date Picker (if separate), Drawer/Sheet already done?, Command, Carousel, Chart, Resizable, Sidebar, Field/Item/InputGroup
+
+## 2025-11-12 12:02 — Shadcn UI Stories (batch 5)
+
+Components covered
+
+21) Calendar — `UI/Calendar`
+    - Single mode and Range mode stories
+    - Controls: months, caption layout, nav button variant
+
+22) Drawer — `UI/Drawer`
+    - Controlled open state, direction control
+    - Header, description, footer actions
+
+23) Sheet — `UI/Sheet`
+    - Side control (right/left/top/bottom)
+    - Close button + footer actions
+
+24) Command — `UI/Command`
+    - CommandDialog with input, groups, items, and shortcuts
+
+25) Carousel — `UI/Carousel`
+    - Horizontal/vertical with Prev/Next controls
+    - Slide count, width/height controls
+
+Next batch candidates
+
+- Chart, Resizable, Sidebar, Field, Item, InputGroup
