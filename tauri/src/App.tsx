@@ -44,15 +44,14 @@ function App() {
         let lastText = "";
         const waitForChange = (timeoutMs: number) =>
           new Promise<string | undefined>((resolve) => {
-            const unsub = (useAcpStore as any).subscribe(
-              (s: any) => s.liveText,
-              (newText: string) => {
-                if (newText !== lastText) {
-                  try { unsub(); } catch {}
-                  resolve(newText);
-                }
-              },
-            );
+            let unsub: () => void = () => {};
+            unsub = useAcpStore.subscribe((state) => {
+              const next = state.liveText as string;
+              if (next !== lastText) {
+                try { unsub(); } catch {}
+                resolve(next);
+              }
+            });
             setTimeout(() => {
               try { unsub(); } catch {}
               resolve(undefined);
