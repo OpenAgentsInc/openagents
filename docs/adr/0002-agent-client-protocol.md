@@ -5,35 +5,33 @@
 
 ## Context
 
-OpenAgents integrates multiple provider CLIs (e.g., Codex, Claude Code) and a mobile app that consumes live updates and local history over a LAN WebSocket bridge. Provider event shapes differ significantly (Codex JSONL rollouts, Claude transcripts), and ad‑hoc JSON drifting between components makes testing and evolution brittle.
+OpenAgents integrates multiple provider CLIs (e.g., Codex, Claude Code) and a desktop app that consumes live updates and local history via an embedded WebSocket server. Provider event shapes differ significantly (Codex JSONL rollouts, Claude transcripts), and ad‑hoc JSON drifting between components makes testing and evolution brittle.
 
-In v0.3, the entire bridge and app are native Swift. Provider events are translated into ACP types in Swift, and typed rows are persisted locally. This ADR formalizes ACP as our canonical contract across process boundaries and persistent storage.
+As of the current Tauri (Rust + React) implementation, the backend is written in Rust and translates provider events into ACP types. A Rust “tinyvex” writer persists typed rows locally (SQLite) and a WebSocket server broadcasts normalized updates. This ADR formalizes ACP as our canonical contract across process boundaries and persistent storage.
 
 ## Decision
 
 Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for agent updates and state. Concretely:
 
-- On‑wire over WS
-  - Only ACP‑derived envelopes travel over the bridge: control messages and typed Tinyvex snapshots/updates that carry ACP‑translated content.
-  - No ad‑hoc provider JSON is exposed to the app; provider formats are translated at the bridge boundary into ACP `SessionUpdate`s and typed rows.
+- On‑wire over WebSocket
+  - Only ACP‑derived envelopes flow to the UI: tinyvex snapshot/update/finalize notifications that are the result of ACP `SessionUpdate` mirroring.
+  - No provider‑native JSON is exposed to the UI; provider formats are translated in the Rust backend into ACP `SessionUpdate`s and persisted/streamed as typed rows and notifications.
 
-- In the bridge (Swift)
-  - Provider adapters map provider events to ACP `SessionUpdate` via Swift translators:
-    - `ios/OpenAgentsCore/Sources/OpenAgentsCore/Translators/CodexAcpTranslator.swift`
-    - `ios/OpenAgentsCore/Sources/OpenAgentsCore/Translators/ClaudeAcpTranslator.swift`
-  - The desktop WebSocket server (`DesktopWebSocketServer`) sends ACP `session/update` notifications over JSON‑RPC 2.0.
-  - A Tinyvex writer (`SessionUpdateHub` + `TinyvexDbLayer`) mirrors ACP updates into typed rows (threads, messages, tool calls, plan/state) and can serve history back to clients.
+- In the backend (Rust)
+  - ACP client: `tauri/src-tauri/src/oa_acp/client.rs` spawns provider agents (e.g., `codex-acp`) and parses JSON‑RPC notifications into `agent_client_protocol` types.
+  - Session manager: `tauri/src-tauri/src/oa_acp/session_manager.rs` owns session lifecycle (`create_session`, `prompt`), receives ACP updates, and forwards them to the tinyvex writer.
+  - Tinyvex (SQLite) + writer: `crates/tinyvex/{lib.rs,writer.rs}` persist normalized rows (threads, messages, tool calls, plan/state) and produce writer notifications.
+  - WebSocket server: `tauri/src-tauri/src/tinyvex_ws.rs` broadcasts writer notifications as `tinyvex.update`/`tinyvex.finalize` and serves query/snapshot responses (e.g., `messages.list`).
 
-- In Apple‑native apps (iOS/macOS)
-  - All ACP usage MUST go through the Swift parity module `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/*` (one‑to‑one mapping with the Rust SDK).
-  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names exclusively.
-  - Session lifecycle and streamed updates (`session/new`, `session/prompt`, `session/update`, `session/cancel`) are implemented natively in Swift using this module.
-  - Client‑side services (fs.*, terminal.*, `session/request_permission`) are implemented in Swift behind permissions.
+- In the desktop app (React/assistant‑ui)
+  - The UI consumes ACP‑derived state via WebSocket using hooks/adapters:
+    - Streaming deltas: `tauri/src/lib/useAcpSessionUpdates.ts` subscribes to tinyvex WS, queries on update, and exposes live assistant text and finalize signals.
+    - Runtime composition: `tauri/src/runtime/MyRuntimeProvider.tsx` wires adapters and state into `AssistantRuntimeProvider`.
+    - Optionally, an ACP‑native runtime (no SSE) is provided by `tauri/src/runtime/useAcpRuntime.tsx` using assistant‑ui’s ExternalStore runtime to map tinyvex message rows directly into thread messages.
 
-- In the database (Tinyvex, Swift)
-  - Tables remain the minimal, typed projection required by the app (snake_case fields).
-  - An append‑only `acp_events` log is maintained for traceability of ACP updates (see `TinyvexDbLayer`).
-  - All DB access and writing are implemented in Swift (`ios/OpenAgentsCore/Sources/OpenAgentsCore/Tinyvex/`).
+- In the database (Tinyvex, Rust)
+  - Tables are the minimal, typed projection required by the app (snake_case fields), plus an append‑only `acp_events` log for traceability.
+  - All DB access and writing are implemented in the Rust `tinyvex` crate and used by the Tauri backend.
 
 - Naming & casing
   - General rule: prefer snake_case for public payload fields and align with ACP concepts.
@@ -50,20 +48,20 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 ## Scope
 
-- Applies to all WS payloads and Tinyvex projections produced by the Swift bridge.
-- Provider‑native artifacts may be persisted for diagnostics, but must not leak provider formats to the app WS contract.
+- Applies to all WS payloads and Tinyvex projections produced by the Rust backend.
+- Provider‑native artifacts may be persisted for diagnostics, but must not leak provider formats to the app’s WebSocket contract.
 - App renders only ACP‑derived content; demos and tests refer to ACP types.
-- iOS/macOS apps MUST use the AgentClientProtocol Swift module for all ACP types and JSON‑RPC method names. Do not embed ad‑hoc copies of ACP shapes.
+- Code must use the shared Rust ACP crate (`crates/agent-client-protocol`) for all ACP types and JSON‑RPC method names at the boundary. Do not embed ad‑hoc copies of ACP shapes.
 
 ## Implementation Plan
 
-1) Maintain and extend the Swift translators for Codex/Claude mapping parity.
-2) Keep the Swift writer (`SessionUpdateHub` + `TinyvexDbLayer`) focused on ACP `SessionUpdate` ingestion and typed row upserts; avoid provider‑specific logic in DB.
-3) WS controls expose only typed Tinyvex snapshots/updates and control envelopes; remove any accidental passthrough of provider JSON.
+1) Maintain and extend the Rust ACP client and adapters for provider parity (e.g., codex‑acp).
+2) Keep the tinyvex writer focused on ACP `SessionUpdate` ingestion and typed row upserts; avoid provider‑specific logic in DB.
+3) WS only exposes typed tinyvex snapshots/updates; remove any accidental passthrough of provider JSON.
 4) Tests:
-   - Unit: translator mappings for Codex/Claude; writer invariants.
-   - Integration: WebSocket server/client (`DesktopWebSocketServer` ↔ `MobileWebSocketClient`).
-   - Persistence: Tinyvex history queries round‑trip ACP updates.
+   - Unit: writer invariants and ACP update mirroring (`crates/tinyvex` tests).
+   - Integration: WebSocket broadcast and queries (`tauri/src-tauri/src/tinyvex_ws.rs`).
+   - Persistence: tinyvex history queries round‑trip ACP updates.
 
 ## Consequences
 
@@ -73,24 +71,25 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 ## Acceptance
 
-- All bridge→app payloads are ACP‑derived with snake_case fields (with ACP‑spec exceptions noted above).
-- Provider adapters live behind Swift translators; Tinyvex writer operates only on ACP `SessionUpdate`.
+- All backend→UI payloads are ACP‑derived with snake_case fields (with ACP‑spec exceptions noted above).
+- Provider adapters live behind Rust ACP client/session management; tinyvex writer operates only on ACP `SessionUpdate`.
 - Tests exist at each layer to enforce the contract (see below).
 
 ## References
 
-- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS)
-- ADR‑0004 — iOS ↔ Desktop WebSocket Bridge and Pairing
+- ADR‑0003 — Tauri Desktop App (Rust + React)
+- ADR‑0004 — Tinyvex WebSocket Server and Persistence
 - ACP Introduction: https://agentclientprotocol.com/overview/introduction
 
-### Pointers to code and tests (v0.3 Swift)
+### Pointers to code and tests (current Rust/Tauri)
 
-- Swift ACP types: `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/`
-- Translators: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Translators/`
-- Bridge server/client: `DesktopWebSocketServer` and `MobileWebSocketClient`
-- Persistence: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Tinyvex/`
-- Tests:
-  - `ACPProtocolComprehensiveTests.swift`
-  - `SessionUpdateHubTests.swift`
-  - `DesktopWebSocketServerComprehensiveTests.swift`
-  - `MobileWebSocketClientComprehensiveTests.swift`
+- ACP crate (types): `crates/agent-client-protocol/`
+- Provider agent (codex‑acp): `crates/codex-acp/`
+- Tauri backend ACP client/session manager: `tauri/src-tauri/src/oa_acp/{client.rs,session_manager.rs}`
+- Tinyvex (SQLite) + writer: `crates/tinyvex/{lib.rs,writer.rs}`
+- WebSocket server: `tauri/src-tauri/src/tinyvex_ws.rs`
+- React assistant‑ui integration:
+  - Streaming hook: `tauri/src/lib/useAcpSessionUpdates.ts`
+  - Runtime provider: `tauri/src/runtime/MyRuntimeProvider.tsx`
+  - ACP ExternalStore runtime (prototype): `tauri/src/runtime/useAcpRuntime.tsx`
+ - Tests: see `crates/tinyvex` unit tests and `tauri/src-tauri` integration tests as they are added
