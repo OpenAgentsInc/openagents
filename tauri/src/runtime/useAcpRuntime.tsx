@@ -47,28 +47,46 @@ function mapRowsToThreadMessages(
 ): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
 
-  // User/assistant messages (include partial to show in-progress assistant text)
-  const filtered = rows.filter((r) => r.kind === "message");
-  for (const row of filtered) {
-    const msgId = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
-    out.push({
-      id: msgId,
-      role: row.role === "assistant" ? "assistant" : "user",
-      createdAt: new Date(toBaseTime(row)),
-      content: [{ type: "text", text: row.text ?? "" }],
-    } as ThreadMessageLike);
+  // Split by role for stable grouping
+  const userRows = rows.filter((r) => r.kind === "message" && (r.role || "user") !== "assistant");
+  const assistantRows = rows.filter((r) => r.kind === "message" && (r.role || "assistant") === "assistant");
+  const sortedAssistForLatest = [...assistantRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
+  const latestAssistant = sortedAssistForLatest.length > 0 ? sortedAssistForLatest[sortedAssistForLatest.length - 1] : undefined;
+  const sortedReasonsForLatest = [...reasonRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
+  const latestReason = sortedReasonsForLatest.length > 0 ? sortedReasonsForLatest[sortedReasonsForLatest.length - 1] : undefined;
+
+  // Debug mapping summary
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[acp-runtime] mapRows: users=${userRows.length} assistants=${assistantRows.length} reasons=${reasonRows.length} latestAssistant=${Boolean(latestAssistant)} latestReason=${Boolean(latestReason)}`,
+    );
+  } catch {}
+
+  // Users first (ascending by time)
+  const sortedUsers = [...userRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
+  for (const row of sortedUsers) {
+    const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
+    out.push({ id, role: "user", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] } as ThreadMessageLike);
   }
 
-  // Reasoning rows as separate assistant messages with a reasoning part
-  const finalizedReason = reasonRows.filter((r) => (r.partial ?? 0) === 0);
-  for (const row of finalizedReason) {
-    const rid = row.itemId ? `reason:${row.itemId}` : `reason-id:${row.id}`;
-    out.push({
-      id: rid,
-      role: "assistant",
-      createdAt: new Date(toBaseTime(row)),
-      content: [{ type: "reasoning", text: row.text ?? "" } as any],
-    } as ThreadMessageLike);
+  // Assistant: all but latest as finalized text-only messages
+  const sortedAssist = [...assistantRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
+  for (let i = 0; i < Math.max(0, sortedAssist.length - 1); i++) {
+    const row = sortedAssist[i]!;
+    const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
+    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] } as ThreadMessageLike);
+  }
+
+  // Latest assistant combined with current reasoning (if any)
+  if (latestAssistant) {
+    const id = latestAssistant.itemId ? `msg:${latestAssistant.itemId}` : `msg-id:${latestAssistant.id}`;
+    const parts: any[] = [];
+    if (latestReason?.text && latestReason.text.trim().length > 0) {
+      parts.push({ type: "reasoning", text: latestReason.text } as any);
+    }
+    parts.push({ type: "text", text: latestAssistant.text ?? "" });
+    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(latestAssistant)), content: parts } as ThreadMessageLike);
   }
 
   // Tool calls as assistant tool-call parts
