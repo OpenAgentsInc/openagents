@@ -169,14 +169,15 @@ const ThreadSuggestions: FC = () => {
 
 const Composer: FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isEmpty = ThreadPrimitive.useThread((t) => t.messages.length === 0);
 
   useEffect(() => {
-    // Ensure focus on mount
+    // Focus on mount and when thread is empty (e.g., after switching to new thread)
     const timer = setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isEmpty]);
 
   return (
     <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-[var(--radius-xl)] bg-background pb-4 md:pb-6">
