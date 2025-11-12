@@ -1,8 +1,10 @@
 import type { FC } from "react";
+import { useState, useEffect } from "react";
 import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAssistantState,
+  useAssistantActions,
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
@@ -11,6 +13,35 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const ThreadList: FC = () => {
+  const threads = useAssistantState((state) => state.threads.threads);
+  const currentThreadId = useAssistantState((state) => state.threads.threadId);
+  const { switchToThread } = useAssistantActions();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (!threads || threads.length === 0) return;
+
+      const currentIndex = threads.findIndex((t) => t.id === currentThreadId);
+      let nextIndex: number;
+
+      if (e.key === "ArrowDown") {
+        nextIndex = currentIndex + 1 >= threads.length ? 0 : currentIndex + 1;
+      } else {
+        nextIndex = currentIndex - 1 < 0 ? threads.length - 1 : currentIndex - 1;
+      }
+
+      const nextThread = threads[nextIndex];
+      if (nextThread) {
+        e.preventDefault();
+        switchToThread(nextThread.id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [threads, currentThreadId, switchToThread]);
+
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col items-stretch gap-1.5">
       <ThreadListNew />
@@ -20,11 +51,19 @@ export const ThreadList: FC = () => {
 };
 
 const ThreadListNew: FC = () => {
+  const handleFocusRequest = () => {
+    // Nudge focus to the composer after the runtime switches threads
+    setTimeout(() => {
+      window.dispatchEvent(new Event("openagents:focus-composer"));
+    }, 80);
+  };
+
   return (
     <ThreadListPrimitive.New asChild>
       <Button
         className="aui-thread-list-new flex items-center justify-start gap-1 rounded-[var(--radius-lg)] px-2.5 py-2 text-start hover:bg-muted data-active:bg-muted"
         variant="ghost"
+        onClick={handleFocusRequest}
       >
         <PlusIcon />
         New Thread
@@ -62,12 +101,18 @@ const ThreadListSkeleton: FC = () => {
 };
 
 const ThreadListItem: FC = () => {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
-    <ThreadListItemPrimitive.Root className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted">
+    <ThreadListItemPrimitive.Root
+      className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
         <ThreadListItemTitle />
       </ThreadListItemPrimitive.Trigger>
-      <ThreadListItemArchive />
+      <ThreadListItemArchive isVisible={isHovered} />
     </ThreadListItemPrimitive.Root>
   );
 };
@@ -80,11 +125,11 @@ const ThreadListItemTitle: FC = () => {
   );
 };
 
-const ThreadListItemArchive: FC = () => {
+const ThreadListItemArchive: FC<{ isVisible: boolean }> = ({ isVisible }) => {
   return (
     <ThreadListItemPrimitive.Archive asChild>
       <TooltipIconButton
-        className="aui-thread-list-item-archive mr-3 ml-auto size-4 p-0 text-foreground hover:text-primary"
+        className={`aui-thread-list-item-archive mr-3 ml-auto size-4 p-0 text-foreground hover:text-primary transition-opacity ${isVisible ? "opacity-100" : "opacity-0"}`}
         variant="ghost"
         tooltip="Archive thread"
       >
