@@ -21,11 +21,6 @@ function MessagePreview({ role, text }: { role: Role; text: string }) {
   return (
     <MyRuntimeProvider>
       <div className="dark w-full max-w-3xl h-[420px] bg-background text-foreground border rounded-md overflow-hidden">
-        {/* Make assistant and user message text one size smaller */}
-        <style>{`
-          .aui-assistant-message-content,
-          .aui-user-message-content { font-size: 0.875rem; /* text-sm */ }
-        `}</style>
         <SeedMessage role={role} text={text} />
         <Thread />
       </div>
