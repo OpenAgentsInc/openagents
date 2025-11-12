@@ -131,6 +131,14 @@ impl SessionManager {
     }
 
     pub async fn prompt(&self, session_id: &acp::SessionId, text: String) -> Result<()> {
+        // Finalize any in-progress assistant/reason streams from previous turns for this thread
+        {
+            let thread_id = session_id.0.to_string();
+            let notifs = self.tinyvex.tinyvex_writer.finalize_streaming_for_thread(&thread_id).await;
+            for notification in notifs {
+                tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
+            }
+        }
         // push user message
         {
             let mut sessions = self.inner.sessions.write().await;

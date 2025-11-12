@@ -284,7 +284,7 @@ impl Writer {
             SU::AgentMessageChunk(ch) => {
                 let txt = content_to_text(&ch.content);
                 if !txt.is_empty() {
-                    self.finalize_or_snapshot(provider, thread_id, "assistant", &txt).await
+                    self.stream_upsert_or_append(provider, thread_id, "assistant", &txt).await
                 } else {
                     Vec::new()
                 }
@@ -292,7 +292,7 @@ impl Writer {
             SU::AgentThoughtChunk(ch) => {
                 let txt = content_to_text(&ch.content);
                 if !txt.is_empty() {
-                    self.finalize_or_snapshot(provider, thread_id, "reason", &txt).await
+                    self.stream_upsert_or_append(provider, thread_id, "reason", &txt).await
                 } else {
                     Vec::new()
                 }
