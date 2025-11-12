@@ -78,12 +78,15 @@ export function useAcpSessionUpdates(
   };
 
   useEffect(() => {
+    console.log(`[acp-session] useEffect fired - threadId=${threadId}, ws.connected=${ws.connected}`);
+
     if (!threadId || !ws.connected) {
+      console.log(`[acp-session] Skipping subscription - threadId=${threadId}, ws.connected=${ws.connected}`);
       return;
     }
 
     // Subscribe to tinyvex updates for this thread
-    if (debug) console.log(`[acp-session] Subscribing to thread ${threadId}`);
+    console.log(`[acp-session] Subscribing to thread ${threadId}`);
 
     // Send subscription message
     ws.send({
@@ -94,7 +97,7 @@ export function useAcpSessionUpdates(
 
     // Request initial snapshot of existing messages (critical for race condition fix)
     // Without this, messages written before subscription are never displayed
-    if (debug) console.log(`[acp-session] Requesting initial snapshot for thread ${threadId}`);
+    console.log(`[acp-session] Requesting initial snapshot for thread ${threadId}`);
     ws.send({
       control: "tvx.query",
       name: "messages.list",
@@ -102,12 +105,15 @@ export function useAcpSessionUpdates(
     });
 
     const unsubscribe = ws.subscribe((msg) => {
+      console.log("[acp-session] Received WebSocket message:", msg.type, "threadId:", msg.threadId);
+
       // Filter messages for this thread
       if (msg.threadId !== threadId) {
+        console.log(`[acp-session] Ignoring message - wrong thread (expected ${threadId}, got ${msg.threadId})`);
         return;
       }
 
-      if (debug) console.log("[acp-session] Message:", msg);
+      console.log("[acp-session] Processing message:", msg.type);
 
       // Handle tinyvex.update messages
       if (msg.type === "tinyvex.update" && msg.stream === "messages") {
@@ -169,7 +175,7 @@ export function useAcpSessionUpdates(
 
       // Handle query results (snapshots)
       if (msg.type === "tinyvex.query_result" && msg.name === "messages.list") {
-        if (debug) console.log("[acp-session] Query result:", msg.rows);
+        console.log("[acp-session] Query result received:", msg.rows?.length || 0, "rows");
 
         // Extract and concatenate all assistant and reason messages
         const rows = msg.rows as any[];
@@ -192,7 +198,9 @@ export function useAcpSessionUpdates(
         if (latestAssistant !== accumulatedTextRef.current.assistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
           setLiveText(latestAssistant);
-          if (debug) console.log("[acp-session] Updated liveText:", latestAssistant.substring(0, 100));
+          console.log("[acp-session] Updated liveText:", latestAssistant);
+        } else {
+          console.log("[acp-session] No change to liveText, current:", latestAssistant);
         }
 
         if (latestReason !== accumulatedTextRef.current.reason) {
