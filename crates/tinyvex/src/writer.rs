@@ -78,6 +78,22 @@ impl Writer {
         let entry = guard
             .entry(key.clone())
             .or_insert_with(|| StreamEntry { item_id: String::new(), last_text: String::new(), seq: 0 });
+
+        // For reasoning: detect new thought blocks (start with "**" after previous content ended)
+        // Create a new item_id for each distinct thought to enable chronological interleaving
+        let should_create_new_reasoning_block = kind == "reason"
+            && !entry.item_id.is_empty()
+            && !entry.last_text.is_empty()
+            && (entry.last_text.ends_with("\n\n") || entry.last_text.ends_with('\n'))
+            && full_text.trim_start().starts_with("**");
+
+        if should_create_new_reasoning_block {
+            // Start a new reasoning block with a new item_id and timestamp
+            entry.item_id = format!("turn:{}:{}", now_ms(), kind);
+            entry.last_text = String::new();
+            entry.seq = 0;
+        }
+
         entry.seq = entry.seq.saturating_add(1);
         entry.last_text.push_str(full_text);
         if entry.item_id.is_empty() {
