@@ -67,8 +67,11 @@ function App() {
 
           const currentText = session.liveText;
 
+          console.log(`[App.tsx adapter] Poll: liveText="${currentText.substring(0, 50)}...", lastText="${lastText.substring(0, 50)}...", idleMs=${idleMs}`);
+
           // Check if text changed
           if (currentText !== lastText) {
+            console.log(`[App.tsx adapter] Text changed! Yielding: "${currentText.substring(0, 100)}..."`);
             lastText = currentText;
             idleMs = 0;
             yield {
@@ -81,6 +84,7 @@ function App() {
 
           // If idle for too long and we have text, finalize
           if (idleMs >= idleTimeout && lastText.length > 0) {
+            console.log(`[App.tsx adapter] Idle timeout reached, finalizing with text: "${lastText}"`);
             yield {
               content: [{ type: "text", text: lastText }],
               status: { type: "complete", reason: "stop" } as const,
