@@ -246,6 +246,7 @@ const AssistantMessage: FC = () => {
           <MessagePrimitive.Parts
             components={{
               Text: MarkdownText,
+              Reasoning: MarkdownText,
               tools: { Fallback: ToolFallback },
             }}
           />
