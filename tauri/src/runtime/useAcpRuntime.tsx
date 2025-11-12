@@ -87,6 +87,15 @@ function mapRowsToThreadMessages(
     }
     parts.push({ type: "text", text: latestAssistant.text ?? "" });
     out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(latestAssistant)), content: parts } as ThreadMessageLike);
+  } else if (latestReason) {
+    // If we have reasoning but no assistant text yet, show a reasoning-only assistant message
+    const id = latestReason.itemId ? `reason:${latestReason.itemId}` : `reason-id:${latestReason.id}`;
+    out.push({
+      id,
+      role: "assistant",
+      createdAt: new Date(toBaseTime(latestReason)),
+      content: [{ type: "reasoning", text: latestReason.text ?? "" } as any],
+    } as ThreadMessageLike);
   }
 
   // Tool calls as assistant tool-call parts
@@ -96,10 +105,15 @@ function mapRowsToThreadMessages(
       if (tc.content_json) {
         try {
           const arr = JSON.parse(tc.content_json);
-          const firstText = Array.isArray(arr) ? arr.find((p: any) => p?.type === "text")?.text : undefined;
-          return typeof firstText === "string" && firstText.length > 0 ? firstText : "";
+          if (Array.isArray(arr)) {
+            const texts = arr.filter((p: any) => p && p.type === "text" && typeof p.text === "string").map((p: any) => p.text);
+            if (texts.length > 0) return texts.join("\n\n");
+            // No text parts; pretty-print JSON
+            return JSON.stringify(arr, null, 2);
+          }
+          return JSON.stringify(arr, null, 2);
         } catch {
-          return "";
+          return tc.content_json;
         }
       }
       return "";
