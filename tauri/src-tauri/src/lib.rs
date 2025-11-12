@@ -1,16 +1,18 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use agent_client_protocol as acp;
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use tokio::sync::{Mutex, RwLock};
 
 mod oa_acp;
-use oa_acp::{ACPClient, AcpError, SessionManager};
+use oa_acp::SessionManager;
 mod codex_exec;
+mod tinyvex_state;
+mod tinyvex_controls;
+mod tinyvex_ws;
 use std::sync::Once;
 use once_cell::sync::OnceCell;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 static INIT_TRACING: Once = Once::new();
 pub static APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::new();
@@ -137,18 +139,35 @@ async fn resolve_acp_agent_path() -> Result<String, String> {
 
 pub struct AppState {
     sessions: SessionManager,
+    tinyvex: Arc<tinyvex_state::TinyvexState>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
+
+    // Initialize tinyvex database
+    let data_dir = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("openagents");
+    std::fs::create_dir_all(&data_dir).expect("Failed to create data directory");
+    let db_path = data_dir.join("tinyvex.db");
+
+    info!("Initializing tinyvex database at: {}", db_path.display());
+    let tinyvex_db = Arc::new(tinyvex::Tinyvex::open(&db_path).expect("Failed to open tinyvex database"));
+    let tinyvex_writer = Arc::new(tinyvex::Writer::new(tinyvex_db.clone()));
+    let tinyvex_state = Arc::new(tinyvex_state::TinyvexState::new(tinyvex_db, tinyvex_writer));
+
+    let tinyvex_state_for_setup = tinyvex_state.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            sessions: SessionManager::new(),
+            sessions: SessionManager::new(tinyvex_state.clone()),
+            tinyvex: tinyvex_state,
         })
         .invoke_handler(tauri::generate_handler![create_session, send_prompt, get_session, resolve_acp_agent_path])
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
             {
                 use tauri::{Manager, TitleBarStyle};
@@ -156,6 +175,20 @@ pub fn run() {
                 window.set_title_bar_style(TitleBarStyle::Transparent)?;
             }
             let _ = APP_HANDLE.set(app.handle().clone());
+
+            // Start WebSocket server in Tauri's tokio runtime
+            let tinyvex_state_clone = tinyvex_state_for_setup.clone();
+            tauri::async_runtime::spawn(async move {
+                let router = tinyvex_ws::create_router(tinyvex_state_clone);
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:9099")
+                    .await
+                    .expect("Failed to bind WebSocket server");
+                info!("WebSocket server listening on ws://127.0.0.1:9099/ws");
+                axum::serve(listener, router)
+                    .await
+                    .expect("WebSocket server failed");
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

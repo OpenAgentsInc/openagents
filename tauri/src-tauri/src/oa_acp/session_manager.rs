@@ -2,19 +2,20 @@ use std::{collections::HashMap, sync::Arc, path::{Path, PathBuf}};
 
 use agent_client_protocol as acp;
 use anyhow::Result;
-use tokio::sync::{mpsc, RwLock, Mutex};
+use tokio::sync::{RwLock, Mutex};
 use uuid::Uuid;
 
 use super::ACPClient;
-use crate::APP_HANDLE;
-use tauri::{Emitter, Manager};
 use which::which;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info};
 use crate::codex_exec::{run_codex_exec_once, CodexExecOptions};
+use crate::tinyvex_state::TinyvexState;
+use crate::tinyvex_ws;
 
 #[derive(Clone)]
 pub struct SessionManager {
     inner: Arc<SessionManagerInner>,
+    tinyvex: Arc<TinyvexState>,
 }
 
 struct SessionManagerInner {
@@ -39,14 +40,20 @@ pub struct Session {
 }
 
 impl SessionManager {
-    pub fn new() -> Self {
-        Self { inner: Arc::new(SessionManagerInner { sessions: RwLock::new(HashMap::new()), clients: RwLock::new(HashMap::new()) }) }
+    pub fn new(tinyvex: Arc<TinyvexState>) -> Self {
+        Self {
+            inner: Arc::new(SessionManagerInner {
+                sessions: RwLock::new(HashMap::new()),
+                clients: RwLock::new(HashMap::new())
+            }),
+            tinyvex,
+        }
     }
 
     pub async fn create_session(&self, agent_type: String, cwd: PathBuf) -> Result<acp::SessionId> {
         // Decide path: ACP via codex-acp (default) or legacy codex-exec adapter (env/explicit)
         let use_codex_exec = agent_type == "codex-exec" || std::env::var("OA_USE_CODEX_EXEC").ok().as_deref() == Some("1");
-        let (cmd, mut all_args) = if use_codex_exec {
+        let (cmd, all_args) = if use_codex_exec {
             // codex-exec path does not use ACP client spawn here
             (PathBuf::from("codex-exec"), Vec::new())
         } else {
@@ -62,10 +69,10 @@ impl SessionManager {
         if !use_codex_exec {
             let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &all_args, &[], None).await?;
             let real_sid = client.new_session(cwd.clone()).await?;
-            // Start forwarding updates to frontend and updating state
+            // Start forwarding updates to tinyvex and broadcasting via WebSocket
             let mut rx = client.take_update_receiver();
             let inner = self.inner.clone();
-            let app = APP_HANDLE.get().cloned();
+            let tinyvex = self.tinyvex.clone();
             let sid_clone = real_sid.clone();
             tokio::spawn(async move {
                 while let Some(notif) = rx.recv().await {
@@ -90,21 +97,22 @@ impl SessionManager {
                         }
                     }
                     drop(sessions);
-                    // Emit to frontend
-                    if let Some(app) = &app {
-                        let topic = format!("session:{}", notif.session_id.0);
-                        let alt_topic = format!("oa_session_{}", notif.session_id.0);
-                        let out = acp::SessionNotification { session_id: notif.session_id.clone(), update: update_copy, meta: None };
-                        tracing::info!(target:"openagents_lib::oa_acp::session_manager", topic, kind=?out.update, "emitting session update");
-                        let _ = app.emit(&topic, &out);
-                        let _ = app.emit(&alt_topic, &out);
-                        let _ = app.emit("acp:update", &out);
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.emit(&topic, &out);
-                            let _ = win.emit(&alt_topic, &out);
-                            let _ = win.emit("acp:update", &out);
-                        }
+
+                    // Write to tinyvex database and broadcast to WebSocket clients
+                    let thread_id = notif.session_id.0.to_string();
+                    let notifications = tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex("codex-acp", &thread_id, &update_copy).await;
+
+                    // Broadcast each notification to WebSocket clients
+                    for notification in notifications {
+                        tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                     }
+
+                    tracing::info!(
+                        target: "openagents_lib::oa_acp::session_manager",
+                        session_id = %notif.session_id.0,
+                        kind = ?update_copy,
+                        "processed ACP update via tinyvex"
+                    );
                 }
                 info!(session_id=%sid_clone.0, "update stream ended");
             });
@@ -147,13 +155,14 @@ impl SessionManager {
             let extra_args = std::env::var("OA_CODEX_ARGS").ok().map(|s| s.split_whitespace().map(|x| x.to_string()).collect()).unwrap_or_else(|| vec!["exec".into(), "--json".into()]);
             let opts = CodexExecOptions { bin, cwd, extra_args };
             let inner = self.inner.clone();
+            let tinyvex = self.tinyvex.clone();
             info!(session_id=%sid.0, "codex-exec spawning for prompt");
             tokio::spawn(async move {
                 let _ = run_codex_exec_once(&opts, &text, |update| {
                     // Apply update to session state
                     let inner = inner.clone();
                     let sid = sid.clone();
-                    let app = APP_HANDLE.get().cloned();
+                    let tinyvex = tinyvex.clone();
                     // Blocking write in async task
                     futures::executor::block_on(async move {
                         let update_copy = update.clone();
@@ -180,12 +189,22 @@ impl SessionManager {
                                 _ => {}
                             }
                         }
-                        // emit events
-                        if let Some(app) = &app {
-                            let notif = acp::SessionNotification { session_id: sid.clone(), update: update_copy, meta: None };
-                            let _ = app.emit(&format!("session:{}", sid.0), &notif);
-                            let _ = app.emit("acp:update", &notif);
+
+                        // Write to tinyvex database and broadcast to WebSocket clients
+                        let thread_id = sid.0.to_string();
+                        let notifications = tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex("codex-exec", &thread_id, &update_copy).await;
+
+                        // Broadcast each notification to WebSocket clients
+                        for notification in notifications {
+                            tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                         }
+
+                        tracing::info!(
+                            target: "openagents_lib::oa_acp::session_manager",
+                            session_id = %sid.0,
+                            kind = ?update_copy,
+                            "processed codex-exec update via tinyvex"
+                        );
                     });
                 }).await;
             });
