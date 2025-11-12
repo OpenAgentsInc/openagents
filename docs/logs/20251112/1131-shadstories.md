@@ -55,3 +55,31 @@ Components covered
 Next batch candidates
 
 - HoverCard, Popover, DropdownMenu, RadioGroup, Slider
+
+## 2025-11-12 11:46 — Shadcn UI Stories (batch 3)
+
+Components covered
+
+11) HoverCard — `UI/HoverCard`
+    - Controls: side, align, sideOffset
+    - Button trigger with descriptive content
+
+12) Popover — `UI/Popover`
+    - Controls: side, align, sideOffset, width
+    - Example includes input inside content
+
+13) DropdownMenu — `UI/DropdownMenu`
+    - Account group, checkboxes, submenu, and radio group
+    - Includes keyboard shortcut indicator
+
+14) RadioGroup — `UI/RadioGroup`
+    - Controlled example with three options
+    - `disabled` toggle
+
+15) Slider — `UI/Slider`
+    - Basic (single value) and Range (two thumbs)
+    - Orientation, min/max, width/height controls
+
+Next batch candidates
+
+- Popover-like components: ContextMenu, Menubar; plus Select already added; remaining: Pagination, Breadcrumb, Separator
