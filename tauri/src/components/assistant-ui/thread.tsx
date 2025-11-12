@@ -19,6 +19,7 @@ import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
     ErrorPrimitive, MessagePrimitive, ThreadPrimitive
 } from "@openagentsinc/assistant-ui-runtime"
+import { useThread } from "@openagentsinc/assistant-ui-runtime/legacy-runtime/hooks/ThreadContext"
 
 import type { FC } from "react";
 
@@ -169,7 +170,7 @@ const ThreadSuggestions: FC = () => {
 
 const Composer: FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const isEmpty = ThreadPrimitive.useThread((t) => t.messages.length === 0);
+  const isEmpty = useThread((t) => t.messages.length === 0);
 
   useEffect(() => {
     // Focus on mount and when thread is empty (e.g., after switching to new thread)
