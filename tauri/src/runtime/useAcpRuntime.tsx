@@ -50,8 +50,9 @@ function mapRowsToThreadMessages(
   // Finalized user/assistant messages
   const filtered = rows.filter((r) => r.kind === "message" && (r.partial ?? 0) === 0);
   for (const row of filtered) {
+    const msgId = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
     out.push({
-      id: row.itemId ?? String(row.id),
+      id: msgId,
       role: row.role === "assistant" ? "assistant" : "user",
       createdAt: new Date(toBaseTime(row)),
       content: [{ type: "text", text: row.text ?? "" }],
@@ -61,8 +62,9 @@ function mapRowsToThreadMessages(
   // Reasoning rows as separate assistant messages with a reasoning part
   const finalizedReason = reasonRows.filter((r) => (r.partial ?? 0) === 0);
   for (const row of finalizedReason) {
+    const rid = row.itemId ? `reason:${row.itemId}` : `reason-id:${row.id}`;
     out.push({
-      id: `reason:${row.id}`,
+      id: rid,
       role: "assistant",
       createdAt: new Date(toBaseTime(row)),
       content: [{ type: "reasoning", text: row.text ?? "" } as any],
@@ -118,9 +120,21 @@ function mapRowsToThreadMessages(
     } as ThreadMessageLike);
   }
 
-  // Sort by time then id for stability
-  out.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || String(a.id).localeCompare(String(b.id)));
-  return out;
+  // Sort by time then id for stability and de-duplicate IDs (last-wins)
+  out.sort(
+    (a, b) =>
+      (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
+      String(a.id).localeCompare(String(b.id)),
+  );
+  const seen = new Set<string>();
+  const deduped: ThreadMessageLike[] = [];
+  for (const m of out) {
+    const id = String(m.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    deduped.push(m);
+  }
+  return deduped;
 }
 
 export function useAcpRuntime(options?: { initialThreadId?: string }) {
