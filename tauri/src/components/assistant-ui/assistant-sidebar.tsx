@@ -3,18 +3,14 @@ import { ThreadList } from "@/components/assistant-ui/thread-list"
 import { Button } from "@/components/ui/button"
 import { useCallback, useState } from "react"
 import { createSession, sendPrompt, getSession, resolveAcpAgentPath } from "@/lib/tauri-acp"
-import { useAcpStore } from "@/lib/acp-store"
 import { useModelStore } from "@/lib/model-store"
+import { ModelToolbar } from "@/components/assistant-ui/model-toolbar"
 
 export function AssistantSidebar() {
   const [testing, setTesting] = useState(false)
   const [lastStatus, setLastStatus] = useState<string>("")
-  const startListening = useAcpStore((s) => s.startListening)
-  const setActiveSession = useAcpStore((s) => s.setActiveSession)
-  const liveText = useAcpStore((s) => s.liveText)
-  const isStreaming = useAcpStore((s) => s.isStreaming)
   // Read selected model to decide behavior of Test ACP
-  const model = useModelStore((s) => s.selected)
+  const model = useModelStore((s: any) => s.selected)
 
   const handleTestACP = useCallback(async () => {
     if (model === "ollama") {
@@ -38,11 +34,7 @@ export function AssistantSidebar() {
       const sessionId = await createSession("codex")
       setLastStatus(`Session: ${sessionId}`)
 
-      // Begin streaming subscription for this session
-      await startListening(sessionId)
-      setActiveSession(sessionId)
-
-      await sendPrompt(sessionId, "Hello from OpenAgents Tauri (Phase 1 test)")
+      await sendPrompt(sessionId, "Hello from OpenAgents Tauri (tinyvex WebSocket test)")
       setLastStatus("Prompt sent. Fetching session…")
 
       const s = await getSession(sessionId)
@@ -85,18 +77,19 @@ export function AssistantSidebar() {
             >
               {testing ? "Testing…" : "Test ACP"}
             </Button>
-            {/* Model picker moved to top app header */}
             <div className="text-xs text-zinc-400 whitespace-pre-wrap break-words" title={lastStatus}>
-              {isStreaming ? "Live… " : ""}{lastStatus}
-              {liveText ? `\n${liveText.slice(-200)}` : ""}
+              {lastStatus}
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1">
-        <Thread />
+      <div className="flex-1 min-w-0 flex flex-col">
+        <ModelToolbar />
+        <div className="flex-1 min-h-0">
+          <Thread />
+        </div>
       </div>
     </div>
   );
