@@ -147,6 +147,22 @@ impl SessionManager {
                 sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "user".into(), content: vec![acp::ContentBlock::from(text.clone())], created_at: now });
             }
         }
+        // Write user message to tinyvex
+        {
+            let thread_id = session_id.0.to_string();
+            let user_chunk = acp::SessionUpdate::UserMessageChunk(acp::ContentChunk {
+                content: acp::ContentBlock::Text(acp::TextContent {
+                    annotations: None,
+                    text: text.clone(),
+                    meta: None,
+                }),
+                meta: None,
+            });
+            let notifications = self.tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex("codex-acp", &thread_id, &user_chunk).await;
+            for notification in notifications {
+                tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
+            }
+        }
 
         // send prompt either via ACP client or codex exec adapter
         let use_codex_exec = {
