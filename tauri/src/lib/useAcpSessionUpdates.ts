@@ -92,6 +92,15 @@ export function useAcpSessionUpdates(
       threadId,
     });
 
+    // Request initial snapshot of existing messages (critical for race condition fix)
+    // Without this, messages written before subscription are never displayed
+    if (debug) console.log(`[acp-session] Requesting initial snapshot for thread ${threadId}`);
+    ws.send({
+      control: "tvx.query",
+      name: "messages.list",
+      args: { threadId, limit: 50 },
+    });
+
     const unsubscribe = ws.subscribe((msg) => {
       // Filter messages for this thread
       if (msg.threadId !== threadId) {
