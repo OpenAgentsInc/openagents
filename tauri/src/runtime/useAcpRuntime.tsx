@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ThreadMessageLike } from "@/ui/types/thread";
+// We construct assistant-ui message structures for the runtime repository
 import { useExternalStoreRuntime } from "@/vendor/assistant-ui/external-store";
-import type { ExternalStoreAdapter } from "@/vendor/assistant-ui/external-store";
+import type { ExternalStoreAdapter, AppendMessage, AUIThreadMessageLike } from "@/vendor/assistant-ui/external-store";
+import { ExportedMessageRepository } from "@/vendor/assistant-ui/external-store";
+import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
 import { TINYVEX_WS_URL } from "@/config/acp";
 import { createSession, sendPrompt } from "@/lib/tauri-acp";
@@ -38,14 +40,14 @@ function toBaseTime(row: { createdAt?: number; created_at?: number; ts?: number;
   return (row.ts as number | undefined) ?? (row.createdAt as number | undefined) ?? (row.created_at as number | undefined) ?? (row.updated_at as number | undefined) ?? Date.now();
 }
 
-function mapRowsToThreadMessages(
+function mapRowsToAUIThreadMessages(
   rows: TinyvexMessageRow[],
   reasonRows: TinyvexMessageRow[],
   toolCalls: TinyvexToolCallRow[],
   planEvents: number[],
   stateEvents: number[],
-): ThreadMessageLike[] {
-  const out: ThreadMessageLike[] = [];
+): AUIThreadMessageLike[] {
+  const out: AUIThreadMessageLike[] = [];
 
   // Split by role for stable grouping
   const userRows = rows.filter((r) => r.kind === "message" && (r.role || "user") !== "assistant");
@@ -67,7 +69,7 @@ function mapRowsToThreadMessages(
   const sortedUsers = [...userRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
   for (const row of sortedUsers) {
     const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
-    out.push({ id, role: "user", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] } as ThreadMessageLike);
+    out.push({ id, role: "user", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] });
   }
 
   // Assistant: all but latest as finalized text-only messages
@@ -75,18 +77,24 @@ function mapRowsToThreadMessages(
   for (let i = 0; i < Math.max(0, sortedAssist.length - 1); i++) {
     const row = sortedAssist[i]!;
     const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
-    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] } as ThreadMessageLike);
+    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] });
   }
 
   // Latest assistant combined with current reasoning (if any)
   if (latestAssistant) {
     const id = latestAssistant.itemId ? `msg:${latestAssistant.itemId}` : `msg-id:${latestAssistant.id}`;
-    const parts: any[] = [];
-    if (latestReason?.text && latestReason.text.trim().length > 0) {
-      parts.push({ type: "reasoning", text: latestReason.text } as any);
-    }
-    parts.push({ type: "text", text: latestAssistant.text ?? "" });
-    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(latestAssistant)), content: parts } as ThreadMessageLike);
+    const parts: ReadonlyArray<
+      | { type: "reasoning"; text: string }
+      | { type: "text"; text: string }
+    > = (
+      [
+        latestReason?.text && latestReason.text.trim().length > 0
+          ? { type: "reasoning", text: latestReason.text }
+          : undefined,
+        { type: "text", text: latestAssistant.text ?? "" },
+      ].filter(Boolean) as { type: "reasoning" | "text"; text: string }[]
+    );
+    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(latestAssistant)), content: parts });
   } else if (latestReason) {
     // If we have reasoning but no assistant text yet, show a reasoning-only assistant message
     const id = latestReason.itemId ? `reason:${latestReason.itemId}` : `reason-id:${latestReason.id}`;
@@ -94,8 +102,8 @@ function mapRowsToThreadMessages(
       id,
       role: "assistant",
       createdAt: new Date(toBaseTime(latestReason)),
-      content: [{ type: "reasoning", text: latestReason.text ?? "" } as any],
-    } as ThreadMessageLike);
+      content: [{ type: "reasoning", text: latestReason.text ?? "" }],
+    });
   }
 
   // Tool calls as assistant tool-call parts
@@ -118,20 +126,25 @@ function mapRowsToThreadMessages(
       }
       return "";
     })();
+    const tcPart: {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      args: ReadonlyJSONObject;
+      argsText: string;
+    } = {
+      type: "tool-call",
+      toolCallId: tc.tool_call_id,
+      toolName,
+      args: {} as ReadonlyJSONObject,
+      argsText,
+    };
     out.push({
       id: `tool:${tc.tool_call_id}`,
       role: "assistant",
       createdAt: new Date(tc.updated_at ?? tc.created_at ?? Date.now()),
-      content: [
-        {
-          type: "tool-call",
-          toolCallId: tc.tool_call_id,
-          toolName,
-          args: {},
-          argsText,
-        } as any,
-      ],
-    } as ThreadMessageLike);
+      content: [tcPart],
+    });
   }
 
   // Plan/state events as simple assistant text markers (placeholder)
@@ -141,7 +154,7 @@ function mapRowsToThreadMessages(
       role: "assistant",
       createdAt: new Date(ts),
       content: [{ type: "text", text: "[Plan updated]" }],
-    } as ThreadMessageLike);
+    });
   }
   for (const ts of stateEvents) {
     out.push({
@@ -149,7 +162,7 @@ function mapRowsToThreadMessages(
       role: "assistant",
       createdAt: new Date(ts),
       content: [{ type: "text", text: "[State updated]" }],
-    } as ThreadMessageLike);
+    });
   }
 
   // Sort by time then id for stability and de-duplicate IDs (last-wins)
@@ -159,7 +172,7 @@ function mapRowsToThreadMessages(
       String(a.id).localeCompare(String(b.id)),
   );
   const seen = new Set<string>();
-  const deduped: ThreadMessageLike[] = [];
+  const deduped: AUIThreadMessageLike[] = [];
   for (const m of out) {
     const id = String(m.id);
     if (seen.has(id)) continue;
@@ -257,27 +270,31 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
     return () => unsub();
   }, [ws.connected, ws.send, ws.subscribe]);
 
-  const messages = useMemo(
-    () =>
-      mapRowsToThreadMessages(
-        rowsRef.current,
-        reasonRowsRef.current,
-        toolCallsRef.current,
-        planEventsRef.current,
-        stateEventsRef.current,
-      ),
-    [version],
-  );
+  const messageRepository = useMemo(() => {
+    const msgs = mapRowsToAUIThreadMessages(
+      rowsRef.current,
+      reasonRowsRef.current,
+      toolCallsRef.current,
+      planEventsRef.current,
+      stateEventsRef.current,
+    );
+    return ExportedMessageRepository.fromArray(msgs);
+  }, [version]);
 
-  const store: ExternalStoreAdapter<any> = {
+  const store: ExternalStoreAdapter = {
     isRunning,
-    messages,
-    convertMessage: (m: any) => m,
-    onNew: async (message: any) => {
+    messageRepository,
+    onNew: async (message: AppendMessage) => {
       if (message.role !== "user") return;
-      const text = message.content
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
+
+      const isRecord = (x: unknown): x is Record<string, unknown> =>
+        typeof x === "object" && x !== null;
+      const isTextPart = (p: unknown): p is { type: "text"; text: string } =>
+        isRecord(p) && p["type"] === "text" && typeof p["text"] === "string";
+
+      const text = (message.content as unknown[])
+        .filter(isTextPart)
+        .map((p) => p.text)
         .join("\n\n");
       let sid = threadId;
       if (!sid) {
