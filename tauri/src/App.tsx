@@ -65,7 +65,8 @@ function App() {
         while (!abortSignal?.aborted) {
           await new Promise((resolve) => setTimeout(resolve, pollInterval));
 
-          const currentText = session.liveText;
+          // Read from ref instead of state to avoid stale closures
+          const currentText = session.liveTextRef.current;
 
           console.log(`[App.tsx adapter] Poll: liveText="${currentText.substring(0, 50)}...", lastText="${lastText.substring(0, 50)}...", idleMs=${idleMs}`);
 
