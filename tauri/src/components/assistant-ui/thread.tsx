@@ -21,7 +21,7 @@ import {
 } from "@assistant-ui/react"
 
 import type { FC } from "react";
-import { useAcpStore } from "@/lib/acp-store";
+
 export const Thread: FC = () => {
   return (
     <LazyMotion features={domAnimation}>
@@ -33,7 +33,6 @@ export const Thread: FC = () => {
           }}
         >
           <ThreadPrimitive.Viewport className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4">
-            <LiveAcpMessage />
             <ThreadPrimitive.If empty>
               <ThreadWelcome />
             </ThreadPrimitive.If>
@@ -55,23 +54,6 @@ export const Thread: FC = () => {
         </ThreadPrimitive.Root>
       </MotionConfig>
     </LazyMotion>
-  );
-};
-
-const LiveAcpMessage: FC = () => {
-  const live = useAcpStore((s) => s.liveText);
-  const streaming = useAcpStore((s) => s.isStreaming);
-  if (!live && !streaming) return null;
-  return (
-    <div className="relative mx-auto w-full max-w-[var(--thread-max-width)] py-4">
-      <div className="mx-2 rounded-[var(--radius-xl)] border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-100">
-        <div className="mb-1 flex items-center gap-2 text-xs text-zinc-400">
-          <div className="size-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
-          <span>{streaming ? "Assistant is responding…" : "Assistant output"}</span>
-        </div>
-        <div className="whitespace-pre-wrap break-words text-sm text-zinc-100">{live}</div>
-      </div>
-    </div>
   );
 };
 
