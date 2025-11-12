@@ -246,3 +246,4 @@ Fixes
   - Importing blocks from `@storybook/addon-docs/blocks` (local env lacks `@storybook/blocks`).
   - Attaching a CSF via `<Meta of={ButtonStories} />`.
   - Replacing `<Description>` block with plain markdown to avoid context resolution.
+- Tooltip theming: Updated `TooltipContent` to use `bg-popover text-popover-foreground` with `border` and matching arrow fill so it inherits dark theme colors consistently across portal rendering.
