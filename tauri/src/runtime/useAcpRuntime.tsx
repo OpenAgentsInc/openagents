@@ -54,15 +54,45 @@ function mapRowsToAUIThreadMessages(
   const assistantRows = rows.filter((r) => r.kind === "message" && (r.role || "assistant") === "assistant");
   const sortedAssistForLatest = [...assistantRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
   const latestAssistant = sortedAssistForLatest.length > 0 ? sortedAssistForLatest[sortedAssistForLatest.length - 1] : undefined;
-  const sortedReasonsForLatest = [...reasonRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
+
+  // For reasoning: group by itemId and take the latest (highest id) for each itemId
+  // This handles cases where there are multiple rows with same itemId due to updates
+  const reasonByItemId = new Map<string, TinyvexMessageRow>();
+  for (const row of reasonRows) {
+    const key = row.itemId || `id-${row.id}`;
+    const existing = reasonByItemId.get(key);
+    // Take the row with the highest id (most recent update)
+    if (!existing || row.id > existing.id) {
+      reasonByItemId.set(key, row);
+    }
+  }
+  const deduplicatedReasons = Array.from(reasonByItemId.values());
+  const sortedReasonsForLatest = deduplicatedReasons.sort((a, b) => toBaseTime(a) - toBaseTime(b));
   const latestReason = sortedReasonsForLatest.length > 0 ? sortedReasonsForLatest[sortedReasonsForLatest.length - 1] : undefined;
 
   // Debug mapping summary
   try {
     // eslint-disable-next-line no-console
     console.debug(
-      `[acp-runtime] mapRows: users=${userRows.length} assistants=${assistantRows.length} reasons=${reasonRows.length} latestAssistant=${Boolean(latestAssistant)} latestReason=${Boolean(latestReason)}`,
+      `[acp-runtime] mapRows: users=${userRows.length} assistants=${assistantRows.length} reasons=${reasonRows.length}→${deduplicatedReasons.length} latestAssistant=${Boolean(latestAssistant)} latestReason=${Boolean(latestReason)}`,
     );
+    // Debug reasoning rows
+    if (deduplicatedReasons.length > 0) {
+      console.debug("[acp-runtime] Deduplicated reasoning rows:", deduplicatedReasons.map(r => ({
+        id: r.id,
+        itemId: r.itemId,
+        textLen: r.text?.length,
+        textPreview: r.text?.substring(0, 100) + (r.text && r.text.length > 100 ? "..." : ""),
+        partial: r.partial,
+        ts: r.ts,
+      })));
+      console.debug("[acp-runtime] Latest reason:", {
+        itemId: latestReason?.itemId,
+        textLength: latestReason?.text?.length,
+        partial: latestReason?.partial,
+        fullText: latestReason?.text,
+      });
+    }
   } catch {}
 
   // Users first (ascending by time)

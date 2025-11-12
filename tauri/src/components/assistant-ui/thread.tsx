@@ -114,6 +114,16 @@ const ThreadSuggestions: FC = () => {
           label: "and summarize",
           action: "Review recent git commits and summarize",
         },
+        {
+          title: "Use three demo tool calls",
+          label: "to explore the codebase",
+          action: "Use three demo tool calls (like Read, Search, Bash) to explore the codebase",
+        },
+        {
+          title: "Use <25 demo tool calls",
+          label: "to explore the codebase",
+          action: "Use up to 25 demo tool calls (like Read, Search, Bash) to explore the codebase and summarize",
+        },
         // {
         //   title: "Write a SQL query",
         //   label: "to find top customers",
