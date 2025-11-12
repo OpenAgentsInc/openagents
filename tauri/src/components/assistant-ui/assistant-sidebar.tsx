@@ -17,7 +17,7 @@ export function AssistantSidebar() {
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
-        <SidebarContent>
+        <SidebarContent className="pt-4">
           <NavChats />
           <NavProjectsAssistant />
           <NavCodebases />
