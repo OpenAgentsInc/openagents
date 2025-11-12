@@ -18,7 +18,6 @@ export const ModelToolbar: FC = () => {
   return (
     <div className="sticky top-0 z-10 bg-background border-b border-zinc-800">
       <div className="flex h-10 items-center gap-2 px-3">
-        <span className="text-xs text-zinc-400">Model</span>
         <Select value={model} onValueChange={(v) => setModel(v as ModelKind)}>
           <SelectTrigger size="sm" aria-label="Model">
             <SelectValue />

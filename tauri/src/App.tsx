@@ -1,6 +1,7 @@
 import "./App.css"
 import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar"
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
+import { useEffect } from "react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
 import { streamText } from "ai"
@@ -14,6 +15,13 @@ const ollama = createOllama({
 })
 
 function App() {
+  // Ensure dark variables apply to portals (e.g., shadcn Select)
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+    return () => {
+      document.documentElement.classList.remove("dark");
+    };
+  }, []);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const session = useAcpSessionUpdates({ threadId: activeSessionId, debug: true });
 
