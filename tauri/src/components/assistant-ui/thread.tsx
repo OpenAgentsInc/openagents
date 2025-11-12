@@ -17,9 +17,8 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
-    ErrorPrimitive, MessagePrimitive, ThreadPrimitive
+    ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useThread
 } from "@openagentsinc/assistant-ui-runtime"
-import { useThread } from "@openagentsinc/assistant-ui-runtime/legacy-runtime/hooks/ThreadContext"
 
 import type { FC } from "react";
 
