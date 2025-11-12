@@ -336,6 +336,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         onSwitchToNewThread: async () => {
           // Clear current thread and reset state for new conversation
           setThreadId(undefined);
+          setIsRunning(false);
           rowsRef.current = [];
           reasonRowsRef.current = [];
           toolCallsRef.current = [];
