@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadMessageLike } from "@/ui/types/thread";
-import { useExternalStoreRuntime } from "@assistant-ui/react";
-import type { ExternalStoreAdapter } from "@assistant-ui/react";
+import { useExternalStoreRuntime } from "@/vendor/assistant-ui/external-store";
+import type { ExternalStoreAdapter } from "@/vendor/assistant-ui/external-store";
 import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
 import { TINYVEX_WS_URL } from "@/config/acp";
 import { createSession, sendPrompt } from "@/lib/tauri-acp";
