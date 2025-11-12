@@ -23,7 +23,9 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@openagentsinc/assistant-ui-runtime/*": ["../packages/assistant-ui-runtime/src/*"],
+      "@openagentsinc/assistant-ui-runtime": ["../packages/assistant-ui-runtime/src/index.ts"]
     }
   },
   "include": ["src"],
