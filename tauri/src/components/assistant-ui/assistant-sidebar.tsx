@@ -3,7 +3,7 @@ import { Thread } from "@/components/assistant-ui/thread"
 import { NavChats } from "@/components/nav-chats"
 import { NavCodebases } from "@/components/nav-codebases"
 import { NavProjectsAssistant } from "@/components/nav-projects-assistant"
-import { NavUserAssistant } from "@/components/nav-user-assistant"
+// import { NavUserAssistant } from "@/components/nav-user-assistant"
 import {
     Sidebar, SidebarContent, SidebarFooter, SidebarInset, SidebarProvider,
     SidebarRail
@@ -19,7 +19,7 @@ export function AssistantSidebar() {
           <NavCodebases />
         </SidebarContent>
         <SidebarFooter>
-          <NavUserAssistant />
+          {/** <NavUserAssistant /> */}
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
