@@ -1,10 +1,10 @@
 use std::{collections::HashMap, io::Write, path::PathBuf, sync::{Arc, atomic::{AtomicI64, Ordering}}};
 
 use agent_client_protocol as acp;
-use anyhow::{anyhow, Context, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, process::{Child, ChildStdin, ChildStdout, Command}, sync::{mpsc, oneshot}, task::JoinHandle, time::{timeout, Duration}};
-use tracing::{debug, info, warn, error};
+use anyhow::{anyhow, Result};
+use serde::{de::DeserializeOwned, Serialize};
+use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, process::{Child, ChildStdin, Command}, sync::{mpsc, oneshot}, task::JoinHandle, time::{timeout, Duration}};
+use tracing::{debug, info, error};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AcpError {
@@ -82,7 +82,7 @@ impl ACPClient {
                             // Notification
                             let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("");
                             let params = v.get("params").cloned().unwrap_or(serde_json::json!({}));
-                            let method_norm = method.replace('-', "").replace('_', "").to_lowercase();
+                            let method_norm = method.replace('-', "").replace('_', "").replace('/', "").to_lowercase();
                             if method_norm.contains("sessionupdate") {
                                 if let Ok(n) = serde_json::from_value::<acp::SessionNotification>(params) {
                                     let _ = update_tx.send(n).await;

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use tokio::{io::{AsyncBufReadExt, BufReader}, process::Command};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info};
 
 pub struct CodexExecOptions {
     pub bin: PathBuf,
