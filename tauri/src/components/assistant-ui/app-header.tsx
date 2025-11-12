@@ -18,6 +18,7 @@ export function AppHeader() {
           onChange={(e) => setModel(e.target.value as any)}
         >
           <option value="codex">Codex (ACP)</option>
+          <option value="claude-code">Claude Code</option>
           <option value="ollama">Ollama (glm-4.6:cloud)</option>
         </select>
       </div>

@@ -43,13 +43,13 @@ const attachmentAdapter: AttachmentAdapter = {
 export function MyRuntimeProvider({ children }: { children: React.ReactNode }) {
   const selected = useModelStore((s) => s.selected);
   const ollamaAdapter = createOllamaAdapter({ baseURL: OLLAMA_BASE_URL, model: OLLAMA_MODEL });
-  const runtime = selected === "codex"
-    ? useAcpRuntime()
-    : useLocalRuntime(ollamaAdapter, {
+  const runtime = selected === "ollama"
+    ? useLocalRuntime(ollamaAdapter, {
         adapters: {
           attachments: attachmentAdapter,
         },
-      });
+      })
+    : useAcpRuntime();
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }

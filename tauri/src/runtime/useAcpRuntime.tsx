@@ -9,6 +9,7 @@ import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
 import { TINYVEX_WS_URL } from "@/config/acp";
 import { createSession, sendPrompt } from "@/lib/tauri-acp";
+import { useModelStore } from "@/lib/model-store";
 
 type TinyvexMessageRow = {
   id: number;
@@ -192,6 +193,7 @@ function mapRowsToAUIThreadMessages(
 }
 
 export function useAcpRuntime(options?: { initialThreadId?: string }) {
+  const selectedModel = useModelStore((s) => s.selected);
   const [threadId, setThreadId] = useState<string | undefined>(options?.initialThreadId);
   const threadIdRef = useRef<string | undefined>(threadId);
   useEffect(() => {
@@ -307,7 +309,11 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         .join("\n\n");
       let sid = threadId;
       if (!sid) {
-        sid = await createSession("codex");
+        // Use the selected model as the agent type
+        const agentType = selectedModel === "codex" || selectedModel === "claude-code"
+          ? selectedModel
+          : "codex";
+        sid = await createSession(agentType);
         setThreadId(sid);
       }
       // Optimistically append the user's message to the local mirror

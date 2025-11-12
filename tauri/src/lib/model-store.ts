@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ModelKind = "ollama" | "codex";
+export type ModelKind = "ollama" | "codex" | "claude-code";
 
 type ModelState = {
   selected: ModelKind;
