@@ -162,17 +162,21 @@ export function useAcpSessionUpdates(
       if (msg.type === "tinyvex.query_result" && msg.name === "messages.list") {
         if (debug) console.log("[acp-session] Query result:", msg.rows);
 
-        // Extract latest assistant and reason messages
+        // Extract and concatenate all assistant and reason messages
         const rows = msg.rows as any[];
+
+        // Sort by created_at to ensure correct order
+        const sortedRows = rows.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+
         let latestAssistant = "";
         let latestReason = "";
 
-        for (const row of rows) {
+        for (const row of sortedRows) {
           if (row.role === "assistant" && row.partial === 0) {
-            latestAssistant = row.text || "";
+            latestAssistant += row.text || "";  // Concatenate, don't overwrite
           }
           if (row.role === "reason" && row.partial === 0) {
-            latestReason = row.text || "";
+            latestReason += row.text || "";  // Concatenate, don't overwrite
           }
         }
 
@@ -194,15 +198,19 @@ export function useAcpSessionUpdates(
         if (debug) console.log("[acp-session] Snapshot:", msg.rows);
 
         const rows = msg.rows as any[];
+
+        // Sort by created_at to ensure correct order
+        const sortedRows = rows.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+
         let latestAssistant = "";
         let latestReason = "";
 
-        for (const row of rows) {
+        for (const row of sortedRows) {
           if (row.role === "assistant" && row.partial === 0) {
-            latestAssistant = row.text || "";
+            latestAssistant += row.text || "";  // Concatenate, don't overwrite
           }
           if (row.role === "reason" && row.partial === 0) {
-            latestReason = row.text || "";
+            latestReason += row.text || "";  // Concatenate, don't overwrite
           }
         }
 
