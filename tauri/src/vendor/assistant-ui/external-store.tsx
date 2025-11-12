@@ -1,9 +1,8 @@
 // Local vendor shim for assistant-ui external-store runtime
-// We expose the hook and types from a single location within our repo
-// to make it easier to migrate the implementation in the future.
+// Route imports through our vendored package sources so we fully control types.
 
-export { useExternalStoreRuntime } from "@assistant-ui/react";
-export type { ExternalStoreAdapter } from "./legacy-runtime/runtime-cores/external-store/ExternalStoreAdapter";
-export type { AppendMessage } from "@assistant-ui/react";
-export type { ThreadMessageLike as AUIThreadMessageLike } from "@assistant-ui/react";
-export { ExportedMessageRepository } from "@assistant-ui/react";
+export { useExternalStoreRuntime } from "../../../../packages/assistant-ui-runtime/src/minimal/useExternalStoreRuntime";
+export type { ExternalStoreAdapter } from "../../../../packages/assistant-ui-runtime/src/legacy-runtime/runtime-cores/external-store/ExternalStoreAdapter";
+export type { AppendMessage } from "../../../../packages/assistant-ui-runtime/src/types/AssistantTypes";
+export type { ThreadMessageLike as AUIThreadMessageLike } from "../../../../packages/assistant-ui-runtime/src/legacy-runtime/runtime-cores/external-store/ThreadMessageLike";
+export { ExportedMessageRepository } from "../../../../packages/assistant-ui-runtime/src/legacy-runtime/runtime-cores/utils/MessageRepository";
