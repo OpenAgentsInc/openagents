@@ -197,6 +197,18 @@ const Composer: FC = () => {
     return () => clearTimeout(timer);
   });
 
+  // Focus when "New Thread" is clicked (explicit app event)
+  useEffect(() => {
+    const handler = () => {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 60);
+      return () => clearTimeout(timer);
+    };
+    window.addEventListener("openagents:focus-composer", handler);
+    return () => window.removeEventListener("openagents:focus-composer", handler);
+  }, []);
+
   return (
     <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-[var(--radius-xl)] bg-background pb-4 md:pb-6">
       <ThreadScrollToBottom />
