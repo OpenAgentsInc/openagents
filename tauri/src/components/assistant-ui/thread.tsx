@@ -369,17 +369,34 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
+  // Always show Copy on user messages. Hide Edit for Codex/ClaudeCode chats.
+  const selectedModel = useModelStore((s: any) => s.selected);
+  const showEdit = !(selectedModel === "codex" || selectedModel === "claude-code");
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
       className="aui-user-action-bar-root flex flex-col items-end"
     >
-      <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
-          <PencilIcon />
+      <ActionBarPrimitive.Copy asChild>
+        <TooltipIconButton tooltip="Copy" className="aui-user-action-copy p-4">
+          <MessagePrimitive.If copied>
+            <CheckIcon />
+          </MessagePrimitive.If>
+          <MessagePrimitive.If copied={false}>
+            <CopyIcon />
+          </MessagePrimitive.If>
         </TooltipIconButton>
-      </ActionBarPrimitive.Edit>
+      </ActionBarPrimitive.Copy>
+
+      {showEdit && (
+        <ActionBarPrimitive.Edit asChild>
+          <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
+            <PencilIcon />
+          </TooltipIconButton>
+        </ActionBarPrimitive.Edit>
+      )}
     </ActionBarPrimitive.Root>
   );
 };

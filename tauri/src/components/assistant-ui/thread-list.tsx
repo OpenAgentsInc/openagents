@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
@@ -72,15 +72,57 @@ const ThreadListSkeleton: FC = () => {
 
 const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
+  const [threadSource, setThreadSource] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Get thread metadata from window global (set by useAcpRuntime)
+  useEffect(() => {
+    if (!rootRef.current) return;
+
+    const getThreadIdFromElement = (el: HTMLElement): string | null => {
+      // Try to find thread ID in data attributes
+      const threadId = el.getAttribute('data-thread-id') ||
+                      el.getAttribute('data-id') ||
+                      el.closest('[data-thread-id]')?.getAttribute('data-thread-id') ||
+                      el.closest('[data-id]')?.getAttribute('data-id');
+      return threadId;
+    };
+
+    const updateSource = () => {
+      const metadata = (window as any).__threadMetadata as Map<string, { source?: string }> | undefined;
+      if (!metadata || !rootRef.current) return;
+
+      const threadId = getThreadIdFromElement(rootRef.current);
+      if (threadId) {
+        const meta = metadata.get(threadId);
+        setThreadSource(meta?.source || null);
+      }
+    };
+
+    // Try immediately and then watch for changes
+    updateSource();
+    const observer = new MutationObserver(updateSource);
+    observer.observe(rootRef.current, { attributes: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <ThreadListItemPrimitive.Root
+      ref={rootRef as any}
       className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
-        <ThreadListItemTitle />
+        <div className="flex items-center justify-between w-full gap-2">
+          <ThreadListItemTitle />
+          {threadSource && (
+            <span className="text-xs text-muted-foreground/50 flex-shrink-0">
+              {threadSource === "claude-code-acp" ? "claude" : threadSource}
+            </span>
+          )}
+        </div>
       </ThreadListItemPrimitive.Trigger>
       <ThreadListItemArchive isVisible={isHovered} />
     </ThreadListItemPrimitive.Root>
