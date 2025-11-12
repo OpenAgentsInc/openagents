@@ -84,6 +84,12 @@ export function useAcpSessionUpdates(
   useEffect(() => {
     console.log(`[acp-session] useEffect fired - threadId=${threadId}, ws.connected=${ws.connected}`);
 
+    // Reset state when thread changes
+    setLiveText("");
+    liveTextRef.current = "";
+    setThoughtText("");
+    accumulatedTextRef.current = { assistant: "", reason: "" };
+
     if (!threadId || !ws.connected) {
       console.log(`[acp-session] Skipping subscription - threadId=${threadId}, ws.connected=${ws.connected}`);
       return;
@@ -184,6 +190,8 @@ export function useAcpSessionUpdates(
         // Extract and concatenate all assistant and reason messages
         const rows = msg.rows as any[];
 
+        console.log("[acp-session] First 3 rows:", rows.slice(0, 3).map(r => ({ role: r.role, partial: r.partial, text: r.text?.substring(0, 20) })));
+
         // Sort by created_at to ensure correct order
         const sortedRows = rows.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
 
@@ -198,6 +206,8 @@ export function useAcpSessionUpdates(
             latestReason += row.text || "";  // Concatenate, don't overwrite
           }
         }
+
+        console.log("[acp-session] After concatenation: latestAssistant.length=", latestAssistant.length, "latestReason.length=", latestReason.length);
 
         if (latestAssistant !== accumulatedTextRef.current.assistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
