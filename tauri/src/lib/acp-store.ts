@@ -40,7 +40,8 @@ export const useAcpStore = create<AcpState>((set, get) => ({
 
     // Subscribe to per-session channel
     const topic = `session:${sessionId}`;
-    console.log(`[acp-store] listen start`, { topic, sessionId });
+    const altTopic = `oa_session_${sessionId}`;
+    console.log(`[acp-store] listen start`, { topic, altTopic, sessionId });
     let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const onNotif = (payload?: SessionNotification) => {
@@ -72,8 +73,9 @@ export const useAcpStore = create<AcpState>((set, get) => ({
     };
 
     const un1 = await listen<SessionNotification>(topic, (evt: Event<SessionNotification>) => onNotif(evt.payload));
+    const un1b = await listen<SessionNotification>(altTopic, (evt: Event<SessionNotification>) => onNotif(evt.payload));
     const un2 = await listen<SessionNotification>("acp:update", (evt: Event<SessionNotification>) => onNotif(evt.payload));
-    const un = () => { try { un1(); } catch {} try { un2(); } catch {} };
+    const un = () => { try { un1(); } catch {} try { un1b(); } catch {} try { un2(); } catch {} };
     
 
     set({ activeSessionId: sessionId, unlisten: un, isStreaming: false, liveText: "", thoughtText: "" });
