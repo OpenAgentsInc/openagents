@@ -239,3 +239,10 @@ Status
 
 - All components under `src/components/ui/` now have Storybook coverage with at least one basic story.
 - Storybook builds cleanly after each batch.
+
+Fixes
+
+- UI Overview docs (UI.Overview.mdx): fixed runtime error "No CSF file attached" by:
+  - Importing blocks from `@storybook/addon-docs/blocks` (local env lacks `@storybook/blocks`).
+  - Attaching a CSF via `<Meta of={ButtonStories} />`.
+  - Replacing `<Description>` block with plain markdown to avoid context resolution.
