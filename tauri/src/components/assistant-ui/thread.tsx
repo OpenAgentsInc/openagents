@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
     ErrorPrimitive, MessagePrimitive, ThreadPrimitive
-} from "@assistant-ui/react"
+} from "@openagentsinc/assistant-ui-runtime"
 
 import type { FC } from "react";
 

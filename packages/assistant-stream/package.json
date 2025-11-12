@@ -30,11 +30,9 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@assistant-ui/x-buildutils": "workspace:*",
     "@standard-schema/spec": "^1.0.0",
     "@types/node": "^24.10.0",
-    "tsx": "^4.20.6",
-    "vitest": "^4.0.6"
+    "tsx": "^4.20.6"
   },
   "publishConfig": {
     "access": "public"

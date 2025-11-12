@@ -3,7 +3,7 @@ import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAssistantState,
-} from "@assistant-ui/react";
+} from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";

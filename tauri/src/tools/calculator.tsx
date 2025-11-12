@@ -1,4 +1,4 @@
-import { makeAssistantTool } from "@assistant-ui/react";
+import { makeAssistantTool } from "@openagentsinc/assistant-ui-runtime";
 import { z } from "zod";
 
 export const CalculatorTool = makeAssistantTool({

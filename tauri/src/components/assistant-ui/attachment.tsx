@@ -6,7 +6,7 @@ import {
   MessagePrimitive,
   useAssistantState,
   useAssistantApi,
-} from "@assistant-ui/react";
+} from "@openagentsinc/assistant-ui-runtime";
 import { useShallow } from "zustand/shallow";
 import {
   Tooltip,

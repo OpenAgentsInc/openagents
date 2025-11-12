@@ -1,5 +1,5 @@
 {
-  "name": "@assistant-ui/react-markdown",
+  "name": "@openagentsinc/react-markdown",
   "version": "0.11.4",
   "license": "MIT",
   "type": "module",
@@ -36,7 +36,7 @@
     "react-markdown": "^10.1.0"
   },
   "peerDependencies": {
-    "@assistant-ui/react": "^0.11.37",
+    "@openagentsinc/assistant-ui-runtime": "^0.0.1",
     "@types/react": "*",
     "react": "^18 || ^19 || ^19.0.0-rc"
   },
@@ -46,8 +46,7 @@
     }
   },
   "devDependencies": {
-    "@assistant-ui/react": "workspace:*",
-    "@assistant-ui/x-buildutils": "workspace:*",
+    "@openagentsinc/assistant-ui-runtime": "workspace:*",
     "@types/node": "^24.10.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
