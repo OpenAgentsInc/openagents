@@ -1,0 +1,49 @@
+{
+  "name": "@assistant-ui/tap",
+  "version": "0.1.5",
+  "type": "module",
+  "description": "Zero-dependency reactive state management inspired by React hooks",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsx build.mts",
+    "lint": "eslint .",
+    "prepublishOnly": "pnpm turbo build",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "author": "AgentbaseAI Inc.",
+  "license": "MIT",
+  "dependencies": {},
+  "peerDependencies": {
+    "react": "*"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@assistant-ui/x-buildutils": "workspace:*",
+    "@types/node": "^24.10.0",
+    "@types/react": "*",
+    "@vitest/ui": "^4.0.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.6"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react/index.js",
+      "types": "./dist/react/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}
