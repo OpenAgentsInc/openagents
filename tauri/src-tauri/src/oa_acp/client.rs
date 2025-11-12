@@ -119,8 +119,8 @@ impl ACPClient {
         let init_req = acp::InitializeRequest {
             protocol_version: acp::VERSION,
             client_capabilities: acp::ClientCapabilities {
-                fs: acp::FileSystemCapability { read_text_file: false, write_text_file: false, meta: None },
-                terminal: false,
+                fs: acp::FileSystemCapability { read_text_file: true, write_text_file: true, meta: None },
+                terminal: true,
                 meta: None,
             },
             client_info: Some(acp::Implementation { name: "openagents".to_string(), title: Some("OpenAgents".to_string()), version: env!("CARGO_PKG_VERSION").to_string() }),

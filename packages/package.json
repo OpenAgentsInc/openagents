@@ -1,0 +1,6 @@
+{
+  "name": "@openagents/claude-code-acp",
+  "version": "0.1.0",
+  "description": "Claude Code ACP agent for OpenAgents",
+  "private": true
+}

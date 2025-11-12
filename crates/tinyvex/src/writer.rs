@@ -223,6 +223,16 @@ impl Writer {
         let t = now_ms();
         match update {
             SU::ToolCall(tc) => {
+                // Finalize any active assistant or reasoning streams before creating tool call
+                // This ensures messages are segmented chronologically around tool calls
+                let mut notifs = Vec::new();
+                if let Some(mut fin) = self.try_finalize_stream_kind(thread_id, "assistant").await {
+                    notifs.append(&mut fin);
+                }
+                if let Some(mut fin) = self.try_finalize_stream_kind(thread_id, "reason").await {
+                    notifs.append(&mut fin);
+                }
+
                 let id = format!("{:?}", tc.id);
                 let title = tc.title.as_str();
                 let kind = format!("{:?}", tc.kind);
@@ -239,7 +249,8 @@ impl Writer {
                     Some(&locations_json),
                     t,
                 );
-                vec![WriterNotification::ToolCallUpsert { thread_id: thread_id.to_string(), tool_call_id: id }]
+                notifs.push(WriterNotification::ToolCallUpsert { thread_id: thread_id.to_string(), tool_call_id: id });
+                notifs
             }
             SU::ToolCallUpdate(tc) => {
                 let id = format!("{:?}", tc.id);

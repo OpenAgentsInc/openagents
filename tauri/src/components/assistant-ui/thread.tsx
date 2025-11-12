@@ -321,7 +321,7 @@ const AssistantActionBar: FC = () => {
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      {selectedModel !== "codex" && (
+      {selectedModel === "ollama" && (
         <ActionBarPrimitive.Reload asChild>
           <TooltipIconButton tooltip="Refresh">
             <RefreshCwIcon />
