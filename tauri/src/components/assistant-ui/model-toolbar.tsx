@@ -23,8 +23,8 @@ export const ModelToolbar: FC = () => {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="codex">Codex (ACP)</SelectItem>
-            <SelectItem value="ollama">Ollama (glm-4.6:cloud)</SelectItem>
+            <SelectItem value="codex">Codex</SelectItem>
+            <SelectItem value="ollama">GLM-4.6</SelectItem>
           </SelectContent>
         </Select>
       </div>
