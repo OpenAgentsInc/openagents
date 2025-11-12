@@ -43,13 +43,17 @@ const attachmentAdapter: AttachmentAdapter = {
 export function MyRuntimeProvider({ children }: { children: React.ReactNode }) {
   const selected = useModelStore((s) => s.selected);
   const ollamaAdapter = createOllamaAdapter({ baseURL: OLLAMA_BASE_URL, model: OLLAMA_MODEL });
-  const runtime = selected === "ollama"
-    ? useLocalRuntime(ollamaAdapter, {
-        adapters: {
-          attachments: attachmentAdapter,
-        },
-      })
-    : useAcpRuntime();
+
+  // Always call both hooks to maintain consistent hook order (Rules of Hooks)
+  const ollamaRuntime = useLocalRuntime(ollamaAdapter, {
+    adapters: {
+      attachments: attachmentAdapter,
+    },
+  });
+  const acpRuntime = useAcpRuntime();
+
+  // Select which runtime to use based on model selection
+  const runtime = selected === "ollama" ? ollamaRuntime : acpRuntime;
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }

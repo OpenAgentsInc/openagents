@@ -71,7 +71,22 @@ impl SessionManager {
         info!(agent_type=%agent_type, bin=%cmd.display(), args=?all_args, cwd=%cwd.display(), use_codex_exec, "create_session resolved");
         let session_id = acp::SessionId(Arc::from(uuid::Uuid::new_v4().to_string()));
         if !use_codex_exec {
-            let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &all_args, &[], None).await?;
+            // For TypeScript agents (claude-code), set NODE_PATH to tauri/node_modules
+            let mut envs: Vec<(String, String)> = Vec::new();
+            if agent_type == "claude-code" {
+                if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                    let base = PathBuf::from(manifest_dir)
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    let node_modules = base.join("node_modules");
+                    if node_modules.exists() {
+                        envs.push(("NODE_PATH".to_string(), node_modules.display().to_string()));
+                        info!("Setting NODE_PATH={}", node_modules.display());
+                    }
+                }
+            }
+            let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &all_args, &envs, None).await?;
             let real_sid = client.new_session(cwd.clone()).await?;
             // Start forwarding updates to tinyvex and broadcasting via WebSocket
             let mut rx = client.take_update_receiver();
