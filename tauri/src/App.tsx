@@ -1,19 +1,22 @@
 import "./App.css"
 import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar"
-import { AppHeader } from "@/components/assistant-ui/app-header"
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
 import { streamText } from "ai"
 import { useModelStore } from "@/lib/model-store"
 import { createSession, sendPrompt } from "@/lib/tauri-acp"
-import { useAcpStore } from "@/lib/acp-store"
+import { useAcpSessionUpdates } from "@/lib/useAcpSessionUpdates"
+import { useState } from "react"
 
 const ollama = createOllama({
   baseURL: "http://127.0.0.1:11434/api",
 })
 
 function App() {
+  const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
+  const session = useAcpSessionUpdates({ threadId: activeSessionId, debug: true });
+
   const adapter: ChatModelAdapter = {
     async *run({ messages, abortSignal }) {
       const model = useModelStore.getState().selected;
@@ -26,10 +29,12 @@ function App() {
           : "";
 
         try {
-          const { startListening, setActiveSession } = useAcpStore.getState();
+          // Reset session state before starting new prompt
+          session.reset();
+
+          // Create session and send prompt
           const sessionId = await createSession("codex");
-          await startListening(sessionId);
-          setActiveSession(sessionId);
+          setActiveSessionId(sessionId);
           await sendPrompt(sessionId, userText || "");
         } catch (e) {
           // Surface a small inline error message in the thread
@@ -40,37 +45,38 @@ function App() {
           return;
         }
 
-        // Stream UI by relaying store updates into the thread
+        // Stream UI by polling session state
         let lastText = "";
-        const waitForChange = (timeoutMs: number) =>
-          new Promise<string | undefined>((resolve) => {
-            let unsub: () => void = () => {};
-            unsub = useAcpStore.subscribe((state) => {
-              const next = state.liveText as string;
-              if (next !== lastText) {
-                try { unsub(); } catch {}
-                resolve(next);
-              }
-            });
-            setTimeout(() => {
-              try { unsub(); } catch {}
-              resolve(undefined);
-            }, timeoutMs);
-          });
+        const pollInterval = 100; // Poll every 100ms for responsive updates
+        const idleTimeout = 1200; // Consider complete after 1.2s of no changes
 
         // Emit initial running chunk (empty) to show typing
         yield { content: [{ type: "text", text: "" }], status: { type: "running" } as const };
 
+        let idleMs = 0;
         while (!abortSignal?.aborted) {
-          const next = await waitForChange(1200);
-          if (next !== undefined) {
-            lastText = next;
-            yield { content: [{ type: "text", text: lastText }], status: { type: "running" } as const };
-            continue;
+          await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+          const currentText = session.liveText;
+
+          // Check if text changed
+          if (currentText !== lastText) {
+            lastText = currentText;
+            idleMs = 0;
+            yield {
+              content: [{ type: "text", text: currentText }],
+              status: { type: "running" } as const,
+            };
+          } else {
+            idleMs += pollInterval;
           }
-          // no change for a bit; if we have some text, finalize
-          if (lastText.length > 0) {
-            yield { content: [{ type: "text", text: lastText }], status: { type: "complete", reason: "stop" } as const };
+
+          // If idle for too long and we have text, finalize
+          if (idleMs >= idleTimeout && lastText.length > 0) {
+            yield {
+              content: [{ type: "text", text: lastText }],
+              status: { type: "complete", reason: "stop" } as const,
+            };
             break;
           }
         }
@@ -93,11 +99,8 @@ function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="dark fixed inset-0 flex h-screen w-screen flex-col bg-zinc-900 text-white">
-        <AppHeader />
-        <div className="flex-1 min-h-0">
-          <AssistantSidebar />
-        </div>
+      <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
+        <AssistantSidebar />
       </div>
     </AssistantRuntimeProvider>
   );
