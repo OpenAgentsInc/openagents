@@ -159,14 +159,11 @@ impl Writer {
             return notifs;
         }
 
-        // Check if this exact message already exists (prevents duplicates when watcher re-processes)
-        let (out_kind, _role) = Self::map_kind_role(kind);
-        if let Ok(exists) = self.tvx.message_exists(thread_id, out_kind, final_text) {
-            if exists {
-                tracing::info!(thread_id=%thread_id, kind=%kind, text_preview=%final_text.chars().take(50).collect::<String>(), "writer.rs:finalize_or_snapshot - Message already exists, skipping duplicate");
-                return vec![];
-            }
-        }
+        // REMOVED: message_exists check was causing false positives
+        // Short repeated text chunks like " the" or "\n\n" were incorrectly
+        // flagged as duplicates, preventing ALL assistant messages from being stored.
+        // The duplicate check in finalize_streamed_message_with_kind is more robust
+        // as it only applies when finalizing without an active stream.
 
         let mut notifs = self
             .stream_upsert_or_append(provider, thread_id, kind, final_text)
@@ -395,6 +392,54 @@ mod tests {
         assert_eq!(msgs[0].kind.as_str(), "reason");
         assert_eq!(msgs[0].role, None, "reasoning messages should have NULL role");
         assert_eq!(msgs[0].text.as_deref(), Some("**Thinking...**"));
+    }
+
+    #[tokio::test]
+    async fn multiple_assistant_chunks_with_short_repeated_text_all_stored() {
+        // Tests that short repeated text like " the" doesn't trigger false duplicate detection
+        // This was the bug: message_exists() would find " the" from chunk 1 and skip chunk 2
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-chunks";
+
+        // Simulate ACP AgentMessageChunk stream with accumulated text
+        writer.finalize_or_snapshot("codex", tid, "assistant", "Hello").await;
+        writer.finalize_or_snapshot("codex", tid, "assistant", "Hello there").await;
+        writer.finalize_or_snapshot("codex", tid, "assistant", "Hello there!").await;
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        // Should have 1 finalized message with the final text
+        assert_eq!(msgs.len(), 1, "should have exactly one finalized message");
+        assert_eq!(msgs[0].kind.as_str(), "message", "assistant kind should map to 'message'");
+        assert_eq!(msgs[0].role.as_deref(), Some("assistant"), "assistant role should be set");
+        assert_eq!(msgs[0].text.as_deref(), Some("Hello there!"), "should have final accumulated text");
+        assert_eq!(msgs[0].partial, Some(0), "message should be finalized (partial=0)");
+    }
+
+    #[tokio::test]
+    async fn streaming_updates_then_finalize_preserves_role() {
+        // Tests the full streaming flow: stream_upsert_or_append -> finalize
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-stream-role";
+
+        // Simulate streaming chunks
+        writer.stream_upsert_or_append("codex", tid, "assistant", "Hey").await;
+        writer.stream_upsert_or_append("codex", tid, "assistant", "Hey there").await;
+
+        // Finalize the stream
+        writer.try_finalize_stream_kind(tid, "assistant").await;
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].kind.as_str(), "message");
+        assert_eq!(msgs[0].role.as_deref(), Some("assistant"), "role must be 'assistant' not NULL");
+        assert_eq!(msgs[0].text.as_deref(), Some("Hey there"));
+        assert_eq!(msgs[0].partial, Some(0), "should be finalized");
     }
 
 }
