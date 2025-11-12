@@ -3,7 +3,7 @@
 // to make it easier to migrate the implementation in the future.
 
 export { useExternalStoreRuntime } from "@assistant-ui/react";
-export type { ExternalStoreAdapter } from "@assistant-ui/react";
+export type { ExternalStoreAdapter } from "./legacy-runtime/runtime-cores/external-store/ExternalStoreAdapter";
 export type { AppendMessage } from "@assistant-ui/react";
 export type { ThreadMessageLike as AUIThreadMessageLike } from "@assistant-ui/react";
 export { ExportedMessageRepository } from "@assistant-ui/react";
