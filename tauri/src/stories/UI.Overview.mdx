@@ -1,4 +1,4 @@
-import { Meta, Title, Subtitle, Description, Canvas } from '@storybook/addon-docs/blocks';
+import { Meta, Title, Subtitle, Canvas } from '@storybook/addon-docs/blocks';
 import * as ButtonStories from './Button.stories';
 import * as AvatarStories from './Avatar.stories';
 import * as SkeletonStories from './Skeleton.stories';
@@ -6,16 +6,14 @@ import * as SelectStories from './Select.stories';
 import * as DialogStories from './Dialog.stories';
 import * as TooltipStories from './Tooltip.stories';
 
-<Meta title="UI/Overview" />
+<Meta title="UI/Overview" of={ButtonStories} />
 
 <Title>UI Components Overview</Title>
 
 <Subtitle>Quick glance at commonly used UI components.</Subtitle>
 
-<Description>
 This page showcases the core UI components used across the app. Use the controls
 in each story to try variants and props.
-</Description>
 
 ## Button
 
