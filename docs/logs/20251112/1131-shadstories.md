@@ -162,3 +162,27 @@ Components covered
 Next batch candidates
 
 - InputGroup, Kbd, Badge variants done, Breadcrumb done; remaining: NavigationMenu, Menubar done, Tabs done; also: Toggle/ToggleGroup, RadioGroup done, Progress done; others: Popover done, HoverCard done; remaining bigger: Command done, Calendar done, Carousel done, Chart done; still to add: Empty, Pagination done, Table, Collapsible, AlertDialog, Toast (sonner), Spinner, Kbd (if not yet), InputOTP, ButtonGroup
+
+## 2025-11-12 12:18 — Shadcn UI Stories (batch 7)
+
+Components covered
+
+31) InputGroup — `UI/InputGroup`
+    - WithButtons (search UI, addons on both sides)
+    - WithTextarea (block-start/end addons)
+
+32) Kbd — `UI/Kbd`
+    - Single key and grouped key combos
+
+33) Collapsible — `UI/Collapsible`
+    - Controlled open state with button trigger
+
+34) Table — `UI/Table`
+    - Basic table with caption and footer
+
+35) Empty — `UI/Empty`
+    - Icon header, title/description, and actions
+
+Next batch candidates
+
+- Remaining: Toggle, ToggleGroup, RadioGroup done; InputOTP, ButtonGroup, Pagination done; NavigationMenu, Breadcrumb done, Menubar done; Progress done; Spinner, AlertDialog, Sonner (toast), Form
