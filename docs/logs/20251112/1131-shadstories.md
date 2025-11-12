@@ -247,3 +247,4 @@ Fixes
   - Attaching a CSF via `<Meta of={ButtonStories} />`.
   - Replacing `<Description>` block with plain markdown to avoid context resolution.
 - Tooltip theming: Updated `TooltipContent` to use `bg-popover text-popover-foreground` with `border` and matching arrow fill so it inherits dark theme colors consistently across portal rendering.
+- MarkdownText story: Reworked `Assistant UI/MarkdownText` story to avoid runtime context error by rendering a static markdown preview with `react-markdown` in Storybook. The real component requires `MessagePrimitive.Parts` inside a Thread; the preview makes this explicit and prevents the error.
