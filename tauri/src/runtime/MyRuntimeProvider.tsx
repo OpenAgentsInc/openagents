@@ -9,6 +9,7 @@ import { useModelStore } from "@/lib/model-store";
 import { createAcpAdapter } from "@/runtime/adapters/acp-adapter";
 import { createOllamaAdapter } from "@/runtime/adapters/ollama-adapter";
 import { OLLAMA_BASE_URL, OLLAMA_MODEL } from "@/config/ollama";
+import { useAcpRuntime } from "@/runtime/useAcpRuntime";
 
 const { generateId } = INTERNAL;
 
@@ -51,11 +52,16 @@ export function MyRuntimeProvider({ children }: { children: React.ReactNode }) {
   const ollamaAdapter = createOllamaAdapter({ baseURL: OLLAMA_BASE_URL, model: OLLAMA_MODEL });
   const adapter = selected === "codex" ? acpAdapter : ollamaAdapter;
 
-  const runtime = useLocalRuntime(adapter, {
-    adapters: {
-      attachments: attachmentAdapter,
-    },
-  });
+  // Feature flag: switch to ACP-native runtime (ExternalStore over WS) for the codex path
+  const useAcpExternalStore = ((import.meta as any).env?.VITE_ACP_RUNTIME ?? "") === "1";
+
+  const runtime = selected === "codex" && useAcpExternalStore
+    ? useAcpRuntime()
+    : useLocalRuntime(adapter, {
+        adapters: {
+          attachments: attachmentAdapter,
+        },
+      });
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
