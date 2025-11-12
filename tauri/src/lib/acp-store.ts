@@ -40,22 +40,23 @@ export const useAcpStore = create<AcpState>((set, get) => ({
 
     // Subscribe to per-session channel
     const topic = `session:${sessionId}`;
-    console.debug(`[acp-store] listen start`, { topic, sessionId });
+    console.log(`[acp-store] listen start`, { topic, sessionId });
     let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const onNotif = (payload?: SessionNotification) => {
+      console.log("[acp-store] incoming", payload);
       if (!payload || !(payload as any).update) return;
       const sn = payload as any;
-      // If listening on generic channel, filter by sessionId
+      // Try to filter by session if present; otherwise accept
       if (sn.sessionId && sn.sessionId !== sessionId) return;
       const update: any = sn.update;
       const kind: string | undefined = update.sessionUpdate;
 
       if (kind === "agent_message_chunk") {
-        console.debug(`[acp-store] msg chunk`, update);
+        console.log(`[acp-store] msg chunk`, update);
         set((s) => ({ isStreaming: true, liveText: appendContentText(s.liveText, update.content as ContentBlock) }));
       } else if (kind === "agent_thought_chunk") {
-        console.debug(`[acp-store] thought chunk`, update);
+        console.log(`[acp-store] thought chunk`, update);
         set((s) => ({ isStreaming: true, thoughtText: appendContentText(s.thoughtText, update.content as ContentBlock) }));
       } else {
         // other updates: ignore in phase 2
@@ -66,7 +67,7 @@ export const useAcpStore = create<AcpState>((set, get) => ({
       if (silenceTimer) clearTimeout(silenceTimer);
       silenceTimer = setTimeout(() => {
         set({ isStreaming: false });
-        console.debug(`[acp-store] stream idle`);
+        console.log(`[acp-store] stream idle`);
       }, 800);
     };
 
