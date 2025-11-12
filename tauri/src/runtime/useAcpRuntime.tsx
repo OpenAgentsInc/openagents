@@ -177,23 +177,8 @@ function mapRowsToAUIThreadMessages(
     });
   }
 
-  // Plan/state events as simple assistant text markers (placeholder)
-  for (const ts of planEvents) {
-    out.push({
-      id: `plan:${ts}`,
-      role: "assistant",
-      createdAt: new Date(ts),
-      content: [{ type: "text", text: "[Plan updated]" }],
-    });
-  }
-  for (const ts of stateEvents) {
-    out.push({
-      id: `state:${ts}`,
-      role: "assistant",
-      createdAt: new Date(ts),
-      content: [{ type: "text", text: "[State updated]" }],
-    });
-  }
+  // Plan/state events are tracked but not rendered as visible messages
+  // (they increment version to trigger re-renders when plan/state updates arrive)
 
   // Sort by time then id for stability and de-duplicate IDs (last-wins)
   out.sort(

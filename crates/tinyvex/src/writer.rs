@@ -79,12 +79,13 @@ impl Writer {
             .entry(key.clone())
             .or_insert_with(|| StreamEntry { item_id: String::new(), last_text: String::new(), seq: 0 });
         entry.seq = entry.seq.saturating_add(1);
-        entry.last_text = full_text.to_string();
+        entry.last_text.push_str(full_text);
         if entry.item_id.is_empty() {
             entry.item_id = format!("turn:{}:{}", now_ms(), kind);
         }
         let seq_now = entry.seq as i64;
         let item_id = entry.item_id.clone();
+        let accumulated_text = entry.last_text.clone();
         drop(guard);
 
         let (out_kind, role) = Self::map_kind_role(kind);
@@ -106,7 +107,7 @@ impl Writer {
         let _ = self.tvx.upsert_thread(&thr);
         let _ = self
             .tvx
-            .upsert_streamed_message(thread_id, out_kind, role, full_text, &item_id, seq_now, t);
+            .upsert_streamed_message(thread_id, out_kind, role, &accumulated_text, &item_id, seq_now, t);
 
         vec![
             WriterNotification::ThreadsUpsert { row: thr },
@@ -116,7 +117,7 @@ impl Writer {
                 kind: out_kind.to_string(),
                 role: role.map(|s| s.to_string()),
                 seq: seq_now,
-                text_len: full_text.len(),
+                text_len: accumulated_text.len(),
             },
         ]
     }
