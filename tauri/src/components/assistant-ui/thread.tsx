@@ -15,7 +15,7 @@ import {
 } from "@/components/assistant-ui/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useAssistantState } from "@openagentsinc/assistant-ui-runtime"
+import { useAssistantState, useAssistantEvent } from "@openagentsinc/assistant-ui-runtime"
 import { useModelStore } from "@/lib/model-store"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
@@ -172,9 +172,7 @@ const ThreadSuggestions: FC = () => {
 const Composer: FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isEmpty = useThread((t) => t.messages.length === 0);
-  const messagesLength = useThread((t) => t.messages.length);
   const prevEmptyRef = useRef<boolean | undefined>(undefined);
-  const prevMessagesLengthRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     // Focus on mount (prevEmptyRef is undefined) or when transitioning to empty
@@ -191,18 +189,13 @@ const Composer: FC = () => {
     prevEmptyRef.current = isEmpty;
   }, [isEmpty]);
 
-  useEffect(() => {
-    // Focus when switching threads (detected by messages length changing to a different value, including 0)
-    if (prevMessagesLengthRef.current !== undefined && prevMessagesLengthRef.current !== messagesLength) {
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-      prevMessagesLengthRef.current = messagesLength;
-      return () => clearTimeout(timer);
-    }
-
-    prevMessagesLengthRef.current = messagesLength;
-  }, [messagesLength]);
+  // Focus when switching to any thread (including clicking the same thread)
+  useAssistantEvent("thread-list-item.switched-to", () => {
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  });
 
   return (
     <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-[var(--radius-xl)] bg-background pb-4 md:pb-6">
