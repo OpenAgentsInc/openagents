@@ -83,3 +83,30 @@ Components covered
 Next batch candidates
 
 - Popover-like components: ContextMenu, Menubar; plus Select already added; remaining: Pagination, Breadcrumb, Separator
+
+## 2025-11-12 11:54 — Shadcn UI Stories (batch 4)
+
+Components covered
+
+16) ContextMenu — `UI/ContextMenu`
+    - Right-click trigger area
+    - Items, checkboxes, submenu, and radio group
+
+17) Menubar — `UI/Menubar`
+    - File/Edit/View menus
+    - Includes submenu, checkbox items, and radio group
+
+18) Pagination — `UI/Pagination`
+    - Simple paginator with ellipses logic
+    - Controls: page, total, width
+
+19) Breadcrumb — `UI/Breadcrumb`
+    - Docs → Components → (ellipsis) → UI → Breadcrumb
+    - Toggleable ellipsis
+
+20) Separator — `UI/Separator`
+    - Horizontal and vertical demos via orientation control
+
+Next batch candidates
+
+- Remaining: Calendar, Date Picker (if separate), Drawer/Sheet already done?, Command, Carousel, Chart, Resizable, Sidebar, Field/Item/InputGroup
