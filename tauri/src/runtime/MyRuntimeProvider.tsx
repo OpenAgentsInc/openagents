@@ -3,10 +3,7 @@
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
 import type { AttachmentAdapter } from "@assistant-ui/react";
 import { INTERNAL } from "@assistant-ui/react";
-import { useState } from "react";
-import { useAcpSessionUpdates } from "@/lib/useAcpSessionUpdates";
 import { useModelStore } from "@/lib/model-store";
-import { createAcpAdapter } from "@/runtime/adapters/acp-adapter";
 import { createOllamaAdapter } from "@/runtime/adapters/ollama-adapter";
 import { OLLAMA_BASE_URL, OLLAMA_MODEL } from "@/config/ollama";
 import { useAcpRuntime } from "@/runtime/useAcpRuntime";
@@ -45,19 +42,10 @@ const attachmentAdapter: AttachmentAdapter = {
 
 export function MyRuntimeProvider({ children }: { children: React.ReactNode }) {
   const selected = useModelStore((s) => s.selected);
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
-  const session = useAcpSessionUpdates({ threadId: activeSessionId, debug: true });
-
-  const acpAdapter = createAcpAdapter(session, { setActiveSessionId });
   const ollamaAdapter = createOllamaAdapter({ baseURL: OLLAMA_BASE_URL, model: OLLAMA_MODEL });
-  const adapter = selected === "codex" ? acpAdapter : ollamaAdapter;
-
-  // Feature flag: switch to ACP-native runtime (ExternalStore over WS) for the codex path
-  const useAcpExternalStore = ((import.meta as any).env?.VITE_ACP_RUNTIME ?? "") === "1";
-
-  const runtime = selected === "codex" && useAcpExternalStore
+  const runtime = selected === "codex"
     ? useAcpRuntime()
-    : useLocalRuntime(adapter, {
+    : useLocalRuntime(ollamaAdapter, {
         adapters: {
           attachments: attachmentAdapter,
         },

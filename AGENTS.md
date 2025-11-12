@@ -229,7 +229,8 @@ Currently no automated tests configured. Test manually by:
 
 ### Pre‑release Policy
 
-- Avoid feature gates/flags and backwards compatibility changes - app is still unreleased
+- Avoid feature gates/flags and backwards compatibility changes — app is still unreleased.
+- Never add feature flags unless the user explicitly requests it. If a flag exists, prefer removing it and consolidating behavior.
 
 ## Git Workflow
 
