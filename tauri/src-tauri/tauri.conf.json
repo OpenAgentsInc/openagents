@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "OpenAgents",
-        "width": 1300,
-        "height": 900,
+        "width": 1600,
+        "height": 1200,
         "center": true,
         "hiddenTitle": true
       }
