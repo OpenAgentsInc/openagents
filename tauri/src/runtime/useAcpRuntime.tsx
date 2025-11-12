@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import { useExternalStoreRuntime } from "@assistant-ui/react";
 import type { ExternalStoreAdapter } from "@assistant-ui/react";
@@ -47,8 +47,8 @@ function mapRowsToThreadMessages(
 ): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
 
-  // Finalized user/assistant messages
-  const filtered = rows.filter((r) => r.kind === "message" && (r.partial ?? 0) === 0);
+  // User/assistant messages (include partial to show in-progress assistant text)
+  const filtered = rows.filter((r) => r.kind === "message");
   for (const row of filtered) {
     const msgId = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
     out.push({
@@ -151,11 +151,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
 
   const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
 
-  // Subscribe to tinyvex stream and keep a local mirror of finalized message rows
-  // This hook intentionally only stores finalized message rows to drive the UI history.
-  // Streaming deltas still surface via the LocalRuntime/ChatModel path today; this
-  // hook provides the foundation for a full ACP-native runtime.
-  useMemo(() => {
+  // Subscribe to tinyvex stream and keep a local mirror of rows for this thread
+  useEffect(() => {
     if (!threadId || !ws.connected) return;
 
     // Subscribe and fetch snapshot
@@ -239,6 +236,23 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         sid = await createSession("codex");
         setThreadId(sid);
       }
+      // Optimistically append the user's message to the local mirror
+      const now = Date.now();
+      const optimistic: TinyvexMessageRow = {
+        id: -now, // local-only id; will be replaced by server row
+        threadId: sid!,
+        role: "user",
+        kind: "message",
+        text,
+        itemId: `local:${now}`,
+        partial: 0,
+        seq: 0,
+        ts: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+      rowsRef.current = [...rowsRef.current, optimistic];
+      setVersion((v) => v + 1);
       await sendPrompt(sid!, text);
       // The WS subscription will pick up and refresh messages
       setIsRunning(true);
