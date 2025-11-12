@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::ACPClient;
 use crate::APP_HANDLE;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use which::which;
 use tracing::{debug, info, warn, error};
 use crate::codex_exec::{run_codex_exec_once, CodexExecOptions};
@@ -94,8 +94,13 @@ impl SessionManager {
                     if let Some(app) = &app {
                         let topic = format!("session:{}", notif.session_id.0);
                         let out = acp::SessionNotification { session_id: notif.session_id.clone(), update: update_copy, meta: None };
+                        tracing::info!(target:"openagents_lib::oa_acp::session_manager", topic, kind=?out.update, "emitting session update");
                         let _ = app.emit(&topic, &out);
                         let _ = app.emit("acp:update", &out);
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.emit(&topic, &out);
+                            let _ = win.emit("acp:update", &out);
+                        }
                     }
                 }
                 info!(session_id=%sid_clone.0, "update stream ended");
