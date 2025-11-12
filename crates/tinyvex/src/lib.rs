@@ -210,6 +210,35 @@ impl Tinyvex {
         Ok(())
     }
 
+    pub fn get_thread(&self, id: &str) -> Result<Option<ThreadRow>> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt \
+             FROM threads WHERE id = ?1",
+        )?;
+        let result = stmt.query_row([id], |r| {
+            Ok(ThreadRow {
+                id: r.get(0)?,
+                thread_id: r.get(1)?,
+                title: r.get(2)?,
+                project_id: r.get(3)?,
+                resume_id: r.get(4)?,
+                rollout_path: r.get(5)?,
+                source: r.get(6)?,
+                created_at: r.get(7)?,
+                updated_at: r.get(8)?,
+                message_count: None,
+                last_message_ts: None,
+            })
+        });
+
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn list_threads(&self, limit: i64) -> Result<Vec<ThreadRow>> {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(

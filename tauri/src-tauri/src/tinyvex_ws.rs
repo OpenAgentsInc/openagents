@@ -111,6 +111,10 @@ async fn handle_control_message(text: &str, state: &Arc<TinyvexState>) -> anyhow
         ControlCommand::RunSubmit { thread_id, text } => {
             handle_run_submit(state, &thread_id, &text).await?;
         }
+
+        ControlCommand::UpdateThread { thread_id, updates } => {
+            handle_update_thread(state, &thread_id, updates).await?;
+        }
     }
 
     Ok(())
@@ -251,6 +255,36 @@ async fn handle_run_submit(
     });
 
     state.broadcast(response.to_string()).await;
+    Ok(())
+}
+
+/// Handle update thread command (rename, etc.)
+async fn handle_update_thread(
+    state: &Arc<TinyvexState>,
+    thread_id: &str,
+    updates: serde_json::Value,
+) -> anyhow::Result<()> {
+    info!("Update thread: thread_id={}, updates={}", thread_id, updates);
+
+    // Fetch current thread from database
+    let mut thread = state.tinyvex.get_thread(thread_id)?
+        .ok_or_else(|| anyhow::anyhow!("Thread not found: {}", thread_id))?;
+
+    // Apply updates
+    if let Some(title) = updates.get("title").and_then(|t| t.as_str()) {
+        thread.title = title.to_string();
+    }
+
+    // Update timestamp
+    thread.updated_at = chrono::Utc::now().timestamp_millis();
+
+    // Save updated thread
+    state.tinyvex.upsert_thread(&thread)?;
+
+    // Broadcast update notification
+    let notification = tinyvex::WriterNotification::ThreadsUpsert { row: thread };
+    broadcast_writer_notification(state, &notification).await;
+
     Ok(())
 }
 

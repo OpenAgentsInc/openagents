@@ -102,18 +102,26 @@ The goal is clarity and honesty, not corporate compliance.
 
 Before you stop working on a task, always validate local builds from the command line and ensure zero errors or warnings:
 
-- macOS build
-  - `cd ios`
-  - `xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk macosx -configuration Debug`
+**Tauri App (Current):**
+- TypeScript typecheck and build
+  - `cd tauri`
+  - `bun run build` (runs tsc + vite build)
+- **IMPORTANT: Do NOT run `bun run dev` unless the user explicitly asks you to**
+  - Running dev servers in the background can cause port conflicts and make debugging difficult
+  - Only run typecheck and build commands to validate your changes
+  - The user will run the dev server themselves when they want to test
 
-- iOS Simulator build (use iPhone 16 simulator)
-  - `cd ios`
-  - `xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk iphonesimulator -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16'`
-
-Requirements
+**Requirements:**
 - No build errors
-- No warnings (fix or silence intentionally with justification)
-- If you changed shared code (`OpenAgentsCore`), run both builds
+- No TypeScript type errors
+- All imports resolve correctly
+- If you changed shared code, verify dependent modules still compile
 
 This check is mandatory prior to handoff or closing an issue.
+
+---
+
+**Deprecated (iOS/macOS Swift app - v0.3):**
+- macOS build: `cd ios && xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk macosx -configuration Debug`
+- iOS Simulator build: `cd ios && xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -sdk iphonesimulator -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16'`
 \ No newline at end of file

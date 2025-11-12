@@ -19,6 +19,12 @@ pub enum ControlCommand {
         thread_id: String,
         text: String,
     },
+
+    /// Update thread metadata (e.g., rename)
+    UpdateThread {
+        thread_id: String,
+        updates: serde_json::Value,
+    },
 }
 
 /// Parse a control command from a raw JSON string. Returns None on errors.
@@ -61,6 +67,16 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             Some(ControlCommand::RunSubmit { thread_id, text })
+        }
+
+        "tvx.update_thread" => {
+            let thread_id = v
+                .get("threadId")
+                .or_else(|| v.get("thread_id"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())?;
+            let updates = v.get("updates").cloned().unwrap_or(serde_json::json!({}));
+            Some(ControlCommand::UpdateThread { thread_id, updates })
         }
 
         _ => None,

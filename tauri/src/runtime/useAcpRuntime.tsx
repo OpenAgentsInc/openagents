@@ -37,6 +37,20 @@ type TinyvexToolCallRow = {
   updated_at: number;
 };
 
+type TinyvexThreadRow = {
+  id: string;
+  threadId: string | null;
+  title: string;
+  projectId: string | null;
+  resumeId: string | null;
+  rolloutPath: string | null;
+  source: string | null;
+  createdAt: number;
+  updatedAt: number;
+  message_count?: number | null;
+  last_message_ts?: number | null;
+};
+
 function toBaseTime(row: { createdAt?: number; created_at?: number; ts?: number; updated_at?: number }) {
   return (row.ts as number | undefined) ?? (row.createdAt as number | undefined) ?? (row.created_at as number | undefined) ?? (row.updated_at as number | undefined) ?? Date.now();
 }
@@ -205,9 +219,22 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
   const toolCallsRef = useRef<TinyvexToolCallRow[]>([]);
   const planEventsRef = useRef<number[]>([]);
   const stateEventsRef = useRef<number[]>([]);
+  const threadsRef = useRef<TinyvexThreadRow[]>([]);
+  const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [version, setVersion] = useState(0);
 
   const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
+
+  // Query threads list when WebSocket connects
+  useEffect(() => {
+    if (!ws.connected) return;
+
+    setIsLoadingThreads(true);
+    // Query thread list (sorted by updatedAt DESC)
+    ws.send({ control: "tvx.query", name: "threads.list", args: { limit: 10 } });
+    // Subscribe to thread updates
+    ws.send({ control: "tvx.subscribe", stream: "threads" });
+  }, [ws.connected, ws.send]);
 
   // Subscribe to tinyvex stream and adopt threadId automatically on first seen event
   useEffect(() => {
@@ -266,6 +293,15 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       if (msg.type === "tinyvex.query_result" && msg.name === "tool_calls.list") {
         toolCallsRef.current = (msg.rows as TinyvexToolCallRow[]) ?? [];
         setVersion((v) => v + 1);
+      }
+      if (msg.type === "tinyvex.query_result" && msg.name === "threads.list") {
+        threadsRef.current = (msg.rows as TinyvexThreadRow[]) ?? [];
+        setIsLoadingThreads(false);
+        setVersion((v) => v + 1);
+      }
+      if (msg.type === "tinyvex.update" && msg.stream === "threads") {
+        // Thread was updated, re-query the list
+        ws.send({ control: "tvx.query", name: "threads.list", args: { limit: 10 } });
       }
       if (msg.type === "tinyvex.snapshot" && msg.stream === "messages") {
         const all = (msg.rows as TinyvexMessageRow[]) ?? [];
@@ -339,6 +375,13 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
     },
     adapters: {
       threadList: {
+        threadId: threadId,
+        isLoading: isLoadingThreads,
+        threads: threadsRef.current.map((row) => ({
+          id: row.id,
+          title: row.title || "New Thread",
+          status: "regular" as const,
+        })),
         onSwitchToNewThread: async () => {
           // Clear current thread and reset state for new conversation
           setThreadId(undefined);
@@ -349,6 +392,30 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           planEventsRef.current = [];
           stateEventsRef.current = [];
           setVersion((v) => v + 1);
+        },
+        onSwitchToThread: async (newThreadId: string) => {
+          // Switch to existing thread
+          setThreadId(newThreadId);
+          setIsRunning(false);
+          rowsRef.current = [];
+          reasonRowsRef.current = [];
+          toolCallsRef.current = [];
+          planEventsRef.current = [];
+          stateEventsRef.current = [];
+          // Bootstrap will trigger when we set threadId
+          ws.send({ control: "tvx.subscribe", stream: "messages", threadId: newThreadId });
+          ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: newThreadId, limit: 200 } });
+          ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId: newThreadId, limit: 100 } });
+          setVersion((v) => v + 1);
+        },
+        onRename: async (threadId: string, newTitle: string) => {
+          // Send update via WebSocket control message or Tauri command
+          // For now, we'll use a WebSocket control message
+          ws.send({
+            control: "tvx.update_thread",
+            threadId,
+            updates: { title: newTitle },
+          });
         },
       },
     },
