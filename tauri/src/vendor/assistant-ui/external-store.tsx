@@ -4,4 +4,6 @@
 
 export { useExternalStoreRuntime } from "@assistant-ui/react";
 export type { ExternalStoreAdapter } from "@assistant-ui/react";
-
+export type { AppendMessage } from "@assistant-ui/react";
+export type { ThreadMessageLike as AUIThreadMessageLike } from "@assistant-ui/react";
+export { ExportedMessageRepository } from "@assistant-ui/react";
