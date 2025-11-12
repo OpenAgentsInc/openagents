@@ -93,12 +93,15 @@ impl SessionManager {
                     // Emit to frontend
                     if let Some(app) = &app {
                         let topic = format!("session:{}", notif.session_id.0);
+                        let alt_topic = format!("oa_session_{}", notif.session_id.0);
                         let out = acp::SessionNotification { session_id: notif.session_id.clone(), update: update_copy, meta: None };
                         tracing::info!(target:"openagents_lib::oa_acp::session_manager", topic, kind=?out.update, "emitting session update");
                         let _ = app.emit(&topic, &out);
+                        let _ = app.emit(&alt_topic, &out);
                         let _ = app.emit("acp:update", &out);
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit(&topic, &out);
+                            let _ = win.emit(&alt_topic, &out);
                             let _ = win.emit("acp:update", &out);
                         }
                     }
