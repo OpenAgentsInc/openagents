@@ -137,3 +137,28 @@ Components covered
 Next batch candidates
 
 - Chart, Resizable, Sidebar, Field, Item, InputGroup
+
+## 2025-11-12 12:10 — Shadcn UI Stories (batch 6)
+
+Components covered
+
+26) Chart — `UI/Chart`
+    - Area chart with two series, tooltip and legend
+
+27) Resizable — `UI/Resizable`
+    - Horizontal/vertical with draggable handle and default sizes
+
+28) Sidebar — `UI/Sidebar`
+    - Provider + Sidebar + Inset layout
+    - Groups, menu items, trigger, footer action
+
+29) Field — `UI/Field`
+    - FieldSet/FieldGroup with inputs, description and error
+    - Orientation control (vertical/horizontal/responsive)
+
+30) Item — `UI/Item`
+    - List-style items with icon/image media and actions
+
+Next batch candidates
+
+- InputGroup, Kbd, Badge variants done, Breadcrumb done; remaining: NavigationMenu, Menubar done, Tabs done; also: Toggle/ToggleGroup, RadioGroup done, Progress done; others: Popover done, HoverCard done; remaining bigger: Command done, Calendar done, Carousel done, Chart done; still to add: Empty, Pagination done, Table, Collapsible, AlertDialog, Toast (sonner), Spinner, Kbd (if not yet), InputOTP, ButtonGroup
