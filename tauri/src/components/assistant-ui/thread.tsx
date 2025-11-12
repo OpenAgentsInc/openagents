@@ -124,7 +124,7 @@ const ThreadSuggestions: FC = () => {
         {
           title: "Summarize transcript 195",
           label: "list 10 upgrades",
-          action: "Read docs/transcripts/195.md and list the 10 upgrades",
+          action: "Read docs/transcripts/195.md and list the 10 upgrades as a numbered list",
         },
         // {
         //   title: "Write a SQL query",
