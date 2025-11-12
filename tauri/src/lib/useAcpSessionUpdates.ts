@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useTinyvexWebSocket } from "./useTinyvexWebSocket";
+import { TINYVEX_WS_URL } from "@/config/acp";
 
 export interface AcpSessionState {
   /** Current accumulated assistant message text */
@@ -21,6 +22,8 @@ export interface AcpSessionState {
   connected: boolean;
   /** Ref with current liveText (for reading from async generators without stale closures) */
   liveTextRef: React.MutableRefObject<string>;
+  /** Ref toggled to true when a finalize notification is received for this thread */
+  finalizedRef: React.MutableRefObject<boolean>;
   /** Reset accumulated state (call when starting new prompt) */
   reset: () => void;
 }
@@ -62,10 +65,13 @@ export function useAcpSessionUpdates(
   const [isStreaming, setIsStreaming] = useState(false);
 
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceQueryTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const accumulatedTextRef = useRef({ assistant: "", reason: "" });
   const liveTextRef = useRef("");
+  const finalizedRef = useRef(false);
 
   const ws = useTinyvexWebSocket({
+    url: TINYVEX_WS_URL,
     autoConnect: true,
   });
 
@@ -74,9 +80,13 @@ export function useAcpSessionUpdates(
     liveTextRef.current = "";
     setThoughtText("");
     setIsStreaming(false);
+    finalizedRef.current = false;
     accumulatedTextRef.current = { assistant: "", reason: "" };
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
+    }
+    if (debounceQueryTimerRef.current) {
+      clearTimeout(debounceQueryTimerRef.current);
     }
   };
 
@@ -128,10 +138,25 @@ export function useAcpSessionUpdates(
             setIsStreaming(false);
           }, idleTimeout);
         }
+
+        // Debounce a follow-up query to fetch the latest text rows
+        if (debounceQueryTimerRef.current) {
+          clearTimeout(debounceQueryTimerRef.current);
+        }
+        debounceQueryTimerRef.current = setTimeout(() => {
+          ws.send({
+            control: "tvx.query",
+            name: "messages.list",
+            args: { threadId, limit: 50 },
+          });
+        }, 75);
       }
 
       // Handle tinyvex.finalize messages (contains full text)
       if (msg.type === "tinyvex.finalize" && msg.stream === "messages") {
+        // Mark finalized quickly so the UI can stop
+        finalizedRef.current = true;
+        setIsStreaming(false);
         // Request a fresh snapshot to get the finalized text
         ws.send({
           control: "tvx.query",
@@ -143,21 +168,21 @@ export function useAcpSessionUpdates(
       // Handle query results (snapshots)
       if (msg.type === "tinyvex.query_result" && msg.name === "messages.list") {
         const rows = msg.rows as any[];
-        const sortedRows = rows.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        const sortedRows = rows.sort((a, b) => (a.ts || a.createdAt || 0) - (b.ts || b.createdAt || 0));
 
-        let latestAssistant = "";
-        let latestReason = "";
+        // pick the most recent row per stream (assistant and reason)
+        const latestAssistantRow = [...sortedRows]
+          .reverse()
+          .find((row) => {
+            const effectiveRole = row.role || row.kind;
+            return effectiveRole === "assistant" || effectiveRole === "message";
+          });
+        const latestReasonRow = [...sortedRows]
+          .reverse()
+          .find((row) => (row.role || row.kind) === "reason");
 
-        for (const row of sortedRows) {
-          // WORKAROUND: Backend bug - role field is null, fallback to kind field
-          const effectiveRole = row.role || row.kind;
-
-          if ((effectiveRole === "assistant" || effectiveRole === "message") && row.partial === 0) {
-            latestAssistant += row.text || "";
-          } else if (effectiveRole === "reason" && row.partial === 0) {
-            latestReason += row.text || "";
-          }
-        }
+        const latestAssistant = latestAssistantRow?.text || "";
+        const latestReason = latestReasonRow?.text || "";
 
         if (latestAssistant !== accumulatedTextRef.current.assistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
@@ -177,23 +202,21 @@ export function useAcpSessionUpdates(
       if (msg.type === "tinyvex.snapshot" && msg.stream === "messages") {
         const rows = msg.rows as any[];
 
-        // Sort by created_at to ensure correct order
-        const sortedRows = rows.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        // Sort by ts/createdAt to ensure correct order
+        const sortedRows = rows.sort((a, b) => (a.ts || a.createdAt || 0) - (b.ts || b.createdAt || 0));
 
-        let latestAssistant = "";
-        let latestReason = "";
+        const latestAssistantRow = [...sortedRows]
+          .reverse()
+          .find((row) => {
+            const effectiveRole = row.role || row.kind;
+            return effectiveRole === "assistant" || effectiveRole === "message";
+          });
+        const latestReasonRow = [...sortedRows]
+          .reverse()
+          .find((row) => (row.role || row.kind) === "reason");
 
-        for (const row of sortedRows) {
-          // WORKAROUND: Backend bug - role field is null, fallback to kind field
-          const effectiveRole = row.role || row.kind;
-
-          if ((effectiveRole === "assistant" || effectiveRole === "message") && row.partial === 0) {
-            latestAssistant += row.text || "";  // Concatenate, don't overwrite
-          }
-          if (effectiveRole === "reason" && row.partial === 0) {
-            latestReason += row.text || "";  // Concatenate, don't overwrite
-          }
-        }
+        const latestAssistant = latestAssistantRow?.text || "";
+        const latestReason = latestReasonRow?.text || "";
 
         if (latestAssistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
@@ -219,6 +242,7 @@ export function useAcpSessionUpdates(
     isStreaming,
     connected: ws.connected,
     liveTextRef,
+    finalizedRef,
     reset,
   };
 }
