@@ -16,7 +16,7 @@ import { TextStreamController } from "../../modules/text";
 import { AssistantStreamEncoder } from "../../AssistantStream";
 
 export class DataStreamEncoder
-  extends PipeableTransformStream<AssistantStreamChunk, Uint8Array<ArrayBuffer>>
+  extends PipeableTransformStream<AssistantStreamChunk, Uint8Array>
   implements AssistantStreamEncoder
 {
   headers = new Headers({
@@ -215,7 +215,7 @@ const TOOL_CALL_ARGS_CLOSING_CHUNKS = [
 ];
 
 export class DataStreamDecoder extends PipeableTransformStream<
-  Uint8Array<ArrayBuffer>,
+  Uint8Array,
   AssistantStreamChunk
 > {
   constructor() {

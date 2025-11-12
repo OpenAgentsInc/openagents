@@ -3,7 +3,7 @@ import { LineDecoderStream } from "./LineDecoderStream";
 
 export class SSEEncoder<T> extends PipeableTransformStream<
   T,
-  Uint8Array<ArrayBuffer>
+  Uint8Array
 > {
   static readonly headers = new Headers({
     "Content-Type": "text/event-stream",
@@ -95,7 +95,7 @@ class SSEEventStream extends TransformStream<string, SSEEvent> {
 }
 
 export class SSEDecoder<T> extends PipeableTransformStream<
-  Uint8Array<ArrayBuffer>,
+  Uint8Array,
   T
 > {
   constructor() {
