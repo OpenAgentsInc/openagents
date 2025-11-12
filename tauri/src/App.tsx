@@ -59,13 +59,13 @@ function App() {
           });
 
         // Emit initial running chunk (empty) to show typing
-        yield { content: [{ type: "text", text: "" }] };
+        yield { content: [{ type: "text", text: "" }], status: { type: "running" } as const };
 
         while (!abortSignal?.aborted) {
           const next = await waitForChange(1200);
           if (next !== undefined) {
             lastText = next;
-            yield { content: [{ type: "text", text: lastText }] };
+            yield { content: [{ type: "text", text: lastText }], status: { type: "running" } as const };
             continue;
           }
           // no change for a bit; if we have some text, finalize

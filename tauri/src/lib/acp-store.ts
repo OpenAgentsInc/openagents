@@ -40,22 +40,40 @@ export const useAcpStore = create<AcpState>((set, get) => ({
 
     // Subscribe to per-session channel
     const topic = `session:${sessionId}`;
-    const un = await listen<SessionNotification>(topic, (evt: Event<SessionNotification>) => {
-      const payload = evt.payload;
-      if (!payload || !payload.update) return;
-      const update: any = payload.update as any;
+    console.debug(`[acp-store] listen start`, { topic, sessionId });
+    let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const onNotif = (payload?: SessionNotification) => {
+      if (!payload || !(payload as any).update) return;
+      const sn = payload as any;
+      // If listening on generic channel, filter by sessionId
+      if (sn.sessionId && sn.sessionId !== sessionId) return;
+      const update: any = sn.update;
       const kind: string | undefined = update.sessionUpdate;
 
       if (kind === "agent_message_chunk") {
+        console.debug(`[acp-store] msg chunk`, update);
         set((s) => ({ isStreaming: true, liveText: appendContentText(s.liveText, update.content as ContentBlock) }));
-        return;
-      }
-      if (kind === "agent_thought_chunk") {
+      } else if (kind === "agent_thought_chunk") {
+        console.debug(`[acp-store] thought chunk`, update);
         set((s) => ({ isStreaming: true, thoughtText: appendContentText(s.thoughtText, update.content as ContentBlock) }));
+      } else {
+        // other updates: ignore in phase 2
         return;
       }
-      // TODO: handle other update kinds in later phases
-    });
+
+      // Debounce end-of-stream indicator
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        set({ isStreaming: false });
+        console.debug(`[acp-store] stream idle`);
+      }, 800);
+    };
+
+    const un1 = await listen<SessionNotification>(topic, (evt: Event<SessionNotification>) => onNotif(evt.payload));
+    const un2 = await listen<SessionNotification>("acp:update", (evt: Event<SessionNotification>) => onNotif(evt.payload));
+    const un = () => { try { un1(); } catch {} try { un2(); } catch {} };
+    
 
     set({ activeSessionId: sessionId, unlisten: un, isStreaming: false, liveText: "", thoughtText: "" });
   },
@@ -70,4 +88,3 @@ export const useAcpStore = create<AcpState>((set, get) => ({
     set({ isStreaming: false, liveText: "", thoughtText: "" });
   },
 }));
-
