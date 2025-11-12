@@ -170,9 +170,17 @@ export function useTinyvexWebSocket(
     }
 
     return () => {
-      disconnect();
+      shouldConnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (socket) {
+        socket.close();
+      }
     };
-  }, [autoConnect, connect, disconnect]);
+    // Only run on mount/unmount, not when callbacks change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     socket,
