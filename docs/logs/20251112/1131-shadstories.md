@@ -186,3 +186,26 @@ Components covered
 Next batch candidates
 
 - Remaining: Toggle, ToggleGroup, RadioGroup done; InputOTP, ButtonGroup, Pagination done; NavigationMenu, Breadcrumb done, Menubar done; Progress done; Spinner, AlertDialog, Sonner (toast), Form
+
+## 2025-11-12 12:26 — Shadcn UI Stories (batch 8)
+
+Components covered
+
+36) AlertDialog — `UI/AlertDialog`
+    - Confirm/Cancel with controlled open state
+
+37) Toggle — `UI/Toggle`
+    - Variant and size controls, pressed state
+
+38) ToggleGroup — `UI/ToggleGroup`
+    - Single and Multiple selection variants
+
+39) InputOTP — `UI/InputOTP`
+    - Configurable length with separator and validation state
+
+40) ButtonGroup — `UI/ButtonGroup`
+    - Horizontal/vertical groups with separators and text blocks
+
+Next batch candidates
+
+- Spinner, Sonner (toast), Form, NavigationMenu, Pagination done, Breadcrumb done; also: AspectRatio, Label, Progress done, RadioGroup done
