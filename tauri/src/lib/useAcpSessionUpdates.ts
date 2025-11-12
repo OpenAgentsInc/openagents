@@ -19,6 +19,8 @@ export interface AcpSessionState {
   isStreaming: boolean;
   /** Whether the WebSocket is connected */
   connected: boolean;
+  /** Ref with current liveText (for reading from async generators without stale closures) */
+  liveTextRef: React.MutableRefObject<string>;
   /** Reset accumulated state (call when starting new prompt) */
   reset: () => void;
 }
@@ -61,6 +63,7 @@ export function useAcpSessionUpdates(
 
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const accumulatedTextRef = useRef({ assistant: "", reason: "" });
+  const liveTextRef = useRef("");
 
   const ws = useTinyvexWebSocket({
     autoConnect: true,
@@ -69,6 +72,7 @@ export function useAcpSessionUpdates(
   const reset = () => {
     if (debug) console.log("[acp-session] reset");
     setLiveText("");
+    liveTextRef.current = "";
     setThoughtText("");
     setIsStreaming(false);
     accumulatedTextRef.current = { assistant: "", reason: "" };
@@ -197,8 +201,9 @@ export function useAcpSessionUpdates(
 
         if (latestAssistant !== accumulatedTextRef.current.assistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
+          liveTextRef.current = latestAssistant;
           setLiveText(latestAssistant);
-          console.log("[acp-session] Updated liveText:", latestAssistant);
+          console.log("[acp-session] Updated liveText and ref:", latestAssistant);
         } else {
           console.log("[acp-session] No change to liveText, current:", latestAssistant);
         }
@@ -233,6 +238,7 @@ export function useAcpSessionUpdates(
 
         if (latestAssistant) {
           accumulatedTextRef.current.assistant = latestAssistant;
+          liveTextRef.current = latestAssistant;
           setLiveText(latestAssistant);
         }
 
@@ -253,6 +259,7 @@ export function useAcpSessionUpdates(
     thoughtText,
     isStreaming,
     connected: ws.connected,
+    liveTextRef,
     reset,
   };
 }
