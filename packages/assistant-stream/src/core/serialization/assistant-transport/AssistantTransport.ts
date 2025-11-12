@@ -8,7 +8,7 @@ import { AssistantStreamEncoder } from "../../AssistantStream";
  * and emits [DONE] when the stream completes.
  */
 export class AssistantTransportEncoder
-  extends PipeableTransformStream<AssistantStreamChunk, Uint8Array<ArrayBuffer>>
+  extends PipeableTransformStream<AssistantStreamChunk, Uint8Array>
   implements AssistantStreamEncoder
 {
   headers = new Headers({
@@ -106,7 +106,7 @@ class SSEEventStream extends TransformStream<string, SSEEvent> {
  * It stops decoding when it encounters [DONE].
  */
 export class AssistantTransportDecoder extends PipeableTransformStream<
-  Uint8Array<ArrayBuffer>,
+  Uint8Array,
   AssistantStreamChunk
 > {
   constructor() {
