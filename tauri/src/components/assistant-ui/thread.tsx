@@ -124,7 +124,7 @@ const ThreadSuggestions: FC = () => {
         {
           title: "Read transcript 195",
           label: "and summarize 10 upgrades",
-          action: "Read /Users/christopherdavid/code/openagents/docs/transcripts/195.md and summarize the 10 upgrades in bullet points",
+          action: "Read /Users/christopherdavid/code/openagents/docs/transcripts/195.md and summarize the 10 upgrades in a numbered list",
         },
         // {
         //   title: "Write a SQL query",
