@@ -1,4 +1,4 @@
-import type { ChatModelAdapter } from "@assistant-ui/react";
+import type { ChatModelAdapter } from "@openagentsinc/assistant-ui-runtime";
 import { createOllama } from "ollama-ai-provider-v2";
 import { streamText } from "ai";
 

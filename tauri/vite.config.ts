@@ -11,9 +11,31 @@ export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      { find: "@openagentsinc/assistant-ui-runtime", replacement: path.resolve(__dirname, "../packages/assistant-ui-runtime/src/index.ts") },
+      { find: "@openagentsinc/react-markdown/styles/dot.css", replacement: path.resolve(__dirname, "../packages/react-markdown/styles/dot.css") },
+      { find: "@openagentsinc/react-markdown", replacement: path.resolve(__dirname, "../packages/react-markdown/src/index.ts") },
+      { find: "@assistant-ui/tap/react", replacement: path.resolve(__dirname, "../packages/tap/src/react/index.ts") },
+      { find: "@assistant-ui/tap", replacement: path.resolve(__dirname, "../packages/tap/src/index.ts") },
+      { find: /^assistant-stream\/(.*)$/, replacement: path.resolve(__dirname, "../packages/assistant-stream/src/$1.ts") },
+      { find: "assistant-stream", replacement: path.resolve(__dirname, "../packages/assistant-stream/src/index.ts") },
+      { find: "assistant-cloud", replacement: path.resolve(__dirname, "./src/__stubs__/assistant-cloud.ts") },
+      { find: "react-markdown", replacement: path.resolve(__dirname, "./node_modules/react-markdown") },
+      { find: "classnames", replacement: path.resolve(__dirname, "./node_modules/classnames") },
+      { find: "@radix-ui/react-use-callback-ref", replacement: path.resolve(__dirname, "./node_modules/@radix-ui/react-use-callback-ref") },
+    ],
+    // Allow resolving modules from tauri's node_modules even when importing from packages
+    preserveSymlinks: false,
+  },
+
+  // Optimize dependency pre-bundling
+  optimizeDeps: {
+    include: [
+      "react-markdown",
+      "classnames",
+      "@radix-ui/react-use-callback-ref",
+    ],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

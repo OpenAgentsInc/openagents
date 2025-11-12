@@ -1,6 +1,6 @@
 "use client";
 
-import { INTERNAL, useMessagePartText } from "@assistant-ui/react";
+import { INTERNAL, useMessagePartText } from "@openagentsinc/assistant-ui-runtime";
 import {
   ComponentRef,
   ElementType,

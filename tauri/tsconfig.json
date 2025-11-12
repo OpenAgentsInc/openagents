@@ -25,9 +25,17 @@
     "paths": {
       "@/*": ["./src/*"],
       "@openagentsinc/assistant-ui-runtime/*": ["../packages/assistant-ui-runtime/src/*"],
-      "@openagentsinc/assistant-ui-runtime": ["../packages/assistant-ui-runtime/src/index.ts"]
+      "@openagentsinc/assistant-ui-runtime": ["../packages/assistant-ui-runtime/src/index.ts"],
+      "@openagentsinc/react-markdown": ["../packages/react-markdown/src/index.ts"],
+      "@openagentsinc/react-markdown/*": ["../packages/react-markdown/*"],
+      "@assistant-ui/tap": ["../packages/tap/src/index.ts"],
+      "@assistant-ui/tap/react": ["../packages/tap/src/react/index.ts"],
+      "@assistant-ui/tap/*": ["../packages/tap/*"],
+      "assistant-stream": ["../packages/assistant-stream/src/index.ts"],
+      "assistant-stream/*": ["../packages/assistant-stream/src/*"]
     }
   },
   "include": ["src"],
+  "exclude": ["node_modules", "../packages/*/node_modules", "../packages/*/src/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

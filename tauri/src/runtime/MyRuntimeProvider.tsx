@@ -1,8 +1,8 @@
 "use client";
 
-import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
-import type { AttachmentAdapter } from "@assistant-ui/react";
-import { INTERNAL } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useLocalRuntime } from "@openagentsinc/assistant-ui-runtime";
+import type { AttachmentAdapter } from "@openagentsinc/assistant-ui-runtime";
+import { INTERNAL } from "@openagentsinc/assistant-ui-runtime";
 import { useModelStore } from "@/lib/model-store";
 import { createOllamaAdapter } from "@/runtime/adapters/ollama-adapter";
 import { OLLAMA_BASE_URL, OLLAMA_MODEL } from "@/config/ollama";
