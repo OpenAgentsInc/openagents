@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use agent_client_protocol as acp;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::State;
 
 mod oa_acp;
@@ -58,11 +58,7 @@ async fn create_session(
         .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Deserialize)]
-struct SendPromptArgs {
-    session_id: String,
-    text: String,
-}
+// Note: command args are defined inline in the tauri::command signatures
 
 #[tauri::command]
 async fn send_prompt(state: State<'_, AppState>, session_id: String, text: String) -> Result<(), String> {
@@ -139,7 +135,6 @@ async fn resolve_acp_agent_path() -> Result<String, String> {
 
 pub struct AppState {
     sessions: SessionManager,
-    tinyvex: Arc<tinyvex_state::TinyvexState>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -164,7 +159,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             sessions: SessionManager::new(tinyvex_state.clone()),
-            tinyvex: tinyvex_state,
         })
         .invoke_handler(tauri::generate_handler![create_session, send_prompt, get_session, resolve_acp_agent_path])
         .setup(move |app| {

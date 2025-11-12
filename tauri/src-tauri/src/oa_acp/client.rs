@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write, path::PathBuf, sync::{Arc, atomic::{AtomicI64, Ordering}}};
+use std::{collections::HashMap, path::PathBuf, sync::{Arc, atomic::{AtomicI64, Ordering}}};
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
@@ -21,10 +21,10 @@ pub enum AcpError {
 pub struct ACPClient {
     child: Child,
     stdin: ChildStdin,
-    reader_task: JoinHandle<()>,
+    _reader_task: JoinHandle<()>,
     next_id: AtomicI64,
     pending: Arc<tokio::sync::Mutex<HashMap<acp::RequestId, oneshot::Sender<RpcResult>>>>,
-    update_tx: mpsc::Sender<acp::SessionNotification>,
+    _update_tx: mpsc::Sender<acp::SessionNotification>,
     update_rx: mpsc::Receiver<acp::SessionNotification>,
 }
 
@@ -108,10 +108,10 @@ impl ACPClient {
         let mut client = Self {
             child,
             stdin,
-            reader_task,
+            _reader_task: reader_task,
             next_id: AtomicI64::new(1),
             pending,
-            update_tx,
+            _update_tx: update_tx,
             update_rx,
         };
 
