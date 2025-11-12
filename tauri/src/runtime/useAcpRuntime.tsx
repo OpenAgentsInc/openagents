@@ -95,48 +95,42 @@ function mapRowsToAUIThreadMessages(
     }
   } catch {}
 
-  // Users first (ascending by time)
-  const sortedUsers = [...userRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
-  for (const row of sortedUsers) {
+  // Add all user messages
+  for (const row of userRows) {
     const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
-    out.push({ id, role: "user", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] });
-  }
-
-  // Assistant: all but latest as finalized text-only messages
-  const sortedAssist = [...assistantRows].sort((a, b) => toBaseTime(a) - toBaseTime(b));
-  for (let i = 0; i < Math.max(0, sortedAssist.length - 1); i++) {
-    const row = sortedAssist[i]!;
-    const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
-    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(row)), content: [{ type: "text", text: row.text ?? "" }] });
-  }
-
-  // Latest assistant combined with current reasoning (if any)
-  if (latestAssistant) {
-    const id = latestAssistant.itemId ? `msg:${latestAssistant.itemId}` : `msg-id:${latestAssistant.id}`;
-    const parts: ReadonlyArray<
-      | { type: "reasoning"; text: string }
-      | { type: "text"; text: string }
-    > = (
-      [
-        latestReason?.text && latestReason.text.trim().length > 0
-          ? { type: "reasoning", text: latestReason.text }
-          : undefined,
-        { type: "text", text: latestAssistant.text ?? "" },
-      ].filter(Boolean) as { type: "reasoning" | "text"; text: string }[]
-    );
-    out.push({ id, role: "assistant", createdAt: new Date(toBaseTime(latestAssistant)), content: parts });
-  } else if (latestReason) {
-    // If we have reasoning but no assistant text yet, show a reasoning-only assistant message
-    const id = latestReason.itemId ? `reason:${latestReason.itemId}` : `reason-id:${latestReason.id}`;
     out.push({
       id,
-      role: "assistant",
-      createdAt: new Date(toBaseTime(latestReason)),
-      content: [{ type: "reasoning", text: latestReason.text ?? "" }],
+      role: "user",
+      createdAt: new Date(toBaseTime(row)),
+      content: [{ type: "text", text: row.text ?? "" }]
     });
   }
 
-  // Tool calls as assistant tool-call parts
+  // Add all assistant text messages
+  for (const row of assistantRows) {
+    const id = row.itemId ? `msg:${row.itemId}` : `msg-id:${row.id}`;
+    out.push({
+      id,
+      role: "assistant",
+      createdAt: new Date(toBaseTime(row)),
+      content: [{ type: "text", text: row.text ?? "" }]
+    });
+  }
+
+  // Add all reasoning messages as separate assistant messages
+  for (const row of deduplicatedReasons) {
+    const id = row.itemId ? `reason:${row.itemId}` : `reason-id:${row.id}`;
+    if (row.text && row.text.trim().length > 0) {
+      out.push({
+        id,
+        role: "assistant",
+        createdAt: new Date(toBaseTime(row)),
+        content: [{ type: "reasoning", text: row.text }],
+      });
+    }
+  }
+
+  // Add all tool calls as separate assistant messages
   for (const tc of toolCalls) {
     const toolName = (tc.kind ?? tc.title ?? "tool").toString();
     const argsText = (() => {
