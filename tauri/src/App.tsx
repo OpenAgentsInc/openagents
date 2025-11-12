@@ -40,11 +40,41 @@ function App() {
           return;
         }
 
-        // Yield a minimal placeholder; live stream is rendered separately
-        yield {
-          content: [{ type: "text", text: "" }],
-          status: { type: "complete", reason: "stop" } as const,
-        };
+        // Stream UI by relaying store updates into the thread
+        let lastText = "";
+        const waitForChange = (timeoutMs: number) =>
+          new Promise<string | undefined>((resolve) => {
+            const unsub = (useAcpStore as any).subscribe(
+              (s: any) => s.liveText,
+              (newText: string) => {
+                if (newText !== lastText) {
+                  try { unsub(); } catch {}
+                  resolve(newText);
+                }
+              },
+            );
+            setTimeout(() => {
+              try { unsub(); } catch {}
+              resolve(undefined);
+            }, timeoutMs);
+          });
+
+        // Emit initial running chunk (empty) to show typing
+        yield { content: [{ type: "text", text: "" }] };
+
+        while (!abortSignal?.aborted) {
+          const next = await waitForChange(1200);
+          if (next !== undefined) {
+            lastText = next;
+            yield { content: [{ type: "text", text: lastText }] };
+            continue;
+          }
+          // no change for a bit; if we have some text, finalize
+          if (lastText.length > 0) {
+            yield { content: [{ type: "text", text: lastText }], status: { type: "complete", reason: "stop" } as const };
+            break;
+          }
+        }
         return;
       }
 
