@@ -170,9 +170,11 @@ function mapRowsToThreadMessages(
 }
 
 export function useAcpRuntime(options?: { initialThreadId?: string }) {
-  const [threadId, setThreadId] = useState<string | undefined>(
-    options?.initialThreadId,
-  );
+  const [threadId, setThreadId] = useState<string | undefined>(options?.initialThreadId);
+  const threadIdRef = useRef<string | undefined>(threadId);
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
   const [isRunning, setIsRunning] = useState(false);
   const rowsRef = useRef<TinyvexMessageRow[]>([]);
   const reasonRowsRef = useRef<TinyvexMessageRow[]>([]);
@@ -183,19 +185,31 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
 
   const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
 
-  // Subscribe to tinyvex stream and keep a local mirror of rows for this thread
+  // Subscribe to tinyvex stream and adopt threadId automatically on first seen event
   useEffect(() => {
-    if (!threadId || !ws.connected) return;
+    if (!ws.connected) return;
 
-    // Subscribe and fetch snapshot
-    ws.send({ control: "tvx.subscribe", stream: "messages", threadId });
-    ws.send({ control: "tvx.query", name: "messages.list", args: { threadId, limit: 200 } });
+    const bootstrapFor = (tid: string) => {
+      setThreadId((cur) => cur ?? tid);
+      // Kick off initial snapshot for this thread
+      ws.send({ control: "tvx.subscribe", stream: "messages", threadId: tid });
+      ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: tid, limit: 200 } });
+      ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId: tid, limit: 100 } });
+    };
 
     const unsub = ws.subscribe((msg) => {
-      if (msg.threadId && msg.threadId !== threadId) return;
+      // Learn threadId from any event if not set
+      const tid = (msg.threadId as string | undefined) ?? (msg.thread_id as string | undefined);
+      if (!threadIdRef.current && tid) {
+        bootstrapFor(tid);
+      }
+
+      // Ignore events from other threads once set
+      if (threadIdRef.current && tid && tid !== threadIdRef.current) return;
       if (msg.type === "tinyvex.update" && msg.stream === "messages") {
         // A change occurred; re-query for fresh rows
-        ws.send({ control: "tvx.query", name: "messages.list", args: { threadId, limit: 200 } });
+        const t = threadIdRef.current ?? tid;
+        if (t) ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: t, limit: 200 } });
         // Any update to assistant/reason marks running for UX responsiveness
         const role = msg.role as string | undefined;
         const kind = msg.kind as string | undefined;
@@ -204,7 +218,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         }
       }
       if (msg.type === "tinyvex.update" && msg.stream === "tool_calls") {
-        ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId, limit: 100 } });
+        const t = threadIdRef.current ?? tid;
+        if (t) ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId: t, limit: 100 } });
       }
       if (msg.type === "tinyvex.update" && msg.stream === "plan") {
         planEventsRef.current = [...planEventsRef.current, Date.now()];
@@ -214,10 +229,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         stateEventsRef.current = [...stateEventsRef.current, Date.now()];
         setVersion((v) => v + 1);
       }
-      if (
-        msg.type === "tinyvex.finalize" &&
-        msg.stream === "messages"
-      ) {
+      if (msg.type === "tinyvex.finalize" && msg.stream === "messages") {
         setIsRunning(false);
         // Final rows included in the follow-up query_result below
       }
@@ -237,9 +249,13 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         reasonRowsRef.current = all.filter((r) => r.kind === "reason");
         setVersion((v) => v + 1);
       }
+      // Adopt threadId on run.submitted as well
+      if (msg.type === "run.submitted" && msg.threadId && !threadIdRef.current) {
+        bootstrapFor(msg.threadId as string);
+      }
     });
     return () => unsub();
-  }, [threadId, ws.connected, ws.send, ws.subscribe]);
+  }, [ws.connected, ws.send, ws.subscribe]);
 
   const messages = useMemo(
     () =>
