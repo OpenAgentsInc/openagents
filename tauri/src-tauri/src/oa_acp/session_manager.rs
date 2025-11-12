@@ -51,13 +51,17 @@ impl SessionManager {
     }
 
     pub async fn create_session(&self, agent_type: String, cwd: PathBuf) -> Result<acp::SessionId> {
-        // Decide path: ACP via codex-acp (default) or legacy codex-exec adapter (env/explicit)
+        // Decide path: ACP via codex-acp/claude-code-acp (default) or legacy codex-exec adapter (env/explicit)
         let use_codex_exec = agent_type == "codex-exec" || std::env::var("OA_USE_CODEX_EXEC").ok().as_deref() == Some("1");
         let (cmd, all_args) = if use_codex_exec {
             // codex-exec path does not use ACP client spawn here
             (PathBuf::from("codex-exec"), Vec::new())
         } else {
-            let (cmd, pre) = resolve_codex_acp_exec()?;
+            // Route to appropriate agent resolver
+            let (cmd, pre) = match agent_type.as_str() {
+                "claude-code" => resolve_claude_code_acp_exec()?,
+                "codex" | _ => resolve_codex_acp_exec()?,
+            };
             let tail = std::env::var("OA_ACP_AGENT_ARGS").unwrap_or_default();
             let mut args: Vec<String> = if tail.trim().is_empty() { vec![] } else { shell_words::split(&tail).unwrap_or_else(|_| tail.split_whitespace().map(|s| s.to_string()).collect()) };
             let mut merged = pre;
@@ -255,6 +259,55 @@ impl SessionManager {
 pub fn try_resolve_acp_agent() -> anyhow::Result<PathBuf> {
     let (bin, _args) = resolve_codex_acp_exec()?;
     Ok(bin)
+}
+
+fn resolve_claude_code_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
+    // 1) Explicit env override
+    if let Ok(val) = std::env::var("OA_CLAUDE_CODE_ACP_CMD") {
+        let val = val.trim();
+        if !val.is_empty() {
+            // Parse as "command arg1 arg2..." or just path
+            let parts: Vec<&str> = val.split_whitespace().collect();
+            if parts.is_empty() {
+                return Err(anyhow::anyhow!("OA_CLAUDE_CODE_ACP_CMD is empty"));
+            }
+            let cmd = PathBuf::from(parts[0]);
+            let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
+            return Ok((cmd, args));
+        }
+    }
+
+    // 2) Default: tsx packages/claude-code-acp/index.ts (preferred for TypeScript)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let base = PathBuf::from(manifest_dir)
+            .parent()
+            .and_then(|p| p.parent()) // go to repo root
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        let script = base.join("packages/claude-code-acp/index.ts");
+        if script.exists() {
+            // Try tsx first (better for TypeScript), fallback to node
+            if let Ok(tsx) = which("tsx") {
+                return Ok((tsx, vec![script.display().to_string()]));
+            }
+            if let Ok(node) = which("node") {
+                return Ok((node, vec![script.display().to_string()]));
+            }
+            return Err(anyhow::anyhow!(
+                "Claude Code ACP script found at {} but neither 'tsx' nor 'node' found in PATH",
+                script.display()
+            ));
+        }
+    }
+
+    // 3) Try to find in node_modules or PATH
+    if let Ok(found) = which("claude-code-acp") {
+        return Ok((found, Vec::new()));
+    }
+
+    Err(anyhow::anyhow!(
+        "Claude Code ACP not found. Set OA_CLAUDE_CODE_ACP_CMD to 'tsx path/to/index.ts' or ensure packages/claude-code-acp/index.ts exists and 'tsx' is in PATH"
+    ))
 }
 
 fn resolve_codex_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
