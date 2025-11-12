@@ -296,6 +296,10 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       }
       if (msg.type === "tinyvex.query_result" && msg.name === "threads.list") {
         threadsRef.current = (msg.rows as TinyvexThreadRow[]) ?? [];
+        // Expose thread metadata globally for thread list component
+        (window as any).__threadMetadata = new Map(
+          threadsRef.current.map((row) => [row.id, { source: row.source }])
+        );
         setIsLoadingThreads(false);
         setVersion((v) => v + 1);
       }
