@@ -15,6 +15,8 @@ import {
 } from "@/components/assistant-ui/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useAssistantState } from "@openagentsinc/assistant-ui-runtime"
+import { useModelStore } from "@/lib/model-store"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
     ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useThread
@@ -170,13 +172,21 @@ const ThreadSuggestions: FC = () => {
 const Composer: FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isEmpty = useThread((t) => t.messages.length === 0);
+  const prevEmptyRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
-    // Focus on mount and when thread is empty (e.g., after switching to new thread)
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 100);
-    return () => clearTimeout(timer);
+    // Focus on mount (prevEmptyRef is undefined) or when transitioning to empty
+    const shouldFocus = prevEmptyRef.current === undefined || (isEmpty && !prevEmptyRef.current);
+
+    if (shouldFocus) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      prevEmptyRef.current = isEmpty;
+      return () => clearTimeout(timer);
+    }
+
+    prevEmptyRef.current = isEmpty;
   }, [isEmpty]);
 
   return (
@@ -274,6 +284,19 @@ const AssistantMessage: FC = () => {
 };
 
 const AssistantActionBar: FC = () => {
+  // Hide action bar for reasoning/tool-call only messages
+  const partTypes = useAssistantState((s: any) =>
+    (s.message?.parts ?? []).map((p: any) => p?.type)
+  ) as ReadonlyArray<string>;
+  const hasReasoningOrTool = partTypes?.some(
+    (t) => t === "reasoning" || t === "tool-call"
+  );
+
+  // In Codex (ACP) chats, show only Copy (no Replay)
+  const selectedModel = useModelStore((s: any) => s.selected);
+
+  if (hasReasoningOrTool) return null;
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -291,11 +314,13 @@ const AssistantActionBar: FC = () => {
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
-          <RefreshCwIcon />
-        </TooltipIconButton>
-      </ActionBarPrimitive.Reload>
+      {selectedModel !== "codex" && (
+        <ActionBarPrimitive.Reload asChild>
+          <TooltipIconButton tooltip="Refresh">
+            <RefreshCwIcon />
+          </TooltipIconButton>
+        </ActionBarPrimitive.Reload>
+      )}
     </ActionBarPrimitive.Root>
   );
 };
