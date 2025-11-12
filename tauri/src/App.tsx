@@ -5,6 +5,9 @@ import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react"
 import type { ChatModelAdapter } from "@assistant-ui/react"
 import { createOllama } from "ollama-ai-provider-v2"
 import { streamText } from "ai"
+import { useModelStore } from "@/lib/model-store"
+import { createSession, sendPrompt } from "@/lib/tauri-acp"
+import { useAcpStore } from "@/lib/acp-store"
 
 const ollama = createOllama({
   baseURL: "http://127.0.0.1:11434/api",
@@ -13,26 +16,47 @@ const ollama = createOllama({
 function App() {
   const adapter: ChatModelAdapter = {
     async *run({ messages, abortSignal }) {
-      const result = streamText({
-        model: ollama("glm-4.6:cloud"),
-        messages: messages as any,
-        abortSignal,
-      });
+      const model = useModelStore.getState().selected;
+      if (model === "codex") {
+        // Route to ACP backend; prevent Ollama run
+        // Extract the latest user text
+        const last = [...messages].reverse().find((m: any) => m.role === "user");
+        const userText: string = Array.isArray(last?.content)
+          ? (last.content.find((p: any) => p.type === "text")?.text ?? "")
+          : "";
 
-      const stream = result.textStream;
-      let text = "";
+        try {
+          const { startListening, setActiveSession } = useAcpStore.getState();
+          const sessionId = await createSession("codex");
+          await startListening(sessionId);
+          setActiveSession(sessionId);
+          await sendPrompt(sessionId, userText || "");
+        } catch (e) {
+          // Surface a small inline error message in the thread
+          yield {
+            content: [{ type: "text", text: `ACP error: ${String(e)}` }],
+            status: { type: "complete", reason: "unknown" } as const,
+          };
+          return;
+        }
 
-      for await (const chunk of stream) {
-        text += chunk;
+        // Yield a minimal placeholder; live stream is rendered separately
         yield {
-          content: [{ type: "text", text }],
+          content: [{ type: "text", text: "" }],
+          status: { type: "complete", reason: "stop" } as const,
         };
+        return;
       }
 
-      yield {
-        content: [{ type: "text", text }],
-        status: { type: "complete", reason: "stop" } as const,
-      };
+      // Default: Ollama
+      const result = streamText({ model: ollama("glm-4.6:cloud"), messages: messages as any, abortSignal });
+      const stream = result.textStream;
+      let text = "";
+      for await (const chunk of stream) {
+        text += chunk;
+        yield { content: [{ type: "text", text }] };
+      }
+      yield { content: [{ type: "text", text }], status: { type: "complete", reason: "stop" } as const };
     },
   };
 
