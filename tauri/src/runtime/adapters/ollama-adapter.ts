@@ -23,4 +23,3 @@ export function createOllamaAdapter(options?: { baseURL?: string; model?: string
     },
   };
 }
-

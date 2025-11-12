@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { ThreadMessageLike } from "@/ui/types/thread";
 import { useExternalStoreRuntime } from "@assistant-ui/react";
 import type { ExternalStoreAdapter } from "@assistant-ui/react";
 import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
@@ -239,14 +239,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
     [version],
   );
 
-  const store: ExternalStoreAdapter<ThreadMessageLike> = {
+  const store: ExternalStoreAdapter<any> = {
     isRunning,
     messages,
-    convertMessage: (m) => m,
-    onNew: async (message) => {
+    convertMessage: (m: any) => m,
+    onNew: async (message: any) => {
       if (message.role !== "user") return;
       const text = message.content
-        .filter((p) => p.type === "text")
+        .filter((p: any) => p.type === "text")
         .map((p: any) => p.text)
         .join("\n\n");
       let sid = threadId;
