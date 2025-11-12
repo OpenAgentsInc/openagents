@@ -122,9 +122,9 @@ const ThreadSuggestions: FC = () => {
           action: "Use three demo tool calls (like Read, Search, Bash) to explore the codebase",
         },
         {
-          title: "Read transcript 195",
-          label: "and summarize 10 upgrades",
-          action: "Read /Users/christopherdavid/code/openagents/docs/transcripts/195.md and summarize the 10 upgrades in a numbered list",
+          title: "Summarize transcript 195",
+          label: "list 10 upgrades",
+          action: "Read docs/transcripts/195.md and list the 10 upgrades",
         },
         // {
         //   title: "Write a SQL query",
