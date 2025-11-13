@@ -9,8 +9,11 @@ import {
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectStore } from "@/lib/project-store";
+import { useUiStore } from "@/lib/ui-store";
 
 // Get thread ID from assistant-ui context
 function useThreadId() {
@@ -144,6 +147,8 @@ export const ThreadList: FC = () => {
 };
 
 const ThreadListNew: FC = () => {
+  const clearActiveProject = useProjectStore((s) => s.setActiveProject);
+  const clearProjectView = useUiStore((s) => s.clearProjectView);
   const handleFocusRequest = () => {
     // Nudge focus to the composer after the runtime switches threads
     setTimeout(() => {
@@ -156,7 +161,12 @@ const ThreadListNew: FC = () => {
       <Button
         className="aui-thread-list-new flex items-center justify-start gap-1 rounded-[var(--radius-lg)] px-2.5 py-2 text-start hover:bg-muted data-active:bg-muted"
         variant="ghost"
-        onClick={handleFocusRequest}
+        onClick={(e) => {
+          // Ensure generic "New Thread" is not scoped to a project
+          clearActiveProject(null);
+          clearProjectView();
+          handleFocusRequest();
+        }}
       >
         <PlusIcon />
         New Thread
@@ -198,17 +208,20 @@ const ThreadListItem: FC = () => {
   const threadId = useThreadId(); // Get thread ID from context
   const [isArchiving, setIsArchiving] = useState(false);
   const [threadSource, setThreadSource] = useState<string | null>(null);
+  const [threadProjectId, setThreadProjectId] = useState<string | null>(null);
+  const getProject = useProjectStore((s) => s.getProject);
 
   // Update metadata when thread ID or metadata changes
   useEffect(() => {
     const updateMetadata = () => {
-      const metadata = (window as any).__threadMetadata as Map<string, { source?: string; isArchiving?: boolean }> | undefined;
+      const metadata = (window as any).__threadMetadata as Map<string, { source?: string; isArchiving?: boolean; projectId?: string }> | undefined;
       if (!metadata || !threadId) return;
 
       const meta = metadata.get(threadId);
       const archiving = meta?.isArchiving || false;
       setIsArchiving(archiving);
       setThreadSource(meta?.source || null);
+      setThreadProjectId(meta?.projectId || null);
     };
 
     updateMetadata();
@@ -220,6 +233,8 @@ const ThreadListItem: FC = () => {
     };
   }, [threadId]);
 
+  const threadProject = threadProjectId ? getProject(threadProjectId) : undefined;
+
   return (
     <ThreadListItemPrimitive.Root
       className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
@@ -230,6 +245,11 @@ const ThreadListItem: FC = () => {
       <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
         <ThreadListItemTitle />
       </ThreadListItemPrimitive.Trigger>
+      {threadProject && (
+        <Badge variant="outline" className="text-xs mr-1 flex-shrink-0">
+          {threadProject.name}
+        </Badge>
+      )}
       {threadSource && (
         <span className="text-xs text-muted-foreground/50 mr-2 flex-shrink-0">
           {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource}

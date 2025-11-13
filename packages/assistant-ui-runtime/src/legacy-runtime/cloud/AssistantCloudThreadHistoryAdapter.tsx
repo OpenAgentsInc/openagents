@@ -84,7 +84,7 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
         format: "aui/v0",
         content: auiV0Encode(message),
       })
-      .then(({ message_id }) => {
+      .then(({ message_id }: any) => {
         this._getIdForLocalId[message.id] = message_id;
         return message_id;
       });
@@ -97,14 +97,14 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
   async load() {
     const remoteId = this.store.threadListItem().getState().remoteId;
     if (!remoteId) return { messages: [] };
-    const { messages } = await this.cloudRef.current.threads.messages.list(
+    const { messages } = await (this.cloudRef.current as any).threads.messages.list(
       remoteId,
       {
         format: "aui/v0",
       },
     );
     const payload = {
-      messages: messages
+      messages: (messages as any[])
         .filter(
           (m): m is typeof m & { format: "aui/v0" } => m.format === "aui/v0",
         )
@@ -131,7 +131,7 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
         format,
         content: content as ReadonlyJSONObject,
       })
-      .then(({ message_id }) => {
+      .then(({ message_id }: any) => {
         this._getIdForLocalId[messageId] = message_id;
         return message_id;
       });
@@ -150,7 +150,7 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
     const remoteId = this.store.threadListItem().getState().remoteId;
     if (!remoteId) return { messages: [] };
 
-    const { messages } = await this.cloudRef.current.threads.messages.list(
+    const { messages } = await (this.cloudRef.current as any).threads.messages.list(
       remoteId,
       {
         format,
@@ -158,9 +158,9 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
     );
 
     return {
-      messages: messages
-        .filter((m) => m.format === format)
-        .map((m) =>
+      messages: (messages as any[])
+        .filter((m: any) => m.format === format)
+        .map((m: any) =>
           decoder({
             id: m.id,
             parent_id: m.parent_id,

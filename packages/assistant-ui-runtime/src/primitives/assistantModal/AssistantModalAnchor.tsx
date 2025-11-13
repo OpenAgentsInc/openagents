@@ -20,9 +20,8 @@ export const AssistantModalPrimitiveAnchor = forwardRef<
     }: ScopedProps<AssistantModalPrimitiveAnchor.Props>,
     ref,
   ) => {
-    const scope = usePopoverScope(__scopeAssistantModal);
-
-    return <PopoverPrimitive.Anchor {...scope} {...rest} ref={ref} />;
+    const scope = usePopoverScope(__scopeAssistantModal as any);
+    return <PopoverPrimitive.Anchor {...(scope as any)} {...rest} ref={ref} />;
   },
 );
 AssistantModalPrimitiveAnchor.displayName = "AssistantModalPrimitive.Anchor";

@@ -1,4 +1,3 @@
-import type { AssistantCloud } from "assistant-cloud";
 import {
   Attachment,
   PendingAttachment,
@@ -18,7 +17,9 @@ const guessAttachmentType = (
 export class CloudFileAttachmentAdapter implements AttachmentAdapter {
   public accept = "*";
 
-  constructor(private cloud: AssistantCloud) {}
+  // Use 'any' to avoid coupling to optional 'assistant-cloud' types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(private cloud: any) {}
 
   private uploadedUrls = new Map<string, string>();
 

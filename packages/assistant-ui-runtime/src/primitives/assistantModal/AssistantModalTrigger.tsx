@@ -18,9 +18,9 @@ export const AssistantModalPrimitiveTrigger = forwardRef<
     }: ScopedProps<AssistantModalPrimitiveTrigger.Props>,
     ref,
   ) => {
-    const scope = usePopoverScope(__scopeAssistantModal);
+    const scope = usePopoverScope(__scopeAssistantModal as any);
 
-    return <PopoverPrimitive.Trigger {...scope} {...rest} ref={ref} />;
+    return <PopoverPrimitive.Trigger {...(scope as any)} {...rest} ref={ref} />;
   },
 );
 

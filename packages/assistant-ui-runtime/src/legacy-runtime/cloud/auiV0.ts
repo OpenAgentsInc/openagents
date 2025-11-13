@@ -1,7 +1,9 @@
 import { ThreadMessage } from "../../types";
 import { MessageStatus } from "../../types/AssistantTypes";
 import { fromThreadMessageLike } from "../runtime-cores/external-store/ThreadMessageLike";
-import { CloudMessage } from "assistant-cloud";
+// Optional dependency; ambient types provided for local builds
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CloudMessage = any;
 import { isJSONValue } from "../../utils/json/is-json";
 import { ReadonlyJSONObject, ReadonlyJSONValue } from "assistant-stream/utils";
 import { ExportedMessageRepositoryItem } from "../runtime-cores/utils/MessageRepository";

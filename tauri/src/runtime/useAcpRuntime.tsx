@@ -10,6 +10,8 @@ import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton";
 import { createSession, sendPrompt, validateDirectory } from "@/lib/tauri-acp";
 import { useModelStore } from "@/lib/model-store";
 import { useWorkingDirStore } from "@/lib/working-dir-store";
+import { useProjectStore } from "@/lib/project-store";
+import { useUiStore } from "@/lib/ui-store";
 
 type TinyvexMessageRow = {
   id: number;
@@ -216,6 +218,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
     threadIdRef.current = threadId;
   }, [threadId]);
   const [isRunning, setIsRunning] = useState(false);
+  const [isWaitingForFirstResponse, setIsWaitingForFirstResponse] = useState(false);
+  const sessionStartTimeRef = useRef<number | undefined>(undefined);
   const rowsRef = useRef<TinyvexMessageRow[]>([]);
   const reasonRowsRef = useRef<TinyvexMessageRow[]>([]);
   const toolCallsRef = useRef<TinyvexToolCallRow[]>([]);
@@ -289,12 +293,24 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       }
       if (msg.type === "tinyvex.query_result" && msg.name === "messages.list") {
         const all = (msg.rows as TinyvexMessageRow[]) ?? [];
-        rowsRef.current = all.filter((r) => r.kind === "message");
-        reasonRowsRef.current = all.filter((r) => r.kind === "reason");
+        const messages = all.filter((r) => r.kind === "message");
+        const reasons = all.filter((r) => r.kind === "reason");
+        rowsRef.current = messages;
+        reasonRowsRef.current = reasons;
+        // Check if we got first response (assistant message or reasoning)
+        const hasAssistantResponse = messages.some((r) => r.role === "assistant");
+        const hasReasoning = reasons.length > 0;
+        if ((hasAssistantResponse || hasReasoning) && isWaitingForFirstResponse) {
+          setIsWaitingForFirstResponse(false);
+        }
         setVersion((v) => v + 1);
       }
       if (msg.type === "tinyvex.query_result" && msg.name === "tool_calls.list") {
         toolCallsRef.current = (msg.rows as TinyvexToolCallRow[]) ?? [];
+        // Check if we got first tool call
+        if (toolCallsRef.current.length > 0 && isWaitingForFirstResponse) {
+          setIsWaitingForFirstResponse(false);
+        }
         setVersion((v) => v + 1);
       }
       if (msg.type === "tinyvex.query_result" && msg.name === "threads.list") {
@@ -306,6 +322,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             {
               source: row.source,
               workingDirectory: row.workingDirectory,
+              projectId: row.projectId,
               isArchiving: archivingThreadsRef.current.has(row.id)
             }
           ])
@@ -342,6 +359,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
     return ExportedMessageRepository.fromArray(msgs);
   }, [version]);
 
+  // Expose loading state globally for components to access
+  useEffect(() => {
+    (window as any).__loadingState = {
+      isWaitingForFirstResponse,
+      sessionStartTime: sessionStartTimeRef.current,
+    };
+  }, [isWaitingForFirstResponse]);
+
   const store: ExternalStoreAdapter = {
     isRunning,
     messageRepository,
@@ -359,39 +384,91 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         .join("\n\n");
       let sid = threadId;
       if (!sid) {
+        // Create optimistic message IMMEDIATELY with temporary thread ID
+        const now = Date.now();
+        const tempThreadId = `temp:${now}`;
+        const optimistic: TinyvexMessageRow = {
+          id: -now, // local-only id; will be replaced by server row
+          threadId: tempThreadId,
+          role: "user",
+          kind: "message",
+          text,
+          itemId: `local:${now}`,
+          partial: 0,
+          seq: 0,
+          ts: now,
+          createdAt: now,
+          updatedAt: now,
+        };
+        rowsRef.current = [...rowsRef.current, optimistic];
+        setVersion((v) => v + 1); // Trigger UI update immediately
+        setIsRunning(true); // Show loading state
+        setIsWaitingForFirstResponse(true); // Track waiting for first response
+        sessionStartTimeRef.current = now; // Track session start time for elapsed timer
+
+        // Now create the session in the background
         // Use the selected model as the agent type
         const agentType = selectedModel === "codex" || selectedModel === "claude-code"
           ? selectedModel
           : "codex";
-        // Get working directory for this thread (or use default)
-        const workingDir = useWorkingDirStore.getState().getThreadCwd(undefined);
+
+        // Get active project and use its path as default working directory
+        const activeProject = useProjectStore.getState().getActiveProject();
+        const projectId = activeProject?.id || null;
+        const projectPath = activeProject?.path;
+
+        // Get working directory (project path takes precedence).
+        // For non-project threads, avoid polluted defaults that match a project path.
+        const workingDirStore = useWorkingDirStore.getState();
+        let fallbackDefault = workingDirStore.getThreadCwd(undefined);
+        const allProjects = useProjectStore.getState().projects as { path: string }[];
+        if (allProjects?.some((p) => p.path === fallbackDefault)) {
+          fallbackDefault = "/Users/christopherdavid/code/openagents";
+        }
+        const workingDir = projectPath || fallbackDefault;
+
         sid = await createSession(agentType, workingDir || undefined);
+
+        // Update the optimistic message with the real thread ID
+        rowsRef.current = rowsRef.current.map(row =>
+          row.threadId === tempThreadId ? { ...row, threadId: sid! } : row
+        );
         setThreadId(sid);
 
-        // Subscribe to the new thread immediately
+        // If there's an active project, associate this thread with it
+        if (projectId) {
+          ws.send({
+            control: "tvx.update_thread",
+            threadId: sid,
+            updates: { projectId }
+          });
+        }
+
+        // Subscribe to the new thread
         ws.send({ control: "tvx.subscribe", stream: "messages", threadId: sid });
         ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: sid, limit: 200 } });
         ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId: sid, limit: 100 } });
         // Refresh threads list to include the new thread
         ws.send({ control: "tvx.query", name: "threads.list", args: { limit: 10 } });
+      } else {
+        // Thread already exists, just add optimistic message
+        const now = Date.now();
+        const optimistic: TinyvexMessageRow = {
+          id: -now, // local-only id; will be replaced by server row
+          threadId: sid,
+          role: "user",
+          kind: "message",
+          text,
+          itemId: `local:${now}`,
+          partial: 0,
+          seq: 0,
+          ts: now,
+          createdAt: now,
+          updatedAt: now,
+        };
+        rowsRef.current = [...rowsRef.current, optimistic];
+        setVersion((v) => v + 1);
       }
-      // Optimistically append the user's message to the local mirror
-      const now = Date.now();
-      const optimistic: TinyvexMessageRow = {
-        id: -now, // local-only id; will be replaced by server row
-        threadId: sid!,
-        role: "user",
-        kind: "message",
-        text,
-        itemId: `local:${now}`,
-        partial: 0,
-        seq: 0,
-        ts: now,
-        createdAt: now,
-        updatedAt: now,
-      };
-      rowsRef.current = [...rowsRef.current, optimistic];
-      setVersion((v) => v + 1);
       await sendPrompt(sid!, text);
       // The WS subscription will pick up and refresh messages
       setIsRunning(true);
@@ -445,9 +522,13 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             };
           }),
         onSwitchToNewThread: async () => {
+          // Leaving project view when switching to a new chat
+          useUiStore.getState().clearProjectView();
           // Clear current thread and reset state for new conversation
           setThreadId(undefined);
           setIsRunning(false);
+          setIsWaitingForFirstResponse(false);
+          sessionStartTimeRef.current = undefined;
           rowsRef.current = [];
           reasonRowsRef.current = [];
           toolCallsRef.current = [];
@@ -456,9 +537,13 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           setVersion((v) => v + 1);
         },
         onSwitchToThread: async (newThreadId: string) => {
+          // Ensure project panel closes when entering a chat
+          useUiStore.getState().clearProjectView();
           // Switch to existing thread
           setThreadId(newThreadId);
           setIsRunning(false);
+          setIsWaitingForFirstResponse(false);
+          sessionStartTimeRef.current = undefined;
           rowsRef.current = [];
           reasonRowsRef.current = [];
           toolCallsRef.current = [];
@@ -468,22 +553,49 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           // Restore working directory for this thread
           const threadMeta = threadsRef.current.find(t => t.id === newThreadId);
           const workingDirStore = useWorkingDirStore.getState();
+          const projectStore = useProjectStore.getState();
+
+          // Update active project to match thread's project (or clear if none)
+          projectStore.setActiveProject(threadMeta?.projectId || null);
+
+          // Determine the working directory for this thread
+          let threadWorkingDir: string | null = null;
+
           if (threadMeta?.workingDirectory) {
-            // Validate the directory still exists
+            // Thread has a saved working directory - validate it
             const isValid = await validateDirectory(threadMeta.workingDirectory);
             if (isValid) {
-              workingDirStore.setThreadCwd(newThreadId, threadMeta.workingDirectory);
+              threadWorkingDir = threadMeta.workingDirectory;
               workingDirStore.clearWarning();
             } else {
-              // Directory no longer exists - fall back to default and show warning
-              const defaultCwd = workingDirStore.defaultCwd;
-              workingDirStore.setThreadCwd(newThreadId, defaultCwd);
+              // Directory no longer exists - show warning
               workingDirStore.setWarning(
                 newThreadId,
-                `Working directory "${threadMeta.workingDirectory}" no longer exists. Using default: ${defaultCwd}`
+                `Working directory "${threadMeta.workingDirectory}" no longer exists.`
               );
             }
           }
+
+          // If no valid saved directory, try to get from project
+          if (!threadWorkingDir && threadMeta?.projectId) {
+            const project = projectStore.getProject(threadMeta.projectId);
+            if (project) {
+              threadWorkingDir = project.path;
+            }
+          }
+
+          // If still no directory, use global default unless it matches a project path
+          if (!threadWorkingDir) {
+            let fallbackDefault = workingDirStore.defaultCwd;
+            const allProjects = projectStore.projects as { path: string }[];
+            if (allProjects?.some((p) => p.path === fallbackDefault)) {
+              fallbackDefault = "/Users/christopherdavid/code/openagents";
+            }
+            threadWorkingDir = fallbackDefault;
+          }
+
+          // Set the working directory for this thread
+          workingDirStore.setThreadCwd(newThreadId, threadWorkingDir);
 
           // Bootstrap will trigger when we set threadId
           ws.send({ control: "tvx.subscribe", stream: "messages", threadId: newThreadId });
@@ -510,6 +622,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
               {
                 source: row.source,
                 workingDirectory: row.workingDirectory,
+                projectId: row.projectId,
                 isArchiving: archivingThreadsRef.current.has(row.id)
               }
             ])
@@ -523,6 +636,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             // Clear current thread and reset state for new conversation
             setThreadId(undefined);
             setIsRunning(false);
+            setIsWaitingForFirstResponse(false);
+            sessionStartTimeRef.current = undefined;
             rowsRef.current = [];
             reasonRowsRef.current = [];
             toolCallsRef.current = [];

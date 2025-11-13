@@ -146,7 +146,7 @@ export type AssistantApi = {
 
 export const createAssistantApiField = <
   TApi,
-  TMeta extends { source: any; query: any },
+  const TMeta extends { source: any; query: any },
 >(
   config: {
     get: () => TApi;
