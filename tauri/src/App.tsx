@@ -4,10 +4,26 @@ import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar";
 import { useDarkModeRoot } from "@/lib/useDarkMode";
 import { MyRuntimeProvider } from "@/runtime/MyRuntimeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useWorkingDirStore } from "@/lib/working-dir-store";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 function App() {
   // Ensure dark variables apply to portals (e.g., shadcn Select)
   useDarkModeRoot();
+
+  // Initialize working directory store
+  useEffect(() => {
+    const workingDirStore = useWorkingDirStore.getState();
+
+    // If no default is set yet (not in localStorage), use repo root as reasonable default
+    if (!workingDirStore.defaultCwd) {
+      // Default to the openagents repo root
+      const defaultCwd = "/Users/christopherdavid/code/openagents";
+      workingDirStore.setDefaultCwd(defaultCwd);
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <MyRuntimeProvider>

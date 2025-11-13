@@ -8,8 +8,9 @@ import { ExportedMessageRepository } from "@/vendor/assistant-ui/external-store"
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
 import { TINYVEX_WS_URL } from "@/config/acp";
-import { createSession, sendPrompt } from "@/lib/tauri-acp";
+import { createSession, sendPrompt, validateDirectory } from "@/lib/tauri-acp";
 import { useModelStore } from "@/lib/model-store";
+import { useWorkingDirStore } from "@/lib/working-dir-store";
 
 type TinyvexMessageRow = {
   id: number;
@@ -46,6 +47,7 @@ type TinyvexThreadRow = {
   rolloutPath: string | null;
   source: string | null;
   archived?: number | null;
+  workingDirectory?: string | null;
   createdAt: number;
   updatedAt: number;
   message_count?: number | null;
@@ -304,6 +306,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             row.id,
             {
               source: row.source,
+              workingDirectory: row.workingDirectory,
               isArchiving: archivingThreadsRef.current.has(row.id)
             }
           ])
@@ -361,7 +364,9 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         const agentType = selectedModel === "codex" || selectedModel === "claude-code"
           ? selectedModel
           : "codex";
-        sid = await createSession(agentType);
+        // Get working directory for this thread (or use default)
+        const workingDir = useWorkingDirStore.getState().getThreadCwd(undefined);
+        sid = await createSession(agentType, workingDir || undefined);
         setThreadId(sid);
       }
       // Optimistically append the user's message to the local mirror
@@ -453,6 +458,27 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           toolCallsRef.current = [];
           planEventsRef.current = [];
           stateEventsRef.current = [];
+
+          // Restore working directory for this thread
+          const threadMeta = threadsRef.current.find(t => t.id === newThreadId);
+          const workingDirStore = useWorkingDirStore.getState();
+          if (threadMeta?.workingDirectory) {
+            // Validate the directory still exists
+            const isValid = await validateDirectory(threadMeta.workingDirectory);
+            if (isValid) {
+              workingDirStore.setThreadCwd(newThreadId, threadMeta.workingDirectory);
+              workingDirStore.clearWarning();
+            } else {
+              // Directory no longer exists - fall back to default and show warning
+              const defaultCwd = workingDirStore.defaultCwd;
+              workingDirStore.setThreadCwd(newThreadId, defaultCwd);
+              workingDirStore.setWarning(
+                newThreadId,
+                `Working directory "${threadMeta.workingDirectory}" no longer exists. Using default: ${defaultCwd}`
+              );
+            }
+          }
+
           // Bootstrap will trigger when we set threadId
           ws.send({ control: "tvx.subscribe", stream: "messages", threadId: newThreadId });
           ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: newThreadId, limit: 200 } });
@@ -477,6 +503,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
               row.id,
               {
                 source: row.source,
+                workingDirectory: row.workingDirectory,
                 isArchiving: archivingThreadsRef.current.has(row.id)
               }
             ])

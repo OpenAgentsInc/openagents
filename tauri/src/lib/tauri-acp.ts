@@ -15,3 +15,11 @@ export async function getSession(sessionId: string): Promise<any> {
 export async function resolveAcpAgentPath(): Promise<string> {
   return invoke("resolve_acp_agent_path");
 }
+
+export async function validateDirectory(path: string): Promise<boolean> {
+  return invoke("validate_directory", { path });
+}
+
+export async function pickDirectory(): Promise<string | null> {
+  return invoke("pick_directory");
+}

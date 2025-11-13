@@ -156,6 +156,7 @@ async fn create_ollama_thread(
         rollout_path: None,
         source: Some("ollama".to_string()),
         archived: 0,
+        working_directory: None,
         created_at: now,
         updated_at: now,
         message_count: None,
@@ -252,6 +253,29 @@ async fn save_ollama_message(
     Ok(())
 }
 
+#[tauri::command]
+fn validate_directory(path: String) -> Result<bool, String> {
+    init_tracing();
+    let pb = PathBuf::from(&path);
+    let is_valid = pb.exists() && pb.is_dir();
+    info!(path=%path, is_valid=%is_valid, "validate_directory called");
+    Ok(is_valid)
+}
+
+#[tauri::command]
+async fn pick_directory(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    init_tracing();
+
+    let folder = tauri_plugin_dialog::DialogExt::dialog(&app_handle)
+        .file()
+        .set_title("Select Working Directory")
+        .blocking_pick_folder();
+
+    let result = folder.and_then(|p| p.as_path().map(|path| path.display().to_string()));
+    info!(?result, "pick_directory completed");
+    Ok(result)
+}
+
 pub struct AppState {
     sessions: SessionManager,
 }
@@ -276,6 +300,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             sessions: SessionManager::new(tinyvex_state.clone()),
         })
@@ -285,7 +310,9 @@ pub fn run() {
             get_session,
             resolve_acp_agent_path,
             create_ollama_thread,
-            save_ollama_message
+            save_ollama_message,
+            validate_directory,
+            pick_directory
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]

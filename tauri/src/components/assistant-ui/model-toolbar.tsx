@@ -1,6 +1,9 @@
 import { useModelStore } from "@/lib/model-store";
 import type { ModelKind } from "@/lib/model-store";
+import { useWorkingDirStore } from "@/lib/working-dir-store";
+import { pickDirectory, validateDirectory } from "@/lib/tauri-acp";
 import type { FC } from "react";
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -8,12 +11,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { FolderIcon, AlertTriangleIcon } from "lucide-react";
 
 // Toolbar that lives to the right of the sidebar, at the very top of the chat area
 // (separate from the draggable window header).
 export const ModelToolbar: FC = () => {
   const model = useModelStore((s) => s.selected);
   const setModel = useModelStore((s) => s.setSelected);
+  const workingDir = useWorkingDirStore((s) => s.defaultCwd);
+  const warning = useWorkingDirStore((s) => s.warning);
+  const setDefaultCwd = useWorkingDirStore((s) => s.setDefaultCwd);
+  const clearWarning = useWorkingDirStore((s) => s.clearWarning);
+
+  const [localWorkingDir, setLocalWorkingDir] = useState(workingDir);
+  const [isValidating, setIsValidating] = useState(false);
+
+  useEffect(() => {
+    setLocalWorkingDir(workingDir);
+  }, [workingDir]);
 
   const handleModelChange = (v: string) => {
     setModel(v as ModelKind);
@@ -21,6 +39,41 @@ export const ModelToolbar: FC = () => {
     setTimeout(() => {
       window.dispatchEvent(new Event("openagents:focus-composer"));
     }, 80);
+  };
+
+  const handleWorkingDirChange = async (value: string) => {
+    setLocalWorkingDir(value);
+
+    // Validate and update if valid
+    setIsValidating(true);
+    try {
+      const isValid = await validateDirectory(value);
+      if (isValid) {
+        setDefaultCwd(value);
+        clearWarning();
+      }
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handlePickDirectory = async () => {
+    const selected = await pickDirectory();
+    if (selected) {
+      setLocalWorkingDir(selected);
+      setDefaultCwd(selected);
+      clearWarning();
+    }
+  };
+
+  // Truncate path for display
+  const displayPath = (path: string) => {
+    if (!path) return "";
+    const parts = path.split("/");
+    if (parts.length > 3) {
+      return `.../${parts.slice(-2).join("/")}`;
+    }
+    return path.replace(/^\/Users\/[^/]+/, "~");
   };
 
   return (
@@ -36,6 +89,39 @@ export const ModelToolbar: FC = () => {
             <SelectItem value="ollama">GLM-4.6</SelectItem>
           </SelectContent>
         </Select>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 flex-1 max-w-md">
+                <Input
+                  value={displayPath(localWorkingDir)}
+                  onChange={(e) => handleWorkingDirChange(e.target.value)}
+                  placeholder="Working directory..."
+                  className="h-7 text-xs font-mono"
+                  disabled={isValidating}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handlePickDirectory}
+                  className="h-7 w-7 p-0"
+                  title="Pick directory"
+                >
+                  <FolderIcon className="h-4 w-4" />
+                </Button>
+                {warning && (
+                  <AlertTriangleIcon className="h-4 w-4 text-yellow-500" />
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs font-mono">
+                {warning ? warning.message : workingDir}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
