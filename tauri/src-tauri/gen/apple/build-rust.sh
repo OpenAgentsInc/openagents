@@ -6,62 +6,42 @@ set -e
 # For dev builds, it uses the Tauri CLI which requires a WebSocket connection
 
 if [ "$ACTION" = "install" ]; then
-    echo "Archive build detected - building Rust library directly"
+    echo "Archive build detected - checking for pre-built library"
 
-    # SRCROOT is already at gen/apple, so go up 2 levels to get to src-tauri
+    # For archive builds, we expect the library to have been built already
+    # by running 'bun tauri ios build' before archiving
+
+    # SRCROOT is at gen/apple, go up 2 levels to src-tauri
     TAURI_ROOT="$SRCROOT/../.."
 
-    # Build for the target architecture
-    cd "$TAURI_ROOT"
-    echo "Working directory: $(pwd)"
-
-    # Determine target triple
+    # Determine target arch
     if [ "$ARCHS" = "arm64" ]; then
-        TARGETS="aarch64-apple-ios"
+        TARGET="aarch64-apple-ios"
+        ARCH="arm64"
     elif [ "$ARCHS" = "x86_64" ]; then
-        TARGETS="x86_64-apple-ios"
+        TARGET="x86_64-apple-ios"
+        ARCH="x86_64"
     else
-        TARGETS="aarch64-apple-ios"
+        TARGET="aarch64-apple-ios"
+        ARCH="arm64"
     fi
 
-    echo "Building for targets: $TARGETS"
+    # Check if library already exists
+    SOURCE_LIB="$TAURI_ROOT/target/$TARGET/release/libopenagents_lib.a"
+    DEST_LIB="$SRCROOT/Externals/$ARCH/$CONFIGURATION/libapp.a"
 
-    # Set up iOS SDK paths for cross-compilation
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
-    export SDKROOT="${SDK_DIR}"
-
-    # Build the library
-    for TARGET in $TARGETS; do
-        echo "Building $TARGET with SDK: $SDKROOT..."
-
-        # Set target-specific environment variables for the linker
-        export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="$TOOLCHAIN_DIR/usr/bin/clang"
-        export CARGO_TARGET_X86_64_APPLE_IOS_LINKER="$TOOLCHAIN_DIR/usr/bin/clang"
-
-        cargo build \
-            --target "$TARGET" \
-            --release \
-            --lib \
-            --manifest-path "$TAURI_ROOT/Cargo.toml"
-
-        # Extract architecture from target
-        if [[ "$TARGET" == *"aarch64"* ]]; then
-            ARCH="arm64"
-        elif [[ "$TARGET" == *"x86_64"* ]]; then
-            ARCH="x86_64"
-        else
-            ARCH="arm64"
-        fi
-
-        # Copy the built library to the expected location
+    if [ -f "$SOURCE_LIB" ]; then
+        echo "Found pre-built library at $SOURCE_LIB"
         mkdir -p "$SRCROOT/Externals/$ARCH/$CONFIGURATION"
-        cp "$TAURI_ROOT/target/$TARGET/release/libopenagents_lib.a" \
-           "$SRCROOT/Externals/$ARCH/$CONFIGURATION/libapp.a"
+        cp "$SOURCE_LIB" "$DEST_LIB"
+        echo "Copied library to $DEST_LIB"
+    else
+        echo "ERROR: Library not found at $SOURCE_LIB"
+        echo "Please run 'bun tauri ios build' first to build the iOS library"
+        exit 1
+    fi
 
-        echo "Copied library to $SRCROOT/Externals/$ARCH/$CONFIGURATION/libapp.a"
-    done
-
-    echo "Rust library build complete"
+    echo "Archive build complete"
 else
     echo "Dev build detected - using Tauri CLI"
 
