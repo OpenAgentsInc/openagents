@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { TINYVEX_WS_URL } from "@/config/acp";
+import { DEFAULT_TINYVEX_WS_URL } from "@/config/acp";
 import type { TinyvexWebSocketHandle, TinyvexMessage } from "./useTinyvexWebSocket";
 
 // Global singleton WebSocket instance
@@ -18,20 +18,27 @@ let stateListeners = new Set<() => void>();
 let refCount = 0;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// Current WebSocket URL (can be dynamically changed for mobile discovery)
+let currentWsUrl = DEFAULT_TINYVEX_WS_URL;
+
 function notifyStateChange() {
   stateListeners.forEach((listener) => listener());
 }
 
-function connect() {
+function connect(url?: string) {
+  if (url) {
+    currentWsUrl = url;
+  }
+
   if (globalSocket?.readyState === WebSocket.OPEN || globalConnecting) {
     return;
   }
 
-  console.log("[tinyvex-singleton] Connecting to", TINYVEX_WS_URL);
+  console.log("[tinyvex-singleton] Connecting to", currentWsUrl);
   globalConnecting = true;
   notifyStateChange();
 
-  const ws = new WebSocket(TINYVEX_WS_URL);
+  const ws = new WebSocket(currentWsUrl);
 
   ws.onopen = () => {
     console.log("[tinyvex-singleton] Connected");
@@ -105,20 +112,57 @@ function subscribe(callback: (msg: TinyvexMessage) => void) {
 }
 
 /**
+ * Set the WebSocket URL (useful for mobile server discovery)
+ *
+ * Call this before connecting to override the default URL.
+ * If already connected, will disconnect and reconnect with the new URL.
+ */
+export function setWebSocketUrl(url: string) {
+  if (currentWsUrl === url) {
+    return; // No change
+  }
+
+  console.log("[tinyvex-singleton] Changing WebSocket URL from", currentWsUrl, "to", url);
+  currentWsUrl = url;
+
+  // If currently connected, reconnect with new URL
+  if (globalSocket || globalConnecting) {
+    disconnect();
+    if (refCount > 0) {
+      connect(url);
+    }
+  }
+}
+
+/**
+ * Get the current WebSocket URL
+ */
+export function getWebSocketUrl(): string {
+  return currentWsUrl;
+}
+
+/**
  * Hook that returns a shared WebSocket connection
  *
  * Uses reference counting to ensure the connection stays alive
  * as long as at least one component is using it.
+ *
+ * @param url Optional WebSocket URL (for mobile server discovery)
  */
-export function useSharedTinyvexWebSocket(): TinyvexWebSocketHandle {
+export function useSharedTinyvexWebSocket(url?: string): TinyvexWebSocketHandle {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
+    // Update URL if provided
+    if (url && url !== currentWsUrl) {
+      setWebSocketUrl(url);
+    }
+
     refCount++;
     console.log("[tinyvex-singleton] Mount, refCount:", refCount);
 
     if (refCount === 1) {
-      connect();
+      connect(url);
     }
 
     // Listen for state changes and re-render
