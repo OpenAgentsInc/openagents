@@ -6,6 +6,7 @@ import {
   useAssistantState,
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -49,7 +50,11 @@ const ThreadListItems: FC = () => {
     return <ThreadListSkeleton />;
   }
 
-  return <ThreadListPrimitive.Items components={{ ThreadListItem }} />;
+  return (
+    <AnimatePresence mode="popLayout">
+      <ThreadListPrimitive.Items components={{ ThreadListItem }} />
+    </AnimatePresence>
+  );
 };
 
 const ThreadListSkeleton: FC = () => {
@@ -108,24 +113,32 @@ const ThreadListItem: FC = () => {
   }, []);
 
   return (
-    <ThreadListItemPrimitive.Root
-      ref={rootRef as any}
-      className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20, height: 0 }}
+      transition={{ duration: 0.2 }}
     >
-      <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
-        <div className="flex items-center justify-between w-full gap-2">
-          <ThreadListItemTitle />
-          {threadSource && (
-            <span className="text-xs text-muted-foreground/50 flex-shrink-0">
-              {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource === "ollama" ? "glm" : threadSource}
-            </span>
-          )}
-        </div>
-      </ThreadListItemPrimitive.Trigger>
-      <ThreadListItemArchive isVisible={isHovered} />
-    </ThreadListItemPrimitive.Root>
+      <ThreadListItemPrimitive.Root
+        ref={rootRef as any}
+        className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
+          <div className="flex items-center justify-between w-full gap-2">
+            <ThreadListItemTitle />
+            {threadSource && (
+              <span className="text-xs text-muted-foreground/50 flex-shrink-0">
+                {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource === "ollama" ? "glm" : threadSource}
+              </span>
+            )}
+          </div>
+        </ThreadListItemPrimitive.Trigger>
+        <ThreadListItemArchive isVisible={isHovered} />
+      </ThreadListItemPrimitive.Root>
+    </motion.div>
   );
 };
 

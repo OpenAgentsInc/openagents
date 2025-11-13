@@ -48,6 +48,7 @@
         "date-fns": "^4.1.0",
         "diff": "^8.0.2",
         "embla-carousel-react": "^8.6.0",
+        "framer-motion": "^12.23.24",
         "input-otp": "^1.4.2",
         "json-schema": "^0.4.0",
         "lucide-react": "^0.553.0",
