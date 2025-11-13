@@ -17,6 +17,7 @@ pub struct ThreadRow {
     pub resume_id: Option<String>,
     pub rollout_path: Option<String>,
     pub source: Option<String>,
+    pub archived: i64,
     pub created_at: i64,
     pub updated_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,10 +81,12 @@ impl Tinyvex {
           resumeId TEXT,
           rolloutPath TEXT,
           source TEXT,
+          archived INTEGER DEFAULT 0,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updatedAt DESC);
+        CREATE INDEX IF NOT EXISTS idx_threads_archived ON threads(archived);
         "#,
         )?;
         // messages
@@ -183,8 +186,8 @@ impl Tinyvex {
         // last-write-wins by updatedAt
         conn.execute(
             r#"
-            INSERT INTO threads (id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            INSERT INTO threads (id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
               threadId=excluded.threadId,
               title=excluded.title,
@@ -192,6 +195,7 @@ impl Tinyvex {
               resumeId=excluded.resumeId,
               rolloutPath=excluded.rolloutPath,
               source=excluded.source,
+              archived=excluded.archived,
               updatedAt=excluded.updatedAt
             WHERE excluded.updatedAt >= threads.updatedAt
             "#,
@@ -203,6 +207,7 @@ impl Tinyvex {
                 row.resume_id,
                 row.rollout_path,
                 row.source,
+                row.archived,
                 row.created_at,
                 row.updated_at
             ],
@@ -213,7 +218,7 @@ impl Tinyvex {
     pub fn get_thread(&self, id: &str) -> Result<Option<ThreadRow>> {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
-            "SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt \
+            "SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt \
              FROM threads WHERE id = ?1",
         )?;
         let result = stmt.query_row([id], |r| {
@@ -225,8 +230,9 @@ impl Tinyvex {
                 resume_id: r.get(4)?,
                 rollout_path: r.get(5)?,
                 source: r.get(6)?,
-                created_at: r.get(7)?,
-                updated_at: r.get(8)?,
+                archived: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
                 message_count: None,
                 last_message_ts: None,
             })
@@ -243,10 +249,11 @@ impl Tinyvex {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT \
-                id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt, \
+                id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt, \
                 (SELECT COUNT(*) FROM messages m WHERE m.threadId = threads.id) AS message_count, \
                 (SELECT MAX(ts) FROM messages m2 WHERE m2.threadId = threads.id) AS lastTs \
              FROM threads \
+             WHERE archived = 0 \
              ORDER BY updatedAt DESC LIMIT ?1",
         )?;
         let rows = stmt
@@ -259,10 +266,11 @@ impl Tinyvex {
                     resume_id: r.get(4)?,
                     rollout_path: r.get(5)?,
                     source: r.get(6)?,
-                    created_at: r.get(7)?,
-                    updated_at: r.get(8)?,
-                    message_count: r.get(9).ok(),
-                    last_message_ts: r.get(10).ok(),
+                    archived: r.get(7)?,
+                    created_at: r.get(8)?,
+                    updated_at: r.get(9)?,
+                    message_count: r.get(10).ok(),
+                    last_message_ts: r.get(11).ok(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -551,6 +559,7 @@ mod tests {
             resume_id: None,
             rollout_path: None,
             source: Some("test".into()),
+            archived: 0,
             created_at: t0,
             updated_at: t0,
             message_count: None,
