@@ -22,5 +22,8 @@ export const PartByIndexProvider: FC<
     }),
   });
 
-  return <AssistantProvider api={api}>{children}</AssistantProvider>;
+  const Provider = AssistantProvider as unknown as FC<
+    PropsWithChildren<{ api: ReturnType<typeof useExtendedAssistantApi> }>
+  >;
+  return <Provider api={api}>{children}</Provider>;
 };

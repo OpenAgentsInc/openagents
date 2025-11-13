@@ -56,5 +56,8 @@ export const TextMessagePartProvider: FC<
     flushSync: store.flushSync,
   });
 
-  return <AssistantProvider api={api}>{children}</AssistantProvider>;
+  const Provider = AssistantProvider as unknown as FC<
+    PropsWithChildren<{ api: ReturnType<typeof useExtendedAssistantApi> }>
+  >;
+  return <Provider api={api}>{children}</Provider>;
 };

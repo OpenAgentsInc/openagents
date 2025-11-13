@@ -353,9 +353,11 @@ export const extendApi = (
   };
 };
 
-export const AssistantProvider: FC<
-  PropsWithChildren<{ api: AssistantApi; devToolsVisible?: boolean }>
-> = ({ api, children, devToolsVisible = true }) => {
+export const AssistantProvider = (({
+  api,
+  children,
+  devToolsVisible = true,
+}: PropsWithChildren<{ api: AssistantApi; devToolsVisible?: boolean }>) => {
   useEffect(() => {
     if (!devToolsVisible || !api.subscribe) return undefined;
     return DevToolsProviderApi.register(api);
@@ -368,4 +370,4 @@ export const AssistantProvider: FC<
       <ThreadViewportProvider>{children}</ThreadViewportProvider>
     </AssistantApiContext.Provider>
   );
-};
+}) as unknown as FC<PropsWithChildren<{ api: AssistantApi; devToolsVisible?: boolean }>>;
