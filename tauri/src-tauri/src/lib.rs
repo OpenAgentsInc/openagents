@@ -3,7 +3,8 @@ use std::{path::PathBuf, sync::Arc};
 use agent_client_protocol as acp;
 use serde::Serialize;
 use tauri::State;
-use tauri::webview::{WebviewUrl, WebviewWindowBuilder};
+use tauri::webview::WebviewWindowBuilder;
+use tauri_utils::config::WebviewUrl;
 
 mod oa_acp;
 use oa_acp::SessionManager;

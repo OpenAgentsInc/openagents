@@ -4074,6 +4074,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-localhost",
  "tauri-plugin-opener",
+ "tauri-utils",
  "thiserror 1.0.69",
  "tinyvex",
  "tokio",
