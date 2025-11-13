@@ -39,6 +39,10 @@ jobs:
           STORYBOOK_DISABLE_TELEMETRY: '1'
         run: bun run build-storybook -- --output-dir storybook-static
 
+      - name: Add CNAME file
+        working-directory: tauri
+        run: echo "storybook.openagents.com" > storybook-static/CNAME
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
