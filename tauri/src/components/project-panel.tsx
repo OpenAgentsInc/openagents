@@ -37,16 +37,18 @@ export const ProjectPanel: FC = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
-        <Badge variant="secondary" className="flex items-center gap-1">
-          <FolderOpenIcon className="h-3 w-3" />
-          {project.name}
-        </Badge>
-        <span className="text-xs text-muted-foreground">Project</span>
+      <div className="border-b border-zinc-800">
+        <div className="mx-auto w-full max-w-[48rem] flex items-center gap-2 px-4 py-3">
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <FolderOpenIcon className="h-3 w-3" />
+            {project.name}
+          </Badge>
+          <span className="text-xs text-muted-foreground">Project</span>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[48rem] p-6 space-y-4">
           {project.description && (
             <p className="text-sm text-muted-foreground">{project.description}</p>
           )}
@@ -62,7 +64,9 @@ export const ProjectPanel: FC = () => {
       </div>
 
       <div className="border-t border-zinc-800">
-        <ThreadComposer />
+        <div className="mx-auto w-full max-w-[48rem]">
+          <ThreadComposer />
+        </div>
       </div>
     </div>
   );
