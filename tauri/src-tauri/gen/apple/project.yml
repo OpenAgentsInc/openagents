@@ -53,6 +53,7 @@ targets:
         NSLocalNetworkUsageDescription: "OpenAgents needs local network access to discover and connect to your desktop server for syncing conversations and settings."
         NSBonjourServices:
           - _openagents._tcp
+        ITSAppUsesNonExemptEncryption: false
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.developer-tools
