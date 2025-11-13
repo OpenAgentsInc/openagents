@@ -330,11 +330,15 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         const kind = msg.kind as string | undefined;
         if (role === "assistant" || kind === "message" || kind === "reason") {
           setIsRunning(true);
+          // Hide loading indicator immediately on first assistant content
+          setIsWaitingForFirstResponse(false);
         }
       }
       if (msg.type === "tinyvex.update" && msg.stream === "tool_calls") {
         const t = threadIdRef.current ?? tid;
         if (t) ws.send({ control: "tvx.query", name: "tool_calls.list", args: { threadId: t, limit: 100 } });
+        // Hide loading indicator on first tool call
+        setIsWaitingForFirstResponse(false);
       }
       if (msg.type === "tinyvex.update" && msg.stream === "plan") {
         planEventsRef.current = [...planEventsRef.current, Date.now()];
@@ -393,8 +397,16 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       }
       if (msg.type === "tinyvex.snapshot" && msg.stream === "messages") {
         const all = (msg.rows as TinyvexMessageRow[]) ?? [];
-        rowsRef.current = all.filter((r) => r.kind === "message");
-        reasonRowsRef.current = all.filter((r) => r.kind === "reason");
+        const messages = all.filter((r) => r.kind === "message");
+        const reasons = all.filter((r) => r.kind === "reason");
+        rowsRef.current = messages;
+        reasonRowsRef.current = reasons;
+        // Check if we got assistant content in snapshot
+        const hasAssistantResponse = messages.some((r) => r.role === "assistant");
+        const hasReasoning = reasons.length > 0;
+        if (hasAssistantResponse || hasReasoning) {
+          setIsWaitingForFirstResponse(false);
+        }
         setVersion((v) => v + 1);
       }
       // Adopt threadId on run.submitted as well
@@ -422,6 +434,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       isWaitingForFirstResponse,
       sessionStartTime: sessionStartTimeRef.current,
     };
+    // Dispatch event to notify components immediately
+    window.dispatchEvent(new CustomEvent('loadingStateChanged'));
   }, [isWaitingForFirstResponse]);
 
   const store: ExternalStoreAdapter = {

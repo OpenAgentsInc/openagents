@@ -2,11 +2,11 @@
 set -e
 
 # This wrapper script handles both dev and archive builds
-# For archive builds (ACTION=install), it directly builds the Rust library
-# For dev builds, it uses the Tauri CLI which requires a WebSocket connection
+# For release/archive builds (CONFIGURATION=Release), it uses pre-built libraries
+# For debug/dev builds, it uses the Tauri CLI which requires a WebSocket connection
 
-if [ "$ACTION" = "install" ]; then
-    echo "Archive build detected - checking for pre-built library"
+if [ "$CONFIGURATION" = "Release" ]; then
+    echo "Release build detected - checking for pre-built library"
 
     # For archive builds, we expect the library to have been built already
     # by running 'bun tauri ios build' before archiving
@@ -14,17 +14,33 @@ if [ "$ACTION" = "install" ]; then
     # SRCROOT is at gen/apple, go up 2 levels to src-tauri
     TAURI_ROOT="$SRCROOT/../.."
 
-    # Determine target arch
+    # Determine target arch and platform (device vs simulator)
+    # Check if building for simulator
+    IS_SIMULATOR=false
+    if [[ "$SDKROOT" == *"Simulator"* ]] || [[ "$PLATFORM_NAME" == *"simulator"* ]]; then
+        IS_SIMULATOR=true
+    fi
+
     if [ "$ARCHS" = "arm64" ]; then
-        TARGET="aarch64-apple-ios"
+        if [ "$IS_SIMULATOR" = true ]; then
+            TARGET="aarch64-apple-ios-sim"
+        else
+            TARGET="aarch64-apple-ios"
+        fi
         ARCH="arm64"
     elif [ "$ARCHS" = "x86_64" ]; then
         TARGET="x86_64-apple-ios"
         ARCH="x86_64"
     else
-        TARGET="aarch64-apple-ios"
+        if [ "$IS_SIMULATOR" = true ]; then
+            TARGET="aarch64-apple-ios-sim"
+        else
+            TARGET="aarch64-apple-ios"
+        fi
         ARCH="arm64"
     fi
+
+    echo "Building for target: $TARGET (simulator: $IS_SIMULATOR)"
 
     # Check if library already exists
     SOURCE_LIB="$TAURI_ROOT/target/$TARGET/release/libopenagents_lib.a"

@@ -115,6 +115,18 @@ async fn handle_control_message(text: &str, state: &Arc<TinyvexState>) -> anyhow
         ControlCommand::UpdateThread { thread_id, updates } => {
             handle_update_thread(state, &thread_id, updates).await?;
         }
+
+        ControlCommand::CreateProject { project } => {
+            handle_create_project(state, project).await?;
+        }
+
+        ControlCommand::UpdateProject { project_id, updates } => {
+            handle_update_project(state, &project_id, updates).await?;
+        }
+
+        ControlCommand::DeleteProject { project_id } => {
+            handle_delete_project(state, &project_id).await?;
+        }
     }
 
     Ok(())
@@ -187,6 +199,15 @@ async fn handle_tvx_query(
                 "name": "tool_calls.list",
                 "threadId": thread_id,
                 "rows": tool_calls,
+            })
+        }
+
+        "projects.list" => {
+            let projects = state.tinyvex.list_projects()?;
+            json!({
+                "type": "tinyvex.query_result",
+                "name": "projects.list",
+                "rows": projects,
             })
         }
 
@@ -289,6 +310,136 @@ async fn handle_update_thread(
     let notification = tinyvex::WriterNotification::ThreadsUpsert { row: thread };
     broadcast_writer_notification(state, &notification).await;
 
+    Ok(())
+}
+
+/// Handle create project command
+async fn handle_create_project(
+    state: &Arc<TinyvexState>,
+    project: serde_json::Value,
+) -> anyhow::Result<()> {
+    use tinyvex::ProjectRow;
+
+    info!("Create project: project={}", project);
+
+    let id = project.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing project id"))?;
+
+    let name = project.get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing project name"))?;
+
+    let path = project.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing project path"))?;
+
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let project_row = ProjectRow {
+        id: id.to_string(),
+        name: name.to_string(),
+        path: path.to_string(),
+        description: project.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        icon: project.get("icon").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        color: project.get("color").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        starred: project.get("starred").and_then(|v| v.as_bool()).map(|b| if b { 1 } else { 0 }).unwrap_or(0),
+        archived: 0,
+        created_at: now,
+        updated_at: now,
+    };
+
+    // Save project to database
+    state.tinyvex.upsert_project(&project_row)?;
+
+    // Broadcast creation notification
+    let response = json!({
+        "type": "tinyvex.update",
+        "stream": "projects",
+        "row": project_row,
+    });
+
+    state.broadcast(response.to_string()).await;
+    Ok(())
+}
+
+/// Handle update project command
+async fn handle_update_project(
+    state: &Arc<TinyvexState>,
+    project_id: &str,
+    updates: serde_json::Value,
+) -> anyhow::Result<()> {
+    info!("Update project: project_id={}, updates={}", project_id, updates);
+
+    // Fetch current project from database
+    let mut project = state.tinyvex.get_project(project_id)?
+        .ok_or_else(|| anyhow::anyhow!("Project not found: {}", project_id))?;
+
+    // Apply updates
+    if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
+        project.name = name.to_string();
+    }
+
+    if let Some(path) = updates.get("path").and_then(|v| v.as_str()) {
+        project.path = path.to_string();
+    }
+
+    if let Some(description) = updates.get("description").and_then(|v| v.as_str()) {
+        project.description = Some(description.to_string());
+    }
+
+    if let Some(icon) = updates.get("icon").and_then(|v| v.as_str()) {
+        project.icon = Some(icon.to_string());
+    }
+
+    if let Some(color) = updates.get("color").and_then(|v| v.as_str()) {
+        project.color = Some(color.to_string());
+    }
+
+    if let Some(starred) = updates.get("starred").and_then(|v| v.as_bool()) {
+        project.starred = if starred { 1 } else { 0 };
+    }
+
+    if let Some(archived) = updates.get("archived").and_then(|v| v.as_bool()) {
+        project.archived = if archived { 1 } else { 0 };
+    }
+
+    // Update timestamp
+    project.updated_at = chrono::Utc::now().timestamp_millis();
+
+    // Save updated project
+    state.tinyvex.upsert_project(&project)?;
+
+    // Broadcast update notification
+    let response = json!({
+        "type": "tinyvex.update",
+        "stream": "projects",
+        "row": project,
+    });
+
+    state.broadcast(response.to_string()).await;
+    Ok(())
+}
+
+/// Handle delete project command (archives the project)
+async fn handle_delete_project(
+    state: &Arc<TinyvexState>,
+    project_id: &str,
+) -> anyhow::Result<()> {
+    info!("Delete project: project_id={}", project_id);
+
+    // Soft delete by archiving
+    state.tinyvex.delete_project(project_id)?;
+
+    // Broadcast deletion notification
+    let response = json!({
+        "type": "tinyvex.update",
+        "stream": "projects",
+        "projectId": project_id,
+        "archived": true,
+    });
+
+    state.broadcast(response.to_string()).await;
     Ok(())
 }
 

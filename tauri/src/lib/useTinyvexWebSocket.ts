@@ -37,7 +37,7 @@ export interface TinyvexWebSocketHandle {
  * @example
  * ```tsx
  * const ws = useTinyvexWebSocket({
- *   url: 'ws://localhost:9099/ws',
+ *   url: 'ws://localhost:9100/ws',
  *   onMessage: (msg) => console.log('Received:', msg),
  * });
  *
@@ -49,7 +49,7 @@ export function useTinyvexWebSocket(
   options: UseTinyvexWebSocketOptions = {}
 ): TinyvexWebSocketHandle {
   const {
-    url = "ws://127.0.0.1:9099/ws",
+    url = "ws://127.0.0.1:9100/ws",
     autoConnect = true,
     reconnectDelay = 2000,
     onMessage: globalOnMessage,

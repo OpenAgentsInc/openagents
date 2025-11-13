@@ -25,6 +25,22 @@ pub enum ControlCommand {
         thread_id: String,
         updates: serde_json::Value,
     },
+
+    /// Create a new project
+    CreateProject {
+        project: serde_json::Value,
+    },
+
+    /// Update project metadata
+    UpdateProject {
+        project_id: String,
+        updates: serde_json::Value,
+    },
+
+    /// Delete (archive) a project
+    DeleteProject {
+        project_id: String,
+    },
 }
 
 /// Parse a control command from a raw JSON string. Returns None on errors.
@@ -77,6 +93,30 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
                 .map(|s| s.to_string())?;
             let updates = v.get("updates").cloned().unwrap_or(serde_json::json!({}));
             Some(ControlCommand::UpdateThread { thread_id, updates })
+        }
+
+        "tvx.create_project" => {
+            let project = v.get("project").cloned().unwrap_or(serde_json::json!({}));
+            Some(ControlCommand::CreateProject { project })
+        }
+
+        "tvx.update_project" => {
+            let project_id = v
+                .get("projectId")
+                .or_else(|| v.get("project_id"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())?;
+            let updates = v.get("updates").cloned().unwrap_or(serde_json::json!({}));
+            Some(ControlCommand::UpdateProject { project_id, updates })
+        }
+
+        "tvx.delete_project" => {
+            let project_id = v
+                .get("projectId")
+                .or_else(|| v.get("project_id"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())?;
+            Some(ControlCommand::DeleteProject { project_id })
         }
 
         _ => None,
