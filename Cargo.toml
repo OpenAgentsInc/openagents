@@ -2,13 +2,7 @@
 resolver = "2"
 members = [
     "tauri/src-tauri",
-    "crates/agent-client-protocol",
     "crates/tinyvex",
-]
-
-# codex-acp excluded temporarily due to dependency issues
-# Will be built separately
-exclude = [
     "crates/codex-acp",
 ]
 
