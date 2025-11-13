@@ -4,7 +4,8 @@ import { BrainCircuitIcon } from "lucide-react";
 
 export const TaskTool: ToolCallMessagePartComponent = (props) => {
   const { argsText, result, status } = props;
-  const args = parseToolArgs(argsText);
+  const argsFromRuntime = (props as any).args as Record<string, any> | undefined;
+  const args = argsFromRuntime && Object.keys(argsFromRuntime).length > 0 ? argsFromRuntime : parseToolArgs(argsText);
   const description = args.description || "Task";
   const subagentType = args.subagent_type;
 

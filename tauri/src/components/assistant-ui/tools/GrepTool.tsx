@@ -4,7 +4,8 @@ import { SearchIcon } from "lucide-react";
 
 export const GrepTool: ToolCallMessagePartComponent = (props) => {
   const { argsText, result, status } = props;
-  const args = parseToolArgs(argsText);
+  const argsFromRuntime = (props as any).args as Record<string, any> | undefined;
+  const args = argsFromRuntime && Object.keys(argsFromRuntime).length > 0 ? argsFromRuntime : parseToolArgs(argsText);
   const pattern = args.pattern || "unknown";
   const path = args.path;
   const glob = args.glob;

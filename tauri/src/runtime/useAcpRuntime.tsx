@@ -152,23 +152,80 @@ function mapRowsToAUIThreadMessages(
   // Add all tool calls as separate assistant messages
   for (const tc of toolCalls) {
     const toolName = (tc.kind ?? tc.title ?? "tool").toString();
-    const argsText = (() => {
-      if (tc.content_json) {
+
+    // Helper that tries to parse JSON, including nested/double-encoded JSON strings
+    const tryParseDeep = (input: unknown): any | undefined => {
+      const text = typeof input === "string" ? input.trim() : input;
+      if (typeof text !== "string") return undefined;
+      const looksJson = (s: string) => (s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"));
+      let cur: any = text;
+      for (let i = 0; i < 3; i++) {
         try {
-          const arr = JSON.parse(tc.content_json);
-          if (Array.isArray(arr)) {
-            const texts = arr.filter((p: any) => p && p.type === "text" && typeof p.text === "string").map((p: any) => p.text);
-            if (texts.length > 0) return texts.join("\n\n");
-            // No text parts; pretty-print JSON
-            return JSON.stringify(arr, null, 2);
+          if (!looksJson(cur)) break;
+          const parsed = JSON.parse(cur);
+          if (typeof parsed === "string") {
+            cur = parsed;
+            continue;
           }
-          return JSON.stringify(arr, null, 2);
+          return parsed;
         } catch {
-          return tc.content_json;
+          break;
         }
       }
-      return "";
-    })();
+      return undefined;
+    };
+
+    // Build argsText and parsed args from content_json
+    let argsText = "";
+    let parsedArgs: any = undefined;
+    if (tc.content_json) {
+      try {
+        const content = JSON.parse(tc.content_json);
+        if (Array.isArray(content)) {
+          // Prefer explicit JSON-bearing parts first
+          for (const p of content) {
+            // Common shapes to probe for JSON arguments
+            const candidate =
+              (p && (p.json ?? p.args ?? p.parameters)) ??
+              (p && p.content && (p.content.json ?? p.content.args ?? p.content.parameters));
+            const parsed = tryParseDeep(candidate);
+            if (parsed && typeof parsed === "object") {
+              parsedArgs = { ...(parsedArgs ?? {}), ...parsed };
+            }
+          }
+
+          // Fallback: find text parts and try to parse JSON from their text
+          const texts = content
+            .map((p: any) => (p && (p.text ?? p.content?.text)) as string | undefined)
+            .filter((t: any): t is string => typeof t === "string");
+          if (texts.length > 0) {
+            argsText = texts.join("\n\n");
+            for (const t of texts) {
+              const parsed = tryParseDeep(t);
+              if (parsed && typeof parsed === "object") {
+                parsedArgs = { ...(parsedArgs ?? {}), ...parsed };
+              }
+            }
+          } else {
+            // No text parts; stringify whole content
+            argsText = JSON.stringify(content, null, 2);
+          }
+        } else if (content && typeof content === "object") {
+          argsText = JSON.stringify(content, null, 2);
+          parsedArgs = content;
+        } else if (typeof content === "string") {
+          argsText = content;
+          const parsed = tryParseDeep(content);
+          if (parsed && typeof parsed === "object") parsedArgs = parsed;
+        }
+      } catch {
+        // Fallback to raw content
+        argsText = tc.content_json;
+        const parsed = tryParseDeep(tc.content_json);
+        if (parsed && typeof parsed === "object") parsedArgs = parsed;
+      }
+    }
+
     const tcPart: {
       type: "tool-call";
       toolCallId: string;
@@ -179,7 +236,7 @@ function mapRowsToAUIThreadMessages(
       type: "tool-call",
       toolCallId: tc.tool_call_id,
       toolName,
-      args: {} as ReadonlyJSONObject,
+      args: (parsedArgs ?? {}) as ReadonlyJSONObject,
       argsText,
     };
     out.push({
