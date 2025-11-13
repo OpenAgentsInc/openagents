@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// Get thread ID from assistant-ui context
+function useThreadId() {
+  return useAssistantState(({ threadListItem }) => threadListItem?.id);
+}
+
 export const ThreadList: FC = () => {
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col items-stretch gap-1.5">
@@ -77,52 +82,31 @@ const ThreadListSkeleton: FC = () => {
 
 const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
+  const threadId = useThreadId(); // Get thread ID from context
   const [threadSource, setThreadSource] = useState<string | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
 
-  // Get thread metadata from window global (set by useAcpRuntime)
+  // Update metadata when thread ID or metadata changes
   useEffect(() => {
-    if (!rootRef.current) return;
-
-    const getThreadIdFromElement = (el: HTMLElement): string | null => {
-      // Try to find thread ID in data attributes
-      const threadId = el.getAttribute('data-thread-id') ||
-                      el.getAttribute('data-id') ||
-                      el.closest('[data-thread-id]')?.getAttribute('data-thread-id') ||
-                      el.closest('[data-id]')?.getAttribute('data-id');
-      return threadId;
-    };
-
     const updateMetadata = () => {
       const metadata = (window as any).__threadMetadata as Map<string, { source?: string; isArchiving?: boolean }> | undefined;
-      if (!metadata || !rootRef.current) return;
+      if (!metadata || !threadId) return;
 
-      const tid = getThreadIdFromElement(rootRef.current);
-      if (tid) {
-        setThreadId(tid);
-        const meta = metadata.get(tid);
-        const archiving = meta?.isArchiving || false;
-        console.log(`[ThreadListItem] tid=${tid}, isArchiving=${archiving}`, meta);
-        setThreadSource(meta?.source || null);
-        setIsArchiving(archiving);
-      }
+      const meta = metadata.get(threadId);
+      const archiving = meta?.isArchiving || false;
+      console.log(`[ThreadListItem] tid=${threadId}, isArchiving=${archiving}`, meta);
+      setThreadSource(meta?.source || null);
+      setIsArchiving(archiving);
     };
 
-    // Try immediately and then watch for changes
     updateMetadata();
-    const observer = new MutationObserver(updateMetadata);
-    observer.observe(rootRef.current, { attributes: true, subtree: true });
-
     // Listen for metadata updates from runtime
     window.addEventListener('threadMetadataUpdated', updateMetadata);
 
     return () => {
-      observer.disconnect();
       window.removeEventListener('threadMetadataUpdated', updateMetadata);
     };
-  }, []);
+  }, [threadId]);
 
   console.log(`[ThreadListItem Render] threadId=${threadId}, isArchiving=${isArchiving}`);
 
@@ -139,7 +123,6 @@ const ThreadListItem: FC = () => {
       }}
     >
       <ThreadListItemPrimitive.Root
-        ref={rootRef as any}
         className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
         style={isArchiving ? { backgroundColor: 'rgba(239, 68, 68, 0.2)' } : undefined}
         onMouseEnter={() => setIsHovered(true)}
