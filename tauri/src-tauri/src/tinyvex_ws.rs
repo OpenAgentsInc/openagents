@@ -258,7 +258,7 @@ async fn handle_run_submit(
     Ok(())
 }
 
-/// Handle update thread command (rename, etc.)
+/// Handle update thread command (rename, archive, etc.)
 async fn handle_update_thread(
     state: &Arc<TinyvexState>,
     thread_id: &str,
@@ -273,6 +273,10 @@ async fn handle_update_thread(
     // Apply updates
     if let Some(title) = updates.get("title").and_then(|t| t.as_str()) {
         thread.title = title.to_string();
+    }
+
+    if let Some(archived) = updates.get("archived").and_then(|a| a.as_bool()) {
+        thread.archived = if archived { 1 } else { 0 };
     }
 
     // Update timestamp

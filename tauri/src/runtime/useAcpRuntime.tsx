@@ -45,6 +45,7 @@ type TinyvexThreadRow = {
   resumeId: string | null;
   rolloutPath: string | null;
   source: string | null;
+  archived?: number | null;
   createdAt: number;
   updatedAt: number;
   message_count?: number | null;
@@ -381,37 +382,72 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       threadList: {
         threadId: threadId,
         isLoading: isLoadingThreads,
-        threads: threadsRef.current.map((row) => {
-          // Format agent name for display
-          const getAgentLabel = (source?: string | null) => {
-            if (!source) return "";
-            if (source === "claude-code") return "Claude";
-            if (source === "codex") return "Codex";
-            if (source === "ollama") return "GLM";
-            return source;
-          };
+        threads: threadsRef.current
+          .filter((row) => !row.archived || row.archived === 0)
+          .map((row) => {
+            // Format agent name for display
+            const getAgentLabel = (source?: string | null) => {
+              if (!source) return "";
+              if (source === "claude-code") return "Claude";
+              if (source === "codex") return "Codex";
+              if (source === "ollama") return "GLM";
+              return source;
+            };
 
-          // Get first user message text as fallback title
-          const getFirstMessageFallback = () => {
-            const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
-            if (messages.length > 0) {
-              const firstText = messages[0].text || "";
-              return firstText.substring(0, 50) + (firstText.length > 50 ? "..." : "");
-            }
-            return "Thread";
-          };
+            // Get first user message text as fallback title
+            const getFirstMessageFallback = () => {
+              const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
+              if (messages.length > 0) {
+                const firstText = messages[0].text || "";
+                return firstText.substring(0, 50) + (firstText.length > 50 ? "..." : "");
+              }
+              return "Thread";
+            };
 
-          // Use custom title, first message, or generic default
-          const baseTitle = row.title || getFirstMessageFallback();
-          const agentLabel = getAgentLabel(row.source);
-          const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
+            // Use custom title, first message, or generic default
+            const baseTitle = row.title || getFirstMessageFallback();
+            const agentLabel = getAgentLabel(row.source);
+            const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
 
-          return {
-            id: row.id,
-            title,
-            status: "regular" as const,
-          };
-        }),
+            return {
+              id: row.id,
+              title,
+              status: "regular" as const,
+            };
+          }),
+        archivedThreads: threadsRef.current
+          .filter((row) => row.archived === 1)
+          .map((row) => {
+            // Format agent name for display
+            const getAgentLabel = (source?: string | null) => {
+              if (!source) return "";
+              if (source === "claude-code") return "Claude";
+              if (source === "codex") return "Codex";
+              if (source === "ollama") return "GLM";
+              return source;
+            };
+
+            // Get first user message text as fallback title
+            const getFirstMessageFallback = () => {
+              const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
+              if (messages.length > 0) {
+                const firstText = messages[0].text || "";
+                return firstText.substring(0, 50) + (firstText.length > 50 ? "..." : "");
+              }
+              return "Thread";
+            };
+
+            // Use custom title, first message, or generic default
+            const baseTitle = row.title || getFirstMessageFallback();
+            const agentLabel = getAgentLabel(row.source);
+            const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
+
+            return {
+              id: row.id,
+              title,
+              status: "archived" as const,
+            };
+          }),
         onSwitchToNewThread: async () => {
           // Clear current thread and reset state for new conversation
           setThreadId(undefined);
@@ -445,6 +481,22 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             control: "tvx.update_thread",
             threadId,
             updates: { title: newTitle },
+          });
+        },
+        onArchive: async (threadId: string) => {
+          // Archive thread via WebSocket control message
+          ws.send({
+            control: "tvx.update_thread",
+            threadId,
+            updates: { archived: true },
+          });
+        },
+        onUnarchive: async (threadId: string) => {
+          // Unarchive thread via WebSocket control message
+          ws.send({
+            control: "tvx.update_thread",
+            threadId,
+            updates: { archived: false },
           });
         },
       },
