@@ -86,7 +86,6 @@ export const ModelToolbar: FC = () => {
           <SelectContent>
             <SelectItem value="codex">Codex</SelectItem>
             <SelectItem value="claude-code">Claude Code</SelectItem>
-            <SelectItem value="ollama">GLM-4.6</SelectItem>
           </SelectContent>
         </Select>
 

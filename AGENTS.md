@@ -4,8 +4,8 @@
 
 **OpenAgents** is a desktop chat application for interacting with AI assistants, built with Tauri, React, TypeScript, and assistant-ui.
 
-- **Purpose**: Desktop command center for AI assistants. Chat with local models via Ollama, with support for tools and rich UI interactions.
-- **Architecture**: Tauri (Rust + WebView) with React/TypeScript frontend, assistant-ui components, and Ollama for local LLM inference
+- **Purpose**: Desktop command center for AI assistants using ACP (Agent Communication Protocol). Supports Claude Code and Codex agents with tools and rich UI interactions.
+- **Architecture**: Tauri (Rust + WebView) with React/TypeScript frontend, assistant-ui components, and ACP-based agent runtime
 - **Platforms**: Windows, macOS, Linux (cross-platform desktop)
 - **Previous versions**: v0.3 (Swift iOS/macOS) is deprecated and no longer maintained. v0.2 (Expo/React Native + Rust) also deprecated.
 
@@ -14,21 +14,22 @@
 - **Tauri Desktop App** (`tauri/`)
   - Cross-platform desktop application (Windows, macOS, Linux)
   - React + TypeScript frontend with assistant-ui components
-  - Ollama integration for local LLM inference (glm-4.6:cloud model)
+  - ACP runtime for Claude Code and Codex agents
   - Tool system with makeAssistantTool for client-side tools
   - Dark mode UI with Berkeley Mono font
   - Sidebar with ThreadList for conversation history
 
 - **Frontend** (`tauri/src/`)
   - React components using assistant-ui library
-  - AssistantRuntimeProvider with useLocalRuntime adapter
-  - ChatModelAdapter for streaming text from Ollama
+  - AssistantRuntimeProvider with useAcpRuntime adapter
+  - ACP protocol for agent communication
   - Tool definitions in `src/tools/`
   - shadcn/ui components for UI primitives
 
 - **Backend** (`tauri/src-tauri/`)
   - Rust-based Tauri application
   - Native OS integration and window management
+  - ACP session management and message handling
 
 ### Repository Layout
 
@@ -75,12 +76,12 @@ bun add <package>        # Add new package
 
 ### Tauri + React Architecture
 
-**Stack**: Tauri for native desktop, React + TypeScript for UI, assistant-ui for chat components, Ollama for local LLM.
+**Stack**: Tauri for native desktop, React + TypeScript for UI, assistant-ui for chat components, ACP for agent communication.
 
 - **Tauri**: Rust-based desktop application framework with native OS integration
 - **React + TypeScript**: Modern frontend with full type safety
 - **assistant-ui**: Specialized React library for AI chat interfaces
-- **Ollama**: Local LLM inference server running glm-4.6:cloud model
+- **ACP**: Agent Communication Protocol for Claude Code and Codex agents
 - **Tools**: Client-side tool execution using makeAssistantTool
 - **Styling**: Tailwind CSS with dark mode, Berkeley Mono font, zero border radius
 
@@ -94,14 +95,14 @@ Tools extend the assistant's capabilities with custom functions:
 - **Registration**: Place tool components inside AssistantRuntimeProvider
 - **Example**: See `src/tools/calculator.tsx` for reference implementation
 
-### Ollama Integration
+### ACP Integration
 
-Local LLM inference powered by Ollama:
+Agent communication powered by ACP (Agent Communication Protocol):
 
-- **Model**: Currently using `glm-4.6:cloud`
-- **Adapter**: Custom ChatModelAdapter that streams text chunks
-- **Accumulation**: Text chunks accumulated into single string for smooth rendering
-- **Configuration**: Ollama server at `http://127.0.0.1:11434/api`
+- **Agents**: Supports Claude Code and Codex agents
+- **Runtime**: useAcpRuntime hook manages ACP sessions
+- **Protocol**: Bidirectional communication for prompts and responses
+- **Persistence**: Messages stored in tinyvex database via WebSocket
 
 ## Development
 

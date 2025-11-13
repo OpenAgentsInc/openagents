@@ -1,6 +1,6 @@
 import {
     ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon,
-    CopyIcon, PencilIcon, RefreshCwIcon, Square
+    CopyIcon, Square
 } from "lucide-react"
 import { domAnimation, LazyMotion, MotionConfig } from "motion/react"
 import * as m from "motion/react-m"
@@ -14,7 +14,6 @@ import {
     TooltipIconButton
 } from "@/components/assistant-ui/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
-import { useModelStore } from "@/lib/model-store"
 import { cn } from "@/lib/utils"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
@@ -333,13 +332,6 @@ const AssistantActionBar: FC = () => {
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      {selectedModel === "ollama" && (
-        <ActionBarPrimitive.Reload asChild>
-          <TooltipIconButton tooltip="Refresh">
-            <RefreshCwIcon />
-          </TooltipIconButton>
-        </ActionBarPrimitive.Reload>
-      )}
     </ActionBarPrimitive.Root>
   );
 };
@@ -369,10 +361,7 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
-  // Always show Copy on user messages. Hide Edit for Codex/ClaudeCode chats.
-  const selectedModel = useModelStore((s: any) => s.selected);
-  const showEdit = !(selectedModel === "codex" || selectedModel === "claude-code");
-
+  // Show Copy on user messages. Edit is not supported for ACP agents.
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -389,14 +378,6 @@ const UserActionBar: FC = () => {
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-
-      {showEdit && (
-        <ActionBarPrimitive.Edit asChild>
-          <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
-            <PencilIcon />
-          </TooltipIconButton>
-        </ActionBarPrimitive.Edit>
-      )}
     </ActionBarPrimitive.Root>
   );
 };
