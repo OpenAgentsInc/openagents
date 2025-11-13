@@ -65,7 +65,7 @@ export const Thread: FC = () => {
               <div className="aui-thread-viewport-spacer min-h-8 grow" />
             </ThreadPrimitive.If>
 
-            <Composer />
+            <ThreadComposer />
           </ThreadPrimitive.Viewport>
         </ThreadPrimitive.Root>
       </MotionConfig>
@@ -183,7 +183,7 @@ const ThreadSuggestions: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+export const ThreadComposer: FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isEmpty = useThread((t) => t.messages.length === 0);
   const prevEmptyRef = useRef<boolean | undefined>(undefined);
