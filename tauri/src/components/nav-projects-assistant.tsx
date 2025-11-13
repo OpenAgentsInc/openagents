@@ -37,7 +37,7 @@ import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton"
 import { listProjects, updateProject, deleteProject } from "@/lib/tauri-projects"
 import type { TinyvexMessage } from "@/lib/useTinyvexWebSocket"
 import { ProjectDialog } from "@/components/project-dialog"
-import { useAssistantRuntime } from "@openagentsinc/assistant-ui-runtime"
+import { useAssistantRuntime, useAssistantState } from "@openagentsinc/assistant-ui-runtime"
 import { useUiStore } from "@/lib/ui-store"
 
 // Map icon names to Lucide icons
@@ -52,6 +52,7 @@ export function NavProjectsAssistant() {
   const ws = useSharedTinyvexWebSocket()
   const runtime = useAssistantRuntime()
   const setProjectView = useUiStore((s) => s.setProjectView)
+  const threadItems = useAssistantState((s) => s.threads?.threadItems)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   // Load projects on mount
@@ -88,6 +89,21 @@ export function NavProjectsAssistant() {
     setProjectView(project.id)
   }
 
+  // Build map of projectId -> threads (id,title)
+  const projectThreads = (() => {
+    const meta: Map<string, { projectId?: string | null }> = (window as any).__threadMetadata;
+    const map = new Map<string, { id: string; title: string }[]>();
+    if (!threadItems || !meta) return map;
+    for (const t of threadItems) {
+      const m = meta.get?.(t.id);
+      const pid = m?.projectId ?? null;
+      if (!pid) continue;
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid)!.push({ id: t.id, title: t.title });
+    }
+    return map;
+  })();
+
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <Collapsible defaultOpen className="group/collapsible">
@@ -103,6 +119,7 @@ export function NavProjectsAssistant() {
           <SidebarMenu>
           {projectList.map((item) => {
             const IconComponent = getIconComponent(item.icon)
+            const threadsForProject = projectThreads.get(item.id) || [];
             return (
               <SidebarMenuItem key={item.id}>
                 <SidebarMenuButton
@@ -115,6 +132,23 @@ export function NavProjectsAssistant() {
                     <Star className="ml-auto h-4 w-4 fill-current" />
                   )}
                 </SidebarMenuButton>
+                {threadsForProject.length > 0 && (
+                  <div className="ml-6 mt-1 mb-1 space-y-1">
+                    {threadsForProject.map((t) => (
+                      <button
+                        key={t.id}
+                        className="w-full text-left text-xs text-sidebar-foreground/80 hover:text-sidebar-foreground hover:underline"
+                        onClick={() => {
+                          setActiveProject(item.id)
+                          runtime.switchToThread?.(t.id)
+                        }}
+                        title={t.title}
+                      >
+                        {t.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <SidebarMenuAction showOnHover>

@@ -235,6 +235,11 @@ const ThreadListItem: FC = () => {
 
   const threadProject = threadProjectId ? getProject(threadProjectId) : undefined;
 
+  // Hide project-scoped threads from the main Chats list
+  if (threadProjectId) {
+    return null;
+  }
+
   return (
     <ThreadListItemPrimitive.Root
       className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
