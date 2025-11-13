@@ -369,13 +369,27 @@ fn resolve_codex_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
         }
     }
     // 2) Prefer local workspace build of codex-acp if present (dev-only convenience)
-    //    Try release then debug under crates/codex-acp
+    //    Try workspace-level target first, then crate-level target
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let base = PathBuf::from(manifest_dir)
             .parent()
             .and_then(|p| p.parent()) // go to repo root
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
+        // Check workspace-level target directory first
+        let workspace_release = base.join("target/release/codex-acp");
+        let workspace_debug = base.join("target/debug/codex-acp");
+        if workspace_release.exists() {
+            let p = workspace_release.display().to_string();
+            info!(path=%p, "resolved codex-acp from workspace release build");
+            return Ok((workspace_release, Vec::new()));
+        }
+        if workspace_debug.exists() {
+            let p = workspace_debug.display().to_string();
+            info!(path=%p, "resolved codex-acp from workspace debug build");
+            return Ok((workspace_debug, Vec::new()));
+        }
+        // Fall back to crate-level target directory
         let release = base.join("crates/codex-acp/target/release/codex-acp");
         let dbg_bin = base.join("crates/codex-acp/target/debug/codex-acp");
         if release.exists() {
