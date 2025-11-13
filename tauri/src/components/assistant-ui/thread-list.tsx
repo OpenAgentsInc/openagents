@@ -4,9 +4,9 @@ import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAssistantState,
+  useAssistantRuntime,
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
-import { motion, LayoutGroup } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -18,8 +18,125 @@ function useThreadId() {
 }
 
 export const ThreadList: FC = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const runtime = useAssistantRuntime();
+
+  // Get threads from threadItems (not threads!)
+  const threads = useAssistantState((s) => {
+    console.log('[ThreadList] State threads object:', s.threads);
+    return s.threads?.threadItems;
+  });
+  const currentThreadId = useAssistantState((s) => s.threads?.mainThreadId);
+
+  // Use refs to always have current values in event handler
+  const threadsRef = useRef(threads);
+  const currentThreadIdRef = useRef(currentThreadId);
+
+  useEffect(() => {
+    threadsRef.current = threads;
+    currentThreadIdRef.current = currentThreadId;
+  }, [threads, currentThreadId]);
+
+  console.log('[ThreadList] Render:', {
+    threads: threads,
+    threadsCount: threads?.length,
+    threadsIsArray: Array.isArray(threads),
+    threadIds: threads?.map(t => t.id),
+    currentThreadId,
+    hasSwitchToThread: !!runtime.switchToThread,
+    runtimeKeys: Object.keys(runtime),
+    threadsRefCurrent: threadsRef.current,
+    threadsRefCount: threadsRef.current?.length,
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    console.log('[ThreadList] useEffect setup:', {
+      hasContainer: !!container,
+      threadsCount: threads?.length,
+    });
+
+    if (!container) {
+      console.log('[ThreadList] No container ref, skipping keyboard listener');
+      return;
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      console.log('[ThreadList] Key pressed:', {
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        activeElement: document.activeElement?.tagName,
+        activeElementClass: document.activeElement?.className,
+        containerContainsActive: container.contains(document.activeElement),
+      });
+
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+
+      // Handle Cmd+Arrow (Mac) or Ctrl+Arrow (Windows/Linux) globally
+      const hasModifier = e.metaKey || e.ctrlKey;
+
+      if (!hasModifier) {
+        // Without modifier, only work when focused in sidebar
+        if (!container.contains(document.activeElement)) {
+          console.log('[ThreadList] Not focused on sidebar and no modifier, ignoring');
+          return;
+        }
+      }
+
+      e.preventDefault();
+      console.log('[ThreadList] Arrow key intercepted', { hasModifier });
+
+      const currentThreads = threadsRef.current;
+      const currentId = currentThreadIdRef.current;
+
+      if (!currentThreads || currentThreads.length === 0) {
+        console.log('[ThreadList] No threads available', { currentThreads });
+        return;
+      }
+
+      const currentIndex = currentThreads.findIndex((t) => t.id === currentId);
+      let nextIndex: number;
+
+      if (e.key === "ArrowDown") {
+        nextIndex = currentIndex + 1 < currentThreads.length ? currentIndex + 1 : 0;
+      } else {
+        nextIndex = currentIndex - 1 >= 0 ? currentIndex - 1 : currentThreads.length - 1;
+      }
+
+      const nextThread = currentThreads[nextIndex];
+      console.log('[ThreadList] Switching thread:', {
+        currentIndex,
+        nextIndex,
+        nextThreadId: nextThread?.id,
+        hasSwitchMethod: !!runtime.switchToThread,
+      });
+
+      if (nextThread && runtime.switchToThread) {
+        console.log('[ThreadList] Calling switchToThread:', nextThread.id);
+        runtime.switchToThread(nextThread.id);
+      } else {
+        console.log('[ThreadList] Cannot switch - missing thread or method');
+      }
+    };
+
+    console.log('[ThreadList] Adding window keydown listener');
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      console.log('[ThreadList] Removing window keydown listener');
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [runtime]);
+
   return (
-    <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col items-stretch gap-1.5">
+    <ThreadListPrimitive.Root
+      ref={containerRef}
+      tabIndex={0}
+      className="aui-root aui-thread-list-root flex flex-col items-stretch gap-1.5 focus:outline-none"
+      onFocus={() => console.log('[ThreadList] Container focused')}
+      onBlur={() => console.log('[ThreadList] Container blurred')}
+    >
       <ThreadListNew />
       <ThreadListItems />
     </ThreadListPrimitive.Root>
@@ -55,11 +172,7 @@ const ThreadListItems: FC = () => {
     return <ThreadListSkeleton />;
   }
 
-  return (
-    <LayoutGroup>
-      <ThreadListPrimitive.Items components={{ ThreadListItem }} />
-    </LayoutGroup>
-  );
+  return <ThreadListPrimitive.Items components={{ ThreadListItem }} />;
 };
 
 const ThreadListSkeleton: FC = () => {
@@ -84,6 +197,7 @@ const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const threadId = useThreadId(); // Get thread ID from context
   const [isArchiving, setIsArchiving] = useState(false);
+  const [threadSource, setThreadSource] = useState<string | null>(null);
 
   // Update metadata when thread ID or metadata changes
   useEffect(() => {
@@ -94,6 +208,7 @@ const ThreadListItem: FC = () => {
       const meta = metadata.get(threadId);
       const archiving = meta?.isArchiving || false;
       setIsArchiving(archiving);
+      setThreadSource(meta?.source || null);
     };
 
     updateMetadata();
@@ -106,35 +221,28 @@ const ThreadListItem: FC = () => {
   }, [threadId]);
 
   return (
-    <motion.div
-      layoutId={threadId || undefined}
-      layout
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{
-        layout: { duration: 0.3, ease: "easeInOut" },
-        opacity: { duration: 0.15 }
-      }}
+    <ThreadListItemPrimitive.Root
+      className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
+      style={isArchiving ? { backgroundColor: 'rgba(239, 68, 68, 0.2)' } : undefined}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <ThreadListItemPrimitive.Root
-        className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
-        style={isArchiving ? { backgroundColor: 'rgba(239, 68, 68, 0.2)' } : undefined}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
-          <ThreadListItemTitle />
-        </ThreadListItemPrimitive.Trigger>
-        <ThreadListItemArchive isVisible={isHovered} />
-      </ThreadListItemPrimitive.Root>
-    </motion.div>
+      <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
+        <ThreadListItemTitle />
+      </ThreadListItemPrimitive.Trigger>
+      {threadSource && (
+        <span className="text-xs text-muted-foreground/50 mr-2 flex-shrink-0">
+          {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource}
+        </span>
+      )}
+      <ThreadListItemArchive isVisible={isHovered} />
+    </ThreadListItemPrimitive.Root>
   );
 };
 
 const ThreadListItemTitle: FC = () => {
   return (
-    <span className="aui-thread-list-item-title text-sm">
+    <span className="aui-thread-list-item-title text-sm text-foreground">
       <ThreadListItemPrimitive.Title fallback="New Chat" />
     </span>
   );
