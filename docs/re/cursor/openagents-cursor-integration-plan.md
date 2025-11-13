@@ -1,9 +1,11 @@
 # OpenAgents × Cursor: 10x Better AI Coding Assistant Integration Plan
 
-**Version:** 2.0
+**Version:** 2.1
 **Date:** 2025-01-13
 **Status:** Planning
 **Goal:** Build a 10x better coding assistant than Cursor through hybrid local/swarm/cloud inference, desktop+mobile sync, and open marketplace
+
+**v2.1 Update:** Replaced libp2p/Kademlia P2P networking with Nostr DVMs (Data Vending Machines) for decentralized compute marketplace. Uses NIP-90 for job requests, NIP-89 for provider discovery, and NIP-57 for Lightning payments (Zaps).
 
 ---
 
@@ -935,11 +937,11 @@ impl InferenceBackend {
 │  │                                                        │  │
 │  │  LOCAL INFERENCE          SWARM INFERENCE             │  │
 │  │  ┌─────────────┐          ┌──────────────┐           │  │
-│  │  │ llama.cpp/  │          │ P2P Network  │           │  │
-│  │  │ MLX Runtime │          │ (libp2p)     │           │  │
+│  │  │ llama.cpp/  │          │ Nostr DVMs   │           │  │
+│  │  │ MLX Runtime │          │ (NIP-90)     │           │  │
 │  │  │             │          │              │           │  │
-│  │  │ • 1-7B      │          │ • Find peers │           │  │
-│  │  │   models    │          │ • Pay sats   │           │  │
+│  │  │ • 1-7B      │          │ • Find DVMs  │           │  │
+│  │  │   models    │          │ • Pay Zaps   │           │  │
 │  │  │ • Metal/    │          │ • Stream     │           │  │
 │  │  │   CUDA      │          │   results    │           │  │
 │  │  └─────────────┘          └──────────────┘           │  │
@@ -1487,6 +1489,13 @@ impl MlxModel {
 
 ## Hybrid Inference System
 
+**Overview:** OpenAgents uses a three-tier hybrid inference system:
+- **Local**: Run models on your device (llama.cpp/MLX) - free, private, fast for simple tasks
+- **Swarm**: Buy compute from peers via Nostr DVMs (Data Vending Machines) - 90% cheaper than cloud, decentralized
+- **Cloud**: Use frontier models (Codex, Claude Code, GPT-4) via ACP - highest quality
+
+The swarm tier is powered by **Nostr DVMs** (NIP-90), allowing decentralized discovery of compute providers via Nostr relays. Payments are handled through **Zaps** (NIP-57) - Lightning payments over Nostr.
+
 ### Orchestrator & Router
 
 **Core Concept:** Every request goes through an intelligent router that decides: local, swarm, or cloud?
@@ -1666,78 +1675,100 @@ impl LocalInference {
 **Implementation:**
 ```rust
 pub struct SwarmClient {
-    p2p_network: Libp2pClient,
+    nostr_client: NostrClient,
+    relays: Vec<String>,
     lightning: LightningClient,
-    peer_ratings: HashMap<PeerId, Rating>,
+    provider_ratings: HashMap<PublicKey, Rating>,
 }
 
 impl SwarmClient {
     pub async fn request_inference(&self, request: InferenceRequest) -> Result<Response> {
-        // 1. Find suitable peers (has model, good rating, fair price)
-        let peers = self.find_peers(&request.model_spec, request.max_cost_per_token).await?;
+        // 1. Find suitable DVMs (has model, good rating, fair price)
+        let providers = self.find_dvms(&request.model_spec, request.max_cost_per_token).await?;
 
-        // 2. Select best peer (lowest latency + price)
-        let peer = self.select_peer(&peers).await?;
+        // 2. Select best provider (lowest latency + price + highest rating)
+        let provider = self.select_provider(&providers).await?;
 
-        // 3. Create Lightning invoice
-        let invoice = self.lightning.create_invoice(
-            peer.price_per_token * request.estimated_tokens,
-            format!("Inference job {}", request.id),
-        ).await?;
+        // 3. Create DVM job request (NIP-90) with custom OpenAgents kind
+        let job_event = Event::new(
+            6500,  // Custom OpenAgents DVM kind for code generation
+            vec![
+                Tag::new(&["i", &request.prompt, "text"]),
+                Tag::new(&["param", "model", &request.model_spec.to_string()]),
+                Tag::new(&["param", "max_tokens", &request.estimated_tokens.to_string()]),
+                Tag::new(&["param", "language", &request.language]),
+                Tag::new(&["output", "text/plain"]),
+                Tag::new(&["p", &provider.pubkey.to_hex()]),  // Tag provider
+            ],
+        );
 
-        // 4. Send request to peer
-        let stream = self.p2p_network.send_request(peer.id, InferenceJob {
-            model: request.model_spec.clone(),
-            prompt: request.prompt.clone(),
-            payment_hash: invoice.payment_hash,
-        }).await?;
+        // 4. Publish job request to relays
+        self.nostr_client.publish_event(job_event).await?;
 
-        // 5. Stream results while paying incrementally
+        // 5. Subscribe to job results (kind 6501 = result event)
+        let mut subscription = self.nostr_client.subscribe(vec![
+            Filter::new()
+                .kind(6501)
+                .event(job_event.id)
+                .author(provider.pubkey)
+        ]).await?;
+
+        // 6. Stream results while paying incrementally via Zaps (NIP-57)
         let mut response = String::new();
         let mut tokens_consumed = 0;
 
-        for chunk in stream {
+        while let Some(result_event) = subscription.next().await {
+            let chunk = self.parse_result_chunk(&result_event)?;
             response.push_str(&chunk.text);
             tokens_consumed += chunk.tokens;
 
-            // Pay every 100 tokens
+            // Zap payment every 100 tokens
             if tokens_consumed % 100 == 0 {
-                self.lightning.pay_partial(&invoice, tokens_consumed as f64 * peer.price_per_token).await?;
+                let zap_amount = tokens_consumed as f64 * provider.price_per_token;
+                self.send_zap(&provider.pubkey, zap_amount, &job_event.id).await?;
             }
         }
 
-        // 6. Final payment
-        self.lightning.settle_invoice(&invoice).await?;
+        // 7. Final Zap payment
+        let final_amount = tokens_consumed as f64 * provider.price_per_token;
+        self.send_zap(&provider.pubkey, final_amount, &job_event.id).await?;
 
-        // 7. Rate peer
-        self.rate_peer(peer.id, &response).await?;
+        // 8. Rate provider (publish kind 6502 rating event)
+        self.rate_provider(provider.pubkey, &response, &job_event.id).await?;
 
         Ok(Response { text: response })
     }
 
-    async fn find_peers(&self, model: &ModelSpec, max_cost: f64) -> Result<Vec<Peer>> {
-        // Query DHT for peers with this model
-        let mut peers = self.p2p_network.find_peers_with_model(model).await?;
+    async fn find_dvms(&self, model: &ModelSpec, max_cost: f64) -> Result<Vec<DvmProvider>> {
+        // Query relays for NIP-89 handler announcements
+        let handlers = self.nostr_client.query_handlers(6500).await?;
 
-        // Filter by cost
-        peers.retain(|p| p.price_per_token <= max_cost);
+        // Parse handler metadata for model availability and pricing
+        let mut providers = Vec::new();
+        for handler in handlers {
+            if let Some(provider) = self.parse_dvm_handler(&handler, model).await? {
+                if provider.price_per_token <= max_cost {
+                    providers.push(provider);
+                }
+            }
+        }
 
         // Sort by rating * latency
-        peers.sort_by_key(|p| {
-            let rating_score = self.peer_ratings.get(&p.id).map(|r| r.score).unwrap_or(5.0);
+        providers.sort_by_key(|p| {
+            let rating_score = self.provider_ratings.get(&p.pubkey).map(|r| r.score).unwrap_or(5.0);
             (p.avg_latency.as_millis() as f64 / rating_score) as u64
         });
 
-        Ok(peers)
+        Ok(providers)
     }
 }
 ```
 
-**P2P Network:**
-- Protocol: libp2p (Rust)
-- Discovery: Kademlia DHT
-- Transport: QUIC (fast, secure)
-- Payment: Lightning Network (instant, cheap)
+**Nostr DVM Network:**
+- Protocol: Nostr (NIP-01, NIP-90, NIP-89, NIP-57)
+- Discovery: Relay queries for NIP-89 handlers
+- Transport: WebSocket to Nostr relays
+- Payment: Zaps (Lightning over Nostr via NIP-57)
 
 **Performance:**
 - First token: 300-800ms (network latency)
@@ -1923,11 +1954,11 @@ audit_log = true           # log all requests
 | llama.cpp bindings | `llama-cpp-rs` | 0.16 | Local LLM inference |
 | MLX bindings (macOS) | `mlx-rs` | 0.1 | Apple Silicon optimization |
 | Tokenizers | `tokenizers` | 0.20 | HuggingFace tokenizers |
-| **P2P Networking & Swarm** |
-| P2P networking | `libp2p` | 0.54 | Peer-to-peer communication |
-| DHT | `libp2p-kad` | 0.47 | Kademlia distributed hash table |
-| Transport | `libp2p-quic` | 0.11 | QUIC transport |
-| Gossip | `libp2p-gossipsub` | 0.48 | Pub/sub for swarm coordination |
+| **Nostr & DVM Integration** |
+| Nostr client | `nostr-sdk` | 0.36 | Nostr protocol client |
+| Nostr types | `nostr` | 0.36 | Core Nostr types (Event, Keys, etc.) |
+| WebSocket client | `tokio-tungstenite` | 0.24 | WebSocket for relay connections |
+| NIP-57 (Zaps) | Built into `nostr-sdk` | - | Lightning payments over Nostr |
 | **Payments** |
 | Lightning | `ldk` (Lightning Dev Kit) | 0.0.124 | Lightning Network node |
 | Bitcoin wallet | `bdk` (Bitcoin Dev Kit) | 1.0 | On-chain wallet |
@@ -2343,6 +2374,91 @@ ws.subscribe('completion.token', (event: CompletionEvent) => {
 });
 ```
 
+### Nostr Infrastructure (Already Exists!)
+
+**OpenAgents already has Nostr integration** (currently macOS-only via SwiftPM). We're extending it for the DVM marketplace:
+
+**Existing Nostr Components:**
+- **Nostr SDK**: `/Users/christopherdavid/code/nostr-sdk-ios` (integrated via SwiftPM)
+- **NIP-28 Chat**: Chat channels already working (see Episode 177)
+- **DVM Awareness**: Custom kinds 6500-6599 already defined for code tasks
+- **Event Types**:
+  - 6500: Code generation
+  - 6501: Code review
+  - 6502: Code refactoring
+  - 6503: Code Q&A
+  - etc. (full range 6500-6599 reserved for OpenAgents)
+
+**New DVM Integration (Rust/Tauri):**
+
+```rust
+// Add to tauri/src-tauri/Cargo.toml
+[dependencies]
+nostr-sdk = "0.36"
+nostr = "0.36"
+
+// New module: crates/oa-nostr/
+pub struct NostrDvmClient {
+    client: NostrClient,
+    relays: Vec<String>,
+    keys: Keys,
+}
+
+impl NostrDvmClient {
+    pub fn new(relays: Vec<String>) -> Result<Self> {
+        let keys = Keys::generate();  // or load from secure storage
+        let client = NostrClient::new(&keys);
+
+        // Connect to relays
+        for relay in &relays {
+            client.add_relay(relay).await?;
+        }
+
+        Ok(Self { client, relays, keys })
+    }
+
+    pub async fn publish_handler(&self, kinds: Vec<u16>) -> Result<()> {
+        // NIP-89: Announce as DVM handler
+        let event = Event::new(
+            31990,
+            kinds.iter().map(|k| Tag::new(&["k", &k.to_string()])).collect(),
+            self.build_handler_metadata(),
+        );
+
+        self.client.publish_event(event).await?;
+        Ok(())
+    }
+
+    pub async fn query_handlers(&self, kind: u16) -> Result<Vec<Event>> {
+        // Find DVMs that support this kind
+        let filter = Filter::new()
+            .kind(31990)
+            .custom_tag(Tag::new(&["k", &kind.to_string()]));
+
+        self.client.query(vec![filter]).await
+    }
+}
+```
+
+**Why Nostr DVMs are Perfect:**
+- ✅ **Already integrated**: Nostr SDK exists, just need Rust bindings
+- ✅ **Decentralized discovery**: No central registry, anyone can be a DVM
+- ✅ **Built-in payments**: NIP-57 Zaps = Lightning over Nostr
+- ✅ **Custom kinds**: 6500-6599 range already reserved for OpenAgents
+- ✅ **Open protocol**: NIPs are public specs, no vendor lock-in
+- ✅ **Relay network**: Existing infrastructure (wss://relay.damus.io, etc.)
+
+**Default Relays:**
+```toml
+[nostr]
+relays = [
+    "wss://relay.damus.io",
+    "wss://relay.nostr.band",
+    "wss://nos.lol",
+    "wss://relay.openagents.com"  # Our own relay for high availability
+]
+```
+
 ---
 
 ## Compute Marketplace & Revenue Sharing
@@ -2361,41 +2477,72 @@ ws.subscribe('completion.token', (event: CompletionEvent) => {
 
 ```rust
 pub struct ComputeProvider {
-    node_id: PeerId,
+    nostr_keys: Keys,  // Nostr identity (public/private keypair)
     gpu_spec: GpuSpec,
     available_models: Vec<ModelSpec>,
     pricing: PricingConfig,
     lightning_address: String,
     uptime_stats: UptimeStats,
     earnings: Arc<Mutex<EarningsTracker>>,
+    nostr_client: NostrClient,
 }
 
 impl ComputeProvider {
     pub async fn start_selling(&self) -> Result<()> {
-        // 1. Advertise on DHT
-        self.advertise_models().await?;
+        // 1. Publish NIP-89 handler announcement
+        self.publish_handler_announcement().await?;
 
-        // 2. Listen for inference requests
-        let mut swarm = self.p2p_network.listen().await?;
+        // 2. Subscribe to DVM job requests (kind 6500-6599)
+        let mut subscription = self.nostr_client.subscribe(vec![
+            Filter::new()
+                .kinds(vec![6500, 6501, 6502, 6503])  // OpenAgents DVM kinds
+                .pubkey(self.nostr_keys.public_key())
+        ]).await?;
 
-        while let Some(request) = swarm.next().await {
-            match request {
-                SwarmEvent::InferenceRequest { peer, job } => {
-                    // Validate payment
-                    if !self.verify_payment(&job).await? {
+        // 3. Listen for job requests
+        while let Some(event) = subscription.next().await {
+            match event.kind {
+                6500 => {  // Code generation job
+                    // Validate payment (check for pending Zap)
+                    if !self.verify_zap_intent(&event).await? {
                         continue;
                     }
 
-                    // Run inference
+                    // Run inference in background
+                    let provider = self.clone();
                     tokio::spawn(async move {
-                        let result = self.run_inference(job).await;
-                        self.send_result(peer, result).await;
+                        let result = provider.run_inference(&event).await;
+                        provider.publish_result(&event, result).await;
                     });
                 },
                 _ => {}
             }
         }
 
+        Ok(())
+    }
+
+    async fn publish_handler_announcement(&self) -> Result<()> {
+        // NIP-89 handler announcement
+        let handler_event = Event::new(
+            31990,  // Application handler
+            vec![
+                Tag::new(&["k", "6500"]),  // Supports kind 6500 (code generation)
+                Tag::new(&["k", "6501"]),  // Supports kind 6501 (code review)
+                Tag::new(&["web", &format!("https://openagents.com/dvm/{}", self.nostr_keys.public_key().to_hex())]),
+            ],
+            json!({
+                "name": "OpenAgents DVM",
+                "about": "Code generation and inference",
+                "picture": "https://openagents.com/logo.png",
+                "models": self.available_models,
+                "pricing": self.pricing,
+                "gpu": self.gpu_spec,
+                "lightning": self.lightning_address,
+            }).to_string(),
+        );
+
+        self.nostr_client.publish_event(handler_event).await?;
         Ok(())
     }
 
@@ -2438,7 +2585,7 @@ Network takes: 0% initially (bootstrap network)
 
 ```rust
 pub struct Reputation {
-    provider_id: PeerId,
+    provider_pubkey: PublicKey,  // Nostr public key
     total_jobs: u64,
     successful_jobs: u64,
     average_latency_ms: f64,
@@ -3061,9 +3208,9 @@ This plan outlines a comprehensive path to build a **10x better coding assistant
 ### Technical Foundation
 
 **Built on Rust + Tauri + ACP:**
-- **Rust crates**: libp2p (P2P), ldk (Lightning), llama-cpp-rs (local inference), tree-sitter (parsing)
-- **Existing strengths**: Tauri desktop app, ACP agent protocol, tinyvex database, WebSocket sync
-- **New systems**: Orchestrator/router, swarm client, compute worker, marketplace
+- **Rust crates**: nostr-sdk (DVMs), ldk (Lightning), llama-cpp-rs (local inference), tree-sitter (parsing)
+- **Existing strengths**: Tauri desktop app, ACP agent protocol, tinyvex database, WebSocket sync, Nostr integration
+- **New systems**: Orchestrator/router, DVM swarm client, compute worker, marketplace
 
 **Performance Targets:**
 - Local completions: <200ms first token, 20-35 tok/s
@@ -3099,11 +3246,11 @@ This plan outlines a comprehensive path to build a **10x better coding assistant
 - Scheduled prompts (overnight coding)
 
 **Phase 2: Marketplace (6 weeks)**
-- P2P network (libp2p + DHT)
-- Compute marketplace (buy/sell swarm inference)
+- Nostr DVM network (NIP-90 job requests + NIP-89 discovery)
+- Compute marketplace (buy/sell swarm inference via DVMs)
 - Plugin marketplace (install, pay, earn)
 - Model registry (download, manage)
-- Lightning payments (LDK integration)
+- Zap payments (NIP-57 Lightning over Nostr)
 
 **Phase 3: Mobile + Polish (6 weeks)**
 - iOS/Android apps (synced to desktop)
@@ -3146,7 +3293,7 @@ We just need to:
 1. Build the orchestrator (hybrid routing)
 2. Integrate local inference (llama.cpp)
 3. Add codebase indexing (tree-sitter + sqlite-vec)
-4. Launch swarm network (libp2p)
+4. Launch DVM swarm network (Nostr relays + NIP-90)
 5. Build marketplace UI
 
 **6 weeks to MVP. 20 weeks to 10x better than Cursor.**
