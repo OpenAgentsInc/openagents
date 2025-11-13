@@ -490,12 +490,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             threadId,
             updates: { archived: true },
           });
-          // Re-query threads to immediately update the list
-          ws.send({
-            control: "tvx.query",
-            name: "threads.list",
-            args: { limit: 10 },
-          });
+          // Delay re-query to allow exit animation to complete
+          setTimeout(() => {
+            ws.send({
+              control: "tvx.query",
+              name: "threads.list",
+              args: { limit: 10 },
+            });
+          }, 250);
         },
         onUnarchive: async (threadId: string) => {
           // Unarchive thread via WebSocket control message
@@ -504,12 +506,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             threadId,
             updates: { archived: false },
           });
-          // Re-query threads to immediately update the list
-          ws.send({
-            control: "tvx.query",
-            name: "threads.list",
-            args: { limit: 10 },
-          });
+          // Delay re-query to allow exit animation to complete
+          setTimeout(() => {
+            ws.send({
+              control: "tvx.query",
+              name: "threads.list",
+              args: { limit: 10 },
+            });
+          }, 250);
         },
       },
     },
