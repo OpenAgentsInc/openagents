@@ -2,7 +2,7 @@ name: openagents
 options:
   bundleIdPrefix: com.openagents.desktop
   deploymentTarget:
-    iOS: 14.0
+    iOS: 17.0
 fileGroups: [../../src]
 configs:
   debug: debug
@@ -51,16 +51,25 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 0.1.0
-        CFBundleVersion: "0.1.0"
+        NSLocalNetworkUsageDescription: "OpenAgents needs local network access to discover and connect to your desktop server for syncing conversations and settings."
+        NSBonjourServices:
+          - _openagents._tcp
+        CFBundleShortVersionString: 1.0.0
+        CFBundleVersion: "1"
     entitlements:
       path: openagents_iOS/openagents_iOS.entitlements
+      properties:
+        com.apple.developer.networking.multicast: true
+        com.apple.security.network.client: true
+        com.apple.security.network.server: true
     scheme:
       environmentVariables:
         RUST_BACKTRACE: full
         RUST_LOG: info
     settings:
       base:
+        DEVELOPMENT_TEAM: HQWSG26L43
+        CODE_SIGN_STYLE: Automatic
         ENABLE_BITCODE: false
         ARCHS: [arm64]
         VALID_ARCHS: arm64 
