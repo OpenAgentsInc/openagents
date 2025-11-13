@@ -1,5 +1,4 @@
 export { MyRuntimeProvider } from "./MyRuntimeProvider";
-export { createOllamaAdapter } from "./adapters/ollama-adapter";
 
 // Placeholder for future factory; not used yet but reserved for consumers
 export function createOpenAgentsRuntime() {

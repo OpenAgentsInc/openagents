@@ -134,126 +134,6 @@ async fn resolve_acp_agent_path() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn create_ollama_thread(
-    state: State<'_, AppState>,
-    title: String,
-) -> Result<String, String> {
-    init_tracing();
-    let thread_id = uuid::Uuid::new_v4().to_string();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
-
-    info!(%thread_id, %title, "create_ollama_thread called");
-
-    let thread_row = tinyvex::ThreadRow {
-        id: thread_id.clone(),
-        thread_id: Some(thread_id.clone()),
-        title,
-        project_id: None,
-        resume_id: None,
-        rollout_path: None,
-        source: Some("ollama".to_string()),
-        archived: 0,
-        working_directory: None,
-        created_at: now,
-        updated_at: now,
-        message_count: None,
-        last_message_ts: None,
-    };
-
-    state
-        .sessions
-        .tinyvex_state()
-        .tinyvex
-        .upsert_thread(&thread_row)
-        .map_err(|e| e.to_string())?;
-
-    // Broadcast thread update
-    let update_msg = serde_json::json!({
-        "type": "tinyvex.update",
-        "stream": "threads",
-        "threadId": thread_id,
-    });
-    state
-        .sessions
-        .tinyvex_state()
-        .broadcast(update_msg.to_string())
-        .await;
-
-    Ok(thread_id)
-}
-
-#[tauri::command]
-async fn save_ollama_message(
-    state: State<'_, AppState>,
-    thread_id: String,
-    role: String,
-    text: String,
-    item_id: String,
-    partial: bool,
-) -> Result<(), String> {
-    init_tracing();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
-
-    info!(%thread_id, %role, text_len = text.len(), %item_id, %partial, "save_ollama_message called");
-
-    let tinyvex = &state.sessions.tinyvex_state().tinyvex;
-
-    if partial {
-        // Save as streaming partial message
-        tinyvex
-            .upsert_streamed_message(&thread_id, "message", Some(&role), &text, &item_id, 0, now)
-            .map_err(|e| e.to_string())?;
-    } else {
-        // Finalize message
-        tinyvex
-            .finalize_streamed_message_with_kind(&thread_id, &item_id, &text, now, "message", Some(&role))
-            .map_err(|e| e.to_string())?;
-    }
-
-    // Update thread timestamp
-    if let Ok(Some(mut thread_row)) = tinyvex.get_thread(&thread_id) {
-        thread_row.updated_at = now;
-        let _ = tinyvex.upsert_thread(&thread_row);
-    }
-
-    // Broadcast message update
-    let update_msg = serde_json::json!({
-        "type": "tinyvex.update",
-        "stream": "messages",
-        "threadId": thread_id,
-        "role": role,
-        "kind": "message",
-    });
-    state
-        .sessions
-        .tinyvex_state()
-        .broadcast(update_msg.to_string())
-        .await;
-
-    // If not partial, also send finalize event
-    if !partial {
-        let finalize_msg = serde_json::json!({
-            "type": "tinyvex.finalize",
-            "stream": "messages",
-            "threadId": thread_id,
-        });
-        state
-            .sessions
-            .tinyvex_state()
-            .broadcast(finalize_msg.to_string())
-            .await;
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
 fn validate_directory(path: String) -> Result<bool, String> {
     init_tracing();
     let pb = PathBuf::from(&path);
@@ -309,8 +189,6 @@ pub fn run() {
             send_prompt,
             get_session,
             resolve_acp_agent_path,
-            create_ollama_thread,
-            save_ollama_message,
             validate_directory,
             pick_directory
         ])
