@@ -381,11 +381,27 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
       threadList: {
         threadId: threadId,
         isLoading: isLoadingThreads,
-        threads: threadsRef.current.map((row) => ({
-          id: row.id,
-          title: row.title || "New Thread",
-          status: "regular" as const,
-        })),
+        threads: threadsRef.current.map((row) => {
+          // Format agent name for display
+          const getAgentLabel = (source?: string | null) => {
+            if (!source) return "";
+            if (source === "claude-code-acp") return "Claude";
+            if (source === "codex") return "Codex";
+            if (source === "ollama") return "GLM";
+            return source;
+          };
+
+          // Use custom title or create descriptive default
+          const baseTitle = row.title || "Thread";
+          const agentLabel = getAgentLabel(row.source);
+          const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
+
+          return {
+            id: row.id,
+            title,
+            status: "regular" as const,
+          };
+        }),
         onSwitchToNewThread: async () => {
           // Clear current thread and reset state for new conversation
           setThreadId(undefined);
