@@ -304,10 +304,19 @@ xcodegen generate
 ## Files Modified
 
 - `tauri/src-tauri/gen/apple/build-rust.sh` - Custom build script (NEW)
-- `tauri/src-tauri/gen/apple/project.yml` - Updated preBuildScripts to use custom script
+- `tauri/src-tauri/gen/apple/project.yml` - Updated preBuildScripts to use custom script, removed Externals from sources to prevent library from being copied to app bundle
 - `tauri/src-tauri/tauri.conf.json` - Version, bundle ID, display name
 - `tauri/src-tauri/gen/apple/openagents_iOS/Info.plist` - Network permissions
 - `tauri/src-tauri/gen/apple/openagents_iOS/openagents_iOS.entitlements` - Multicast entitlement
+
+### Important: Library Linking vs Copying
+
+The static library (`libapp.a`) must be **linked** into the executable, not copied as a standalone file. This is ensured by:
+1. Excluding `Externals` from the `sources` list in `project.yml` (prevents copying to Resources)
+2. Including `libapp.a` in the `dependencies` section with `embed: false` (ensures linking in Frameworks phase)
+3. The build script copies the library to `Externals/arm64/release/libapp.a` for Xcode to find during linking
+
+Apple will reject archives that contain standalone `.a` files with error: "Invalid bundle structure. The binary file is not permitted."
 
 ## Future Improvements
 
