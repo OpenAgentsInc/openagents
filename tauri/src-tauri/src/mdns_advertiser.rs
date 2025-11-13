@@ -39,16 +39,21 @@ fn try_start_advertising() -> anyhow::Result<()> {
     // Create mDNS daemon
     let mdns = ServiceDaemon::new()?;
 
-    // Get hostname for the service
+    // Get hostname for the service - must end with .local. for mDNS
     let hostname = hostname::get()?
         .to_string_lossy()
         .to_string();
+    let hostname_local = if hostname.ends_with(".local.") {
+        hostname
+    } else {
+        format!("{}.local.", hostname)
+    };
 
     // Create service info
     let service_info = ServiceInfo::new(
         SERVICE_TYPE,
         SERVICE_NAME,
-        &hostname,
+        &hostname_local,
         (), // No specific IP addresses - use all interfaces
         PORT,
         None, // No TXT records needed for now
@@ -61,7 +66,7 @@ fn try_start_advertising() -> anyhow::Result<()> {
         service_type = SERVICE_TYPE,
         service_name = SERVICE_NAME,
         port = PORT,
-        hostname = %hostname,
+        hostname = %hostname_local,
         "mDNS service registered"
     );
 

@@ -3,7 +3,10 @@ use std::{path::PathBuf, sync::Arc};
 use agent_client_protocol as acp;
 use serde::Serialize;
 use tauri::State;
+
+#[cfg(target_os = "ios")]
 use tauri::webview::WebviewWindowBuilder;
+#[cfg(target_os = "ios")]
 use tauri_utils::config::WebviewUrl;
 
 mod oa_acp;
@@ -250,7 +253,7 @@ pub fn run() {
 
     let tinyvex_state_for_setup = tinyvex_state.clone();
 
-    let builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
