@@ -491,8 +491,10 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           });
         },
         onArchive: async (threadIdToArchive: string) => {
+          console.log('[onArchive] Starting archive for:', threadIdToArchive);
           // Mark thread as being archived immediately (optimistic UI)
           archivingThreadsRef.current.add(threadIdToArchive);
+          console.log('[onArchive] archivingThreadsRef now has:', Array.from(archivingThreadsRef.current));
           // Update metadata to include archiving state
           (window as any).__threadMetadata = new Map(
             threadsRef.current.map((row) => [
@@ -503,6 +505,9 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
               }
             ])
           );
+          console.log('[onArchive] Updated __threadMetadata:', (window as any).__threadMetadata);
+          // Dispatch custom event to notify thread list items
+          window.dispatchEvent(new CustomEvent('threadMetadataUpdated'));
           setVersion((v) => v + 1);
 
           // If archiving the currently active thread, switch to new thread

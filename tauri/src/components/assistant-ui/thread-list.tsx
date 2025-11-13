@@ -103,8 +103,10 @@ const ThreadListItem: FC = () => {
       if (tid) {
         setThreadId(tid);
         const meta = metadata.get(tid);
+        const archiving = meta?.isArchiving || false;
+        console.log(`[ThreadListItem] tid=${tid}, isArchiving=${archiving}`, meta);
         setThreadSource(meta?.source || null);
-        setIsArchiving(meta?.isArchiving || false);
+        setIsArchiving(archiving);
       }
     };
 
@@ -113,8 +115,16 @@ const ThreadListItem: FC = () => {
     const observer = new MutationObserver(updateMetadata);
     observer.observe(rootRef.current, { attributes: true, subtree: true });
 
-    return () => observer.disconnect();
+    // Listen for metadata updates from runtime
+    window.addEventListener('threadMetadataUpdated', updateMetadata);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('threadMetadataUpdated', updateMetadata);
+    };
   }, []);
+
+  console.log(`[ThreadListItem Render] threadId=${threadId}, isArchiving=${isArchiving}`);
 
   return (
     <motion.div
