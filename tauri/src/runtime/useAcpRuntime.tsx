@@ -440,6 +440,14 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         .map((p) => p.text)
         .join("\n\n");
       let sid = threadId;
+      // If user is typing from the Project page, always start a fresh thread
+      // so we don't append into an existing unrelated thread.
+      try {
+        const route = useUiStore.getState().route;
+        if (route?.kind === "project") {
+          sid = undefined;
+        }
+      } catch {}
       if (!sid) {
         // Create optimistic message IMMEDIATELY with temporary thread ID
         const now = Date.now();
