@@ -11,17 +11,16 @@ static START_ADVERTISING: Once = Once::new();
 
 const SERVICE_TYPE: &str = "_openagents._tcp.local.";
 const SERVICE_NAME: &str = "OpenAgents Desktop";
-const PORT: u16 = 9099;
 
 /// Start advertising the Tinyvex WebSocket server via mDNS
 ///
 /// This allows mobile devices to discover the desktop server automatically
 /// using Bonjour/mDNS service discovery.
-pub fn start_advertising() -> anyhow::Result<()> {
+pub fn start_advertising(port: u16) -> anyhow::Result<()> {
     let mut result = Ok(());
 
     START_ADVERTISING.call_once(|| {
-        match try_start_advertising() {
+        match try_start_advertising(port) {
             Ok(()) => {
                 info!("mDNS advertising started successfully");
             }
@@ -35,7 +34,7 @@ pub fn start_advertising() -> anyhow::Result<()> {
     result
 }
 
-fn try_start_advertising() -> anyhow::Result<()> {
+fn try_start_advertising(port: u16) -> anyhow::Result<()> {
     // Create mDNS daemon
     let mdns = ServiceDaemon::new()?;
 
@@ -55,7 +54,7 @@ fn try_start_advertising() -> anyhow::Result<()> {
         SERVICE_NAME,
         &hostname_local,
         (), // No specific IP addresses - use all interfaces
-        PORT,
+        port,
         None, // No TXT records needed for now
     )?;
 
@@ -65,7 +64,7 @@ fn try_start_advertising() -> anyhow::Result<()> {
     info!(
         service_type = SERVICE_TYPE,
         service_name = SERVICE_NAME,
-        port = PORT,
+        port = port,
         hostname = %hostname_local,
         "mDNS service registered"
     );

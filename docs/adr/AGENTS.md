@@ -106,10 +106,15 @@ Before you stop working on a task, always validate local builds from the command
 - TypeScript typecheck and build
   - `cd tauri`
   - `bun run build` (runs tsc + vite build)
-- **IMPORTANT: Do NOT run `bun run dev` unless the user explicitly asks you to**
+- **IMPORTANT: Do NOT run `bun run dev` or `bun tauri dev` unless the user explicitly asks you to**
   - Running dev servers in the background can cause port conflicts and make debugging difficult
   - Only run typecheck and build commands to validate your changes
   - The user will run the dev server themselves when they want to test
+- **IMPORTANT: Do NOT run `bun tauri ios dev` unless the user explicitly directs you to**
+  - iOS dev mode launches simulators and background processes that occupy ports
+  - It's intended for interactive development, not automated testing
+  - Only run it when the user specifically asks you to test on iOS simulator
+  - For validation, use `bun run build` only
 
 **Requirements:**
 - No build errors

@@ -16,6 +16,7 @@ import {
   type ServerInfo,
 } from "@/lib/mobileServerDiscovery";
 import { setWebSocketUrl } from "@/lib/tinyvexWebSocketSingleton";
+import { getDefaultTinyvexWsUrl } from "@/config/acp";
 import { ServerSelection } from "./ServerSelection";
 import { ConnectionStatus } from "./ConnectionStatus";
 
@@ -37,8 +38,15 @@ export function MobileConnectionHandler({ children }: { children: React.ReactNod
       setMobile(isMobilePlatform);
 
       if (!isMobilePlatform) {
-        // Desktop - render children immediately
-        setState({ status: "connected", server: { name: "localhost", host: "127.0.0.1", port: 9099, discoveredAt: Date.now() } });
+        // Desktop - get WebSocket URL from backend and set it
+        const wsUrl = await getDefaultTinyvexWsUrl();
+        setWebSocketUrl(wsUrl);
+
+        // Extract port from URL for display (ws://host:port/ws)
+        const portMatch = wsUrl.match(/:(\d+)\//);
+        const port = portMatch ? parseInt(portMatch[1]) : 9100;
+
+        setState({ status: "connected", server: { name: "localhost", host: "127.0.0.1", port, discoveredAt: Date.now() } });
         return;
       }
 

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tracing::info;
 
 
@@ -25,6 +26,20 @@ pub struct ThreadRow {
     pub message_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_message_ts: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProjectRow {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub starred: i64,
+    pub archived: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -109,6 +124,26 @@ impl Tinyvex {
         if !has_working_directory {
             conn.execute("ALTER TABLE threads ADD COLUMN workingDirectory TEXT", [])?;
         }
+        // projects
+        conn.execute_batch(
+            r#"
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          path TEXT NOT NULL,
+          description TEXT,
+          icon TEXT,
+          color TEXT,
+          starred INTEGER DEFAULT 0,
+          archived INTEGER DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_projects_starred ON projects(starred DESC, updatedAt DESC);
+        CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(archived);
+        CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path);
+        "#,
+        )?;
         // messages
         conn.execute_batch(
             r#"
@@ -299,6 +334,107 @@ impl Tinyvex {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn upsert_project(&self, row: &ProjectRow) -> Result<()> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            r#"
+            INSERT INTO projects (id, name, path, description, icon, color, starred, archived, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(id) DO UPDATE SET
+              name=excluded.name,
+              path=excluded.path,
+              description=excluded.description,
+              icon=excluded.icon,
+              color=excluded.color,
+              starred=excluded.starred,
+              archived=excluded.archived,
+              updatedAt=excluded.updatedAt
+            WHERE excluded.updatedAt >= projects.updatedAt
+            "#,
+            params![
+                row.id,
+                row.name,
+                row.path,
+                row.description,
+                row.icon,
+                row.color,
+                row.starred,
+                row.archived,
+                row.created_at,
+                row.updated_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_project(&self, id: &str) -> Result<Option<ProjectRow>> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, path, description, icon, color, starred, archived, createdAt, updatedAt \
+             FROM projects WHERE id = ?1",
+        )?;
+        let result = stmt.query_row([id], |r| {
+            Ok(ProjectRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                path: r.get(2)?,
+                description: r.get(3)?,
+                icon: r.get(4)?,
+                color: r.get(5)?,
+                starred: r.get(6)?,
+                archived: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
+            })
+        });
+
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn list_projects(&self) -> Result<Vec<ProjectRow>> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, path, description, icon, color, starred, archived, createdAt, updatedAt \
+             FROM projects \
+             WHERE archived = 0 \
+             ORDER BY starred DESC, updatedAt DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ProjectRow {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    path: r.get(2)?,
+                    description: r.get(3)?,
+                    icon: r.get(4)?,
+                    color: r.get(5)?,
+                    starred: r.get(6)?,
+                    archived: r.get(7)?,
+                    created_at: r.get(8)?,
+                    updated_at: r.get(9)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn delete_project(&self, id: &str) -> Result<()> {
+        let conn = Connection::open(&self.db_path)?;
+        // Soft delete by setting archived = 1
+        conn.execute(
+            "UPDATE projects SET archived = 1, updatedAt = ?1 WHERE id = ?2",
+            params![
+                SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
+                id
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn list_messages(&self, thread_id: &str, limit: i64) -> Result<Vec<MessageRow>> {

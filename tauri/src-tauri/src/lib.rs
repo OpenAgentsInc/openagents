@@ -4,6 +4,9 @@ use agent_client_protocol as acp;
 use serde::Serialize;
 use tauri::State;
 
+// WebSocket server configuration
+const TINYVEX_WS_PORT: u16 = 9100;
+
 #[cfg(target_os = "ios")]
 use tauri::webview::WebviewWindowBuilder;
 #[cfg(target_os = "ios")]
@@ -152,15 +155,39 @@ fn validate_directory(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn pick_directory(_app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn pick_directory(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
     init_tracing();
 
     #[cfg(not(target_os = "ios"))]
     {
-        // TODO: Fix folder picker API for desktop - blocking_pick_folder doesn't exist in Tauri v2
-        // For now, return None on desktop
-        info!("pick_directory not yet implemented for desktop");
-        Ok(None)
+        use tauri_plugin_dialog::DialogExt;
+        use tokio::sync::oneshot;
+
+        let (tx, rx) = oneshot::channel();
+
+        app_handle.dialog()
+            .file()
+            .set_title("Select Project Directory")
+            .pick_folder(move |folder_path| {
+                let _ = tx.send(folder_path);
+            });
+
+        // Wait for the result
+        match rx.await {
+            Ok(Some(path)) => {
+                let path_str = path.to_string();
+                info!(path=%path_str, "Directory selected");
+                Ok(Some(path_str))
+            }
+            Ok(None) => {
+                info!("Directory selection cancelled");
+                Ok(None)
+            }
+            Err(_) => {
+                error!("Failed to receive directory selection result");
+                Err("Failed to receive directory selection result".to_string())
+            }
+        }
     }
 
     #[cfg(target_os = "ios")]
@@ -231,6 +258,11 @@ async fn save_last_server(server_info: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_websocket_url() -> String {
+    format!("ws://127.0.0.1:{}/ws", TINYVEX_WS_PORT)
+}
+
 pub struct AppState {
     sessions: SessionManager,
 }
@@ -272,7 +304,8 @@ pub fn run() {
             #[cfg(target_os = "ios")]
             test_server_connection,
             get_last_server,
-            save_last_server
+            save_last_server,
+            get_websocket_url
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -297,19 +330,20 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let router = tinyvex_ws::create_router(tinyvex_state_clone);
                 // Bind to 0.0.0.0 to allow connections from local network (mobile devices)
-                let listener = tokio::net::TcpListener::bind("0.0.0.0:9099")
+                let addr = format!("0.0.0.0:{}", TINYVEX_WS_PORT);
+                let listener = tokio::net::TcpListener::bind(&addr)
                     .await
                     .expect("Failed to bind WebSocket server");
-                info!("WebSocket server listening on ws://0.0.0.0:9099/ws (accessible from local network)");
+                info!("WebSocket server listening on ws://{}:{}/ws (accessible from local network)", "0.0.0.0", TINYVEX_WS_PORT);
 
                 // Advertise service via Bonjour/mDNS for mobile discovery
                 #[cfg(not(target_os = "ios"))]
                 {
                     use crate::mdns_advertiser;
-                    if let Err(e) = mdns_advertiser::start_advertising() {
+                    if let Err(e) = mdns_advertiser::start_advertising(TINYVEX_WS_PORT) {
                         error!(?e, "Failed to start mDNS advertising");
                     } else {
-                        info!("mDNS service advertising started: _openagents._tcp.local:9099");
+                        info!("mDNS service advertising started: _openagents._tcp.local:{}", TINYVEX_WS_PORT);
                     }
                 }
 

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_TINYVEX_WS_URL } from "@/config/acp";
+import { getDefaultTinyvexWsUrl } from "@/config/acp";
 import type { TinyvexWebSocketHandle, TinyvexMessage } from "./useTinyvexWebSocket";
 
 // Global singleton WebSocket instance
@@ -19,15 +19,34 @@ let refCount = 0;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Current WebSocket URL (can be dynamically changed for mobile discovery)
-let currentWsUrl = DEFAULT_TINYVEX_WS_URL;
+let currentWsUrl: string | null = null;
+let urlInitPromise: Promise<string> | null = null;
+
+// Initialize URL from backend
+async function initializeUrl(): Promise<string> {
+  if (currentWsUrl) {
+    return currentWsUrl;
+  }
+  if (!urlInitPromise) {
+    urlInitPromise = getDefaultTinyvexWsUrl().then((url) => {
+      currentWsUrl = url;
+      console.log("[tinyvex-singleton] Initialized WebSocket URL:", url);
+      return url;
+    });
+  }
+  return urlInitPromise;
+}
 
 function notifyStateChange() {
   stateListeners.forEach((listener) => listener());
 }
 
-function connect(url?: string) {
+async function connect(url?: string) {
   if (url) {
     currentWsUrl = url;
+  } else if (!currentWsUrl) {
+    // Initialize URL from backend if not set
+    await initializeUrl();
   }
 
   if (globalSocket?.readyState === WebSocket.OPEN || globalConnecting) {
@@ -38,7 +57,7 @@ function connect(url?: string) {
   globalConnecting = true;
   notifyStateChange();
 
-  const ws = new WebSocket(currentWsUrl);
+  const ws = new WebSocket(currentWsUrl!);
 
   ws.onopen = () => {
     console.log("[tinyvex-singleton] Connected");
@@ -136,8 +155,9 @@ export function setWebSocketUrl(url: string) {
 
 /**
  * Get the current WebSocket URL
+ * Returns null if not yet initialized
  */
-export function getWebSocketUrl(): string {
+export function getWebSocketUrl(): string | null {
   return currentWsUrl;
 }
 
