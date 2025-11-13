@@ -2,12 +2,8 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 import { FolderSearchIcon } from "lucide-react";
 
-export const GlobTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const GlobTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
   const pattern = args.pattern || "unknown";
   const path = args.path;
@@ -28,6 +24,8 @@ export const GlobTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       {path && (
         <div className="px-4">

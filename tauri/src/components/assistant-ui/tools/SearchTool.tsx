@@ -2,12 +2,8 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 import { SearchIcon } from "lucide-react";
 
-export const SearchTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const SearchTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
 
   // Try to extract search context from args
@@ -34,6 +30,8 @@ export const SearchTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       {target && (
         <div className="px-4">
