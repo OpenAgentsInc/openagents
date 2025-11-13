@@ -17,6 +17,7 @@ import {
     BashTool,
     GrepTool,
     GlobTool,
+    SearchTool,
     WebFetchTool,
     WebSearchTool,
     TaskTool,
@@ -302,7 +303,7 @@ const AssistantMessage: FC = () => {
                 // Fallback for unknown tools
                 Fallback: ToolFallback,
 
-                // File operations
+                // File operations (ToolKind enum values)
                 Read: ReadTool,
                 mcp__acp__Read: ReadTool,
                 Write: WriteTool,
@@ -310,17 +311,20 @@ const AssistantMessage: FC = () => {
                 Edit: EditTool,
                 mcp__acp__Edit: EditTool,
 
-                // Shell operations
+                // Shell operations (ToolKind: Execute)
                 Bash: BashTool,
                 mcp__acp__Bash: BashTool,
+                Execute: BashTool,
 
-                // Search operations
+                // Search operations (ToolKind: Search)
+                Search: SearchTool,
                 Grep: GrepTool,
                 mcp__acp__Grep: GrepTool,
                 Glob: GlobTool,
                 mcp__acp__Glob: GlobTool,
 
-                // Web operations
+                // Web operations (ToolKind: Fetch)
+                Fetch: WebFetchTool,
                 WebFetch: WebFetchTool,
                 mcp__acp__WebFetch: WebFetchTool,
                 WebSearch: WebSearchTool,
