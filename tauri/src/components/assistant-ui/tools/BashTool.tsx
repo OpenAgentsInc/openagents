@@ -2,12 +2,8 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 import { TerminalIcon } from "lucide-react";
 
-export const BashTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const BashTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
   const command = args.command || "unknown command";
   const description = args.description;
@@ -26,6 +22,8 @@ export const BashTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       {description && (
         <div className="px-4">

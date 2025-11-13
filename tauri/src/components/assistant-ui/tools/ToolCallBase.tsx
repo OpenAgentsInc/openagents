@@ -10,6 +10,8 @@ interface ToolCallBaseProps {
   result?: unknown;
   children?: ReactNode;
   showArgs?: boolean;
+  debugData?: unknown;
+  debugLabel?: string;
 }
 
 export const ToolCallBase = ({
@@ -19,6 +21,8 @@ export const ToolCallBase = ({
   result,
   children,
   showArgs = false,
+  debugData,
+  debugLabel = "Debug",
 }: ToolCallBaseProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -35,7 +39,7 @@ export const ToolCallBase = ({
     }
   };
 
-  const hasContent = children || showArgs || result !== undefined;
+  const hasContent = children || showArgs || result !== undefined || debugData !== undefined;
 
   return (
     <div className="mb-4 flex w-full flex-col gap-3 rounded-[var(--radius-lg)] border py-1.5">
@@ -77,6 +81,16 @@ export const ToolCallBase = ({
               </pre>
             </div>
           )}
+          {debugData !== undefined && (
+            <div className="border-t border-dashed px-4 pt-2">
+              <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                {debugLabel}
+              </p>
+              <pre className="whitespace-pre-wrap text-xs">
+                {safeStringify(debugData)}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -88,5 +102,31 @@ export const parseToolArgs = (argsText: string): Record<string, any> => {
     return JSON.parse(argsText);
   } catch {
     return {};
+  }
+};
+
+export const safeStringify = (value: unknown): string => {
+  const seen = new Set<any>();
+  try {
+    return JSON.stringify(
+      value,
+      (_key, val) => {
+        if (typeof val === "function") return `[Function]`;
+        if (typeof val === "symbol") return String(val);
+        if (typeof val === "bigint") return val.toString();
+        if (val && typeof val === "object") {
+          if (seen.has(val)) return "[Circular]";
+          seen.add(val);
+        }
+        return val;
+      },
+      2,
+    );
+  } catch (e) {
+    try {
+      return String(value);
+    } catch {
+      return "[Unserializable]";
+    }
   }
 };

@@ -2,12 +2,8 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 import { EditIcon } from "lucide-react";
 
-export const EditTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const EditTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
   const filePath = args.file_path || args.path || "unknown";
   const fileName = filePath.split('/').pop() || filePath;
@@ -30,6 +26,8 @@ export const EditTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       <div className="px-4 space-y-2">
         <p className="text-xs text-muted-foreground">

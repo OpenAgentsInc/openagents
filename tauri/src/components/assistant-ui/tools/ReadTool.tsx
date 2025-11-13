@@ -1,12 +1,8 @@
 import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-runtime";
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 
-export const ReadTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const ReadTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
   const filePath = args.file_path || args.path || "unknown";
 
@@ -28,6 +24,8 @@ export const ReadTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       <div className="px-4">
         <p className="text-xs text-muted-foreground">

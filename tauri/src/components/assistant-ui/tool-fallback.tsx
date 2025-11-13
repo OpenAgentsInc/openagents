@@ -1,13 +1,11 @@
 import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-runtime";
+import { safeStringify } from "@/components/assistant-ui/tools/ToolCallBase";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-export const ToolFallback: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-}) => {
+export const ToolFallback: ToolCallMessagePartComponent = (props) => {
+  const { toolName, argsText, result } = props;
   const [isCollapsed, setIsCollapsed] = useState(true);
   return (
     <div className="aui-tool-fallback-root mb-4 flex w-full flex-col gap-3 rounded-[var(--radius-lg)] border py-1.5">
@@ -39,6 +37,14 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
               </pre>
             </div>
           )}
+          <div className="aui-tool-fallback-debug-root border-t border-dashed px-4 pt-2">
+            <p className="aui-tool-fallback-debug-header font-semibold">
+              Debug
+            </p>
+            <pre className="aui-tool-fallback-debug-content whitespace-pre-wrap text-xs">
+              {safeStringify(props)}
+            </pre>
+          </div>
         </div>
       )}
     </div>

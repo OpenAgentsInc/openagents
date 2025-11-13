@@ -2,12 +2,8 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 import { SearchIcon } from "lucide-react";
 
-export const GrepTool: ToolCallMessagePartComponent = ({
-  toolName,
-  argsText,
-  result,
-  status,
-}) => {
+export const GrepTool: ToolCallMessagePartComponent = (props) => {
+  const { argsText, result, status } = props;
   const args = parseToolArgs(argsText);
   const pattern = args.pattern || "unknown";
   const path = args.path;
@@ -30,6 +26,8 @@ export const GrepTool: ToolCallMessagePartComponent = ({
       status={status?.type}
       argsText={argsText}
       result={result}
+      debugData={props}
+      debugLabel="ToolCall"
     >
       <div className="px-4 space-y-1 text-xs">
         {path && (
