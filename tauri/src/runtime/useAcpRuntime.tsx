@@ -6,8 +6,7 @@ import { useExternalStoreRuntime } from "@/vendor/assistant-ui/external-store";
 import type { ExternalStoreAdapter, AppendMessage, AUIThreadMessageLike } from "@/vendor/assistant-ui/external-store";
 import { ExportedMessageRepository } from "@/vendor/assistant-ui/external-store";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
-import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
-import { TINYVEX_WS_URL } from "@/config/acp";
+import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton";
 import { createSession, sendPrompt, validateDirectory } from "@/lib/tauri-acp";
 import { useModelStore } from "@/lib/model-store";
 import { useWorkingDirStore } from "@/lib/working-dir-store";
@@ -227,7 +226,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [version, setVersion] = useState(0);
 
-  const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
+  const ws = useSharedTinyvexWebSocket();
 
   // Query threads list when WebSocket connects
   useEffect(() => {

@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useExternalStoreRuntime } from "@/vendor/assistant-ui/external-store";
 import type { ExternalStoreAdapter, AppendMessage, AUIThreadMessageLike } from "@/vendor/assistant-ui/external-store";
 import { ExportedMessageRepository } from "@/vendor/assistant-ui/external-store";
-import { useTinyvexWebSocket } from "@/lib/useTinyvexWebSocket";
-import { TINYVEX_WS_URL } from "@/config/acp";
+import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton";
 import { createOllama } from "ollama-ai-provider-v2";
 import { streamText } from "ai";
 import { OLLAMA_BASE_URL, OLLAMA_MODEL } from "@/config/ollama";
@@ -92,7 +91,7 @@ export function useOllamaRuntime(options?: { initialThreadId?: string }) {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [version, setVersion] = useState(0);
 
-  const ws = useTinyvexWebSocket({ url: TINYVEX_WS_URL, autoConnect: true });
+  const ws = useSharedTinyvexWebSocket();
 
   // Query threads list when WebSocket connects
   useEffect(() => {
