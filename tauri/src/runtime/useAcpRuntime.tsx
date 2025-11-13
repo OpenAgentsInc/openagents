@@ -446,6 +446,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             threadId: sid,
             updates: { projectId }
           });
+          // Ensure we leave the project page and show the chat
+          useUiStore.getState().clearProjectView();
         }
 
         // Subscribe to the new thread

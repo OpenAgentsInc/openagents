@@ -2,8 +2,7 @@ import type { FC, FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { useUiStore } from "@/lib/ui-store";
 import { useProjectStore } from "@/lib/project-store";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ThreadComposer } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpenIcon } from "lucide-react";
 import { useAssistantRuntime, useAssistantApi } from "@openagentsinc/assistant-ui-runtime";
@@ -19,23 +18,10 @@ export const ProjectPanel: FC = () => {
   const projectId = route.kind === "project" ? route.projectId : null;
   const project = projectId ? getProject(projectId) : undefined;
 
-  const [prompt, setPrompt] = useState("");
-
-  const startChat = async (e?: FormEvent) => {
-    if (e) e.preventDefault();
-    if (!project) return;
-    const text = prompt.trim();
-    // Scope to this project
-    setActiveProject(project.id);
-    // Create a fresh conversation and send the first message via the standard composer logic
-    runtime.switchToNewThread?.();
-    if (text.length > 0) {
-      // Append directly to the main thread; onNew handler will associate the project and create the session
-      api.thread().append({ role: "user", content: [{ type: "text", text }] });
-    }
-    clearProjectView();
-    setPrompt("");
-  };
+  // When the composer submits from the project page, we want the runtime to
+  // associate the new thread with this project. Clicking a project already
+  // sets activeProject, so the runtime's onNew handler will attach projectId
+  // and use the project's path as cwd. No additional logic needed here.
 
   if (!project) {
     return (
@@ -75,17 +61,9 @@ export const ProjectPanel: FC = () => {
         </div>
       </div>
 
-      <form onSubmit={startChat} className="border-t border-zinc-800 p-4">
-        <div className="flex items-center gap-2">
-          <Input
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={`Start a chat in ${project.name}...`}
-            className="font-normal"
-          />
-          <Button type="submit" disabled={prompt.trim().length === 0}>Start</Button>
-        </div>
-      </form>
+      <div className="border-t border-zinc-800">
+        <ThreadComposer />
+      </div>
     </div>
   );
 };
