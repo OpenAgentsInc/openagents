@@ -197,6 +197,12 @@ export function useOllamaRuntime(options?: { initialThreadId?: string }) {
         // Create new thread for Ollama with source="ollama"
         sid = await invoke<string>("create_ollama_thread", { title: text.substring(0, 50) });
         setThreadId(sid);
+
+        // Subscribe to the new thread immediately
+        ws.send({ control: "tvx.subscribe", stream: "messages", threadId: sid });
+        ws.send({ control: "tvx.query", name: "messages.list", args: { threadId: sid, limit: 200 } });
+        // Refresh threads list to include the new thread
+        ws.send({ control: "tvx.query", name: "threads.list", args: { limit: 10 } });
       }
 
       // Optimistically append the user's message to the local mirror
