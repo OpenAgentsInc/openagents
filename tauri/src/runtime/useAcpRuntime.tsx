@@ -221,6 +221,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
   const planEventsRef = useRef<number[]>([]);
   const stateEventsRef = useRef<number[]>([]);
   const threadsRef = useRef<TinyvexThreadRow[]>([]);
+  const archivingThreadsRef = useRef<Set<string>>(new Set());
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [version, setVersion] = useState(0);
 
@@ -299,7 +300,13 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         threadsRef.current = (msg.rows as TinyvexThreadRow[]) ?? [];
         // Expose thread metadata globally for thread list component
         (window as any).__threadMetadata = new Map(
-          threadsRef.current.map((row) => [row.id, { source: row.source }])
+          threadsRef.current.map((row) => [
+            row.id,
+            {
+              source: row.source,
+              isArchiving: archivingThreadsRef.current.has(row.id)
+            }
+          ])
         );
         setIsLoadingThreads(false);
         setVersion((v) => v + 1);
@@ -484,6 +491,20 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           });
         },
         onArchive: async (threadIdToArchive: string) => {
+          // Mark thread as being archived immediately (optimistic UI)
+          archivingThreadsRef.current.add(threadIdToArchive);
+          // Update metadata to include archiving state
+          (window as any).__threadMetadata = new Map(
+            threadsRef.current.map((row) => [
+              row.id,
+              {
+                source: row.source,
+                isArchiving: archivingThreadsRef.current.has(row.id)
+              }
+            ])
+          );
+          setVersion((v) => v + 1);
+
           // If archiving the currently active thread, switch to new thread
           if (threadIdToArchive === threadId) {
             // Clear current thread and reset state for new conversation
@@ -494,22 +515,25 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             toolCallsRef.current = [];
             planEventsRef.current = [];
             stateEventsRef.current = [];
-            setVersion((v) => v + 1);
           }
 
-          // Archive thread via WebSocket control message
-          ws.send({
-            control: "tvx.update_thread",
-            threadId: threadIdToArchive,
-            updates: { archived: true },
-          });
-          // Delay re-query to allow exit animation to complete
+          // Delay the actual archive request to allow animation
           setTimeout(() => {
+            // Archive thread via WebSocket control message
             ws.send({
-              control: "tvx.query",
-              name: "threads.list",
-              args: { limit: 10 },
+              control: "tvx.update_thread",
+              threadId: threadIdToArchive,
+              updates: { archived: true },
             });
+            // Query threads list to get updated data
+            setTimeout(() => {
+              archivingThreadsRef.current.delete(threadIdToArchive);
+              ws.send({
+                control: "tvx.query",
+                name: "threads.list",
+                args: { limit: 10 },
+              });
+            }, 50);
           }, 250);
         },
         onUnarchive: async (threadId: string) => {

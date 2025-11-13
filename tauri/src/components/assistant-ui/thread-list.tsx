@@ -79,6 +79,7 @@ const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [threadSource, setThreadSource] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Get thread metadata from window global (set by useAcpRuntime)
@@ -95,7 +96,7 @@ const ThreadListItem: FC = () => {
     };
 
     const updateMetadata = () => {
-      const metadata = (window as any).__threadMetadata as Map<string, { source?: string }> | undefined;
+      const metadata = (window as any).__threadMetadata as Map<string, { source?: string; isArchiving?: boolean }> | undefined;
       if (!metadata || !rootRef.current) return;
 
       const tid = getThreadIdFromElement(rootRef.current);
@@ -103,6 +104,7 @@ const ThreadListItem: FC = () => {
         setThreadId(tid);
         const meta = metadata.get(tid);
         setThreadSource(meta?.source || null);
+        setIsArchiving(meta?.isArchiving || false);
       }
     };
 
@@ -128,7 +130,7 @@ const ThreadListItem: FC = () => {
     >
       <ThreadListItemPrimitive.Root
         ref={rootRef as any}
-        className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
+        className={`aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted ${isArchiving ? 'bg-red-500/20' : ''}`}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
