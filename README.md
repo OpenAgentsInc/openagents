@@ -1,5 +1,7 @@
 # OpenAgents
 
+[![Storybook (GitHub Pages)](https://github.com/OpenAgentsInc/openagents/actions/workflows/storybook-pages.yml/badge.svg)](https://github.com/OpenAgentsInc/openagents/actions/workflows/storybook-pages.yml)
+
 A native iOS and macOS app for managing your coding agents on the go.
 
 <img width="1000" height="470" alt="OpenAgents" src="https://github.com/user-attachments/assets/0569c202-e7d8-43a7-b6ad-829fe761d31b" />
