@@ -86,9 +86,19 @@ impl Tinyvex {
           updatedAt INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updatedAt DESC);
-        CREATE INDEX IF NOT EXISTS idx_threads_archived ON threads(archived);
         "#,
         )?;
+        // Migration: add archived column if it doesn't exist
+        let has_archived: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('threads') WHERE name='archived'",
+            [],
+            |row| row.get::<_, i64>(0).map(|count| count > 0),
+        )?;
+        if !has_archived {
+            conn.execute("ALTER TABLE threads ADD COLUMN archived INTEGER DEFAULT 0", [])?;
+        }
+        // Create index after ensuring column exists
+        conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_threads_archived ON threads(archived);")?;
         // messages
         conn.execute_batch(
             r#"
