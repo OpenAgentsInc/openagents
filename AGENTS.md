@@ -252,6 +252,44 @@ Currently no automated tests configured. Test manually by:
 - **No history rewriting**: No rebases, amended commits, or force pushes without explicit permission
 - **Respect local changes**: Don't revert or restore files you didn't modify
 
+## Agent Runbook: iOS (Tauri) Archives
+
+When asked to “archive for iOS”, “upload to TestFlight”, or similar, follow this.
+
+- Read docs first
+  - `docs/ios-deployment/README.md`
+  - `docs/ios-deployment/tauri-ios-build.md`
+
+- Bump build number
+  - Increment `CURRENT_PROJECT_VERSION` in:
+    - `tauri/src-tauri/gen/apple/project.yml`
+    - `tauri/src-tauri/gen/apple/openagents.xcodeproj/project.pbxproj` (Debug + Release target configs)
+  - Keep `MARKETING_VERSION` as-is unless told otherwise.
+
+- Build and archive
+  - `cd tauri && bun run build`
+  - `cd src-tauri && cargo tauri ios build`
+  - Archive via Xcode: `cargo tauri ios build -- --open` → Product > Archive
+  - Or CLI: `xcodebuild -scheme openagents_iOS -project tauri/src-tauri/gen/apple/openagents.xcodeproj -configuration Release -destination "generic/platform=iOS" -archivePath <out>.xcarchive archive`
+
+- Validate archive
+  - dSYM must exist and match app UUID:
+    - `dwarfdump --uuid <archive>/Products/Applications/OpenAgents.app/OpenAgents`
+    - `dwarfdump --uuid <archive>/dSYMs/OpenAgents.app.dSYM`
+  - Version/Build in Info.plist should be current.
+  - No dev server overlay: iOS window is created to `http://localhost:1420`.
+
+- Compliance and icons (repo-enforced)
+  - `ITSAppUsesNonExemptEncryption=false`
+  - AppIcon images are opaque (no alpha)
+  - ATS allows `http://localhost`
+
+- Upload
+  - Prefer Xcode Organizer → Distribute App → App Store Connect → Upload
+
+- Commit and push
+  - Commit version bump and any changes; push to `main`.
+
 ## Architecture Decision Records (ADRs)
 
 ADRs are available in `docs/adr/` but most are for the deprecated Swift v0.3 implementation. They may be useful for historical context but do not apply to the current Tauri implementation.
