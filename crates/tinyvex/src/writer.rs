@@ -115,6 +115,7 @@ impl Writer {
             resume_id: Some(thread_id.to_string()),
             rollout_path: None,
             source: Some(provider.to_string()),
+            archived: 0,
             created_at: t,
             updated_at: t,
             message_count: None,
