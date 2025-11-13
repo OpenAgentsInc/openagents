@@ -1,8 +1,10 @@
-import { useLocalRuntime } from '@assistant-ui/react';
-import { createOllamaAdapter } from './ollama-adapter';
+import type { AssistantRuntime } from '@openagentsinc/assistant-ui-runtime';
 
-export function useAcpRuntime() {
-  const adapter = createOllamaAdapter();
-  return useLocalRuntime(adapter);
+// Mock ACP runtime for testing/Storybook
+export function useAcpRuntime(): AssistantRuntime {
+  // Return a minimal mock runtime for development
+  return {
+    // Add minimal runtime implementation here if needed for Storybook
+  } as AssistantRuntime;
 }
 
