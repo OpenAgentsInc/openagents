@@ -6,7 +6,7 @@ import {
   useAssistantState,
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, LayoutGroup } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -51,9 +51,9 @@ const ThreadListItems: FC = () => {
   }
 
   return (
-    <AnimatePresence mode="popLayout">
+    <LayoutGroup>
       <ThreadListPrimitive.Items components={{ ThreadListItem }} />
-    </AnimatePresence>
+    </LayoutGroup>
   );
 };
 
@@ -78,6 +78,7 @@ const ThreadListSkeleton: FC = () => {
 const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [threadSource, setThreadSource] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Get thread metadata from window global (set by useAcpRuntime)
@@ -93,20 +94,21 @@ const ThreadListItem: FC = () => {
       return threadId;
     };
 
-    const updateSource = () => {
+    const updateMetadata = () => {
       const metadata = (window as any).__threadMetadata as Map<string, { source?: string }> | undefined;
       if (!metadata || !rootRef.current) return;
 
-      const threadId = getThreadIdFromElement(rootRef.current);
-      if (threadId) {
-        const meta = metadata.get(threadId);
+      const tid = getThreadIdFromElement(rootRef.current);
+      if (tid) {
+        setThreadId(tid);
+        const meta = metadata.get(tid);
         setThreadSource(meta?.source || null);
       }
     };
 
     // Try immediately and then watch for changes
-    updateSource();
-    const observer = new MutationObserver(updateSource);
+    updateMetadata();
+    const observer = new MutationObserver(updateMetadata);
     observer.observe(rootRef.current, { attributes: true, subtree: true });
 
     return () => observer.disconnect();
@@ -114,11 +116,16 @@ const ThreadListItem: FC = () => {
 
   return (
     <motion.div
+      layoutId={threadId || undefined}
       layout
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20, height: 0 }}
-      transition={{ duration: 0.2 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{
+        layout: { duration: 0.3, ease: "easeInOut" },
+        opacity: { duration: 0.2 },
+        x: { duration: 0.2 }
+      }}
     >
       <ThreadListItemPrimitive.Root
         ref={rootRef as any}
