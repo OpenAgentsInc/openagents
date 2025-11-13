@@ -199,6 +199,22 @@ preBuildScripts:
   - script: /Users/USERNAME/.bun/bin/bun tauri ios xcode-script ...
 ```
 
+### TestFlight shows "Failed to request http://localhost:1420" (dev server)
+
+Cause: The iOS build attempted to reach the frontend dev server (`devUrl`) which is not available in TestFlight.
+
+Fix: We now serve the built frontend locally on iOS using `tauri-plugin-localhost` bound to port 1420, matching the dev URL.
+
+Implemented changes:
+- Added `tauri-plugin-localhost` dependency and initialize it on iOS in `tauri/src-tauri/src/lib.rs` with port `1420`.
+- Added ATS exceptions for `localhost` and `127.0.0.1` in `tauri/src-tauri/gen/apple/openagents_iOS/Info.plist`.
+
+Build steps for release/TestFlight:
+1. `cd tauri && bun run build`
+2. `bun tauri ios build`
+3. `bun tauri ios build --open` then Product > Archive
+4. Upload via Xcode Organizer to App Store Connect
+
 ### TypeScript errors blocking build
 
 **Cause**: Pre-existing TypeScript errors in codebase.
