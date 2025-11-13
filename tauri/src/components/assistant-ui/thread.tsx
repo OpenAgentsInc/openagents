@@ -11,6 +11,17 @@ import {
 import { MarkdownText } from "@/components/assistant-ui/markdown-text"
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback"
 import {
+    ReadTool,
+    WriteTool,
+    EditTool,
+    BashTool,
+    GrepTool,
+    GlobTool,
+    WebFetchTool,
+    WebSearchTool,
+    TaskTool,
+} from "@/components/assistant-ui/tools"
+import {
     TooltipIconButton
 } from "@/components/assistant-ui/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
@@ -287,7 +298,38 @@ const AssistantMessage: FC = () => {
             components={{
               Text: MarkdownText,
               Reasoning: MarkdownText,
-              tools: { Fallback: ToolFallback },
+              tools: {
+                // Fallback for unknown tools
+                Fallback: ToolFallback,
+
+                // File operations
+                Read: ReadTool,
+                mcp__acp__Read: ReadTool,
+                Write: WriteTool,
+                mcp__acp__Write: WriteTool,
+                Edit: EditTool,
+                mcp__acp__Edit: EditTool,
+
+                // Shell operations
+                Bash: BashTool,
+                mcp__acp__Bash: BashTool,
+
+                // Search operations
+                Grep: GrepTool,
+                mcp__acp__Grep: GrepTool,
+                Glob: GlobTool,
+                mcp__acp__Glob: GlobTool,
+
+                // Web operations
+                WebFetch: WebFetchTool,
+                mcp__acp__WebFetch: WebFetchTool,
+                WebSearch: WebSearchTool,
+                mcp__acp__WebSearch: WebSearchTool,
+
+                // Task management
+                Task: TaskTool,
+                mcp__acp__Task: TaskTool,
+              },
             }}
           />
           <MessageError />
