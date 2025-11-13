@@ -54,7 +54,7 @@ targets:
         NSBonjourServices:
           - _openagents._tcp
         CFBundleShortVersionString: 0.3.0
-        CFBundleVersion: "100"
+        CFBundleVersion: "101"
         LSApplicationCategoryType: public.app-category.developer-tools
     entitlements:
       path: openagents_iOS/openagents_iOS.entitlements
