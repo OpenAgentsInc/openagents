@@ -46,6 +46,10 @@ tokio-tungstenite = "0.26"
 tower = "0.5"
 hyper = "1"
 
+# Service discovery (Bonjour/mDNS)
+mdns-sd = "0.11"
+hostname = "0.4"
+
 # Database
 rusqlite = { version = "0.36", features = ["bundled", "column_decltype"] }
 

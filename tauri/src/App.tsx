@@ -4,6 +4,7 @@ import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar";
 import { useDarkModeRoot } from "@/lib/useDarkMode";
 import { MyRuntimeProvider } from "@/runtime/MyRuntimeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { MobileConnectionHandler } from "@/components/mobile/MobileConnectionHandler";
 import { useWorkingDirStore } from "@/lib/working-dir-store";
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -26,11 +27,13 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <MyRuntimeProvider>
-        <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
-          <AssistantSidebar />
-        </div>
-      </MyRuntimeProvider>
+      <MobileConnectionHandler>
+        <MyRuntimeProvider>
+          <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
+            <AssistantSidebar />
+          </div>
+        </MyRuntimeProvider>
+      </MobileConnectionHandler>
     </ErrorBoundary>
   );
 }

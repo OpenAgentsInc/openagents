@@ -10,6 +10,10 @@ mod codex_exec;
 mod tinyvex_state;
 mod tinyvex_controls;
 mod tinyvex_ws;
+#[cfg(not(target_os = "ios"))]
+mod mdns_advertiser;
+#[cfg(target_os = "ios")]
+mod discovery;
 use std::sync::Once;
 use once_cell::sync::OnceCell;
 use tracing::{error, info};
@@ -156,6 +160,66 @@ async fn pick_directory(app_handle: tauri::AppHandle) -> Result<Option<String>, 
     Ok(result)
 }
 
+// Mobile discovery commands
+
+#[tauri::command]
+fn get_platform() -> String {
+    #[cfg(target_os = "ios")]
+    return "ios".to_string();
+
+    #[cfg(target_os = "android")]
+    return "android".to_string();
+
+    #[cfg(target_os = "macos")]
+    return "macos".to_string();
+
+    #[cfg(target_os = "windows")]
+    return "windows".to_string();
+
+    #[cfg(target_os = "linux")]
+    return "linux".to_string();
+
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_os = "macos", target_os = "windows", target_os = "linux")))]
+    return "unknown".to_string();
+}
+
+#[cfg(target_os = "ios")]
+#[tauri::command]
+async fn discover_servers() -> Result<Vec<discovery::ServerInfo>, String> {
+    init_tracing();
+    info!("discover_servers called");
+    discovery::discover_servers()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "ios")]
+#[tauri::command]
+async fn test_server_connection(host: String, port: u16) -> Result<bool, String> {
+    init_tracing();
+    info!(host = %host, port = port, "test_server_connection called");
+    discovery::test_connection(&host, port)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_last_server() -> Result<Option<String>, String> {
+    init_tracing();
+    // Use tauri's storage to retrieve last connected server
+    // For now, return None - will implement persistence later
+    Ok(None)
+}
+
+#[tauri::command]
+async fn save_last_server(server_info: String) -> Result<(), String> {
+    init_tracing();
+    info!(server_info = %server_info, "save_last_server called");
+    // Use tauri's storage to save last connected server
+    // For now, just log - will implement persistence later
+    Ok(())
+}
+
 pub struct AppState {
     sessions: SessionManager,
 }
@@ -190,7 +254,14 @@ pub fn run() {
             get_session,
             resolve_acp_agent_path,
             validate_directory,
-            pick_directory
+            pick_directory,
+            get_platform,
+            #[cfg(target_os = "ios")]
+            discover_servers,
+            #[cfg(target_os = "ios")]
+            test_server_connection,
+            get_last_server,
+            save_last_server
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -205,10 +276,23 @@ pub fn run() {
             let tinyvex_state_clone = tinyvex_state_for_setup.clone();
             tauri::async_runtime::spawn(async move {
                 let router = tinyvex_ws::create_router(tinyvex_state_clone);
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:9099")
+                // Bind to 0.0.0.0 to allow connections from local network (mobile devices)
+                let listener = tokio::net::TcpListener::bind("0.0.0.0:9099")
                     .await
                     .expect("Failed to bind WebSocket server");
-                info!("WebSocket server listening on ws://127.0.0.1:9099/ws");
+                info!("WebSocket server listening on ws://0.0.0.0:9099/ws (accessible from local network)");
+
+                // Advertise service via Bonjour/mDNS for mobile discovery
+                #[cfg(not(target_os = "ios"))]
+                {
+                    use crate::mdns_advertiser;
+                    if let Err(e) = mdns_advertiser::start_advertising() {
+                        error!(?e, "Failed to start mDNS advertising");
+                    } else {
+                        info!("mDNS service advertising started: _openagents._tcp.local:9099");
+                    }
+                }
+
                 axum::serve(listener, router)
                     .await
                     .expect("WebSocket server failed");
