@@ -111,7 +111,6 @@ Agent communication powered by ACP (Agent Communication Protocol):
 - **Bun** (JavaScript package manager - required)
 - **Node.js 18+** (for Tauri and Vite)
 - **Rust** (for Tauri build - will be installed automatically if missing)
-- **Ollama** (for local LLM inference)
 
 ### Setting Up
 
@@ -122,16 +121,6 @@ curl -fsSL https://bun.sh/install | bash
 # Clone and setup
 cd tauri
 bun install              # Install all dependencies
-```
-
-### Running Ollama
-
-```bash
-# Start Ollama server (required for chat)
-OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" ollama serve
-
-# In another terminal, pull the model if needed
-ollama pull glm-4.6:cloud
 ```
 
 ### Building and Running
@@ -168,7 +157,7 @@ Always run type checking before committing to catch TypeScript errors early.
 
 Currently no automated tests configured. Test manually by:
 1. Starting the dev server (`bun run dev`)
-2. Testing chat functionality with Ollama
+2. Testing chat functionality with ACP agents (Claude Code or Codex)
 3. Testing tool execution (e.g., calculator tool)
 4. Verifying ThreadList and conversation history
 
@@ -219,7 +208,6 @@ Currently no automated tests configured. Test manually by:
 1. **Build succeeds**: Run `bun run build` to ensure TypeScript compiles
 2. **No type errors**: Fix all TypeScript errors before committing
 3. **Test manually**: Verify changes work in development mode
-4. **Ollama running**: Ensure Ollama is running if testing chat functionality
 
 ### Build Breakage Policy
 
@@ -287,21 +275,12 @@ React library specialized for AI chat interfaces.
 - **Components**: Thread, ThreadList, AssistantSidebar
 - **Hooks**: useLocalRuntime, useAssistantTool
 - **Tools**: makeAssistantTool for client-side tool definitions
-- **Adapters**: Custom ChatModelAdapter for Ollama integration
-
-### Ollama
-
-Local LLM inference server.
-
-- **Model**: glm-4.6:cloud (other models can be used)
-- **API**: REST API compatible with OpenAI format
-- **Integration**: ollama-ai-provider-v2 for Vercel AI SDK compatibility
-- **Performance**: Optimized with OLLAMA_FLASH_ATTENTION and q8_0 quantization
+- **Adapters**: Custom runtime adapters for ACP protocol
 
 ## Security & Privacy
 
 - **No secrets in code**: Use environment variables for API keys and sensitive data
-- **Local-first**: All LLM inference runs locally via Ollama
+- **ACP Protocol**: Secure agent communication via standardized protocol
 - **No telemetry**: No analytics or tracking by default
 - **Tool safety**: Tools run in browser context with standard web security model
 
@@ -343,13 +322,6 @@ export const MyTool = makeAssistantTool({
 3. Follow React hooks conventions
 4. Import and use in parent components
 5. Test in development mode
-
-### Modifying Ollama Configuration
-
-1. Update model in `App.tsx`: `ollama("model-name")`
-2. Ensure model is pulled: `ollama pull model-name`
-3. Adjust Ollama server flags in run command if needed
-4. Test chat functionality after changes
 
 ### Styling Components
 

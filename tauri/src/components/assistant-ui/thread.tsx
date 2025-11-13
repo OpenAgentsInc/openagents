@@ -310,9 +310,6 @@ const AssistantActionBar: FC = () => {
     return parts.some((p: any) => p?.type === "reasoning" || p?.type === "tool-call");
   }, [message]);
 
-  // In Codex (ACP) chats, show only Copy (no Replay)
-  const selectedModel = useModelStore((s: any) => s.selected);
-
   if (hasReasoningOrTool) return null;
 
   return (
