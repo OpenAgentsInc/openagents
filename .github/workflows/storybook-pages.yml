@@ -3,9 +3,6 @@ name: Storybook (GitHub Pages)
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'tauri/**'
-      - '.github/workflows/storybook-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -57,4 +54,5 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
+        with:
+          cname: storybook.openagents.com
