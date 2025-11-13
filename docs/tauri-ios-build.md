@@ -1,6 +1,8 @@
-# Tauri iOS Build & App Store Submission Guide
+This document has moved.
 
-This guide covers building the OpenAgents iOS app using Tauri and submitting it to App Store Connect.
+See the new iOS deployment docs:
+- docs/ios-deployment/README.md
+- docs/ios-deployment/tauri-ios-build.md
 
 ## Prerequisites
 
