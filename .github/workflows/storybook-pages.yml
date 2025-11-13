@@ -24,6 +24,11 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -37,7 +42,12 @@ jobs:
         working-directory: tauri
         env:
           STORYBOOK_DISABLE_TELEMETRY: '1'
-        run: bun run build-storybook -- --output-dir storybook-static
+          CI: '1'
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: |
+          bun --version
+          node --version
+          bun run build-storybook -- --output-dir storybook-static --loglevel debug
 
       - name: Add CNAME file
         working-directory: tauri
