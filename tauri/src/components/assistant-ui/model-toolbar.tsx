@@ -1,6 +1,7 @@
 import { useModelStore } from "@/lib/model-store";
 import type { ModelKind } from "@/lib/model-store";
 import { useWorkingDirStore } from "@/lib/working-dir-store";
+import { useProjectStore } from "@/lib/project-store";
 import { pickDirectory, validateDirectory } from "@/lib/tauri-acp";
 import type { FC } from "react";
 import { useState, useEffect } from "react";
@@ -13,26 +14,46 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FolderIcon, AlertTriangleIcon } from "lucide-react";
+import { FolderIcon, AlertTriangleIcon, FolderOpenIcon } from "lucide-react";
+import { useAssistantState } from "@openagentsinc/assistant-ui-runtime";
+import { useUiStore } from "@/lib/ui-store";
 
 // Toolbar that lives to the right of the sidebar, at the very top of the chat area
 // (separate from the draggable window header).
 export const ModelToolbar: FC = () => {
   const model = useModelStore((s) => s.selected);
   const setModel = useModelStore((s) => s.setSelected);
-  const workingDir = useWorkingDirStore((s) => s.defaultCwd);
+  const currentThreadId = useAssistantState((s) => s.threads?.mainThreadId);
+  const route = useUiStore((s) => s.route);
+  // Subscribe to the derived working directory so changes re-render
+  const perThreadWorkingDir = useWorkingDirStore((s) => s.getThreadCwd(currentThreadId));
+  const defaultCwd = useWorkingDirStore((s) => s.defaultCwd);
   const warning = useWorkingDirStore((s) => s.warning);
+  const setThreadCwd = useWorkingDirStore((s) => s.setThreadCwd);
   const setDefaultCwd = useWorkingDirStore((s) => s.setDefaultCwd);
   const clearWarning = useWorkingDirStore((s) => s.clearWarning);
+  const activeProject = useProjectStore((s) => s.getActiveProject());
+
+  // Choose display context: project panel overrides everything; otherwise thread cwd; otherwise default
+  const isProjectPanel = route.kind === "project" && !!activeProject;
+  const workingDir = isProjectPanel
+    ? activeProject!.path
+    : currentThreadId
+      ? perThreadWorkingDir
+      : activeProject
+        ? activeProject.path
+        : defaultCwd;
 
   const [localWorkingDir, setLocalWorkingDir] = useState(workingDir);
   const [isValidating, setIsValidating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
-    setLocalWorkingDir(workingDir);
-  }, [workingDir]);
+    // Do not clobber typed text while editing
+    if (!isEditing) setLocalWorkingDir(workingDir);
+  }, [workingDir, isEditing]);
 
   const handleModelChange = (v: string) => {
     setModel(v as ModelKind);
@@ -42,15 +63,23 @@ export const ModelToolbar: FC = () => {
     }, 80);
   };
 
-  const handleWorkingDirChange = async (value: string) => {
+  const handleWorkingDirChange = (value: string) => {
+    // Only update local state while typing; commit on blur/enter
     setLocalWorkingDir(value);
+  };
 
-    // Validate and update if valid
+  const commitWorkingDir = async () => {
+    const next = localWorkingDir;
+    if (!next || next === workingDir) return;
     setIsValidating(true);
     try {
-      const isValid = await validateDirectory(value);
+      const isValid = await validateDirectory(next);
       if (isValid) {
-        setDefaultCwd(value);
+        if (currentThreadId) {
+          setThreadCwd(currentThreadId, next);
+        } else {
+          setDefaultCwd(next);
+        }
         clearWarning();
       }
     } finally {
@@ -62,7 +91,13 @@ export const ModelToolbar: FC = () => {
     const selected = await pickDirectory();
     if (selected) {
       setLocalWorkingDir(selected);
-      setDefaultCwd(selected);
+      // If we have a current thread, set thread-specific cwd
+      if (currentThreadId) {
+        setThreadCwd(currentThreadId, selected);
+      } else {
+        // Otherwise set default
+        setDefaultCwd(selected);
+      }
       clearWarning();
     }
   };
@@ -91,6 +126,25 @@ export const ModelToolbar: FC = () => {
           </SelectContent>
         </Select>
 
+        {activeProject && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                  <FolderOpenIcon className="h-3 w-3" />
+                  {activeProject.name}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs font-mono">{activeProject.path}</p>
+                {activeProject.description && (
+                  <p className="text-xs text-muted-foreground mt-1">{activeProject.description}</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -100,10 +154,17 @@ export const ModelToolbar: FC = () => {
                   onChange={(e) => handleWorkingDirChange(e.target.value)}
                   placeholder="Working directory..."
                   className="h-7 text-xs font-mono w-auto"
-                  size={Math.max(1, shownValue.length || 0)}
                   onFocus={() => setIsEditing(true)}
-                  onBlur={() => setIsEditing(false)}
-                  disabled={isValidating}
+                  onBlur={() => {
+                    void commitWorkingDir();
+                    setIsEditing(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  disabled={isProjectPanel}
                 />
                 <Button
                   size="sm"

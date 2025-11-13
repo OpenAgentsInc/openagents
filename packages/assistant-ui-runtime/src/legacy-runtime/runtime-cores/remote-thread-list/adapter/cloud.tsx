@@ -78,7 +78,7 @@ export const useCloudThreadListAdapter = (
     list: async () => {
       const { threads } = await cloud.threads.list();
       return {
-        threads: threads.map((t) => ({
+        threads: threads.map((t: any) => ({
           status: t.is_archived ? "archived" : "regular",
           remoteId: t.id,
           title: t.title,

@@ -33,12 +33,12 @@ export const AssistantModalPrimitiveContent = forwardRef<
     }: ScopedProps<AssistantModalPrimitiveContent.Props>,
     forwardedRef,
   ) => {
-    const scope = usePopoverScope(__scopeAssistantModal);
+    const scope = usePopoverScope(__scopeAssistantModal as any);
 
     return (
-      <PopoverPrimitive.Portal {...scope} {...portalProps}>
+      <PopoverPrimitive.Portal {...(scope as any)} {...portalProps}>
         <PopoverPrimitive.Content
-          {...scope}
+          {...(scope as any)}
           {...props}
           ref={forwardedRef}
           side={side ?? "top"}

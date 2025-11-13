@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import {
   Folder,
   FolderOpen,
@@ -6,6 +7,7 @@ import {
   Star,
   Trash2,
   ChevronDown,
+  Plus,
   type LucideIcon,
 } from "lucide-react"
 
@@ -30,33 +32,61 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { useProjectStore } from "@/lib/project-store"
+import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton"
+import { listProjects, updateProject, deleteProject } from "@/lib/tauri-projects"
+import type { TinyvexMessage } from "@/lib/useTinyvexWebSocket"
+import { ProjectDialog } from "@/components/project-dialog"
+import { useAssistantRuntime } from "@openagentsinc/assistant-ui-runtime"
+import { useUiStore } from "@/lib/ui-store"
 
-export function NavProjectsAssistant({
-  projects,
-}: {
-  projects?: {
-    name: string
-    icon: LucideIcon
-  }[]
-}) {
+// Map icon names to Lucide icons
+function getIconComponent(iconName?: string | null): LucideIcon {
+  if (iconName === "FolderOpen") return FolderOpen
+  return Folder // default
+}
+
+export function NavProjectsAssistant() {
   const { isMobile } = useSidebar()
+  const { getSortedProjects, setProjects, upsertProject, removeProject, setActiveProject } = useProjectStore()
+  const ws = useSharedTinyvexWebSocket()
+  const runtime = useAssistantRuntime()
+  const setProjectView = useUiStore((s) => s.setProjectView)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  const defaultProjects = [
-    {
-      name: "OpenAgents Desktop",
-      icon: FolderOpen,
-    },
-    {
-      name: "AI Research Notes",
-      icon: Folder,
-    },
-    {
-      name: "Code Examples",
-      icon: Folder,
-    },
-  ]
+  // Load projects on mount
+  useEffect(() => {
+    if (ws.connected) {
+      listProjects(ws)
+    }
+  }, [ws.connected])
 
-  const projectList = projects || defaultProjects
+  // Subscribe to project updates
+  useEffect(() => {
+    if (!ws.subscribe) return
+
+    const unsubscribe = ws.subscribe((msg: TinyvexMessage) => {
+      if (msg.type === "tinyvex.query_result" && msg.name === "projects.list") {
+        setProjects(msg.rows || [])
+      } else if (msg.type === "tinyvex.update" && msg.stream === "projects") {
+        if (msg.row) {
+          upsertProject(msg.row)
+        } else if (msg.archived && msg.projectId) {
+          removeProject(msg.projectId)
+        }
+      }
+    })
+
+    return unsubscribe
+  }, [ws.subscribe, setProjects, upsertProject, removeProject])
+
+  const projectList = getSortedProjects()
+
+  const handleProjectClick = (project: typeof projectList[number]) => {
+    // Set as active project and show project panel
+    setActiveProject(project.id)
+    setProjectView(project.id)
+  }
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -71,54 +101,81 @@ export function NavProjectsAssistant({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarMenu>
-          {projectList.map((item) => (
-            <SidebarMenuItem key={item.name}>
-              <SidebarMenuButton>
-                <item.icon />
-                <span>{item.name}</span>
-              </SidebarMenuButton>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <SidebarMenuAction showOnHover>
-                    <MoreHorizontal />
-                    <span className="sr-only">More</span>
-                  </SidebarMenuAction>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  className="w-48"
-                  side={isMobile ? "bottom" : "right"}
-                  align={isMobile ? "end" : "start"}
+          {projectList.map((item) => {
+            const IconComponent = getIconComponent(item.icon)
+            return (
+              <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton
+                  onClick={() => handleProjectClick(item)}
+                  tooltip={item.description || undefined}
                 >
-                  <DropdownMenuItem>
-                    <FolderOpen className="text-muted-foreground" />
-                    <span>Open Project</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Star className="text-muted-foreground" />
-                    <span>Star Project</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Forward className="text-muted-foreground" />
-                    <span>Share Project</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Trash2 className="text-muted-foreground" />
-                    <span>Delete Project</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          ))}
+                  <IconComponent />
+                  <span>{item.name}</span>
+                  {item.starred === 1 && (
+                    <Star className="ml-auto h-4 w-4 fill-current" />
+                  )}
+                </SidebarMenuButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <SidebarMenuAction showOnHover>
+                      <MoreHorizontal />
+                      <span className="sr-only">More</span>
+                    </SidebarMenuAction>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    className="w-48"
+                    side={isMobile ? "bottom" : "right"}
+                    align={isMobile ? "end" : "start"}
+                  >
+                    <DropdownMenuItem onClick={() => handleProjectClick(item)}>
+                      <FolderOpen className="text-muted-foreground" />
+                      <span>Open Project</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        if (ws.connected) {
+                          updateProject(ws, item.id, { starred: item.starred === 1 ? 0 : 1 })
+                        }
+                      }}
+                    >
+                      <Star className="text-muted-foreground" />
+                      <span>{item.starred === 1 ? "Unstar" : "Star"} Project</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled>
+                      <Forward className="text-muted-foreground" />
+                      <span>Share Project</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        if (ws.connected) {
+                          deleteProject(ws, item.id)
+                        }
+                      }}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="text-muted-foreground" />
+                      <span>Delete Project</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            )
+          })}
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-sidebar-foreground/70">
-              <MoreHorizontal className="text-sidebar-foreground/70" />
-              <span>More</span>
+            <SidebarMenuButton
+              className="text-sidebar-foreground/70"
+              onClick={() => setIsDialogOpen(true)}
+            >
+              <Plus className="text-sidebar-foreground/70" />
+              <span>Add Project</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           </SidebarMenu>
         </CollapsibleContent>
       </Collapsible>
+
+      <ProjectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
     </SidebarGroup>
   )
 }

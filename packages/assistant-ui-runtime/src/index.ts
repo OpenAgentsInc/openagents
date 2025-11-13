@@ -13,7 +13,7 @@ export { useLocalRuntime } from "./legacy-runtime/runtime-cores/local/useLocalRu
 export type { ChatModelAdapter } from "./legacy-runtime/runtime-cores/local/ChatModelAdapter";
 
 // Attachment Types
-export type { AttachmentAdapter } from "./types/AttachmentTypes";
+export type { Attachment } from "./types/AttachmentTypes";
 
 // Primitives
 export * as ActionBarPrimitive from "./primitives/actionBar";

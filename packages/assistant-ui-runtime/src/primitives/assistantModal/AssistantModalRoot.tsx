@@ -43,7 +43,7 @@ export const AssistantModalPrimitiveRoot: FC<
   onOpenChange,
   ...rest
 }: ScopedProps<AssistantModalPrimitiveRoot.Props>) => {
-  const scope = usePopoverScope(__scopeAssistantModal);
+  const scope = usePopoverScope(__scopeAssistantModal as any);
 
   const [modalOpen, setOpen] = useAssistantModalOpenState({
     defaultOpen,
@@ -57,7 +57,7 @@ export const AssistantModalPrimitiveRoot: FC<
 
   return (
     <PopoverPrimitive.Root
-      {...scope}
+      {...(scope as any)}
       open={open === undefined ? modalOpen : open}
       onOpenChange={openChangeHandler}
       {...rest}
