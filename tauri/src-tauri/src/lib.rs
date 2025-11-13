@@ -284,19 +284,10 @@ pub fn run() {
             #[cfg(target_os = "ios")]
             {
                 use tauri::Manager;
-                // On iOS, always load embedded assets directly.
+                // On iOS, always load embedded assets directly (no dev server).
                 let app_url = WebviewUrl::App("index.html".into());
                 if app.get_webview_window("main").is_none() {
-                    let _ = WebviewWindowBuilder::new(
-                        app,
-                        "main".to_string(),
-                        app_url.clone(),
-                    )
-                    .title("OpenAgents")
-                    .focus()
-                    .build();
-                } else if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.navigate(app_url);
+                    let _ = WebviewWindowBuilder::new(app, "main".to_string(), app_url).build();
                 }
             }
             let _ = APP_HANDLE.set(app.handle().clone());
