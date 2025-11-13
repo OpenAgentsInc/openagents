@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from "react"
 import {
     ComposerAddAttachment, ComposerAttachments, UserMessageAttachments
 } from "@/components/assistant-ui/attachment"
+import { LoadingStatusIndicator } from "@/components/assistant-ui/loading-status-indicator"
 import { MarkdownText } from "@/components/assistant-ui/markdown-text"
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback"
 import {
@@ -57,6 +58,8 @@ export const Thread: FC = () => {
                 AssistantMessage,
               }}
             />
+
+            <LoadingStatusIndicator />
 
             <ThreadPrimitive.If empty={false}>
               <div className="aui-thread-viewport-spacer min-h-8 grow" />
@@ -220,6 +223,22 @@ const Composer: FC = () => {
     return () => window.removeEventListener("openagents:focus-composer", handler);
   }, []);
 
+  // Prefill composer text when creating a project-scoped chat from ProjectPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ text?: string }>;
+      const text = ce.detail?.text ?? "";
+      if (inputRef.current) {
+        inputRef.current.value = text;
+        // Trigger input event so upstream listeners update
+        const evt = new Event("input", { bubbles: true });
+        inputRef.current.dispatchEvent(evt);
+      }
+    };
+    window.addEventListener("openagents:prefill-composer", handler as EventListener);
+    return () => window.removeEventListener("openagents:prefill-composer", handler as EventListener);
+  }, []);
+
   return (
     <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-[var(--radius-xl)] bg-background pb-4 md:pb-6">
       <ThreadScrollToBottom />
@@ -300,39 +319,40 @@ const AssistantMessage: FC = () => {
               Text: MarkdownText,
               Reasoning: MarkdownText,
               tools: {
+                by_name: {
+                  // File operations (ToolKind enum values)
+                  Read: ReadTool,
+                  mcp__acp__Read: ReadTool,
+                  Write: WriteTool,
+                  mcp__acp__Write: WriteTool,
+                  Edit: EditTool,
+                  mcp__acp__Edit: EditTool,
+
+                  // Shell operations (ToolKind: Execute)
+                  Bash: BashTool,
+                  mcp__acp__Bash: BashTool,
+                  Execute: BashTool,
+
+                  // Search operations (ToolKind: Search)
+                  Search: SearchTool,
+                  Grep: GrepTool,
+                  mcp__acp__Grep: GrepTool,
+                  Glob: GlobTool,
+                  mcp__acp__Glob: GlobTool,
+
+                  // Web operations (ToolKind: Fetch)
+                  Fetch: WebFetchTool,
+                  WebFetch: WebFetchTool,
+                  mcp__acp__WebFetch: WebFetchTool,
+                  WebSearch: WebSearchTool,
+                  mcp__acp__WebSearch: WebSearchTool,
+
+                  // Task management
+                  Task: TaskTool,
+                  mcp__acp__Task: TaskTool,
+                },
                 // Fallback for unknown tools
                 Fallback: ToolFallback,
-
-                // File operations (ToolKind enum values)
-                Read: ReadTool,
-                mcp__acp__Read: ReadTool,
-                Write: WriteTool,
-                mcp__acp__Write: WriteTool,
-                Edit: EditTool,
-                mcp__acp__Edit: EditTool,
-
-                // Shell operations (ToolKind: Execute)
-                Bash: BashTool,
-                mcp__acp__Bash: BashTool,
-                Execute: BashTool,
-
-                // Search operations (ToolKind: Search)
-                Search: SearchTool,
-                Grep: GrepTool,
-                mcp__acp__Grep: GrepTool,
-                Glob: GlobTool,
-                mcp__acp__Glob: GlobTool,
-
-                // Web operations (ToolKind: Fetch)
-                Fetch: WebFetchTool,
-                WebFetch: WebFetchTool,
-                mcp__acp__WebFetch: WebFetchTool,
-                WebSearch: WebSearchTool,
-                mcp__acp__WebSearch: WebSearchTool,
-
-                // Task management
-                Task: TaskTool,
-                mcp__acp__Task: TaskTool,
               },
             }}
           />
