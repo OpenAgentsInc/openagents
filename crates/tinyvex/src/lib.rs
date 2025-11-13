@@ -18,6 +18,7 @@ pub struct ThreadRow {
     pub rollout_path: Option<String>,
     pub source: Option<String>,
     pub archived: i64,
+    pub working_directory: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -99,6 +100,15 @@ impl Tinyvex {
         }
         // Create index after ensuring column exists
         conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_threads_archived ON threads(archived);")?;
+        // Migration: add working_directory column if it doesn't exist
+        let has_working_directory: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('threads') WHERE name='workingDirectory'",
+            [],
+            |row| row.get::<_, i64>(0).map(|count| count > 0),
+        )?;
+        if !has_working_directory {
+            conn.execute("ALTER TABLE threads ADD COLUMN workingDirectory TEXT", [])?;
+        }
         // messages
         conn.execute_batch(
             r#"
@@ -196,8 +206,8 @@ impl Tinyvex {
         // last-write-wins by updatedAt
         conn.execute(
             r#"
-            INSERT INTO threads (id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            INSERT INTO threads (id, threadId, title, projectId, resumeId, rolloutPath, source, archived, workingDirectory, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT(id) DO UPDATE SET
               threadId=excluded.threadId,
               title=excluded.title,
@@ -206,6 +216,7 @@ impl Tinyvex {
               rolloutPath=excluded.rolloutPath,
               source=excluded.source,
               archived=excluded.archived,
+              workingDirectory=excluded.workingDirectory,
               updatedAt=excluded.updatedAt
             WHERE excluded.updatedAt >= threads.updatedAt
             "#,
@@ -218,6 +229,7 @@ impl Tinyvex {
                 row.rollout_path,
                 row.source,
                 row.archived,
+                row.working_directory,
                 row.created_at,
                 row.updated_at
             ],
@@ -228,7 +240,7 @@ impl Tinyvex {
     pub fn get_thread(&self, id: &str) -> Result<Option<ThreadRow>> {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
-            "SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt \
+            "SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, archived, workingDirectory, createdAt, updatedAt \
              FROM threads WHERE id = ?1",
         )?;
         let result = stmt.query_row([id], |r| {
@@ -241,8 +253,9 @@ impl Tinyvex {
                 rollout_path: r.get(5)?,
                 source: r.get(6)?,
                 archived: r.get(7)?,
-                created_at: r.get(8)?,
-                updated_at: r.get(9)?,
+                working_directory: r.get(8)?,
+                created_at: r.get(9)?,
+                updated_at: r.get(10)?,
                 message_count: None,
                 last_message_ts: None,
             })
@@ -259,7 +272,7 @@ impl Tinyvex {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT \
-                id, threadId, title, projectId, resumeId, rolloutPath, source, archived, createdAt, updatedAt, \
+                id, threadId, title, projectId, resumeId, rolloutPath, source, archived, workingDirectory, createdAt, updatedAt, \
                 (SELECT COUNT(*) FROM messages m WHERE m.threadId = threads.id) AS message_count, \
                 (SELECT MAX(ts) FROM messages m2 WHERE m2.threadId = threads.id) AS lastTs \
              FROM threads \
@@ -277,10 +290,11 @@ impl Tinyvex {
                     rollout_path: r.get(5)?,
                     source: r.get(6)?,
                     archived: r.get(7)?,
-                    created_at: r.get(8)?,
-                    updated_at: r.get(9)?,
-                    message_count: r.get(10).ok(),
-                    last_message_ts: r.get(11).ok(),
+                    working_directory: r.get(8)?,
+                    created_at: r.get(9)?,
+                    updated_at: r.get(10)?,
+                    message_count: r.get(11).ok(),
+                    last_message_ts: r.get(12).ok(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -570,6 +584,7 @@ mod tests {
             rollout_path: None,
             source: Some("test".into()),
             archived: 0,
+            working_directory: None,
             created_at: t0,
             updated_at: t0,
             message_count: None,
