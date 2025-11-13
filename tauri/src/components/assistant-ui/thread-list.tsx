@@ -130,7 +130,8 @@ const ThreadListItem: FC = () => {
     >
       <ThreadListItemPrimitive.Root
         ref={rootRef as any}
-        className={`aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted ${isArchiving ? 'bg-red-500/20' : ''}`}
+        className="aui-thread-list-item flex items-center gap-2 rounded-[var(--radius-lg)] transition-all hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-active:bg-muted"
+        style={isArchiving ? { backgroundColor: 'rgba(239, 68, 68, 0.2)' } : undefined}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
