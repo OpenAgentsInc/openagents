@@ -385,14 +385,24 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           // Format agent name for display
           const getAgentLabel = (source?: string | null) => {
             if (!source) return "";
-            if (source === "claude-code-acp") return "Claude";
+            if (source === "claude-code") return "Claude";
             if (source === "codex") return "Codex";
             if (source === "ollama") return "GLM";
             return source;
           };
 
-          // Use custom title or create descriptive default
-          const baseTitle = row.title || "Thread";
+          // Get first user message text as fallback title
+          const getFirstMessageFallback = () => {
+            const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
+            if (messages.length > 0) {
+              const firstText = messages[0].text || "";
+              return firstText.substring(0, 50) + (firstText.length > 50 ? "..." : "");
+            }
+            return "Thread";
+          };
+
+          // Use custom title, first message, or generic default
+          const baseTitle = row.title || getFirstMessageFallback();
           const agentLabel = getAgentLabel(row.source);
           const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
 

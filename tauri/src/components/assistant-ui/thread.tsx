@@ -4,7 +4,7 @@ import {
 } from "lucide-react"
 import { domAnimation, LazyMotion, MotionConfig } from "motion/react"
 import * as m from "motion/react-m"
-import { useEffect, useRef, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import {
     ComposerAddAttachment, ComposerAttachments, UserMessageAttachments
 } from "@/components/assistant-ui/attachment"
@@ -14,12 +14,12 @@ import {
     TooltipIconButton
 } from "@/components/assistant-ui/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { useAssistantState, useAssistantEvent } from "@openagentsinc/assistant-ui-runtime"
 import { useModelStore } from "@/lib/model-store"
+import { cn } from "@/lib/utils"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
-    ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useThread
+    ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useAssistantEvent,
+    useAssistantState, useThread
 } from "@openagentsinc/assistant-ui-runtime"
 
 import type { FC } from "react";
@@ -152,7 +152,7 @@ const ThreadSuggestions: FC = () => {
           >
             <Button
               variant="ghost"
-              className="aui-thread-welcome-suggestion h-auto w-full flex-1 flex-wrap items-start justify-start gap-1 rounded-[var(--radius-xl)] border px-5 py-4 text-left text-sm @md:flex-col dark:hover:bg-accent/60"
+              className="aui-thread-welcome-suggestion h-auto w-full flex-1 flex-wrap items-start justify-start gap-1 rounded-[var(--radius-xl)] border px-5 py-2 text-left text-sm @md:flex-col dark:hover:bg-accent/60"
               aria-label={suggestedAction.action}
             >
               <span className="aui-thread-welcome-suggestion-text-1 font-medium">
@@ -280,7 +280,7 @@ const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
       <div
-        className="aui-assistant-message-root relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-4 duration-150 ease-out fade-in slide-in-from-bottom-1 last:mb-24"
+        className="aui-assistant-message-root relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-2 duration-150 ease-out fade-in slide-in-from-bottom-1 last:mb-24"
         data-role="assistant"
       >
         <div className="aui-assistant-message-content mx-2 leading-7 break-words text-foreground text-sm">
@@ -348,7 +348,7 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
       <div
-        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-4 duration-150 ease-out fade-in slide-in-from-bottom-1 first:mt-3 last:mb-5 [&:where(>*)]:col-start-2"
+        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-2 duration-150 ease-out fade-in slide-in-from-bottom-1 first:mt-3 last:mb-5 [&:where(>*)]:col-start-2"
         data-role="user"
       >
         <UserMessageAttachments />
