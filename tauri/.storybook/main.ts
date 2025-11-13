@@ -35,10 +35,16 @@ const config: StorybookConfig = {
           '@openagentsinc/assistant-ui-runtime': '@assistant-ui/react',
           '@openagentsinc/react-markdown': '@assistant-ui/react-markdown',
           '@openagentsinc/react-markdown/styles/dot.css': '@assistant-ui/react-markdown/styles/dot.css',
+          // Force assistant-stream to resolve from installed package, not monorepo sources
+          'assistant-stream': fromRoot('node_modules/assistant-stream'),
+          'assistant-stream/utils': fromRoot('node_modules/assistant-stream/dist/utils.js'),
         },
       },
       build: { chunkSizeWarningLimit: 4096 },
-      optimizeDeps: { esbuildOptions: { target: 'es2023' } },
+      optimizeDeps: {
+        include: ['secure-json-parse'],
+        esbuildOptions: { target: 'es2023' }
+      },
     });
   },
 };
