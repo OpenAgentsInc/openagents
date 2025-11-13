@@ -119,7 +119,7 @@ const ThreadListItem: FC = () => {
           <ThreadListItemTitle />
           {threadSource && (
             <span className="text-xs text-muted-foreground/50 flex-shrink-0">
-              {threadSource === "claude-code-acp" ? "claude" : threadSource}
+              {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource === "ollama" ? "glm" : threadSource}
             </span>
           )}
         </div>

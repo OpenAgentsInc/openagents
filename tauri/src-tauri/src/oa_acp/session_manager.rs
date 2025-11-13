@@ -37,6 +37,7 @@ pub struct Session {
     pub cwd: PathBuf,
     pub messages: Vec<SessionMessage>,
     pub use_codex_exec: bool,
+    pub agent_type: String,
 }
 
 impl SessionManager {
@@ -93,6 +94,7 @@ impl SessionManager {
             let inner = self.inner.clone();
             let tinyvex = self.tinyvex.clone();
             let sid_clone = real_sid.clone();
+            let agent_type_clone = agent_type.clone();
             tokio::spawn(async move {
                 while let Some(notif) = rx.recv().await {
                     // Update in-memory state
@@ -119,7 +121,7 @@ impl SessionManager {
 
                     // Write to tinyvex database and broadcast to WebSocket clients
                     let thread_id = notif.session_id.0.to_string();
-                    let notifications = tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex("codex-acp", &thread_id, &update_copy).await;
+                    let notifications = tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex(&agent_type_clone, &thread_id, &update_copy).await;
 
                     // Broadcast each notification to WebSocket clients
                     for notification in notifications {
@@ -136,14 +138,14 @@ impl SessionManager {
                 info!(session_id=%sid_clone.0, "update stream ended");
             });
             // override with real id
-            let session = Session { id: real_sid.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: false };
+            let session = Session { id: real_sid.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: false, agent_type: agent_type.clone() };
             self.inner.sessions.write().await.insert(real_sid.clone(), session);
             self.inner.clients.write().await.insert(real_sid.clone(), Arc::new(Mutex::new(client)));
             return Ok(real_sid);
         }
 
         // For codex-exec path, no ACP client; we spawn per-prompt
-        let session = Session { id: session_id.clone(), cwd, messages: vec![], use_codex_exec: true };
+        let session = Session { id: session_id.clone(), cwd, messages: vec![], use_codex_exec: true, agent_type };
         self.inner.sessions.write().await.insert(session_id.clone(), session);
 
         Ok(session_id)
@@ -169,6 +171,10 @@ impl SessionManager {
         // Write user message to tinyvex
         {
             let thread_id = session_id.0.to_string();
+            let agent_type = {
+                let sessions = self.inner.sessions.read().await;
+                sessions.get(session_id).map(|s| s.agent_type.clone()).unwrap_or_else(|| "codex".to_string())
+            };
             let user_chunk = acp::SessionUpdate::UserMessageChunk(acp::ContentChunk {
                 content: acp::ContentBlock::Text(acp::TextContent {
                     annotations: None,
@@ -177,7 +183,7 @@ impl SessionManager {
                 }),
                 meta: None,
             });
-            let notifications = self.tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex("codex-acp", &thread_id, &user_chunk).await;
+            let notifications = self.tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex(&agent_type, &thread_id, &user_chunk).await;
             for notification in notifications {
                 tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
             }
