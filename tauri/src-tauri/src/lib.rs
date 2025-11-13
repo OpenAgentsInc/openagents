@@ -248,7 +248,16 @@ pub fn run() {
 
     let tinyvex_state_for_setup = tinyvex_state.clone();
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // On iOS/TestFlight, serve the built frontend locally on the same port
+    // used by devUrl to avoid trying to reach an external dev server.
+    #[cfg(target_os = "ios")]
+    {
+        builder = builder.plugin(tauri_plugin_localhost::Builder::new(1420).build());
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {

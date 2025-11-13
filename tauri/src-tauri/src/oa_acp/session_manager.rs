@@ -250,7 +250,7 @@ impl SessionManager {
                                     }
                                     sess.messages.push(SessionMessage { id: Uuid::new_v4().to_string(), role: "assistant".into(), content: vec![chunk.content.clone()], created_at: now });
                                 }
-                                acp::SessionUpdate::Plan(ref _plan) => {
+                                acp::SessionUpdate::Plan(_plan) => {
                                     // For Phase 1, store as a thought line summarizing plan
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let summary = "[Plan updated]".to_string();
