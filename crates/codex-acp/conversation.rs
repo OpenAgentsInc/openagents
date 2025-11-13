@@ -571,6 +571,26 @@ impl PromptState {
         client: &SessionClient,
         event: ApplyPatchApprovalRequestEvent,
     ) -> Result<(), Error> {
+        // If the dangerous bypass flag is set, auto-approve without prompting.
+        let bypass_primary = std::env::var("CODEX_ACP_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        let bypass_alt = std::env::var("OA_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        if bypass_primary || bypass_alt {
+            info!(bypass_primary, bypass_alt, "Bypassing patch approval due to env flags");
+            self.conversation
+                .submit(Op::PatchApproval {
+                    id: self.submission_id.clone(),
+                    // One-off approval is sufficient; codex-core treats this as accepted.
+                    decision: ReviewDecision::Approved,
+                })
+                .await
+                .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            return Ok(());
+        }
+
         let raw_input = serde_json::json!(&event);
         let ApplyPatchApprovalRequestEvent {
             call_id,
@@ -755,6 +775,25 @@ impl PromptState {
         client: &SessionClient,
         event: ExecApprovalRequestEvent,
     ) -> Result<(), Error> {
+        // If the dangerous bypass flag is set, auto-approve without prompting.
+        let bypass_primary = std::env::var("CODEX_ACP_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        let bypass_alt = std::env::var("OA_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        if bypass_primary || bypass_alt {
+            info!(bypass_primary, bypass_alt, "Bypassing exec approval due to env flags");
+            self.conversation
+                .submit(Op::ExecApproval {
+                    id: self.submission_id.clone(),
+                    decision: ReviewDecision::ApprovedForSession,
+                })
+                .await
+                .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            return Ok(());
+        }
+
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
             call_id,
