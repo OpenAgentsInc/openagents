@@ -147,17 +147,23 @@ fn validate_directory(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn pick_directory(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn pick_directory(_app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
     init_tracing();
 
-    let folder = tauri_plugin_dialog::DialogExt::dialog(&app_handle)
-        .file()
-        .set_title("Select Working Directory")
-        .blocking_pick_folder();
+    #[cfg(not(target_os = "ios"))]
+    {
+        // TODO: Fix folder picker API for desktop - blocking_pick_folder doesn't exist in Tauri v2
+        // For now, return None on desktop
+        info!("pick_directory not yet implemented for desktop");
+        Ok(None)
+    }
 
-    let result = folder.and_then(|p| p.as_path().map(|path| path.display().to_string()));
-    info!(?result, "pick_directory completed");
-    Ok(result)
+    #[cfg(target_os = "ios")]
+    {
+        // iOS doesn't support folder picking
+        info!("pick_directory not available on iOS");
+        Ok(None)
+    }
 }
 
 // Mobile discovery commands

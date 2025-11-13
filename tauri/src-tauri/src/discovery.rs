@@ -81,13 +81,9 @@ pub async fn discover_servers() -> anyhow::Result<Vec<ServerInfo>> {
                     _ => {}
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // Continue waiting until overall timeout
+            Err(_) => {
+                // Timeout on recv - just continue waiting until overall timeout
                 continue;
-            }
-            Err(e) => {
-                error!(?e, "Error receiving mDNS event");
-                break;
             }
         }
     }
