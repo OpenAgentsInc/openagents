@@ -4,7 +4,8 @@ import { GlobeIcon } from "lucide-react";
 
 export const WebFetchTool: ToolCallMessagePartComponent = (props) => {
   const { argsText, result, status } = props;
-  const args = parseToolArgs(argsText);
+  const argsFromRuntime = (props as any).args as Record<string, any> | undefined;
+  const args = argsFromRuntime && Object.keys(argsFromRuntime).length > 0 ? argsFromRuntime : parseToolArgs(argsText);
   const url = args.url || "unknown";
   const prompt = args.prompt;
 

@@ -3,7 +3,8 @@ import { ToolCallBase, parseToolArgs } from "./ToolCallBase";
 
 export const ReadTool: ToolCallMessagePartComponent = (props) => {
   const { argsText, result, status } = props;
-  const args = parseToolArgs(argsText);
+  const argsFromRuntime = (props as any).args as Record<string, any> | undefined;
+  const args = argsFromRuntime && Object.keys(argsFromRuntime).length > 0 ? argsFromRuntime : parseToolArgs(argsText);
   const filePath = args.file_path || args.path || "unknown";
 
   // Extract just the filename from the full path
