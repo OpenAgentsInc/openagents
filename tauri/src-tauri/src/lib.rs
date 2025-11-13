@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use agent_client_protocol as acp;
 use serde::Serialize;
 use tauri::State;
+use tauri::webview::{WebviewUrl, WebviewWindowBuilder};
 
 mod oa_acp;
 use oa_acp::SessionManager;
@@ -284,6 +285,24 @@ pub fn run() {
                 use tauri::{Manager, TitleBarStyle};
                 let window = app.get_webview_window("main").unwrap();
                 window.set_title_bar_style(TitleBarStyle::Transparent)?;
+            }
+            #[cfg(target_os = "ios")]
+            {
+                use tauri::Manager;
+                // On iOS, create a window that points at our localhost server to avoid devUrl entirely.
+                let url: url::Url = format!("http://localhost:{}", 1420).parse().unwrap();
+                if app.get_webview_window("main").is_none() {
+                    let _ = WebviewWindowBuilder::new(
+                        app,
+                        "main".to_string(),
+                        WebviewUrl::External(url.clone()),
+                    )
+                    .title("OpenAgents")
+                    .focus()
+                    .build();
+                } else if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.navigate(WebviewUrl::External(url));
+                }
             }
             let _ = APP_HANDLE.set(app.handle().clone());
 
