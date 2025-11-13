@@ -53,8 +53,8 @@ targets:
         NSLocalNetworkUsageDescription: "OpenAgents needs local network access to discover and connect to your desktop server for syncing conversations and settings."
         NSBonjourServices:
           - _openagents._tcp
-        CFBundleShortVersionString: 0.3.0
-        CFBundleVersion: "101"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.developer-tools
     entitlements:
       path: openagents_iOS/openagents_iOS.entitlements
@@ -77,6 +77,8 @@ targets:
         LIBRARY_SEARCH_PATHS[arch=arm64]: $(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
         EXCLUDED_ARCHS[sdk=iphoneos*]: x86_64
+        MARKETING_VERSION: 0.3.0
+        CURRENT_PROJECT_VERSION: 101
       groups: [app]
     dependencies:
       - framework: libapp.a
