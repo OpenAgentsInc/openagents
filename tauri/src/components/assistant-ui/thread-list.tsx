@@ -83,7 +83,6 @@ const ThreadListSkeleton: FC = () => {
 const ThreadListItem: FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const threadId = useThreadId(); // Get thread ID from context
-  const [threadSource, setThreadSource] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
 
   // Update metadata when thread ID or metadata changes
@@ -94,7 +93,6 @@ const ThreadListItem: FC = () => {
 
       const meta = metadata.get(threadId);
       const archiving = meta?.isArchiving || false;
-      setThreadSource(meta?.source || null);
       setIsArchiving(archiving);
     };
 
@@ -128,11 +126,6 @@ const ThreadListItem: FC = () => {
         <ThreadListItemPrimitive.Trigger className="aui-thread-list-item-trigger flex-grow px-3 py-2 text-start">
           <ThreadListItemTitle />
         </ThreadListItemPrimitive.Trigger>
-        {threadSource && (
-          <span className="text-xs text-muted-foreground/50 mr-2 flex-shrink-0">
-            {threadSource === "claude-code" ? "claude" : threadSource === "codex" ? "codex" : threadSource === "ollama" ? "glm" : threadSource}
-          </span>
-        )}
         <ThreadListItemArchive isVisible={isHovered} />
       </ThreadListItemPrimitive.Root>
     </motion.div>
