@@ -250,16 +250,7 @@ pub fn run() {
 
     let tinyvex_state_for_setup = tinyvex_state.clone();
 
-    let mut builder = tauri::Builder::default();
-
-    // On iOS/TestFlight, serve the built frontend locally on the same port
-    // used by devUrl to avoid trying to reach an external dev server.
-    #[cfg(target_os = "ios")]
-    {
-        builder = builder.plugin(tauri_plugin_localhost::Builder::new(1420).build());
-    }
-
-    builder
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
@@ -290,19 +281,19 @@ pub fn run() {
             #[cfg(target_os = "ios")]
             {
                 use tauri::Manager;
-                // On iOS, create a window that points at our localhost server to avoid devUrl entirely.
-                let url: url::Url = format!("http://localhost:{}", 1420).parse().unwrap();
+                // On iOS, always load embedded assets directly.
+                let app_url = WebviewUrl::App("index.html".into());
                 if app.get_webview_window("main").is_none() {
                     let _ = WebviewWindowBuilder::new(
                         app,
                         "main".to_string(),
-                        WebviewUrl::External(url.clone()),
+                        app_url.clone(),
                     )
                     .title("OpenAgents")
                     .focus()
                     .build();
                 } else if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.navigate(WebviewUrl::External(url));
+                    let _ = w.navigate(app_url);
                 }
             }
             let _ = APP_HANDLE.set(app.handle().clone());
