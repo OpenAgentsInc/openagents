@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpenIcon } from "lucide-react";
-import { useAssistantRuntime } from "@openagentsinc/assistant-ui-runtime";
+import { useAssistantRuntime, useAssistantApi } from "@openagentsinc/assistant-ui-runtime";
 
 export const ProjectPanel: FC = () => {
   const route = useUiStore((s) => s.route);
@@ -14,6 +14,7 @@ export const ProjectPanel: FC = () => {
   const setActiveProject = useProjectStore((s) => s.setActiveProject);
   const clearProjectView = useUiStore((s) => s.clearProjectView);
   const runtime = useAssistantRuntime();
+  const api = useAssistantApi();
 
   const projectId = route.kind === "project" ? route.projectId : null;
   const project = projectId ? getProject(projectId) : undefined;
@@ -26,17 +27,13 @@ export const ProjectPanel: FC = () => {
     const text = prompt.trim();
     // Scope to this project
     setActiveProject(project.id);
-    clearProjectView();
-    if (runtime.switchToNewThread) {
-      runtime.switchToNewThread();
-    }
-    // Prefill the composer and focus
+    // Create a fresh conversation and send the first message via the standard composer logic
+    runtime.switchToNewThread?.();
     if (text.length > 0) {
-      const ev = new CustomEvent("openagents:prefill-composer", { detail: { text } });
-      window.dispatchEvent(ev);
+      // Append directly to the main thread; onNew handler will associate the project and create the session
+      api.thread().append({ role: "user", content: [{ type: "text", text }] });
     }
-    const focusEv = new Event("openagents:focus-composer");
-    window.dispatchEvent(focusEv);
+    clearProjectView();
     setPrompt("");
   };
 
@@ -94,4 +91,3 @@ export const ProjectPanel: FC = () => {
 };
 
 export default ProjectPanel;
-

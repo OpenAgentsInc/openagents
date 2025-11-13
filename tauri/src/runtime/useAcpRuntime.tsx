@@ -434,6 +434,10 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           row.threadId === tempThreadId ? { ...row, threadId: sid! } : row
         );
         setThreadId(sid);
+        // Set per-thread working directory so toolbar reflects it immediately
+        if (workingDir) {
+          workingDirStore.setThreadCwd(sid, workingDir);
+        }
 
         // If there's an active project, associate this thread with it
         if (projectId) {
