@@ -67,6 +67,14 @@ impl SessionManager {
             let mut args: Vec<String> = if tail.trim().is_empty() { vec![] } else { shell_words::split(&tail).unwrap_or_else(|_| tail.split_whitespace().map(|s| s.to_string()).collect()) };
             let mut merged = pre;
             merged.append(&mut args);
+            // Ensure Codex ACP runs with approvals/sandbox bypass to avoid UI stalls.
+            // Only add the flag for Codex (not Claude Code TS agent) since the TS agent may not recognize it.
+            if agent_type != "claude-code" {
+                let flag = "--dangerously-bypass-approvals-and-sandbox".to_string();
+                if !merged.iter().any(|a| a == &flag) {
+                    merged.push(flag);
+                }
+            }
             (cmd, merged)
         };
         info!(agent_type=%agent_type, bin=%cmd.display(), args=?all_args, cwd=%cwd.display(), use_codex_exec, "create_session resolved");
@@ -74,6 +82,16 @@ impl SessionManager {
         if !use_codex_exec {
             // For TypeScript agents (claude-code), set NODE_PATH to tauri/node_modules
             let mut envs: Vec<(String, String)> = Vec::new();
+            // Always export bypass env for Codex ACP; harmless for other agents.
+            envs.push((
+                "CODEX_ACP_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX".to_string(),
+                "1".to_string(),
+            ));
+            // Back-compat alias used elsewhere in the repo and by older builds.
+            envs.push((
+                "OA_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX".to_string(),
+                "1".to_string(),
+            ));
             if agent_type == "claude-code" {
                 if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
                     let base = PathBuf::from(manifest_dir)
@@ -87,6 +105,9 @@ impl SessionManager {
                     }
                 }
             }
+            // Log final envs we add for visibility (sanitized list)
+            let env_keys: Vec<String> = envs.iter().map(|(k, _)| k.clone()).collect();
+            info!(?env_keys, ?all_args, agent_type=%agent_type, "ACP spawn configuration (args/env keys)");
             let mut client = ACPClient::spawn(cmd.to_string_lossy().as_ref(), &all_args, &envs, None).await?;
             let real_sid = client.new_session(cwd.clone()).await?;
             // Start forwarding updates to tinyvex and broadcasting via WebSocket
@@ -275,9 +296,6 @@ impl SessionManager {
         Ok(s)
     }
 
-    pub fn tinyvex_state(&self) -> &Arc<TinyvexState> {
-        &self.tinyvex
-    }
 }
 
 // Helper used by UI/diagnostics: resolve ACP agent path or return error
@@ -343,9 +361,10 @@ fn resolve_codex_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
             // If absolute/relative path, use directly; otherwise try which
             let p = PathBuf::from(val);
             if p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::CurDir | std::path::Component::ParentDir)) {
+                info!(path=%p.display(), "resolved codex-acp via OA_ACP_AGENT_CMD path");
                 return Ok((p, Vec::new()));
             }
-            if let Ok(found) = which(val) { return Ok((found, Vec::new())); }
+            if let Ok(found) = which(val) { info!(path=%found.display(), "resolved codex-acp via which(OA_ACP_AGENT_CMD)"); return Ok((found, Vec::new())); }
             // fallthrough to other strategies
         }
     }
@@ -358,22 +377,42 @@ fn resolve_codex_acp_exec() -> anyhow::Result<(PathBuf, Vec<String>)> {
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
         let release = base.join("crates/codex-acp/target/release/codex-acp");
-        let debug = base.join("crates/codex-acp/target/debug/codex-acp");
-        if release.exists() { return Ok((release, Vec::new())); }
-        if debug.exists() { return Ok((debug, Vec::new())); }
+        let dbg_bin = base.join("crates/codex-acp/target/debug/codex-acp");
+        if release.exists() {
+            let p = release.display().to_string();
+            info!(path=%p, "resolved codex-acp local release build");
+            return Ok((release, Vec::new()));
+        }
+        if dbg_bin.exists() {
+            let p = dbg_bin.display().to_string();
+            info!(path=%p, "resolved codex-acp local debug build");
+            return Ok((dbg_bin, Vec::new()));
+        }
         // Also support sibling/extern repo via env or conventional path
         if let Ok(root) = std::env::var("OA_CODEX_ACP_ROOT") {
             let root = PathBuf::from(root);
-            if let Some(bin) = ensure_codex_acp_built(&root) { return Ok((bin, Vec::new())); }
+            if let Some(bin) = ensure_codex_acp_built(&root) {
+                let p = bin.display().to_string();
+                info!(path=%p, "resolved codex-acp via OA_CODEX_ACP_ROOT built binary");
+                return Ok((bin, Vec::new()));
+            }
         } else {
             let sibling = base.parent().map(|p| p.join("codex-acp"));
             if let Some(sib) = sibling {
-                if let Some(bin) = ensure_codex_acp_built(&sib) { return Ok((bin, Vec::new())); }
+                if let Some(bin) = ensure_codex_acp_built(&sib) {
+                    let p = bin.display().to_string();
+                    info!(path=%p, "resolved codex-acp via sibling repo built binary");
+                    return Ok((bin, Vec::new()));
+                }
             }
         }
     }
     // 3) PATH search: prefer 'codex-acp'
-    if let Ok(found) = which("codex-acp") { return Ok((found, Vec::new())); }
+    if let Ok(found) = which("codex-acp") {
+        let p = found.display().to_string();
+        info!(path=%p, "resolved codex-acp via which(codex-acp)");
+        return Ok((found, Vec::new()));
+    }
 
     // 4) Helpful error (do not fall back to 'codex' or 'co' for ACP)
     Err(anyhow::anyhow!(

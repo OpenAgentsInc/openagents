@@ -28,6 +28,7 @@ export const ModelToolbar: FC = () => {
 
   const [localWorkingDir, setLocalWorkingDir] = useState(workingDir);
   const [isValidating, setIsValidating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     setLocalWorkingDir(workingDir);
@@ -66,19 +67,20 @@ export const ModelToolbar: FC = () => {
     }
   };
 
-  // Truncate path for display
+  // Show only the folder name when not editing; on focus show full path
   const displayPath = (path: string) => {
     if (!path) return "";
-    const parts = path.split("/");
-    if (parts.length > 3) {
-      return `.../${parts.slice(-2).join("/")}`;
-    }
-    return path.replace(/^\/Users\/[^/]+/, "~");
+    // Remove trailing separators and split on POSIX/Windows separators
+    const trimmed = path.replace(/[\\\/]+$/, "");
+    const parts = trimmed.split(/[\\\/]/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : trimmed;
   };
+
+  const shownValue = isEditing ? localWorkingDir : displayPath(localWorkingDir);
 
   return (
     <div className="sticky top-0 z-10 bg-background border-b border-zinc-800">
-      <div className="flex h-10 items-center gap-2 px-3">
+      <div className="flex h-10 items-center gap-3 px-3">
         <Select value={model} onValueChange={handleModelChange}>
           <SelectTrigger size="sm" aria-label="Model">
             <SelectValue />
@@ -92,12 +94,15 @@ export const ModelToolbar: FC = () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 flex-1 max-w-md">
+              <div className="flex items-center gap-1 w-auto">
                 <Input
-                  value={displayPath(localWorkingDir)}
+                  value={shownValue}
                   onChange={(e) => handleWorkingDirChange(e.target.value)}
                   placeholder="Working directory..."
-                  className="h-7 text-xs font-mono"
+                  className="h-7 text-xs font-mono w-auto"
+                  size={Math.max(1, shownValue.length || 0)}
+                  onFocus={() => setIsEditing(true)}
+                  onBlur={() => setIsEditing(false)}
                   disabled={isValidating}
                 />
                 <Button

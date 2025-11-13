@@ -14,7 +14,7 @@ use codex_core::{
         Config,
         types::{McpServerConfig, McpServerTransportConfig},
     },
-    protocol::SessionSource,
+    protocol::{SandboxPolicy, SessionSource},
 };
 use codex_login::{AuthMode, CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
 use codex_protocol::ConversationId;
@@ -240,6 +240,17 @@ impl Agent for CodexAgent {
         config.use_experimental_use_rmcp_client = true;
         // Make sure we are going through the `apply_patch` code path
         config.include_apply_patch_tool = true;
+        // If the dangerous bypass flag is set, default to an unsafe sandbox for this session.
+        let bypass_primary = std::env::var("CODEX_ACP_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        let bypass_alt = std::env::var("OA_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+        if bypass_primary || bypass_alt {
+            info!(bypass_primary, bypass_alt, "Enabling DangerFullAccess sandbox due to bypass env flags");
+            config.sandbox_policy = SandboxPolicy::DangerFullAccess;
+        }
         config.cwd.clone_from(&cwd);
 
         // Propagate any client-provided MCP servers that codex-rs supports.
