@@ -94,7 +94,6 @@ const ThreadListItem: FC = () => {
 
       const meta = metadata.get(threadId);
       const archiving = meta?.isArchiving || false;
-      console.log(`[ThreadListItem] tid=${threadId}, isArchiving=${archiving}`, meta);
       setThreadSource(meta?.source || null);
       setIsArchiving(archiving);
     };
@@ -107,8 +106,6 @@ const ThreadListItem: FC = () => {
       window.removeEventListener('threadMetadataUpdated', updateMetadata);
     };
   }, [threadId]);
-
-  console.log(`[ThreadListItem Render] threadId=${threadId}, isArchiving=${isArchiving}`);
 
   return (
     <motion.div

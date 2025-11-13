@@ -274,6 +274,10 @@ impl SessionManager {
         let s = sessions.get(session_id).ok_or_else(|| anyhow::anyhow!("session not found"))?.clone();
         Ok(s)
     }
+
+    pub fn tinyvex_state(&self) -> &Arc<TinyvexState> {
+        &self.tinyvex
+    }
 }
 
 // Helper used by UI/diagnostics: resolve ACP agent path or return error

@@ -392,15 +392,6 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         threads: threadsRef.current
           .filter((row) => !row.archived || row.archived === 0)
           .map((row) => {
-            // Format agent name for display
-            const getAgentLabel = (source?: string | null) => {
-              if (!source) return "";
-              if (source === "claude-code") return "Claude";
-              if (source === "codex") return "Codex";
-              if (source === "ollama") return "GLM";
-              return source;
-            };
-
             // Get first user message text as fallback title
             const getFirstMessageFallback = () => {
               const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
@@ -412,9 +403,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             };
 
             // Use custom title, first message, or generic default
-            const baseTitle = row.title || getFirstMessageFallback();
-            const agentLabel = getAgentLabel(row.source);
-            const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
+            const title = row.title || getFirstMessageFallback();
 
             return {
               id: row.id,
@@ -425,15 +414,6 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
         archivedThreads: threadsRef.current
           .filter((row) => row.archived === 1)
           .map((row) => {
-            // Format agent name for display
-            const getAgentLabel = (source?: string | null) => {
-              if (!source) return "";
-              if (source === "claude-code") return "Claude";
-              if (source === "codex") return "Codex";
-              if (source === "ollama") return "GLM";
-              return source;
-            };
-
             // Get first user message text as fallback title
             const getFirstMessageFallback = () => {
               const messages = rowsRef.current.filter((m) => m.threadId === row.id && m.role === "user");
@@ -445,9 +425,7 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             };
 
             // Use custom title, first message, or generic default
-            const baseTitle = row.title || getFirstMessageFallback();
-            const agentLabel = getAgentLabel(row.source);
-            const title = agentLabel ? `${baseTitle} (${agentLabel})` : baseTitle;
+            const title = row.title || getFirstMessageFallback();
 
             return {
               id: row.id,
@@ -491,10 +469,8 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
           });
         },
         onArchive: async (threadIdToArchive: string) => {
-          console.log('[onArchive] Starting archive for:', threadIdToArchive);
           // Mark thread as being archived immediately (optimistic UI)
           archivingThreadsRef.current.add(threadIdToArchive);
-          console.log('[onArchive] archivingThreadsRef now has:', Array.from(archivingThreadsRef.current));
           // Update metadata to include archiving state
           (window as any).__threadMetadata = new Map(
             threadsRef.current.map((row) => [
@@ -505,7 +481,6 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
               }
             ])
           );
-          console.log('[onArchive] Updated __threadMetadata:', (window as any).__threadMetadata);
           // Dispatch custom event to notify thread list items
           window.dispatchEvent(new CustomEvent('threadMetadataUpdated'));
           setVersion((v) => v + 1);
