@@ -483,11 +483,24 @@ export function useAcpRuntime(options?: { initialThreadId?: string }) {
             updates: { title: newTitle },
           });
         },
-        onArchive: async (threadId: string) => {
+        onArchive: async (threadIdToArchive: string) => {
+          // If archiving the currently active thread, switch to new thread
+          if (threadIdToArchive === threadId) {
+            // Clear current thread and reset state for new conversation
+            setThreadId(undefined);
+            setIsRunning(false);
+            rowsRef.current = [];
+            reasonRowsRef.current = [];
+            toolCallsRef.current = [];
+            planEventsRef.current = [];
+            stateEventsRef.current = [];
+            setVersion((v) => v + 1);
+          }
+
           // Archive thread via WebSocket control message
           ws.send({
             control: "tvx.update_thread",
-            threadId,
+            threadId: threadIdToArchive,
             updates: { archived: true },
           });
           // Delay re-query to allow exit animation to complete
