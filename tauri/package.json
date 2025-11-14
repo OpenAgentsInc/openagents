@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:tauri": "bun scripts/dev-tauri.ts",
+    "desktop": "tauri dev",
+    "start": "tauri dev",
     "build": "vite build",
     "build:check": "tsc && vite build",
     "preview": "vite preview",
