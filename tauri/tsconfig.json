@@ -28,6 +28,8 @@
       "@openagentsinc/assistant-ui-runtime": ["../packages/assistant-ui-runtime/src/index.ts"],
       "@openagentsinc/react-markdown": ["../packages/react-markdown/src/index.ts"],
       "@openagentsinc/react-markdown/*": ["../packages/react-markdown/*"],
+      "@openagentsinc/ui": ["../packages/ui/src/index.ts"],
+      "@openagentsinc/ui/*": ["../packages/ui/src/*"],
       "@assistant-ui/tap": ["../packages/tap/src/index.ts"],
       "@assistant-ui/tap/react": ["../packages/tap/src/react/index.ts"],
       "@assistant-ui/tap/*": ["../packages/tap/*"],

@@ -2,7 +2,7 @@
   "name": "openagents",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["next"],
+  "workspaces": ["next", "tauri", "packages/*"],
   "scripts": {
     "predev": "convex dev --until-success && convex dev --once --run-sh \"node convex-setup.mjs --once\" && convex dashboard",
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
