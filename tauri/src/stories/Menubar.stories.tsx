@@ -14,7 +14,7 @@ import {
   MenubarSubTrigger,
   MenubarSubContent,
   MenubarShortcut,
-} from '@/components/ui/menubar';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Menubar',

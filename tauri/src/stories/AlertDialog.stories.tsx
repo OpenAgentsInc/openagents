@@ -10,8 +10,8 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/AlertDialog',

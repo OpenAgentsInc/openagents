@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { NavUserAssistant } from '@/components/nav-user-assistant';
-import { SidebarProvider, Sidebar, SidebarFooter } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar, SidebarFooter } from "@openagentsinc/ui";
 
 const meta = {
   title: 'Sidebar/NavUserAssistant',

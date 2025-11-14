@@ -6,7 +6,7 @@ import {
   NavigationMenuTrigger,
   NavigationMenuContent,
   NavigationMenuLink,
-} from '@/components/ui/navigation-menu';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/NavigationMenu',

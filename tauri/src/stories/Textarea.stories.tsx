@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Textarea',

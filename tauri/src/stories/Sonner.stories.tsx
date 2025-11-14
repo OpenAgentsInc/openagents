@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from "@openagentsinc/ui";
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Sonner',

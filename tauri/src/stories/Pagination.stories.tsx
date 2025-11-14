@@ -7,7 +7,7 @@ import {
   PaginationPrevious,
   PaginationNext,
   PaginationEllipsis,
-} from '@/components/ui/pagination';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Pagination',

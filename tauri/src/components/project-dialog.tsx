@@ -7,11 +7,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+} from "@openagentsinc/ui"
+import { Button } from "@openagentsinc/ui"
+import { Input } from "@openagentsinc/ui"
+import { Label } from "@openagentsinc/ui"
+import { Textarea } from "@openagentsinc/ui"
 import { pickDirectory } from "@/lib/tauri-acp"
 import { createProject } from "@/lib/tauri-projects"
 import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton"

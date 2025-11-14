@@ -1,7 +1,7 @@
 import { ThreadList } from "@/components/assistant-ui/thread-list"
 import {
     SidebarGroup, SidebarGroupContent, SidebarGroupLabel
-} from "@/components/ui/sidebar"
+} from "@openagentsinc/ui"
 
 export function NavChats() {
   return (

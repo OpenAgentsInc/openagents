@@ -8,8 +8,8 @@ import {
   SheetTitle,
   SheetDescription,
   SheetClose,
-} from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 import { useEffect, useState } from 'react';
 
 const meta = {

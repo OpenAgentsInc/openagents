@@ -8,7 +8,7 @@ import {
   TableCell,
   TableCaption,
   TableFooter,
-} from '@/components/ui/table';
+} from "@openagentsinc/ui";
 
 type Row = { name: string; email: string; role: string };
 const rows: Row[] = [

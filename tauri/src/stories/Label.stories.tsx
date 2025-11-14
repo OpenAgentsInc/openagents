@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from "@openagentsinc/ui";
+import { Input } from "@openagentsinc/ui";
+import { Checkbox } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Label',

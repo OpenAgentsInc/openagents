@@ -26,8 +26,8 @@ import {
 import {
     TooltipIconButton
 } from "@/components/assistant-ui/tooltip-icon-button"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { Button } from "@openagentsinc/ui"
+import { cn } from "@openagentsinc/ui"
 import {
     ActionBarPrimitive, BranchPickerPrimitive, ComposerPrimitive,
     ErrorPrimitive, MessagePrimitive, ThreadPrimitive, useAssistantEvent,

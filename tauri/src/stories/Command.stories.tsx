@@ -8,7 +8,7 @@ import {
   CommandItem,
   CommandSeparator,
   CommandShortcut,
-} from '@/components/ui/command';
+} from "@openagentsinc/ui";
 import { useEffect, useState } from 'react';
 
 const meta = {

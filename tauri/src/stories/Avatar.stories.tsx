@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from "@openagentsinc/ui";
 
 type SizeKey = 'sm' | 'md' | 'lg' | 'xl';
 const sizeClass: Record<SizeKey, string> = {

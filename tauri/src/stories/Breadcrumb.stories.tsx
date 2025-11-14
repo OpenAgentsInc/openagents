@@ -7,7 +7,7 @@ import {
   BreadcrumbSeparator,
   BreadcrumbPage,
   BreadcrumbEllipsis,
-} from '@/components/ui/breadcrumb';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Breadcrumb',

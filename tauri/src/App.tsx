@@ -1,3 +1,5 @@
+import "@openagentsinc/ui/styles/theme.css";
+import "@openagentsinc/ui/styles/fonts.css";
 import "./App.css";
 import { AssistantSidebar } from "@/components/assistant-ui/assistant-sidebar";
 //

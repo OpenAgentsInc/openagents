@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia } from '@/components/ui/empty';
-import { Button } from '@/components/ui/button';
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia } from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 import { FolderPlus } from 'lucide-react';
 
 const meta = {
