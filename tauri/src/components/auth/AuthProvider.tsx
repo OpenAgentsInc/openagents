@@ -1,4 +1,4 @@
-import { ConvexAuthProvider, useAuthActions, useAuth } from "@convex-dev/auth/react";
+import { ConvexAuthProvider, useAuthActions, useAuthToken } from "@convex-dev/auth/react";
 import { Authenticated, Unauthenticated, useConvexAuth } from "convex/react";
 import { convexClient } from "@/lib/convexClient";
 import { SignIn } from "./SignIn";
@@ -12,32 +12,23 @@ import { invoke } from "@tauri-apps/api/core";
  * and passes it to Rust via set_convex_auth Tauri command.
  */
 function AuthTokenSync({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, fetchAccessToken } = useAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth();
   const { signOut } = useAuthActions();
+  const token = useAuthToken();
 
   useEffect(() => {
     const syncToken = async () => {
       if (isAuthenticated) {
-        try {
-          // Get the auth token using Convex auth's fetchAccessToken
-          // This is the proper API for @convex-dev/auth
-          const token = await fetchAccessToken({ forceRefreshToken: false });
-
-          if (token) {
-            try {
-              await invoke("set_convex_auth", { token });
-              console.log("Auth token synced to Rust backend");
-            } catch (error) {
-              console.error("Failed to sync auth token to Rust:", error);
-            }
-          } else {
-            console.error("User authenticated but fetchAccessToken returned null - signing out");
-            // Auth state is broken, force sign out
-            void signOut();
+        if (token) {
+          try {
+            await invoke("set_convex_auth", { token });
+            console.log("Auth token synced to Rust backend");
+          } catch (error) {
+            console.error("Failed to sync auth token to Rust:", error);
           }
-        } catch (error) {
-          console.error("Failed to fetch access token:", error);
-          // If we can't get the token, sign out to force re-authentication
+        } else {
+          console.error("User authenticated but no token available - signing out");
+          // Auth state is broken, force sign out
           void signOut();
         }
       } else if (!isLoading) {
@@ -52,7 +43,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     };
 
     syncToken();
-  }, [isAuthenticated, isLoading, fetchAccessToken, signOut]);
+  }, [isAuthenticated, isLoading, token, signOut]);
 
   return <>{children}</>;
 }
@@ -61,24 +52,16 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
  * AuthDebugger - Logs auth state for debugging
  */
 function AuthDebugger({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, fetchAccessToken } = useAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const token = useAuthToken();
 
   useEffect(() => {
     console.log("[AUTH DEBUG] Auth state:", { isAuthenticated, isLoading });
-    if (isAuthenticated) {
-      // Try to fetch the token to verify auth is working
-      fetchAccessToken({ forceRefreshToken: false })
-        .then((token) => {
-          console.log("[AUTH DEBUG] Has token:", !!token);
-          if (token) {
-            console.log("[AUTH DEBUG] Token length:", token.length);
-          }
-        })
-        .catch((error) => {
-          console.error("[AUTH DEBUG] Failed to fetch token:", error);
-        });
+    console.log("[AUTH DEBUG] Has token:", !!token);
+    if (token) {
+      console.log("[AUTH DEBUG] Token length:", token.length);
     }
-  }, [isAuthenticated, isLoading, fetchAccessToken]);
+  }, [isAuthenticated, isLoading, token]);
 
   return <>{children}</>;
 }
