@@ -4,6 +4,21 @@ use std::collections::BTreeMap;
 use tokio::sync::Mutex;
 use anyhow::Result;
 
+/// Helper function to check FunctionResult and convert Convex errors to Rust errors
+fn check_function_result(result: &FunctionResult) -> Result<()> {
+    match result {
+        FunctionResult::ErrorMessage(msg) => {
+            tracing::error!("Convex mutation error: {}", msg);
+            Err(anyhow::anyhow!("Convex error: {}", msg))
+        }
+        FunctionResult::ConvexError(err) => {
+            tracing::error!(?err, "Convex mutation error");
+            Err(anyhow::anyhow!("Convex error: {}", err.message))
+        }
+        FunctionResult::Value(_) => Ok(()),
+    }
+}
+
 /// Global Convex client manager
 pub static CONVEX_MANAGER: Lazy<Mutex<ConvexClientManager>> =
     Lazy::new(|| Mutex::new(ConvexClientManager { client: None }));
@@ -71,6 +86,7 @@ impl ConvexClientManager {
             }
 
             let result = client.mutation("chat:upsertStreamingMessage", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -86,6 +102,7 @@ impl ConvexClientManager {
             args.insert("itemId".to_string(), Value::String(item_id.to_string()));
 
             let result = client.mutation("chat:finalizeMessage", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -126,6 +143,7 @@ impl ConvexClientManager {
             }
 
             let result = client.mutation("toolCalls:upsertToolCall", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -145,6 +163,7 @@ impl ConvexClientManager {
             args.insert("entriesJson".to_string(), Value::String(entries_json.to_string()));
 
             let result = client.mutation("planEntries:upsertPlan", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -171,6 +190,7 @@ impl ConvexClientManager {
             }
 
             let result = client.mutation("threadState:upsertThreadState", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -206,6 +226,7 @@ impl ConvexClientManager {
             args.insert("payload".to_string(), Value::String(payload.to_string()));
 
             let result = client.mutation("acpEvents:appendEvent", args).await?;
+            check_function_result(&result)?;
             Ok(result)
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))
@@ -239,6 +260,9 @@ impl ConvexClientManager {
 
             let result = client.mutation("chat:createThreadExtended", args).await?;
 
+            // Check for errors first
+            check_function_result(&result)?;
+
             // Extract thread ID from result
             // Convex returns the thread ID directly (it's a string-like Id value)
             match result {
@@ -248,9 +272,9 @@ impl ConvexClientManager {
                     tracing::error!(?v, "Unexpected value type from createThreadExtended");
                     Err(anyhow::anyhow!("Unexpected result type from createThreadExtended: {:?}", v))
                 },
-                other => {
-                    tracing::error!(?other, "Unexpected result from createThreadExtended");
-                    Err(anyhow::anyhow!("Unexpected result from createThreadExtended: {:?}", other))
+                _ => {
+                    // This shouldn't happen since we checked for errors above
+                    Err(anyhow::anyhow!("Unexpected state after error check"))
                 }
             }
         } else {
