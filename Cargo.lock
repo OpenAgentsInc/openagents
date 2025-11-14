@@ -2901,6 +2901,16 @@ dependencies = [
 
 [[package]]
 name = "if-addrs"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbc0fa01ffc752e9dbc72818cdb072cd028b86be5e09dd04c5a643704fe101a9"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "if-addrs"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69b2eeee38fef3aa9b4cc5f1beea8a2444fc00e7377cafae396de3f5c2065e24"
@@ -3381,7 +3391,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fe7c11a1eb3cfbfcf702d1601c1f5f4c102cdc8665b8a557783ef634741676e"
 dependencies = [
  "flume",
- "if-addrs",
+ "if-addrs 0.13.4",
  "log",
  "polling 2.8.0",
  "socket2 0.5.10",
@@ -4063,6 +4073,7 @@ dependencies = [
  "futures",
  "hostname",
  "hyper",
+ "if-addrs 0.7.0",
  "mdns-sd",
  "once_cell",
  "rusqlite",
