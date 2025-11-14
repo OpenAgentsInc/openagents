@@ -4,9 +4,11 @@
   "private": true,
   "workspaces": ["next"],
   "scripts": {
-    "dev": "bun --cwd next run dev",
-    "build": "bun --cwd next run build",
-    "convex:dev": "convex dev",
+    "predev": "convex dev --until-success && convex dev --once --run-sh \"node convex-setup.mjs --once\" && convex dashboard",
+    "dev": "npm-run-all --parallel dev:frontend dev:backend",
+    "dev:frontend": "cd next && bun run dev",
+    "dev:backend": "convex dev",
+    "build": "cd next && bun run build",
     "convex:deploy": "convex deploy"
   },
   "dependencies": {

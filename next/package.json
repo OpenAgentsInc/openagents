@@ -3,10 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "convex dev --path ../convex --until-success && convex dev --path ../convex --once --run-sh \"node ../convex-setup.mjs --once\" && convex dashboard --path ../convex",
-    "dev": "npm-run-all --parallel dev:frontend dev:backend",
-    "dev:frontend": "next dev --turbopack",
-    "dev:backend": "convex dev --path ../convex",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
