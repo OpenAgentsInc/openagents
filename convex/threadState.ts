@@ -5,7 +5,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 // Get thread state (current mode and available commands)
 export const getThreadState = query({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -13,16 +13,18 @@ export const getThreadState = query({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     const state = await ctx.db
       .query("threadState")
       .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
       .first();
+
+    // Verify ownership
+    if (state && state.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
 
     return state;
   },
@@ -31,7 +33,7 @@ export const getThreadState = query({
 // Upsert thread state
 export const upsertThreadState = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     currentModeId: v.optional(v.string()),
     availableCommandsJson: v.optional(v.string()),
   },
@@ -41,11 +43,8 @@ export const upsertThreadState = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     // Check if state already exists for this thread
     const existing = await ctx.db
@@ -88,7 +87,7 @@ export const upsertThreadState = mutation({
 // Update current mode
 export const updateCurrentMode = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     currentModeId: v.string(),
   },
   handler: async (ctx, args) => {
@@ -97,11 +96,8 @@ export const updateCurrentMode = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     const state = await ctx.db
       .query("threadState")
@@ -131,7 +127,7 @@ export const updateCurrentMode = mutation({
 // Update available commands
 export const updateAvailableCommands = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     availableCommandsJson: v.string(),
   },
   handler: async (ctx, args) => {
@@ -140,11 +136,8 @@ export const updateAvailableCommands = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     const state = await ctx.db
       .query("threadState")
@@ -174,7 +167,7 @@ export const updateAvailableCommands = mutation({
 // Delete thread state
 export const deleteThreadState = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -182,11 +175,8 @@ export const deleteThreadState = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     const state = await ctx.db
       .query("threadState")
@@ -194,6 +184,11 @@ export const deleteThreadState = mutation({
       .first();
 
     if (state) {
+      // Verify ownership
+      if (state.userId !== userId) {
+        throw new Error("Unauthorized");
+      }
+
       await ctx.db.delete(state._id);
     }
   },

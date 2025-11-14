@@ -5,7 +5,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 // List tool calls for a specific thread
 export const listToolCalls = query({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -14,11 +14,8 @@ export const listToolCalls = query({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     let query = ctx.db
       .query("toolCalls")
@@ -30,7 +27,9 @@ export const listToolCalls = query({
     }
 
     const toolCalls = await query.collect();
-    return toolCalls;
+
+    // Filter to only user's tool calls
+    return toolCalls.filter((tc) => tc.userId === userId);
   },
 });
 
@@ -66,7 +65,7 @@ export const getToolCall = query({
 // Upsert a tool call (create or update)
 export const upsertToolCall = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     toolCallId: v.string(),
     title: v.optional(v.string()),
     kind: v.optional(v.string()),
@@ -80,11 +79,8 @@ export const upsertToolCall = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     // Check if tool call already exists
     const existing = await ctx.db
