@@ -7,7 +7,7 @@ export const appendEvent = mutation({
   args: {
     sessionId: v.optional(v.string()),
     clientThreadDocId: v.optional(v.string()),
-    threadId: v.optional(v.id("threads")),
+    threadId: v.optional(v.string()), // ACP session ID string
     updateKind: v.optional(v.string()),
     payload: v.string(),
   },
@@ -17,13 +17,8 @@ export const appendEvent = mutation({
       throw new Error("Not authenticated");
     }
 
-    // If threadId is provided, verify ownership
-    if (args.threadId) {
-      const thread = await ctx.db.get(args.threadId);
-      if (!thread || thread.userId !== userId) {
-        throw new Error("Unauthorized");
-      }
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     const eventId = await ctx.db.insert("acpEvents", {
       userId,
@@ -70,7 +65,7 @@ export const getEventsBySession = query({
 // Get events by thread
 export const getEventsByThread = query({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -79,11 +74,8 @@ export const getEventsByThread = query({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is a session ID string, not a Convex thread ID
+    // ACP sessions manage their own authorization
 
     let query = ctx.db
       .query("acpEvents")
@@ -95,7 +87,9 @@ export const getEventsByThread = query({
     }
 
     const events = await query.collect();
-    return events;
+
+    // Filter to only user's events
+    return events.filter((event) => event.userId === userId);
   },
 });
 
