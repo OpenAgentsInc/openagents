@@ -346,22 +346,17 @@ pub fn run() {
             }
             let _ = APP_HANDLE.set(app.handle().clone());
 
-            // Initialize Convex client if enabled
-            let use_convex = std::env::var("VITE_USE_CONVEX")
-                .unwrap_or_else(|_| "false".to_string()) == "true";
-
-            if use_convex {
-                if let Ok(convex_url) = std::env::var("VITE_CONVEX_URL") {
-                    info!("Initializing Convex client with URL: {}", convex_url);
-                    tauri::async_runtime::spawn(async move {
-                        match convex_client::ConvexClientManager::initialize(&convex_url).await {
-                            Ok(_) => info!("Convex client initialized successfully"),
-                            Err(e) => error!(?e, "Failed to initialize Convex client"),
-                        }
-                    });
-                } else {
-                    error!("VITE_USE_CONVEX=true but VITE_CONVEX_URL not set");
-                }
+            // Initialize Convex client
+            if let Ok(convex_url) = std::env::var("VITE_CONVEX_URL") {
+                info!("Initializing Convex client with URL: {}", convex_url);
+                tauri::async_runtime::spawn(async move {
+                    match convex_client::ConvexClientManager::initialize(&convex_url).await {
+                        Ok(_) => info!("Convex client initialized successfully"),
+                        Err(e) => error!(?e, "Failed to initialize Convex client"),
+                    }
+                });
+            } else {
+                info!("VITE_CONVEX_URL not set, Convex client not initialized");
             }
 
             // Start WebSocket server in Tauri's tokio runtime on desktop only.
