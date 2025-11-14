@@ -28,7 +28,7 @@ export default defineSchema({
     .index("by_project", ["projectId", "updatedAt"])
     .index("by_archived", ["archived", "updatedAt"]),
   messages: defineTable({
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     userId: v.id("users"),
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
     content: v.string(),
@@ -59,7 +59,7 @@ export default defineSchema({
     .index("by_starred", ["userId", "starred", "updatedAt"])
     .index("by_archived", ["userId", "archived", "updatedAt"]),
   toolCalls: defineTable({
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     userId: v.id("users"),
     toolCallId: v.string(), // ACP tool call ID
     title: v.optional(v.string()),
@@ -74,7 +74,7 @@ export default defineSchema({
     .index("by_user", ["userId", "createdAt"])
     .index("by_tool_call_id", ["toolCallId"]),
   planEntries: defineTable({
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     userId: v.id("users"),
     entriesJson: v.string(), // JSON array of plan entries
     createdAt: v.number(),
@@ -83,7 +83,7 @@ export default defineSchema({
     .index("by_thread", ["threadId"])
     .index("by_user", ["userId"]),
   threadState: defineTable({
-    threadId: v.id("threads"),
+    threadId: v.string(), // ACP session ID string
     userId: v.id("users"),
     currentModeId: v.optional(v.string()), // Current ACP mode (e.g., "plan", "code")
     availableCommandsJson: v.optional(v.string()), // JSON array of available slash commands
@@ -96,7 +96,7 @@ export default defineSchema({
     userId: v.id("users"),
     sessionId: v.optional(v.string()),
     clientThreadDocId: v.optional(v.string()),
-    threadId: v.optional(v.id("threads")),
+    threadId: v.optional(v.string()), // ACP session ID string
     updateKind: v.optional(v.string()), // Type of ACP update
     payload: v.string(), // JSON blob of the full event
     timestamp: v.number(),

@@ -273,7 +273,7 @@ export const updateThread = mutation({
 // Upsert a streaming message (create or update)
 export const upsertStreamingMessage = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(), // Accept session ID as string
     itemId: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
     content: v.string(),
@@ -287,11 +287,8 @@ export const upsertStreamingMessage = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Verify thread ownership
-    const thread = await ctx.db.get(args.threadId);
-    if (!thread || thread.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
+    // Note: threadId is now a session ID string, not a Convex ID
+    // We don't validate thread ownership here since ACP sessions manage their own threads
 
     // Check if message with this itemId already exists
     const existing = await ctx.db
@@ -309,9 +306,6 @@ export const upsertStreamingMessage = mutation({
         seq: args.seq,
       });
 
-      // Update thread timestamp
-      await ctx.db.patch(args.threadId, { updatedAt: now });
-
       return existing._id;
     } else {
       // Create new message
@@ -326,9 +320,6 @@ export const upsertStreamingMessage = mutation({
         seq: args.seq,
         createdAt: now,
       });
-
-      // Update thread timestamp
-      await ctx.db.patch(args.threadId, { updatedAt: now });
 
       return messageId;
     }
