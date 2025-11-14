@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
 /* Tauri-specific styles */
 @layer base {
   html, body {
