@@ -11,6 +11,8 @@ import { useWorkingDirStore } from "@/lib/working-dir-store";
 import { useEffect } from "react";
 import { useProjectStore } from "@/lib/project-store";
 import { invoke } from "@tauri-apps/api/core";
+import { ConvexProvider } from "convex/react";
+import { convexClient } from "@/lib/convexClient";
 
 function App() {
   // Ensure dark variables apply to portals (e.g., shadcn Select)
@@ -43,13 +45,15 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <MobileConnectionHandler>
-        <MyRuntimeProvider>
-          <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
-            <AssistantSidebar />
-          </div>
-        </MyRuntimeProvider>
-      </MobileConnectionHandler>
+      <ConvexProvider client={convexClient}>
+        <MobileConnectionHandler>
+          <MyRuntimeProvider>
+            <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
+              <AssistantSidebar />
+            </div>
+          </MyRuntimeProvider>
+        </MobileConnectionHandler>
+      </ConvexProvider>
     </ErrorBoundary>
   );
 }
