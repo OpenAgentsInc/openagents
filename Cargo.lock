@@ -4187,6 +4187,7 @@ dependencies = [
  "chrono",
  "convex",
  "dirs 5.0.1",
+ "dotenvy",
  "futures",
  "hostname",
  "hyper",

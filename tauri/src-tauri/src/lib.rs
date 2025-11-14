@@ -290,6 +290,24 @@ pub struct AppState {
 pub fn run() {
     init_tracing();
 
+    // Load .env.local from repo root (2 levels up from src-tauri)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let repo_root = std::path::PathBuf::from(&manifest_dir)
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let env_local = repo_root.join(".env.local");
+        if env_local.exists() {
+            match dotenvy::from_path(&env_local) {
+                Ok(_) => info!("Loaded environment from {}", env_local.display()),
+                Err(e) => error!(?e, "Failed to load .env.local"),
+            }
+        } else {
+            info!(".env.local not found at {}, skipping", env_local.display());
+        }
+    }
+
     // Initialize tinyvex database
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -346,17 +364,21 @@ pub fn run() {
             }
             let _ = APP_HANDLE.set(app.handle().clone());
 
-            // Initialize Convex client
-            if let Ok(convex_url) = std::env::var("VITE_CONVEX_URL") {
-                info!("Initializing Convex client with URL: {}", convex_url);
+            // Initialize Convex client (from .env.local CONVEX_URL or VITE_CONVEX_URL)
+            let convex_url = std::env::var("CONVEX_URL")
+                .or_else(|_| std::env::var("VITE_CONVEX_URL"))
+                .ok();
+
+            if let Some(url) = convex_url {
+                info!("Initializing Convex client with URL: {}", url);
                 tauri::async_runtime::spawn(async move {
-                    match convex_client::ConvexClientManager::initialize(&convex_url).await {
+                    match convex_client::ConvexClientManager::initialize(&url).await {
                         Ok(_) => info!("Convex client initialized successfully"),
                         Err(e) => error!(?e, "Failed to initialize Convex client"),
                     }
                 });
             } else {
-                info!("VITE_CONVEX_URL not set, Convex client not initialized");
+                info!("CONVEX_URL not set in .env.local, Convex client not initialized");
             }
 
             // Start WebSocket server in Tauri's tokio runtime on desktop only.

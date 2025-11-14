@@ -36,6 +36,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 once_cell = "1.19"
 dirs = "5"
+dotenvy = "0.15"
 
 # Local crates
 agent-client-protocol = "0.7"
