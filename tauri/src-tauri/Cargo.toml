@@ -41,6 +41,9 @@ dirs = "5"
 agent-client-protocol = "0.7"
 tinyvex = { path = "../../crates/tinyvex" }
 
+# Convex client
+convex = "0.10"
+
 # WebSocket and HTTP server
 axum = { version = "0.8", features = ["ws"] }
 tokio-tungstenite = "0.26"
