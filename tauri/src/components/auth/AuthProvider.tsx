@@ -30,6 +30,8 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
           } catch (error) {
             console.error("Failed to sync auth token to Rust:", error);
           }
+        } else {
+          console.warn("User authenticated but no token found - this may indicate an auth issue");
         }
       } else if (!isLoading) {
         // User logged out, clear token
@@ -49,6 +51,23 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * AuthDebugger - Logs auth state for debugging
+ */
+function AuthDebugger({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useConvexAuth();
+
+  useEffect(() => {
+    console.log("[AUTH DEBUG] Auth state:", { isAuthenticated, isLoading });
+    if (isAuthenticated) {
+      const client = convexClient as any;
+      console.log("[AUTH DEBUG] Has token:", !!client._authToken);
+    }
+  }, [isAuthenticated, isLoading]);
+
+  return <>{children}</>;
+}
+
+/**
  * AuthProvider - Wraps app with Convex Auth
  *
  * - Provides ConvexAuthProvider for authentication
@@ -59,12 +78,14 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConvexAuthProvider client={convexClient}>
-      <Unauthenticated>
-        <SignIn />
-      </Unauthenticated>
-      <Authenticated>
-        <AuthTokenSync>{children}</AuthTokenSync>
-      </Authenticated>
+      <AuthDebugger>
+        <Unauthenticated>
+          <SignIn />
+        </Unauthenticated>
+        <Authenticated>
+          <AuthTokenSync>{children}</AuthTokenSync>
+        </Authenticated>
+      </AuthDebugger>
     </ConvexAuthProvider>
   );
 }
