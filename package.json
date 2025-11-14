@@ -1,0 +1,23 @@
+{
+  "name": "openagents",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["next"],
+  "scripts": {
+    "dev": "bun --cwd next run dev",
+    "build": "bun --cwd next run build",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "^0.0.90",
+    "convex": "^1.29.0",
+    "dotenv": "^17.2.3",
+    "npm-run-all2": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5"
+  },
+  "packageManager": "bun@1.3.0"
+}
