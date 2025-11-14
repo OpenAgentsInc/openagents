@@ -4,6 +4,7 @@ use agent_client_protocol as acp;
 use anyhow::Result;
 use tokio::sync::{RwLock, Mutex};
 use uuid::Uuid;
+use once_cell::sync::Lazy;
 
 use super::ACPClient;
 use which::which;
@@ -12,6 +13,11 @@ use crate::codex_exec::{run_codex_exec_once, CodexExecOptions};
 use crate::tinyvex_state::TinyvexState;
 use crate::tinyvex_ws;
 use crate::convex_client;
+
+// Global tracking of streaming item_ids for Convex finalization
+// Key: "thread_id|kind" (e.g. "session-123|assistant")
+// Value: item_id currently being streamed
+static STREAMING_ITEMS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone)]
 pub struct SessionManager {
@@ -166,12 +172,37 @@ impl SessionManager {
             let session = Session { id: real_sid.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: false, agent_type: agent_type.clone() };
             self.inner.sessions.write().await.insert(real_sid.clone(), session);
             self.inner.clients.write().await.insert(real_sid.clone(), Arc::new(Mutex::new(client)));
+
+            // Create thread in Convex
+            let thread_id = real_sid.0.to_string();
+            let working_dir = cwd.to_string_lossy().to_string();
+            if let Err(e) = convex_client::ConvexClientManager::create_thread(
+                None, // title - will be set from first message
+                None, // project_id
+                Some(&agent_type),
+                Some(&working_dir),
+            ).await {
+                error!(?e, thread_id, "failed to create thread in convex");
+            }
+
             return Ok(real_sid);
         }
 
         // For codex-exec path, no ACP client; we spawn per-prompt
-        let session = Session { id: session_id.clone(), cwd, messages: vec![], use_codex_exec: true, agent_type };
+        let session = Session { id: session_id.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: true, agent_type: agent_type.clone() };
         self.inner.sessions.write().await.insert(session_id.clone(), session);
+
+        // Create thread in Convex for codex-exec too
+        let thread_id = session_id.0.to_string();
+        let working_dir = cwd.to_string_lossy().to_string();
+        if let Err(e) = convex_client::ConvexClientManager::create_thread(
+            None, // title
+            None, // project_id
+            Some(&agent_type),
+            Some(&working_dir),
+        ).await {
+            error!(?e, thread_id, "failed to create thread in convex (codex-exec)");
+        }
 
         Ok(session_id)
     }
@@ -184,6 +215,9 @@ impl SessionManager {
             for notification in notifs {
                 tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
             }
+
+            // Also finalize Convex streaming messages
+            finalize_convex_streams(&thread_id).await;
         }
         // push user message
         {
@@ -316,6 +350,27 @@ fn content_to_text(content: &acp::ContentBlock) -> String {
     }
 }
 
+// Helper: Finalize all streaming messages for a thread in Convex
+async fn finalize_convex_streams(thread_id: &str) {
+    let mut streaming = STREAMING_ITEMS.lock().await;
+
+    // Find all item_ids for this thread
+    let keys_to_finalize: Vec<String> = streaming
+        .keys()
+        .filter(|k| k.starts_with(&format!("{}|", thread_id)))
+        .cloned()
+        .collect();
+
+    for key in keys_to_finalize {
+        if let Some(item_id) = streaming.remove(&key) {
+            // Finalize this streaming message
+            if let Err(e) = convex_client::ConvexClientManager::finalize_message(&item_id).await {
+                error!(?e, thread_id, item_id, "failed to finalize message in convex");
+            }
+        }
+    }
+}
+
 // Helper: Mirror ACP update to Convex (parallel to Tinyvex)
 async fn mirror_acp_update_to_convex(
     thread_id: &str,
@@ -325,6 +380,9 @@ async fn mirror_acp_update_to_convex(
 
     match update {
         SU::ToolCall(tc) => {
+            // Finalize any active streams before tool call (matches Tinyvex behavior)
+            finalize_convex_streams(thread_id).await;
+
             let id = format!("{:?}", tc.id);
             let title = Some(tc.title.as_str());
             let kind = Some(format!("{:?}", tc.kind));
@@ -417,9 +475,14 @@ async fn mirror_acp_update_to_convex(
         SU::AgentMessageChunk(ch) => {
             let txt = content_to_text(&ch.content);
             if !txt.is_empty() {
-                // For streaming messages, use a consistent item_id per turn
-                // In production, we'd need to track this like Tinyvex does
-                let item_id = format!("turn:{}:assistant", chrono::Utc::now().timestamp_millis());
+                // Track item_id for this stream (reuse if exists, create new if not)
+                let stream_key = format!("{}|assistant", thread_id);
+                let mut streaming = STREAMING_ITEMS.lock().await;
+                let item_id = streaming.entry(stream_key.clone()).or_insert_with(|| {
+                    format!("turn:{}:assistant", chrono::Utc::now().timestamp_millis())
+                }).clone();
+                drop(streaming);
+
                 if let Err(e) = convex_client::ConvexClientManager::upsert_streaming_message(
                     thread_id,
                     &item_id,
@@ -436,7 +499,14 @@ async fn mirror_acp_update_to_convex(
         SU::AgentThoughtChunk(ch) => {
             let txt = content_to_text(&ch.content);
             if !txt.is_empty() {
-                let item_id = format!("turn:{}:reason", chrono::Utc::now().timestamp_millis());
+                // Track item_id for this stream (reuse if exists, create new if not)
+                let stream_key = format!("{}|reason", thread_id);
+                let mut streaming = STREAMING_ITEMS.lock().await;
+                let item_id = streaming.entry(stream_key.clone()).or_insert_with(|| {
+                    format!("turn:{}:reason", chrono::Utc::now().timestamp_millis())
+                }).clone();
+                drop(streaming);
+
                 if let Err(e) = convex_client::ConvexClientManager::upsert_streaming_message(
                     thread_id,
                     &item_id,
