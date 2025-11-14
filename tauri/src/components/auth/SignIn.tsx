@@ -1,11 +1,18 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function SignIn() {
-  const { signIn } = useAuthActions();
+  const { signIn, signOut } = useAuthActions();
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Clear any stale auth state on mount
+  useEffect(() => {
+    console.log("[SignIn] Component mounted - user is unauthenticated");
+    // Force sign out to clear any stale tokens
+    void signOut();
+  }, [signOut]);
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-lg mx-auto h-screen justify-center items-center px-4 bg-zinc-900">
