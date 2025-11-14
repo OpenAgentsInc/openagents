@@ -10,9 +10,7 @@ import { MobileConnectionHandler } from "@/components/mobile/MobileConnectionHan
 import { useWorkingDirStore } from "@/lib/working-dir-store";
 import { useEffect } from "react";
 import { useProjectStore } from "@/lib/project-store";
-import { invoke } from "@tauri-apps/api/core";
-import { ConvexProvider } from "convex/react";
-import { convexClient } from "@/lib/convexClient";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 
 function App() {
   // Ensure dark variables apply to portals (e.g., shadcn Select)
@@ -45,7 +43,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <ConvexProvider client={convexClient}>
+      <AuthProvider>
         <MobileConnectionHandler>
           <MyRuntimeProvider>
             <div className="dark fixed inset-0 flex h-screen w-screen bg-zinc-900 text-white">
@@ -53,7 +51,7 @@ function App() {
             </div>
           </MyRuntimeProvider>
         </MobileConnectionHandler>
-      </ConvexProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
