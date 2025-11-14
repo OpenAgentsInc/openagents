@@ -536,27 +536,32 @@ async fn mirror_acp_update_to_convex(
         }
     }
 
-    // Also append to ACP event log
-    if let Ok(payload) = serde_json::to_string(update) {
-        let update_kind = match update {
-            SU::ToolCall(_) => "tool_call",
-            SU::ToolCallUpdate(_) => "tool_call_update",
-            SU::Plan(_) => "plan",
-            SU::AvailableCommandsUpdate(_) => "available_commands",
-            SU::CurrentModeUpdate(_) => "current_mode",
-            SU::UserMessageChunk(_) => "user_message",
-            SU::AgentMessageChunk(_) => "agent_message",
-            SU::AgentThoughtChunk(_) => "agent_thought",
-        };
+    // Append significant events to ACP event log (skip streaming chunks to reduce noise)
+    let should_log = !matches!(
+        update,
+        SU::UserMessageChunk(_) | SU::AgentMessageChunk(_) | SU::AgentThoughtChunk(_)
+    );
 
-        if let Err(e) = convex_client::ConvexClientManager::append_event(
-            None, // session_id - we could track this
-            None, // client_thread_doc_id
-            Some(thread_id),
-            Some(update_kind),
-            &payload,
-        ).await {
-            error!(?e, thread_id, update_kind, "failed to append ACP event to convex");
+    if should_log {
+        if let Ok(payload) = serde_json::to_string(update) {
+            let update_kind = match update {
+                SU::ToolCall(_) => "tool_call",
+                SU::ToolCallUpdate(_) => "tool_call_update",
+                SU::Plan(_) => "plan",
+                SU::AvailableCommandsUpdate(_) => "available_commands",
+                SU::CurrentModeUpdate(_) => "current_mode",
+                _ => return, // Skip chunks (already filtered above, but double-check)
+            };
+
+            if let Err(e) = convex_client::ConvexClientManager::append_event(
+                None, // session_id - we could track this
+                None, // client_thread_doc_id
+                Some(thread_id),
+                Some(update_kind),
+                &payload,
+            ).await {
+                error!(?e, thread_id, update_kind, "failed to append ACP event to convex");
+            }
         }
     }
 }
