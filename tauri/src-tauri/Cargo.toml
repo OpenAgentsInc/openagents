@@ -50,6 +50,7 @@ hyper = "1"
 # Service discovery (Bonjour/mDNS)
 mdns-sd = "0.11"
 hostname = "0.4"
+if-addrs = "0.7"
 
 # Database
 rusqlite = { version = "0.36", features = ["bundled", "column_decltype"] }

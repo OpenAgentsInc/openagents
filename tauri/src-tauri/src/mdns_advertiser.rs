@@ -48,14 +48,32 @@ fn try_start_advertising(port: u16) -> anyhow::Result<()> {
         format!("{}.local.", hostname)
     };
 
-    // Create service info
+    // Enumerate local IPv4 addresses (non-loopback) so clients get connectable targets
+    let mut addrs: Vec<std::net::Ipv4Addr> = Vec::new();
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        for iface in interfaces {
+            if !iface.is_loopback() {
+                if let if_addrs::IfAddr::V4(v4) = iface.addr {
+                    addrs.push(v4.ip);
+                }
+            }
+        }
+    }
+    // Fall back to 127.0.0.1 if nothing found (simulator fallback)
+    if addrs.is_empty() {
+        addrs.push(std::net::Ipv4Addr::new(127, 0, 0, 1));
+    }
+
+    // Convert to IpAddr slice expected by mdns-sd
+    let addrs_ip: Vec<std::net::IpAddr> = addrs.into_iter().map(std::net::IpAddr::V4).collect();
+    // Create service info with explicit addresses
     let service_info = ServiceInfo::new(
         SERVICE_TYPE,
         SERVICE_NAME,
         &hostname_local,
-        (), // No specific IP addresses - use all interfaces
+        addrs_ip.as_slice(),
         port,
-        None, // No TXT records needed for now
+        None,
     )?;
 
     // Register the service

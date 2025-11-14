@@ -5,7 +5,8 @@ use serde::Serialize;
 use tauri::State;
 
 // WebSocket server configuration
-const TINYVEX_WS_PORT: u16 = 9100;
+const DEFAULT_TINYVEX_WS_PORT: u16 = 9100;
+static CHOSEN_TINYVEX_WS_PORT: once_cell::sync::OnceCell<u16> = once_cell::sync::OnceCell::new();
 
 #[cfg(target_os = "ios")]
 use tauri::webview::WebviewWindowBuilder;
@@ -260,7 +261,8 @@ async fn save_last_server(server_info: String) -> Result<(), String> {
 
 #[tauri::command]
 fn get_websocket_url() -> String {
-    format!("ws://127.0.0.1:{}/ws", TINYVEX_WS_PORT)
+    let port = *CHOSEN_TINYVEX_WS_PORT.get().unwrap_or(&DEFAULT_TINYVEX_WS_PORT);
+    format!("ws://127.0.0.1:{}/ws", port)
 }
 
 pub struct AppState {
@@ -325,32 +327,51 @@ pub fn run() {
             }
             let _ = APP_HANDLE.set(app.handle().clone());
 
-            // Start WebSocket server in Tauri's tokio runtime
-            let tinyvex_state_clone = tinyvex_state_for_setup.clone();
-            tauri::async_runtime::spawn(async move {
-                let router = tinyvex_ws::create_router(tinyvex_state_clone);
-                // Bind to 0.0.0.0 to allow connections from local network (mobile devices)
-                let addr = format!("0.0.0.0:{}", TINYVEX_WS_PORT);
-                let listener = tokio::net::TcpListener::bind(&addr)
-                    .await
-                    .expect("Failed to bind WebSocket server");
-                info!("WebSocket server listening on ws://{}:{}/ws (accessible from local network)", "0.0.0.0", TINYVEX_WS_PORT);
-
-                // Advertise service via Bonjour/mDNS for mobile discovery
-                #[cfg(not(target_os = "ios"))]
-                {
-                    use crate::mdns_advertiser;
-                    if let Err(e) = mdns_advertiser::start_advertising(TINYVEX_WS_PORT) {
-                        error!(?e, "Failed to start mDNS advertising");
-                    } else {
-                        info!("mDNS service advertising started: _openagents._tcp.local:{}", TINYVEX_WS_PORT);
+            // Start WebSocket server in Tauri's tokio runtime on desktop only.
+            // On iOS, the app is a thin client and connects to a desktop server.
+            #[cfg(not(target_os = "ios"))]
+            {
+                let tinyvex_state_clone = tinyvex_state_for_setup.clone();
+                tauri::async_runtime::spawn(async move {
+                    let router = tinyvex_ws::create_router(tinyvex_state_clone);
+                    // Try binding DEFAULT port first; if unavailable, try a small range then fall back to 0 (OS-assigned)
+                    let mut bound_listener: Option<(tokio::net::TcpListener, u16)> = None;
+                    let mut try_ports: Vec<u16> = (DEFAULT_TINYVEX_WS_PORT..DEFAULT_TINYVEX_WS_PORT + 16).collect();
+                    try_ports.push(0); // OS-assign as last resort
+                    for p in try_ports {
+                        let addr = if p == 0 { "0.0.0.0:0".to_string() } else { format!("0.0.0.0:{}", p) };
+                        match tokio::net::TcpListener::bind(&addr).await {
+                            Ok(listener) => {
+                                let actual_port = listener.local_addr().ok().map(|a| a.port()).unwrap_or(p.max(1));
+                                bound_listener = Some((listener, actual_port));
+                                let _ = CHOSEN_TINYVEX_WS_PORT.set(actual_port);
+                                break;
+                            }
+                            Err(_) => continue,
+                        }
                     }
-                }
+                    let (listener, port) = bound_listener.expect("Failed to bind WebSocket server on any port");
+                    info!(
+                        "WebSocket server listening on ws://{}:{}/ws (accessible from local network)",
+                        "0.0.0.0",
+                        port
+                    );
 
-                axum::serve(listener, router)
-                    .await
-                    .expect("WebSocket server failed");
-            });
+                    // Advertise service via Bonjour/mDNS for mobile discovery
+                    {
+                        use crate::mdns_advertiser;
+                        if let Err(e) = mdns_advertiser::start_advertising(port) {
+                            error!(?e, "Failed to start mDNS advertising");
+                        } else {
+                            info!("mDNS service advertising started: _openagents._tcp.local:{}", port);
+                        }
+                    }
+
+                    axum::serve(listener, router)
+                        .await
+                        .expect("WebSocket server failed");
+                });
+            }
 
             Ok(())
         })
