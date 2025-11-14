@@ -7,10 +7,11 @@ use uuid::Uuid;
 
 use super::ACPClient;
 use which::which;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 use crate::codex_exec::{run_codex_exec_once, CodexExecOptions};
 use crate::tinyvex_state::TinyvexState;
 use crate::tinyvex_ws;
+use crate::convex_client;
 
 #[derive(Clone)]
 pub struct SessionManager {
@@ -149,6 +150,11 @@ impl SessionManager {
                         tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                     }
 
+                    // Also write to Convex if enabled
+                    if use_convex() {
+                        mirror_acp_update_to_convex(&thread_id, &update_copy).await;
+                    }
+
                     tracing::info!(
                         target: "openagents_lib::oa_acp::session_manager",
                         session_id = %notif.session_id.0,
@@ -207,6 +213,11 @@ impl SessionManager {
             let notifications = self.tinyvex.tinyvex_writer.mirror_acp_update_to_tinyvex(&agent_type, &thread_id, &user_chunk).await;
             for notification in notifications {
                 tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
+            }
+
+            // Also write to Convex if enabled
+            if use_convex() {
+                mirror_acp_update_to_convex(&thread_id, &user_chunk).await;
             }
         }
 
@@ -269,6 +280,11 @@ impl SessionManager {
                             tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                         }
 
+                        // Also write to Convex if enabled
+                        if use_convex() {
+                            mirror_acp_update_to_convex(&thread_id, &update_copy).await;
+                        }
+
                         tracing::info!(
                             target: "openagents_lib::oa_acp::session_manager",
                             session_id = %sid.0,
@@ -296,6 +312,183 @@ impl SessionManager {
         Ok(s)
     }
 
+}
+
+// Helper: Check if Convex is enabled via environment variable
+fn use_convex() -> bool {
+    std::env::var("VITE_USE_CONVEX")
+        .ok()
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+// Helper: Extract text from ContentBlock
+fn content_to_text(content: &acp::ContentBlock) -> String {
+    match content {
+        acp::ContentBlock::Text(acp::TextContent { text, .. }) => text.clone(),
+        _ => String::new(),
+    }
+}
+
+// Helper: Mirror ACP update to Convex (parallel to Tinyvex)
+async fn mirror_acp_update_to_convex(
+    thread_id: &str,
+    update: &acp::SessionUpdate,
+) {
+    use acp::SessionUpdate as SU;
+
+    match update {
+        SU::ToolCall(tc) => {
+            let id = format!("{:?}", tc.id);
+            let title = Some(tc.title.as_str());
+            let kind = Some(format!("{:?}", tc.kind));
+            let status = Some(format!("{:?}", tc.status));
+            let content_json = serde_json::to_string(&tc.content).ok();
+            let locations_json = serde_json::to_string(&tc.locations).ok();
+
+            if let Err(e) = convex_client::ConvexClientManager::upsert_tool_call(
+                thread_id,
+                &id,
+                title,
+                kind.as_deref(),
+                status.as_deref(),
+                content_json.as_deref(),
+                locations_json.as_deref(),
+            ).await {
+                error!(?e, thread_id, tool_call_id=%id, "failed to upsert tool call to convex");
+            }
+        }
+        SU::ToolCallUpdate(tc) => {
+            let id = format!("{:?}", tc.id);
+            let title = tc.fields.title.as_deref();
+            let kind = tc.fields.kind.as_ref().map(|k| format!("{:?}", k));
+            let status = tc.fields.status.as_ref().map(|s| format!("{:?}", s));
+            let content_json = tc.fields.content.as_ref()
+                .and_then(|c| serde_json::to_string(c).ok());
+            let locations_json = tc.fields.locations.as_ref()
+                .and_then(|l| serde_json::to_string(l).ok());
+
+            if let Err(e) = convex_client::ConvexClientManager::upsert_tool_call(
+                thread_id,
+                &id,
+                title,
+                kind.as_deref(),
+                status.as_deref(),
+                content_json.as_deref(),
+                locations_json.as_deref(),
+            ).await {
+                error!(?e, thread_id, tool_call_id=%id, "failed to update tool call in convex");
+            }
+        }
+        SU::Plan(p) => {
+            if let Ok(entries_json) = serde_json::to_string(&p.entries) {
+                if let Err(e) = convex_client::ConvexClientManager::upsert_plan(
+                    thread_id,
+                    &entries_json,
+                ).await {
+                    error!(?e, thread_id, "failed to upsert plan to convex");
+                }
+            }
+        }
+        SU::AvailableCommandsUpdate(ac) => {
+            if let Ok(cmds_json) = serde_json::to_string(&ac.available_commands) {
+                if let Err(e) = convex_client::ConvexClientManager::upsert_thread_state(
+                    thread_id,
+                    None,
+                    Some(&cmds_json),
+                ).await {
+                    error!(?e, thread_id, "failed to upsert thread state to convex");
+                }
+            }
+        }
+        SU::CurrentModeUpdate(cm) => {
+            let mode_id = format!("{:?}", cm.current_mode_id);
+            if let Err(e) = convex_client::ConvexClientManager::upsert_thread_state(
+                thread_id,
+                Some(&mode_id),
+                None,
+            ).await {
+                error!(?e, thread_id, mode=%mode_id, "failed to upsert current mode to convex");
+            }
+        }
+        SU::UserMessageChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                let item_id = format!("turn:{}:user", chrono::Utc::now().timestamp_millis());
+                if let Err(e) = convex_client::ConvexClientManager::upsert_streaming_message(
+                    thread_id,
+                    &item_id,
+                    "user",
+                    &txt,
+                    Some("message"),
+                    false, // user messages are immediately finalized
+                    None,
+                ).await {
+                    error!(?e, thread_id, item_id, "failed to upsert user message to convex");
+                }
+            }
+        }
+        SU::AgentMessageChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                // For streaming messages, use a consistent item_id per turn
+                // In production, we'd need to track this like Tinyvex does
+                let item_id = format!("turn:{}:assistant", chrono::Utc::now().timestamp_millis());
+                if let Err(e) = convex_client::ConvexClientManager::upsert_streaming_message(
+                    thread_id,
+                    &item_id,
+                    "assistant",
+                    &txt,
+                    Some("message"),
+                    true, // streaming, not finalized yet
+                    None,
+                ).await {
+                    error!(?e, thread_id, item_id, "failed to upsert assistant message to convex");
+                }
+            }
+        }
+        SU::AgentThoughtChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                let item_id = format!("turn:{}:reason", chrono::Utc::now().timestamp_millis());
+                if let Err(e) = convex_client::ConvexClientManager::upsert_streaming_message(
+                    thread_id,
+                    &item_id,
+                    "assistant",
+                    &txt,
+                    Some("reason"),
+                    true, // streaming
+                    None,
+                ).await {
+                    error!(?e, thread_id, item_id, "failed to upsert thought to convex");
+                }
+            }
+        }
+    }
+
+    // Also append to ACP event log
+    if let Ok(payload) = serde_json::to_string(update) {
+        let update_kind = match update {
+            SU::ToolCall(_) => "tool_call",
+            SU::ToolCallUpdate(_) => "tool_call_update",
+            SU::Plan(_) => "plan",
+            SU::AvailableCommandsUpdate(_) => "available_commands",
+            SU::CurrentModeUpdate(_) => "current_mode",
+            SU::UserMessageChunk(_) => "user_message",
+            SU::AgentMessageChunk(_) => "agent_message",
+            SU::AgentThoughtChunk(_) => "agent_thought",
+        };
+
+        if let Err(e) = convex_client::ConvexClientManager::append_event(
+            None, // session_id - we could track this
+            None, // client_thread_doc_id
+            Some(thread_id),
+            Some(update_kind),
+            &payload,
+        ).await {
+            error!(?e, thread_id, update_kind, "failed to append ACP event to convex");
+        }
+    }
 }
 
 // Helper used by UI/diagnostics: resolve ACP agent path or return error
