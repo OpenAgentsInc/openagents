@@ -61,6 +61,14 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
     private store: AssistantApi,
   ) {}
 
+  private getCloud(): AssistantCloud {
+    const cloud = this.cloudRef.current;
+    if (!cloud) {
+      throw new Error("AssistantCloud instance is not available");
+    }
+    return cloud;
+  }
+
   private get _getIdForLocalId(): Record<string, string | Promise<string>> {
     if (!globalMessageIdMapping.has(this.store.threadListItem())) {
       globalMessageIdMapping.set(this.store.threadListItem(), {});
@@ -76,7 +84,8 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
 
   async append({ parentId, message }: ExportedMessageRepositoryItem) {
     const { remoteId } = await this.store.threadListItem().initialize();
-    const task = this.cloudRef.current.threads.messages
+    const cloud = this.getCloud();
+    const task = cloud.threads.messages
       .create(remoteId, {
         parent_id: parentId
           ? ((await this._getIdForLocalId[parentId]) ?? parentId)
@@ -97,7 +106,8 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
   async load() {
     const remoteId = this.store.threadListItem().getState().remoteId;
     if (!remoteId) return { messages: [] };
-    const { messages } = await (this.cloudRef.current as any).threads.messages.list(
+    const cloud = this.getCloud() as any;
+    const { messages } = await cloud.threads.messages.list(
       remoteId,
       {
         format: "aui/v0",
@@ -123,7 +133,8 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
   ) {
     const { remoteId } = await this.store.threadListItem().initialize();
 
-    const task = this.cloudRef.current.threads.messages
+    const cloud = this.getCloud();
+    const task = cloud.threads.messages
       .create(remoteId, {
         parent_id: parentId
           ? ((await this._getIdForLocalId[parentId]) ?? parentId)
@@ -150,7 +161,8 @@ class AssistantCloudThreadHistoryAdapter implements ThreadHistoryAdapter {
     const remoteId = this.store.threadListItem().getState().remoteId;
     if (!remoteId) return { messages: [] };
 
-    const { messages } = await (this.cloudRef.current as any).threads.messages.list(
+    const cloud = this.getCloud() as any;
+    const { messages } = await cloud.threads.messages.list(
       remoteId,
       {
         format,

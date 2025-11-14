@@ -1,4 +1,5 @@
 import {
+  RefObject,
   resource,
   tapInlineResource,
   tapMemo,
@@ -10,7 +11,6 @@ import { tapSubscribable } from "../util-hooks/tapSubscribable";
 import { ComposerClient } from "./ComposerRuntimeClient";
 import { MessagePartClient } from "./MessagePartRuntimeClient";
 import { tapLookupResources } from "../../client/util-hooks/tapLookupResources";
-import { RefObject } from "react";
 import {
   MessageClientState,
   MessageClientApi,
