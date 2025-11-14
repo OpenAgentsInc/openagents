@@ -14,8 +14,8 @@ import {
   SidebarInset,
   SidebarTrigger,
   SidebarSeparator,
-} from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 import { Home, Settings, Folder, FileText } from 'lucide-react';
 
 const meta = {

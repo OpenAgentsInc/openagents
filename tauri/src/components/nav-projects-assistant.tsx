@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@openagentsinc/ui"
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -26,12 +26,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from "@openagentsinc/ui"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+} from "@openagentsinc/ui"
 import { useProjectStore } from "@/lib/project-store"
 import { useSharedTinyvexWebSocket } from "@/lib/tinyvexWebSocketSingleton"
 import { listProjects, updateProject, deleteProject } from "@/lib/tauri-projects"

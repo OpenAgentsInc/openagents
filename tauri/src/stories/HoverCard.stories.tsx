@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
-import { Button } from '@/components/ui/button';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/HoverCard',

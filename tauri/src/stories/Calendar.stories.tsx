@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar } from "@openagentsinc/ui";
 
 type Mode = 'single' | 'multiple' | 'range';
 

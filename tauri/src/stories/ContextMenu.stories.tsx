@@ -14,7 +14,7 @@ import {
   ContextMenuRadioItem,
   ContextMenuGroup,
   ContextMenuShortcut,
-} from '@/components/ui/context-menu';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/ContextMenu',

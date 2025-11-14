@@ -4,7 +4,7 @@ import {
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
-} from '@/components/ui/accordion';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Accordion',

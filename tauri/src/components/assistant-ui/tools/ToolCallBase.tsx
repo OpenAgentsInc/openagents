@@ -1,7 +1,7 @@
 import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-runtime";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, XIcon, LoaderIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@openagentsinc/ui";
 
 interface ToolCallBaseProps {
   title: ReactNode;

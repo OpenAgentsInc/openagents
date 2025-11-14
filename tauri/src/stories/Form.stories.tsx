@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from "@openagentsinc/ui";
+import { Input } from "@openagentsinc/ui";
 import {
   Form,
   FormField,
@@ -12,7 +12,7 @@ import {
   FormControl,
   FormDescription,
   FormMessage,
-} from '@/components/ui/form';
+} from "@openagentsinc/ui";
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),

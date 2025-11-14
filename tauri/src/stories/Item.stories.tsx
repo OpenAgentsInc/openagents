@@ -8,8 +8,8 @@ import {
   ItemDescription,
   ItemActions,
   ItemSeparator,
-} from '@/components/ui/item';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 import { Star, Download } from 'lucide-react';
 
 const meta = {

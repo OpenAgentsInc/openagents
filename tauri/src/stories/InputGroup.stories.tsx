@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   InputGroup,
   InputGroupAddon,
@@ -6,36 +6,49 @@ import {
   InputGroupText,
   InputGroupInput,
   InputGroupTextarea,
-} from '@/components/ui/input-group';
-import { Button } from '@/components/ui/button';
-import { Kbd } from '@/components/ui/kbd';
-import { Search, X } from 'lucide-react';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
+import { Kbd } from "@openagentsinc/ui";
+import { Search, X } from "lucide-react";
+
+type InputGroupStoryArgs = {
+  align: "inline-start" | "inline-end" | "block-start" | "block-end";
+  placeholder?: string;
+  invalid?: boolean;
+  disabled?: boolean;
+  width: number;
+};
+
+const InputGroupStoryComponent = (_: InputGroupStoryArgs) => null;
 
 const meta = {
-  title: 'UI/InputGroup',
-  component: InputGroup,
+  title: "UI/InputGroup",
+  component: InputGroupStoryComponent,
   argTypes: {
-    align: { control: 'select', options: ['inline-start', 'inline-end', 'block-start', 'block-end'] },
-    placeholder: { control: 'text' },
-    invalid: { control: 'boolean' },
-    disabled: { control: 'boolean' },
-    width: { control: 'number' },
+    align: {
+      control: "select",
+      options: ["inline-start", "inline-end", "block-start", "block-end"],
+    },
+    placeholder: { control: "text" },
+    invalid: { control: "boolean" },
+    disabled: { control: "boolean" },
+    width: { control: "number" },
   },
   args: {
-    align: 'inline-start',
-    placeholder: 'Search…',
+    align: "inline-start",
+    placeholder: "Search…",
     invalid: false,
     disabled: false,
     width: 420,
   },
-} satisfies Meta<typeof InputGroup>;
+} satisfies Meta<typeof InputGroupStoryComponent>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const WithButtons: Story = {
   render: ({ align, placeholder, invalid, disabled, width }) => (
-    <div style={{ width: Number(width), display: 'grid', gap: 12 }}>
+    <div style={{ width: Number(width), display: "grid", gap: 12 }}>
       <InputGroup data-disabled={!!disabled}>
         <InputGroupAddon align={align as any}>
           <Search className="opacity-70" />
@@ -76,4 +89,3 @@ export const WithTextarea: Story = {
     </div>
   ),
 };
-

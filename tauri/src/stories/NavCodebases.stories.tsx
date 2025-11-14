@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { NavCodebases } from '@/components/nav-codebases';
-import { SidebarProvider, Sidebar } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar } from "@openagentsinc/ui";
 import { Code2, FolderGit2, GitBranch, GitFork } from 'lucide-react';
 
 const meta = {

@@ -8,8 +8,8 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerClose,
-} from '@/components/ui/drawer';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 import { useEffect, useState } from 'react';
 
 const meta = {

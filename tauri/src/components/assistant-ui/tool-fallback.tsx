@@ -2,7 +2,7 @@ import type { ToolCallMessagePartComponent } from "@openagentsinc/assistant-ui-r
 import { safeStringify } from "@/components/assistant-ui/tools/ToolCallBase";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@openagentsinc/ui";
 
 export const ToolFallback: ToolCallMessagePartComponent = (props) => {
   const { toolName, argsText, result } = props;

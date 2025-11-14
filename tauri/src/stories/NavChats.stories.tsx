@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { NavChats } from '@/components/nav-chats';
 import { MyRuntimeProvider } from '@/runtime/MyRuntimeProvider';
-import { SidebarProvider, Sidebar } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar } from "@openagentsinc/ui";
 
 const meta = {
   title: 'Sidebar/NavChats',

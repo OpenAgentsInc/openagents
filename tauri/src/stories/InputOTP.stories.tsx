@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp';
+import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/InputOTP',

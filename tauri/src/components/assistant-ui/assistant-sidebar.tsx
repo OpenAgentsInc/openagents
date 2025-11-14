@@ -9,7 +9,7 @@ import { useUiStore } from "@/lib/ui-store"
 import {
     Sidebar, SidebarContent, SidebarFooter, SidebarInset, SidebarProvider,
     SidebarRail
-} from "@/components/ui/sidebar"
+} from "@openagentsinc/ui"
 
 export function AssistantSidebar() {
   const route = useUiStore((s) => s.route);

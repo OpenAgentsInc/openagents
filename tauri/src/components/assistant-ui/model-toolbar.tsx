@@ -11,11 +11,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+} from "@openagentsinc/ui";
+import { Input } from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
+import { Badge } from "@openagentsinc/ui";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@openagentsinc/ui";
 import { FolderIcon, AlertTriangleIcon, FolderOpenIcon } from "lucide-react";
 import { useAssistantState } from "@openagentsinc/assistant-ui-runtime";
 import { useUiStore } from "@/lib/ui-store";

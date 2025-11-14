@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useUiStore } from "@/lib/ui-store";
 import { useProjectStore } from "@/lib/project-store";
 import { ThreadComposer } from "@/components/assistant-ui/thread";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@openagentsinc/ui";
 import { FolderOpenIcon } from "lucide-react";
 import { useAssistantRuntime, useAssistantApi } from "@openagentsinc/assistant-ui-runtime";
 

@@ -8,9 +8,9 @@ import {
   FieldContent,
   FieldDescription,
   FieldError,
-} from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+} from "@openagentsinc/ui";
+import { Input } from "@openagentsinc/ui";
+import { Checkbox } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Field',

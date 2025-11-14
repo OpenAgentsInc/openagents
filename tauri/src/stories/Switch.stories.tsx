@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { Switch } from "@openagentsinc/ui";
+import { Label } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Switch',

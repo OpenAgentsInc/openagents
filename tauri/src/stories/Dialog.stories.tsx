@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from "@openagentsinc/ui";
 import {
   Dialog,
   DialogTrigger,
@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
-} from '@/components/ui/dialog';
+} from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Dialog',

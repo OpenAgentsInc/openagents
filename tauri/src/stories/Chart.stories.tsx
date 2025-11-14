@@ -6,7 +6,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
-} from '@/components/ui/chart';
+} from "@openagentsinc/ui";
 import {
   Area,
   AreaChart,

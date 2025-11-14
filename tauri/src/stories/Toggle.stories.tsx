@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
-import { Toggle } from '@/components/ui/toggle';
+import { Toggle } from "@openagentsinc/ui";
 import { Bold } from 'lucide-react';
 
 const meta = {

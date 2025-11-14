@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from "@openagentsinc/ui";
+import { Label } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/RadioGroup',

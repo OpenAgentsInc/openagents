@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@openagentsinc/ui";
 
 export function LoadingStatusIndicator() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);

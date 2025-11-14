@@ -8,10 +8,10 @@ import {
 } from "@openagentsinc/assistant-ui-runtime";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@openagentsinc/ui";
+import { Badge } from "@openagentsinc/ui";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@openagentsinc/ui";
 import { useProjectStore } from "@/lib/project-store";
 import { useUiStore } from "@/lib/ui-store";
 

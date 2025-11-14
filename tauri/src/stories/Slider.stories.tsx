@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Slider } from '@/components/ui/slider';
+import { Slider } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Slider',

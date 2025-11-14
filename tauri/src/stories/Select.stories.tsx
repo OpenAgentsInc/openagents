@@ -7,7 +7,7 @@ import {
   SelectValue,
   SelectLabel,
   SelectGroup,
-} from '@/components/ui/select';
+} from "@openagentsinc/ui";
 
 const options = ['Apple', 'Banana', 'Orange', 'Grape', 'Pineapple'] as const;
 

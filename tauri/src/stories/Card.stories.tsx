@@ -7,8 +7,8 @@ import {
   CardAction,
   CardContent,
   CardFooter,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+} from "@openagentsinc/ui";
+import { Button } from "@openagentsinc/ui";
 
 const meta = {
   title: 'UI/Card',
