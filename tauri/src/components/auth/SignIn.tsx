@@ -1,5 +1,3 @@
-"use client";
-
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
 
@@ -20,7 +18,7 @@ export function SignIn() {
         </p>
       </div>
       <form
-        className="flex flex-col gap-4 w-full bg-zinc-800 p-8 rounded-lg shadow-xl border border-zinc-700"
+        className="flex flex-col gap-4 w-full bg-zinc-800 p-8 shadow-xl border border-zinc-700"
         onSubmit={(e) => {
           e.preventDefault();
           setLoading(true);
@@ -39,7 +37,7 @@ export function SignIn() {
         }}
       >
         <input
-          className="bg-zinc-900 text-white rounded-lg p-3 border border-zinc-600 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-700 outline-none transition-all placeholder:text-zinc-500"
+          className="bg-zinc-900 text-white p-3 border border-zinc-600 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-700 outline-none transition-all placeholder:text-zinc-500"
           type="email"
           name="email"
           placeholder="Email"
@@ -47,7 +45,7 @@ export function SignIn() {
         />
         <div className="flex flex-col gap-1">
           <input
-            className="bg-zinc-900 text-white rounded-lg p-3 border border-zinc-600 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-700 outline-none transition-all placeholder:text-zinc-500"
+            className="bg-zinc-900 text-white p-3 border border-zinc-600 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-700 outline-none transition-all placeholder:text-zinc-500"
             type="password"
             name="password"
             placeholder="Password"
@@ -61,7 +59,7 @@ export function SignIn() {
           )}
         </div>
         <button
-          className="bg-zinc-700 hover:bg-zinc-600 text-white font-semibold rounded-lg py-3 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="bg-zinc-700 hover:bg-zinc-600 text-white font-semibold py-3 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           type="submit"
           disabled={loading}
         >
@@ -81,7 +79,7 @@ export function SignIn() {
           </span>
         </div>
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+          <div className="bg-red-500/10 border border-red-500/30 p-4">
             <p className="text-red-400 font-medium text-sm break-words">
               Error: {error}
             </p>
