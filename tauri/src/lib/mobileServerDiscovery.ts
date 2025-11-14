@@ -6,6 +6,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { getDefaultTinyvexWsUrl } from '@/config/acp';
 
 export interface ServerInfo {
   name: string;
@@ -140,33 +141,70 @@ export async function autoDiscoverServer(): Promise<ServerInfo | null> {
 
   if (servers.length === 0) {
     console.log('No servers discovered');
+    // Simulator-friendly fallback: try connecting to the host loopback.
+    // In the iOS Simulator, localhost/127.0.0.1 maps to the macOS host.
+    try {
+      const wsUrl = await getDefaultTinyvexWsUrl();
+      const match = wsUrl.match(/:(\d+)\//);
+      const basePort = match ? parseInt(match[1], 10) : 9100;
+      const fallbackHost = '127.0.0.1';
+      const candidates = Array.from({ length: 16 }, (_, i) => basePort + i);
+      for (const port of candidates) {
+        const reachable = await testServerConnection(fallbackHost, port);
+        if (reachable) {
+          const server: ServerInfo = {
+            name: 'localhost',
+            host: fallbackHost,
+            port,
+            discoveredAt: Date.now(),
+          };
+          console.log('Simulator fallback succeeded. Using', server);
+          saveLastServer(server);
+          return server;
+        }
+      }
+    } catch (e) {
+      console.warn('Simulator fallback check failed:', e);
+    }
     return null;
   }
 
-  if (servers.length === 1) {
-    console.log('Found exactly one server, using it:', servers[0]);
-    saveLastServer(servers[0]);
-    return servers[0];
-  }
-
-  // Multiple servers found - prefer the last one if it's in the list
-  if (lastServer) {
-    const matchingServer = servers.find(
-      s => s.host === lastServer.host && s.port === lastServer.port
-    );
-    if (matchingServer) {
-      console.log('Last server found in discovered list, using it:', matchingServer);
-      saveLastServer(matchingServer);
-      return matchingServer;
+  // If any discovered server is reachable, prefer it
+  for (const s of servers) {
+    const ok = await testServerConnection(s.host, s.port);
+    if (ok) {
+      console.log('Using reachable discovered server:', s);
+      saveLastServer(s);
+      return s;
     }
   }
 
-  // Return the most recently discovered server
-  const mostRecent = servers.reduce((latest, current) =>
-    current.discoveredAt > latest.discoveredAt ? current : latest
-  );
+  // Multiple servers found but none reachable — fall back to simulator loopback scan
+  try {
+    const wsUrl = await getDefaultTinyvexWsUrl();
+    const match = wsUrl.match(/:(\d+)\//);
+    const basePort = match ? parseInt(match[1], 10) : 9100;
+    const fallbackHost = '127.0.0.1';
+    const candidates = Array.from({ length: 16 }, (_, i) => basePort + i);
+    for (const port of candidates) {
+      if (await testServerConnection(fallbackHost, port)) {
+        const server: ServerInfo = { name: 'localhost', host: fallbackHost, port, discoveredAt: Date.now() };
+        console.log('Discovered servers unreachable; simulator fallback using', server);
+        saveLastServer(server);
+        return server;
+      }
+    }
+  } catch (e) {
+    console.warn('Fallback scan failed:', e);
+  }
 
-  console.log('Multiple servers found, using most recent:', mostRecent);
-  saveLastServer(mostRecent);
-  return mostRecent;
+  // Finally, prefer the most recent (for manual entry flows), otherwise null
+  if (servers.length > 0) {
+    const mostRecent = servers.reduce((latest, current) =>
+      current.discoveredAt > latest.discoveredAt ? current : latest
+    );
+    console.log('No reachable server; returning most recent for UI:', mostRecent);
+    return null; // keep behavior: return null to trigger error/selection UI
+  }
+  return null;
 }

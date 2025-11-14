@@ -44,14 +44,16 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    // Allow env override for better DX when coordinating with Tauri/mobile.
+    // Default remains 1420 to match tauri.conf.json devUrl.
+    port: Number(process.env.VITE_PORT ?? 1420),
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: Number(process.env.VITE_HMR_PORT ?? 1421),
         }
       : undefined,
     watch: {

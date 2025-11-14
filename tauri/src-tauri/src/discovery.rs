@@ -57,10 +57,15 @@ pub async fn discover_servers() -> anyhow::Result<Vec<ServerInfo>> {
                         );
 
                         // Extract server information
-                        let host = info.get_addresses()
+                        // Prefer IPv4 for compatibility with our WS bind (0.0.0.0)
+                        let host = info
+                            .get_addresses()
                             .iter()
-                            .next()
-                            .map(|addr| addr.to_string())
+                            .find_map(|addr| match addr {
+                                std::net::IpAddr::V4(v4) => Some(v4.to_string()),
+                                _ => None,
+                            })
+                            .or_else(|| info.get_addresses().iter().next().map(|a| a.to_string()))
                             .unwrap_or_else(|| info.get_hostname().to_string());
 
                         let server = ServerInfo {
