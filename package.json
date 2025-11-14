@@ -8,6 +8,7 @@
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
     "dev:frontend": "cd next && bun run dev",
     "dev:backend": "convex dev",
+    "desktop": "cd tauri && bun run desktop",
     "build": "cd next && bun run build",
     "convex:deploy": "convex deploy"
   },
