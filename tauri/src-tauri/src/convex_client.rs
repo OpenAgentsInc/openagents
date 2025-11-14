@@ -240,9 +240,18 @@ impl ConvexClientManager {
             let result = client.mutation("chat:createThreadExtended", args).await?;
 
             // Extract thread ID from result
+            // Convex returns the thread ID directly (it's a string-like Id value)
             match result {
                 FunctionResult::Value(Value::String(thread_id)) => Ok(thread_id),
-                _ => Err(anyhow::anyhow!("Unexpected result from createThreadExtended")),
+                FunctionResult::Value(v) => {
+                    // Try to extract string from other value types
+                    tracing::error!(?v, "Unexpected value type from createThreadExtended");
+                    Err(anyhow::anyhow!("Unexpected result type from createThreadExtended: {:?}", v))
+                },
+                other => {
+                    tracing::error!(?other, "Unexpected result from createThreadExtended");
+                    Err(anyhow::anyhow!("Unexpected result from createThreadExtended: {:?}", other))
+                }
             }
         } else {
             Err(anyhow::anyhow!("Convex client not initialized"))

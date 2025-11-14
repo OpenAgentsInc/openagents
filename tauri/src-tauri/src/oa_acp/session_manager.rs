@@ -173,16 +173,25 @@ impl SessionManager {
             self.inner.sessions.write().await.insert(real_sid.clone(), session);
             self.inner.clients.write().await.insert(real_sid.clone(), Arc::new(Mutex::new(client)));
 
-            // Create thread in Convex
+            // Create thread in Convex (skip if not authenticated yet)
+            // Thread will be auto-created by Convex when first message is sent
             let thread_id = real_sid.0.to_string();
             let working_dir = cwd.to_string_lossy().to_string();
-            if let Err(e) = convex_client::ConvexClientManager::create_thread(
-                None, // title - will be set from first message
-                None, // project_id
-                Some(&agent_type),
-                Some(&working_dir),
-            ).await {
-                error!(?e, thread_id, "failed to create thread in convex");
+
+            // Only create thread if Convex client is initialized (has auth)
+            if convex_client::ConvexClientManager::is_initialized().await {
+                if let Err(e) = convex_client::ConvexClientManager::create_thread(
+                    None, // title - will be set from first message
+                    None, // project_id
+                    Some(&agent_type),
+                    Some(&working_dir),
+                ).await {
+                    // Don't fail session creation if Convex thread creation fails
+                    // (user might not be authenticated yet)
+                    info!(?e, thread_id, "skipped creating thread in convex (likely not authenticated)");
+                }
+            } else {
+                info!(thread_id, "convex not initialized, skipping thread creation");
             }
 
             return Ok(real_sid);
@@ -192,16 +201,21 @@ impl SessionManager {
         let session = Session { id: session_id.clone(), cwd: cwd.clone(), messages: vec![], use_codex_exec: true, agent_type: agent_type.clone() };
         self.inner.sessions.write().await.insert(session_id.clone(), session);
 
-        // Create thread in Convex for codex-exec too
+        // Create thread in Convex for codex-exec too (skip if not authenticated yet)
         let thread_id = session_id.0.to_string();
         let working_dir = cwd.to_string_lossy().to_string();
-        if let Err(e) = convex_client::ConvexClientManager::create_thread(
-            None, // title
-            None, // project_id
-            Some(&agent_type),
-            Some(&working_dir),
-        ).await {
-            error!(?e, thread_id, "failed to create thread in convex (codex-exec)");
+
+        if convex_client::ConvexClientManager::is_initialized().await {
+            if let Err(e) = convex_client::ConvexClientManager::create_thread(
+                None, // title
+                None, // project_id
+                Some(&agent_type),
+                Some(&working_dir),
+            ).await {
+                info!(?e, thread_id, "skipped creating thread in convex (codex-exec, likely not authenticated)");
+            }
+        } else {
+            info!(thread_id, "convex not initialized, skipping thread creation (codex-exec)");
         }
 
         Ok(session_id)
