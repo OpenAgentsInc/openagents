@@ -10,6 +10,9 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  // Load .env files from repo root (parent of tauri/)
+  envDir: path.resolve(__dirname, ".."),
+
   resolve: {
     alias: [
       { find: "@", replacement: path.resolve(__dirname, "./src") },
