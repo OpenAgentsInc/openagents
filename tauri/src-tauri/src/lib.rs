@@ -19,6 +19,7 @@ mod codex_exec;
 mod tinyvex_state;
 mod tinyvex_controls;
 mod tinyvex_ws;
+mod convex_client;
 #[cfg(not(target_os = "ios"))]
 mod mdns_advertiser;
 #[cfg(target_os = "ios")]
@@ -265,6 +266,22 @@ fn get_websocket_url() -> String {
     format!("ws://127.0.0.1:{}/ws", port)
 }
 
+// Convex commands
+
+#[tauri::command]
+async fn set_convex_auth(token: Option<String>) -> Result<(), String> {
+    init_tracing();
+    info!(token_present=%token.is_some(), "set_convex_auth called");
+    convex_client::ConvexClientManager::set_auth(token)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn is_convex_initialized() -> Result<bool, String> {
+    Ok(convex_client::ConvexClientManager::is_initialized().await)
+}
+
 pub struct AppState {
     sessions: SessionManager,
 }
@@ -307,7 +324,9 @@ pub fn run() {
             test_server_connection,
             get_last_server,
             save_last_server,
-            get_websocket_url
+            get_websocket_url,
+            set_convex_auth,
+            is_convex_initialized
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -326,6 +345,24 @@ pub fn run() {
                 }
             }
             let _ = APP_HANDLE.set(app.handle().clone());
+
+            // Initialize Convex client if enabled
+            let use_convex = std::env::var("VITE_USE_CONVEX")
+                .unwrap_or_else(|_| "false".to_string()) == "true";
+
+            if use_convex {
+                if let Ok(convex_url) = std::env::var("VITE_CONVEX_URL") {
+                    info!("Initializing Convex client with URL: {}", convex_url);
+                    tauri::async_runtime::spawn(async move {
+                        match convex_client::ConvexClientManager::initialize(&convex_url).await {
+                            Ok(_) => info!("Convex client initialized successfully"),
+                            Err(e) => error!(?e, "Failed to initialize Convex client"),
+                        }
+                    });
+                } else {
+                    error!("VITE_USE_CONVEX=true but VITE_CONVEX_URL not set");
+                }
+            }
 
             // Start WebSocket server in Tauri's tokio runtime on desktop only.
             // On iOS, the app is a thin client and connects to a desktop server.
