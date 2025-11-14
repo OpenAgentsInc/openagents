@@ -150,16 +150,14 @@ impl SessionManager {
                         tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                     }
 
-                    // Also write to Convex if enabled
-                    if use_convex() {
-                        mirror_acp_update_to_convex(&thread_id, &update_copy).await;
-                    }
+                    // Also write to Convex
+                    mirror_acp_update_to_convex(&thread_id, &update_copy).await;
 
                     tracing::info!(
                         target: "openagents_lib::oa_acp::session_manager",
                         session_id = %notif.session_id.0,
                         kind = ?update_copy,
-                        "processed ACP update via tinyvex"
+                        "processed ACP update via tinyvex and convex"
                     );
                 }
                 info!(session_id=%sid_clone.0, "update stream ended");
@@ -215,10 +213,8 @@ impl SessionManager {
                 tinyvex_ws::broadcast_writer_notification(&self.tinyvex, &notification).await;
             }
 
-            // Also write to Convex if enabled
-            if use_convex() {
-                mirror_acp_update_to_convex(&thread_id, &user_chunk).await;
-            }
+            // Also write to Convex
+            mirror_acp_update_to_convex(&thread_id, &user_chunk).await;
         }
 
         // send prompt either via ACP client or codex exec adapter
@@ -280,16 +276,14 @@ impl SessionManager {
                             tinyvex_ws::broadcast_writer_notification(&tinyvex, &notification).await;
                         }
 
-                        // Also write to Convex if enabled
-                        if use_convex() {
-                            mirror_acp_update_to_convex(&thread_id, &update_copy).await;
-                        }
+                        // Also write to Convex
+                        mirror_acp_update_to_convex(&thread_id, &update_copy).await;
 
                         tracing::info!(
                             target: "openagents_lib::oa_acp::session_manager",
                             session_id = %sid.0,
                             kind = ?update_copy,
-                            "processed codex-exec update via tinyvex"
+                            "processed codex-exec update via tinyvex and convex"
                         );
                     });
                 }).await;
@@ -312,14 +306,6 @@ impl SessionManager {
         Ok(s)
     }
 
-}
-
-// Helper: Check if Convex is enabled via environment variable
-fn use_convex() -> bool {
-    std::env::var("VITE_USE_CONVEX")
-        .ok()
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
 }
 
 // Helper: Extract text from ContentBlock
