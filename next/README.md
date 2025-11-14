@@ -1,25 +1,37 @@
 This is the [assistant-ui](https://github.com/Yonom/assistant-ui) starter project.
 
-## Getting Started
+## Getting Started (Bun)
 
-First, add your OpenAI API key to `.env.local` file:
+This project uses Bun for package management. Make sure Bun is installed, then install dependencies:
+
+```bash
+bun install
+```
+
+Add your OpenAI API key to `.env.local`:
 
 ```
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Then, run the development server:
+Run the development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Build for production:
+
+```bash
+bun run build
+```
+
+Start the production server:
+
+```bash
+bun run start
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
