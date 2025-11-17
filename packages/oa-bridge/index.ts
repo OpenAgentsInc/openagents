@@ -42,7 +42,7 @@ async function main() {
   const absA = path.resolve('package.json')
   const absB = path.resolve('convex/schema.ts')
   const absC = path.resolve('README.md')
-  const promptSegments = buildReadOnlyPrompt([absA, absB, absC]) as any
+  const promptSegments = buildReadOnlyPrompt([absA, absB, absC], { maxToolCalls: 8 }) as any
 
   const res = await clientConn.prompt({
     sessionId,
