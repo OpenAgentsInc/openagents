@@ -1,6 +1,7 @@
 {
   "name": "@openagentsinc/bridge",
   "module": "index.ts",
+  "version": "0.0.1-rc.1",
   "type": "module",
   "scripts": {
     "postinstall": "patch-package"
