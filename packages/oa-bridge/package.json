@@ -7,5 +7,9 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "0.5.1",
+    "@zed-industries/claude-code-acp": "0.10.3"
   }
 }
