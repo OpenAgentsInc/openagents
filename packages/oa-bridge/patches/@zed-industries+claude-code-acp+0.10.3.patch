@@ -1,0 +1,215 @@
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/acp-agent.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/acp-agent.d.ts
+new file mode 100644
+index 0000000..45bed35
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/acp-agent.d.ts
+@@ -0,0 +1,73 @@
++import { Agent, AgentSideConnection, AuthenticateRequest, CancelNotification, ClientCapabilities, InitializeRequest, InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse, SetSessionModelRequest, SetSessionModelResponse, SetSessionModeRequest, SetSessionModeResponse, TerminalHandle, TerminalOutputResponse, WriteTextFileRequest, WriteTextFileResponse } from "@agentclientprotocol/sdk";
++import { CanUseTool, PermissionMode, Query, SDKPartialAssistantMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
++import { Pushable } from "./utils.js";
++import { SessionNotification } from "@agentclientprotocol/sdk";
++import { ContentBlockParam } from "@anthropic-ai/sdk/resources";
++import { BetaContentBlock, BetaRawContentBlockDelta } from "@anthropic-ai/sdk/resources/beta.mjs";
++type Session = {
++    query: Query;
++    input: Pushable<SDKUserMessage>;
++    cancelled: boolean;
++    permissionMode: PermissionMode;
++};
++type BackgroundTerminal = {
++    handle: TerminalHandle;
++    status: "started";
++    lastOutput: TerminalOutputResponse | null;
++} | {
++    status: "aborted" | "exited" | "killed" | "timedOut";
++    pendingOutput: TerminalOutputResponse;
++};
++/**
++ * Extra metadata that the agent provides for each tool_call / tool_update update, under the `_meta.claudeCode` key.
++ */
++export type ToolUpdateMeta = {
++    toolName: string;
++    toolResponse?: unknown;
++};
++type ToolUseCache = {
++    [key: string]: {
++        type: "tool_use" | "server_tool_use" | "mcp_tool_use";
++        id: string;
++        name: string;
++        input: any;
++    };
++};
++export declare class ClaudeAcpAgent implements Agent {
++    sessions: {
++        [key: string]: Session;
++    };
++    client: AgentSideConnection;
++    toolUseCache: ToolUseCache;
++    fileContentCache: {
++        [key: string]: string;
++    };
++    backgroundTerminals: {
++        [key: string]: BackgroundTerminal;
++    };
++    clientCapabilities?: ClientCapabilities;
++    constructor(client: AgentSideConnection);
++    initialize(request: InitializeRequest): Promise<InitializeResponse>;
++    newSession(params: NewSessionRequest): Promise<NewSessionResponse>;
++    authenticate(_params: AuthenticateRequest): Promise<void>;
++    prompt(params: PromptRequest): Promise<PromptResponse>;
++    cancel(params: CancelNotification): Promise<void>;
++    setSessionModel(params: SetSessionModelRequest): Promise<SetSessionModelResponse | void>;
++    setSessionMode(params: SetSessionModeRequest): Promise<SetSessionModeResponse>;
++    readTextFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse>;
++    writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse>;
++    canUseTool(sessionId: string): CanUseTool;
++}
++export declare function promptToClaude(prompt: PromptRequest): SDKUserMessage;
++/**
++ * Convert an SDKAssistantMessage (Claude) to a SessionNotification (ACP).
++ * Only handles text, image, and thinking chunks for now.
++ */
++export declare function toAcpNotifications(content: string | ContentBlockParam[] | BetaContentBlock[] | BetaRawContentBlockDelta[], role: "assistant" | "user", sessionId: string, toolUseCache: ToolUseCache, fileContentCache: {
++    [key: string]: string;
++}, client: AgentSideConnection): SessionNotification[];
++export declare function streamEventToAcpNotifications(message: SDKPartialAssistantMessage, sessionId: string, toolUseCache: ToolUseCache, fileContentCache: {
++    [key: string]: string;
++}, client: AgentSideConnection): SessionNotification[];
++export declare function runAcp(): void;
++export {};
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/index.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/index.d.ts
+new file mode 100644
+index 0000000..b798801
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/index.d.ts
+@@ -0,0 +1,2 @@
++#!/usr/bin/env node
++export {};
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/lib.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/lib.d.ts
+new file mode 100644
+index 0000000..476717e
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/lib.d.ts
+@@ -0,0 +1,5 @@
++export { ClaudeAcpAgent, runAcp, toAcpNotifications, streamEventToAcpNotifications, type ToolUpdateMeta, } from "./acp-agent.js";
++export { loadManagedSettings, applyEnvironmentSettings, nodeToWebReadable, nodeToWebWritable, Pushable, unreachable, } from "./utils.js";
++export { createMcpServer, toolNames } from "./mcp-server.js";
++export { toolInfoFromToolUse, planEntries, toolUpdateFromToolResult } from "./tools.js";
++export type { ClaudePlanEntry } from "./tools.js";
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/mcp-server.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/mcp-server.d.ts
+new file mode 100644
+index 0000000..9c4a4d0
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/mcp-server.d.ts
+@@ -0,0 +1,29 @@
++import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
++import { ClaudeAcpAgent } from "./acp-agent.js";
++import { ClientCapabilities } from "@agentclientprotocol/sdk";
++export declare const SYSTEM_REMINDER = "\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>";
++export declare const toolNames: {
++    read: string;
++    edit: string;
++    write: string;
++    bash: string;
++    killShell: string;
++    bashOutput: string;
++};
++export declare const EDIT_TOOL_NAMES: string[];
++export declare function createMcpServer(agent: ClaudeAcpAgent, sessionId: string, clientCapabilities: ClientCapabilities | undefined): McpServer;
++/**
++ * Replace text in a file and calculate the line numbers where the edits occurred.
++ *
++ * @param fileContent - The full file content
++ * @param edits - Array of edit operations to apply sequentially
++ * @returns the new content and the line numbers where replacements occurred in the final content
++ */
++export declare function replaceAndCalculateLocation(fileContent: string, edits: Array<{
++    oldText: string;
++    newText: string;
++    replaceAll?: boolean;
++}>): {
++    newContent: string;
++    lineNumbers: number[];
++};
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/tools.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/tools.d.ts
+new file mode 100644
+index 0000000..1f80c43
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/tools.d.ts
+@@ -0,0 +1,33 @@
++import { PlanEntry, ToolCallContent, ToolCallLocation, ToolKind } from "@agentclientprotocol/sdk";
++import { ToolResultBlockParam, WebSearchToolResultBlockParam } from "@anthropic-ai/sdk/resources";
++import { BetaBashCodeExecutionToolResultBlockParam, BetaCodeExecutionToolResultBlockParam, BetaRequestMCPToolResultBlockParam, BetaTextEditorCodeExecutionToolResultBlockParam, BetaWebFetchToolResultBlockParam, BetaWebSearchToolResultBlockParam } from "@anthropic-ai/sdk/resources/beta.mjs";
++import { HookCallback } from "@anthropic-ai/claude-agent-sdk";
++interface ToolInfo {
++    title: string;
++    kind: ToolKind;
++    content: ToolCallContent[];
++    locations?: ToolCallLocation[];
++}
++interface ToolUpdate {
++    title?: string;
++    content?: ToolCallContent[];
++    locations?: ToolCallLocation[];
++}
++export declare function toolInfoFromToolUse(toolUse: any, cachedFileContent: {
++    [key: string]: string;
++}): ToolInfo;
++export declare function toolUpdateFromToolResult(toolResult: ToolResultBlockParam | BetaWebSearchToolResultBlockParam | BetaWebFetchToolResultBlockParam | WebSearchToolResultBlockParam | BetaCodeExecutionToolResultBlockParam | BetaBashCodeExecutionToolResultBlockParam | BetaTextEditorCodeExecutionToolResultBlockParam | BetaRequestMCPToolResultBlockParam, toolUse: any | undefined): ToolUpdate;
++export type ClaudePlanEntry = {
++    content: string;
++    status: "pending" | "in_progress" | "completed";
++    activeForm: string;
++};
++export declare function planEntries(input: {
++    todos: ClaudePlanEntry[];
++}): PlanEntry[];
++export declare function markdownEscape(text: string): string;
++export declare const registerHookCallback: (toolUseID: string, { onPostToolUseHook, }: {
++    onPostToolUseHook?: (toolUseID: string, toolInput: unknown, toolResponse: unknown) => Promise<void>;
++}) => void;
++export declare const postToolUseHook: HookCallback;
++export {};
+diff --git a/node_modules/@zed-industries/claude-code-acp/dist/utils.d.ts b/node_modules/@zed-industries/claude-code-acp/dist/utils.d.ts
+new file mode 100644
+index 0000000..38f6a48
+--- /dev/null
++++ b/node_modules/@zed-industries/claude-code-acp/dist/utils.d.ts
+@@ -0,0 +1,37 @@
++import { Readable, Writable } from "node:stream";
++import { WritableStream, ReadableStream } from "node:stream/web";
++export declare class Pushable<T> implements AsyncIterable<T> {
++    private queue;
++    private resolvers;
++    private done;
++    push(item: T): void;
++    end(): void;
++    [Symbol.asyncIterator](): AsyncIterator<T>;
++}
++export declare function nodeToWebWritable(nodeStream: Writable): WritableStream<Uint8Array>;
++export declare function nodeToWebReadable(nodeStream: Readable): ReadableStream<Uint8Array>;
++export declare function unreachable(value: never): never;
++export declare function sleep(time: number): Promise<void>;
++interface ManagedSettings {
++    permissions?: {
++        allow?: string[];
++        deny?: string[];
++    };
++    env?: Record<string, string>;
++}
++export declare function loadManagedSettings(): ManagedSettings | null;
++export declare function applyEnvironmentSettings(settings: ManagedSettings): void;
++export interface ExtractLinesResult {
++    content: string;
++    wasLimited: boolean;
++    linesRead: number;
++}
++/**
++ * Extracts lines from file content with byte limit enforcement.
++ *
++ * @param fullContent - The complete file content
++ * @param maxContentLength - Maximum number of UTF-16 Code Units to return
++ * @returns Object containing extracted content and metadata
++ */
++export declare function extractLinesWithByteLimit(fullContent: string, maxContentLength: number): ExtractLinesResult;
++export {};

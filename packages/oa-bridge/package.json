@@ -2,8 +2,12 @@
   "name": "@openagentsinc/bridge",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "postinstall": "patch-package"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "patch-package": "^8.0.1"
   },
   "peerDependencies": {
     "typescript": "^5"
