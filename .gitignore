@@ -52,3 +52,4 @@ private
 *.safetensors
 *.bin
 models/
+logs/
