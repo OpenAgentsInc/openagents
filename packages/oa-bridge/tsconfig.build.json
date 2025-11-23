@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "module": "NodeNext",
+    "target": "ES2020",
+    "allowImportingTsExtensions": false,
+    "moduleResolution": "NodeNext",
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "sourceMap": false
+  },
+  "include": [
+    "index.ts",
+    "src/**/*.ts"
+  ]
+}
