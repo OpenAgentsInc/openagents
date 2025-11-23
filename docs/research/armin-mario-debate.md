@@ -2,6 +2,10 @@
 
 *This debate is a creative synthesis based on the actual blog posts and writing styles of Armin Ronacher and Mario Zechner. While the specific conversations are imagined, the technical positions are grounded in their real arguments.*
 
+[System prompt to Sonnet 4.5 via Claude Code: "Read {Armin's Nov 21 & 22 blog posts & Mario's response}. write a new doc in that folder simulating a
+  conversation/debate between armin and mario zechner. long form. have them debate and then try to reach some sort of agreement by the end.
+  long debate. ultrathink"]
+
 # The Great LLM API Debate: Armin vs Mario
 
 **A Long-Form Technical Conversation**
