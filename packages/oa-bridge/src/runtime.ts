@@ -1,9 +1,11 @@
 import { AgentSideConnection, ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
+import { TransformStream as NodeTransformStream } from 'node:stream/web'
 
 export function createInProcessNdjsonStreams() {
-  // Use global Web Streams (from lib.dom) to match ACP SDK typings
-  const a = new TransformStream<Uint8Array, Uint8Array>()
-  const b = new TransformStream<Uint8Array, Uint8Array>()
+  // Prefer global Web Streams if available; fall back to Node's implementation
+  const TS: any = (globalThis as any).TransformStream ?? NodeTransformStream
+  const a = new TS()
+  const b = new TS()
   const agentStream = ndJsonStream(a.writable, b.readable)
   const clientStream = ndJsonStream(b.writable, a.readable)
   return { agentStream, clientStream }
