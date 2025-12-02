@@ -4,6 +4,12 @@ import type { FlowNode, NodeId, NodeSize, Status } from "./model.js"
 export type TaskStatus = "open" | "in_progress" | "blocked" | "closed"
 
 // Simplified task representation for the flow tree
+export interface TaskDependencyInfo {
+  readonly id: string
+  readonly type: "blocks" | "related" | "parent-child" | "discovered-from"
+  readonly status?: TaskStatus
+}
+
 export interface TaskInfo {
   readonly id: string
   readonly title: string
@@ -11,6 +17,41 @@ export interface TaskInfo {
   readonly priority: number
   readonly type: string
   readonly labels: readonly string[]
+  readonly deps?: readonly TaskDependencyInfo[]
+  readonly createdAt?: string
+  readonly updatedAt?: string
+}
+
+export interface TaskRollup {
+  readonly total: number
+  readonly open: number
+  readonly inProgress: number
+  readonly blocked: number
+  readonly closed: number
+}
+
+export const buildTaskRollup = (tasks: readonly TaskInfo[]): TaskRollup => {
+  return tasks.reduce<TaskRollup>(
+    (acc, task) => {
+      acc.total += 1
+      switch (task.status) {
+        case "open":
+          acc.open += 1
+          break
+        case "in_progress":
+          acc.inProgress += 1
+          break
+        case "blocked":
+          acc.blocked += 1
+          break
+        case "closed":
+          acc.closed += 1
+          break
+      }
+      return acc
+    },
+    { total: 0, open: 0, inProgress: 0, blocked: 0, closed: 0 },
+  )
 }
 
 // Run log info from .openagents/run-logs
@@ -32,12 +73,14 @@ export interface MechaCoderState {
   readonly currentPhase: MechaCoderPhase
   readonly activeTaskId: string | null
   readonly recentRuns: readonly RunLogInfo[]
+  readonly rollup?: TaskRollup
 }
 
 export interface RepoState {
   readonly name: string
   readonly path: string
   readonly tasks: readonly TaskInfo[]
+  readonly rollup?: TaskRollup
 }
 
 // Map task status to flow node status
@@ -68,12 +111,17 @@ function buildTaskNode(task: TaskInfo): FlowNode {
       taskType: task.type,
       labels: task.labels,
       fullTitle: task.title,
+      deps: task.deps,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
     },
   }
 }
 
 // Build a repo node with its tasks
 function buildRepoNode(repo: RepoState): FlowNode {
+  const rollup = repo.rollup ?? buildTaskRollup(repo.tasks)
+
   // Sort tasks: in_progress first, then open, then blocked, then closed
   // Within each status, sort by priority
   const sortedTasks = [...repo.tasks].sort((a, b) => {
@@ -96,9 +144,11 @@ function buildRepoNode(repo: RepoState): FlowNode {
     children: sortedTasks.map(buildTaskNode),
     metadata: {
       path: repo.path,
-      taskCount: repo.tasks.length,
-      openCount: repo.tasks.filter(t => t.status === "open").length,
-      inProgressCount: repo.tasks.filter(t => t.status === "in_progress").length,
+      taskCount: rollup.total,
+      openCount: rollup.open,
+      inProgressCount: rollup.inProgress,
+      blockedCount: rollup.blocked,
+      closedCount: rollup.closed,
     },
   }
 }
@@ -127,6 +177,8 @@ function buildInternalLoopNode(currentPhase: MechaCoderPhase): FlowNode {
 function buildMechaCoderNode(state: MechaCoderState): FlowNode {
   const repoNodes = state.repos.map(buildRepoNode)
   const loopNode = buildInternalLoopNode(state.currentPhase)
+  const allTasks = state.repos.flatMap((repo) => repo.tasks)
+  const rollup = state.rollup ?? buildTaskRollup(allTasks)
   
   // Determine agent status
   let agentStatus: Status = "idle"
@@ -145,6 +197,8 @@ function buildMechaCoderNode(state: MechaCoderState): FlowNode {
       activeTaskId: state.activeTaskId,
       currentPhase: state.currentPhase,
       recentRunCount: state.recentRuns.length,
+      recentRuns: state.recentRuns,
+      rollup,
     },
   }
 }
@@ -227,27 +281,49 @@ export function createMechaCoderState(opts: {
       priority: number
       type: string
       labels?: readonly string[]
+      deps?: readonly TaskDependencyInfo[]
+      createdAt?: string
+      updatedAt?: string
     }>
+    rollup?: TaskRollup
   }>
   currentPhase?: MechaCoderPhase
   activeTaskId?: string | null
   recentRuns?: readonly RunLogInfo[]
+  rollup?: TaskRollup
 }): MechaCoderState {
-  return {
-    repos: opts.repos.map(r => ({
+  const repos = opts.repos.map((r) => {
+    const tasks = r.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      type: t.type,
+      labels: t.labels ?? [],
+      deps: t.deps,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }))
+
+    return {
       name: r.name,
       path: r.path,
-      tasks: r.tasks.map(t => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        type: t.type,
-        labels: t.labels ?? [],
-      })),
-    })),
+      tasks,
+      rollup: r.rollup ?? buildTaskRollup(tasks),
+    }
+  })
+
+  const rollup =
+    opts.rollup ??
+    buildTaskRollup(
+      repos.flatMap((repo) => repo.tasks),
+    )
+
+  return {
+    repos,
     currentPhase: opts.currentPhase ?? "idle",
     activeTaskId: opts.activeTaskId ?? null,
     recentRuns: opts.recentRuns ?? [],
+    rollup,
   }
 }
