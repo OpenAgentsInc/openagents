@@ -16,7 +16,8 @@ import {
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
 
-const LAYOUT_CONFIG = { padding: 12, spacing: 220 }
+// Larger padding/spacing to keep stacked agent->repo->task columns readable
+const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
 const REFRESH_INTERVAL_MS = 5000
 
 // Calculate layout once from sample data as a placeholder until live data loads
