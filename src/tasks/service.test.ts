@@ -169,4 +169,57 @@ describe("TaskService", () => {
     expect(result.filtered[0]?.title).toBe("Ready A");
     expect(result.next?.id).toBe(result.second.id);
   });
+
+  test("applies labelsAny/unassigned filters, limits, and sortPolicy oldest", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Assigned recent", { assignee: "alice", labels: ["frontend"], priority: 2 }),
+          timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000),
+        });
+        const unassigned = yield* createTask({
+          tasksPath,
+          task: makeTask("Unassigned older", { labels: ["backend", "cli"], priority: 2 }),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+        const alsoOlder = yield* createTask({
+          tasksPath,
+          task: makeTask("Unassigned also older", { labels: ["cli"], priority: 2 }),
+          timestamp: new Date("2025-01-02T00:00:00Z"),
+        });
+        // Blocked should be filtered out even if it matches labels
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Blocked task", {
+            status: "blocked",
+            labels: ["cli"],
+            deps: [{ id: unassigned.id, type: "blocks" }],
+          }),
+          timestamp: new Date("2025-01-03T00:00:00Z"),
+        });
+
+        const ready = yield* readyTasks(tasksPath, {
+          labelsAny: ["cli"],
+          unassigned: true,
+          sortPolicy: "oldest",
+          limit: 1,
+        });
+
+        const listed = yield* listTasks(tasksPath, {
+          labelsAny: ["cli"],
+          unassigned: true,
+          sortPolicy: "oldest",
+          status: "open",
+        });
+
+        return { ready, listed, unassigned, alsoOlder };
+      }),
+    );
+
+    expect(result.ready).toHaveLength(1);
+    expect(result.ready[0]?.title).toBe("Unassigned older");
+    expect(result.listed.map((t) => t.id)).toEqual([result.unassigned.id, result.alsoOlder.id]);
+  });
 });
