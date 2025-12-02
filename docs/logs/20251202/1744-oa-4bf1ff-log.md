@@ -8,3 +8,4 @@ Intent: Verify OpenAI provider is implemented behind the unified abstraction wit
 - Reviewed OpenAI provider implementation (src/llm/openai.ts) and unified provider abstraction; confirmed tool/function mapping, config, and tests already in place.
 - No code changes needed; treated as no-op closure.
 - Ran bun test (pass).
+- Added agentLoop tests for events/verification; all tests green.
