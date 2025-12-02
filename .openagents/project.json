@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "projectId": "openagents",
+  "defaultBranch": "main",
+  "defaultModel": "x-ai/grok-4.1-fast",
+  "rootDir": ".",
+  "testCommands": ["bun test"],
+  "e2eCommands": [],
+  "allowPush": true,
+  "allowForcePush": false,
+  "maxTasksPerRun": 3,
+  "maxRuntimeMinutes": 240,
+  "idPrefix": "oa"
+}
