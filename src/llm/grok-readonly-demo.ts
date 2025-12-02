@@ -25,63 +25,55 @@ const systemPrompt =
 
 const targetFile = "docs/scratchpad/demo.txt";
 
-const main = Effect.gen(function* (_) {
+const main = Effect.gen(function* () {
   // Build OpenRouter client from env
   const config = loadOpenRouterEnv();
   const client: OpenRouter = createOpenRouterClient(config);
 
-  yield* _(Console.log(colors.bold("== Grok read-only tool demo ==")));
-  yield* _(
-    Console.log(
-      `Model: x-ai/grok-4.1-fast | File: ${targetFile}\nTools: read (read-only)\nSystem: ${systemPrompt}`,
-    ),
+  yield* Console.log(colors.bold("== Grok read-only tool demo =="));
+  yield* Console.log(
+    `Model: x-ai/grok-4.1-fast | File: ${targetFile}\nTools: read (read-only)\nSystem: ${systemPrompt}`,
   );
 
   const tools = [toolToOpenRouterDefinition(readTool)];
 
-  const response = yield* _(
-    Effect.tryPromise({
-      try: () =>
-        client.chat.send({
-          model: "x-ai/grok-4.1-fast",
-          tools,
-          toolChoice: "auto",
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: `Read ${targetFile} and return the second line. Use the tool; do not guess.`,
-            },
-          ],
-        }),
-      catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
-    }),
-  );
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      client.chat.send({
+        model: "x-ai/grok-4.1-fast",
+        tools,
+        toolChoice: "auto",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Read ${targetFile} and return the second line. Use the tool; do not guess.`,
+          },
+        ],
+      }),
+    catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
+  });
 
   const choice = response.choices?.[0];
   const toolCalls = choice?.message.toolCalls ?? [];
 
   if (toolCalls.length === 0) {
-    yield* _(
-      Console.log(
-        `${colors.red("✖")} No tool calls returned. Assistant said: ${choice?.message.content ?? "<empty>"}`,
-      ),
+    yield* Console.log(
+      `${colors.red("✖")} No tool calls returned. Assistant said: ${choice?.message.content ?? "<empty>"}`,
     );
     return;
   }
 
-  yield* _(Console.log(colors.bold("\n== Tool calls ==")));
+  yield* Console.log(colors.bold("\n== Tool calls =="));
   for (const call of toolCalls) {
-    yield* _(Console.log(`${colors.cyan("•")} ${call.function.name} ${call.id}`));
-    yield* _(Console.log(`  args: ${call.function.arguments}`));
+    yield* Console.log(`${colors.cyan("•")} ${call.function.name} ${call.id}`);
+    yield* Console.log(`  args: ${call.function.arguments}`);
 
     const args = JSON.parse(call.function.arguments);
-    const result = yield* _(
-      runTool(readTool, args).pipe(Effect.provide(Layer.mergeAll(BunContext.layer))),
-    );
+    const result = yield* runTool(readTool, args).pipe(Effect.provide(Layer.mergeAll(BunContext.layer)));
     const text = result.content.find((c) => c.type === "text")?.text ?? "";
-    yield* _(Console.log(colors.green("Result (text):")));
-    yield* _(Console.log(text));
+    yield* Console.log(colors.green("Result (text):"));
+    yield* Console.log(text);
   }
 });
 

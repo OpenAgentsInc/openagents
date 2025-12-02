@@ -13,17 +13,17 @@ const editCommand = Command.make(
   "edit",
   { path: pathArg, oldText: oldTextOption, newText: newTextOption },
   ({ path, oldText, newText }) =>
-    Effect.gen(function* (_) {
-      const result = yield* _(runTool(editTool, { path, oldText, newText }));
+    Effect.gen(function* () {
+      const result = yield* runTool(editTool, { path, oldText, newText });
       const body = result.content
         .map((block) => (isTextContent(block) ? block.text : "[image content omitted]"))
         .join("\n\n");
 
-      yield* _(Console.log(body));
+      yield* Console.log(body);
 
       if (result.details?.diff) {
-        yield* _(Console.log("\n--- diff ---"));
-        yield* _(Console.log(result.details.diff));
+        yield* Console.log("\n--- diff ---");
+        yield* Console.log(result.details.diff);
       }
     }),
 );

@@ -57,42 +57,40 @@ const callGrok = (client: OpenRouter, offset: number, limit: number) =>
     catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
   });
 
-const main = Effect.gen(function* (_) {
+const main = Effect.gen(function* () {
   const client = createOpenRouterClient(loadOpenRouterEnv());
 
-  yield* _(Console.log(colors.bold("== Grok read-only chain demo ==")));
-  yield* _(
-    Console.log(
-      `File: ${targetFile} | Steps: ${steps.length} | Model: x-ai/grok-4.1-fast\nSystem: ${systemPrompt}`,
-    ),
+  yield* Console.log(colors.bold("== Grok read-only chain demo =="));
+  yield* Console.log(
+    `File: ${targetFile} | Steps: ${steps.length} | Model: x-ai/grok-4.1-fast\nSystem: ${systemPrompt}`,
   );
 
   for (const step of steps) {
-    yield* _(Console.log(colors.bold(`\n${step.label}`)));
+    yield* Console.log(colors.bold(`\n${step.label}`));
 
-    const response = yield* _(callGrok(client, step.offset, step.limit));
+    const response = yield* callGrok(client, step.offset, step.limit);
     const toolCalls = response.choices?.[0]?.message.toolCalls ?? [];
     const commentary = response.choices?.[0]?.message.content ?? "";
 
     if (toolCalls.length === 0) {
-      yield* _(Console.log(`${colors.red("✖")} No tool call. Commentary: ${commentary}`));
+      yield* Console.log(`${colors.red("✖")} No tool call. Commentary: ${commentary}`);
       continue;
     }
 
     for (const call of toolCalls) {
-      yield* _(Console.log(`${colors.cyan("•")} ${call.function.name} args: ${call.function.arguments}`));
+      yield* Console.log(`${colors.cyan("•")} ${call.function.name} args: ${call.function.arguments}`);
       const args = JSON.parse(call.function.arguments);
-      const result = yield* _(runReadTool(args));
+      const result = yield* runReadTool(args);
       const text = result.content.find((c) => c.type === "text")?.text ?? "";
-      yield* _(Console.log(colors.green("Result:")));
-      yield* _(Console.log(text));
+      yield* Console.log(colors.green("Result:"));
+      yield* Console.log(text);
     }
 
-    yield* _(Console.log(colors.yellow(`Commentary: ${commentary || "<none provided>"}`)));
+    yield* Console.log(colors.yellow(`Commentary: ${commentary || "<none provided>"}`));
   }
 
-  yield* _(Console.log(colors.bold("\n== Done ==")));
-  yield* _(Console.log("Each step above includes the assistant commentary alongside tool results."));
+  yield* Console.log(colors.bold("\n== Done =="));
+  yield* Console.log("Each step above includes the assistant commentary alongside tool results.");
 });
 
 Effect.runPromise(main).catch((err) => {
