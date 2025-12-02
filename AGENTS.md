@@ -67,6 +67,57 @@ bd automatically syncs with git:
 - Imports from JSONL when newer (e.g., after `git pull`)
 - No manual export/import needed!
 
+### Work Logs (Required)
+
+Always log your work as you go. Use a dated folder per day and timestamped filenames:
+
+- Folder: `docs/logs/YYYYMMDD/` (Central Time)
+- Filename: `HHMM-subject-log.md` (example: `0935-feature-start-log.md`)
+
+Commands (copy/paste):
+
+```bash
+# Central US time helpers
+DAY=$(TZ=America/Chicago date +%Y%m%d)
+TS=$(TZ=America/Chicago date +%H%M)
+
+# Ensure folder exists
+mkdir -p docs/logs/$DAY
+
+# Start a new log file
+echo "# $TS Work Log\n" > docs/logs/$DAY/${TS}-your-subject-log.md
+```
+
+Guidelines:
+- One or more log entries per meaningful step (create new file each time `TS` changes).
+- Summarize what changed, why, and validation steps (typecheck/tests).
+- Commit and push your work as you go, including each log file.
+- When adding code files, prefer small, focused commits with matching logs.
+
+### Standard "Next bead" flow (for future agents)
+
+When the user says **"Next bead."**, run this exact loop:
+
+1) Pick the bead: `bd ready --json`, choose the highest-priority ready item; if none, ask which epic to prioritize. Claim it: `bd update <id> --status in_progress --json`.
+2) Quick triage: ensure it is linked to the correct epic via `discovered-from`; close duplicates; downgrade non-urgent side work to P4 unless the user says otherwise.
+   - Concurrency guard: if a bead is already `in_progress` (claimed by another agent), do not take it—tell the user it's in flight. If nothing is ready because upstream beads are blocking, pause and inform the user to wait or unblock.
+3) Review context: skim the latest logs for today (and yesterday if useful) under `docs/logs/YYYYMMDD/` to pick up recent agent actions/decisions.
+4) Start a dated work log before coding: use the Central Time snippet under "Work Logs" (`DAY`, `TS`, and `docs/logs/$DAY/${TS}-<subject>-log.md`) and note the bead ID and intent. Add new log entries when the timestamp changes or when you finish a major sub-step.
+5) Implement the bead: follow AGENTS rules (no `as any`, keep comments sparse). If you discover new work, create a `bd create ... --deps discovered-from:<bead>` entry instead of TODO comments. Opportunistic refactors/structure fixes are encouraged—just log what you moved and why. Triage adjacent beads when you spot mispriority/duplicates, and file updates via bd (or note them for a Bead Audit if the user didn't ask you to change them).
+6) Validate with tests: add/extend coverage appropriate to the change, run the relevant tests, and note what ran in the log. If you truly cannot add tests, state why in the log. Fix typecheck/test failures before stopping.
+7) Finish: close the bead with `bd close <id> --reason ... --json` (or leave in progress if truly not done), commit code plus `.beads/issues.jsonl` and any new log files together, then push. Do not leave work uncommitted/unpushed. Never use `--no-verify` unless the user explicitly instructs it.
+
+### Bead Audit protocol
+
+When the user says **"Bead Audit."**, do this:
+1) Run `bd list --json` (filter by priority/epic if directed) to gather current beads and statuses.
+2) Create a dated log in `docs/logs/YYYYMMDD/` (Central Time; use `DAY`/`TS` snippet) named `${TS}-bead-review-log.md`.
+   - Start with 3–5 bullets summarizing overall state: top priorities, blockers, duplicates, or stale items.
+   - Follow with a few paragraphs explaining what the beads are, why they exist, and the recommended execution order/next steps.
+   - Refer to beads by title/description (and full ID if needed); avoid using 3-letter abbreviations when communicating to users.
+3) If you see duplicates/outdated beads, note the proposed updates/closures in the report. Do not change beads unless the user asked—this is a review-only action.
+4) Save the log and report back with a brief summary and the log path. Do not start implementation unless instructed.
+
 ### GitHub Copilot Integration
 
 If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
