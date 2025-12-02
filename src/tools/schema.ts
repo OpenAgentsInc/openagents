@@ -6,6 +6,9 @@ export type ToolContent =
 	| { type: "text"; text: string }
 	| { type: "image"; data: string; mimeType: string };
 
+export const isTextContent = (content: ToolContent): content is { type: "text"; text: string } =>
+	content.type === "text";
+
 export interface ToolResult<Details = unknown> {
 	content: ToolContent[];
 	details?: Details;

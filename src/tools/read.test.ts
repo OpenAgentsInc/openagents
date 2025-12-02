@@ -4,43 +4,45 @@ import * as Path from "@effect/platform/Path";
 import { describe, expect, it } from "bun:test";
 import { Effect } from "effect";
 import { readTool } from "./read.js";
-import { runTool, ToolExecutionError } from "./schema.js";
+import { runTool, ToolExecutionError, isTextContent } from "./schema.js";
 
-const runWithBun = <A>(program: Effect.Effect<A>) =>
+const runWithBun = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) =>
   Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 describe("readTool", () => {
   it("reads text content", async () => {
     const result = await runWithBun(
-      Effect.gen(function* (_) {
-        const fs = yield* _(FileSystem.FileSystem);
-        const path = yield* _(Path.Path);
-        const dir = yield* _(fs.makeTempDirectory({ prefix: "read-tool" }));
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "read-tool" });
         const file = path.join(dir, "sample.txt");
-        yield* _(fs.writeFileString(file, "alpha\nbravo\ncharlie\n"));
+        yield* fs.writeFileString(file, "alpha\nbravo\ncharlie\n");
 
-        return yield* _(runTool(readTool, { path: file }));
+        return yield* runTool(readTool, { path: file });
       }),
     );
 
-    expect(result.content[0]?.text).toContain("alpha");
-    expect(result.content[0]?.text).toContain("charlie");
+    const textBlock = result.content.find(isTextContent);
+    expect(textBlock?.text).toContain("alpha");
+    expect(textBlock?.text).toContain("charlie");
   });
 
   it("respects offset and limit with notice", async () => {
     const result = await runWithBun(
-      Effect.gen(function* (_) {
-        const fs = yield* _(FileSystem.FileSystem);
-        const path = yield* _(Path.Path);
-        const dir = yield* _(fs.makeTempDirectory({ prefix: "read-tool" }));
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "read-tool" });
         const file = path.join(dir, "paged.txt");
-        yield* _(fs.writeFileString(file, "one\ntwo\nthree\nfour\n"));
+        yield* fs.writeFileString(file, "one\ntwo\nthree\nfour\n");
 
-        return yield* _(runTool(readTool, { path: file, offset: 2, limit: 1 }));
+        return yield* runTool(readTool, { path: file, offset: 2, limit: 1 });
       }),
     );
 
-    const text = result.content[0]?.text ?? "";
+    const textBlock = result.content.find(isTextContent);
+    const text = textBlock?.text ?? "";
     expect(text).toContain("two");
     expect(text).toContain("more lines not shown");
     expect(text).toContain("offset=3");
@@ -48,9 +50,7 @@ describe("readTool", () => {
 
   it("fails when file is missing", async () => {
     const error = await runWithBun(
-      Effect.gen(function* (_) {
-        return yield* _(runTool(readTool, { path: "/no/such/file.txt" }).pipe(Effect.flip));
-      }),
+      runTool(readTool, { path: "/no/such/file.txt" }).pipe(Effect.flip),
     );
 
     expect(error).toBeInstanceOf(ToolExecutionError);
