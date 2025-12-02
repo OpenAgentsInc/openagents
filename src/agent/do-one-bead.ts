@@ -71,6 +71,41 @@ ${GIT_CONVENTIONS}
 ## CRITICAL: Use full path for bd command
 Always use: \`$HOME/.local/bin/bd\` (never just \`bd\`)
 
+## Effect TypeScript Patterns (MUST FOLLOW)
+
+When writing Effect code, use these EXACT patterns:
+
+### Accessing a Service
+\`\`\`typescript
+// CORRECT - use yield* inside Effect.gen
+const program = Effect.gen(function* () {
+  const service = yield* MyService  // yields the service
+  const result = yield* service.doSomething()  // yields the effect
+  return result
+}).pipe(Effect.provide(MyServiceLive))
+
+await Effect.runPromise(program)
+\`\`\`
+
+### WRONG patterns (DO NOT USE):
+- \`Effect.service(MyService)\` - THIS DOES NOT EXIST
+- \`Effect.flatMap(s => ...)\` without Effect.gen - harder to read
+- \`yield* _(service)\` - old adapter pattern, deprecated
+
+### Running Effects in Tests
+\`\`\`typescript
+test("example", async () => {
+  const result = await Effect.gen(function* () {
+    const service = yield* MyService
+    return yield* service.method()
+  }).pipe(
+    Effect.provide(MyServiceLive),
+    Effect.runPromise
+  )
+  expect(result).toBe(expected)
+})
+\`\`\`
+
 ## Step-by-Step Workflow (FOLLOW EXACTLY)
 
 ### Phase 1: Find Work
