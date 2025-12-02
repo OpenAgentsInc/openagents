@@ -43,3 +43,4 @@ private
 *.bin
 models/
 logs/
+*.tsbuildinfo

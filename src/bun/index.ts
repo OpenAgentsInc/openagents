@@ -13,3 +13,4 @@ const mainWindow = new BrowserWindow({
 });
 
 console.log("Hello Electrobun app started!");
+void mainWindow;
