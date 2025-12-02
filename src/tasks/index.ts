@@ -28,3 +28,18 @@ export {
   decodeTaskUpdate,
   decodeProjectConfig,
 } from "./schema.js";
+
+export {
+  // ID Generation
+  generateHashId,
+  generateShortId,
+  generateRandomId,
+  generateChildId,
+  // ID Parsing
+  parseHierarchicalId,
+  isChildOf,
+  getParentId,
+  canHaveChildren,
+  findNextChildNumber,
+  MAX_HIERARCHY_DEPTH,
+} from "./id.js";
