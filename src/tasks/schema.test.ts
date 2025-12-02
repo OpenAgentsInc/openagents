@@ -221,6 +221,11 @@ describe("isTaskReady", () => {
     expect(isTaskReady(task, [])).toBe(true);
   });
 
+  test("blocked task is not ready", () => {
+    const task = makeTask("oa-1", "blocked");
+    expect(isTaskReady(task, [])).toBe(false);
+  });
+
   test("closed task is not ready", () => {
     const task = makeTask("oa-1", "closed");
     expect(isTaskReady(task, [])).toBe(false);
