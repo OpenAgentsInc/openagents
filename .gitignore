@@ -42,7 +42,6 @@ private
 *.safetensors
 *.bin
 models/
-logs/
 *.tsbuildinfo
 
 # Beads local artifacts
