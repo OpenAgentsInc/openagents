@@ -72,3 +72,8 @@ export {
   InitProjectError,
   type InitProjectOptions,
 } from "./init.js";
+
+export {
+  importBeadsIssues,
+  BeadsImportError,
+} from "./beads.js";
