@@ -122,14 +122,16 @@ export const TaskFilter = S.Struct({
   type: S.optional(IssueType),
   assignee: S.optional(S.String),
   labels: S.optional(S.Array(S.String)),
+  labelsAny: S.optional(S.Array(S.String)),
+  unassigned: S.optional(S.Boolean),
+  sortPolicy: S.optional(S.Literal("hybrid", "priority", "oldest")),
   limit: S.optional(S.Number),
 });
 export type TaskFilter = S.Schema.Type<typeof TaskFilter>;
 
 // Helper to check if a task is ready (open, no blocking deps)
 export const isTaskReady = (task: Task, allTasks: Task[]): boolean => {
-  if (task.status !== "open") return false;
-  if (task.type === "epic") return false;
+  if (task.status === "closed" || task.status === "blocked") return false;
 
   const blockingDeps = task.deps?.filter((d) => d.type === "blocks" || d.type === "parent-child");
   if (!blockingDeps || blockingDeps.length === 0) return true;
