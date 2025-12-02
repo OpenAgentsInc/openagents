@@ -1,8 +1,0 @@
-{
-  "jsonrpc": "2.0",
-  "method": "session/cancel",
-  "params": {
-    "session_id": "sess-123"
-  }
-}
-
