@@ -33,17 +33,36 @@ The **operations guide** for running MechaCoder locally. Covers:
 - Troubleshooting (uncommitted changes, stuck tasks, API errors)
 - Quick reference table of common commands
 
+### [TASK-SPEC.md](./TASK-SPEC.md)
+The **task system specification**. Defines:
+
+- Task schema (id, title, status, priority, type, labels, deps, commits)
+- Status flow (`open` → `in_progress` → `closed`/`blocked`)
+- Dependency types (`blocks`, `related`, `parent-child`, `discovered-from`)
+- CLI interface for external agents (`bun run tasks:*`)
+
 ## Quick Start
 
 ```bash
-# Check if MechaCoder is running
+# Run MechaCoder once against this repo
+cd ~/code/openagents
+bun src/agent/do-one-bead.ts --dir .
+
+# Run overnight loop (limited)
+bun src/agent/overnight.ts --dir . --max-tasks 3
+
+# Check if MechaCoder is running (launchd)
 launchctl list | grep mechacoder
 
 # View latest agent log
 cat $(ls -t ~/code/openagents/docs/logs/$(date +%Y%m%d)/*.md | head -1)
 
 # Inspect tasks in a repo
-cd ~/code/openagents && cat .openagents/tasks.jsonl | jq '.'
+cat .openagents/tasks.jsonl | jq '.'
+
+# Use the tasks CLI (for external agents)
+bun run tasks:ready --json     # List ready tasks
+bun run tasks:next --json      # Claim next task
 ```
 
 ## Related
