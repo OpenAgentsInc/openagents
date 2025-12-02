@@ -70,33 +70,56 @@ export interface RenderConfig {
 }
 
 export const DEFAULT_RENDER_CONFIG: RenderConfig = {
-  cornerRadius: 8,
-  nodeCornerRadius: 6,
-  connectionStroke: "#666",
-  connectionStrokeWidth: 2,
-  nodeFill: "#1a1a2e",
-  nodeStroke: "#333",
+  cornerRadius: 12,
+  nodeCornerRadius: 10,
+  connectionStroke: "#dc2626",
+  connectionStrokeWidth: 2.5,
+  nodeFill: "#0a0a0f",
+  nodeStroke: "rgba(255, 255, 255, 0.1)",
   nodeStrokeWidth: 1,
-  textColor: "#fff",
-  fontSize: 12,
-  fontFamily: "system-ui, sans-serif",
-  pathConfig: { cornerRadius: 8 },
+  textColor: "#ffffff",
+  fontSize: 11,
+  fontFamily: "'Berkeley Mono', 'JetBrains Mono', monospace",
+  pathConfig: { cornerRadius: 12 },
   statusColors: {
-    idle: "#666",
-    busy: "#f59e0b",
-    error: "#ef4444",
-    blocked: "#6b7280",
-    completed: "#22c55e",
+    idle: "#1a1a2e",
+    busy: "#78350f",
+    error: "#7f1d1d",
+    blocked: "#3b0764",
+    completed: "#14532d",
   },
 }
 
-// Get fill color based on node status
+// Node type colors - darker, more subtle
+const NODE_TYPE_COLORS: Record<string, { fill: string; stroke: string }> = {
+  root: { fill: "#1a0a2e", stroke: "rgba(139, 92, 246, 0.3)" },
+  agent: { fill: "#1a1408", stroke: "rgba(245, 158, 11, 0.3)" },
+  repo: { fill: "#0a1628", stroke: "rgba(59, 130, 246, 0.3)" },
+  task: { fill: "#0a1a0f", stroke: "rgba(34, 197, 94, 0.25)" },
+  workflow: { fill: "#0f0a1a", stroke: "rgba(168, 85, 247, 0.25)" },
+  phase: { fill: "#0a0a0f", stroke: "rgba(255, 255, 255, 0.15)" },
+}
+
+// Get fill color based on node type and status
 function getNodeFill(node: PositionedNode, config: RenderConfig): string {
   const status = node.metadata?.status as Status | undefined
   if (status && config.statusColors[status]) {
     return config.statusColors[status]
   }
+  const typeColors = NODE_TYPE_COLORS[node.type]
+  if (typeColors) {
+    return typeColors.fill
+  }
   return config.nodeFill
+}
+
+// Get stroke color based on node type
+function getNodeStroke(node: PositionedNode, config: RenderConfig): string {
+  const typeColors = NODE_TYPE_COLORS[node.type]
+  if (typeColors) {
+    return typeColors.stroke
+  }
+  return config.nodeStroke
 }
 
 // Render a single node as a rect + text
@@ -113,7 +136,7 @@ function renderNode(node: PositionedNode, config: RenderConfig): SVGGroup {
     rx: config.nodeCornerRadius,
     ry: config.nodeCornerRadius,
     fill: getNodeFill(node, config),
-    stroke: config.nodeStroke,
+    stroke: getNodeStroke(node, config),
     strokeWidth: config.nodeStrokeWidth,
     className: `flow-node flow-node-${node.type}`,
     dataNodeId: id,
@@ -270,6 +293,23 @@ function escapeXml(text: string): string {
     .replace(/"/g, "&quot;")
 }
 
+// Generate grid pattern defs
+function generateGridDefs(gridSize: number = 20, dotRadius: number = 1.5): string {
+  return `
+  <defs>
+    <pattern id="dot-grid" x="0" y="0" width="${gridSize}" height="${gridSize}" patternUnits="userSpaceOnUse">
+      <circle cx="${gridSize / 2}" cy="${gridSize / 2}" r="${dotRadius}" fill="rgba(255, 255, 255, 0.06)">
+        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="4s" repeatCount="indefinite" />
+      </circle>
+    </pattern>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="transparent" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.4)" />
+    </radialGradient>
+  </defs>
+  <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#dot-grid)" />`
+}
+
 // Generate a complete SVG document string
 export function renderToSVGString(
   layout: LayoutOutput,
@@ -278,6 +318,7 @@ export function renderToSVGString(
 ): string {
   const root = renderFlowSVG(layout, canvas, config)
   const content = svgElementToString(root, 1)
+  const gridDefs = generateGridDefs()
   
   return `<svg 
   xmlns="http://www.w3.org/2000/svg"
@@ -285,7 +326,9 @@ export function renderToSVGString(
   height="${canvas.viewportHeight}"
   viewBox="0 0 ${canvas.viewportWidth} ${canvas.viewportHeight}"
   class="flow-svg"
+  style="background: #000"
 >
+${gridDefs}
 ${content}
 </svg>`
 }
