@@ -66,3 +66,9 @@ export {
   loadProjectConfig,
   saveProjectConfig,
 } from "./project.js";
+
+export {
+  initOpenAgentsProject,
+  InitProjectError,
+  type InitProjectOptions,
+} from "./init.js";
