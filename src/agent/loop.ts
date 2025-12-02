@@ -35,14 +35,14 @@ export class AgentLoopError extends Error {
   }
 }
 
-const executeToolCall = <R>(
-  tools: Tool<any, any, R, any>[],
+const executeToolCall = (
+  tools: Tool<any, any, any, any>[],
   toolCall: { id: string; name: string; arguments: string },
   signal?: AbortSignal,
 ): Effect.Effect<
   { toolCallId: string; name: string; result: ToolResult; isError: boolean },
   never,
-  R
+  any
 > =>
   Effect.gen(function* () {
     const tool = tools.find((t) => t.name === toolCall.name);
@@ -113,10 +113,10 @@ export const agentLoop = (
       turnCount++;
 
       const request: ChatRequest = {
-        model: config.model,
         messages,
-        tools,
-        temperature: config.temperature,
+        tools: tools as unknown as Tool<any>[],
+        ...(config.model ? { model: config.model } : {}),
+        ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
       };
 
       const response = yield* client.chat(request).pipe(
@@ -139,7 +139,7 @@ export const agentLoop = (
       const turn: AgentTurn = {
         role: "assistant",
         content: assistantMessage.content,
-        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
       };
 
       if (toolCalls.length === 0) {

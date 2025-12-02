@@ -1,5 +1,4 @@
-import { Args, Command, Options } from "@effect/cli";
-import * as BunRuntime from "@effect/platform-bun/BunRuntime";
+import { Command, Options } from "@effect/cli";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -8,7 +7,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as DefaultServices from "effect/DefaultServices";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
-import * as Layer from "effect/Layer";
 
 const promptOption = Options.text("prompt").pipe(
   Options.withAlias("p"),
@@ -25,17 +23,15 @@ const jsonOption = Options.boolean("json").pipe(
 );
 
 const chatCommand = Command.make("chat", { prompt: promptOption, model: modelOption, json: jsonOption }, (input) =>
-  Effect.gen(function* (_) {
-    const model = typeof input.model === "string" ? input.model : undefined;
-    const response = yield* _(
-      runOpenRouterChat({
-        model,
-        messages: [{ role: "user", content: input.prompt }],
-      }),
-    );
+  Effect.gen(function* () {
+    const model = typeof input.model === "string" ? input.model : "x-ai/grok-4.1-fast";
+    const response = yield* runOpenRouterChat({
+      model,
+      messages: [{ role: "user", content: input.prompt }],
+    });
 
     if (input.json) {
-      yield* _(Console.log(JSON.stringify(response, null, 2)));
+      yield* Console.log(JSON.stringify(response, null, 2));
       return;
     }
 
@@ -43,12 +39,12 @@ const chatCommand = Command.make("chat", { prompt: promptOption, model: modelOpt
     const toolCalls = response.choices[0]?.message.tool_calls ?? [];
 
     if (text) {
-      yield* _(Console.log(text));
+      yield* Console.log(text);
     }
     if (toolCalls.length > 0) {
-      yield* _(Console.log("\nTool calls:"));
+      yield* Console.log("\nTool calls:");
       for (const call of toolCalls) {
-        yield* _(Console.log(`- ${call.name}(${call.arguments}) [${call.id}]`));
+        yield* Console.log(`- ${call.name}(${call.arguments}) [${call.id}]`);
       }
     }
   }),
