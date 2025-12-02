@@ -75,21 +75,22 @@ describe("renderLayout", () => {
     
     expect(nodeGroup.type).toBe("g")
     expect(nodeGroup.className).toBe("flow-node-group")
-    expect(nodeGroup.children).toHaveLength(2)
+    expect(nodeGroup.children.length).toBeGreaterThanOrEqual(4)
     
-    const rect = nodeGroup.children[0] as SVGRect
-    expect(rect.type).toBe("rect")
+    const rect = nodeGroup.children.find(
+      c => c.type === "rect" && (c as SVGRect).dataNodeId === "root"
+    ) as SVGRect
+    expect(rect).toBeDefined()
     expect(rect.x).toBe(0)
     expect(rect.y).toBe(0)
     expect(rect.width).toBe(100)
     expect(rect.height).toBe(50)
-    expect(rect.dataNodeId).toBe("root")
     
-    const text = nodeGroup.children[1] as SVGText
-    expect(text.type).toBe("text")
-    expect(text.text).toBe("Root Node")
-    expect(text.x).toBe(50) // centered
-    expect(text.y).toBe(25) // centered
+    const label = nodeGroup.children.find(
+      c => c.type === "text" && (c as SVGText).className === "flow-node-label"
+    ) as SVGText
+    expect(label).toBeDefined()
+    expect(label.text).toBe("Root Node")
   })
 
   it("applies status colors to nodes", () => {
@@ -110,9 +111,11 @@ describe("renderLayout", () => {
     
     const result = renderLayout(layoutWithStatus)
     const nodeGroup = result.children[0] as SVGGroup
-    const rect = nodeGroup.children[0] as SVGRect
+    const pill = nodeGroup.children.find(
+      c => c.type === "rect" && (c as SVGRect).className === "flow-node-status-pill"
+    ) as SVGRect
     
-    expect(rect.fill).toBe(DEFAULT_RENDER_CONFIG.statusColors.busy)
+    expect(pill.fill).toBe(DEFAULT_RENDER_CONFIG.statusColors.busy)
   })
 
   it("works with sample MechaCoder tree", () => {

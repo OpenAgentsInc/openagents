@@ -14,8 +14,10 @@ export interface SVGRect {
   readonly rx?: number
   readonly ry?: number
   readonly fill?: string
+  readonly opacity?: number
   readonly stroke?: string
   readonly strokeWidth?: number
+  readonly strokeOpacity?: number
   readonly className?: string
   readonly dataNodeId?: string
 }
@@ -40,6 +42,8 @@ export interface SVGPath {
   readonly stroke?: string
   readonly strokeWidth?: number
   readonly strokeDasharray?: string
+  readonly strokeOpacity?: number
+  readonly opacity?: number
   readonly className?: string
   readonly dataParentId?: string
   readonly dataChildId?: string
@@ -58,6 +62,7 @@ export interface RenderConfig {
   readonly cornerRadius: number
   readonly nodeCornerRadius: number
   readonly connectionStroke: string
+  readonly connectionStrokeMuted: string
   readonly connectionStrokeWidth: number
   readonly nodeFill: string
   readonly nodeStroke: string
@@ -70,64 +75,163 @@ export interface RenderConfig {
 }
 
 export const DEFAULT_RENDER_CONFIG: RenderConfig = {
-  cornerRadius: 12,
-  nodeCornerRadius: 10,
-  connectionStroke: "#dc2626",
-  connectionStrokeWidth: 2.5,
-  nodeFill: "#0a0a0f",
-  nodeStroke: "rgba(255, 255, 255, 0.1)",
-  nodeStrokeWidth: 1,
-  textColor: "#ffffff",
-  fontSize: 11,
+  cornerRadius: 14,
+  nodeCornerRadius: 12,
+  connectionStroke: "rgba(255, 98, 90, 0.95)",
+  connectionStrokeMuted: "rgba(255, 98, 90, 0.35)",
+  connectionStrokeWidth: 3,
+  nodeFill: "#0d0f16",
+  nodeStroke: "rgba(255, 255, 255, 0.12)",
+  nodeStrokeWidth: 1.25,
+  textColor: "#f5f7fb",
+  fontSize: 12,
   fontFamily: "'Berkeley Mono', 'JetBrains Mono', monospace",
-  pathConfig: { cornerRadius: 12 },
+  pathConfig: { cornerRadius: 14 },
   statusColors: {
-    idle: "#1a1a2e",
-    busy: "#78350f",
-    error: "#7f1d1d",
-    blocked: "#3b0764",
-    completed: "#14532d",
+    idle: "#30323f",
+    busy: "#f59e0b",
+    error: "#ef4444",
+    blocked: "#8b5cf6",
+    completed: "#16a34a",
   },
 }
 
-// Node type colors - darker, more subtle
-const NODE_TYPE_COLORS: Record<string, { fill: string; stroke: string }> = {
-  root: { fill: "#1a0a2e", stroke: "rgba(139, 92, 246, 0.3)" },
-  agent: { fill: "#1a1408", stroke: "rgba(245, 158, 11, 0.3)" },
-  repo: { fill: "#0a1628", stroke: "rgba(59, 130, 246, 0.3)" },
-  task: { fill: "#0a1a0f", stroke: "rgba(34, 197, 94, 0.25)" },
-  workflow: { fill: "#0f0a1a", stroke: "rgba(168, 85, 247, 0.25)" },
-  phase: { fill: "#0a0a0f", stroke: "rgba(255, 255, 255, 0.15)" },
+interface NodeTheme {
+  readonly fill: string
+  readonly stroke: string
+  readonly header: string
+  readonly accent: string
+  readonly mutedText: string
+  readonly glow: string
 }
 
-// Get fill color based on node type and status
-function getNodeFill(node: PositionedNode, config: RenderConfig): string {
-  const status = node.metadata?.status as Status | undefined
-  if (status && config.statusColors[status]) {
-    return config.statusColors[status]
-  }
-  const typeColors = NODE_TYPE_COLORS[node.type]
-  if (typeColors) {
-    return typeColors.fill
-  }
-  return config.nodeFill
+// Node themes inspired by Unkey’s palette
+const NODE_THEMES: Record<string, NodeTheme> = {
+  root: {
+    fill: "#111324",
+    stroke: "rgba(129, 140, 248, 0.35)",
+    header: "rgba(129, 140, 248, 0.18)",
+    accent: "rgba(167, 139, 250, 0.9)",
+    mutedText: "rgba(229, 231, 235, 0.75)",
+    glow: "rgba(129, 140, 248, 0.3)",
+  },
+  agent: {
+    fill: "#141017",
+    stroke: "rgba(245, 158, 11, 0.25)",
+    header: "rgba(251, 191, 36, 0.18)",
+    accent: "rgba(251, 146, 60, 0.9)",
+    mutedText: "rgba(255, 237, 213, 0.8)",
+    glow: "rgba(251, 146, 60, 0.25)",
+  },
+  repo: {
+    fill: "#0f1620",
+    stroke: "rgba(59, 130, 246, 0.25)",
+    header: "rgba(59, 130, 246, 0.12)",
+    accent: "rgba(96, 165, 250, 0.9)",
+    mutedText: "rgba(191, 219, 254, 0.8)",
+    glow: "rgba(59, 130, 246, 0.25)",
+  },
+  task: {
+    fill: "#0f1a12",
+    stroke: "rgba(34, 197, 94, 0.25)",
+    header: "rgba(34, 197, 94, 0.12)",
+    accent: "rgba(74, 222, 128, 0.9)",
+    mutedText: "rgba(187, 247, 208, 0.85)",
+    glow: "rgba(34, 197, 94, 0.2)",
+  },
+  workflow: {
+    fill: "#111019",
+    stroke: "rgba(168, 85, 247, 0.25)",
+    header: "rgba(168, 85, 247, 0.14)",
+    accent: "rgba(232, 121, 249, 0.9)",
+    mutedText: "rgba(240, 171, 252, 0.75)",
+    glow: "rgba(168, 85, 247, 0.2)",
+  },
+  phase: {
+    fill: "#0e0f14",
+    stroke: "rgba(255, 255, 255, 0.14)",
+    header: "rgba(255, 255, 255, 0.05)",
+    accent: "rgba(255, 255, 255, 0.3)",
+    mutedText: "rgba(229, 231, 235, 0.65)",
+    glow: "rgba(255, 255, 255, 0.12)",
+  },
 }
 
-// Get stroke color based on node type
-function getNodeStroke(node: PositionedNode, config: RenderConfig): string {
-  const typeColors = NODE_TYPE_COLORS[node.type]
-  if (typeColors) {
-    return typeColors.stroke
+function getNodeTheme(node: PositionedNode): NodeTheme {
+  return NODE_THEMES[node.type] ?? {
+    fill: "#0d0f16",
+    stroke: "rgba(255, 255, 255, 0.12)",
+    header: "rgba(255, 255, 255, 0.06)",
+    accent: "rgba(255, 255, 255, 0.3)",
+    mutedText: "rgba(229, 231, 235, 0.6)",
+    glow: "rgba(255, 255, 255, 0.1)",
   }
-  return config.nodeStroke
 }
 
-// Render a single node as a rect + text
+function getStatus(node: PositionedNode): Status | undefined {
+  const status = node.metadata?.status
+  if (status === "idle" || status === "busy" || status === "error" || status === "blocked" || status === "completed") {
+    return status
+  }
+  return undefined
+}
+
+function getSubtitle(node: PositionedNode): string {
+  if (node.type === "repo") {
+    const tasks = (node.metadata?.taskCount as number | undefined) ?? null
+    const open = (node.metadata?.openCount as number | undefined) ?? null
+    if (tasks !== null && open !== null) {
+      return `${tasks} tasks • ${open} open`
+    }
+    return "Repository"
+  }
+  if (node.type === "task") {
+    const priority = node.metadata?.priority as number | undefined
+    const kind = node.metadata?.taskType as string | undefined
+    const parts = []
+    if (kind) parts.push(kind)
+    if (priority !== undefined) parts.push(`P${priority}`)
+    return parts.join(" • ") || "Task"
+  }
+  if (node.type === "agent") {
+    return "Desktop agent loop"
+  }
+  if (node.type === "workflow") {
+    return "Loop phases"
+  }
+  if (node.type === "phase") {
+    return "Phase"
+  }
+  if (node.type === "root") {
+    return "OpenAgents"
+  }
+  return node.metadata?.path as string ?? ""
+}
+
+// Render a single node as layered card closer to Unkey styling
 function renderNode(node: PositionedNode, config: RenderConfig): SVGGroup {
   const { x, y, size, label, id } = node
+  const theme = getNodeTheme(node)
+  const status = getStatus(node)
+  const statusColor = status ? config.statusColors[status] : theme.accent
+  const headerHeight = Math.max(24, Math.min(32, size.height * 0.32))
+  const padding = 14
+  const pillHeight = 16
+  const pillWidth = 70
+
+  const glow: SVGRect = {
+    type: "rect",
+    x: x - 6,
+    y: y - 6,
+    width: size.width + 12,
+    height: size.height + 12,
+    rx: config.nodeCornerRadius + 6,
+    ry: config.nodeCornerRadius + 6,
+    fill: theme.glow,
+    opacity: 0.35,
+  }
   
-  // Node position is top-left corner
-  const rect: SVGRect = {
+  const base: SVGRect = {
     type: "rect",
     x,
     y,
@@ -135,31 +239,104 @@ function renderNode(node: PositionedNode, config: RenderConfig): SVGGroup {
     height: size.height,
     rx: config.nodeCornerRadius,
     ry: config.nodeCornerRadius,
-    fill: getNodeFill(node, config),
-    stroke: getNodeStroke(node, config),
+    fill: theme.fill,
+    stroke: theme.stroke || config.nodeStroke,
     strokeWidth: config.nodeStrokeWidth,
     className: `flow-node flow-node-${node.type}`,
     dataNodeId: id,
   }
 
-  // Center text in the node
-  const text: SVGText = {
+  const header: SVGRect = {
+    type: "rect",
+    x: x + 1,
+    y: y + 1,
+    width: size.width - 2,
+    height: headerHeight,
+    rx: config.nodeCornerRadius - 4,
+    ry: config.nodeCornerRadius - 4,
+    fill: theme.header,
+    stroke: "transparent",
+    className: "flow-node-header",
+  }
+
+  const accentBar: SVGRect = {
+    type: "rect",
+    x: x + 1,
+    y: y + headerHeight - 2,
+    width: size.width - 2,
+    height: 2,
+    fill: statusColor,
+    opacity: 0.9,
+    className: "flow-node-accent",
+  }
+
+  const labelText: SVGText = {
     type: "text",
-    x: x + size.width / 2,
-    y: y + size.height / 2,
+    x: x + padding,
+    y: y + headerHeight / 2 + 2,
     text: label,
-    fontSize: config.fontSize,
+    fontSize: config.fontSize + 1,
     fontFamily: config.fontFamily,
     fill: config.textColor,
-    textAnchor: "middle",
+    textAnchor: "start",
     dominantBaseline: "middle",
     className: "flow-node-label",
+  }
+
+  const subtitle: SVGText = {
+    type: "text",
+    x: x + padding,
+    y: y + headerHeight + (size.height - headerHeight) / 2,
+    text: getSubtitle(node),
+    fontSize: config.fontSize - 1,
+    fontFamily: config.fontFamily,
+    fill: theme.mutedText,
+    textAnchor: "start",
+    dominantBaseline: "middle",
+    className: "flow-node-subtitle",
+  }
+
+  const statusPill: SVGRect = {
+    type: "rect",
+    x: x + size.width - padding - pillWidth,
+    y: y + (headerHeight - pillHeight) / 2,
+    width: pillWidth,
+    height: pillHeight,
+    rx: pillHeight / 2,
+    ry: pillHeight / 2,
+    fill: statusColor,
+    stroke: config.connectionStrokeMuted,
+    strokeWidth: 1,
+    opacity: 0.9,
+    className: "flow-node-status-pill",
+  }
+
+  const statusText: SVGText = {
+    type: "text",
+    x: statusPill.x + pillWidth / 2,
+    y: statusPill.y + pillHeight / 2 + 0.5,
+    text: status ?? "idle",
+    fontSize: config.fontSize - 3,
+    fontFamily: config.fontFamily,
+    fill: "#0b0b0f",
+    textAnchor: "middle",
+    dominantBaseline: "middle",
+    className: "flow-node-status-text",
   }
 
   return {
     type: "g",
     className: "flow-node-group",
-    children: [rect, text],
+    children: [
+      glow,
+      base,
+      header,
+      accentBar,
+      labelText,
+      subtitle,
+      statusPill,
+      statusText,
+    ],
   }
 }
 
@@ -178,6 +355,8 @@ function renderConnection(
     fill: "none",
     stroke: config.connectionStroke,
     strokeWidth: config.connectionStrokeWidth,
+    strokeOpacity: 0.9,
+    strokeDasharray: "2 14",
     className: "flow-connection",
     dataParentId: parentId,
     dataChildId: childId,
@@ -241,8 +420,10 @@ export function svgElementToString(element: SVGElement, indent: number = 0): str
       if (element.rx !== undefined) attrs.push(`rx="${element.rx}"`)
       if (element.ry !== undefined) attrs.push(`ry="${element.ry}"`)
       if (element.fill) attrs.push(`fill="${element.fill}"`)
+      if (element.opacity !== undefined) attrs.push(`opacity="${element.opacity}"`)
       if (element.stroke) attrs.push(`stroke="${element.stroke}"`)
       if (element.strokeWidth) attrs.push(`stroke-width="${element.strokeWidth}"`)
+      if (element.strokeOpacity !== undefined) attrs.push(`stroke-opacity="${element.strokeOpacity}"`)
       if (element.className) attrs.push(`class="${element.className}"`)
       if (element.dataNodeId) attrs.push(`data-node-id="${element.dataNodeId}"`)
       return `${pad}<rect ${attrs.join(" ")} />`
@@ -268,6 +449,8 @@ export function svgElementToString(element: SVGElement, indent: number = 0): str
       if (element.stroke) attrs.push(`stroke="${element.stroke}"`)
       if (element.strokeWidth) attrs.push(`stroke-width="${element.strokeWidth}"`)
       if (element.strokeDasharray) attrs.push(`stroke-dasharray="${element.strokeDasharray}"`)
+      if (element.strokeOpacity !== undefined) attrs.push(`stroke-opacity="${element.strokeOpacity}"`)
+      if (element.opacity !== undefined) attrs.push(`opacity="${element.opacity}"`)
       if (element.className) attrs.push(`class="${element.className}"`)
       if (element.dataParentId) attrs.push(`data-parent-id="${element.dataParentId}"`)
       if (element.dataChildId) attrs.push(`data-child-id="${element.dataChildId}"`)
@@ -294,12 +477,15 @@ function escapeXml(text: string): string {
 }
 
 // Generate grid pattern defs
-function generateGridDefs(gridSize: number = 20, dotRadius: number = 1.5): string {
+function generateGridDefs(gridSize: number = 24, dotRadius: number = 1.2): string {
   return `
   <defs>
     <pattern id="dot-grid" x="0" y="0" width="${gridSize}" height="${gridSize}" patternUnits="userSpaceOnUse">
-      <circle cx="${gridSize / 2}" cy="${gridSize / 2}" r="${dotRadius}" fill="rgba(255, 255, 255, 0.06)">
-        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="4s" repeatCount="indefinite" />
+      <circle cx="${gridSize / 2}" cy="${gridSize / 2}" r="${dotRadius}" fill="rgba(255, 255, 255, 0.08)">
+        <animate attributeName="opacity" values="0.3;0.8;0.3" dur="4s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="${(gridSize / 2) + 6}" cy="${(gridSize / 2) + 6}" r="${dotRadius}" fill="rgba(255, 255, 255, 0.05)">
+        <animate attributeName="opacity" values="0.2;0.6;0.2" dur="5s" repeatCount="indefinite" />
       </circle>
     </pattern>
     <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
