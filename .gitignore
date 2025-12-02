@@ -56,3 +56,4 @@ docs/scratchpad/
 
 *.log
 *bead-run.md
+logs/*.log
