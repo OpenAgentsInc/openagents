@@ -7,3 +7,8 @@
 ### 23:35 CT
 - Added `read` tool with Effect Schema, image support, offset/limit handling, truncation notices, and ToolExecutionError paths.
 - Added tests for happy path, pagination notice, and missing-file error; all tests pass via `bun test`.
+
+### 23:40 CT
+- Picked bead `openagents-42j.2` (bash tool). Implemented Effect-based bash tool using CommandExecutor, timeout handling, and 10 MB stdout/stderr limit; returns ToolExecutionError on timeout/non-zero exit.
+- Added tests for success, failure exit, and timeout; `bun test` passes.
+- Closed bead `openagents-42j.1`; set `openagents-42j.2` to in_progress.
