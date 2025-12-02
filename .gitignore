@@ -52,3 +52,5 @@ logs/
 .beads/beads.db-*
 .beads/.exclusive-lock
 .git/beads-worktrees/
+
+docs/scratchpad/
