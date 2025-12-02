@@ -9,6 +9,7 @@ import * as Layer from "effect/Layer";
 import * as DefaultServices from "effect/DefaultServices";
 import * as Secret from "effect/Secret";
 import * as S from "effect/Schema";
+import type { ChatResponse, ChatMessageToolCall } from "@openrouter/sdk/esm/models/index.js";
 
 import type { Tool } from "../tools/schema.js";
 
@@ -62,7 +63,7 @@ export interface OpenRouterConfig {
 export const OpenRouterConfig = Context.Tag<OpenRouterConfig>("OpenRouterConfig");
 
 const loadEnv = () => {
-  const env = (globalThis as any).Bun?.env ?? process.env;
+  const env = typeof Bun !== "undefined" ? Bun.env : process.env;
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("Missing OPENROUTER_API_KEY");
@@ -171,20 +172,24 @@ const sendChat = (
 
     const choice = response.choices?.[0];
     const message = choice?.message;
+
+    const toolCalls: ChatMessageToolCall[] =
+      message?.toolCalls ??
+      (Array.isArray((message as any)?.tool_calls) ? (message as any).tool_calls : []);
+
     return {
-      id: (response as any).id ?? "",
-      usage: (response as any).usage,
+      id: response.id ?? "",
+      usage: response.usage,
       choices: [
         {
           message: {
             role: "assistant",
-            content: (message as any)?.content ?? null,
-            tool_calls:
-              (message as any)?.tool_calls?.map((call: any) => ({
-                id: call.id,
-                name: call.function?.name ?? "",
-                arguments: call.function?.arguments ?? "",
-              })) ?? [],
+            content: message?.content ?? null,
+            tool_calls: toolCalls.map((call) => ({
+              id: call.id,
+              name: call.function.name,
+              arguments: call.function.arguments,
+            })),
           },
         },
       ],
@@ -227,8 +232,8 @@ export const dotenvLocalLayer = Layer.scopedDiscard(
       if (process.env[key] === undefined) {
         process.env[key] = value;
       }
-      if ((globalThis as any).Bun?.env && (globalThis as any).Bun.env[key] === undefined) {
-        (globalThis as any).Bun.env[key] = value;
+      if (typeof Bun !== "undefined" && Bun.env[key] === undefined) {
+        Bun.env[key] = value;
       }
     }
   }),
