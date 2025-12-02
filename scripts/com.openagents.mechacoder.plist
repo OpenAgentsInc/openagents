@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/christopherdavid/.bun/bin/bun</string>
-        <string>/Users/christopherdavid/code/openagents/src/agent/do-one-bead.ts</string>
+        <string>/Users/christopherdavid/code/openagents/src/agent/do-one-task.ts</string>
         <string>--dir</string>
         <string>/Users/christopherdavid/code/nostr-effect</string>
     </array>

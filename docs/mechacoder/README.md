@@ -46,7 +46,7 @@ The **task system specification**. Defines:
 ```bash
 # Run MechaCoder once against this repo
 cd ~/code/openagents
-bun src/agent/do-one-bead.ts --dir .
+bun src/agent/do-one-task.ts --dir .
 
 # Run overnight loop (limited)
 bun src/agent/overnight.ts --dir . --max-tasks 3
