@@ -7,17 +7,20 @@
     "build": "electrobun build",
     "start": "bun run build && bun run dev",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "bun test",
     "prepare": "effect-language-service patch"
   },
   "dependencies": {
     "@effect/cli": "0.72.1",
     "@effect/platform": "0.93.6",
+    "@effect/platform-bun": "0.86.0",
+    "diff": "8.0.2",
     "effect": "3.19.8",
-    "electrobun": "latest"
+    "electrobun": "0.1.12"
   },
   "devDependencies": {
     "@effect/language-service": "0.58.0",
-    "@types/bun": "latest",
+    "@types/bun": "1.3.3",
     "typescript": "5.9.3"
   }
 }
