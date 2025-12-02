@@ -1,8 +1,10 @@
+import * as FileSystem from "@effect/platform/FileSystem";
 import * as HttpBody from "@effect/platform/HttpBody";
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
 import * as HttpClientError from "@effect/platform/HttpClientError";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
+import * as Path from "@effect/platform/Path";
 import * as JSONSchema from "effect/JSONSchema";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -197,6 +199,43 @@ export interface OpenRouterClient {
 
 export const OpenRouterClient = Context.Tag<OpenRouterClient>("OpenRouterClient");
 
+const parseDotEnv = (contents: string) =>
+  contents
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .reduce<Record<string, string>>((acc, line) => {
+      const eq = line.indexOf("=");
+      if (eq === -1) return acc;
+      const key = line.slice(0, eq).trim();
+      const raw = line.slice(eq + 1).trim();
+      const unquoted = raw.replace(/^['"]|['"]$/g, "");
+      acc[key] = unquoted;
+      return acc;
+    }, {});
+
+const dotenvLocalLayer = Layer.scopedDiscard(
+  Effect.gen(function* (_) {
+    const fs = yield* _(FileSystem.FileSystem);
+    const path = yield* _(Path.Path);
+    const envPath = path.join(process.cwd(), ".env.local");
+    const exists = yield* _(fs.exists(envPath));
+    if (!exists) return;
+
+    const contents = yield* _(fs.readFileString(envPath));
+    const parsed = parseDotEnv(contents);
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+      if ((globalThis as any).Bun?.env && (globalThis as any).Bun.env[key] === undefined) {
+        (globalThis as any).Bun.env[key] = value;
+      }
+    }
+  }),
+);
+
 const makeClient = Effect.gen(function* (_) {
   const http = yield* _(HttpClient.HttpClient);
   const config = yield* _(OpenRouterConfig);
@@ -209,6 +248,7 @@ const makeClient = Effect.gen(function* (_) {
 export const openRouterClientLayer = Layer.effect(OpenRouterClient, makeClient);
 
 export const openRouterLive = openRouterClientLayer.pipe(
+  Layer.provideMerge(dotenvLocalLayer),
   Layer.provide(openRouterConfigLayer),
   Layer.provide(FetchHttpClient.layer),
 );
