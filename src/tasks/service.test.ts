@@ -63,7 +63,7 @@ describe("TaskService", () => {
     expect(result.saved[0]?.title).toBe("Write TaskService");
   });
 
-  test("computes ready tasks sorted by priority and age", async () => {
+  test("computes ready tasks with hybrid priority/age sorting", async () => {
     const ready = await runWithBun(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
@@ -75,23 +75,23 @@ describe("TaskService", () => {
 
         yield* createTask({
           tasksPath,
-          task: makeTask("Highest priority", { priority: 0 }),
-          timestamp: new Date("2025-01-01T01:00:00Z"),
+          task: makeTask("Recent high", { priority: 0 }),
+          timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000), // recent
         });
 
         yield* createTask({
           tasksPath,
-          task: makeTask("Blocked task", {
+          task: makeTask("Recent blocked resolved", {
             priority: 1,
             deps: [{ id: closedDep.id, type: "blocks" }],
           }),
-          timestamp: new Date("2025-01-01T02:00:00Z"),
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // recent
         });
 
         yield* createTask({
           tasksPath,
           task: makeTask("Lower priority", { priority: 2 }),
-          timestamp: new Date("2025-01-01T03:00:00Z"),
+          timestamp: new Date("2024-12-01T00:00:00Z"), // older
         });
 
         return yield* readyTasks(tasksPath);
@@ -99,8 +99,8 @@ describe("TaskService", () => {
     );
 
     expect(ready.map((t) => t.title)).toEqual([
-      "Highest priority",
-      "Blocked task",
+      "Recent high",
+      "Recent blocked resolved",
       "Lower priority",
     ]);
   });
@@ -139,7 +139,7 @@ describe("TaskService", () => {
     expect(finalTask.closedAt).toBe("2025-01-01T02:00:00.000Z");
   });
 
-  test("lists tasks with filters and picks next ready", async () => {
+  test("lists tasks with filters, sort policy, and picks next ready", async () => {
     const result = await runWithBun(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
@@ -159,8 +159,8 @@ describe("TaskService", () => {
           timestamp: new Date("2025-01-01T02:00:00Z"),
         });
 
-        const filtered = yield* listTasks(tasksPath, { priority: 1 });
-        const next = yield* pickNextTask(tasksPath);
+        const filtered = yield* listTasks(tasksPath, { priority: 1, sortPolicy: "priority" });
+        const next = yield* pickNextTask(tasksPath, { sortPolicy: "priority" });
         return { filtered, next, second };
       }),
     );

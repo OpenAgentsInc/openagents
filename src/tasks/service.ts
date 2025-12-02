@@ -82,35 +82,102 @@ const deriveUniqueId = (
   }
 };
 
-const filterTasks = (tasks: Task[], filter?: TaskFilter): Task[] => {
-  if (!filter) return tasks;
+const matchesFilter = (task: Task, filter: TaskFilter): boolean => {
+  const allowedStatuses = filter.status ? [filter.status] : ["open", "in_progress"];
+  if (!allowedStatuses.includes(task.status)) return false;
 
-  return tasks.filter((task) => {
-    if (filter.status && task.status !== filter.status) return false;
-    if (filter.priority !== undefined && task.priority !== filter.priority)
-      return false;
-    if (filter.type && task.type !== filter.type) return false;
-    if (filter.assignee && task.assignee !== filter.assignee) return false;
-    if (filter.labels) {
-      const labels = filter.labels;
-      if (!labels.every((label) => task.labels?.includes(label))) return false;
-    }
-    return true;
-  });
+  if (filter.priority !== undefined && task.priority !== filter.priority) return false;
+  if (filter.type && task.type !== filter.type) return false;
+
+  if (filter.unassigned) {
+    if (task.assignee && task.assignee.trim().length > 0) return false;
+  } else if (filter.assignee && task.assignee !== filter.assignee) {
+    return false;
+  }
+
+  if (filter.labels && filter.labels.length > 0) {
+    const labels = filter.labels;
+    if (!labels.every((label) => task.labels?.includes(label))) return false;
+  }
+
+  if (filter.labelsAny && filter.labelsAny.length > 0) {
+    const labelsAny = filter.labelsAny;
+    if (!task.labels?.some((label) => labelsAny.includes(label))) return false;
+  }
+
+  return true;
 };
 
-const sortReadyTasks = (tasks: Task[]): Task[] => {
-  const dateValue = (value: string) => {
-    const time = new Date(value).getTime();
-    return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+const matchesListFilter = (task: Task, filter?: TaskFilter): boolean => {
+  if (!filter) return true;
+
+  if (filter.status && task.status !== filter.status) return false;
+  if (filter.priority !== undefined && task.priority !== filter.priority) return false;
+  if (filter.type && task.type !== filter.type) return false;
+
+  if (filter.unassigned) {
+    if (task.assignee && task.assignee.trim().length > 0) return false;
+  } else if (filter.assignee && task.assignee !== filter.assignee) {
+    return false;
+  }
+
+  if (filter.labels && filter.labels.length > 0) {
+    if (!filter.labels.every((label) => task.labels?.includes(label))) return false;
+  }
+
+  if (filter.labelsAny && filter.labelsAny.length > 0) {
+    if (!task.labels?.some((label) => filter.labelsAny?.includes(label))) return false;
+  }
+
+  return true;
+};
+
+const parseDate = (value: string): number => {
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+};
+
+const sortReadyTasks = (tasks: Task[], sortPolicy: string | undefined): Task[] => {
+  const policy = sortPolicy ?? "hybrid";
+  const now = Date.now();
+  const fortyEightHours = 48 * 60 * 60 * 1000;
+
+  const isRecent = (task: Task) => {
+    const created = parseDate(task.createdAt);
+    return created >= now - fortyEightHours;
   };
 
-  return [...tasks].sort((a, b) => {
+  const byPriorityThenAge = (a: Task, b: Task) => {
     const priorityDiff = a.priority - b.priority;
     if (priorityDiff !== 0) return priorityDiff;
-    const timeDiff = dateValue(a.createdAt) - dateValue(b.createdAt);
+    const timeDiff = parseDate(a.createdAt) - parseDate(b.createdAt);
     if (timeDiff !== 0) return timeDiff;
     return a.id.localeCompare(b.id);
+  };
+
+  const byOldest = (a: Task, b: Task) => {
+    const timeDiff = parseDate(a.createdAt) - parseDate(b.createdAt);
+    if (timeDiff !== 0) return timeDiff;
+    return a.id.localeCompare(b.id);
+  };
+
+  if (policy === "priority") {
+    return [...tasks].sort(byPriorityThenAge);
+  }
+
+  if (policy === "oldest") {
+    return [...tasks].sort(byOldest);
+  }
+
+  // Hybrid: recent issues (<48h) sorted by priority, older by age
+  return [...tasks].sort((a, b) => {
+    const aRecent = isRecent(a);
+    const bRecent = isRecent(b);
+
+    if (aRecent && bRecent) return byPriorityThenAge(a, b);
+    if (aRecent && !bRecent) return -1;
+    if (!aRecent && bRecent) return 1;
+    return byOldest(a, b);
   });
 };
 
@@ -402,23 +469,30 @@ export const listTasks = (
 ): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tasks = yield* readTasks(tasksPath);
-    const filtered = filterTasks(tasks, filter);
+    const filtered = tasks.filter((task) => matchesListFilter(task, filter));
     if (filter?.limit && filter.limit > 0) {
-      return filtered.slice(0, filter.limit);
+      return sortReadyTasks(filtered, filter.sortPolicy).slice(0, filter.limit);
     }
-    return filtered;
+    return sortReadyTasks(filtered, filter?.sortPolicy);
   });
 
 export const readyTasks = (
   tasksPath: string,
+  filter?: TaskFilter,
 ): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tasks = yield* readTasks(tasksPath);
-    const ready = tasks.filter((task) => isTaskReady(task, tasks));
-    return sortReadyTasks(ready);
+    const appliedFilter: TaskFilter = filter ?? {};
+    const ready = tasks.filter((task) => isTaskReady(task, tasks)).filter((task) => matchesFilter(task, appliedFilter));
+    const sorted = sortReadyTasks(ready, appliedFilter.sortPolicy);
+    if (appliedFilter.limit && appliedFilter.limit > 0) {
+      return sorted.slice(0, appliedFilter.limit);
+    }
+    return sorted;
   });
 
 export const pickNextTask = (
   tasksPath: string,
+  filter?: TaskFilter,
 ): Effect.Effect<Task | null, TaskServiceError, FileSystem.FileSystem> =>
-  readyTasks(tasksPath).pipe(Effect.map((tasks) => tasks[0] ?? null));
+  readyTasks(tasksPath, filter).pipe(Effect.map((tasks) => tasks[0] ?? null));

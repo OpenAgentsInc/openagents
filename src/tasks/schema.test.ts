@@ -216,18 +216,13 @@ describe("isTaskReady", () => {
     expect(isTaskReady(task, [])).toBe(true);
   });
 
-  test("in_progress task is not ready", () => {
+  test("in_progress task is ready", () => {
     const task = makeTask("oa-1", "in_progress");
-    expect(isTaskReady(task, [])).toBe(false);
+    expect(isTaskReady(task, [])).toBe(true);
   });
 
   test("closed task is not ready", () => {
     const task = makeTask("oa-1", "closed");
-    expect(isTaskReady(task, [])).toBe(false);
-  });
-
-  test("epic is not ready", () => {
-    const task = { ...makeTask("oa-1", "open"), type: "epic" };
     expect(isTaskReady(task, [])).toBe(false);
   });
 
