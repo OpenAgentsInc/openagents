@@ -399,3 +399,15 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 **NEVER change the model from `x-ai/grok-4.1-fast`** - it is the only free model available on OpenRouter. Do not switch to Claude, GPT, or any other paid model.
 
+
+
+### MechaCoder Autonomous Agent
+
+MechaCoder is an autonomous coding agent that runs every 5 minutes via launchd.
+
+**See:** `docs/MECHACODER-OPS.md` for full operations guide including:
+- Where logs are stored
+- How to start/stop/restart
+- Troubleshooting guide
+- Bead management commands
+
