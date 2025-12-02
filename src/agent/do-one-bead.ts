@@ -124,10 +124,12 @@ test("example", async () => {
 9. You MUST call edit or write tool at least once
 10. Do NOT claim completion without writing code
 
-### Phase 4: Verify
-11. Run tests: \`bun test <specific-test-file>\` or \`bun test\`
-12. If tests fail, fix and re-run
-13. Run \`git diff\` to verify your changes exist
+### Phase 4: Verify (BOTH TESTS AND TYPES)
+11. Run typecheck FIRST: \`bun run typecheck\`
+12. If typecheck fails, fix type errors before proceeding
+13. Run tests: \`bun test <specific-test-file>\`
+14. If tests fail, fix and re-run
+15. Run \`git diff\` to verify your changes exist
 
 ### Phase 5: Commit & Push (REQUIRED - DO NOT SKIP)
 14. Stage and commit:
@@ -150,6 +152,7 @@ git push origin main
 
 ## VALIDATION CHECKLIST (before saying BEAD_COMPLETED)
 - [ ] Did I use edit/write tool to modify at least one file?
+- [ ] Did I run \`bun run typecheck\` and it passed with no errors?
 - [ ] Did I run tests and they passed?
 - [ ] Did I run git commit and see success message?
 - [ ] Did I run git push and see "main -> main"?
