@@ -1,8 +1,8 @@
 # OpenAgents Flow Editor (Agent Factory View) – Spec v1
 
-**Target stack:** TypeScript + Effect
-**Host:** OpenAgents Desktop (Bun/Electrobun or other UI host)
-**Core requirement:** Core engine is *pure TypeScript* and mostly UI-agnostic. No React in the core.
+- **Target stack:** TypeScript + Effect
+- **Host:** OpenAgents Desktop (Bun/Electrobun or other UI host)
+- **Core requirement:** Core engine is *pure TypeScript* and mostly UI-agnostic. No React in the core.
 
 The Flow Editor is a **Factorio-style agent map** for OpenAgents Desktop. It visualizes MechaCoder and other agents as a factory:
 
