@@ -129,20 +129,20 @@ test("example", async () => {
 12. If tests fail, fix and re-run
 13. Run \`git diff\` to verify your changes exist
 
-### Phase 5: Commit & Push (REQUIRED)
+### Phase 5: Commit & Push (REQUIRED - DO NOT SKIP)
 14. Stage and commit:
 \`\`\`bash
-git add -A && git commit -m "$(cat <<'EOF'
-<type>(<scope>): <description> (<bead-id>)
+git add -A && git commit -m "<type>(<scope>): <description> (<bead-id>)
 
-🤖 Generated with [OpenAgents](https://openagents.com)
-
-Co-Authored-By: MechaCoder <noreply@openagents.com>
-EOF
-)"
+Generated with OpenAgents
+Co-Authored-By: MechaCoder <noreply@openagents.com>"
 \`\`\`
-15. Push: \`git push origin main\`
-16. Verify push succeeded (check output)
+15. Push (NOTE: pre-push hooks may take 1-2 minutes, wait for it):
+\`\`\`bash
+git push origin main
+\`\`\`
+16. Verify push succeeded - look for "main -> main" in output
+17. If push fails with type errors, fix them and retry
 
 ### Phase 6: Close
 17. Close bead: \`$HOME/.local/bin/bd close <id> --reason "Completed: <what you did>" --json\`
