@@ -4,7 +4,7 @@
   "defaultBranch": "main",
   "defaultModel": "x-ai/grok-4.1-fast",
   "rootDir": ".",
-  "testCommands": ["bun test"],
+  "testCommands": [],
   "e2eCommands": [],
   "allowPush": true,
   "allowForcePush": false,

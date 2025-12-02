@@ -11,7 +11,13 @@
     "prepare": "effect-language-service patch",
     "hi": "bun --bun src/llm/openrouter-cli.ts -- --prompt 'Say hi'",
     "demo:edit": "bun --bun src/tools/edit-demo.ts",
-    "demo:agent-tools": "echo \"openrouter tool demo removed\""
+    "demo:agent-tools": "echo \"openrouter tool demo removed\"",
+    "tasks:init": "bun src/tasks/cli.ts init",
+    "tasks:list": "bun src/tasks/cli.ts list",
+    "tasks:ready": "bun src/tasks/cli.ts ready",
+    "tasks:next": "bun src/tasks/cli.ts next",
+    "tasks:create": "bun src/tasks/cli.ts create",
+    "tasks:update": "bun src/tasks/cli.ts update"
   },
   "dependencies": {
     "@effect/cli": "0.72.1",

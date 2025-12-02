@@ -73,6 +73,30 @@ Tasks in `.openagents/tasks.jsonl` follow this schema:
   - Add a `.openagents` task via TaskService (or let MechaCoder create it).
   - Link discovered work with `discovered-from` dependencies.
 
+### Using the OpenAgents Task CLI
+
+For external agents (Claude Code, Codex, scripts) working in this repo:
+
+```bash
+# List all tasks
+bun run tasks:list --json
+
+# See ready tasks (no blockers)
+bun run tasks:ready --json
+
+# Claim the next ready task (marks it in_progress)
+bun run tasks:next --json
+
+# Create a task
+bun run tasks:create --title "Fix live e2e harness" --type bug --priority 1 --labels "e2e,golden-loop" --json
+
+# Update/close a task (via JSON stdin)
+echo '{"id":"oa-abc123","status":"closed","reason":"Done","commits":["abc123"]}' | bun run tasks:update --json-input --json
+```
+
+For full CLI documentation, run `bun src/tasks/cli.ts --help`.
+See `docs/mechacoder/TASK-SPEC.md` for the complete task system specification.
+
 ### Workflow for AI Agents
 
 1. **Check ready work**: Use TaskService to find tasks with `status: "open"` and no blocking deps
