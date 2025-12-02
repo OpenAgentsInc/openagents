@@ -9,9 +9,14 @@
 </head>
 
 <body>
-  <div class="container">
-    <h1>OpenAgents</h1>
+  <div id="flow-container">
+    <svg id="flow-svg" class="flow-svg"></svg>
   </div>
+  <div id="flow-controls">
+    <button id="reset-btn" title="Reset View">Reset</button>
+    <span id="zoom-level">100%</span>
+  </div>
+  <script type="module" src="index.ts"></script>
 </body>
 
 </html>

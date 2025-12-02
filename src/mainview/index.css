@@ -39,20 +39,80 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #000;
+  background: #0a0a0f;
   color: #fff;
   font-family: "Berkeley Mono", "JetBrains Mono", "SFMono-Regular", monospace;
+  overflow: hidden;
+}
+
+/* Flow container fills the viewport */
+#flow-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  cursor: grab;
+}
+
+#flow-container.dragging {
+  cursor: grabbing;
+}
+
+/* SVG fills container */
+.flow-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Flow nodes */
+.flow-node {
+  transition: filter 0.15s ease;
+}
+
+.flow-node:hover {
+  filter: brightness(1.2);
+}
+
+/* Flow connections */
+.flow-connection {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Controls overlay */
+#flow-controls {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
   display: flex;
+  gap: 8px;
   align-items: center;
-  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 100;
 }
 
-.container {
-  text-align: center;
+#reset-btn {
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
 }
 
-h1 {
-  font-size: clamp(2.5rem, 4vw, 4rem);
-  letter-spacing: 0.2rem;
-  margin: 0;
+#reset-btn:hover {
+  background: #444;
+}
+
+#zoom-level {
+  color: #888;
+  min-width: 50px;
+  text-align: right;
 }
