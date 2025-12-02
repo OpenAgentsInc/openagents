@@ -54,16 +54,19 @@ export interface ChatResponse {
   };
 }
 
-export interface OpenRouterConfig {
+export interface OpenRouterConfigShape {
   apiKey: Secret.Secret;
   baseUrl: string;
   referer: Option.Option<string>;
   siteName: Option.Option<string>;
 }
 
-export const OpenRouterConfig = Context.Tag<OpenRouterConfig>("OpenRouterConfig");
+export class OpenRouterConfig extends Context.Tag("OpenRouterConfig")<
+  OpenRouterConfig,
+  OpenRouterConfigShape
+>() {}
 
-export const loadOpenRouterEnv = (): OpenRouterConfig => {
+export const loadOpenRouterEnv = (): OpenRouterConfigShape => {
   const env = typeof Bun !== "undefined" ? Bun.env : process.env;
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -80,7 +83,7 @@ export const loadOpenRouterEnv = (): OpenRouterConfig => {
 
 export const openRouterConfigLayer = Layer.effect(OpenRouterConfig, Effect.sync(loadOpenRouterEnv));
 
-export const createOpenRouterClient = (config: OpenRouterConfig) =>
+export const createOpenRouterClient = (config: OpenRouterConfigShape) =>
   new OpenRouter({
     apiKey: Secret.value(config.apiKey),
     baseURL: config.baseUrl,
@@ -148,7 +151,7 @@ const makeRequestBody = (request: ChatRequest) => {
   };
 };
 
-const buildHeaders = (config: OpenRouterConfig) => {
+const buildHeaders = (config: OpenRouterConfigShape) => {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${Secret.value(config.apiKey)}`,
     "Content-Type": "application/json",
@@ -204,11 +207,14 @@ const sendChat = (
     };
   });
 
-export interface OpenRouterClient {
+export interface OpenRouterClientShape {
   chat: (request: ChatRequest) => Effect.Effect<ChatResponse, Error>;
 }
 
-export const OpenRouterClient = Context.Tag<OpenRouterClient>("OpenRouterClient");
+export class OpenRouterClient extends Context.Tag("OpenRouterClient")<
+  OpenRouterClient,
+  OpenRouterClientShape
+>() {}
 
 const parseDotEnv = (contents: string) =>
   contents
@@ -226,14 +232,14 @@ const parseDotEnv = (contents: string) =>
     }, {});
 
 export const dotenvLocalLayer = Layer.scopedDiscard(
-  Effect.gen(function* (_) {
-    const fs = yield* _(FileSystem.FileSystem);
-    const path = yield* _(Path.Path);
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const envPath = path.join(process.cwd(), ".env.local");
-    const exists = yield* _(fs.exists(envPath));
+    const exists = yield* fs.exists(envPath);
     if (!exists) return;
 
-    const contents = yield* _(fs.readFileString(envPath));
+    const contents = yield* fs.readFileString(envPath);
     const parsed = parseDotEnv(contents);
 
     for (const [key, value] of Object.entries(parsed)) {
@@ -247,8 +253,8 @@ export const dotenvLocalLayer = Layer.scopedDiscard(
   }),
 );
 
-const makeClient = Effect.gen(function* (_) {
-  const config = yield* _(OpenRouterConfig);
+const makeClient = Effect.gen(function* () {
+  const config = yield* OpenRouterConfig;
   const client = new OpenRouter({
     apiKey: Secret.value(config.apiKey),
     baseURL: config.baseUrl,
@@ -257,7 +263,7 @@ const makeClient = Effect.gen(function* (_) {
 
   return {
     chat: (request: ChatRequest) => sendChat(client, request),
-  } satisfies OpenRouterClient;
+  } satisfies OpenRouterClientShape;
 });
 
 export const openRouterClientLayer = Layer.effect(OpenRouterClient, makeClient);

@@ -1,0 +1,9 @@
+## Work Log — 2025-12-01 23:27 CT
+
+- Bead: `openagents-42j.1` — Port read tool (safe file reading with offset/limit).
+- Intent: Implement read tool using Effect Schema + @effect/platform FS, support text/image reads with offset/limit, add tests and CLI hook as needed.
+- Context: Follow AGENTS rules (no `as any`), ensure tools emit typed content, align behavior with pi-mono docs (offset/limit, truncation, image support).
+
+### 23:35 CT
+- Added `read` tool with Effect Schema, image support, offset/limit handling, truncation notices, and ToolExecutionError paths.
+- Added tests for happy path, pagination notice, and missing-file error; all tests pass via `bun test`.
