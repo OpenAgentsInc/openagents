@@ -130,25 +130,52 @@ const makeRequestBody = (request: ChatRequest) => {
   };
 };
 
-const sendChat = (
-  client: OpenRouter,
+const sendChatRaw = (
+  config: OpenRouterConfigShape,
   request: ChatRequest,
 ): Effect.Effect<ChatResponse, Error> =>
   Effect.gen(function* () {
+    const body = makeRequestBody(request);
+    // Convert toolCallId back to tool_call_id for the API
+    const apiMessages = body.messages.map((msg: any) => {
+      if (msg.role === "tool" && msg.toolCallId) {
+        const { toolCallId, ...rest } = msg;
+        return { ...rest, tool_call_id: toolCallId };
+      }
+      return msg;
+    });
+
+    console.log(`[OpenRouter] Sending request to ${config.baseUrl}/chat/completions`);
+    console.log(`[OpenRouter] Model: ${body.model}, Messages: ${apiMessages.length}`);
+
     const response = yield* Effect.tryPromise({
-      try: () =>
-        client.chat.send({
-          ...makeRequestBody(request),
-        } as any),
+      try: async () => {
+        const res = await fetch(`${config.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${Secret.value(config.apiKey)}`,
+            "Content-Type": "application/json",
+            ...(Option.isSome(config.referer) ? { "HTTP-Referer": config.referer.value } : {}),
+            ...(Option.isSome(config.siteName) ? { "X-Title": config.siteName.value } : {}),
+          },
+          body: JSON.stringify({ ...body, messages: apiMessages }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+        return res.json();
+      },
       catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
     });
+
+    console.log(`[OpenRouter] Response received, id: ${(response as any).id}`);
 
     const choice = (response as any).choices?.[0];
     const message = choice?.message;
 
     const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> =
-      message?.toolCalls ??
-      (Array.isArray((message as any)?.tool_calls) ? (message as any).tool_calls : []);
+      message?.tool_calls ?? [];
 
     return {
       id: (response as any).id ?? "",
@@ -158,7 +185,7 @@ const sendChat = (
           message: {
             role: "assistant",
             content: message?.content ?? null,
-            tool_calls: toolCalls.map((call) => ({
+            tool_calls: toolCalls.map((call: any) => ({
               id: call.id,
               name: call.function.name,
               arguments: call.function.arguments,
@@ -217,15 +244,9 @@ export const dotenvLocalLayer = Layer.scopedDiscard(
 
 const makeClient = Effect.gen(function* () {
   const config = yield* OpenRouterConfig;
-  const client = new OpenRouter({
-    apiKey: Secret.value(config.apiKey),
-    serverURL: config.baseUrl,
-    httpReferer: Option.getOrUndefined(config.referer),
-    xTitle: Option.getOrUndefined(config.siteName),
-  });
 
   return {
-    chat: (request: ChatRequest) => sendChat(client, request),
+    chat: (request: ChatRequest) => sendChatRaw(config, request),
   } satisfies OpenRouterClientShape;
 });
 
@@ -242,6 +263,5 @@ export const openRouterLive = openRouterClientLayer.pipe(Layer.provideMerge(base
 export const runOpenRouterChat = (request: ChatRequest) =>
   Effect.gen(function* () {
     const config = loadOpenRouterEnv();
-    const client = createOpenRouterClient(config);
-    return yield* sendChat(client, request);
+    return yield* sendChatRaw(config, request);
   });

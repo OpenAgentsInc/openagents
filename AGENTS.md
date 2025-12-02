@@ -393,3 +393,9 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 **Package versioning:** Never hand-edit `package.json` versions by guessing. Add deps via `bun add -E <pkg>@<version>` (or `bun add -E <pkg>` if you know the exact version) so the lockfile stays consistent.
 <!-- effect-solutions:end -->
+
+
+### Model Selection
+
+**NEVER change the model from `x-ai/grok-4.1-fast`** - it is the only free model available on OpenRouter. Do not switch to Claude, GPT, or any other paid model.
+
