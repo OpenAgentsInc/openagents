@@ -10,3 +10,4 @@ Intent: Build a state loader that reads .openagents tasks and run logs for the H
 - Added MechaCoder state loader that reads .openagents/tasks.jsonl and .openagents/run-logs, computes rollups/dependency status, and exposes snapshot via Effect.
 - Enriched mechacoder-map metadata with rollups/dependency info and added loader tests for run log parsing + missing logs.
 - Ran bun test (pass).
+- Closed oa-1a7f58 in .openagents/tasks.jsonl with recorded commit.
