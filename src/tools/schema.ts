@@ -2,7 +2,9 @@ import { Effect, pipe } from "effect";
 import * as ParseResult from "effect/ParseResult";
 import * as S from "effect/Schema";
 
-export type ToolContent = { type: "text"; text: string };
+export type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
 
 export interface ToolResult<Details = unknown> {
   content: ToolContent[];
