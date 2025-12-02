@@ -1,4 +1,8 @@
+import * as BunContext from "@effect/platform-bun/BunContext"
+import { Effect } from "effect"
 import { calculateLayout } from "../flow/layout.js"
+import { buildMechaCoderFlowTree, generateNodeSizes } from "../flow/mechacoder-map.js"
+import { loadMechaCoderState } from "../flow/mechacoder-state.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
 import {
   initialCanvasState,
@@ -12,12 +16,17 @@ import {
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
 
-// Calculate layout once from sample data
-const layout = calculateLayout({
+const LAYOUT_CONFIG = { padding: 12, spacing: 220 }
+const REFRESH_INTERVAL_MS = 5000
+
+// Calculate layout once from sample data as a placeholder until live data loads
+let layout = calculateLayout({
   root: sampleMechaCoderTree,
   nodeSizes: sampleNodeSizes,
-  config: { padding: 12, spacing: 220 },
+  config: LAYOUT_CONFIG,
 })
+let hasLiveLayout = false
+let isRefreshing = false
 
 function getLayoutBounds() {
   const minX = Math.min(...layout.nodes.map(n => n.x))
@@ -32,6 +41,35 @@ function getCenteredPan(viewWidth: number, viewHeight: number) {
   const centerX = viewWidth / 2 - (bounds.minX + bounds.width / 2)
   const centerY = viewHeight / 2 - (bounds.minY + bounds.height / 2)
   return { panX: centerX, panY: centerY }
+}
+
+async function refreshLayoutFromState(): Promise<void> {
+  if (isRefreshing) return
+  isRefreshing = true
+  try {
+    const state = await Effect.runPromise(
+      loadMechaCoderState({ rootDir: "." }).pipe(Effect.provide(BunContext.layer)),
+    )
+    const tree = buildMechaCoderFlowTree(state)
+    const nodeSizes = generateNodeSizes(tree)
+    layout = calculateLayout({
+      root: tree,
+      nodeSizes,
+      config: LAYOUT_CONFIG,
+    })
+
+    if (!hasLiveLayout) {
+      const recentered = getCenteredPan(canvasState.viewportWidth, canvasState.viewportHeight)
+      canvasState = { ...canvasState, ...recentered }
+      hasLiveLayout = true
+    }
+
+    render()
+  } catch (error) {
+    console.error("Failed to load MechaCoder state", error)
+  } finally {
+    isRefreshing = false
+  }
 }
 
 // Get DOM elements
@@ -165,4 +203,9 @@ container.addEventListener("mouseup", (e) => {
 
 // Initial render
 render()
+
+// Load live data and refresh periodically
+void refreshLayoutFromState()
+setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
+
 console.log("Flow HUD loaded")
