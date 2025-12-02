@@ -7,9 +7,10 @@ import { OpenRouterClient } from "../llm/openrouter.js";
 // Event types that can be emitted during the loop
 export type LoopEvent = 
   | { type: "turn_start"; turn: number }
-  | { type: "llm_response"; turn: number; hasToolCalls: boolean }
-  | { type: "tool_call"; tool: string; argsPreview: string }
-  | { type: "tool_result"; tool: string; ok: boolean }
+  | { type: "llm_request"; turn: number; messages: ChatMessage[]; toolNames: string[] }
+  | { type: "llm_response"; turn: number; hasToolCalls: boolean; message: ChatMessage; toolCalls: Array<{ id: string; name: string; arguments: string }> }
+  | { type: "tool_call"; tool: string; toolCallId: string; args: string }
+  | { type: "tool_result"; tool: string; toolCallId: string; ok: boolean; result: ToolResult }
   | { type: "edit_detected"; tool: string };
 
 export interface AgentConfig {
@@ -170,6 +171,9 @@ export const agentLoop = (
         ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
       };
 
+      // EMIT llm_request BEFORE calling provider
+      emit({ type: "llm_request", turn: turnCount, messages, toolNames: tools.map((t) => t.name) });
+
       const response = yield* client.chat(request).pipe(
         Effect.mapError((e: Error) => new AgentLoopError("llm_error", e.message)),
       );
@@ -183,7 +187,13 @@ export const agentLoop = (
       const toolCalls = assistantMessage.tool_calls ?? [];
       
       // EMIT llm_response AFTER LLM returns
-      emit({ type: "llm_response", turn: turnCount, hasToolCalls: toolCalls.length > 0 });
+      emit({
+        type: "llm_response",
+        turn: turnCount,
+        hasToolCalls: toolCalls.length > 0,
+        message: assistantMessage,
+        toolCalls,
+      });
 
       messages.push({
         role: "assistant",
@@ -204,13 +214,13 @@ export const agentLoop = (
 
         for (const toolCall of toolCalls) {
           // EMIT tool_call BEFORE executing
-          emit({ type: "tool_call", tool: toolCall.name, argsPreview: toolCall.arguments.slice(0, 100) });
+          emit({ type: "tool_call", tool: toolCall.name, toolCallId: toolCall.id, args: toolCall.arguments });
           
           const result = yield* executeToolCall(tools, toolCall);
           toolResults.push(result);
           
           // EMIT tool_result AFTER executing
-          emit({ type: "tool_result", tool: toolCall.name, ok: !result.isError });
+          emit({ type: "tool_result", tool: toolCall.name, toolCallId: toolCall.id, ok: !result.isError, result: result.result });
 
           const toolOutput = result.result.content
             .filter((c): c is { type: "text"; text: string } => c.type === "text")

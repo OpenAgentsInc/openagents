@@ -6,12 +6,13 @@ import * as nodePath from "node:path";
 
 // Run event types for streaming JSONL
 export type TaskRunEvent =
-  | { type: "run_start"; ts: string; runId: string; taskId: string | null }
+  | { type: "run_start"; ts: string; runId: string; taskId: string | null; workDir?: string; model?: string }
   | { type: "task_selected"; ts: string; taskId: string; title: string }
   | { type: "turn_start"; ts: string; turn: number }
-  | { type: "llm_response"; ts: string; turn: number; hasToolCalls: boolean }
-  | { type: "tool_call"; ts: string; tool: string; argsPreview: string }
-  | { type: "tool_result"; ts: string; tool: string; ok: boolean }
+  | { type: "llm_request"; ts: string; turn: number; messages: unknown; toolNames: string[] }
+  | { type: "llm_response"; ts: string; turn: number; hasToolCalls: boolean; message: unknown; toolCalls: Array<{ id: string; name: string; arguments: string }> }
+  | { type: "tool_call"; ts: string; tool: string; toolCallId: string; args: unknown }
+  | { type: "tool_result"; ts: string; tool: string; toolCallId: string; ok: boolean; result: unknown }
   | { type: "edit_detected"; ts: string; tool: string }
   | { type: "verify_start"; ts: string; command: string }
   | { type: "verify_ok"; ts: string }
@@ -63,6 +64,52 @@ const getTimestamp = () => {
   const mins = String(now.getMinutes()).padStart(2, "0");
   const secs = String(now.getSeconds()).padStart(2, "0");
   return `${hours}${mins}${secs}`;
+};
+
+const SECRET_KEY_REGEX = /(api[_-]?key|token|secret|password|authorization)/i;
+const isLikelySecretString = (value: string): boolean => {
+  // Long, no whitespace tokens (e.g., keys) or contains common secret markers
+  if (SECRET_KEY_REGEX.test(value)) return true;
+  if (value.length >= 40 && !/\s/.test(value)) return true;
+  return false;
+};
+
+const sanitizeValue = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    if (isLikelySecretString(value)) return "[redacted]";
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => sanitizeValue(v));
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (SECRET_KEY_REGEX.test(k)) {
+        result[k] = "[redacted]";
+      } else {
+        result[k] = sanitizeValue(v);
+      }
+    }
+    return result;
+  }
+  return value;
+};
+
+export const sanitizeEvent = (event: TaskRunEvent): TaskRunEvent => {
+  if ("messages" in event) {
+    return { ...event, messages: sanitizeValue(event.messages) };
+  }
+  if ("message" in event) {
+    return { ...event, message: sanitizeValue(event.message), toolCalls: sanitizeValue(event.toolCalls) as any };
+  }
+  if (event.type === "tool_call") {
+    return { ...event, args: sanitizeValue(event.args) };
+  }
+  if (event.type === "tool_result") {
+    return { ...event, result: sanitizeValue(event.result) };
+  }
+  return event;
 };
 
 export const writeRunLog = (
@@ -125,7 +172,7 @@ export function appendRunEventSync(
   }
 
   // Append event as JSON line - synchronous write for immediate flush
-  const line = JSON.stringify(event) + "\n";
+  const line = JSON.stringify(sanitizeEvent(event)) + "\n";
   fs.appendFileSync(filePath, line, "utf8");
 }
 
