@@ -53,3 +53,6 @@ models/
 .git/beads-worktrees/
 
 docs/scratchpad/
+
+*.log
+*bead-run.md
