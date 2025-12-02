@@ -14,18 +14,18 @@ Per-run logs live in:
 
 ```bash
 ~/code/openagents/docs/logs/YYYYMMDD/*.md
-````
+```
 
 Common patterns:
 
-* `HHMMSS-bead-run.md` – single MechaCoder bead/loop run
+* `HHMMSS-task-run.md` – single MechaCoder task/loop run
 * `*-golden-loop-e2e-log.md` – Golden Loop e2e test runs
-* `*-testing-infra-log.md`, `*-bead-audit-log.md` – audits, infra runs
+* `*-testing-infra-log.md` – audits, infra runs
 
 Example:
 
 ```bash
-docs/logs/20251202/093350-bead-run.md
+docs/logs/20251202/093350-task-run.md
 docs/logs/20251202/1516-testing-infra-log.md
 docs/logs/20251202/2001-golden-loop-live-log.md
 ```
@@ -34,7 +34,7 @@ Each run log typically contains:
 
 * Start time
 * Working directory (`--dir` repo path)
-* Bead/task ID (if applicable)
+* Task ID (if applicable)
 * All tool calls and results
 * Tests run and their output
 * Final status message
@@ -53,13 +53,13 @@ cd ~/code/openagents
 tail -f $(ls -t docs/logs/$(date +%Y%m%d)/*.md | head -1)
 ```
 
-> Tip: use this while MechaCoder is running to see what it’s actually doing.
+> Tip: use this while MechaCoder is running to see what it's actually doing.
 
 ---
 
 ### 1.2. System logs (stdout/stderr)
 
-MechaCoder’s raw stdout/stderr logs (for the `openagents` repo) live in:
+MechaCoder's raw stdout/stderr logs (for the `openagents` repo) live in:
 
 ```bash
 ~/code/openagents/logs/mechacoder-stdout.log
@@ -106,9 +106,9 @@ The launchd plist lives at:
 Key fields in the plist:
 
 * `StartInterval`: e.g. `300` (run every 5 minutes)
-* `WorkingDirectory`: repo MechaCoder will act in (e.g. `/Users/christopherdavid/code/nostr-effect` or another repo)
+* `WorkingDirectory`: repo MechaCoder will act in
 * `ProgramArguments`: usually calls `bun` with `src/agent/do-one-bead.ts --dir <repo>`
-* `PATH`: must include `$HOME/.bun/bin` and `$HOME/.local/bin` (for `bd`, if still used)
+* `PATH`: must include `$HOME/.bun/bin`
 
 #### Check if launchd agent is running
 
@@ -149,14 +149,14 @@ cd ~/code/openagents
 # Run against the openagents repo itself:
 bun src/agent/do-one-bead.ts --dir .
 
-# Run against nostr-effect repo:
-bun src/agent/do-one-bead.ts --dir ~/code/nostr-effect
+# Run against another repo:
+bun src/agent/do-one-bead.ts --dir ~/code/some-other-repo
 ```
 
 What this does:
 
 * Reads `.openagents/project.json` under `--dir`.
-* Uses `.openagents/tasks.jsonl` as the task source (with beads as legacy input if configured).
+* Uses `.openagents/tasks.jsonl` as the task source.
 * Picks one ready task, edits code, runs tests, commits/pushes (if allowed), updates the task, and logs the run.
 
 > Use this when debugging MechaCoder behavior on a single task, or during integration work.
@@ -165,7 +165,7 @@ What this does:
 
 ## 3. Project & Task Configuration
 
-MechaCoder now uses an **OpenAgents-native project/task system** under `.openagents/`, with Beads (`bd`) as optional interop.
+MechaCoder uses the **OpenAgents project/task system** under `.openagents/`.
 
 ### 3.1. Project metadata
 
@@ -190,7 +190,7 @@ Example `project.json` (simplified):
   "defaultModel": "x-ai/grok-4.1-fast",
   "rootDir": ".",
   "testCommands": ["bun test"],
-  "e2eCommands": [],              // e.g. ["E2E_STUB=1 pnpm run test:golden-loop-e2e:local-stub"]
+  "e2eCommands": [],
   "allowPush": true,
   "allowForcePush": false,
   "maxTasksPerRun": 3,
@@ -246,26 +246,7 @@ cd /path/to/repo
 cat .openagents/tasks.jsonl | jq '.'
 ```
 
-> Most of the time, though, you’ll interact via MechaCoder, not by editing this file by hand.
-
-### 3.3. Legacy Beads (`bd`)
-
-Some repos (e.g. `nostr-effect`) still use Beads (`bd`) as a **planning layer**. In that case:
-
-* `.beads/issues.jsonl` is still present and used.
-* The `.openagents` system may mirror/import beads (see `src/tasks/beads.ts`).
-
-For **nostr-effect** specifically, you can still:
-
-```bash
-cd ~/code/nostr-effect
-$HOME/.local/bin/bd ready --json
-$HOME/.local/bin/bd list --json | jq '.[] | "\(.id) | \(.status) | \(.title)"'
-$HOME/.local/bin/bd update <id> --status open
-$HOME/.local/bin/bd close <id> --reason "Manual close"
-```
-
-Over time, `.openagents/tasks.jsonl` is intended to become the canonical task store across projects.
+> Most of the time, though, you'll interact via MechaCoder, not by editing this file by hand.
 
 ---
 
@@ -276,13 +257,13 @@ Over time, `.openagents/tasks.jsonl` is intended to become the canonical task st
 Historically, the agent could leave uncommitted/broken changes if:
 
 * It ran out of turns,
-* Tests failed and it didn’t recover, or
+* Tests failed and it didn't recover, or
 * Pre-push hooks failed.
 
 **If you suspect this:**
 
 ```bash
-cd /path/to/affected/repo   # e.g. ~/code/nostr-effect or ~/code/openagents
+cd /path/to/affected/repo
 
 # Check for uncommitted changes:
 git status
@@ -297,8 +278,8 @@ git push origin main
 git checkout -- .
 git clean -fd
 
-# For bead-based repos, reset stuck beads:
-$HOME/.local/bin/bd update <id> --status open
+# For stuck tasks, edit .openagents/tasks.jsonl directly:
+# Change status from "in_progress" to "open" or "blocked"
 ```
 
 ### 4.2. Agent not running (launchd)
@@ -329,14 +310,8 @@ Look for:
 
 1. Check the **latest run log** in `docs/logs/YYYYMMDD/*.md`.
 2. Check for repeated failures on the same task (tests failing, type errors).
-3. For bead-based repos:
-
-   * Look for tasks stuck in `in_progress`.
-   * Reset them: `bd update <id> --status open`.
-4. For `.openagents`-based repos:
-
-   * Look in `.openagents/tasks.jsonl` for tasks stuck in `in_progress` too long.
-   * Either update them to `blocked` with a reason, or `open` to retry.
+3. Look in `.openagents/tasks.jsonl` for tasks stuck in `in_progress` too long.
+4. Either update them to `blocked` with a reason, or `open` to retry.
 
 ### 4.4. API / model issues
 
@@ -374,14 +349,14 @@ If you need different models per project in the future, use `.openagents/models.
 
 ## 6. Log Format Example
 
-A typical per-run log (`HHMMSS-bead-run.md`) looks like:
+A typical per-run log (`HHMMSS-task-run.md`) looks like:
 
 ```markdown
-# Bead Run Log
+# Task Run Log
 
 Started: 2025-12-02T15:04:07.329Z
 
-[timestamp] DO ONE BEAD - Starting
+[timestamp] DO ONE TASK - Starting
 [timestamp] Work directory: /Users/christopherdavid/code/openagents
 [timestamp] Changed to: /Users/christopherdavid/code/openagents
 
@@ -390,13 +365,13 @@ Started: 2025-12-02T15:04:07.329Z
 ### Tool Call: bash
 {"command":"bun test"}
 
-### Tool Result: bash ✅ SUCCESS
+### Tool Result: bash SUCCESS
 [... output ...]
 
 ### Tool Call: read
 {"path":"src/tasks/service.ts","offset":0,"limit":4000}
 
-### Tool Result: read ✅ SUCCESS
+### Tool Result: read SUCCESS
 [... snippet ...]
 
 ### Assistant
@@ -405,9 +380,9 @@ I'll update TaskService to handle labelsAny filters and then add tests...
 [... more turns ...]
 
 ## Final Message
-BEAD_COMPLETED: openagents-5bb.2
+TASK_COMPLETED: oa-abc123
 
-[timestamp] SUCCESS - Bead completed!
+[timestamp] SUCCESS - Task completed!
 ```
 
 ---
@@ -418,11 +393,10 @@ If you're an AI agent reading this:
 
 1. Do **not** modify this file unless explicitly asked.
 2. Always check **logs** before assuming current agent state.
-3. Use `.openagents/tasks.jsonl` as the **primary task source** in this repo; treat `.beads` as legacy/interop.
-4. For bead-based repos (nostr-effect, etc.), still use `bd` commands instead of markdown TODOs.
-5. Always run `bun test` (and any configured e2e commands) before committing.
-6. Never silently change the default model; update specs and prompts when you do.
-7. Prefer **small, focused runs** that:
+3. Use `.openagents/tasks.jsonl` as the **primary task source** in this repo.
+4. Always run `bun test` (and any configured e2e commands) before committing.
+5. Never silently change the default model; update specs and prompts when you do.
+6. Prefer **small, focused runs** that:
 
    * pick one task,
    * implement,
@@ -444,8 +418,6 @@ If you're an AI agent reading this:
 | View latest log             | `cd ~/code/openagents && cat $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)`     |
 | Watch latest log            | `cd ~/code/openagents && tail -f $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)` |
 | Inspect tasks (.openagents) | `cd /path/to/repo && cat .openagents/tasks.jsonl \| jq '.'`                          |
-| Check beads (legacy)        | `cd /path/to/repo && $HOME/.local/bin/bd list --json`                                |
-| Reset bead (legacy)         | `$HOME/.local/bin/bd update <id> --status open`                                      |
 | Check last commits          | `cd /path/to/repo && git log --oneline -5`                                           |
 | Run tests                   | `cd /path/to/repo && bun test`                                                       |
 

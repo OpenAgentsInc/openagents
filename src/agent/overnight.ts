@@ -2,16 +2,16 @@
 /**
  * Overnight Agent - Long-running autonomous coding agent
  * 
- * Usage: bun src/agent/overnight.ts --dir ~/code/some-repo [--max-beads 5] [--dry-run]
+ * Usage: bun src/agent/overnight.ts --dir ~/code/some-repo [--max-tasks 5] [--dry-run]
  * 
  * The agent will:
- * 1. Check for ready beads (bd ready)
+ * 1. Check for ready tasks in .openagents/tasks.jsonl
  * 2. Claim the highest priority task
  * 3. Read relevant files and implement the fix
  * 4. Run tests
  * 5. Commit and push to main
- * 6. Close the bead
- * 7. Repeat until no more beads or max reached
+ * 6. Close the task
+ * 7. Repeat until no more tasks or max reached
  * 
  * Logs are saved to ~/code/openagents/docs/logs/YYYYMMDD/
  */
@@ -65,12 +65,11 @@ ${GIT_CONVENTIONS}
 
 ## Your Workflow
 
-1. **Check beads**: Run \`bd ready --json\` to see available work
-2. **Claim a bead**: Pick highest priority TASK (not epic), run \`bd update <id> --status in_progress --json\`
-3. **Understand the task**: Read the bead description, read relevant source files
-4. **Implement**: Make necessary code changes using edit tool
-5. **Test**: Run relevant tests with bash (bun test, etc.)
-6. **Commit**: Stage changes and commit with proper format:
+1. **Check tasks**: Tasks are loaded from .openagents/tasks.jsonl by the agent loop
+2. **Understand the task**: Read the task description, read relevant source files
+3. **Implement**: Make necessary code changes using edit tool
+4. **Test**: Run relevant tests with bash (bun test, etc.)
+5. **Commit**: Stage changes and commit with proper format:
    \`\`\`
    git add -A && git commit -m "$(cat <<'EOF'
    Your message here
@@ -81,8 +80,8 @@ ${GIT_CONVENTIONS}
    EOF
    )"
    \`\`\`
-7. **Push**: Run \`git push origin main\`
-8. **Close bead**: Run \`bd close <id> --reason "description" --json\`
+6. **Push**: Run \`git push origin main\`
+7. **Complete**: Report "TASK_COMPLETED: <task-id>" when done
 
 ## Important Rules
 
@@ -90,18 +89,18 @@ ${GIT_CONVENTIONS}
 - NEVER force push
 - NEVER commit secrets or credentials
 - If tests fail, fix them before committing
-- If stuck, close the bead with reason explaining the blocker
-- Work on ONE bead at a time
+- If stuck, report the blocking reason
+- Work on ONE task at a time
 - Keep commits focused and atomic
 
 ## Current Task
 
-Work in the current directory. Start by checking what beads are ready.
+Work in the current directory on the task provided.
 `;
 
 interface OvernightConfig {
   workDir: string;
-  maxBeads: number;
+  maxTasks: number;
   dryRun: boolean;
   sessionsDir: string;
 }
@@ -109,7 +108,7 @@ interface OvernightConfig {
 const parseArgs = (): OvernightConfig => {
   const args = process.argv.slice(2);
   let workDir = process.cwd();
-  let maxBeads = 10;
+  let maxTasks = 10;
   let dryRun = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -118,8 +117,8 @@ const parseArgs = (): OvernightConfig => {
         ? args[i + 1].replace("~", process.env.HOME || "")
         : args[i + 1];
       i++;
-    } else if (args[i] === "--max-beads" && args[i + 1]) {
-      maxBeads = parseInt(args[i + 1], 10);
+    } else if ((args[i] === "--max-tasks" || args[i] === "--max-beads") && args[i + 1]) {
+      maxTasks = parseInt(args[i + 1], 10);
       i++;
     } else if (args[i] === "--dry-run") {
       dryRun = true;
@@ -128,7 +127,7 @@ const parseArgs = (): OvernightConfig => {
 
   return {
     workDir,
-    maxBeads,
+    maxTasks,
     dryRun,
     sessionsDir: `${workDir}/.agent-sessions`,
   };
@@ -154,28 +153,27 @@ const log = (msg: string) => {
   }
 };
 
-const runBeadCycle = (
+const runTaskCycle = (
   config: OvernightConfig,
-  beadNumber: number,
+  taskNumber: number,
 ): Effect.Effect<{ completed: boolean; message: string }, Error, any> =>
   Effect.gen(function* () {
     log(`\n${"=".repeat(60)}`);
-    log(`BEAD CYCLE ${beadNumber}/${config.maxBeads}`);
+    log(`TASK CYCLE ${taskNumber}/${config.maxTasks}`);
     log(`Working directory: ${config.workDir}`);
     log(`${"=".repeat(60)}\n`);
 
-    const prompt = beadNumber === 1
+    const prompt = taskNumber === 1
       ? `You are starting a new work session in ${config.workDir}.
 
-First, run \`bd ready --json\` to see what beads are available.
-Then pick the highest priority TASK bead (not epic) and claim it.
+Tasks are loaded from .openagents/tasks.jsonl by the agent loop.
 Read the relevant files to understand what needs to be done.
-Implement the changes, run tests, commit, push, and close the bead.
+Implement the changes, run tests, commit, push, and report completion.
 
 Start now.`
-      : `Continue working. Check \`bd ready --json\` for the next bead.
-If there are no more ready beads, respond with "NO_MORE_BEADS".
-Otherwise, claim the next highest priority task and complete it.`;
+      : `Continue working on the next task.
+If there are no more ready tasks, respond with "NO_MORE_TASKS".
+Otherwise, complete the next highest priority task.`;
 
     if (config.dryRun) {
       log("[DRY RUN] Would send prompt:");
@@ -210,12 +208,12 @@ Otherwise, claim the next highest priority task and complete it.`;
     }
 
     const finalMessage = result.finalMessage || "";
-    const noMoreBeads = finalMessage.includes("NO_MORE_BEADS") || 
-                        finalMessage.toLowerCase().includes("no more beads") ||
-                        finalMessage.toLowerCase().includes("no ready beads");
+    const noMoreTasks = finalMessage.includes("NO_MORE_TASKS") || 
+                        finalMessage.toLowerCase().includes("no more tasks") ||
+                        finalMessage.toLowerCase().includes("no ready tasks");
 
-    if (noMoreBeads) {
-      return { completed: false, message: "No more beads available" };
+    if (noMoreTasks) {
+      return { completed: false, message: "No more tasks available" };
     }
 
     return { completed: true, message: finalMessage };
@@ -255,7 +253,7 @@ const overnightLoop = (config: OvernightConfig) =>
     log(`Session: ${session.id}`);
     log(`Log file: ${logFilePath}`);
     log(`Work directory: ${config.workDir}`);
-    log(`Max beads: ${config.maxBeads}`);
+    log(`Max tasks: ${config.maxTasks}`);
     log(`Dry run: ${config.dryRun}`);
     log(`${"#".repeat(60)}\n`);
 
@@ -263,12 +261,12 @@ const overnightLoop = (config: OvernightConfig) =>
     process.chdir(config.workDir);
     log(`Changed to directory: ${process.cwd()}`);
 
-    let beadsCompleted = 0;
+    let tasksCompleted = 0;
     let continueLoop = true;
 
-    while (continueLoop && beadsCompleted < config.maxBeads) {
+    while (continueLoop && tasksCompleted < config.maxTasks) {
       try {
-        const result = yield* runBeadCycle(config, beadsCompleted + 1).pipe(
+        const result = yield* runTaskCycle(config, tasksCompleted + 1).pipe(
           Effect.catchAll((error) => 
             Effect.succeed({ completed: false, message: `Error: ${error.message}` })
           ),
@@ -280,14 +278,14 @@ const overnightLoop = (config: OvernightConfig) =>
         }).pipe(Effect.catchAll(() => Effect.void));
 
         if (result.completed) {
-          beadsCompleted++;
-          log(`\n✓ Bead ${beadsCompleted} completed`);
+          tasksCompleted++;
+          log(`\n✓ Task ${tasksCompleted} completed`);
         } else {
           log(`\n✗ Stopping: ${result.message}`);
           continueLoop = false;
         }
 
-        // Small delay between beads
+        // Small delay between tasks
         if (continueLoop) {
           yield* Effect.sleep(2000);
         }
@@ -297,24 +295,24 @@ const overnightLoop = (config: OvernightConfig) =>
       }
     }
 
-    yield* writeSessionEnd(sessionPath, beadsCompleted, `Completed ${beadsCompleted} beads`).pipe(
+    yield* writeSessionEnd(sessionPath, tasksCompleted, `Completed ${tasksCompleted} tasks`).pipe(
       Effect.catchAll(() => Effect.void),
     );
 
     log(`\n${"#".repeat(60)}`);
     log("OVERNIGHT AGENT FINISHED");
-    log(`Beads completed: ${beadsCompleted}`);
+    log(`Tasks completed: ${tasksCompleted}`);
     log(`Session saved: ${sessionPath}`);
     log(`${"#".repeat(60)}\n`);
 
-    return { beadsCompleted, sessionId: session.id };
+    return { tasksCompleted, sessionId: session.id };
   });
 
 // Main
 const config = parseArgs();
 
 if (!config.workDir) {
-  console.error("Usage: bun src/agent/overnight.ts --dir <work-directory> [--max-beads N] [--dry-run]");
+  console.error("Usage: bun src/agent/overnight.ts --dir <work-directory> [--max-tasks N] [--dry-run]");
   process.exit(1);
 }
 
@@ -322,8 +320,8 @@ const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
 
 Effect.runPromise((overnightLoop(config) as any).pipe(Effect.provide(liveLayer)))
   .then((result: unknown) => {
-    const r = result as { beadsCompleted: number; sessionId: string };
-    console.log(`\nDone! Completed ${r.beadsCompleted} beads.`);
+    const r = result as { tasksCompleted: number; sessionId: string };
+    console.log(`\nDone! Completed ${r.tasksCompleted} tasks.`);
     process.exit(0);
   })
   .catch((error: unknown) => {
