@@ -409,6 +409,44 @@ If you're an AI agent reading this:
 
 ## 8. Quick Reference
 
+### Running MechaCoder
+
+```bash
+# Run MechaCoder once against this repo
+bun src/agent/do-one-bead.ts --dir .
+
+# Run MechaCoder against a different repo
+bun src/agent/do-one-bead.ts --dir /path/to/repo
+
+# Run overnight loop (limited to 3 tasks)
+bun src/agent/overnight.ts --dir . --max-tasks 3
+
+# Run overnight loop in dry-run mode (no real changes)
+bun src/agent/overnight.ts --dir . --max-tasks 2 --dry-run
+```
+
+### Task Management (External Agents)
+
+Tasks live in `.openagents/tasks.jsonl`. External agents can use the CLI:
+
+```bash
+# List ready tasks
+bun run tasks:ready --json
+
+# Claim next task
+bun run tasks:next --json
+
+# Create a task
+bun run tasks:create --title "Fix bug" --type bug --priority 1 --json
+
+# Close a task
+echo '{"id":"oa-abc","status":"closed","commits":["sha"]}' | bun run tasks:update --json-input --json
+```
+
+For in-process access, use `TaskService` and `ProjectService` from `src/tasks/`.
+
+### Command Reference
+
 | Task                        | Command                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------ |
 | Check launchd running       | `launchctl list \| grep mechacoder`                                                  |
