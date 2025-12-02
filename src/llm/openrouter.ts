@@ -10,6 +10,7 @@ import * as DefaultServices from "effect/DefaultServices";
 import * as Secret from "effect/Secret";
 import * as S from "effect/Schema";
 import type { ChatResponse, ChatMessageToolCall } from "@openrouter/sdk/esm/models/index.js";
+import type { ToolDefinitionJson } from "@openrouter/sdk/esm/models/tooldefinitionjson.js";
 
 import type { Tool } from "../tools/schema.js";
 
@@ -62,7 +63,7 @@ export interface OpenRouterConfig {
 
 export const OpenRouterConfig = Context.Tag<OpenRouterConfig>("OpenRouterConfig");
 
-const loadEnv = () => {
+export const loadOpenRouterEnv = (): OpenRouterConfig => {
   const env = typeof Bun !== "undefined" ? Bun.env : process.env;
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -77,9 +78,16 @@ const loadEnv = () => {
   };
 };
 
-export const openRouterConfigLayer = Layer.effect(OpenRouterConfig, Effect.sync(loadEnv));
+export const openRouterConfigLayer = Layer.effect(OpenRouterConfig, Effect.sync(loadOpenRouterEnv));
 
-const toolToOpenAI = (tool: Tool<any>) => {
+export const createOpenRouterClient = (config: OpenRouterConfig) =>
+  new OpenRouter({
+    apiKey: Secret.value(config.apiKey),
+    baseURL: config.baseUrl,
+    headers: buildHeaders(config),
+  });
+
+export const toolToOpenRouterDefinition = (tool: Tool<any>): ToolDefinitionJson => {
   const schema = JSONSchema.make(tool.schema) as Record<string, unknown>;
   const { $schema, ...parameters } = schema;
 
@@ -89,9 +97,9 @@ const toolToOpenAI = (tool: Tool<any>) => {
       name: tool.name,
       description: tool.description,
       parameters,
+      strict: true,
     },
-    strict: true,
-  } as const;
+  };
 };
 
 const ChatResponseSchema = S.Struct({
@@ -127,7 +135,7 @@ const ChatResponseSchema = S.Struct({
 
 const makeRequestBody = (request: ChatRequest) => {
   const defaultModel = "x-ai/grok-4.1-fast";
-  const tools = request.tools?.map(toolToOpenAI);
+  const tools = request.tools?.map(toolToOpenRouterDefinition);
 
   return {
     model: request.model ?? defaultModel,
@@ -264,11 +272,7 @@ export const openRouterLive = openRouterClientLayer.pipe(Layer.provideMerge(base
 
 export const runOpenRouterChat = (request: ChatRequest) =>
   Effect.gen(function* (_) {
-    const config = loadEnv();
-    const client = new OpenRouter({
-      apiKey: Secret.value(config.apiKey),
-      baseURL: config.baseUrl,
-      headers: buildHeaders(config),
-    });
+    const config = loadOpenRouterEnv();
+    const client = createOpenRouterClient(config);
     return yield* _(sendChat(client, request));
   });

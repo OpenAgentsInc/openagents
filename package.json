@@ -10,7 +10,8 @@
     "test": "bun test",
     "prepare": "effect-language-service patch",
     "hi": "bun --bun src/llm/openrouter-cli.ts -- --prompt 'Say hi'",
-    "demo:edit": "bun --bun src/tools/edit-demo.ts"
+    "demo:edit": "bun --bun src/tools/edit-demo.ts",
+    "demo:agent-tools": "bun --bun src/tools/openrouter-edit-demo.ts"
   },
   "dependencies": {
     "@effect/cli": "0.72.1",
