@@ -42,7 +42,7 @@ export class AnthropicClient extends Context.Tag("AnthropicClient")<
   AnthropicClientShape
 >() {}
 
-const toolToAnthropicDefinition = (tool: Tool<any>): Record<string, unknown> => {
+export const toolToAnthropicDefinition = (tool: Tool<any>): Record<string, unknown> => {
   const schema = JSONSchema.make(tool.schema) as unknown as Record<string, unknown>;
   const { $schema, ...inputSchema } = schema;
   return {
