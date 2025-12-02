@@ -114,6 +114,34 @@ $HOME/.local/bin/bd close <bead-id> --reason "Manual close: <reason>"
 
 ---
 
+## Known Issue: Uncommitted Changes
+
+The agent sometimes leaves uncommitted changes. This happens when:
+- Agent runs out of turns before completing commit/push
+- Agent times out waiting for LLM response
+- Pre-push hook fails (type errors)
+
+**To fix:**
+```bash
+cd ~/code/nostr-effect
+
+# Check for uncommitted changes
+git status
+
+# Option 1: Commit manually if work is good
+bun run typecheck && bun test
+git add -A && git commit -m "..." && git push origin main
+
+# Option 2: Discard changes if broken
+git checkout -- .
+git clean -fd
+
+# Reset any stuck beads
+$HOME/.local/bin/bd update <bead-id> --status open
+```
+
+---
+
 ## Troubleshooting
 
 ### Agent Not Running
