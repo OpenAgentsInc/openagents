@@ -107,9 +107,21 @@ const makeRequestBody = (request: ChatRequest) => {
   const defaultModel = "x-ai/grok-4.1-fast";
   const tools = request.tools?.map(toolToOpenRouterDefinition);
 
+  const messages = request.messages.map((msg) => {
+    if (msg.role === "tool" && msg.tool_call_id) {
+      return {
+        role: "tool" as const,
+        toolCallId: msg.tool_call_id,
+        content: msg.content,
+        ...(msg.name ? { name: msg.name } : {}),
+      };
+    }
+    return msg;
+  });
+
   return {
     model: request.model ?? defaultModel,
-    messages: request.messages,
+    messages,
     tools,
     tool_choice: request.toolChoice ?? (tools && tools.length > 0 ? "auto" : undefined),
     temperature: request.temperature,
