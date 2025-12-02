@@ -18,10 +18,17 @@ export interface AgentTurn {
   toolResults?: Array<{ toolCallId: string; name: string; result: ToolResult; isError: boolean }>;
 }
 
+export interface VerifyState {
+  dirtySinceVerify: boolean;  // any edit/write since last successful typecheck+tests
+  typecheckOk: boolean;
+  testsOk: boolean;
+}
+
 export interface AgentResult {
   turns: AgentTurn[];
   finalMessage: string | null;
   totalTurns: number;
+  verifyState: VerifyState;
 }
 
 export class AgentLoopError extends Error {
@@ -90,6 +97,28 @@ const executeToolCall = (
     };
   });
 
+// Helper to detect if a bash command is a verification command
+const isTypecheckCommand = (args: string): boolean => {
+  return args.includes("bun run typecheck") || args.includes("tsc");
+};
+
+const isTestCommand = (args: string): boolean => {
+  return args.includes("bun test") || args.includes("bun run test");
+};
+
+const isTypecheckSuccess = (output: string): boolean => {
+  // No "error TS" and exit code 0 (no "exited with code 1/2")
+  return !output.includes("error TS") && 
+         !output.includes("exited with code 1") && 
+         !output.includes("exited with code 2");
+};
+
+const isTestSuccess = (output: string): boolean => {
+  // Contains "pass" and "0 fail" or no "fail" count
+  return output.includes("pass") && 
+         (output.includes("0 fail") || !output.match(/\d+ fail/));
+};
+
 export const agentLoop = (
   userMessage: string,
   tools: Tool<any, any, any, any>[],
@@ -100,6 +129,13 @@ export const agentLoop = (
     const maxTurns = config.maxTurns ?? 10;
     const turns: AgentTurn[] = [];
     const messages: ChatMessage[] = [];
+
+    // Verification state tracking
+    const verifyState: VerifyState = {
+      dirtySinceVerify: false,
+      typecheckOk: false,
+      testsOk: false,
+    };
 
     if (config.systemPrompt) {
       messages.push({ role: "system", content: config.systemPrompt });
@@ -152,16 +188,46 @@ export const agentLoop = (
           const result = yield* executeToolCall(tools, toolCall);
           toolResults.push(result);
 
+          const toolOutput = result.result.content
+            .filter((c): c is { type: "text"; text: string } => c.type === "text")
+            .map((c) => c.text)
+            .join("\n") || (result.isError ? "Error" : "Success");
+
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
             name: toolCall.name,
-            content:
-              result.result.content
-                .filter((c): c is { type: "text"; text: string } => c.type === "text")
-                .map((c) => c.text)
-                .join("\n") || (result.isError ? "Error" : "Success"),
+            content: toolOutput,
           });
+
+          // Track verification state based on tool calls
+          const toolName = toolCall.name.toLowerCase();
+          
+          // edit/write marks as dirty
+          if ((toolName === "edit" || toolName === "write") && !result.isError) {
+            verifyState.dirtySinceVerify = true;
+            verifyState.typecheckOk = false;
+            verifyState.testsOk = false;
+          }
+          
+          // bash commands: check for typecheck/test commands
+          if (toolName === "bash" && !result.isError) {
+            const args = toolCall.arguments;
+            if (isTypecheckCommand(args)) {
+              if (isTypecheckSuccess(toolOutput)) {
+                verifyState.typecheckOk = true;
+              }
+            }
+            if (isTestCommand(args)) {
+              if (isTestSuccess(toolOutput)) {
+                verifyState.testsOk = true;
+              }
+            }
+            // If both pass after edits, we're no longer dirty
+            if (verifyState.typecheckOk && verifyState.testsOk) {
+              verifyState.dirtySinceVerify = false;
+            }
+          }
         }
 
         turn.toolResults = toolResults;
@@ -180,5 +246,6 @@ export const agentLoop = (
       turns,
       finalMessage: lastTurn?.content ?? null,
       totalTurns: turnCount,
+      verifyState,
     };
   });

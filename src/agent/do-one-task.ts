@@ -23,7 +23,14 @@ import { editTool } from "../tools/edit.js";
 import { bashTool } from "../tools/bash.js";
 import { writeTool } from "../tools/write.js";
 import { openRouterLive } from "../llm/openrouter.js";
-import { createRunMetadata, writeRunLog } from "./runLog.js";
+import { 
+  createRunMetadata, 
+  writeRunLog, 
+  appendRunEvent, 
+  generateRunId, 
+  nowTs,
+  type TaskRunEvent 
+} from "./runLog.js";
 import {
   createSession,
   writeSessionStart,
@@ -79,6 +86,22 @@ const detectTestFailure = (toolResults: ToolResultInfo[]): { failed: boolean; er
     }
   }
   return { failed: false, errors: "" };
+};
+
+// Detect garbage final messages (git status output, etc.)
+const isGarbageFinalMessage = (msg: string): boolean => {
+  const trimmed = msg.trim();
+  // Git status patterns
+  if (trimmed.startsWith("On branch ")) return true;
+  if (trimmed.includes("Changes not staged for commit:")) return true;
+  if (trimmed.includes("Your branch is up to date")) return true;
+  if (trimmed.includes("nothing to commit, working tree clean")) return true;
+  if (trimmed.includes("Untracked files:")) return true;
+  // Raw command output patterns
+  if (trimmed.startsWith("$") && trimmed.includes("\n")) return true;
+  // Very short messages that aren't TASK_COMPLETED
+  if (trimmed.length < 20 && !trimmed.includes("TASK_COMPLETED")) return true;
+  return false;
 };
 
 // Logging
@@ -363,9 +386,18 @@ const doOneTask = (config: Config) =>
 
     yield* writeUserMessage(sessionPath, userMessage).pipe(Effect.catchAll(() => Effect.void));
 
+    // Generate run ID for streaming events
+    const runId = generateRunId();
+    const emitEvent = (event: TaskRunEvent) => 
+      appendRunEvent(config.runLogDir, runId, event).pipe(Effect.catchAll(() => Effect.void));
+    
+    // Emit run_start event
+    yield* emitEvent({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id });
+    yield* emitEvent({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
+
     // Agent loop with retry on typecheck/test failures
     const MAX_TOTAL_TURNS = 50;
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;  // Increased to handle verification enforcement
     let allTurns: AgentTurn[] = [];
     let totalTurnsUsed = 0;
     let retryCount = 0;
@@ -388,7 +420,8 @@ const doOneTask = (config: Config) =>
           Effect.succeed({ 
             turns: [] as AgentTurn[], 
             finalMessage: `Error: ${error.message}`, 
-            totalTurns: 0 
+            totalTurns: 0,
+            verifyState: { dirtySinceVerify: false, typecheckOk: false, testsOk: false }
           })
         )
       );
@@ -396,11 +429,102 @@ const doOneTask = (config: Config) =>
       allTurns = [...allTurns, ...loopResult.turns];
       totalTurnsUsed += loopResult.totalTurns;
       finalMessage = loopResult.finalMessage || "";
+      
+      // Emit events for tool calls in this batch
+      for (const turn of loopResult.turns) {
+        if (turn.toolCalls) {
+          for (const call of turn.toolCalls) {
+            yield* emitEvent({ 
+              type: "tool_call", 
+              ts: nowTs(), 
+              tool: call.name, 
+              argsPreview: call.arguments.slice(0, 100) 
+            });
+          }
+        }
+        if (turn.toolResults) {
+          for (const res of turn.toolResults) {
+            yield* emitEvent({ 
+              type: "tool_result", 
+              ts: nowTs(), 
+              tool: res.name, 
+              ok: !res.isError 
+            });
+            // Emit edit detection
+            if ((res.name === "edit" || res.name === "write") && !res.isError) {
+              yield* emitEvent({ type: "edit_detected", ts: nowTs(), tool: res.name });
+            }
+          }
+        }
+      }
+
+      // Get verification state from this loop iteration
+      const verifyState = loopResult.verifyState;
 
       // Check if we got TASK_COMPLETED
       if (finalMessage.includes("TASK_COMPLETED")) {
+        // Verify that checks actually passed
+        if (verifyState.dirtySinceVerify) {
+          // Agent said TASK_COMPLETED but didn't verify after edits
+          retryCount++;
+          log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Agent said TASK_COMPLETED but has unverified edits`);
+          yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "TASK_COMPLETED with unverified edits" });
+          
+          currentMessage = `You said TASK_COMPLETED, but you have edited files since your last successful \`bun run typecheck\` and \`bun test\`. You MUST re-run both verification commands AFTER your edits before you can complete the task.
+
+Run these commands now:
+1. \`bun run typecheck\` - must pass with no errors
+2. \`bun test\` - must pass with no failures
+
+If they pass, proceed with git commit, push, and closing the task. Then say TASK_COMPLETED again.`;
+          
+          yield* writeUserMessage(sessionPath, currentMessage).pipe(Effect.catchAll(() => Effect.void));
+          continue;
+        }
+        
         log(`\nTask completed successfully in ${totalTurnsUsed} total turns`);
+        yield* emitEvent({ type: "verify_ok", ts: nowTs() });
         break;
+      }
+
+      // Check for garbage final message (git status output, etc.)
+      if (isGarbageFinalMessage(finalMessage)) {
+        retryCount++;
+        log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Garbage final message detected (git status output)`);
+        yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "garbage final message" });
+        
+        currentMessage = `You just responded with raw command output (like \`git status\`) instead of a structured response. This is not acceptable as a final message.
+
+You must either:
+1. Continue working on the task (read files, edit code, run tests), OR
+2. If the work is done, follow the completion checklist:
+   - Run \`bun run typecheck\` and verify it passes
+   - Run \`bun test\` and verify it passes
+   - Run \`git add -A && git commit -m "..."\`
+   - Run \`git push origin main\`
+   - Close the task with the tasks CLI
+   - Then reply with: TASK_COMPLETED: ${inProgressTask.id} - <brief summary>
+
+What would you like to do?`;
+        
+        yield* writeUserMessage(sessionPath, currentMessage).pipe(Effect.catchAll(() => Effect.void));
+        continue;
+      }
+
+      // Check if agent stopped without verifying after edits
+      if (verifyState.dirtySinceVerify) {
+        retryCount++;
+        log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Agent stopped with unverified edits`);
+        yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "unverified edits" });
+        
+        currentMessage = `You have edited files but have not run verification since your last edit. You MUST run both:
+1. \`bun run typecheck\`
+2. \`bun test\`
+
+Run these commands now, fix any errors, then proceed with commit/push/close and say TASK_COMPLETED.`;
+        
+        yield* writeUserMessage(sessionPath, currentMessage).pipe(Effect.catchAll(() => Effect.void));
+        continue;
       }
 
       // Check for typecheck/test failures in this batch of turns
@@ -413,12 +537,15 @@ const doOneTask = (config: Config) =>
         if (retryCount > MAX_RETRIES) {
           log(`\nMax retries (${MAX_RETRIES}) exceeded for typecheck/test failures`);
           loopError = "MAX_RETRIES_EXCEEDED";
+          yield* emitEvent({ type: "verify_fail", ts: nowTs(), stderr: "Max retries exceeded" });
           break;
         }
 
         // Build retry message
         const errorType = typecheckResult.failed ? "TypeScript typecheck" : "Tests";
         const errorOutput = typecheckResult.failed ? typecheckResult.errors : testResult.errors;
+        
+        yield* emitEvent({ type: "verify_fail", ts: nowTs(), stderr: errorOutput.slice(0, 500) });
         
         currentMessage = `${errorType} failed. You MUST fix these errors before continuing.
 
@@ -533,6 +660,15 @@ Fix the errors by editing the code, then re-run the failing command. Do NOT send
     if (runLogPath) {
       log(`Run log saved: ${runLogPath}`);
     }
+
+    // Emit run_end event
+    yield* emitEvent({ 
+      type: "run_end", 
+      ts: nowTs(), 
+      status: runStatus, 
+      finalMessage: finalMsg.slice(0, 500),
+      error: loopError
+    });
 
     yield* writeSessionEnd(sessionPath, totalTurnsUsed, finalMsg).pipe(Effect.catchAll(() => Effect.void));
 
