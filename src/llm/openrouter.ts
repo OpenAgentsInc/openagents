@@ -23,7 +23,7 @@ export interface ChatMessage {
 }
 
 export interface ChatRequest {
-  model: string;
+  model?: string;
   messages: ChatMessage[];
   tools?: Tool<any>[];
   temperature?: number;
@@ -126,10 +126,11 @@ const ChatResponseSchema = S.Struct({
 });
 
 const makeRequestBody = (request: ChatRequest) => {
+  const defaultModel = "x-ai/grok-4.1-fast";
   const tools = request.tools?.map(toolToOpenAI);
 
   return {
-    model: request.model,
+    model: request.model ?? defaultModel,
     messages: request.messages,
     tools,
     tool_choice: request.toolChoice ?? (tools && tools.length > 0 ? "auto" : undefined),
