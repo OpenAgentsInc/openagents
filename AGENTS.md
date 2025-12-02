@@ -403,7 +403,7 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 ### MechaCoder Autonomous Agent
 
-MechaCoder is an autonomous coding agent that runs every 5 minutes via launchd.
+MechaCoder is an autonomous coding agent that picks up tasks, implements code, runs tests, and commits - learning patterns and conventions over time.
 
 **See:** [`docs/mechacoder/`](docs/mechacoder/) for full documentation:
 - [README.md](docs/mechacoder/README.md) - Overview and quick start
