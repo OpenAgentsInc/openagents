@@ -44,3 +44,11 @@ private
 models/
 logs/
 *.tsbuildinfo
+
+# Beads local artifacts
+.beads/bd.sock
+.beads/daemon.*
+.beads/beads.db
+.beads/beads.db-*
+.beads/.exclusive-lock
+.git/beads-worktrees/
