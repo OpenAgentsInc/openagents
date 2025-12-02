@@ -1,5 +1,0 @@
-{
-  "type": "module",
-  "main": "../dist/full.js",
-  "types": "../dist/full.d.ts"
-}
