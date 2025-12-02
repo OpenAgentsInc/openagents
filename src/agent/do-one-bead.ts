@@ -139,7 +139,7 @@ const doOneBead = (config: Config) =>
       {
         systemPrompt: SYSTEM_PROMPT,
         maxTurns: 30,
-        model: "anthropic/claude-sonnet-4",
+        model: "x-ai/grok-4.1-fast",
       }
     ).pipe(
       Effect.catchAll((error) => 
