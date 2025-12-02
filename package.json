@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1-golden-loop-v2-demo",
   "description": "Your agent command center",
   "scripts": {
     "dev": "electrobun dev",
