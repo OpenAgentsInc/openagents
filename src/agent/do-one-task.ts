@@ -9,7 +9,7 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect, Layer } from "effect";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
-import { agentLoop } from "./loop.js";
+import { agentLoop, type AgentTurn } from "./loop.js";
 import { GIT_CONVENTIONS } from "./prompts.js";
 import {
   pickNextTask,
@@ -34,6 +34,52 @@ import {
 } from "./session.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
+
+// Helper to detect typecheck/test failures from tool results
+interface ToolResultInfo {
+  name: string;
+  text: string;
+  isError: boolean;
+}
+
+const extractToolResults = (turns: Array<{ toolResults?: Array<{ name: string; result: { content: Array<{ type: string; text?: string }> }; isError: boolean }> }>): ToolResultInfo[] => {
+  const results: ToolResultInfo[] = [];
+  for (const turn of turns) {
+    if (turn.toolResults) {
+      for (const res of turn.toolResults) {
+        const text = res.result.content
+          .filter((c): c is { type: "text"; text: string } => c.type === "text")
+          .map(c => c.text)
+          .join("\n");
+        results.push({ name: res.name, text, isError: res.isError });
+      }
+    }
+  }
+  return results;
+};
+
+const detectTypecheckFailure = (toolResults: ToolResultInfo[]): { failed: boolean; errors: string } => {
+  for (const res of toolResults) {
+    if (res.name === "bash" && res.text.includes("bun run typecheck")) {
+      // Check if the output contains TS errors
+      if (res.text.includes("error TS") || res.text.includes("exited with code 1") || res.text.includes("exited with code 2")) {
+        return { failed: true, errors: res.text };
+      }
+    }
+  }
+  return { failed: false, errors: "" };
+};
+
+const detectTestFailure = (toolResults: ToolResultInfo[]): { failed: boolean; errors: string } => {
+  for (const res of toolResults) {
+    if (res.name === "bash" && (res.text.includes("bun test") || res.text.includes("bun run test"))) {
+      if (res.text.includes("fail") && !res.text.includes("0 fail")) {
+        return { failed: true, errors: res.text };
+      }
+    }
+  }
+  return { failed: false, errors: "" };
+};
 
 // Logging
 const OPENAGENTS_ROOT = "/Users/christopherdavid/code/openagents";
@@ -317,25 +363,93 @@ const doOneTask = (config: Config) =>
 
     yield* writeUserMessage(sessionPath, userMessage).pipe(Effect.catchAll(() => Effect.void));
 
-    const result = yield* agentLoop(
-      userMessage,
-      tools as any,
-      {
-        systemPrompt: SYSTEM_PROMPT,
-        maxTurns: 30,
-        model: "x-ai/grok-4.1-fast",
-      }
-    ).pipe(
-      Effect.catchAll((error) => 
-        Effect.succeed({ 
-          turns: [], 
-          finalMessage: `Error: ${error.message}`, 
-          totalTurns: 0 
-        })
-      )
-    );
+    // Agent loop with retry on typecheck/test failures
+    const MAX_TOTAL_TURNS = 50;
+    const MAX_RETRIES = 3;
+    let allTurns: AgentTurn[] = [];
+    let totalTurnsUsed = 0;
+    let retryCount = 0;
+    let currentMessage = userMessage;
+    let finalMessage = "";
+    let loopError: string | null = null;
 
-    log(`\nCompleted in ${result.totalTurns} turns`);
+    while (retryCount <= MAX_RETRIES && totalTurnsUsed < MAX_TOTAL_TURNS) {
+      const turnsRemaining = MAX_TOTAL_TURNS - totalTurnsUsed;
+      const loopResult = yield* agentLoop(
+        currentMessage,
+        tools as any,
+        {
+          systemPrompt: SYSTEM_PROMPT,
+          maxTurns: Math.min(30, turnsRemaining),
+          model: "x-ai/grok-4.1-fast",
+        }
+      ).pipe(
+        Effect.catchAll((error) => 
+          Effect.succeed({ 
+            turns: [] as AgentTurn[], 
+            finalMessage: `Error: ${error.message}`, 
+            totalTurns: 0 
+          })
+        )
+      );
+
+      allTurns = [...allTurns, ...loopResult.turns];
+      totalTurnsUsed += loopResult.totalTurns;
+      finalMessage = loopResult.finalMessage || "";
+
+      // Check if we got TASK_COMPLETED
+      if (finalMessage.includes("TASK_COMPLETED")) {
+        log(`\nTask completed successfully in ${totalTurnsUsed} total turns`);
+        break;
+      }
+
+      // Check for typecheck/test failures in this batch of turns
+      const toolResults = extractToolResults(loopResult.turns);
+      const typecheckResult = detectTypecheckFailure(toolResults);
+      const testResult = detectTestFailure(toolResults);
+
+      if (typecheckResult.failed || testResult.failed) {
+        retryCount++;
+        if (retryCount > MAX_RETRIES) {
+          log(`\nMax retries (${MAX_RETRIES}) exceeded for typecheck/test failures`);
+          loopError = "MAX_RETRIES_EXCEEDED";
+          break;
+        }
+
+        // Build retry message
+        const errorType = typecheckResult.failed ? "TypeScript typecheck" : "Tests";
+        const errorOutput = typecheckResult.failed ? typecheckResult.errors : testResult.errors;
+        
+        currentMessage = `${errorType} failed. You MUST fix these errors before continuing.
+
+Here are the errors:
+\`\`\`
+${errorOutput.slice(0, 2000)}
+\`\`\`
+
+Fix the errors by editing the code, then re-run the failing command. Do NOT send a final message until all checks pass, you have committed, pushed, and closed the task.`;
+
+        log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] ${errorType} failed, prompting agent to fix...`);
+        
+        // Write retry message to session
+        yield* writeUserMessage(sessionPath, currentMessage).pipe(Effect.catchAll(() => Effect.void));
+        
+        continue;
+      }
+
+      // No typecheck/test failure but also no TASK_COMPLETED - agent gave up
+      log(`\nAgent stopped without TASK_COMPLETED (no obvious failures to retry)`);
+      loopError = "INCOMPLETE_NO_TASK_COMPLETED";
+      break;
+    }
+
+    if (totalTurnsUsed >= MAX_TOTAL_TURNS) {
+      log(`\nMax total turns (${MAX_TOTAL_TURNS}) exceeded`);
+      loopError = "MAX_TURNS_EXCEEDED";
+    }
+
+    const result = { turns: allTurns, finalMessage, totalTurns: totalTurnsUsed };
+    log(`\nCompleted in ${result.totalTurns} turns (${retryCount} retries)`);
     
     // Write turns to session
     for (const turn of result.turns) {
@@ -368,20 +482,34 @@ const doOneTask = (config: Config) =>
     const finalMsg = result.finalMessage || "";
     logMd(`\n## Final Message\n\n${finalMsg}\n`);
     
+    // Log loop error if any
+    if (loopError) {
+      logMd(`\n## Loop Error\n\n${loopError}\n`);
+    }
+    
     log("=".repeat(60));
     
     const isCompleted = finalMsg.includes("TASK_COMPLETED");
+    let runStatus: "success" | "incomplete" | "failed" = "incomplete";
     
     if (isCompleted) {
       // Agent already closed the task via CLI, just log success
       log("SUCCESS - Task completed!");
+      runStatus = "success";
     } else if (finalMsg.includes("NO_TASKS")) {
       log("No tasks available");
+      runStatus = "incomplete";
+    } else if (loopError === "MAX_TURNS_EXCEEDED" || loopError === "MAX_RETRIES_EXCEEDED") {
+      log(`FAILED - ${loopError}`);
+      log("Task remains in_progress for manual review");
+      runStatus = "failed";
+      logMd(`\n## INCOMPLETE_RUN\n\nRun aborted: ${loopError}. Final message did not contain TASK_COMPLETED.\n`);
     } else {
       // Run was incomplete - agent didn't say TASK_COMPLETED
-      log("INCOMPLETE - Agent did not complete the full loop");
-      log("Missing: TASK_COMPLETED in final message");
+      log("INCOMPLETE_RUN: final message did not contain TASK_COMPLETED; task left in_progress");
       log("Task remains in_progress for next run");
+      runStatus = "incomplete";
+      logMd(`\n## INCOMPLETE_RUN\n\nFinal message did not contain TASK_COMPLETED. Task left in_progress for next run.\n`);
     }
     log(`Log saved: ${logFile}`);
     log(`Session saved: ${sessionPath}`);
@@ -395,9 +523,9 @@ const doOneTask = (config: Config) =>
       workDir: config.workDir,
       logFilePath: logFile,
       sessionFilePath: sessionPath,
-      totalTurns: result.totalTurns,
+      totalTurns: totalTurnsUsed,
       finalMessage: finalMsg,
-      error: null,
+      error: loopError,
     });
     const runLogPath = yield* writeRunLog(config.runLogDir, metadata).pipe(
       Effect.catchAll(() => Effect.succeed("")),
@@ -406,9 +534,9 @@ const doOneTask = (config: Config) =>
       log(`Run log saved: ${runLogPath}`);
     }
 
-    yield* writeSessionEnd(sessionPath, result.totalTurns, finalMsg).pipe(Effect.catchAll(() => Effect.void));
+    yield* writeSessionEnd(sessionPath, totalTurnsUsed, finalMsg).pipe(Effect.catchAll(() => Effect.void));
 
-    return { success: isCompleted, logFile, incomplete: !isCompleted };
+    return { success: isCompleted, logFile, incomplete: !isCompleted, status: runStatus };
   });
 
 // Main
