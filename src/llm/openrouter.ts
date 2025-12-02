@@ -8,9 +8,6 @@ import { Effect, Option } from "effect";
 import * as Layer from "effect/Layer";
 import * as DefaultServices from "effect/DefaultServices";
 import * as Secret from "effect/Secret";
-import * as S from "effect/Schema";
-import type { ChatResponse, ChatMessageToolCall } from "@openrouter/sdk/esm/models/index.js";
-import type { ToolDefinitionJson } from "@openrouter/sdk/esm/models/tooldefinitionjson.js";
 
 import type { Tool } from "../tools/schema.js";
 
@@ -86,12 +83,13 @@ export const openRouterConfigLayer = Layer.effect(OpenRouterConfig, Effect.sync(
 export const createOpenRouterClient = (config: OpenRouterConfigShape) =>
   new OpenRouter({
     apiKey: Secret.value(config.apiKey),
-    baseURL: config.baseUrl,
-    headers: buildHeaders(config),
+    serverURL: config.baseUrl,
+    httpReferer: Option.getOrUndefined(config.referer),
+    xTitle: Option.getOrUndefined(config.siteName),
   });
 
-export const toolToOpenRouterDefinition = (tool: Tool<any>): ToolDefinitionJson => {
-  const schema = JSONSchema.make(tool.schema) as Record<string, unknown>;
+export const toolToOpenRouterDefinition = (tool: Tool<any>): Record<string, unknown> => {
+  const schema = JSONSchema.make(tool.schema) as unknown as Record<string, unknown>;
   const { $schema, ...parameters } = schema;
 
   return {
@@ -104,37 +102,6 @@ export const toolToOpenRouterDefinition = (tool: Tool<any>): ToolDefinitionJson 
     },
   };
 };
-
-const ChatResponseSchema = S.Struct({
-  id: S.String,
-  choices: S.Array(
-    S.Struct({
-      message: S.Struct({
-        role: S.Literal("assistant"),
-        content: S.Union(S.String, S.Null),
-        tool_calls: S.optional(
-          S.Array(
-            S.Struct({
-              id: S.String,
-              type: S.Literal("function"),
-              function: S.Struct({
-                name: S.String,
-                arguments: S.String,
-              }),
-            }),
-          ),
-        ),
-      }),
-    }),
-  ),
-  usage: S.optional(
-    S.Struct({
-      prompt_tokens: S.optional(S.Number),
-      completion_tokens: S.optional(S.Number),
-      total_tokens: S.optional(S.Number),
-    }),
-  ),
-});
 
 const makeRequestBody = (request: ChatRequest) => {
   const defaultModel = "x-ai/grok-4.1-fast";
@@ -151,46 +118,29 @@ const makeRequestBody = (request: ChatRequest) => {
   };
 };
 
-const buildHeaders = (config: OpenRouterConfigShape) => {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${Secret.value(config.apiKey)}`,
-    "Content-Type": "application/json",
-  };
-
-  const referer = Option.getOrUndefined(config.referer);
-  if (referer) headers["HTTP-Referer"] = referer;
-
-  const site = Option.getOrUndefined(config.siteName);
-  if (site) headers["X-Title"] = site;
-
-  return headers;
-};
-
 const sendChat = (
   client: OpenRouter,
   request: ChatRequest,
 ): Effect.Effect<ChatResponse, Error> =>
-  Effect.gen(function* (_) {
-    const response = yield* _(
-      Effect.tryPromise({
-        try: () =>
-          client.chat.send({
-            ...makeRequestBody(request),
-          }),
-        catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
-      }),
-    );
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        client.chat.send({
+          ...makeRequestBody(request),
+        } as any),
+      catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
+    });
 
-    const choice = response.choices?.[0];
+    const choice = (response as any).choices?.[0];
     const message = choice?.message;
 
-    const toolCalls: ChatMessageToolCall[] =
+    const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> =
       message?.toolCalls ??
       (Array.isArray((message as any)?.tool_calls) ? (message as any).tool_calls : []);
 
     return {
-      id: response.id ?? "",
-      usage: response.usage,
+      id: (response as any).id ?? "",
+      usage: (response as any).usage,
       choices: [
         {
           message: {
@@ -257,8 +207,9 @@ const makeClient = Effect.gen(function* () {
   const config = yield* OpenRouterConfig;
   const client = new OpenRouter({
     apiKey: Secret.value(config.apiKey),
-    baseURL: config.baseUrl,
-    headers: buildHeaders(config),
+    serverURL: config.baseUrl,
+    httpReferer: Option.getOrUndefined(config.referer),
+    xTitle: Option.getOrUndefined(config.siteName),
   });
 
   return {
@@ -277,8 +228,8 @@ const baseLayer = Layer.mergeAll(platformLayer, envLayer, openRouterConfigLayer)
 export const openRouterLive = openRouterClientLayer.pipe(Layer.provideMerge(baseLayer));
 
 export const runOpenRouterChat = (request: ChatRequest) =>
-  Effect.gen(function* (_) {
+  Effect.gen(function* () {
     const config = loadOpenRouterEnv();
     const client = createOpenRouterClient(config);
-    return yield* _(sendChat(client, request));
+    return yield* sendChat(client, request);
   });
