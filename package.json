@@ -15,6 +15,7 @@
     "@effect/cli": "0.72.1",
     "@effect/platform": "0.93.6",
     "@effect/platform-bun": "0.86.0",
+    "@openrouter/sdk": "0.1.27",
     "diff": "8.0.2",
     "effect": "3.19.8",
     "electrobun": "0.1.12"

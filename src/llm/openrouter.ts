@@ -1,10 +1,5 @@
+import { OpenRouter } from "@openrouter/sdk";
 import * as FileSystem from "@effect/platform/FileSystem";
-import * as HttpBody from "@effect/platform/HttpBody";
-import * as HttpClient from "@effect/platform/HttpClient";
-import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
-import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
-import * as HttpClientError from "@effect/platform/HttpClientError";
-import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as Path from "@effect/platform/Path";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as JSONSchema from "effect/JSONSchema";
@@ -160,55 +155,44 @@ const buildHeaders = (config: OpenRouterConfig) => {
 };
 
 const sendChat = (
-  http: HttpClient.HttpClient,
-  config: OpenRouterConfig,
+  client: OpenRouter,
   request: ChatRequest,
-): Effect.Effect<ChatResponse, HttpClientError.HttpClientError | S.ParseError> =>
+): Effect.Effect<ChatResponse, Error> =>
   Effect.gen(function* (_) {
-    const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
-    const body = makeRequestBody(request);
-
-    const bodyJson = yield* _(HttpBody.json(body));
-
-    const httpRequest = HttpClientRequest.post(url, {
-      body: bodyJson,
-      headers: buildHeaders(config),
-      acceptJson: true,
-    });
-
-    const response = yield* _(http.execute(httpRequest));
-
-    const parsed: any = yield* _(
-      response.json.pipe(
-        Effect.catchAll(() =>
-          Effect.flatMap(response.text, (text) =>
-            Effect.fail(new Error(`Failed to parse OpenRouter response: ${text}`)),
-          ),
-        ),
-      ),
+    const response = yield* _(
+      Effect.tryPromise({
+        try: () =>
+          client.chat.send({
+            ...makeRequestBody(request),
+          }),
+        catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
+      }),
     );
 
+    const choice = response.choices?.[0];
+    const message = choice?.message;
     return {
-      id: parsed.id,
-      usage: parsed.usage,
-      choices:
-        parsed.choices?.map((choice: any) => ({
+      id: (response as any).id ?? "",
+      usage: (response as any).usage,
+      choices: [
+        {
           message: {
-            role: "assistant" as const,
-            content: choice.message?.content ?? null,
+            role: "assistant",
+            content: (message as any)?.content ?? null,
             tool_calls:
-              choice.message?.tool_calls?.map((call: any) => ({
+              (message as any)?.tool_calls?.map((call: any) => ({
                 id: call.id,
                 name: call.function?.name ?? "",
                 arguments: call.function?.arguments ?? "",
               })) ?? [],
           },
-        })) ?? [],
+        },
+      ],
     };
   });
 
 export interface OpenRouterClient {
-  chat: (request: ChatRequest) => Effect.Effect<ChatResponse, HttpClientError.HttpClientError | S.ParseError>;
+  chat: (request: ChatRequest) => Effect.Effect<ChatResponse, Error>;
 }
 
 export const OpenRouterClient = Context.Tag<OpenRouterClient>("OpenRouterClient");
@@ -251,11 +235,15 @@ export const dotenvLocalLayer = Layer.scopedDiscard(
 );
 
 const makeClient = Effect.gen(function* (_) {
-  const http = yield* _(HttpClient.HttpClient);
   const config = yield* _(OpenRouterConfig);
+  const client = new OpenRouter({
+    apiKey: Secret.value(config.apiKey),
+    baseURL: config.baseUrl,
+    headers: buildHeaders(config),
+  });
 
   return {
-    chat: (request: ChatRequest) => sendChat(http, config, request),
+    chat: (request: ChatRequest) => sendChat(client, request),
   } satisfies OpenRouterClient;
 });
 
@@ -263,7 +251,7 @@ export const openRouterClientLayer = Layer.effect(OpenRouterClient, makeClient);
 
 const defaultServicesLayer = Layer.syncContext(() => DefaultServices.liveServices);
 
-const platformLayer = Layer.mergeAll(defaultServicesLayer, BunContext.layer, FetchHttpClient.layer);
+const platformLayer = Layer.mergeAll(defaultServicesLayer, BunContext.layer);
 const envLayer = dotenvLocalLayer.pipe(Layer.provideMerge(platformLayer));
 const baseLayer = Layer.mergeAll(platformLayer, envLayer, openRouterConfigLayer);
 
@@ -271,7 +259,11 @@ export const openRouterLive = openRouterClientLayer.pipe(Layer.provideMerge(base
 
 export const runOpenRouterChat = (request: ChatRequest) =>
   Effect.gen(function* (_) {
-    const http = yield* _(HttpClient.HttpClient);
     const config = loadEnv();
-    return yield* _(sendChat(http, config, request));
+    const client = new OpenRouter({
+      apiKey: Secret.value(config.apiKey),
+      baseURL: config.baseUrl,
+      headers: buildHeaders(config),
+    });
+    return yield* _(sendChat(client, request));
   });
