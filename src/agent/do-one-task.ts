@@ -423,10 +423,9 @@ const doOneTask = (config: Config) =>
         break;
       }
 
-      // Emit turn_start BEFORE calling the LLM
-      emit({ type: "turn_start", ts: nowTs(), turn: totalTurnsUsed + 1 });
-      
       const turnsRemaining = MAX_TOTAL_TURNS - totalTurnsUsed;
+      
+      // Pass onEvent callback so agentLoop emits events DURING execution (not after)
       const loopResult = yield* agentLoop(
         currentMessage,
         tools as any,
@@ -434,6 +433,20 @@ const doOneTask = (config: Config) =>
           systemPrompt: SYSTEM_PROMPT,
           maxTurns: Math.min(30, turnsRemaining),
           model: "x-ai/grok-4.1-fast",
+          onEvent: (loopEvent) => {
+            // Convert loop events to run events with timestamp
+            if (loopEvent.type === "turn_start") {
+              emit({ type: "turn_start", ts: nowTs(), turn: totalTurnsUsed + loopEvent.turn });
+            } else if (loopEvent.type === "llm_response") {
+              emit({ type: "llm_response", ts: nowTs(), turn: totalTurnsUsed + loopEvent.turn, hasToolCalls: loopEvent.hasToolCalls });
+            } else if (loopEvent.type === "tool_call") {
+              emit({ type: "tool_call", ts: nowTs(), tool: loopEvent.tool, argsPreview: loopEvent.argsPreview });
+            } else if (loopEvent.type === "tool_result") {
+              emit({ type: "tool_result", ts: nowTs(), tool: loopEvent.tool, ok: loopEvent.ok });
+            } else if (loopEvent.type === "edit_detected") {
+              emit({ type: "edit_detected", ts: nowTs(), tool: loopEvent.tool });
+            }
+          },
         }
       ).pipe(
         Effect.catchAll((error) => 
@@ -446,45 +459,11 @@ const doOneTask = (config: Config) =>
         )
       );
 
-      // Emit llm_response after LLM returns
-      emit({ 
-        type: "llm_response", 
-        ts: nowTs(), 
-        turn: totalTurnsUsed + 1, 
-        hasToolCalls: loopResult.turns.some(t => t.toolCalls && t.toolCalls.length > 0) 
-      });
-
       allTurns = [...allTurns, ...loopResult.turns];
       totalTurnsUsed += loopResult.totalTurns;
       finalMessage = loopResult.finalMessage || "";
       
-      // Emit events for tool calls in this batch - SYNCHRONOUS
-      for (const turn of loopResult.turns) {
-        if (turn.toolCalls) {
-          for (const call of turn.toolCalls) {
-            emit({ 
-              type: "tool_call", 
-              ts: nowTs(), 
-              tool: call.name, 
-              argsPreview: call.arguments.slice(0, 100) 
-            });
-          }
-        }
-        if (turn.toolResults) {
-          for (const res of turn.toolResults) {
-            emit({ 
-              type: "tool_result", 
-              ts: nowTs(), 
-              tool: res.name, 
-              ok: !res.isError 
-            });
-            // Emit edit detection
-            if ((res.name === "edit" || res.name === "write") && !res.isError) {
-              emit({ type: "edit_detected", ts: nowTs(), tool: res.name });
-            }
-          }
-        }
-      }
+      // Events are now emitted DURING agentLoop via onEvent callback - no post-loop emission needed
 
       // Get verification state from this loop iteration
       const verifyState = loopResult.verifyState;
