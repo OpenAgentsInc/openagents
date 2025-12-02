@@ -43,3 +43,18 @@ export {
   findNextChildNumber,
   MAX_HIERARCHY_DEPTH,
 } from "./id.js";
+
+export {
+  TaskServiceError,
+  readTasks,
+  writeTasks,
+  createTask,
+  updateTask,
+  closeTask,
+  listTasks,
+  readyTasks,
+  pickNextTask,
+  type CreateTaskOptions,
+  type UpdateTaskOptions,
+  type CloseTaskOptions,
+} from "./service.js";
