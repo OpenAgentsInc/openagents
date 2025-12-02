@@ -1,6 +1,40 @@
-## Issue Tracking with bd (beads)
+### Agent Startup Checklist (for this repo)
 
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+Before you make any code changes in this repo, do the following:
+
+1. **Read the core docs once per session:**
+   - `AGENTS.md` (this file)
+   - `docs/mechacoder/README.md`
+   - `docs/mechacoder/GOLDEN-LOOP-v2.md`
+   - `docs/mechacoder/spec.md`
+
+2. **Inspect project/task config:**
+   - If `.openagents/project.json` exists, read it to understand:
+     - `defaultBranch`, `testCommands`, `e2eCommands`, `allowPush`, etc.
+   - If `.openagents/tasks.jsonl` exists, skim a few tasks to see how work is structured.
+
+3. **Check current health:**
+   - Run `bun test` in this repo and make sure it passes.
+   - If tests fail, treat fixing them as P0 before starting new work.
+
+4. **Start a work log:**
+   - Use the `DAY`/`TS` snippet under "Work Logs".
+   - Note the bead/task ID you're about to work on and your intent for this session.
+
+---
+
+## Issue Tracking: bd (beads) and .openagents
+
+This project uses two closely related tracking systems:
+
+- **bd (beads)** — global issue/epic tracker for planning and cross-repo work.
+- **.openagents/** — per-project task system (TaskService + ProjectService) used by MechaCoder and OpenAgents Desktop.
+
+**IMPORTANT:**
+
+- Do NOT use markdown TODOs, task lists, or other ad-hoc tracking methods.
+- Use **bd** for high-level issues/epics and cross-repo planning.
+- Use **.openagents** tasks for concrete, per-project work that MechaCoder can pick up.
 
 ### Why bd?
 
@@ -50,6 +84,31 @@ bd close bd-42 --reason "Completed" --json
 - `3` - Low (polish, optimization)
 - `4` - Backlog (future ideas)
 
+### OpenAgents project tasks (.openagents)
+
+For repos that have an `.openagents/` directory (e.g. this `openagents` repo and any others we migrate):
+
+- Project metadata and task lists live under:
+
+  ```bash
+  .openagents/project.json   # ProjectConfig (branch, tests, model, etc.)
+  .openagents/tasks.jsonl    # One task per line (TaskService schema)
+  ```
+
+- Tasks use the same conceptual schema as beads issues:
+
+  - `id`, `title`, `description`, `status`, `priority`, `type`, `assignee`, `labels`, `deps`, `commits`, `createdAt`, `updatedAt`, `closedAt`.
+  - `status` is `open | in_progress | blocked | closed`.
+  - Dependencies have `type` `blocks | related | parent-child | discovered-from`.
+
+**For AI agents:**
+
+- Prefer using the existing **TaskService** and **ProjectService** under `src/tasks/` rather than manually editing `.openagents/*.json*`.
+- When creating new work for MechaCoder to pick up:
+
+  - If it's a **global epic/planning item**, create a **bd** issue.
+  - If it's a **concrete implementation task for this repo**, add a `.openagents` task (or let MechaCoder/TaskService create it).
+
 ### Workflow for AI Agents
 
 1. **Check ready work**: `bd ready` shows unblocked issues
@@ -93,6 +152,7 @@ Guidelines:
 - Summarize what changed, why, and validation steps (typecheck/tests).
 - Commit and push your work as you go, including each log file.
 - When adding code files, prefer small, focused commits with matching logs.
+- When your work touches MechaCoder or `.openagents/` internals, include the bead/task IDs you touched in the log header (e.g. `openagents-42j.4`, `oa-1a2b3c`).
 
 ### Git and GitHub CLI Conventions
 
@@ -105,6 +165,14 @@ Guidelines:
 - Avoid `git commit --amend` unless (1) user requested it or (2) fixing pre-commit hook changes
 - Before amending: check authorship with `git log -1 --format='%an %ae'`
 - NEVER use `-i` flag (interactive mode not supported)
+
+> **Exception – MechaCoder:**  
+> The MechaCoder autonomous agent is allowed to commit and push changes **without explicit user confirmation** as long as it:
+> - Follows the Golden Loop v2 spec (`docs/mechacoder/GOLDEN-LOOP-v2.md`),
+> - Runs the configured tests from `.openagents/project.json` and they pass,
+> - Uses small, task-focused commits that reference the relevant bead/task ID.
+>
+> The "never commit unless explicitly asked" rule applies to interactive agents (e.g. chat-based assistants), not to MechaCoder's overnight loop.
 
 **Commit Workflow:**
 
@@ -177,6 +245,40 @@ When the user says **"Next bead."**, run this exact loop:
 6) Validate with tests: add/extend coverage appropriate to the change, run the relevant tests, and note what ran in the log. If you truly cannot add tests, state why in the log. Fix typecheck/test failures before stopping.
 7) Finish: close the bead with `bd close <id> --reason ... --json` (or leave in progress if truly not done), commit code plus `.beads/issues.jsonl` and any new log files together, then push. Do not leave work uncommitted/unpushed. Never use `--no-verify` unless the user explicitly instructs it.
 
+### Standard "Next task" flow for .openagents repos
+
+When the user says **"Next task."** for a repo that has `.openagents/`:
+
+1) **Load project config:**
+   - Read `.openagents/project.json` and honor:
+     - `defaultBranch`
+     - `testCommands`, `e2eCommands`
+     - `allowPush`, `allowForcePush`
+     - `maxTasksPerRun`, `maxRuntimeMinutes` (if relevant)
+
+2) **Load tasks and find ready work:**
+   - Use the existing TaskService/TaskPicker in `src/tasks/*` (or any provided CLI wrapper) to:
+     - Load `.openagents/tasks.jsonl`
+     - Filter to `status in ["open", "in_progress"]`
+     - Determine which tasks are **ready** (no open `blocks`/`parent-child` deps)
+     - Sort by priority (0..4) and age (oldest first)
+
+3) **Select the top ready task:**
+   - Pick the highest-priority, oldest ready task.
+   - Mark it `in_progress` via TaskService and update `updatedAt`.
+
+4) **Implement under Golden Loop v2:**
+   - Follow `docs/mechacoder/GOLDEN-LOOP-v2.md`:
+     - Understand → implement → run tests (`testCommands` + any `e2eCommands` if required) → commit/push if tests pass → update task → log.
+
+5) **Update tasks and log:**
+   - Set `status` to `closed` (or `blocked` with `reason`) when done.
+   - Append commit SHA(s) to the task's `commits` list.
+   - Write a per-run log under `docs/logs/YYYYMMDD/HHMM-*.md` summarizing:
+     - Task ID, changes, tests run, results, follow-up tasks created.
+
+Use this flow for **per-project work** in repos with `.openagents/`. Use the "Next bead" flow for **global epics/planning** via bd.
+
 ### Bead Audit protocol
 
 When the user says **"Bead Audit."**, do this:
@@ -248,20 +350,24 @@ For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
 
 ### Important Rules
 
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ✅ Store AI planning docs in `history/` directory
-- ✅ Run `bd <cmd> --help` to discover available flags
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-- ❌ Do NOT clutter repo root with planning documents
+- ✅ Use **bd** for ALL high-level issue/epic tracking and cross-repo planning.
+- ✅ Use **.openagents** tasks for per-project work in repos that have `.openagents/` (e.g. `openagents`), especially for MechaCoder.
+- ✅ Always use `--json` flag for programmatic use.
+- ✅ Link discovered work with `discovered-from` dependencies.
+- ✅ Check `bd ready` (and/or `.openagents` ready tasks via TaskService) before asking "what should I work on?"
+- ✅ Store AI planning docs in `history/` directory.
+- ✅ Run `bd <cmd> --help` to discover available flags.
+- ❌ Do NOT create markdown TODO lists.
+- ❌ Do NOT use external issue trackers.
+- ❌ Do NOT duplicate tracking systems.
+- ❌ Do NOT clutter repo root with planning documents.
 
 For more details, see README.md and QUICKSTART.md.
 
-**Note**: This project uses [bd (beads)](https://github.com/steveyegge/beads) for issue tracking. Use `bd` commands instead of markdown TODOs. See AGENTS.md for workflow details.
+**Note:**  
+- We use [bd (beads)](https://github.com/steveyegge/beads) for global issue/epic tracking.  
+- We use `.openagents/` for per-project task tracking in repos that have it.  
+- Do NOT use markdown TODOs or external trackers.
 
 ---
 
@@ -366,7 +472,7 @@ EOF
 - `git push --force` to main/master
 - `git commit --amend` on commits you didn't author
 - `git config` updates
-- Commit without explicit user request
+- Commit without explicit user request (exception: MechaCoder under Golden Loop v2)
 - Use `-i` flag (interactive mode not supported)
 
 ### Bead Priority
@@ -404,10 +510,10 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 ### MechaCoder Autonomous Agent
 
 MechaCoder is an autonomous coding agent that picks up tasks, implements code, runs tests, and commits - learning patterns and conventions over time.
+By default, MechaCoder reads and writes tasks from `.openagents/tasks.jsonl` in the target repo (falling back to bd for planning/epics).
 
 **See:** [`docs/mechacoder/`](docs/mechacoder/) for full documentation:
 - [README.md](docs/mechacoder/README.md) - Overview and quick start
 - [MECHACODER-OPS.md](docs/mechacoder/MECHACODER-OPS.md) - Operations guide (start/stop, logs, troubleshooting)
 - [GOLDEN-LOOP-v2.md](docs/mechacoder/GOLDEN-LOOP-v2.md) - Golden Loop v2 spec (desktop agent loop)
 - [spec.md](docs/mechacoder/spec.md) - .openagents project format and architecture
-
