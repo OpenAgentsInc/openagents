@@ -180,12 +180,12 @@ export function buildMechaCoderFlowTree(state: MechaCoderState): FlowNode {
 
 // Default node sizes by type (matches sample-data.ts)
 export const NODE_SIZES: Record<string, NodeSize> = {
-  root: { width: 160, height: 40 },
-  agent: { width: 282, height: 100 },
-  repo: { width: 240, height: 80 },
-  task: { width: 240, height: 60 },
-  workflow: { width: 200, height: 60 },
-  phase: { width: 120, height: 40 },
+  root: { width: 220, height: 80 },
+  agent: { width: 320, height: 120 },
+  repo: { width: 280, height: 110 },
+  task: { width: 260, height: 80 },
+  workflow: { width: 220, height: 70 },
+  phase: { width: 140, height: 46 },
 }
 
 /**

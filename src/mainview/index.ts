@@ -16,8 +16,23 @@ import {
 const layout = calculateLayout({
   root: sampleMechaCoderTree,
   nodeSizes: sampleNodeSizes,
-  config: { padding: 20, spacing: 40 },
+  config: { padding: 12, spacing: 220 },
 })
+
+function getLayoutBounds() {
+  const minX = Math.min(...layout.nodes.map(n => n.x))
+  const minY = Math.min(...layout.nodes.map(n => n.y))
+  const maxX = Math.max(...layout.nodes.map(n => n.x + n.size.width))
+  const maxY = Math.max(...layout.nodes.map(n => n.y + n.size.height))
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
+}
+
+function getCenteredPan(viewWidth: number, viewHeight: number) {
+  const bounds = getLayoutBounds()
+  const centerX = viewWidth / 2 - (bounds.minX + bounds.width / 2)
+  const centerY = viewHeight / 2 - (bounds.minY + bounds.height / 2)
+  return { panX: centerX, panY: centerY }
+}
 
 // Get DOM elements
 const container = document.getElementById("flow-container")!
@@ -27,15 +42,8 @@ const zoomLevel = document.getElementById("zoom-level")!
 
 // Initialize canvas state with viewport size
 let canvasState = initialCanvasState(window.innerWidth, window.innerHeight)
-
-// Center the view on the layout initially
-const centerX = window.innerWidth / 2
-const centerY = window.innerHeight / 2
-canvasState = {
-  ...canvasState,
-  panX: centerX - 200,
-  panY: centerY - 100,
-}
+const initialPan = getCenteredPan(window.innerWidth, window.innerHeight)
+canvasState = { ...canvasState, ...initialPan }
 
 // Render SVG content
 function render(): void {
@@ -104,11 +112,8 @@ container.addEventListener("wheel", (e) => {
 resetBtn.addEventListener("click", () => {
   dispatch({ type: "RESET" })
   // Re-center after reset
-  canvasState = {
-    ...canvasState,
-    panX: centerX - 200,
-    panY: centerY - 100,
-  }
+  const recentered = getCenteredPan(canvasState.viewportWidth, canvasState.viewportHeight)
+  canvasState = { ...canvasState, ...recentered }
   render()
 })
 
@@ -119,6 +124,9 @@ window.addEventListener("resize", () => {
     width: window.innerWidth,
     height: window.innerHeight,
   })
+  const recentered = getCenteredPan(window.innerWidth, window.innerHeight)
+  canvasState = { ...canvasState, ...recentered }
+  render()
 })
 
 // Inertial animation loop
