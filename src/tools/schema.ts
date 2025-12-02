@@ -3,21 +3,22 @@ import * as ParseResult from "effect/ParseResult";
 import * as S from "effect/Schema";
 
 export type ToolContent =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
+	| { type: "text"; text: string }
+	| { type: "image"; data: string; mimeType: string };
 
 export interface ToolResult<Details = unknown> {
-  content: ToolContent[];
-  details?: Details;
+	content: ToolContent[];
+	details?: Details;
 }
 
 export type ToolErrorReason =
-  | "invalid_arguments"
-  | "not_found"
-  | "missing_old_text"
-  | "not_unique"
-  | "unchanged"
-  | "aborted";
+	| "invalid_arguments"
+	| "not_found"
+	| "missing_old_text"
+	| "not_unique"
+	| "unchanged"
+	| "command_failed"
+	| "aborted";
 
 export class ToolExecutionError extends Error {
   readonly _tag = "ToolExecutionError";
