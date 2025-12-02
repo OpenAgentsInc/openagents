@@ -3,9 +3,9 @@
   "version": "0.1.1-golden-loop-v2-demo",
   "description": "Your agent command center",
   "scripts": {
-    "dev": "electrobun dev",
+    "dev": "electrobun build && electrobun dev",
     "build": "electrobun build",
-    "start": "bun run build && bun run dev",
+    "start": "bun run dev",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
     "prepare": "effect-language-service patch",
