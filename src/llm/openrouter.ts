@@ -5,6 +5,7 @@ import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
 import * as HttpClientError from "@effect/platform/HttpClientError";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as Path from "@effect/platform/Path";
+import * as BunContext from "@effect/platform-bun/BunContext";
 import * as JSONSchema from "effect/JSONSchema";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -249,6 +250,7 @@ const makeClient = Effect.gen(function* (_) {
 export const openRouterClientLayer = Layer.effect(OpenRouterClient, makeClient);
 
 export const openRouterLive = openRouterClientLayer.pipe(
+  Layer.provideMerge(BunContext.layer),
   Layer.provideMerge(dotenvLocalLayer),
   Layer.provide(openRouterConfigLayer),
   Layer.provide(FetchHttpClient.layer),
