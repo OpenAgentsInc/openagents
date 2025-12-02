@@ -405,9 +405,9 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 MechaCoder is an autonomous coding agent that runs every 5 minutes via launchd.
 
-**See:** `docs/MECHACODER-OPS.md` for full operations guide including:
-- Where logs are stored
-- How to start/stop/restart
-- Troubleshooting guide
-- Bead management commands
+**See:** [`docs/mechacoder/`](docs/mechacoder/) for full documentation:
+- [README.md](docs/mechacoder/README.md) - Overview and quick start
+- [MECHACODER-OPS.md](docs/mechacoder/MECHACODER-OPS.md) - Operations guide (start/stop, logs, troubleshooting)
+- [GOLDEN-LOOP-v2.md](docs/mechacoder/GOLDEN-LOOP-v2.md) - Golden Loop v2 spec (desktop agent loop)
+- [spec.md](docs/mechacoder/spec.md) - .openagents project format and architecture
 
