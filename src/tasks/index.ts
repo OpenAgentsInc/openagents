@@ -58,3 +58,11 @@ export {
   type UpdateTaskOptions,
   type CloseTaskOptions,
 } from "./service.js";
+
+export {
+  ProjectServiceError,
+  projectConfigPath,
+  defaultProjectConfig,
+  loadProjectConfig,
+  saveProjectConfig,
+} from "./project.js";
