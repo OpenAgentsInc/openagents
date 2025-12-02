@@ -263,6 +263,123 @@ For more details, see README.md and QUICKSTART.md.
 
 **Note**: This project uses [bd (beads)](https://github.com/steveyegge/beads) for issue tracking. Use `bd` commands instead of markdown TODOs. See AGENTS.md for workflow details.
 
+---
+
+## Lessons Learned
+
+Common mistakes and patterns future agents should know:
+
+### Effect TypeScript Patterns
+
+**Providing a Layer to an Effect:**
+```typescript
+// ✅ CORRECT - Effect.provide with pipe
+Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)))
+
+// ✅ CORRECT - Effect.provide as second arg
+Effect.runPromise(Effect.provide(program, BunContext.layer))
+
+// ❌ WRONG - Layer.provide is for composing layers, not providing to effects
+Effect.runPromise(Layer.provide(BunContext.layer)(program))  // Runtime error!
+Effect.runPromise(Layer.provide(BunContext.layer, program))  // Type error!
+```
+
+**Effect.gen Pattern (modern):**
+```typescript
+// ✅ CORRECT - No adapter parameter, direct yield*
+Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const data = yield* fs.readFile(path);
+  return data;
+})
+
+// ❌ OLD PATTERN - Adapter is deprecated and causes TypeScript warnings
+Effect.gen(function* (_) {
+  const fs = yield* _(FileSystem.FileSystem);
+  const data = yield* _(fs.readFile(path));
+  return data;
+})
+```
+
+**Mapping Platform Errors to Tool Errors:**
+```typescript
+// ✅ CORRECT - Map PlatformError to ToolExecutionError
+const content = yield* fs.readFileString(path).pipe(
+  Effect.mapError((e) => new ToolExecutionError("command_failed", e.message)),
+);
+
+// ❌ WRONG - Letting PlatformError leak breaks Tool type signature
+const content = yield* fs.readFileString(path);  // Type error!
+```
+
+**Context.Tag Pattern (class-based):**
+```typescript
+// ✅ CORRECT - Modern class-based pattern
+export class MyService extends Context.Tag("MyService")<
+  MyService,
+  { doThing: () => Effect.Effect<void> }
+>() {}
+
+// ❌ OLD PATTERN - Function-based doesn't work with yield*
+export const MyService = Context.Tag<MyService>()  // Broken!
+```
+
+### Test Patterns
+
+**runWithBun Helper:**
+```typescript
+// ✅ CORRECT - Specific context type
+const runWithBun = <A, E>(
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
+) => Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
+
+// ❌ PROBLEMATIC - Using 'any' causes type errors with exactOptionalPropertyTypes
+const runWithBun = <A, E>(program: Effect.Effect<A, E, any>) => ...
+```
+
+**ToolContent Type Guards:**
+```typescript
+// ✅ CORRECT - Use type guard for union types
+import { isTextContent } from "./schema.js";
+const textBlock = result.content.find(isTextContent);
+expect(textBlock?.text).toContain("expected");
+
+// ❌ WRONG - Direct property access on union type
+expect(result.content[0]?.text).toContain("expected");  // Type error!
+```
+
+### Git Conventions
+
+**Commit Message Format:**
+```bash
+git commit -m "$(cat <<'EOF'
+Your commit message here.
+
+🤖 Generated with [OpenAgents](https://openagents.com)
+
+Co-Authored-By: MechaCoder <noreply@openagents.com>
+EOF
+)"
+```
+
+**Never Do:**
+- `git push --force` to main/master
+- `git commit --amend` on commits you didn't author
+- `git config` updates
+- Commit without explicit user request
+- Use `-i` flag (interactive mode not supported)
+
+### Bead Priority
+
+When user says "pick top priority":
+- P0 = Critical (do immediately)
+- P1 = High (do next)
+- P2+ = Lower priority
+
+Don't pick P2/P3 beads when P0/P1 exist unless explicitly told to.
+
+---
+
 <!-- effect-solutions:start -->
 ## Effect Solutions Usage
 
