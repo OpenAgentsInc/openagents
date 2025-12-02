@@ -8,7 +8,8 @@
     "start": "bun run build && bun run dev",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
-    "prepare": "effect-language-service patch"
+    "prepare": "effect-language-service patch",
+    "hi": "bun --bun src/llm/openrouter-cli.ts -- --prompt 'Say hi'"
   },
   "dependencies": {
     "@effect/cli": "0.72.1",
