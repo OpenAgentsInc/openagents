@@ -397,7 +397,7 @@ const doOneTask = (config: Config) =>
     };
     
     // Emit run_start event IMMEDIATELY
-    emit({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id });
+    emit({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id, workDir, model: "x-ai/grok-4.1-fast" });
     emit({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
 
     // Agent loop with retry on typecheck/test failures
