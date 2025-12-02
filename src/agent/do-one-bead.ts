@@ -11,6 +11,14 @@ import * as fs from "node:fs";
 import * as nodePath from "node:path";
 import { agentLoop } from "./loop.js";
 import { GIT_CONVENTIONS } from "./prompts.js";
+import {
+  pickNextTask,
+  updateTask,
+  closeTask,
+  type Task,
+  type TaskFilter,
+  TaskServiceError,
+} from "../tasks/index.js";
 import { readTool } from "../tools/read.js";
 import { editTool } from "../tools/edit.js";
 import { bashTool } from "../tools/bash.js";
@@ -68,9 +76,6 @@ const SYSTEM_PROMPT = `You are MechaCoder, an autonomous coding agent. You compl
 
 ${GIT_CONVENTIONS}
 
-## CRITICAL: Use full path for bd command
-Always use: \`$HOME/.local/bin/bd\` (never just \`bd\`)
-
 ## Effect TypeScript Patterns (MUST FOLLOW)
 
 When writing Effect code, use these EXACT patterns:
@@ -108,13 +113,7 @@ test("example", async () => {
 
 ## Step-by-Step Workflow (FOLLOW EXACTLY)
 
-### Phase 1: Find Work
-1. Run: \`$HOME/.local/bin/bd ready --json\`
-2. If empty or only epics: respond "NO_BEADS_AVAILABLE" and STOP
-3. Pick highest priority TASK (skip epics)
-4. Claim it: \`$HOME/.local/bin/bd update <id> --status in_progress --json\`
-
-### Phase 2: Understand
+### Phase 1: Understand
 5. Read the relevant source files with the read tool
 6. Read existing tests if any
 7. Understand what changes are needed
@@ -165,19 +164,6 @@ If ANY of these are NO, you have NOT completed the bead. Keep working.
 - NEVER claim completion without actual code changes
 - NEVER skip the commit/push steps
 - If stuck after 15+ turns, close bead with blocking reason instead
-
-## CRITICAL: ALWAYS COMMIT AND PUSH
-
-You MUST run these commands at the end of EVERY successful bead:
-
-1. \`git add -A\`
-2. \`git commit -m "..."\`  
-3. \`git push origin main\`
-4. \`$HOME/.local/bin/bd close <id> --reason "..."\`
-
-If you do not see "main -> main" in the git push output, YOU HAVE NOT FINISHED.
-Do NOT say BEAD_COMPLETED until push succeeds.
-Do NOT leave uncommitted changes.
 `;
 
 interface Config {
@@ -213,8 +199,55 @@ const doOneBead = (config: Config) =>
     process.chdir(config.workDir);
     log(`Changed to: ${process.cwd()}`);
 
+    const tasksPath = nodePath.join(config.workDir, ".openagents", "tasks.jsonl");
+    const taskFilter: TaskFilter = { status: "open", sortPolicy: "priority" };
+
+    const selected = yield* pickNextTask(tasksPath, taskFilter).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "read_error",
+            `Failed to pick next task: ${(e as Error).message}`,
+          ),
+      ),
+    );
+
+    if (!selected) {
+      const msg = "NO_TASKS_AVAILABLE: No ready tasks found in .openagents/tasks.jsonl";
+      log(msg);
+      logMd(`\n## Final Message\n\n${msg}\n`);
+      return { success: true, logFile };
+    }
+
+    const inProgressTask: Task = yield* updateTask({
+      tasksPath,
+      id: selected.id,
+      update: { status: "in_progress" },
+    }).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "write_error",
+            `Failed to mark task in_progress: ${(e as Error).message}`,
+          ),
+      ),
+    );
+
+    log(`Selected task: ${inProgressTask.id} (${inProgressTask.title})`);
+
+    const userMessage = [
+      `Work on task ${inProgressTask.id}: ${inProgressTask.title}`,
+      `Description: ${inProgressTask.description ?? ""}`,
+      `Priority: P${inProgressTask.priority} | Type: ${inProgressTask.type}`,
+      `Deps: ${(inProgressTask.deps ?? []).map((d) => `${d.type}:${d.id}`).join(", ") || "none"}`,
+      `Labels: ${(inProgressTask.labels ?? []).join(", ") || "none"}`,
+      `Assignee: ${inProgressTask.assignee ?? "unassigned"}`,
+      "",
+      `Deliverable: Implement the task, run typecheck + relevant tests, commit, push, and reply "BEAD_COMPLETED: ${inProgressTask.id} - <summary>" with tests run.`,
+    ].join("\n");
+
     const result = yield* agentLoop(
-      "Check bd ready --json. If there's a ready task bead, claim it, implement it, test, commit, push, and close it. Do ONE bead only.",
+      userMessage,
       tools as any,
       {
         systemPrompt: SYSTEM_PROMPT,
@@ -261,9 +294,22 @@ const doOneBead = (config: Config) =>
     
     log("=".repeat(60));
     if (finalMsg.includes("BEAD_COMPLETED")) {
+      yield* closeTask({
+        tasksPath,
+        id: inProgressTask.id,
+        reason: finalMsg,
+      }).pipe(
+        Effect.mapError(
+          (e) =>
+            new TaskServiceError(
+              "write_error",
+              `Failed to close task: ${(e as Error).message}`,
+            ),
+        ),
+      );
       log("SUCCESS - Bead completed!");
-    } else if (finalMsg.includes("NO_BEADS")) {
-      log("No beads available");
+    } else if (finalMsg.includes("NO_TASKS") || finalMsg.includes("NO_BEADS")) {
+      log("No tasks available");
     } else {
       log("Run finished (check log for details)");
     }
