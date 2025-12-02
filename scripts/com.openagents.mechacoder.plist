@@ -22,7 +22,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/christopherdavid/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/christopherdavid/.local/bin:/Users/christopherdavid/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>/Users/christopherdavid</string>
     </dict>
