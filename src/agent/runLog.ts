@@ -1,11 +1,15 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
+import * as fs from "node:fs";
+import * as nodePath from "node:path";
 
 // Run event types for streaming JSONL
 export type TaskRunEvent =
   | { type: "run_start"; ts: string; runId: string; taskId: string | null }
   | { type: "task_selected"; ts: string; taskId: string; title: string }
+  | { type: "turn_start"; ts: string; turn: number }
+  | { type: "llm_response"; ts: string; turn: number; hasToolCalls: boolean }
   | { type: "tool_call"; ts: string; tool: string; argsPreview: string }
   | { type: "tool_result"; ts: string; tool: string; ok: boolean }
   | { type: "edit_detected"; ts: string; tool: string }
@@ -15,7 +19,8 @@ export type TaskRunEvent =
   | { type: "retry_prompt"; ts: string; reason: string }
   | { type: "commit_pushed"; ts: string; commit: string }
   | { type: "task_closed"; ts: string; taskId: string }
-  | { type: "run_end"; ts: string; status: string; finalMessage: string; error: string | null };
+  | { type: "run_end"; ts: string; status: string; finalMessage: string; error: string | null }
+  | { type: "timeout"; ts: string; reason: string };
 
 export interface TaskRunMetadata {
   id: string;
@@ -103,35 +108,26 @@ export const determineRunStatus = (
   return "incomplete";
 };
 
-// Append a run event to JSONL file (for streaming/tailing)
-export const appendRunEvent = (
+// Append a run event to JSONL file SYNCHRONOUSLY for immediate flush
+// This is intentionally synchronous so `tail -f` sees events immediately
+export function appendRunEventSync(
   runLogDir: string,
   runId: string,
   event: TaskRunEvent,
-): Effect.Effect<void, RunLogError, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
+): void {
+  const datePath = getDatePath();
+  const dayDir = nodePath.join(runLogDir, datePath);
+  const filePath = nodePath.join(dayDir, `${runId}.jsonl`);
 
-    const datePath = getDatePath();
-    const dayDir = path.join(runLogDir, datePath);
-    const filePath = path.join(dayDir, `${runId}.jsonl`);
+  // Ensure directory exists
+  if (!fs.existsSync(dayDir)) {
+    fs.mkdirSync(dayDir, { recursive: true });
+  }
 
-    // Ensure directory exists
-    yield* fs.makeDirectory(dayDir, { recursive: true }).pipe(
-      Effect.mapError(
-        (e) => new RunLogError("dir_error", `Failed to create run-logs directory: ${e.message}`),
-      ),
-    );
-
-    // Append event as JSON line
-    const line = JSON.stringify(event) + "\n";
-    yield* fs.writeFile(filePath, new TextEncoder().encode(line), { flag: "a" }).pipe(
-      Effect.mapError(
-        (e) => new RunLogError("write_error", `Failed to append run event: ${e.message}`),
-      ),
-    );
-  });
+  // Append event as JSON line - synchronous write for immediate flush
+  const line = JSON.stringify(event) + "\n";
+  fs.appendFileSync(filePath, line, "utf8");
+}
 
 // Helper to generate run ID
 export const generateRunId = (): string => {

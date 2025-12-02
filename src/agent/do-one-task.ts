@@ -26,7 +26,7 @@ import { openRouterLive } from "../llm/openrouter.js";
 import { 
   createRunMetadata, 
   writeRunLog, 
-  appendRunEvent, 
+  appendRunEventSync, 
   generateRunId, 
   nowTs,
   type TaskRunEvent 
@@ -386,18 +386,26 @@ const doOneTask = (config: Config) =>
 
     yield* writeUserMessage(sessionPath, userMessage).pipe(Effect.catchAll(() => Effect.void));
 
-    // Generate run ID for streaming events
+    // Generate run ID for streaming events - use SYNCHRONOUS logging for immediate flush
     const runId = generateRunId();
-    const emitEvent = (event: TaskRunEvent) => 
-      appendRunEvent(config.runLogDir, runId, event).pipe(Effect.catchAll(() => Effect.void));
+    const emit = (event: TaskRunEvent) => {
+      try {
+        appendRunEventSync(config.runLogDir, runId, event);
+      } catch (e) {
+        // Ignore logging errors, don't break the run
+      }
+    };
     
-    // Emit run_start event
-    yield* emitEvent({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id });
-    yield* emitEvent({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
+    // Emit run_start event IMMEDIATELY
+    emit({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id });
+    emit({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
 
     // Agent loop with retry on typecheck/test failures
     const MAX_TOTAL_TURNS = 50;
     const MAX_RETRIES = 5;  // Increased to handle verification enforcement
+    const MAX_WALL_CLOCK_MS = 15 * 60 * 1000;  // 15 minute hard timeout
+    const runStartTime = Date.now();
+    
     let allTurns: AgentTurn[] = [];
     let totalTurnsUsed = 0;
     let retryCount = 0;
@@ -406,6 +414,18 @@ const doOneTask = (config: Config) =>
     let loopError: string | null = null;
 
     while (retryCount <= MAX_RETRIES && totalTurnsUsed < MAX_TOTAL_TURNS) {
+      // Check wall-clock timeout
+      const elapsed = Date.now() - runStartTime;
+      if (elapsed > MAX_WALL_CLOCK_MS) {
+        log(`\nWall-clock timeout exceeded (${Math.round(elapsed / 1000)}s > ${MAX_WALL_CLOCK_MS / 1000}s)`);
+        emit({ type: "timeout", ts: nowTs(), reason: `Wall-clock timeout after ${Math.round(elapsed / 1000)}s` });
+        loopError = "WALL_CLOCK_TIMEOUT";
+        break;
+      }
+
+      // Emit turn_start BEFORE calling the LLM
+      emit({ type: "turn_start", ts: nowTs(), turn: totalTurnsUsed + 1 });
+      
       const turnsRemaining = MAX_TOTAL_TURNS - totalTurnsUsed;
       const loopResult = yield* agentLoop(
         currentMessage,
@@ -426,15 +446,23 @@ const doOneTask = (config: Config) =>
         )
       );
 
+      // Emit llm_response after LLM returns
+      emit({ 
+        type: "llm_response", 
+        ts: nowTs(), 
+        turn: totalTurnsUsed + 1, 
+        hasToolCalls: loopResult.turns.some(t => t.toolCalls && t.toolCalls.length > 0) 
+      });
+
       allTurns = [...allTurns, ...loopResult.turns];
       totalTurnsUsed += loopResult.totalTurns;
       finalMessage = loopResult.finalMessage || "";
       
-      // Emit events for tool calls in this batch
+      // Emit events for tool calls in this batch - SYNCHRONOUS
       for (const turn of loopResult.turns) {
         if (turn.toolCalls) {
           for (const call of turn.toolCalls) {
-            yield* emitEvent({ 
+            emit({ 
               type: "tool_call", 
               ts: nowTs(), 
               tool: call.name, 
@@ -444,7 +472,7 @@ const doOneTask = (config: Config) =>
         }
         if (turn.toolResults) {
           for (const res of turn.toolResults) {
-            yield* emitEvent({ 
+            emit({ 
               type: "tool_result", 
               ts: nowTs(), 
               tool: res.name, 
@@ -452,7 +480,7 @@ const doOneTask = (config: Config) =>
             });
             // Emit edit detection
             if ((res.name === "edit" || res.name === "write") && !res.isError) {
-              yield* emitEvent({ type: "edit_detected", ts: nowTs(), tool: res.name });
+              emit({ type: "edit_detected", ts: nowTs(), tool: res.name });
             }
           }
         }
@@ -468,7 +496,7 @@ const doOneTask = (config: Config) =>
           // Agent said TASK_COMPLETED but didn't verify after edits
           retryCount++;
           log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Agent said TASK_COMPLETED but has unverified edits`);
-          yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "TASK_COMPLETED with unverified edits" });
+          emit({ type: "retry_prompt", ts: nowTs(), reason: "TASK_COMPLETED with unverified edits" });
           
           currentMessage = `You said TASK_COMPLETED, but you have edited files since your last successful \`bun run typecheck\` and \`bun test\`. You MUST re-run both verification commands AFTER your edits before you can complete the task.
 
@@ -483,7 +511,7 @@ If they pass, proceed with git commit, push, and closing the task. Then say TASK
         }
         
         log(`\nTask completed successfully in ${totalTurnsUsed} total turns`);
-        yield* emitEvent({ type: "verify_ok", ts: nowTs() });
+        emit({ type: "verify_ok", ts: nowTs() });
         break;
       }
 
@@ -491,7 +519,7 @@ If they pass, proceed with git commit, push, and closing the task. Then say TASK
       if (isGarbageFinalMessage(finalMessage)) {
         retryCount++;
         log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Garbage final message detected (git status output)`);
-        yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "garbage final message" });
+        emit({ type: "retry_prompt", ts: nowTs(), reason: "garbage final message" });
         
         currentMessage = `You just responded with raw command output (like \`git status\`) instead of a structured response. This is not acceptable as a final message.
 
@@ -515,7 +543,7 @@ What would you like to do?`;
       if (verifyState.dirtySinceVerify) {
         retryCount++;
         log(`\n[RETRY ${retryCount}/${MAX_RETRIES}] Agent stopped with unverified edits`);
-        yield* emitEvent({ type: "retry_prompt", ts: nowTs(), reason: "unverified edits" });
+        emit({ type: "retry_prompt", ts: nowTs(), reason: "unverified edits" });
         
         currentMessage = `You have edited files but have not run verification since your last edit. You MUST run both:
 1. \`bun run typecheck\`
@@ -537,7 +565,7 @@ Run these commands now, fix any errors, then proceed with commit/push/close and 
         if (retryCount > MAX_RETRIES) {
           log(`\nMax retries (${MAX_RETRIES}) exceeded for typecheck/test failures`);
           loopError = "MAX_RETRIES_EXCEEDED";
-          yield* emitEvent({ type: "verify_fail", ts: nowTs(), stderr: "Max retries exceeded" });
+          emit({ type: "verify_fail", ts: nowTs(), stderr: "Max retries exceeded" });
           break;
         }
 
@@ -545,7 +573,7 @@ Run these commands now, fix any errors, then proceed with commit/push/close and 
         const errorType = typecheckResult.failed ? "TypeScript typecheck" : "Tests";
         const errorOutput = typecheckResult.failed ? typecheckResult.errors : testResult.errors;
         
-        yield* emitEvent({ type: "verify_fail", ts: nowTs(), stderr: errorOutput.slice(0, 500) });
+        emit({ type: "verify_fail", ts: nowTs(), stderr: errorOutput.slice(0, 500) });
         
         currentMessage = `${errorType} failed. You MUST fix these errors before continuing.
 
@@ -662,7 +690,7 @@ Fix the errors by editing the code, then re-run the failing command. Do NOT send
     }
 
     // Emit run_end event
-    yield* emitEvent({ 
+    emit({ 
       type: "run_end", 
       ts: nowTs(), 
       status: runStatus, 
