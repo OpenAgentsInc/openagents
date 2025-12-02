@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Do One Bead - Picks up ONE bead, completes it, commits, pushes, exits.
+ * Do One Task - Picks up ONE task from .openagents/tasks.jsonl, completes it, commits, pushes, exits.
  * Designed to be run by cron/launchd every few minutes.
  * 
  * Usage: bun src/agent/do-one-bead.ts --dir ~/code/some-repo
@@ -42,7 +42,7 @@ const getLogPath = () => {
   const hours = String(now.getHours()).padStart(2, "0");
   const mins = String(now.getMinutes()).padStart(2, "0");
   const secs = String(now.getSeconds()).padStart(2, "0");
-  return nodePath.join(getLogDir(), `${hours}${mins}${secs}-bead-run.md`);
+  return nodePath.join(getLogDir(), `${hours}${mins}${secs}-task-run.md`);
 };
 
 let logFile: string;
@@ -53,7 +53,7 @@ const initLog = () => {
     fs.mkdirSync(logDir, { recursive: true });
   }
   logFile = getLogPath();
-  fs.writeFileSync(logFile, `# Bead Run Log\n\nStarted: ${new Date().toISOString()}\n\n`);
+  fs.writeFileSync(logFile, `# Task Run Log\n\nStarted: ${new Date().toISOString()}\n\n`);
 };
 
 const log = (msg: string) => {
@@ -72,7 +72,7 @@ const logMd = (md: string) => {
   }
 };
 
-const SYSTEM_PROMPT = `You are MechaCoder, an autonomous coding agent. You complete ONE bead per run.
+const SYSTEM_PROMPT = `You are MechaCoder, an autonomous coding agent. You complete ONE task per run.
 
 ${GIT_CONVENTIONS}
 
@@ -146,24 +146,23 @@ git push origin main
 17. If push fails with type errors, fix them and retry
 
 ### Phase 6: Close
-17. Close bead: \`$HOME/.local/bin/bd close <id> --reason "Completed: <what you did>" --json\`
-18. ONLY THEN respond: "BEAD_COMPLETED: <bead-id>"
+17. The task will be automatically closed by the agent loop after successful completion.
+18. ONLY THEN respond: "TASK_COMPLETED: <task-id>"
 
-## VALIDATION CHECKLIST (before saying BEAD_COMPLETED)
+## VALIDATION CHECKLIST (before saying TASK_COMPLETED)
 - [ ] Did I use edit/write tool to modify at least one file?
 - [ ] Did I run \`bun run typecheck\` and it passed with no errors?
 - [ ] Did I run tests and they passed?
 - [ ] Did I run git commit and see success message?
 - [ ] Did I run git push and see "main -> main"?
-- [ ] Did I run bd close and see the bead status change?
 
-If ANY of these are NO, you have NOT completed the bead. Keep working.
+If ANY of these are NO, you have NOT completed the task. Keep working.
 
 ## Rules
-- Do ONE bead only
+- Do ONE task only
 - NEVER claim completion without actual code changes
 - NEVER skip the commit/push steps
-- If stuck after 15+ turns, close bead with blocking reason instead
+- If stuck after 15+ turns, report the blocking reason
 `;
 
 interface Config {
@@ -186,12 +185,12 @@ const parseArgs = (): Config => {
   return { workDir };
 };
 
-const doOneBead = (config: Config) =>
+const doOneTask = (config: Config) =>
   Effect.gen(function* () {
     initLog();
     
     log("=".repeat(60));
-    log("DO ONE BEAD - Starting");
+    log("DO ONE TASK - Starting");
     log(`Work directory: ${config.workDir}`);
     log(`Log file: ${logFile}`);
     log("=".repeat(60));
@@ -213,9 +212,8 @@ const doOneBead = (config: Config) =>
     );
 
     if (!selected) {
-      const msg = "NO_TASKS_AVAILABLE: No ready tasks found in .openagents/tasks.jsonl";
-      log(msg);
-      logMd(`\n## Final Message\n\n${msg}\n`);
+      log("NO_TASKS_AVAILABLE: No ready tasks found in .openagents/tasks.jsonl");
+      logMd(`\n## Final Message\n\nNo ready tasks found.\n`);
       return { success: true, logFile };
     }
 
@@ -243,7 +241,7 @@ const doOneBead = (config: Config) =>
       `Labels: ${(inProgressTask.labels ?? []).join(", ") || "none"}`,
       `Assignee: ${inProgressTask.assignee ?? "unassigned"}`,
       "",
-      `Deliverable: Implement the task, run typecheck + relevant tests, commit, push, and reply "BEAD_COMPLETED: ${inProgressTask.id} - <summary>" with tests run.`,
+      `Deliverable: Implement the task, run typecheck + relevant tests, commit, push, and reply "TASK_COMPLETED: ${inProgressTask.id} - <summary>" with tests run.`,
     ].join("\n");
 
     const result = yield* agentLoop(
@@ -293,7 +291,7 @@ const doOneBead = (config: Config) =>
     logMd(`\n## Final Message\n\n${finalMsg}\n`);
     
     log("=".repeat(60));
-    if (finalMsg.includes("BEAD_COMPLETED")) {
+    if (finalMsg.includes("TASK_COMPLETED")) {
       yield* closeTask({
         tasksPath,
         id: inProgressTask.id,
@@ -307,8 +305,8 @@ const doOneBead = (config: Config) =>
             ),
         ),
       );
-      log("SUCCESS - Bead completed!");
-    } else if (finalMsg.includes("NO_TASKS") || finalMsg.includes("NO_BEADS")) {
+      log("SUCCESS - Task completed!");
+    } else if (finalMsg.includes("NO_TASKS")) {
       log("No tasks available");
     } else {
       log("Run finished (check log for details)");
@@ -324,7 +322,7 @@ const config = parseArgs();
 
 const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
 
-Effect.runPromise(doOneBead(config).pipe(Effect.provide(liveLayer)))
+Effect.runPromise(doOneTask(config).pipe(Effect.provide(liveLayer)))
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Fatal:", err);

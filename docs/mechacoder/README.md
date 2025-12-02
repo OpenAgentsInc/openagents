@@ -2,6 +2,8 @@
 
 MechaCoder is an autonomous coding agent that picks up tasks, implements code, runs tests, and commits - learning patterns and conventions over time.
 
+By default, MechaCoder reads and writes tasks from `.openagents/tasks.jsonl` in the target repo.
+
 ## Documents
 
 ### [GOLDEN-LOOP-v2.md](./GOLDEN-LOOP-v2.md)
@@ -20,17 +22,15 @@ The **OpenAgents Desktop Loop & .openagents Project Spec**. Defines:
 
 - `.openagents/` directory structure (`project.json`, `tasks.jsonl`, `agents.json`)
 - Schema for project config and tasks
-- Transition strategy from Beads (`bd`) to `.openagents/tasks.jsonl`
 - Desktop agent architecture (Bun + Effect + Electrobun)
-- Suggested beads for bootstrapping the system
 
 ### [MECHACODER-OPS.md](./MECHACODER-OPS.md)
 The **operations guide** for running MechaCoder locally. Covers:
 
 - Where logs are stored (`docs/logs/YYYYMMDD/`, `logs/*.log`)
 - How to start/stop/restart the agent
-- Bead management commands
-- Troubleshooting (uncommitted changes, stuck beads, API errors)
+- Task management via `.openagents/tasks.jsonl`
+- Troubleshooting (uncommitted changes, stuck tasks, API errors)
 - Quick reference table of common commands
 
 ## Quick Start
@@ -42,8 +42,8 @@ launchctl list | grep mechacoder
 # View latest agent log
 cat $(ls -t ~/code/openagents/docs/logs/$(date +%Y%m%d)/*.md | head -1)
 
-# Check ready beads in a repo
-cd ~/code/nostr-effect && $HOME/.local/bin/bd ready --json
+# Inspect tasks in a repo
+cd ~/code/openagents && cat .openagents/tasks.jsonl | jq '.'
 ```
 
 ## Related

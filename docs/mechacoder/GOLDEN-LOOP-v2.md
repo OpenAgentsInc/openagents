@@ -120,7 +120,7 @@ Given a working directory:
   - `priority` (0 → 4),
   - then `createdAt` (oldest first).
 - Choose the top task and mark it `in_progress` with updated timestamp.
-- During transition, you may also read from `bd ready --json` and mirror tasks into `.openagents/tasks.jsonl`, but `.openagents` is the target source of truth.
+- `.openagents/tasks.jsonl` is the source of truth for this repo.
 
 ### 2.3. Understand
 

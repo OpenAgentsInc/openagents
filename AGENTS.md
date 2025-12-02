@@ -1,5 +1,7 @@
 ### Agent Startup Checklist (for this repo)
 
+> **This repo (`openagents`) uses `.openagents/` as its sole task system. Beads (`bd`) is not used here anymore.**
+
 Before you make any code changes in this repo, do the following:
 
 1. **Read the core docs once per session:**
@@ -9,9 +11,9 @@ Before you make any code changes in this repo, do the following:
    - `docs/mechacoder/spec.md`
 
 2. **Inspect project/task config:**
-   - If `.openagents/project.json` exists, read it to understand:
+   - Read `.openagents/project.json` to understand:
      - `defaultBranch`, `testCommands`, `e2eCommands`, `allowPush`, etc.
-   - If `.openagents/tasks.jsonl` exists, skim a few tasks to see how work is structured.
+   - Skim `.openagents/tasks.jsonl` to see how work is structured.
 
 3. **Check current health:**
    - Run `bun test` in this repo and make sure it passes.
@@ -19,56 +21,36 @@ Before you make any code changes in this repo, do the following:
 
 4. **Start a work log:**
    - Use the `DAY`/`TS` snippet under "Work Logs".
-   - Note the bead/task ID you're about to work on and your intent for this session.
+   - Note the task ID you're about to work on and your intent for this session.
 
 ---
 
-## Issue Tracking: bd (beads) and .openagents
+## Task Tracking with .openagents
 
-This project uses two closely related tracking systems:
+This repo uses `.openagents/` as its **sole task system**:
 
-- **bd (beads)** — global issue/epic tracker for planning and cross-repo work.
-- **.openagents/** — per-project task system (TaskService + ProjectService) used by MechaCoder and OpenAgents Desktop.
+```bash
+.openagents/project.json   # ProjectConfig (branch, tests, model, etc.)
+.openagents/tasks.jsonl    # One task per line (TaskService schema)
+```
 
 **IMPORTANT:**
 
 - Do NOT use markdown TODOs, task lists, or other ad-hoc tracking methods.
-- Use **bd** for high-level issues/epics and cross-repo planning.
-- Use **.openagents** tasks for concrete, per-project work that MechaCoder can pick up.
+- Do NOT use `bd` or `.beads/` in this repo - that system is not used here.
+- All task operations go through `.openagents/tasks.jsonl`.
 
-### Why bd?
+### Task Schema
 
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Auto-syncs to JSONL for version control
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
+Tasks in `.openagents/tasks.jsonl` follow this schema:
 
-### Quick Start
+- `id`, `title`, `description`, `status`, `priority`, `type`, `assignee`, `labels`, `deps`, `commits`, `createdAt`, `updatedAt`, `closedAt`.
+- `status` is `open | in_progress | blocked | closed`.
+- `priority` is `0..4` (0=P0 critical, 4=backlog).
+- `type` is `bug | feature | task | epic | chore`.
+- Dependencies have `type`: `blocks | related | parent-child | discovered-from`.
 
-**Check for ready work:**
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-```bash
-bd create "Issue title" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
-bd create "Subtask" --parent <epic-id> --json  # Hierarchical subtask (gets ID like epic-id.1)
-```
-
-**Claim and update:**
-```bash
-bd update bd-42 --status in_progress --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
+### Task Types
 
 - `bug` - Something broken
 - `feature` - New functionality
@@ -84,47 +66,21 @@ bd close bd-42 --reason "Completed" --json
 - `3` - Low (polish, optimization)
 - `4` - Backlog (future ideas)
 
-### OpenAgents project tasks (.openagents)
+### For AI Agents
 
-For repos that have an `.openagents/` directory (e.g. this `openagents` repo and any others we migrate):
-
-- Project metadata and task lists live under:
-
-  ```bash
-  .openagents/project.json   # ProjectConfig (branch, tests, model, etc.)
-  .openagents/tasks.jsonl    # One task per line (TaskService schema)
-  ```
-
-- Tasks use the same conceptual schema as beads issues:
-
-  - `id`, `title`, `description`, `status`, `priority`, `type`, `assignee`, `labels`, `deps`, `commits`, `createdAt`, `updatedAt`, `closedAt`.
-  - `status` is `open | in_progress | blocked | closed`.
-  - Dependencies have `type` `blocks | related | parent-child | discovered-from`.
-
-**For AI agents:**
-
-- Prefer using the existing **TaskService** and **ProjectService** under `src/tasks/` rather than manually editing `.openagents/*.json*`.
-- When creating new work for MechaCoder to pick up:
-
-  - If it's a **global epic/planning item**, create a **bd** issue.
-  - If it's a **concrete implementation task for this repo**, add a `.openagents` task (or let MechaCoder/TaskService create it).
+- Use **TaskService** and **ProjectService** under `src/tasks/` rather than manually editing `.openagents/*.json*`.
+- When creating new work:
+  - Add a `.openagents` task via TaskService (or let MechaCoder create it).
+  - Link discovered work with `discovered-from` dependencies.
 
 ### Workflow for AI Agents
 
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task**: `bd update <id> --status in_progress`
+1. **Check ready work**: Use TaskService to find tasks with `status: "open"` and no blocking deps
+2. **Claim your task**: Update task to `status: "in_progress"`
 3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
-
-### Auto-Sync
-
-bd automatically syncs with git:
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
+4. **Discover new work?** Create new task with `discoveredFrom` pointing to current task
+5. **Complete**: Close task with reason, append commit SHAs
+6. **Commit together**: Always commit `.openagents/tasks.jsonl` together with code changes
 
 ### Work Logs (Required)
 
@@ -152,7 +108,7 @@ Guidelines:
 - Summarize what changed, why, and validation steps (typecheck/tests).
 - Commit and push your work as you go, including each log file.
 - When adding code files, prefer small, focused commits with matching logs.
-- When your work touches MechaCoder or `.openagents/` internals, include the bead/task IDs you touched in the log header (e.g. `openagents-42j.4`, `oa-1a2b3c`).
+- When your work touches MechaCoder or `.openagents/` internals, include the task IDs you touched in the log header (e.g. `oa-1a2b3c`).
 
 ### Git and GitHub CLI Conventions
 
@@ -170,9 +126,9 @@ Guidelines:
 > The MechaCoder autonomous agent is allowed to commit and push changes **without explicit user confirmation** as long as it:
 > - Follows the Golden Loop v2 spec (`docs/mechacoder/GOLDEN-LOOP-v2.md`),
 > - Runs the configured tests from `.openagents/project.json` and they pass,
-> - Uses small, task-focused commits that reference the relevant bead/task ID.
+> - Uses small, task-focused commits that reference the relevant task ID.
 >
-> The "never commit unless explicitly asked" rule applies to interactive agents (e.g. chat-based assistants), not to MechaCoder's overnight loop.
+> The "never commit unless explicitly asked" rule applies to interactive agents (e.g. chat-based assistants), not to MechaCoder's autonomous loop.
 
 **Commit Workflow:**
 
@@ -232,22 +188,9 @@ gh run view <run-id>
 3. Create PR: `gh pr create`
 4. Return the PR URL when done
 
-### Standard "Next bead" flow (for future agents)
+### Standard "Next task" flow
 
-When the user says **"Next bead."**, run this exact loop:
-
-1) Pick the bead: `bd ready --json`, choose the highest-priority ready item; if none, ask which epic to prioritize. Claim it: `bd update <id> --status in_progress --json`.
-2) Quick triage: ensure it is linked to the correct epic via `discovered-from`; close duplicates; downgrade non-urgent side work to P4 unless the user says otherwise.
-   - Concurrency guard: if a bead is already `in_progress` (claimed by another agent), do not take it—tell the user it's in flight. If nothing is ready because upstream beads are blocking, pause and inform the user to wait or unblock.
-3) Review context: skim the latest logs for today (and yesterday if useful) under `docs/logs/YYYYMMDD/` to pick up recent agent actions/decisions.
-4) Start a dated work log before coding: use the Central Time snippet under "Work Logs" (`DAY`, `TS`, and `docs/logs/$DAY/${TS}-<subject>-log.md`) and note the bead ID and intent. Add new log entries when the timestamp changes or when you finish a major sub-step.
-5) Implement the bead: follow AGENTS rules (no `as any`, keep comments sparse). If you discover new work, create a `bd create ... --deps discovered-from:<bead>` entry instead of TODO comments. Opportunistic refactors/structure fixes are encouraged—just log what you moved and why. Triage adjacent beads when you spot mispriority/duplicates, and file updates via bd (or note them for a Bead Audit if the user didn't ask you to change them).
-6) Validate with tests: add/extend coverage appropriate to the change, run the relevant tests, and note what ran in the log. If you truly cannot add tests, state why in the log. Fix typecheck/test failures before stopping.
-7) Finish: close the bead with `bd close <id> --reason ... --json` (or leave in progress if truly not done), commit code plus `.beads/issues.jsonl` and any new log files together, then push. Do not leave work uncommitted/unpushed. Never use `--no-verify` unless the user explicitly instructs it.
-
-### Standard "Next task" flow for .openagents repos
-
-When the user says **"Next task."** for a repo that has `.openagents/`:
+When the user says **"Next task."**:
 
 1) **Load project config:**
    - Read `.openagents/project.json` and honor:
@@ -257,7 +200,7 @@ When the user says **"Next task."** for a repo that has `.openagents/`:
      - `maxTasksPerRun`, `maxRuntimeMinutes` (if relevant)
 
 2) **Load tasks and find ready work:**
-   - Use the existing TaskService/TaskPicker in `src/tasks/*` (or any provided CLI wrapper) to:
+   - Use the existing TaskService/TaskPicker in `src/tasks/*` to:
      - Load `.openagents/tasks.jsonl`
      - Filter to `status in ["open", "in_progress"]`
      - Determine which tasks are **ready** (no open `blocks`/`parent-child` deps)
@@ -276,44 +219,6 @@ When the user says **"Next task."** for a repo that has `.openagents/`:
    - Append commit SHA(s) to the task's `commits` list.
    - Write a per-run log under `docs/logs/YYYYMMDD/HHMM-*.md` summarizing:
      - Task ID, changes, tests run, results, follow-up tasks created.
-
-Use this flow for **per-project work** in repos with `.openagents/`. Use the "Next bead" flow for **global epics/planning** via bd.
-
-### Bead Audit protocol
-
-When the user says **"Bead Audit."**, do this:
-1) Run `bd list --json` (filter by priority/epic if directed) to gather current beads and statuses.
-2) Create a dated log in `docs/logs/YYYYMMDD/` (Central Time; use `DAY`/`TS` snippet) named `${TS}-bead-review-log.md`.
-   - Start with 3–5 bullets summarizing overall state: top priorities, blockers, duplicates, or stale items.
-   - Follow with a few paragraphs explaining what the beads are, why they exist, and the recommended execution order/next steps.
-   - Refer to beads by title/description (and full ID if needed); avoid using 3-letter abbreviations when communicating to users.
-3) If you see duplicates/outdated beads, note the proposed updates/closures in the report. Do not change beads unless the user asked—this is a review-only action.
-4) Save the log and report back with a brief summary and the log path. Do not start implementation unless instructed.
-
-### GitHub Copilot Integration
-
-If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
-Run `bd onboard` to get the content, or see step 2 of the onboard instructions.
-
-### MCP Server (Recommended)
-
-If using Claude or MCP-compatible clients, install the beads MCP server:
-
-```bash
-pip install beads-mcp
-```
-
-Add to MCP config (e.g., `~/.config/claude/config.json`):
-```json
-{
-  "beads": {
-    "command": "beads-mcp",
-    "args": []
-  }
-}
-```
-
-Then use `mcp__beads__*` functions instead of CLI commands.
 
 ### Managing AI-Generated Planning Documents
 
@@ -337,37 +242,24 @@ history/
 ```
 
 **Benefits:**
-- ✅ Clean repository root
-- ✅ Clear separation between ephemeral and permanent documentation
-- ✅ Easy to exclude from version control if desired
-- ✅ Preserves planning history for archeological research
-- ✅ Reduces noise when browsing the project
-
-### CLI Help
-
-Run `bd <command> --help` to see all available flags for any command.
-For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
+- Clean repository root
+- Clear separation between ephemeral and permanent documentation
+- Easy to exclude from version control if desired
+- Preserves planning history for archeological research
+- Reduces noise when browsing the project
 
 ### Important Rules
 
-- ✅ Use **bd** for ALL high-level issue/epic tracking and cross-repo planning.
-- ✅ Use **.openagents** tasks for per-project work in repos that have `.openagents/` (e.g. `openagents`), especially for MechaCoder.
-- ✅ Always use `--json` flag for programmatic use.
+- ✅ Use `.openagents/tasks.jsonl` for ALL task tracking in this repo.
+- ✅ Use TaskService/ProjectService under `src/tasks/` for programmatic access.
 - ✅ Link discovered work with `discovered-from` dependencies.
-- ✅ Check `bd ready` (and/or `.openagents` ready tasks via TaskService) before asking "what should I work on?"
+- ✅ Check ready tasks via TaskService before asking "what should I work on?"
 - ✅ Store AI planning docs in `history/` directory.
-- ✅ Run `bd <cmd> --help` to discover available flags.
+- ❌ Do NOT use `bd` or `.beads/` in this repo.
 - ❌ Do NOT create markdown TODO lists.
 - ❌ Do NOT use external issue trackers.
 - ❌ Do NOT duplicate tracking systems.
 - ❌ Do NOT clutter repo root with planning documents.
-
-For more details, see README.md and QUICKSTART.md.
-
-**Note:**  
-- We use [bd (beads)](https://github.com/steveyegge/beads) for global issue/epic tracking.  
-- We use `.openagents/` for per-project task tracking in repos that have it.  
-- Do NOT use markdown TODOs or external trackers.
 
 ---
 
@@ -475,14 +367,14 @@ EOF
 - Commit without explicit user request (exception: MechaCoder under Golden Loop v2)
 - Use `-i` flag (interactive mode not supported)
 
-### Bead Priority
+### Task Priority
 
 When user says "pick top priority":
 - P0 = Critical (do immediately)
 - P1 = High (do next)
 - P2+ = Lower priority
 
-Don't pick P2/P3 beads when P0/P1 exist unless explicitly told to.
+Don't pick P2/P3 tasks when P0/P1 exist unless explicitly told to.
 
 ---
 
@@ -510,7 +402,7 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 ### MechaCoder Autonomous Agent
 
 MechaCoder is an autonomous coding agent that picks up tasks, implements code, runs tests, and commits - learning patterns and conventions over time.
-By default, MechaCoder reads and writes tasks from `.openagents/tasks.jsonl` in the target repo (falling back to bd for planning/epics).
+By default, MechaCoder reads and writes tasks from `.openagents/tasks.jsonl` in the target repo.
 
 **See:** [`docs/mechacoder/`](docs/mechacoder/) for full documentation:
 - [README.md](docs/mechacoder/README.md) - Overview and quick start

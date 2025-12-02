@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start MechaCoder - the overnight autonomous coding agent
-# Runs every 5 minutes to pick up and complete beads
+# Runs every 5 minutes to pick up and complete tasks from .openagents/tasks.jsonl
 
 set -e
 
