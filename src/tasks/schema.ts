@@ -105,6 +105,9 @@ export const ProjectConfig = S.Struct({
   maxTasksPerRun: S.optionalWith(S.Number, { default: () => 3 }),
   maxRuntimeMinutes: S.optionalWith(S.Number, { default: () => 240 }),
   idPrefix: S.optionalWith(S.String, { default: () => "oa" }),
+  // Session and run log directories (relative to .openagents/)
+  sessionDir: S.optionalWith(S.String, { default: () => ".openagents/sessions" }),
+  runLogDir: S.optionalWith(S.String, { default: () => ".openagents/run-logs" }),
   cloud: S.optional(
     S.Struct({
       useGateway: S.optionalWith(S.Boolean, { default: () => false }),

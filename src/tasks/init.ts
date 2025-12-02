@@ -21,6 +21,11 @@ export interface InitProjectOptions {
   allowExisting?: boolean;
 }
 
+const OPENAGENTS_GITIGNORE = `# MechaCoder session and run logs (local only)
+sessions/
+run-logs/
+`;
+
 export const initOpenAgentsProject = ({
   rootDir,
   projectId,
@@ -37,6 +42,9 @@ export const initOpenAgentsProject = ({
     const openagentsDir = path.join(resolvedRoot, ".openagents");
     const projectPath = path.join(openagentsDir, "project.json");
     const tasksPath = path.join(openagentsDir, "tasks.jsonl");
+    const sessionsDir = path.join(openagentsDir, "sessions");
+    const runLogsDir = path.join(openagentsDir, "run-logs");
+    const gitignorePath = path.join(openagentsDir, ".gitignore");
 
     const projectExists = yield* fs.exists(projectPath).pipe(
       Effect.mapError(
@@ -57,12 +65,35 @@ export const initOpenAgentsProject = ({
       );
     }
 
+    // Create main .openagents directory
     yield* fs.makeDirectory(openagentsDir, { recursive: true }).pipe(
       Effect.mapError(
         (e) =>
           new InitProjectError(
             "write_error",
             `Failed to create .openagents directory: ${e.message}`,
+          ),
+      ),
+    );
+
+    // Create sessions directory
+    yield* fs.makeDirectory(sessionsDir, { recursive: true }).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to create sessions directory: ${e.message}`,
+          ),
+      ),
+    );
+
+    // Create run-logs directory
+    yield* fs.makeDirectory(runLogsDir, { recursive: true }).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to create run-logs directory: ${e.message}`,
           ),
       ),
     );
@@ -86,6 +117,17 @@ export const initOpenAgentsProject = ({
           new InitProjectError(
             "write_error",
             `Failed to write tasks.jsonl: ${e.message}`,
+          ),
+      ),
+    );
+
+    // Create .gitignore for sessions and run-logs
+    yield* fs.writeFile(gitignorePath, new TextEncoder().encode(OPENAGENTS_GITIGNORE)).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to write .gitignore: ${e.message}`,
           ),
       ),
     );

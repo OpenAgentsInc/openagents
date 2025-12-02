@@ -125,11 +125,12 @@ const parseArgs = (): OvernightConfig => {
     }
   }
 
+  // Use .openagents/sessions instead of .agent-sessions
   return {
     workDir,
     maxTasks,
     dryRun,
-    sessionsDir: `${workDir}/.agent-sessions`,
+    sessionsDir: `${workDir}/.openagents/sessions`,
   };
 };
 

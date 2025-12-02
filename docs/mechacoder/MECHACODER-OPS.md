@@ -107,7 +107,7 @@ Key fields in the plist:
 
 * `StartInterval`: e.g. `300` (run every 5 minutes)
 * `WorkingDirectory`: repo MechaCoder will act in
-* `ProgramArguments`: usually calls `bun` with `src/agent/do-one-bead.ts --dir <repo>`
+* `ProgramArguments`: usually calls `bun` with `src/agent/do-one-task.ts --dir <repo>`
 * `PATH`: must include `$HOME/.bun/bin`
 
 #### Check if launchd agent is running
@@ -147,10 +147,10 @@ From the `openagents` repo:
 cd ~/code/openagents
 
 # Run against the openagents repo itself:
-bun src/agent/do-one-bead.ts --dir .
+bun src/agent/do-one-task.ts --dir .
 
 # Run against another repo:
-bun src/agent/do-one-bead.ts --dir ~/code/some-other-repo
+bun src/agent/do-one-task.ts --dir ~/code/some-other-repo
 ```
 
 What this does:
@@ -413,10 +413,10 @@ If you're an AI agent reading this:
 
 ```bash
 # Run MechaCoder once against this repo
-bun src/agent/do-one-bead.ts --dir .
+bun src/agent/do-one-task.ts --dir .
 
 # Run MechaCoder against a different repo
-bun src/agent/do-one-bead.ts --dir /path/to/repo
+bun src/agent/do-one-task.ts --dir /path/to/repo
 
 # Run overnight loop (limited to 3 tasks)
 bun src/agent/overnight.ts --dir . --max-tasks 3
@@ -452,7 +452,7 @@ For in-process access, use `TaskService` and `ProjectService` from `src/tasks/`.
 | Check launchd running       | `launchctl list \| grep mechacoder`                                                  |
 | Stop launchd agent          | `launchctl unload ~/Library/LaunchAgents/com.openagents.mechacoder.plist`            |
 | Start launchd agent         | `cd ~/code/openagents && ./scripts/start-mechacoder.sh`                              |
-| Run MechaCoder once (repo)  | `cd ~/code/openagents && bun src/agent/do-one-bead.ts --dir /path/to/repo`           |
+| Run MechaCoder once (repo)  | `cd ~/code/openagents && bun src/agent/do-one-task.ts --dir /path/to/repo`           |
 | View latest log             | `cd ~/code/openagents && cat $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)`     |
 | Watch latest log            | `cd ~/code/openagents && tail -f $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)` |
 | Inspect tasks (.openagents) | `cd /path/to/repo && cat .openagents/tasks.jsonl \| jq '.'`                          |
