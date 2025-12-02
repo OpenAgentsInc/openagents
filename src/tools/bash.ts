@@ -49,11 +49,16 @@ export const bashTool: Tool<BashParameters, unknown, CommandExecutor.CommandExec
         const process = yield* Effect.acquireRelease(executor.start(cmd), (proc) =>
           proc.isRunning.pipe(
             Effect.flatMap((running) => (running ? proc.kill("SIGKILL") : Effect.void)),
+            Effect.orElse(() => Effect.void),
           ),
+        ).pipe(
+          Effect.mapError((e) => new ToolExecutionError("aborted", String(e))),
         );
 
         const baseCollect = Effect.all(
           [collectLimited(process.stdout as any), collectLimited(process.stderr as any), process.exitCode] as const,
+        ).pipe(
+          Effect.mapError((e) => new ToolExecutionError("aborted", String(e))),
         );
 
         const withTimeout =
@@ -72,7 +77,7 @@ export const bashTool: Tool<BashParameters, unknown, CommandExecutor.CommandExec
         const exitNum = Number(exitCode as unknown as number);
         if (Number.isFinite(exitNum) && exitNum !== 0) {
           return yield* Effect.fail(
-            new ToolExecutionError("aborted", `${output}\n\nCommand exited with code ${exitNum}`),
+            new ToolExecutionError("command_failed", `${output}\n\nCommand exited with code ${exitNum}`),
           );
         }
 
@@ -80,5 +85,5 @@ export const bashTool: Tool<BashParameters, unknown, CommandExecutor.CommandExec
           content: [{ type: "text" as const, text: output }],
         };
       }),
-    ),
+    ) as any,
 };
