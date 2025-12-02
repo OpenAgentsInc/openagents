@@ -203,4 +203,6 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 - `effect-solutions search <term>` - Search topics by keyword
 
 **Local Effect Source:** The Effect repository is cloned to `~/.local/share/effect-solutions/effect` for reference. Use this to explore APIs, find usage examples, and understand implementation details when the documentation isn't enough.
+
+**Package versioning:** Never hand-edit `package.json` versions by guessing. Add deps via `bun add -E <pkg>@<version>` (or `bun add -E <pkg>` if you know the exact version) so the lockfile stays consistent.
 <!-- effect-solutions:end -->
