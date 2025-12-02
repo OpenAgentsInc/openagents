@@ -165,6 +165,19 @@ If ANY of these are NO, you have NOT completed the bead. Keep working.
 - NEVER claim completion without actual code changes
 - NEVER skip the commit/push steps
 - If stuck after 15+ turns, close bead with blocking reason instead
+
+## CRITICAL: ALWAYS COMMIT AND PUSH
+
+You MUST run these commands at the end of EVERY successful bead:
+
+1. \`git add -A\`
+2. \`git commit -m "..."\`  
+3. \`git push origin main\`
+4. \`$HOME/.local/bin/bd close <id> --reason "..."\`
+
+If you do not see "main -> main" in the git push output, YOU HAVE NOT FINISHED.
+Do NOT say BEAD_COMPLETED until push succeeds.
+Do NOT leave uncommitted changes.
 `;
 
 interface Config {
