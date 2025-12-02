@@ -1,7 +1,7 @@
 export default {
     app: {
-        name: "hello-world",
-        identifier: "helloworld.electrobun.dev",
+        name: "OpenAgents",
+        identifier: "com.openagents.desktop",
         version: "0.1.0",
     },
     build: {
@@ -14,6 +14,7 @@ export default {
         copy: {
             "src/mainview/index.html": "views/mainview/index.html",
             "src/mainview/index.css": "views/mainview/index.css",
+            "src/mainview/fonts": "views/mainview/fonts",
         },
         mac: {
             bundleCEF: false,
