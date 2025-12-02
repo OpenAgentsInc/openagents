@@ -4,11 +4,20 @@ import { ToolExecutionError, runTool } from "../tools/schema.js";
 import type { ChatMessage, ChatRequest } from "../llm/openrouter.js";
 import { OpenRouterClient } from "../llm/openrouter.js";
 
+// Event types that can be emitted during the loop
+export type LoopEvent = 
+  | { type: "turn_start"; turn: number }
+  | { type: "llm_response"; turn: number; hasToolCalls: boolean }
+  | { type: "tool_call"; tool: string; argsPreview: string }
+  | { type: "tool_result"; tool: string; ok: boolean }
+  | { type: "edit_detected"; tool: string };
+
 export interface AgentConfig {
   model?: string;
   systemPrompt?: string;
   maxTurns?: number;
   temperature?: number;
+  onEvent?: (event: LoopEvent) => void;  // Callback for streaming events DURING the loop
 }
 
 export interface AgentTurn {
@@ -129,6 +138,9 @@ export const agentLoop = (
     const maxTurns = config.maxTurns ?? 10;
     const turns: AgentTurn[] = [];
     const messages: ChatMessage[] = [];
+    
+    // Event emitter - call synchronously for immediate flush
+    const emit = config.onEvent ?? (() => {});
 
     // Verification state tracking
     const verifyState: VerifyState = {
@@ -147,6 +159,9 @@ export const agentLoop = (
 
     while (continueLoop && turnCount < maxTurns) {
       turnCount++;
+      
+      // EMIT turn_start BEFORE calling LLM
+      emit({ type: "turn_start", turn: turnCount });
 
       const request: ChatRequest = {
         messages,
@@ -166,6 +181,9 @@ export const agentLoop = (
 
       const assistantMessage = choice.message;
       const toolCalls = assistantMessage.tool_calls ?? [];
+      
+      // EMIT llm_response AFTER LLM returns
+      emit({ type: "llm_response", turn: turnCount, hasToolCalls: toolCalls.length > 0 });
 
       messages.push({
         role: "assistant",
@@ -185,8 +203,14 @@ export const agentLoop = (
         const toolResults: AgentTurn["toolResults"] = [];
 
         for (const toolCall of toolCalls) {
+          // EMIT tool_call BEFORE executing
+          emit({ type: "tool_call", tool: toolCall.name, argsPreview: toolCall.arguments.slice(0, 100) });
+          
           const result = yield* executeToolCall(tools, toolCall);
           toolResults.push(result);
+          
+          // EMIT tool_result AFTER executing
+          emit({ type: "tool_result", tool: toolCall.name, ok: !result.isError });
 
           const toolOutput = result.result.content
             .filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -208,6 +232,8 @@ export const agentLoop = (
             verifyState.dirtySinceVerify = true;
             verifyState.typecheckOk = false;
             verifyState.testsOk = false;
+            // EMIT edit_detected
+            emit({ type: "edit_detected", tool: toolName });
           }
           
           // bash commands: check for typecheck/test commands
