@@ -33,7 +33,7 @@ const collectLimited = (stream: Stream.Stream<Uint8Array, unknown, unknown>): Ef
     return acc + text;
   });
 
-export const bashTool: Tool<BashParameters, unknown, CommandExecutor.CommandExecutor, never> = {
+export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandExecutor> = {
   name: "bash",
   label: "bash",
   description:

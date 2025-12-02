@@ -1,16 +1,18 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
+import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { describe, expect, it } from "bun:test";
 import { Effect } from "effect";
 import { bashTool } from "./bash.js";
-import { runTool, ToolExecutionError } from "./schema.js";
+import { runTool, ToolExecutionError, isTextContent } from "./schema.js";
 
-const runWithBun = <A>(program: Effect.Effect<A>) =>
+const runWithBun = <A, E>(program: Effect.Effect<A, E, CommandExecutor.CommandExecutor>) =>
   Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 describe("bashTool", () => {
   it("runs a simple command", async () => {
     const result = await runWithBun(runTool(bashTool, { command: "echo hello" }));
-    expect(result.content[0]?.text.trim()).toBe("hello");
+    const first = result.content.find(isTextContent);
+    expect(first?.text.trim()).toBe("hello");
   });
 
   it("fails on non-zero exit", async () => {

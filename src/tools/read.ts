@@ -74,7 +74,7 @@ export const readTool: Tool<
       const mimeType = isImage(absolutePath);
 
       const exists = yield* fs.exists(absolutePath).pipe(
-        Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+        Effect.mapError((e) => new ToolExecutionError("command_failed", String(e))),
       );
       if (!exists) {
         return yield* Effect.fail(new ToolExecutionError("not_found", `File not found: ${params.path}`));
@@ -82,7 +82,7 @@ export const readTool: Tool<
 
       if (mimeType) {
         const data = yield* fs.readFile(absolutePath).pipe(
-          Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+          Effect.mapError((e) => new ToolExecutionError("command_failed", `Failed to read file: ${e.message}`)),
         );
         const base64 = Buffer.from(data).toString("base64");
 
@@ -95,7 +95,9 @@ export const readTool: Tool<
       }
 
       const textContent = yield* fs.readFileString(absolutePath).pipe(
-        Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+        Effect.mapError(
+          (e) => new ToolExecutionError("command_failed", `Failed to read file: ${e.message}`),
+        ),
       );
       const lines = textContent.split("\n");
 

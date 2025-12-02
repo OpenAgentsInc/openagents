@@ -3,17 +3,11 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import * as BunRuntime from "@effect/platform-bun/BunRuntime";
 import { Console, Effect } from "effect";
 import { editTool } from "./edit.js";
-import { runTool, ToolExecutionError } from "./schema.js";
+import { runTool, ToolExecutionError, isTextContent } from "./schema.js";
 
-const pathArg = Args.text({ name: "path", description: "Path to the file to edit" });
-
-const oldTextOption = Options.text("old-text").pipe(
-  Options.withDescription("Exact text to find and replace (must match exactly)"),
-);
-
-const newTextOption = Options.text("new-text").pipe(
-  Options.withDescription("New text to replace the old text with"),
-);
+const pathArg = Args.text({ name: "path" });
+const oldTextOption = Options.text("old-text");
+const newTextOption = Options.text("new-text");
 
 const editCommand = Command.make(
   "edit",
@@ -21,7 +15,9 @@ const editCommand = Command.make(
   ({ path, oldText, newText }) =>
     Effect.gen(function* (_) {
       const result = yield* _(runTool(editTool, { path, oldText, newText }));
-      const body = result.content.map((block) => block.text).join("\n\n");
+      const body = result.content
+        .map((block) => (isTextContent(block) ? block.text : "[image content omitted]"))
+        .join("\n\n");
 
       yield* _(Console.log(body));
 
