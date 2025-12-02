@@ -9,21 +9,21 @@ Here’s a spec you can drop in as something like `docs/MECHACODER-DESKTOP-LOOP.
 ---
 
 ````markdown
-# MechaCoder Desktop Loop & .openagents Project Spec
+# OpenAgents Desktop Loop & .openagents Project Spec
 
 > **Goal:**
 > A local-first, Bun + Effect powered MechaCoder that can run autonomously on a user’s machine, against any project folder they point it at, using a `.openagents` directory as its brain (tasks, config, models, cloud toggles).
 
 This document defines:
 
-1. The **MechaCoder Desktop Loop** (goal-in-loop for the desktop agent)
+1. The **OpenAgents Desktop Loop** (goal-in-loop for the desktop agent)
 2. The `.openagents` **project layout and schema**
 3. How this integrates with existing **Beads (`bd`)** for the transition
 4. Operational rules for **agentic iteration** in this new environment
 
 ---
 
-## 1. MechaCoder Desktop Loop (Goal-in-Loop)
+## 1. OpenAgents Desktop Loop (Goal-in-Loop)
 
 ### 1.1. Core Loop
 
@@ -143,7 +143,7 @@ Minimal schema (v0):
 ```jsonc
 {
   "version": 1,
-  "projectId": "openagents.com",         // human-readable
+  "projectId": "openagents",             // human-readable
   "defaultBranch": "main",
   "defaultModel": "x-ai/grok-4.1-fast",  // or other, per-project
   "rootDir": ".",                        // relative to repo root
@@ -190,7 +190,7 @@ Each line is a JSON object representing a task, similar to Beads issues but simp
     "1baeac7..."
   ],
   "source": {
-    "repo": "openagents.com",
+    "repo": "openagents",
     "discoveredFrom": "oa-abc123",
     "externalRef": null           // e.g. GH issue, JIRA ID later
   }
@@ -239,11 +239,11 @@ You love beads (and it’s great), but you want to **own the format** right away
 Per repo:
 
 * **nostr-effect**: Keep using `bd` as-is for now (you already have a good setup).
-* **openagents.com (Bun/desktop agent)**:
+* **openagents (Bun/desktop agent)**:
 
   * Introduce `.openagents/project.json` and `tasks.jsonl`.
   * Optionally import existing beads issues into `.openagents/tasks.jsonl` once (via a simple converter script).
-  * Run MechaCoder Desktop **against `.openagents/tasks.jsonl` first**, and optionally still query `bd` while transitioning.
+  * Run OpenAgents Desktop **against `.openagents/tasks.jsonl` first**, and optionally still query `bd` while transitioning.
 
 ### 3.2. Converter script idea (later)
 
@@ -329,18 +329,18 @@ This is where your new **AGENTIC-TESTING** style instructions apply:
 
 ---
 
-## 6. Suggested Initial Beads (.openagents-focused) for openagents.com
+## 6. Suggested Initial Beads (.openagents-focused) for openagents
 
-Before you migrate fully off beads, you can file a final set of beads in the **openagents.com** repo to bootstrap this:
+Before you migrate fully off beads, you can file a final set of beads in the **openagents** repo to bootstrap this:
 
-1. **Epic**: “MechaCoder Desktop core (Bun + Effect)”
+1. **Epic**: “OpenAgents Desktop core (Bun + Effect)”
 
    * Task: Extract agent logic into `src/agent-core/AgentProgram.ts`.
    * Task: CLI host entry (`src/cli/mechacoder.ts`) with Bun.
 
 2. **Epic**: “.openagents project metadata v0”
 
-   * Task: Define `.openagents/project.json` for openagents.com.
+   * Task: Define `.openagents/project.json` for openagents.
    * Task: Define `.openagents/tasks.jsonl` schema and add a few seed tasks.
    * Task: Add loader/writer for `.openagents/tasks.jsonl` (Effect Layer).
 
@@ -381,7 +381,7 @@ Later, you can add epics for:
 **TL;DR for the new setup:**
 
 * Every project that wants agentic coding gets a `.openagents/` directory.
-* MechaCoder Desktop (Bun + Effect) reads `.openagents/project.json` and `.openagents/tasks.jsonl`, then:
+* OpenAgents Desktop (Bun + Effect) reads `.openagents/project.json` and `.openagents/tasks.jsonl`, then:
 
   * picks tasks,
   * edits,
@@ -392,4 +392,4 @@ Later, you can add epics for:
   * loops.
 * Beads (`bd`) can coexist for now, but `.openagents/` becomes your **own, portable, local-first issue/memory format**, ready to be wired into your cloud gateway later.
 
-You can now create a final round of beads in **openagents.com** to implement this spec, then let MechaCoder (and future agents) build the agentic future from there.
+You can now create a final round of beads in **openagents** to implement this spec, then let MechaCoder (and future agents) build the agentic future from there.
