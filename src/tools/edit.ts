@@ -129,42 +129,36 @@ export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSys
     "Edit a file by replacing exact text. The oldText must match exactly (including whitespace). Use this for precise, surgical edits.",
   schema: EditParametersSchema,
   execute: (params, options) =>
-    Effect.gen(function* (_) {
-      const fs = yield* _(FileSystem.FileSystem);
-      const pathService = yield* _(Path.Path);
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
       const signal = options?.signal;
 
-      yield* _(abortIf(signal));
+      yield* abortIf(signal);
 
       const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
 
-      yield* _(
-        fs.access(absolutePath, { readable: true, writable: true }).pipe(
-          Effect.mapError(
-            () => new ToolExecutionError("not_found", `File not found or not writable: ${params.path}`),
-          ),
+      yield* fs.access(absolutePath, { readable: true, writable: true }).pipe(
+        Effect.mapError(
+          () => new ToolExecutionError("not_found", `File not found or not writable: ${params.path}`),
         ),
       );
 
-      yield* _(abortIf(signal));
+      yield* abortIf(signal);
 
-      const content = yield* _(
-        fs.readFileString(absolutePath).pipe(
-          Effect.mapError(
-            (error) => new ToolExecutionError("not_found", `Unable to read ${params.path}: ${error.message}`),
-          ),
+      const content = yield* fs.readFileString(absolutePath).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("not_found", `Unable to read ${params.path}: ${error.message}`),
         ),
       );
 
-      yield* _(abortIf(signal));
+      yield* abortIf(signal);
 
       if (!content.includes(params.oldText)) {
-        return yield* _(
-          Effect.fail(
-            new ToolExecutionError(
-              "missing_old_text",
-              `Could not find the exact text in ${params.path}. The old text must match exactly including all whitespace and newlines.`,
-            ),
+        return yield* Effect.fail(
+          new ToolExecutionError(
+            "missing_old_text",
+            `Could not find the exact text in ${params.path}. The old text must match exactly including all whitespace and newlines.`,
           ),
         );
       }
@@ -172,12 +166,10 @@ export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSys
       const occurrences = content.split(params.oldText).length - 1;
 
       if (occurrences !== 1) {
-        return yield* _(
-          Effect.fail(
-            new ToolExecutionError(
-              "not_unique",
-              `Found ${occurrences} occurrences of the text in ${params.path}. The text must be unique. Please provide more context to make it unique.`,
-            ),
+        return yield* Effect.fail(
+          new ToolExecutionError(
+            "not_unique",
+            `Found ${occurrences} occurrences of the text in ${params.path}. The text must be unique. Please provide more context to make it unique.`,
           ),
         );
       }
@@ -187,25 +179,21 @@ export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSys
         content.substring(0, index) + params.newText + content.substring(index + params.oldText.length);
 
       if (content === newContent) {
-        return yield* _(
-          Effect.fail(
-            new ToolExecutionError(
-              "unchanged",
-              `No changes made to ${params.path}. The replacement produced identical content.`,
-            ),
+        return yield* Effect.fail(
+          new ToolExecutionError(
+            "unchanged",
+            `No changes made to ${params.path}. The replacement produced identical content.`,
           ),
         );
       }
 
-      yield* _(
-        fs.writeFileString(absolutePath, newContent).pipe(
-          Effect.mapError(
-            (error) => new ToolExecutionError("not_found", `Unable to write ${params.path}: ${error.message}`),
-          ),
+      yield* fs.writeFileString(absolutePath, newContent).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("not_found", `Unable to write ${params.path}: ${error.message}`),
         ),
       );
 
-      yield* _(abortIf(signal));
+      yield* abortIf(signal);
 
       const result: ToolResult<{ diff: string }> = {
         content: [

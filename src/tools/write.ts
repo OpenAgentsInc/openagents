@@ -33,30 +33,24 @@ export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem |
     "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
   schema: WriteParametersSchema,
   execute: (params) =>
-    Effect.gen(function* (_) {
-      const fs = yield* _(FileSystem.FileSystem);
-      const pathService = yield* _(Path.Path);
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
 
       const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
       const dir = pathService.dirname(absolutePath);
 
-      const mkdirResult = yield* _(
-        fs.makeDirectory(dir, { recursive: true }).pipe(
-          Effect.mapError(
-            (error) => new ToolExecutionError("command_failed", `Failed to create directory: ${error.message}`),
-          ),
+      yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("command_failed", `Failed to create directory: ${error.message}`),
         ),
       );
-      void mkdirResult;
 
-      const writeResult = yield* _(
-        fs.writeFileString(absolutePath, params.content).pipe(
-          Effect.mapError(
-            (error) => new ToolExecutionError("command_failed", `Failed to write file: ${error.message}`),
-          ),
+      yield* fs.writeFileString(absolutePath, params.content).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("command_failed", `Failed to write file: ${error.message}`),
         ),
       );
-      void writeResult;
 
       return {
         content: [

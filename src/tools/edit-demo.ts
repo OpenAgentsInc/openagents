@@ -17,32 +17,30 @@ const colors = {
 
 const systemPrompt = `You are an agent with file tools. Use them to perform precise edits and report diffs back.`;
 
-const program = Effect.gen(function* (_) {
-  const fs = yield* _(FileSystem.FileSystem);
-  const path = yield* _(Path.Path);
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const pathService = yield* Path.Path;
 
-  const scratchDir = path.join(process.cwd(), "docs", "scratchpad");
-  const targetFile = path.join(scratchDir, "demo.txt");
+  const scratchDir = pathService.join(process.cwd(), "docs", "scratchpad");
+  const targetFile = pathService.join(scratchDir, "demo.txt");
 
-  yield* _(Console.log(colors.bold("== System Prompt ==")));
-  yield* _(Console.log(systemPrompt));
+  yield* Console.log(colors.bold("== System Prompt =="));
+  yield* Console.log(systemPrompt);
 
-  yield* _(Console.log(`\n${colors.bold("== Preparing scratch file ==")}`));
-  yield* _(fs.makeDirectory(scratchDir, { recursive: true }));
-  yield* _(fs.writeFileString(targetFile, "This is a demo scratchpad file.\nThe agent will edit this line.\nKeep calm and let tools handle it.\n"));
-  yield* _(Console.log(`${colors.green("✔")} Wrote ${targetFile}`));
+  yield* Console.log(`\n${colors.bold("== Preparing scratch file ==")}`);
+  yield* fs.makeDirectory(scratchDir, { recursive: true });
+  yield* fs.writeFileString(targetFile, "This is a demo scratchpad file.\nThe agent will edit this line.\nKeep calm and let tools handle it.\n");
+  yield* Console.log(`${colors.green("✔")} Wrote ${targetFile}`);
 
-  yield* _(Console.log(`\n${colors.bold("== Running edit tool ==")}`));
-  yield* _(
-    runTool(editTool, {
-      path: targetFile,
-      oldText: "The agent will edit this line.",
-      newText: "The agent has edited this line successfully.",
-    }).pipe(
-      Effect.flatMap((result) =>
-        Console.log(
-          `${colors.green("✔")} Edit applied:\n${colors.yellow(result.details?.diff ?? "(no diff)")}`,
-        ),
+  yield* Console.log(`\n${colors.bold("== Running edit tool ==")}`);
+  yield* runTool(editTool, {
+    path: targetFile,
+    oldText: "The agent will edit this line.",
+    newText: "The agent has edited this line successfully.",
+  }).pipe(
+    Effect.flatMap((result) =>
+      Console.log(
+        `${colors.green("✔")} Edit applied:\n${colors.yellow(result.details?.diff ?? "(no diff)")}`,
       ),
     ),
   );
