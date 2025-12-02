@@ -66,20 +66,24 @@ export const readTool: Tool<
     "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). For text, defaults to the first 2000 lines; use offset/limit to paginate.",
   schema: ReadParametersSchema,
   execute: (params, _options) =>
-    Effect.gen(function* (_) {
-      const fs = yield* _(FileSystem.FileSystem);
-      const pathService = yield* _(Path.Path);
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
 
       const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
       const mimeType = isImage(absolutePath);
 
-      const exists = yield* _(fs.exists(absolutePath));
+      const exists = yield* fs.exists(absolutePath).pipe(
+        Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+      );
       if (!exists) {
-        return yield* _(Effect.fail(new ToolExecutionError("not_found", `File not found: ${params.path}`)));
+        return yield* Effect.fail(new ToolExecutionError("not_found", `File not found: ${params.path}`));
       }
 
       if (mimeType) {
-        const data = yield* _(fs.readFile(absolutePath));
+        const data = yield* fs.readFile(absolutePath).pipe(
+          Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+        );
         const base64 = Buffer.from(data).toString("base64");
 
         return {
@@ -90,7 +94,9 @@ export const readTool: Tool<
         };
       }
 
-      const textContent = yield* _(fs.readFileString(absolutePath));
+      const textContent = yield* fs.readFileString(absolutePath).pipe(
+        Effect.mapError((e) => new ToolExecutionError("not_found", String(e))),
+      );
       const lines = textContent.split("\n");
 
       const startLine = params.offset ? params.offset - 1 : 0;
@@ -98,12 +104,10 @@ export const readTool: Tool<
       const endLine = Math.min(startLine + limit, lines.length);
 
       if (startLine >= lines.length) {
-        return yield* _(
-          Effect.fail(
-            new ToolExecutionError(
-              "invalid_arguments",
-              `Offset ${params.offset} is beyond end of file (${lines.length} lines total)`,
-            ),
+        return yield* Effect.fail(
+          new ToolExecutionError(
+            "invalid_arguments",
+            `Offset ${params.offset} is beyond end of file (${lines.length} lines total)`,
           ),
         );
       }
