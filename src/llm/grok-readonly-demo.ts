@@ -3,8 +3,11 @@
  * Demo: ask Grok (OpenRouter) to use read-only tools and execute the returned tool calls.
  * Command: bun --bun src/llm/grok-readonly-demo.ts
  */
-import { Console, Effect } from "effect";
+import { Console, Effect, Layer } from "effect";
 import { OpenRouter } from "@openrouter/sdk";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
+import * as BunContext from "@effect/platform-bun/BunContext";
 import { readTool } from "../tools/read.js";
 import { runTool } from "../tools/schema.js";
 import { createOpenRouterClient, loadOpenRouterEnv, toolToOpenRouterDefinition } from "./openrouter.js";
@@ -73,7 +76,9 @@ const main = Effect.gen(function* (_) {
     yield* _(Console.log(`  args: ${call.function.arguments}`));
 
     const args = JSON.parse(call.function.arguments);
-    const result = yield* _(runTool(readTool, args));
+    const result = yield* _(
+      runTool(readTool, args).pipe(Effect.provide(Layer.mergeAll(BunContext.layer))),
+    );
     const text = result.content.find((c) => c.type === "text")?.text ?? "";
     yield* _(Console.log(colors.green("Result (text):")));
     yield* _(Console.log(text));
