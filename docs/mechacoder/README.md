@@ -1,6 +1,6 @@
 # MechaCoder Documentation
 
-MechaCoder is an autonomous coding agent that picks up tasks, implements changes, runs tests, commits, and pushes - all without human intervention.
+MechaCoder is an autonomous coding agent that picks up tasks, implements code, runs tests, and commits - learning patterns and conventions over time.
 
 ## Documents
 
@@ -25,7 +25,7 @@ The **OpenAgents Desktop Loop & .openagents Project Spec**. Defines:
 - Suggested beads for bootstrapping the system
 
 ### [MECHACODER-OPS.md](./MECHACODER-OPS.md)
-The **operations guide** for controlling the current MechaCoder (launchd-based). Covers:
+The **operations guide** for running MechaCoder locally. Covers:
 
 - Where logs are stored (`docs/logs/YYYYMMDD/`, `logs/*.log`)
 - How to start/stop/restart the agent
