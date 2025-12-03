@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CLAUDE_CODE_MCP_SERVER_NAME, getAllowedClaudeCodeTools } from "./claude-code-mcp.js";
 import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 
 const makeSubtask = () => ({
@@ -56,5 +57,24 @@ describe("runClaudeCodeSubagent", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("boom");
+  });
+
+  test("passes MCP server and allowed tools to Claude Code query", async () => {
+    const inputs: any[] = [];
+    const queryFn = async function* (input: any) {
+      inputs.push(input);
+      yield { type: "result", subtype: "success" };
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      openagentsDir: "/tmp/.openagents",
+      queryFn,
+    });
+
+    expect(result.success).toBe(true);
+    const options = inputs[0]?.options;
+    expect(options?.mcpServers?.[CLAUDE_CODE_MCP_SERVER_NAME]).toBeDefined();
+    expect(options?.allowedTools).toEqual(expect.arrayContaining(getAllowedClaudeCodeTools()));
   });
 });
