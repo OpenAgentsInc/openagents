@@ -78,14 +78,15 @@ else
     log "No smokeTestCommand configured, skipping test smoke."
 fi
 
-# 5. Check API keys (if Claude Code enabled)
+# 5. Check Claude Code CLI is available (if Claude Code enabled)
 CLAUDE_ENABLED=$(jq -r '.claudeCode.enabled // false' .openagents/project.json 2>/dev/null)
 if [ "$CLAUDE_ENABLED" = "true" ]; then
-    log "Checking API credentials for Claude Code..."
-    if [ -z "$ANTHROPIC_API_KEY" ] && [ ! -f ~/.config/claude/credentials.json ]; then
-        fatal "Claude Code enabled but no API credentials found. Set ANTHROPIC_API_KEY or configure ~/.config/claude/credentials.json"
+    log "Checking Claude Code CLI..."
+    if ! command -v claude >/dev/null 2>&1; then
+        fatal "Claude Code enabled but 'claude' CLI not found. Install it: npm install -g @anthropic-ai/claude-code"
     fi
-    log "API credentials present."
+    # Claude CLI handles its own OAuth auth - no need to check credentials here
+    log "Claude Code CLI available."
 fi
 
 # 6. Check network connectivity (if not offline mode)
