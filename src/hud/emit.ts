@@ -116,6 +116,10 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
     case "init_script_complete":
     case "task_updated":
     case "progress_written":
+    case "lock_acquired":
+    case "lock_stale_removed":
+    case "lock_failed":
+    case "lock_released":
       return null;
   }
 };

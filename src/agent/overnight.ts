@@ -40,6 +40,7 @@ import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
 import { createHudCallbacks } from "../hud/index.js";
+import { acquireLock, releaseLock } from "./orchestrator/agent-lock.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -435,6 +436,25 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     process.chdir(config.workDir);
     log(`Changed to directory: ${process.cwd()}`);
 
+    // Acquire agent lock to prevent concurrent runs
+    const lockResult = acquireLock(openagentsDir, sessionId);
+    if (!lockResult.acquired && lockResult.reason === "already_running") {
+      log(`ERROR: Another agent is already running (PID ${lockResult.existingLock.pid})`);
+      log(`Lock acquired at: ${lockResult.existingLock.timestamp}`);
+      if (lockResult.existingLock.sessionId) {
+        log(`Session: ${lockResult.existingLock.sessionId}`);
+      }
+      log("\nTo force remove the lock (if the process is not actually running):");
+      log(`  rm -f ${openagentsDir}/agent.lock`);
+      return { tasksCompleted: 0, sessionId };
+    }
+    if (lockResult.acquired) {
+      log(`Lock acquired (PID ${lockResult.lock.pid})`);
+    } else if (lockResult.reason === "stale_removed") {
+      log(`WARNING: Removed stale lock from PID ${lockResult.removedLock.pid}`);
+      log(`New lock acquired (PID ${lockResult.newLock.pid})`);
+    }
+
     let tasksCompleted = 0;
 
     // Create HUD callbacks for real-time updates to the desktop HUD
@@ -451,6 +471,18 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
       switch (event.type) {
         case "session_start":
           log(`[${ts}] Orchestrator session started: ${event.sessionId}`);
+          break;
+        case "lock_acquired":
+          log(`[${ts}] Lock acquired (PID ${event.pid})`);
+          break;
+        case "lock_stale_removed":
+          log(`[${ts}] Stale lock removed (was PID ${event.stalePid}, now PID ${event.newPid})`);
+          break;
+        case "lock_failed":
+          log(`[${ts}] Lock failed: ${event.reason} (existing PID: ${event.existingPid})`);
+          break;
+        case "lock_released":
+          log(`[${ts}] Lock released`);
           break;
         case "task_selected":
           log(`[${ts}] Task selected: ${event.task.id} - ${event.task.title}`);
@@ -597,6 +629,12 @@ Co-Authored-By: MechaCoder <noreply@openagents.com>`;
       }
     } catch (e) {
       // Ignore commit errors (might be nothing to commit)
+    }
+
+    // Release agent lock
+    const released = releaseLock(openagentsDir);
+    if (released) {
+      console.log("[Cleanup] Agent lock released.");
     }
 
     return { tasksCompleted, sessionId };

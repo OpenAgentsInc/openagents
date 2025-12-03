@@ -360,9 +360,86 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 |----------|----------|
 | No ready tasks | Loop exits cleanly. |
 | Task blocked by dependencies | Skipped. Next ready task selected. |
-| Concurrent modification of tasks.jsonl | **Not fully handled** - single agent per repo assumed in v2. |
+| Concurrent modification of tasks.jsonl | Prevented by agent lock (see Section 4.6.1). |
 
 **Recovery**: Lock file (`.openagents/agent.lock`) prevents overlapping runs.
+
+#### 4.6.1. Agent Lock Enforcement
+
+The orchestrator uses `.openagents/agent.lock` to prevent concurrent runs on the same repository.
+
+**Lock File Format:**
+```
+<PID>
+<ISO-8601-timestamp>
+<optional-session-id>
+```
+
+Example:
+```
+12345
+2025-12-03T10:30:00.000Z
+orchestrator-1733227800123
+```
+
+**Lock Lifecycle:**
+
+1. **Acquisition** (at session start):
+   - If no lock exists → create lock with current PID
+   - If lock exists and PID is running → abort with error
+   - If lock exists but PID is dead (stale) → remove stale lock, create new one
+
+2. **Release** (at session end):
+   - Only the owning process can release the lock
+   - Lock is released on normal exit
+   - Lock remains if process crashes (becomes stale)
+
+**Programmatic API** (`src/agent/orchestrator/agent-lock.ts`):
+
+```typescript
+import { acquireLock, releaseLock, checkLock, forceRemoveLock } from "./orchestrator/agent-lock.js";
+
+// Acquire lock (returns detailed result)
+const result = acquireLock(openagentsDir, sessionId);
+if (!result.acquired && result.reason === "already_running") {
+  console.error(`Agent already running: PID ${result.existingLock.pid}`);
+  process.exit(1);
+}
+
+// Check lock status without modifying
+const status = checkLock(openagentsDir);
+if (status.locked && status.isStale) {
+  console.log("Stale lock detected");
+}
+
+// Release lock (only if we own it)
+releaseLock(openagentsDir);
+
+// Force remove (for manual recovery)
+forceRemoveLock(openagentsDir);
+```
+
+**Manual Recovery:**
+
+```bash
+# Check if lock exists and who owns it
+cat .openagents/agent.lock
+
+# Check if the PID is actually running
+kill -0 <PID> 2>/dev/null && echo "Running" || echo "Not running"
+
+# Force remove stale lock
+rm -f .openagents/agent.lock
+```
+
+**Test Harness:**
+
+Tests for lock behavior are in `src/agent/orchestrator/agent-lock.test.ts`:
+- Lock acquisition when none exists
+- Blocking when lock held by running process
+- Stale lock detection and cleanup
+- Lock release semantics
+- Guard pattern for automatic cleanup
 
 ### 4.7. Init Script Failures
 
