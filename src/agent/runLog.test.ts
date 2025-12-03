@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { appendRunEventSync, sanitizeEvent } from "./runLog.js";
 
@@ -17,7 +18,7 @@ describe("runLog", () => {
   });
 
   test("writes events to JSONL with sanitization", () => {
-    const dir = fs.mkdtempSync(path.join(process.cwd(), "runlog-test-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runlog-test-"));
     const runId = "run-test";
     const event = {
       type: "llm_response" as const,

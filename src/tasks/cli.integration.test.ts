@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 const runCli = (args: string[], targetDir: string) => {
@@ -16,7 +17,7 @@ const runCli = (args: string[], targetDir: string) => {
 
 describe("tasks CLI integration", () => {
   test("init/create/next/update lifecycle", () => {
-    const tmp = fs.mkdtempSync(path.join(process.cwd(), "tasks-cli-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-"));
 
     const init = runCli(["init", "--dir", tmp, "--json"], tmp);
     expect(init.code).toBe(0);
