@@ -14,3 +14,5 @@ export {
   SessionError,
 } from "./session.js";
 export type { Session } from "./session.js";
+export type { AgentTransport, AgentRunConfig, AgentEvent, QueuedMessage } from "./transport.js";
+export { createProviderTransport } from "./transport.js";
