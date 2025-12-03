@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-fb59bb",
+  "taskTitle": "Add pi-mono context compaction/backpressure for long sessions",
+  "subtasks": [
+    {
+      "id": "oa-fb59bb-sub-001",
+      "description": "Add pi-mono context compaction/backpressure for long sessions\n\nPort pi-mono's context compaction/backpressure to MechaCoder session manager so long-running runs trim history intelligently (keep tools/prompts relevant, drop noise) and avoid provider token overruns. Include tests/fixtures mirroring pi-mono behavior.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:22:07.533Z",
+      "claudeCode": {
+        "sessionId": "156999f9-e5e8-42ab-b8f3-4babd14f3e08"
+      },
+      "completedAt": "2025-12-03T15:30:54.056Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:22:07.533Z",
+  "updatedAt": "2025-12-03T15:22:07.533Z"
+}
