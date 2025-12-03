@@ -474,11 +474,12 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     log(`${"#".repeat(60)}\n`);
 
     // Final cleanup commit - commit any remaining progress/log files
+    // Note: Use console.log not log() to avoid writing to the file we're about to commit
     try {
       const { execSync } = require("node:child_process") as typeof import("node:child_process");
       const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
       if (status.trim()) {
-        log("Committing remaining progress files...");
+        console.log("[Cleanup] Committing remaining progress files...");
         execSync("git add -A", { cwd: config.workDir, encoding: "utf-8" });
         const commitMsg = `chore: update progress files and logs
 
@@ -487,7 +488,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 Co-Authored-By: MechaCoder <noreply@openagents.com>`;
         execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: config.workDir, encoding: "utf-8" });
         execSync("git push", { cwd: config.workDir, encoding: "utf-8" });
-        log("Progress files committed and pushed.");
+        console.log("[Cleanup] Progress files committed and pushed.");
       }
     } catch (e) {
       // Ignore commit errors (might be nothing to commit)
