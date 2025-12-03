@@ -53,25 +53,90 @@ export const toolToFunctionDeclaration = (tool: Tool<any>): Record<string, unkno
   };
 };
 
-const mapMessages = (messages: ChatMessage[]) =>
-  messages
-    .filter((m) => m.role !== "tool")
-    .map((m) => ({
-      role: m.role === "user" ? "user" : "model",
-      parts: [{ text: m.content ?? "" }],
-    }));
+const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) =>
+  messages.flatMap((m) => {
+    if (m.role === "user") {
+      if (typeof m.content === "string") {
+        return [{ role: "user", parts: [{ text: m.content }] }];
+      }
+      const parts =
+        m.content?.flatMap((c) => {
+          if (c.type === "text") return [{ text: c.text }];
+          if (c.type === "image" && modelSupportsImages) {
+            return [{ inlineData: { mimeType: c.mimeType, data: c.data } }];
+          }
+          return [];
+        }) ?? [];
+      if (parts.length === 0) return [];
+      return [{ role: "user", parts }];
+    }
 
-const makeRequestBody = (config: GeminiConfigShape, request: ChatRequest) => {
+    if (m.role === "assistant") {
+      const parts: Array<Record<string, unknown>> = [];
+      const toolCalls = (m as any).tool_calls as
+        | Array<{ id: string; name: string; arguments: string }>
+        | undefined;
+      if (toolCalls && toolCalls.length > 0) {
+        for (const call of toolCalls) {
+          parts.push({
+            functionCall: {
+              id: call.id,
+              name: call.name,
+              args: JSON.parse(call.arguments || "{}"),
+            },
+          });
+        }
+      } else if (m.content) {
+        parts.push({ text: m.content as string });
+      }
+      if (parts.length === 0) return [];
+      return [{ role: "model", parts }];
+    }
+
+    if (m.role === "tool") {
+      // Map tool results to functionResponse parts
+      return [
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: m.name ?? "tool",
+                response: { name: m.name ?? "tool", content: m.content },
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    return [];
+  });
+
+export const makeGeminiRequestBody = (config: GeminiConfigShape, request: ChatRequest) => {
   const tools = request.tools?.map(toolToFunctionDeclaration);
+  const model = request.model ?? config.defaultModel;
+  const contents = mapMessages(request.messages, Boolean(model.includes("pro") || model.includes("flash")));
+
+  const generationConfig: Record<string, unknown> = {};
+  if (request.temperature !== undefined) generationConfig.temperature = request.temperature;
+  if (request.maxTokens !== undefined) generationConfig.maxOutputTokens = request.maxTokens;
+
+  const toolConfig =
+    tools && tools.length > 0
+      ? {
+          functionCallingConfig: {
+            mode: "AUTO" as const,
+          },
+        }
+      : undefined;
 
   return {
-    contents: mapMessages(request.messages),
+    model,
+    contents,
     tools: tools ? [{ functionDeclarations: tools }] : undefined,
-    generationConfig: {
-      temperature: request.temperature,
-      maxOutputTokens: request.maxTokens,
-    },
-    model: request.model ?? config.defaultModel,
+    generationConfig: Object.keys(generationConfig).length ? generationConfig : undefined,
+    toolConfig,
   };
 };
 
@@ -80,7 +145,7 @@ const sendGemini = (
   request: ChatRequest,
 ): Effect.Effect<ChatResponse, Error> =>
   Effect.gen(function* () {
-    const body = makeRequestBody(config, request);
+    const body = makeGeminiRequestBody(config, request);
     const url = `${config.baseUrl}/models/${body.model}:generateContent?key=${Secret.value(config.apiKey)}`;
 
     const response = yield* Effect.tryPromise({
@@ -90,11 +155,7 @@ const sendGemini = (
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            contents: body.contents,
-            tools: body.tools,
-            generationConfig: body.generationConfig,
-          }),
+          body: JSON.stringify(body),
         });
 
         if (!res.ok) {
@@ -108,7 +169,7 @@ const sendGemini = (
     });
 
     const candidate = (response as any).candidates?.[0];
-    const textPart = candidate?.content?.parts?.[0]?.text ?? "";
+    const textPart = candidate?.content?.parts?.find((p: any) => p.text)?.text ?? "";
 
     return {
       id: (response as any).id ?? "",
