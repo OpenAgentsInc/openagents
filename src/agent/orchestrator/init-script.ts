@@ -1,7 +1,78 @@
 import { Effect } from "effect";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { getInitScriptPath, type InitScriptResult, type OrchestratorEvent } from "./types.js";
+import { getInitScriptPath, type InitScriptResult, type InitScriptFailureType, type OrchestratorEvent } from "./types.js";
+
+/**
+ * Detect the type of failure from init script output.
+ * This enables safe mode to determine the appropriate recovery strategy.
+ */
+export const detectFailureType = (output: string): { type: InitScriptFailureType; canSelfHeal: boolean } => {
+  const lowerOutput = output.toLowerCase();
+
+  // TypeScript/type errors - can self-heal by spawning Claude Code to fix
+  if (
+    lowerOutput.includes("ts") && (
+      lowerOutput.includes("error") ||
+      lowerOutput.includes("type")
+    ) ||
+    lowerOutput.includes("typecheck") ||
+    lowerOutput.includes("tsc") ||
+    /\bts\d{4,5}\b/i.test(output) || // TS error codes like TS2322
+    lowerOutput.includes("cannot find name") ||
+    lowerOutput.includes("property .* does not exist") ||
+    lowerOutput.includes("argument of type")
+  ) {
+    return { type: "typecheck_failed", canSelfHeal: true };
+  }
+
+  // Test failures - can attempt to fix
+  if (
+    lowerOutput.includes("test failed") ||
+    lowerOutput.includes("tests failed") ||
+    lowerOutput.includes("test failure") ||
+    lowerOutput.includes("assertion") ||
+    lowerOutput.includes("expect(") ||
+    (lowerOutput.includes("fail") && (lowerOutput.includes("test") || lowerOutput.includes("spec")))
+  ) {
+    return { type: "test_failed", canSelfHeal: true };
+  }
+
+  // Network errors - can continue in offline/degraded mode
+  if (
+    lowerOutput.includes("network") ||
+    lowerOutput.includes("enotfound") ||
+    lowerOutput.includes("econnrefused") ||
+    lowerOutput.includes("etimedout") ||
+    lowerOutput.includes("unable to connect") ||
+    lowerOutput.includes("could not resolve")
+  ) {
+    return { type: "network_error", canSelfHeal: false };
+  }
+
+  // Disk full - cannot self-heal
+  if (
+    lowerOutput.includes("no space left") ||
+    lowerOutput.includes("disk full") ||
+    lowerOutput.includes("enospc") ||
+    lowerOutput.includes("quota exceeded")
+  ) {
+    return { type: "disk_full", canSelfHeal: false };
+  }
+
+  // Permission errors - cannot self-heal
+  if (
+    lowerOutput.includes("permission denied") ||
+    lowerOutput.includes("eacces") ||
+    lowerOutput.includes("eperm") ||
+    lowerOutput.includes("operation not permitted")
+  ) {
+    return { type: "permission_denied", canSelfHeal: false };
+  }
+
+  // Unknown error - fallback
+  return { type: "unknown", canSelfHeal: false };
+};
 
 /**
  * Run `.openagents/init.sh` at session start to verify the workspace.
@@ -52,6 +123,11 @@ export const runInitScript = (
 
     const errorMessage = proc.error?.message || (exitCode === 1 ? "Preflight check failed (exit 1)" : undefined);
 
+    // Detect failure type for safe mode recovery
+    const { type: failureType, canSelfHeal } = !success && output
+      ? detectFailureType(output)
+      : { type: "unknown" as InitScriptFailureType, canSelfHeal: false };
+
     const result: InitScriptResult = {
       ran: true,
       success,
@@ -60,6 +136,7 @@ export const runInitScript = (
       output,
       durationMs,
       ...(errorMessage !== undefined && { error: errorMessage }),
+      ...(!success && { failureType, canSelfHeal }),
     };
 
     emit({ type: "init_script_complete", result });

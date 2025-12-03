@@ -194,6 +194,10 @@ export interface OrchestratorConfig {
   signal?: AbortSignal;
   /** Callback for streaming text output from Claude Code */
   onOutput?: (text: string) => void;
+  /** Enable self-healing for init script failures (typecheck, etc.) */
+  safeMode?: boolean;
+  /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
+  additionalContext?: string;
 }
 
 export interface OrchestratorState {
