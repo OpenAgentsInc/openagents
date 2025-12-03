@@ -410,6 +410,13 @@ Add to `.openagents/project.json`:
 }
 ```
 
+**claudeCode fields**
+- `enabled` (default `true`): allow Claude Code at all.
+- `preferForComplexTasks` (default `true`): only route complex subtasks to Claude Code; when `false`, use Claude Code for all tasks.
+- `maxTurnsPerSubtask` (default `30`): maximum turns before the subagent stops.
+- `permissionMode` (default `"bypassPermissions"`): Claude Code permission behavior (`default`, `acceptEdits`, `bypassPermissions`, `plan`, `dontAsk`).
+- `fallbackToMinimal` (default `true`): if Claude Code fails, run the minimal subagent instead.
+
 ## Implementation Tasks
 
 Create these tasks in `.openagents/tasks.jsonl`:
