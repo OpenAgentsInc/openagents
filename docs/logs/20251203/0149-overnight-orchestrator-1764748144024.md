@@ -62,3 +62,7 @@ Started: 2025-12-03T07:49:04.025Z
 [2025-12-03T07:55:39.146Z] [2025-12-03T07:55:39.146Z] PASS: bun run typecheck
 [2025-12-03T07:55:39.151Z] [2025-12-03T07:55:39.151Z] Task selected: oa-8067e5 - Epic: WebSocket Streaming for MechaCoder HUD UI
 [2025-12-03T07:55:39.152Z] [2025-12-03T07:55:39.152Z] Subtask started: oa-8067e5-sub-001
+[2025-12-03T08:00:39.178Z] [2025-12-03T08:00:39.178Z] Subtask FAILED: oa-8067e5-sub-001 - Claude Code timed out after 300000ms
+[2025-12-03T08:00:39.179Z] 
+✗ Task failed: Claude Code timed out after 300000ms
+[2025-12-03T08:00:39.201Z] [Cycle cleanup] Committing pending changes...
