@@ -21,7 +21,17 @@ import {
   parseLockFile,
   formatLockFile,
   isPidRunning,
+  // Worktree lock functions
+  acquireWorktreeLock,
+  releaseWorktreeLock,
+  listWorktreeLocks,
+  pruneWorktreeLocks,
+  createWorktreeLockGuard,
+  getLocksDir,
+  getWorktreeLockPath,
+  readWorktreeLock,
   type AgentLock,
+  type WorktreeLock,
 } from "./agent-lock.js";
 
 describe("agent-lock", () => {
@@ -309,6 +319,233 @@ describe("agent-lock", () => {
   describe("getLockPath", () => {
     test("returns correct path", () => {
       expect(getLockPath("/path/to/.openagents")).toBe("/path/to/.openagents/agent.lock");
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Worktree Lock Tests (Parallel Mode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("worktree-locks", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktree-lock-test-"));
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
+
+  describe("getLocksDir", () => {
+    test("returns correct path", () => {
+      expect(getLocksDir("/path/.openagents")).toBe("/path/.openagents/locks");
+    });
+  });
+
+  describe("getWorktreeLockPath", () => {
+    test("returns correct path", () => {
+      expect(getWorktreeLockPath("/path/.openagents", "oa-abc123")).toBe(
+        "/path/.openagents/locks/oa-abc123.lock",
+      );
+    });
+  });
+
+  describe("acquireWorktreeLock", () => {
+    test("acquires lock when none exists", () => {
+      const acquired = acquireWorktreeLock(testDir, "oa-task1", "session-1");
+
+      expect(acquired).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(true);
+    });
+
+    test("fails when lock is held by running process", () => {
+      // First acquisition
+      expect(acquireWorktreeLock(testDir, "oa-task1", "session-1")).toBe(true);
+
+      // Second acquisition should fail
+      expect(acquireWorktreeLock(testDir, "oa-task1", "session-2")).toBe(false);
+    });
+
+    test("allows different worktrees to be locked simultaneously", () => {
+      expect(acquireWorktreeLock(testDir, "oa-task1", "session-1")).toBe(true);
+      expect(acquireWorktreeLock(testDir, "oa-task2", "session-2")).toBe(true);
+      expect(acquireWorktreeLock(testDir, "oa-task3", "session-3")).toBe(true);
+
+      // All three locks should exist
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task2"))).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task3"))).toBe(true);
+    });
+
+    test("removes stale lock and acquires new one", () => {
+      // Create a stale lock with non-existent PID
+      const locksDir = getLocksDir(testDir);
+      fs.mkdirSync(locksDir, { recursive: true });
+      fs.writeFileSync(
+        getWorktreeLockPath(testDir, "oa-task1"),
+        "999999999\n2025-01-01T00:00:00.000Z\nstale-session",
+        "utf-8",
+      );
+
+      // Should succeed after removing stale
+      expect(acquireWorktreeLock(testDir, "oa-task1", "new-session")).toBe(true);
+
+      const lock = readWorktreeLock(testDir, "oa-task1");
+      expect(lock?.pid).toBe(process.pid);
+      expect(lock?.sessionId).toBe("new-session");
+    });
+
+    test("creates locks directory if it doesn't exist", () => {
+      const locksDir = getLocksDir(testDir);
+      expect(fs.existsSync(locksDir)).toBe(false);
+
+      acquireWorktreeLock(testDir, "oa-task1", "session-1");
+
+      expect(fs.existsSync(locksDir)).toBe(true);
+    });
+  });
+
+  describe("releaseWorktreeLock", () => {
+    test("releases lock owned by current process", () => {
+      acquireWorktreeLock(testDir, "oa-task1", "session-1");
+      const released = releaseWorktreeLock(testDir, "oa-task1");
+
+      expect(released).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(false);
+    });
+
+    test("returns false when no lock exists", () => {
+      expect(releaseWorktreeLock(testDir, "oa-nonexistent")).toBe(false);
+    });
+
+    test("returns false when lock owned by different PID", () => {
+      // Create lock with different PID
+      const locksDir = getLocksDir(testDir);
+      fs.mkdirSync(locksDir, { recursive: true });
+      fs.writeFileSync(
+        getWorktreeLockPath(testDir, "oa-task1"),
+        "999999999\n2025-01-01T00:00:00.000Z\nother",
+        "utf-8",
+      );
+
+      expect(releaseWorktreeLock(testDir, "oa-task1")).toBe(false);
+      // Lock should still exist
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(true);
+    });
+  });
+
+  describe("listWorktreeLocks", () => {
+    test("returns empty array when no locks exist", () => {
+      expect(listWorktreeLocks(testDir)).toEqual([]);
+    });
+
+    test("returns active locks only", () => {
+      // Create active locks
+      acquireWorktreeLock(testDir, "oa-task1", "session-1");
+      acquireWorktreeLock(testDir, "oa-task2", "session-2");
+
+      // Create a stale lock
+      fs.writeFileSync(
+        getWorktreeLockPath(testDir, "oa-stale"),
+        "999999999\n2025-01-01T00:00:00.000Z\nstale",
+        "utf-8",
+      );
+
+      const locks = listWorktreeLocks(testDir);
+
+      expect(locks.length).toBe(2);
+      expect(locks.map((l) => l.worktreeId).sort()).toEqual(["oa-task1", "oa-task2"]);
+    });
+  });
+
+  describe("pruneWorktreeLocks", () => {
+    test("removes stale locks", () => {
+      const locksDir = getLocksDir(testDir);
+      fs.mkdirSync(locksDir, { recursive: true });
+
+      // Create stale locks
+      fs.writeFileSync(
+        getWorktreeLockPath(testDir, "oa-stale1"),
+        "999999998\n2025-01-01T00:00:00.000Z\nstale1",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        getWorktreeLockPath(testDir, "oa-stale2"),
+        "999999997\n2025-01-01T00:00:00.000Z\nstale2",
+        "utf-8",
+      );
+
+      // Create active lock
+      acquireWorktreeLock(testDir, "oa-active", "active-session");
+
+      const removed = pruneWorktreeLocks(testDir);
+
+      expect(removed).toBe(2);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-stale1"))).toBe(false);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-stale2"))).toBe(false);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-active"))).toBe(true);
+    });
+
+    test("returns 0 when no locks exist", () => {
+      expect(pruneWorktreeLocks(testDir)).toBe(0);
+    });
+  });
+
+  describe("readWorktreeLock", () => {
+    test("returns null when lock doesn't exist", () => {
+      expect(readWorktreeLock(testDir, "oa-nonexistent")).toBeNull();
+    });
+
+    test("returns lock info when lock exists", () => {
+      acquireWorktreeLock(testDir, "oa-task1", "session-123");
+      const lock = readWorktreeLock(testDir, "oa-task1");
+
+      expect(lock).not.toBeNull();
+      expect(lock?.worktreeId).toBe("oa-task1");
+      expect(lock?.pid).toBe(process.pid);
+      expect(lock?.sessionId).toBe("session-123");
+    });
+  });
+
+  describe("createWorktreeLockGuard", () => {
+    test("creates guard that can be released", () => {
+      const guard = createWorktreeLockGuard(testDir, "oa-task1", "session-1");
+
+      expect(guard.acquired).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(true);
+
+      const released = guard.release();
+      expect(released).toBe(true);
+      expect(fs.existsSync(getWorktreeLockPath(testDir, "oa-task1"))).toBe(false);
+    });
+
+    test("guard reports not acquired when lock held", () => {
+      acquireWorktreeLock(testDir, "oa-task1", "existing");
+
+      const guard = createWorktreeLockGuard(testDir, "oa-task1", "new");
+      expect(guard.acquired).toBe(false);
+    });
+
+    test("multiple guards for different worktrees", () => {
+      const guard1 = createWorktreeLockGuard(testDir, "oa-task1", "session-1");
+      const guard2 = createWorktreeLockGuard(testDir, "oa-task2", "session-2");
+      const guard3 = createWorktreeLockGuard(testDir, "oa-task3", "session-3");
+
+      expect(guard1.acquired).toBe(true);
+      expect(guard2.acquired).toBe(true);
+      expect(guard3.acquired).toBe(true);
+
+      guard1.release();
+      guard2.release();
+      guard3.release();
+
+      expect(listWorktreeLocks(testDir)).toEqual([]);
     });
   });
 });
