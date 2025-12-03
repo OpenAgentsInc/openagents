@@ -1,0 +1,229 @@
+/**
+ * HUD WebSocket Protocol Types
+ *
+ * Defines the message types exchanged between the agent process
+ * and the Electrobun HUD UI over WebSocket.
+ *
+ * Architecture:
+ * - Agent process (overnight.ts) -> WebSocket CLIENT (HudClient)
+ * - Electrobun mainview -> WebSocket SERVER (port 4242)
+ *
+ * The agent pushes events; the HUD receives and renders them.
+ */
+
+// ============================================================================
+// Orchestrator Events (mirroring types from orchestrator/types.ts)
+// ============================================================================
+
+import type { OrchestratorPhase, SubtaskStatus } from "../agent/orchestrator/types.js";
+
+export interface HudTaskInfo {
+  id: string;
+  title: string;
+  status: string;
+  priority: number;
+}
+
+export interface HudSubtaskInfo {
+  id: string;
+  description: string;
+  status: SubtaskStatus;
+}
+
+export interface HudSubagentResult {
+  success: boolean;
+  agent?: "claude-code" | "minimal";
+  filesModified: string[];
+  turns: number;
+  error?: string;
+}
+
+// ============================================================================
+// HUD Message Types
+// ============================================================================
+
+/**
+ * Session lifecycle events
+ */
+export interface SessionStartMessage {
+  type: "session_start";
+  sessionId: string;
+  timestamp: string;
+}
+
+export interface SessionCompleteMessage {
+  type: "session_complete";
+  success: boolean;
+  summary: string;
+}
+
+/**
+ * Task flow events
+ */
+export interface TaskSelectedMessage {
+  type: "task_selected";
+  task: HudTaskInfo;
+}
+
+export interface TaskDecomposedMessage {
+  type: "task_decomposed";
+  subtasks: HudSubtaskInfo[];
+}
+
+export interface SubtaskStartMessage {
+  type: "subtask_start";
+  subtask: HudSubtaskInfo;
+}
+
+export interface SubtaskCompleteMessage {
+  type: "subtask_complete";
+  subtask: HudSubtaskInfo;
+  result: HudSubagentResult;
+}
+
+export interface SubtaskFailedMessage {
+  type: "subtask_failed";
+  subtask: HudSubtaskInfo;
+  error: string;
+}
+
+/**
+ * Verification events
+ */
+export interface VerificationStartMessage {
+  type: "verification_start";
+  command: string;
+}
+
+export interface VerificationCompleteMessage {
+  type: "verification_complete";
+  command: string;
+  passed: boolean;
+  output?: string;
+}
+
+/**
+ * Git events
+ */
+export interface CommitCreatedMessage {
+  type: "commit_created";
+  sha: string;
+  message: string;
+}
+
+export interface PushCompleteMessage {
+  type: "push_complete";
+  branch: string;
+}
+
+/**
+ * Phase change
+ */
+export interface PhaseChangeMessage {
+  type: "phase_change";
+  phase: OrchestratorPhase;
+}
+
+/**
+ * Error events
+ */
+export interface ErrorMessage {
+  type: "error";
+  phase: OrchestratorPhase;
+  error: string;
+}
+
+// ============================================================================
+// Streaming Output Events
+// ============================================================================
+
+/**
+ * Text output from Claude Code (streaming)
+ */
+export interface TextOutputMessage {
+  type: "text_output";
+  text: string;
+  /** Optional source identifier */
+  source?: "claude-code" | "minimal" | "orchestrator";
+}
+
+/**
+ * Tool call JSON from Claude Code
+ */
+export interface ToolCallMessage {
+  type: "tool_call";
+  toolName: string;
+  /** Stringified JSON arguments */
+  arguments: string;
+  /** Tool call ID for correlation */
+  callId?: string;
+}
+
+/**
+ * Tool result from Claude Code
+ */
+export interface ToolResultMessage {
+  type: "tool_result";
+  toolName: string;
+  /** Stringified JSON result */
+  result: string;
+  /** Whether the tool call errored */
+  isError: boolean;
+  /** Tool call ID for correlation */
+  callId?: string;
+}
+
+// ============================================================================
+// Union Type for All Messages
+// ============================================================================
+
+export type HudMessage =
+  | SessionStartMessage
+  | SessionCompleteMessage
+  | TaskSelectedMessage
+  | TaskDecomposedMessage
+  | SubtaskStartMessage
+  | SubtaskCompleteMessage
+  | SubtaskFailedMessage
+  | VerificationStartMessage
+  | VerificationCompleteMessage
+  | CommitCreatedMessage
+  | PushCompleteMessage
+  | PhaseChangeMessage
+  | ErrorMessage
+  | TextOutputMessage
+  | ToolCallMessage
+  | ToolResultMessage;
+
+// ============================================================================
+// Protocol Constants
+// ============================================================================
+
+/** Default WebSocket port for HUD server */
+export const HUD_WS_PORT = 4242;
+
+/** Default WebSocket URL */
+export const HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}`;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+export const isHudMessage = (data: unknown): data is HudMessage => {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return typeof obj.type === "string";
+};
+
+export const serializeHudMessage = (msg: HudMessage): string =>
+  JSON.stringify(msg);
+
+export const parseHudMessage = (data: string): HudMessage | null => {
+  try {
+    const parsed = JSON.parse(data);
+    if (isHudMessage(parsed)) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+};
