@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Headed mode options (via env vars)
+const headed = !!process.env.HEADED;
+const slowMo = process.env.SLOWMO ? parseInt(process.env.SLOWMO, 10) : 0;
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -13,6 +17,10 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    headless: !headed,
+    launchOptions: {
+      slowMo,
+    },
   },
 
   projects: [
