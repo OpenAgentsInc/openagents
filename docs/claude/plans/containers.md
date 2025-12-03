@@ -820,16 +820,79 @@ async function detectSandboxBackend(): Promise<SandboxBackend> {
 
 ---
 
-## Next Steps
+## Implementation Status
 
-1. [ ] Install Apple Container on your macOS 26 system
-2. [ ] Verify `container run` works with a test image
-3. [ ] Create `Containerfile` for MechaCoder
-4. [ ] Build `mechacoder:latest` image
-5. [ ] Implement `src/sandbox/apple-container.ts`
-6. [ ] Add sandbox config to `ProjectConfig` schema
-7. [ ] Test full agent loop in container
-8. [ ] Address network access for LLM APIs
+### Completed (2025-12-03)
+
+**Epic:** `oa-3ceacd` - Container sandbox abstraction for MechaCoder
+
+The following sandbox abstraction layer has been implemented:
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `src/sandbox/schema.ts` | ContainerConfig schema, ContainerError, ContainerRunResult types | ✅ Done |
+| `src/sandbox/backend.ts` | ContainerBackend interface and ContainerBackendTag (Effect Context.Tag) | ✅ Done |
+| `src/sandbox/macos-container.ts` | Apple Container CLI backend implementation | ✅ Done |
+| `src/sandbox/detect.ts` | Auto-detection logic with noop fallback | ✅ Done |
+| `src/sandbox/index.ts` | Public API exports | ✅ Done |
+| `src/sandbox/macos-container.test.ts` | Tests for macOS Container backend | ✅ Done |
+| `src/tasks/schema.ts` | SandboxConfig added to ProjectConfig | ✅ Done |
+
+### Architecture
+
+```
+src/sandbox/
+├── schema.ts          # ContainerConfig, ContainerError, ContainerRunResult
+├── backend.ts         # ContainerBackend interface + ContainerBackendTag
+├── macos-container.ts # Apple Container CLI implementation
+├── detect.ts          # Auto-detect best backend (macOS Container → noop)
+└── index.ts           # Public API (runInContainer, buildImage, isContainerAvailable)
+```
+
+### Usage
+
+```typescript
+import { Effect } from "effect";
+import { runInContainer, autoDetectLayer } from "./sandbox/index.js";
+
+const program = Effect.gen(function* () {
+  const result = yield* runInContainer(
+    ["bun", "test"],
+    {
+      image: "mechacoder:latest",
+      workspaceDir: "/path/to/project",
+      memoryLimit: "4G",
+    }
+  );
+  return result;
+});
+
+// Run with auto-detected backend
+Effect.runPromise(program.pipe(Effect.provide(autoDetectLayer)));
+```
+
+### ProjectConfig Sandbox Settings
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "backend": "auto",
+    "image": "mechacoder:latest",
+    "memoryLimit": "4G",
+    "cpuLimit": 2,
+    "timeoutMs": 300000
+  }
+}
+```
+
+### Remaining Work
+
+- [ ] Integrate sandbox execution into MechaCoder Golden Loop
+- [ ] Create `Containerfile` for MechaCoder image
+- [ ] Add Docker backend (for users without macOS 26)
+- [ ] Add Seatbelt backend (for macOS 12-15)
+- [ ] Add network policy support when Apple Container supports it
 
 ---
 

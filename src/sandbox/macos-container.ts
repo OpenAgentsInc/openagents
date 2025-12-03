@@ -1,3 +1,4 @@
+import * as BunContext from "@effect/platform-bun/BunContext";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { Effect, Layer, Stream } from "effect";
@@ -231,8 +232,8 @@ export const macOSContainerLayer = Layer.effect(
   makeMacOSContainerBackend,
 );
 
-/** Layer with CommandExecutor dependency provided (for standalone use) */
+/** Layer with BunContext dependency provided (for standalone use) */
 export const macOSContainerLive = Layer.provide(
   macOSContainerLayer,
-  CommandExecutor.layer,
+  BunContext.layer,
 );
