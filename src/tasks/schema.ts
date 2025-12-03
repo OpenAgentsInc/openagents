@@ -110,6 +110,9 @@ export const ProjectConfig = S.Struct({
   defaultBranch: S.optionalWith(S.String, { default: () => "main" }),
   defaultModel: S.optionalWith(S.String, { default: () => "x-ai/grok-4.1-fast" }),
   rootDir: S.optionalWith(S.String, { default: () => "." }),
+  typecheckCommands: S.optionalWith(S.Array(S.String), {
+    default: () => [] as string[],
+  }),
   testCommands: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   e2eCommands: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   allowPush: S.optionalWith(S.Boolean, { default: () => true }),

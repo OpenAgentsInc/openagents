@@ -51,6 +51,7 @@ describe("ProjectService", () => {
 
     expect(result.loaded?.projectId).toBe("openagents");
     expect(result.loaded?.defaultBranch).toBe("main");
+    expect(result.loaded?.typecheckCommands).toEqual([]);
     expect(result.loaded?.allowPush).toBe(true);
     expect(result.raw).toContain("\"projectId\": \"openagents\"");
   });
@@ -62,6 +63,7 @@ describe("ProjectService", () => {
         yield* saveProjectConfig(dir, {
           ...defaultProjectConfig("custom"),
           defaultBranch: "develop",
+          typecheckCommands: ["bun run typecheck"],
           testCommands: ["bun test"],
           allowPush: false,
         });
@@ -71,6 +73,7 @@ describe("ProjectService", () => {
     );
 
     expect(config?.defaultBranch).toBe("develop");
+    expect(config?.typecheckCommands).toEqual(["bun run typecheck"]);
     expect(config?.testCommands).toEqual(["bun test"]);
     expect(config?.allowPush).toBe(false);
   });

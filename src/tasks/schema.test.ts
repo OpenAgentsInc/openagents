@@ -171,6 +171,7 @@ describe("ProjectConfig", () => {
     expect(config.version).toBe(1);
     expect(config.defaultBranch).toBe("main");
     expect(config.defaultModel).toBe("x-ai/grok-4.1-fast");
+    expect(config.typecheckCommands).toEqual([]);
     expect(config.allowPush).toBe(true);
     expect(config.allowForcePush).toBe(false);
     expect(config.idPrefix).toBe("oa");
@@ -185,6 +186,7 @@ describe("ProjectConfig", () => {
       projectId: "openagents",
       version: 1,
       defaultBranch: "develop",
+      typecheckCommands: ["bun run typecheck"],
       testCommands: ["bun test"],
       e2eCommands: ["bun test:e2e"],
       maxTasksPerRun: 5,
@@ -202,6 +204,7 @@ describe("ProjectConfig", () => {
       },
     });
     expect(config.defaultBranch).toBe("develop");
+    expect(config.typecheckCommands).toEqual(["bun run typecheck"]);
     expect(config.testCommands).toEqual(["bun test"]);
     expect(config.maxTasksPerRun).toBe(5);
     expect(config.idPrefix).toBe("openagents");
