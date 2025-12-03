@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
   closeTask,
+  reopenTask,
   createTask,
   listTasks,
   pickNextTask,
@@ -448,5 +449,96 @@ describe("Archive functionality", () => {
     expect(result.archived).toHaveLength(2);
     expect(result.archived.map((t) => t.id)).toContain(result.first.id);
     expect(result.archived.map((t) => t.id)).toContain(result.second.id);
+  });
+
+  test("reopenTask sets closed task back to open", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+
+        // Create and close a task
+        const task = yield* createTask({
+          tasksPath,
+          task: makeTask("To be closed"),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+        const closed = yield* closeTask({
+          tasksPath,
+          id: task.id,
+          reason: "Initial close",
+          commits: ["abc123"],
+          timestamp: new Date("2025-01-01T01:00:00Z"),
+        });
+
+        // Reopen the task
+        const reopened = yield* reopenTask({
+          tasksPath,
+          id: task.id,
+          timestamp: new Date("2025-01-01T02:00:00Z"),
+        });
+
+        const tasks = yield* readTasks(tasksPath);
+        const taskAfter = tasks.find((t) => t.id === task.id);
+
+        return { closed, reopened, taskAfter };
+      }),
+    );
+
+    expect(result.closed.status).toBe("closed");
+    expect(result.closed.closeReason).toBe("Initial close");
+    expect(result.closed.closedAt).toBe("2025-01-01T01:00:00.000Z");
+
+    expect(result.reopened.status).toBe("open");
+    expect(result.reopened.closeReason).toBeUndefined();
+    expect(result.reopened.closedAt).toBeNull();
+    expect(result.reopened.updatedAt).toBe("2025-01-01T02:00:00.000Z");
+    // Commits should be preserved
+    expect(result.reopened.commits).toEqual(["abc123"]);
+
+    expect(result.taskAfter?.status).toBe("open");
+  });
+
+  test("reopenTask fails on non-existent task", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+
+        return yield* reopenTask({
+          tasksPath,
+          id: "oa-nonexistent",
+        }).pipe(
+          Effect.map(() => ({ success: true, error: null })),
+          Effect.catchAll((e) => Effect.succeed({ success: false, error: e })),
+        );
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.reason).toBe("not_found");
+  });
+
+  test("reopenTask fails on non-closed task", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+
+        // Create an open task
+        const task = yield* createTask({
+          tasksPath,
+          task: makeTask("Open task"),
+        });
+
+        return yield* reopenTask({
+          tasksPath,
+          id: task.id,
+        }).pipe(
+          Effect.map(() => ({ success: true, error: null })),
+          Effect.catchAll((e) => Effect.succeed({ success: false, error: e })),
+        );
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.reason).toBe("conflict");
   });
 });
