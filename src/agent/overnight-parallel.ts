@@ -331,6 +331,9 @@ const runAgentInWorktree = async (
     ? { enabled: true, preferForComplexTasks: false, fallbackToMinimal: false }
     : projectConfig.claudeCode;
 
+  // Buffer for aggregating streamed tokens until newline
+  let outputBuffer = "";
+
   const orchestratorConfig = {
     cwd: slot.worktree.path,
     openagentsDir: worktreeOpenagentsDir,
@@ -344,16 +347,24 @@ const runAgentInWorktree = async (
     taskId: slot.task.id,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
-    // Stream Claude Code output when verbose
-    onOutput: verbose
-      ? (text: string) => {
-          // Stream CC output line by line with agent prefix
-          const lines = text.split("\n").filter((l) => l.trim());
-          for (const line of lines) {
-            process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
-          }
+    // Stream Claude Code output when verbose (spread to avoid undefined with exactOptionalPropertyTypes)
+    ...(verbose
+      ? {
+          onOutput: (text: string) => {
+            // Aggregate tokens until we have complete lines
+            outputBuffer += text;
+            const lines = outputBuffer.split("\n");
+            // Keep the last incomplete line in buffer
+            outputBuffer = lines.pop() || "";
+            // Print complete lines with agent prefix
+            for (const line of lines) {
+              if (line.trim()) {
+                process.stdout.write(`${prefix} ${line}\n`);
+              }
+            }
+          },
         }
-      : undefined,
+      : {}),
   };
 
   // Merge layers
