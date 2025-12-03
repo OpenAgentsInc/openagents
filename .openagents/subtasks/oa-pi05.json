@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-pi05",
+  "taskTitle": "Add session branching for retry-from-checkpoint",
+  "subtasks": [
+    {
+      "id": "oa-pi05-sub-001",
+      "description": "Add session branching for retry-from-checkpoint\n\nPort pi-mono's session branching: createBranchedSession(state, branchFromIndex). Enable 'what if' explorations and rollback to clean states. Useful for MechaCoder retries after failed verification. Update SessionManager to support non-linear history.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:43:35.313Z",
+      "claudeCode": {
+        "sessionId": "93c74717-07c8-4b11-a381-27df92548c25"
+      },
+      "completedAt": "2025-12-03T15:46:07.223Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:43:35.312Z",
+  "updatedAt": "2025-12-03T15:43:35.312Z"
+}
