@@ -12,6 +12,21 @@ export { ContainerBackendTag, type ContainerBackend } from "./backend.js";
 export { macOSContainerLayer, macOSContainerLive } from "./macos-container.js";
 export { detectBackend, autoDetectLayer } from "./detect.js";
 
+// Re-export bootstrap utilities
+export {
+  checkStatus,
+  bootstrap,
+  downloadInstaller,
+  installFromPkg,
+  installSilent,
+  startSystem,
+  stopSystem,
+  runBootstrap,
+  runCheckStatus,
+  type BootstrapStatus,
+  type BootstrapResult,
+} from "./bootstrap.js";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Convenience Functions
 // ─────────────────────────────────────────────────────────────────────────────
