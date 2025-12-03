@@ -9,3 +9,4 @@ export * from "./models.js";
 export * from "./model-selector.js";
 export * from "./api-key.js";
 export * from "./custom-providers.js";
+export * from "./oauth.js";
