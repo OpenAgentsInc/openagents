@@ -145,6 +145,7 @@ Guidelines:
 - Avoid `git commit --amend` unless (1) user requested it or (2) fixing pre-commit hook changes
 - Before amending: check authorship with `git log -1 --format='%an %ae'`
 - NEVER use `-i` flag (interactive mode not supported)
+- NEVER use `git stash` when confused about branch state or conflicts - **multiple agents may be working simultaneously**. If in doubt about uncommitted changes, branches, or conflicts, **STOP and request clarification** from the user instead of stashing
 
 > **Exception – MechaCoder:**  
 > The MechaCoder autonomous agent is allowed to commit and push changes **without explicit user confirmation** as long as it:
