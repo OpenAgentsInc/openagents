@@ -8,8 +8,15 @@ import {
   type PermissionMode,
   type McpServerConfig,
   type SDKAssistantMessageError,
+  type HookCallback,
+  type HookCallbackMatcher,
 } from "@anthropic-ai/claude-agent-sdk";
-import { type SubagentResult, type Subtask, type ClaudeCodePermissionMode } from "./types.js";
+import {
+  type SubagentResult,
+  type Subtask,
+  type ClaudeCodePermissionMode,
+  type OrchestratorEvent,
+} from "./types.js";
 
 type QueryFn = (input: unknown) => AsyncIterable<any>;
 
@@ -31,6 +38,11 @@ export interface ClaudeCodeSubagentOptions {
   mcpServers?: Record<string, unknown>;
   signal?: AbortSignal;
   timeoutMs?: number;
+  onEvent?: (event: OrchestratorEvent) => void;
+  /** Resume a prior Claude Code session if available */
+  resumeSessionId?: string;
+  /** Fork the resumed session to a new branch */
+  forkSession?: boolean;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -157,6 +169,49 @@ const calculateBackoffDelay = (
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Create SDK hooks for observability and event emission
+ *
+ * NOTE: Hooks are for side effects (logging, events) only.
+ * Tool/file tracking is done via message parsing for consistency across real SDK and test mocks.
+ */
+const createClaudeCodeHooks = (
+  onEvent?: (event: OrchestratorEvent) => void
+): Partial<Record<string, HookCallbackMatcher[]>> => {
+  const postToolUseHook: HookCallback = async (input) => {
+    if (input.hook_event_name === "PostToolUse") {
+      // Emit event if callback provided
+      if (onEvent) {
+        onEvent({
+          type: "subtask_tool_use",
+          toolName: input.tool_name,
+          input: input.tool_input,
+        } as any); // Cast to any since this event type doesn't exist yet
+      }
+    }
+    return { continue: true };
+  };
+
+  const sessionEndHook: HookCallback = async (input) => {
+    if (input.hook_event_name === "SessionEnd") {
+      // Emit event if callback provided
+      if (onEvent) {
+        onEvent({
+          type: "claude_code_session_end",
+          reason: input.reason,
+          sessionId: input.session_id,
+        } as any); // Cast to any since this event type doesn't exist yet
+      }
+    }
+    return { continue: true };
+  };
+
+  return {
+    PostToolUse: [{ hooks: [postToolUseHook] }],
+    SessionEnd: [{ hooks: [sessionEndHook] }],
+  };
+};
+
+/**
  * Run a subtask using Claude Code Agent SDK's query() streaming API with retry logic.
  * Implements:
  * - Exponential backoff for rate limits
@@ -181,6 +236,7 @@ export const runClaudeCodeSubagent = async (
   let lastErrorType: SDKAssistantMessageError | string | undefined;
   let totalCostUsd: number | undefined;
   let usage: any | undefined;
+  let sessionId: string | undefined = options.resumeSessionId;
 
   const mcpServers: Record<string, McpServerConfig> =
     (options.mcpServers as Record<string, McpServerConfig> | undefined) ??
@@ -196,6 +252,9 @@ export const runClaudeCodeSubagent = async (
   let retryAttempt = 0;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  // Create hooks for observability and event emission
+  const hooks = createClaudeCodeHooks(options.onEvent);
+
   // Retry loop for rate limits and server errors
   while (retryAttempt <= retryConfig.maxRetries) {
     const { controller, getAbortReason, cleanup } = createAbortController(options.signal, timeoutMs);
@@ -208,12 +267,17 @@ export const runClaudeCodeSubagent = async (
           ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
           maxTurns: options.maxTurns ?? 30,
           ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+          ...(options.resumeSessionId ? { resume: options.resumeSessionId } : {}),
+          ...(options.forkSession ? { forkSession: true } : {}),
           mcpServers,
           allowedTools,
           abortController: controller,
+          hooks,
         },
       })) {
-        // Track tool calls
+        // Track tool calls from messages
+        // NOTE: Hooks provide event emission, but message parsing tracks usage/files
+        // for consistency across real SDK and test mocks
         if (isToolCallMessage(message) && message.tool_calls) {
           for (const call of message.tool_calls) {
             const name = call?.name;
@@ -234,6 +298,12 @@ export const runClaudeCodeSubagent = async (
           if (content.length > 0 && content.length < 500) {
             assistantMessages.push(content);
           }
+        }
+
+        // Capture session IDs for resumption
+        const messageSessionId = (message as any)?.session_id;
+        if (typeof messageSessionId === "string") {
+          sessionId = messageSessionId;
         }
 
         // Capture SDK error messages with error types
@@ -393,6 +463,21 @@ export const runClaudeCodeSubagent = async (
     turns,
     agent: "claude-code",
   };
+
+  if (sessionId) {
+    result.claudeCodeSessionId = sessionId;
+    result.sessionMetadata = {
+      ...(result.sessionMetadata ?? {}),
+      sessionId,
+      ...(options.resumeSessionId && options.forkSession && sessionId !== options.resumeSessionId
+        ? { forkedFromSessionId: options.resumeSessionId }
+        : {}),
+    };
+
+    if (options.resumeSessionId && options.forkSession && sessionId !== options.resumeSessionId) {
+      result.claudeCodeForkedFromSessionId = options.resumeSessionId;
+    }
+  }
 
   if (error) {
     result.error = error;
