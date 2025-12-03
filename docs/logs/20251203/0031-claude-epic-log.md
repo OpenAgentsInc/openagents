@@ -3,3 +3,4 @@
 - Picking up Claude integration epic (oa-e0d033) for a small doc update.
 - Marked Claude integration epic oa-e0d033 in_progress.
 - Added security note referencing SDK permission schemas in docs/claude/CLAUDE-CODE-INTEGRATION.md.
+- Reset oa-e0d033 status back to open after doc note to keep epic unblocked.
