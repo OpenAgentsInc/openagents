@@ -237,6 +237,22 @@ export const runInWorktree = async (
         fs.copyFileSync(srcTasksPath, dstTasksPath);
       }
 
+      // Install dependencies in worktree (required for typecheck)
+      console.log("  Installing dependencies...");
+      const bunInstall = Bun.spawn(["bun", "install"], {
+        cwd: worktreeInfo.path,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      await bunInstall.exited;
+      if (bunInstall.exitCode !== 0) {
+        const stderr = await new Response(bunInstall.stderr).text();
+        console.error(`  ❌ bun install failed: ${stderr}`);
+        result.error = "bun install failed";
+        return result;
+      }
+      console.log("  Dependencies installed.");
+
       const orchestratorConfig = {
         cwd: worktreeInfo.path,
         openagentsDir: worktreeOpenagentsDir,
