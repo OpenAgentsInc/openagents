@@ -37,7 +37,8 @@ export class HudServer {
   private connectHandlers: ConnectionHandler[] = [];
   private disconnectHandlers: ConnectionHandler[] = [];
 
-  private clients: Set<unknown> = new Set();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private clients: Set<any> = new Set();
   private messageHistory: HudMessage[] = [];
   private readonly maxHistorySize = 100;
 
@@ -58,7 +59,7 @@ export class HudServer {
       port: this.port,
       fetch: (req, server) => {
         // Upgrade HTTP request to WebSocket
-        if (server.upgrade(req)) {
+        if (server.upgrade(req, { data: undefined })) {
           return; // upgraded successfully
         }
         return new Response("HUD WebSocket Server", { status: 200 });
