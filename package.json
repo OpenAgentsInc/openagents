@@ -28,11 +28,18 @@
     "mechacoder:overnight": "bun src/agent/overnight.ts",
     "mechacoder:overnight:cc-only": "bun src/agent/overnight.ts --cc-only",
     "mechacoder:overnight:legacy": "bun src/agent/overnight.ts --legacy",
+    "mechacoder:parallel": "bun src/agent/overnight-parallel.ts",
+    "mechacoder:parallel:cc-only": "bun src/agent/overnight-parallel.ts --cc-only",
     "export-html": "bun src/agent/export-html.ts",
     "session:list": "bun src/sessions/cli.ts list",
     "session:show": "bun src/sessions/cli.ts show",
     "session:search": "bun src/sessions/cli.ts search",
-    "session:by-task": "bun src/sessions/cli.ts by-task"
+    "session:by-task": "bun src/sessions/cli.ts by-task",
+    "e2e:server": "bun run e2e/test-server.ts",
+    "e2e:test": "bunx playwright test --config e2e/playwright.config.ts",
+    "e2e:ui": "bunx playwright test --config e2e/playwright.config.ts --ui",
+    "e2e:report": "bunx playwright show-report",
+    "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
@@ -47,6 +54,7 @@
   },
   "devDependencies": {
     "@effect/language-service": "0.58.0",
+    "@playwright/test": "^1.57.0",
     "@types/bun": "1.3.3",
     "typescript": "5.9.3"
   }
