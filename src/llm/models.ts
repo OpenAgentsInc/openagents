@@ -1,9 +1,11 @@
 import type { Api, Model, Provider, Usage } from "./model-types.js";
 import { MODELS } from "./models.generated.js";
+import { loadCustomProviders, mergeCustomModels } from "./custom-providers.js";
 
+const custom = mergeCustomModels(MODELS as any, loadCustomProviders());
 const registry: Map<Provider, Map<string, Model<Api>>> = new Map();
 
-for (const [provider, models] of Object.entries(MODELS)) {
+for (const [provider, models] of Object.entries(custom)) {
   const providerModels = new Map<string, Model<Api>>();
   for (const [id, model] of Object.entries(models)) {
     providerModels.set(id, model as Model<Api>);
