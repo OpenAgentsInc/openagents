@@ -8,7 +8,18 @@ describe("createProviderTransport", () => {
     const calls: ChatRequest[] = [];
     const mockChat = async (req: ChatRequest): Promise<ChatResponse> => {
       calls.push(req);
-      return { id: "1", choices: [] };
+      return {
+        id: "1",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "",
+              tool_calls: [{ id: "call-1", name: "mock", arguments: "{}" }],
+            },
+          },
+        ],
+      };
     };
 
     const transport = createProviderTransport(mockChat);
@@ -18,6 +29,7 @@ describe("createProviderTransport", () => {
       getQueuedMessages: async () => queued,
       tools: [],
       model: "x-ai/grok-4.1-fast",
+      queueMode: "one-at-a-time",
     };
 
     const messages: ChatMessage[] = [{ role: "system", content: "sys" }];
@@ -26,6 +38,7 @@ describe("createProviderTransport", () => {
     const events = transport.run(messages, user, config);
     const first = await events.next();
     expect(first.value?.type).toBe("llm_response");
+    expect(first.value?.pendingToolCalls).toEqual(["call-1"]);
 
     expect(calls.length).toBe(1);
     expect(calls[0]?.messages.map((m) => m.content)).toEqual(["sys", "queued", "hi"]);

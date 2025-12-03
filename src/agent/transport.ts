@@ -12,10 +12,11 @@ export interface AgentRunConfig {
   model?: string;
   temperature?: number;
   getQueuedMessages?: <T>() => Promise<QueuedMessage<T>[]>;
+  queueMode?: "all" | "one-at-a-time";
 }
 
 export type AgentEvent =
-  | { type: "llm_response"; message: ChatResponse }
+  | { type: "llm_response"; message: ChatResponse; pendingToolCalls: string[] }
   | { type: "llm_error"; error: Error };
 
 export interface AgentTransport {
@@ -31,7 +32,13 @@ export const createProviderTransport = (chat: (request: ChatRequest, signal?: Ab
   async *run(messages, userMessage, config, signal) {
     try {
       const queued = (await config.getQueuedMessages?.<any>()) ?? [];
-      const injected = queued.map((q) => q.llm).filter(Boolean) as ChatMessage[];
+      const injectedQueue =
+        config.queueMode === "all"
+          ? queued
+          : queued.length > 0
+            ? [queued[0]]
+            : [];
+      const injected = injectedQueue.map((q) => q.llm).filter(Boolean) as ChatMessage[];
 
       const request: ChatRequest = {
         messages: [...messages, ...injected, userMessage],
@@ -41,7 +48,9 @@ export const createProviderTransport = (chat: (request: ChatRequest, signal?: Ab
       };
 
       const res = await chat(request, signal);
-      yield { type: "llm_response", message: res };
+      const toolCalls =
+        res.choices?.[0]?.message?.tool_calls?.map((tc) => tc.id).filter(Boolean) ?? [];
+      yield { type: "llm_response", message: res, pendingToolCalls: toolCalls };
     } catch (error: any) {
       yield { type: "llm_error", error: error instanceof Error ? error : new Error(String(error)) };
     }
