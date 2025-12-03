@@ -63,3 +63,7 @@ tasks-cli-*/
 
 # Agent runtime files
 .openagents/agent.lock
+
+# Playwright test artifacts
+playwright-report/
+test-results/
