@@ -74,18 +74,18 @@ export const runSubagent = (
 
     const userPrompt = buildSubagentPrompt(subtask);
 
-    const result = yield* agentLoop(userPrompt, tools, {
-      model,
+    const loopConfig = {
       systemPrompt: SUBAGENT_SYSTEM_PROMPT,
       maxTurns,
-      onEvent: (event) => {
-        // Could emit events for HUD visualization
-        // For now, just log key events
+      onEvent: (event: any) => {
         if (event.type === "tool_call") {
           console.log(`[Subagent] Tool: ${event.tool}`);
         }
       },
-    }).pipe(
+      ...(model ? { model } : {}),
+    };
+
+    const result = yield* agentLoop(userPrompt, tools, loopConfig).pipe(
       Effect.catchAll((error) =>
         Effect.succeed({
           turns: [],
