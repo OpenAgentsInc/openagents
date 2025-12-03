@@ -1,0 +1,15 @@
+{
+  "taskId": "oa-e0d033",
+  "taskTitle": "Create Claude Code integration epic",
+  "subtasks": [
+    {
+      "id": "oa-e0d033-sub-001",
+      "description": "Create Claude Code integration epic\n\nEpic tracking all Claude Code integration work for MechaCoder Golden Loop. Parent for: oa-cc01-06 (core integration), oa-ea3620 (config), oa-d313a1 (error recovery), oa-d85e8e (session bridging), oa-958997 (E2E test), and related tasks.",
+      "status": "failed",
+      "startedAt": "2025-12-03T06:50:13.944Z",
+      "error": "OpenRouter request failed: Error: HTTP 404: {\"error\":{\"message\":\"Please migrate to the free slug ( x-ai/grok-4.1-fast:free ) to continue using Grok 4.1 Fast for free. This slug ( x-ai/grok-4.1-fast ) will begin charging as of December 3rd 2025.\",\"code\":404},\"user_id\":\"user_2pXcclg0nh3gVMd6oRjXWRrw1BK\"}"
+    }
+  ],
+  "createdAt": "2025-12-03T06:50:13.943Z",
+  "updatedAt": "2025-12-03T06:50:13.943Z"
+}
