@@ -117,4 +117,32 @@ describe("runBestAvailableSubagent", () => {
     expect(minimalCalled).toBe(true);
     expect(detectCalled).toBe(false);
   });
+
+  test("forwards permission mode from claudeCode config", async () => {
+    let receivedPermission: string | undefined;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent<never>({
+        subtask: makeSubtask("Complex refactor"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, permissionMode: "dontAsk" },
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (_subtask, options) => {
+          receivedPermission = (options as any).permissionMode;
+          return {
+            success: true,
+            subtaskId: _subtask.id,
+            filesModified: [],
+            turns: 1,
+          };
+        },
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(receivedPermission).toBe("dontAsk");
+  });
 });
