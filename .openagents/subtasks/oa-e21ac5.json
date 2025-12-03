@@ -1,0 +1,13 @@
+{
+  "taskId": "oa-e21ac5",
+  "taskTitle": "Add task archival/compaction for .openagents tasks.jsonl",
+  "subtasks": [
+    {
+      "id": "oa-e21ac5-sub-001",
+      "description": "Add task archival/compaction for .openagents tasks.jsonl\n\nDesign and ship a repeatable archival/compaction flow so closed/old/outdated tasks move from .openagents/tasks.jsonl into a separate archive file while keeping history accessible. Extend the Effect TaskService/CLI to support archiving and reading archived tasks (e.g., .openagents/tasks-archive.jsonl), include age/status filters, tests, and docs so MechaCoder/external agents can run it without manual editing.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T07:50:33.383Z",
+  "updatedAt": "2025-12-03T07:50:33.383Z"
+}

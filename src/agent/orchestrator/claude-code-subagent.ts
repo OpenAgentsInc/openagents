@@ -293,7 +293,38 @@ export const runClaudeCodeSubagent = async (
           }
         }
 
-        // Log tool calls as JSON (separate from streaming text)
+        // Log all non-stream messages as JSON for visibility
+        if (options.onOutput && (message as any).type !== "stream_event") {
+          const msgType = (message as any).type || (message as any).role || "unknown";
+          // Log tool use from assistant messages
+          if ((message as any).role === "assistant" && Array.isArray((message as any).content)) {
+            for (const block of (message as any).content) {
+              if (block.type === "tool_use") {
+                const toolJson = JSON.stringify({ tool: block.name, id: block.id, input: block.input }, null, 0);
+                options.onOutput(`\n[TOOL_USE] ${toolJson}\n`);
+              }
+            }
+          }
+          // Log tool results
+          if ((message as any).role === "user" && Array.isArray((message as any).content)) {
+            for (const block of (message as any).content) {
+              if (block.type === "tool_result") {
+                const truncatedContent = typeof block.content === "string" && block.content.length > 200
+                  ? block.content.slice(0, 200) + "..."
+                  : block.content;
+                const resultJson = JSON.stringify({ tool_result: block.tool_use_id, content: truncatedContent }, null, 0);
+                options.onOutput(`[TOOL_RESULT] ${resultJson}\n`);
+              }
+            }
+          }
+          // Log result/system messages
+          if (msgType === "result" || msgType === "system") {
+            const resultJson = JSON.stringify(message, null, 0);
+            options.onOutput(`[${msgType.toUpperCase()}] ${resultJson}\n`);
+          }
+        }
+
+        // Legacy: Log tool calls as JSON (for messages with tool_calls array)
         if (isToolCallMessage(message) && message.tool_calls && options.onOutput) {
           for (const call of message.tool_calls) {
             if (call?.name) {
@@ -315,6 +346,19 @@ export const runClaudeCodeSubagent = async (
             const filePath = call?.input?.file_path || call?.input?.path;
             if (filePath && (name === "Edit" || name === "Write")) {
               filesModified.add(String(filePath));
+            }
+          }
+        }
+
+        // Track tool_use blocks from assistant content (SDK message format)
+        if ((message as any).role === "assistant" && Array.isArray((message as any).content)) {
+          for (const block of (message as any).content) {
+            if (block.type === "tool_use" && block.name) {
+              toolsUsed.set(block.name, (toolsUsed.get(block.name) || 0) + 1);
+              const filePath = block.input?.file_path || block.input?.path;
+              if (filePath && (block.name === "Edit" || block.name === "Write")) {
+                filesModified.add(String(filePath));
+              }
             }
           }
         }
