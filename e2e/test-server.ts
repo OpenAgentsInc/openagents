@@ -236,12 +236,6 @@ const mainviewCssPath = new URL(
 ).pathname;
 const mainviewCss = await Bun.file(mainviewCssPath).text().catch(() => "/* CSS not found */");
 
-// Read the mainview JS (bundled)
-const mainviewJsPath = new URL(
-  "../src/mainview/index.ts",
-  import.meta.url
-).pathname;
-
 // Start HTTP server for mainview
 const httpServer = Bun.serve({
   port: TEST_HTTP_PORT,
