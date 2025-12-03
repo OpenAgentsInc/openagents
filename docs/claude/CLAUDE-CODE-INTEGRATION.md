@@ -40,7 +40,7 @@ Claude Code (via `@anthropic-ai/claude-agent-sdk`) is a production-grade coding 
 
 | Use Claude Code When... | Use Minimal Subagent When... |
 |------------------------|------------------------------|
-| Claude Code is installed and API key available | Claude Code unavailable |
+| Claude Code is installed and API key available or authed with Max plan | Claude Code unavailable |
 | Complex multi-file refactoring | Simple, focused edits |
 | Tasks needing web search/fetch | Pure code changes |
 | Long-running tasks (>20 turns) | Quick subtasks (<10 turns) |
@@ -382,13 +382,13 @@ export const runBestAvailableSubagent = async (
 const shouldUseClaudeCode = (subtask: Subtask): boolean => {
   // Heuristics for when Claude Code is beneficial
   const description = subtask.description.toLowerCase();
-  
+
   // Use CC for complex tasks
   if (description.includes("refactor")) return true;
   if (description.includes("multi-file")) return true;
   if (description.includes("search")) return true;
   if (description.length > 500) return true;
-  
+
   // Use minimal for simple tasks
   return false;
 };
