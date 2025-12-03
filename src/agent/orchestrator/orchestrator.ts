@@ -37,6 +37,7 @@ import {
   type OrchestratorEvent,
   type SessionProgress,
   type SubagentResult,
+  type Subtask,
   getProgressPath,
 } from "./types.js";
 
@@ -343,20 +344,27 @@ export const runOrchestrator = (
         // Persist Claude Code session metadata for resumption across runs
         const previousClaudeState = subtask.claudeCode ?? {};
         if (result.claudeCodeSessionId || previousClaudeState.sessionId) {
-          subtask.claudeCode = {
-            ...previousClaudeState,
-            sessionId: result.claudeCodeSessionId ?? previousClaudeState.sessionId,
-            ...(result.claudeCodeForkedFromSessionId
-              ? { forkedFromSessionId: result.claudeCodeForkedFromSessionId }
-              : previousClaudeState.forkedFromSessionId
-                ? { forkedFromSessionId: previousClaudeState.forkedFromSessionId }
-                : {}),
-            // After forking once, default to continuing the new branch unless explicitly reset
-            resumeStrategy:
-              previousClaudeState.resumeStrategy === "fork" && result.claudeCodeSessionId
-                ? "continue"
-                : previousClaudeState.resumeStrategy,
-          };
+          const updatedClaudeState: NonNullable<Subtask["claudeCode"]> = { ...previousClaudeState };
+
+          if (result.claudeCodeSessionId) {
+            updatedClaudeState.sessionId = result.claudeCodeSessionId;
+          } else if (previousClaudeState.sessionId) {
+            updatedClaudeState.sessionId = previousClaudeState.sessionId;
+          }
+
+          if (result.claudeCodeForkedFromSessionId) {
+            updatedClaudeState.forkedFromSessionId = result.claudeCodeForkedFromSessionId;
+          } else if (previousClaudeState.forkedFromSessionId) {
+            updatedClaudeState.forkedFromSessionId = previousClaudeState.forkedFromSessionId;
+          }
+
+          if (previousClaudeState.resumeStrategy === "fork" && result.claudeCodeSessionId) {
+            updatedClaudeState.resumeStrategy = "continue";
+          } else if (previousClaudeState.resumeStrategy) {
+            updatedClaudeState.resumeStrategy = previousClaudeState.resumeStrategy;
+          }
+
+          subtask.claudeCode = updatedClaudeState;
         }
 
         // Capture Claude Code session metadata for context bridging
