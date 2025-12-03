@@ -94,6 +94,11 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
     const resumeSessionId = subtask.claudeCode?.sessionId;
     const forkSession = subtask.claudeCode?.resumeStrategy === "fork";
 
+    // Log session resumption for debugging
+    if (resumeSessionId) {
+      console.log(`[Claude Code] Resuming session: ${resumeSessionId}`);
+    }
+
     const runMinimal = () =>
       (options.runMinimalSubagent ?? runSubagent)(
         createSubagentConfig(subtask, options.cwd, options.tools, {

@@ -405,6 +405,8 @@ export const runOrchestrator = (
         if (result.success) {
           subtask.status = "done";
           subtask.completedAt = new Date().toISOString();
+          // Clear any previous error from failed attempts
+          delete subtask.error;
           progress.work.subtasksCompleted.push(subtask.id);
           progress.work.subtasksInProgress = progress.work.subtasksInProgress.filter(
             (id) => id !== subtask.id
