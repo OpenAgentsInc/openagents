@@ -11,6 +11,8 @@ export {
   ProjectConfig,
   TaskFilter,
   SandboxConfig,
+  MergeStrategy,
+  ParallelExecutionConfig,
   // Types
   type Status as StatusType,
   type IssueType as IssueTypeType,
@@ -23,6 +25,8 @@ export {
   type ProjectConfig as ProjectConfigT,
   type TaskFilter as TaskFilterT,
   type SandboxConfig as SandboxConfigT,
+  type MergeStrategy as MergeStrategyT,
+  type ParallelExecutionConfig as ParallelExecutionConfigT,
   // Helpers
   isTaskReady,
   decodeTask,

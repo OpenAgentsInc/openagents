@@ -122,6 +122,29 @@ export const SandboxConfig = S.Struct({
 });
 export type SandboxConfig = S.Schema.Type<typeof SandboxConfig>;
 
+/** Merge strategy for parallel agent execution */
+export const MergeStrategy = S.Literal("auto", "direct", "queue", "pr");
+export type MergeStrategy = S.Schema.Type<typeof MergeStrategy>;
+
+/** Configuration for parallel agent execution using git worktrees */
+export const ParallelExecutionConfig = S.Struct({
+  /** Enable parallel agent execution (default: false) */
+  enabled: S.optionalWith(S.Boolean, { default: () => false }),
+  /** Maximum number of agents to run in parallel */
+  maxAgents: S.optionalWith(S.Number, { default: () => 4 }),
+  /** Timeout for each worktree in milliseconds */
+  worktreeTimeout: S.optionalWith(S.Number, { default: () => 30 * 60 * 1000 }),
+  /** Run agents in containers for additional isolation */
+  useContainers: S.optionalWith(S.Boolean, { default: () => false }),
+  /** Merge strategy: auto (select based on count), direct, queue, or pr */
+  mergeStrategy: S.optionalWith(MergeStrategy, { default: () => "auto" as const }),
+  /** Number of agents before switching from direct to queue (when auto) */
+  mergeThreshold: S.optionalWith(S.Number, { default: () => 4 }),
+  /** Number of agents before switching from queue to PR (when auto) */
+  prThreshold: S.optionalWith(S.Number, { default: () => 50 }),
+});
+export type ParallelExecutionConfig = S.Schema.Type<typeof ParallelExecutionConfig>;
+
 // ProjectConfig matches .openagents/project.json
 export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
@@ -147,6 +170,9 @@ export const ProjectConfig = S.Struct({
   }),
   sandbox: S.optionalWith(SandboxConfig, {
     default: () => S.decodeUnknownSync(SandboxConfig)({}),
+  }),
+  parallelExecution: S.optionalWith(ParallelExecutionConfig, {
+    default: () => S.decodeUnknownSync(ParallelExecutionConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({

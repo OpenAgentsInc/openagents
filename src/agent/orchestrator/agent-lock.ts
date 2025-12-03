@@ -2,7 +2,10 @@
  * Agent Lock Service
  *
  * Prevents multiple orchestrator instances from running concurrently on the same repository.
- * Uses a lock file (.openagents/agent.lock) containing the PID and timestamp.
+ *
+ * Two lock modes:
+ * 1. Single-agent mode: Uses .openagents/agent.lock (legacy, backwards compatible)
+ * 2. Parallel mode: Uses .openagents/locks/{worktreeId}.lock (one per worktree)
  *
  * Lock file format:
  * ```
@@ -12,6 +15,7 @@
  * ```
  *
  * @see docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.6.1 (Agent Lock Enforcement)
+ * @see docs/claude/plans/containers-impl-v2.md (Parallel execution plan)
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -263,5 +267,232 @@ export const createLockGuard = (
     acquired,
     result,
     release: () => releaseLock(openagentsDir),
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Worktree-specific Locking (Parallel Mode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Lock info for a worktree */
+export interface WorktreeLock {
+  worktreeId: string;
+  pid: number;
+  sessionId: string;
+  createdAt: string;
+}
+
+/** Directory containing worktree locks */
+const LOCKS_DIR = "locks";
+
+/**
+ * Get the path to the locks directory
+ */
+export const getLocksDir = (openagentsDir: string): string =>
+  path.join(openagentsDir, LOCKS_DIR);
+
+/**
+ * Get the path to a worktree lock file
+ */
+export const getWorktreeLockPath = (
+  openagentsDir: string,
+  worktreeId: string,
+): string => path.join(getLocksDir(openagentsDir), `${worktreeId}.lock`);
+
+/**
+ * Read a worktree lock file
+ */
+export const readWorktreeLock = (
+  openagentsDir: string,
+  worktreeId: string,
+): WorktreeLock | null => {
+  const lockPath = getWorktreeLockPath(openagentsDir, worktreeId);
+  try {
+    const content = fs.readFileSync(lockPath, "utf-8");
+    const parsed = parseLockFile(content);
+    if (!parsed) return null;
+    return {
+      worktreeId,
+      pid: parsed.pid,
+      sessionId: parsed.sessionId ?? "",
+      createdAt: parsed.timestamp,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Acquire a lock for a specific worktree.
+ *
+ * @param openagentsDir - Path to .openagents directory
+ * @param worktreeId - ID of the worktree (typically task ID)
+ * @param sessionId - Session ID for tracking
+ * @returns true if lock was acquired, false if already locked
+ */
+export const acquireWorktreeLock = (
+  openagentsDir: string,
+  worktreeId: string,
+  sessionId: string,
+): boolean => {
+  const locksDir = getLocksDir(openagentsDir);
+  const lockPath = getWorktreeLockPath(openagentsDir, worktreeId);
+
+  // Check existing lock
+  const existingLock = readWorktreeLock(openagentsDir, worktreeId);
+  if (existingLock) {
+    if (isPidRunning(existingLock.pid)) {
+      // Lock is held by a running process
+      return false;
+    }
+    // Stale lock - remove it
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {
+      // Ignore removal errors
+    }
+  }
+
+  // Ensure locks directory exists
+  if (!fs.existsSync(locksDir)) {
+    fs.mkdirSync(locksDir, { recursive: true });
+  }
+
+  // Create new lock
+  const lock: AgentLock = {
+    pid: process.pid,
+    timestamp: new Date().toISOString(),
+    sessionId,
+  };
+
+  fs.writeFileSync(lockPath, formatLockFile(lock), "utf-8");
+  return true;
+};
+
+/**
+ * Release a worktree lock.
+ *
+ * Only releases if the current process owns the lock.
+ *
+ * @param openagentsDir - Path to .openagents directory
+ * @param worktreeId - ID of the worktree
+ * @returns true if lock was released, false if not owned or doesn't exist
+ */
+export const releaseWorktreeLock = (
+  openagentsDir: string,
+  worktreeId: string,
+): boolean => {
+  const lockPath = getWorktreeLockPath(openagentsDir, worktreeId);
+  const existingLock = readWorktreeLock(openagentsDir, worktreeId);
+
+  if (!existingLock) {
+    return false;
+  }
+
+  if (existingLock.pid !== process.pid) {
+    return false;
+  }
+
+  try {
+    fs.unlinkSync(lockPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * List all active worktree locks.
+ *
+ * @param openagentsDir - Path to .openagents directory
+ * @returns Array of active locks (with running PIDs)
+ */
+export const listWorktreeLocks = (openagentsDir: string): WorktreeLock[] => {
+  const locksDir = getLocksDir(openagentsDir);
+  const locks: WorktreeLock[] = [];
+
+  if (!fs.existsSync(locksDir)) {
+    return locks;
+  }
+
+  const entries = fs.readdirSync(locksDir);
+  for (const entry of entries) {
+    if (!entry.endsWith(".lock")) continue;
+
+    const worktreeId = entry.slice(0, -5); // Remove .lock extension
+    const lock = readWorktreeLock(openagentsDir, worktreeId);
+
+    if (lock && isPidRunning(lock.pid)) {
+      locks.push(lock);
+    }
+  }
+
+  return locks;
+};
+
+/**
+ * Remove all stale worktree locks (where PID is no longer running).
+ *
+ * @param openagentsDir - Path to .openagents directory
+ * @returns Number of stale locks removed
+ */
+export const pruneWorktreeLocks = (openagentsDir: string): number => {
+  const locksDir = getLocksDir(openagentsDir);
+  let removed = 0;
+
+  if (!fs.existsSync(locksDir)) {
+    return removed;
+  }
+
+  const entries = fs.readdirSync(locksDir);
+  for (const entry of entries) {
+    if (!entry.endsWith(".lock")) continue;
+
+    const worktreeId = entry.slice(0, -5);
+    const lock = readWorktreeLock(openagentsDir, worktreeId);
+
+    if (lock && !isPidRunning(lock.pid)) {
+      try {
+        fs.unlinkSync(path.join(locksDir, entry));
+        removed++;
+      } catch {
+        // Ignore removal errors
+      }
+    }
+  }
+
+  return removed;
+};
+
+/**
+ * Create a worktree lock guard for scoped locking.
+ *
+ * Usage:
+ * ```typescript
+ * const guard = createWorktreeLockGuard(openagentsDir, "oa-abc123", "session-1");
+ * if (!guard.acquired) {
+ *   console.error("Worktree is already locked");
+ *   return;
+ * }
+ * try {
+ *   // ... do work in worktree ...
+ * } finally {
+ *   guard.release();
+ * }
+ * ```
+ */
+export const createWorktreeLockGuard = (
+  openagentsDir: string,
+  worktreeId: string,
+  sessionId: string,
+): {
+  acquired: boolean;
+  release: () => boolean;
+} => {
+  const acquired = acquireWorktreeLock(openagentsDir, worktreeId, sessionId);
+
+  return {
+    acquired,
+    release: () => releaseWorktreeLock(openagentsDir, worktreeId),
   };
 };
