@@ -2,6 +2,17 @@ import { randomUUID } from "crypto";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
 import { join, resolve } from "path";
+import {
+  compactMessages,
+  checkBackpressure,
+  estimateTokensForMessages,
+  getContextSummary,
+  needsCompaction,
+  type CompactionConfig,
+  type CompactionResult,
+  type BackpressureStatus,
+  DEFAULT_COMPACTION_CONFIG,
+} from "../agent/context-compaction.js";
 
 export type SessionEntry =
   | SessionHeader
@@ -431,5 +442,126 @@ export class SessionManager {
         .join(" ");
     }
     return "";
+  }
+
+  // ===========================================================================
+  // Context Compaction & Backpressure
+  // ===========================================================================
+
+  /**
+   * Check if messages need compaction based on current backpressure.
+   *
+   * @param messages - The messages array to check
+   * @param config - Optional compaction configuration
+   * @returns True if compaction is needed
+   */
+  checkNeedsCompaction(messages: any[], config?: Partial<CompactionConfig>): boolean {
+    return needsCompaction(messages, config);
+  }
+
+  /**
+   * Get backpressure status for the given messages.
+   *
+   * @param messages - The messages array to check
+   * @param config - Optional compaction configuration
+   * @returns BackpressureStatus with current usage info
+   */
+  getBackpressureStatus(messages: any[], config?: Partial<CompactionConfig>): BackpressureStatus {
+    const fullConfig: CompactionConfig = { ...DEFAULT_COMPACTION_CONFIG, ...config };
+    return checkBackpressure(messages, fullConfig);
+  }
+
+  /**
+   * Compact messages using the configured strategy.
+   *
+   * Supported strategies:
+   * - "turns": Keep last N conversation turns (pi-mono style, default 50)
+   * - "tokens": Keep messages within a token budget
+   * - "adaptive": Combine both strategies (recommended)
+   *
+   * @param messages - The messages array to compact
+   * @param config - Compaction configuration
+   * @returns CompactionResult with compacted messages and stats
+   *
+   * @example
+   * ```ts
+   * // Turn-based compaction (pi-mono style)
+   * const result = sessionManager.compactMessages(messages, {
+   *   strategy: "turns",
+   *   maxTurns: 50,
+   * });
+   *
+   * // Token-based with model context window
+   * const result = sessionManager.compactMessages(messages, {
+   *   strategy: "tokens",
+   *   maxTokens: model.contextWindow * 0.7,
+   * });
+   *
+   * // Adaptive (recommended for long sessions)
+   * const result = sessionManager.compactMessages(messages, {
+   *   strategy: "adaptive",
+   *   maxTurns: 50,
+   *   maxTokens: 100000,
+   * });
+   * ```
+   */
+  compactMessages(messages: any[], config?: Partial<CompactionConfig>): CompactionResult {
+    return compactMessages(messages, config);
+  }
+
+  /**
+   * Load messages with automatic compaction if needed.
+   *
+   * This is a convenience method that loads messages and applies compaction
+   * if backpressure threshold is exceeded.
+   *
+   * @param config - Optional compaction configuration
+   * @returns Object with messages (possibly compacted) and metadata
+   */
+  loadMessagesWithCompaction(config?: Partial<CompactionConfig>): {
+    messages: any[];
+    wasCompacted: boolean;
+    compactionResult?: CompactionResult;
+  } {
+    const messages = this.loadMessages();
+
+    if (messages.length === 0) {
+      return { messages, wasCompacted: false };
+    }
+
+    const fullConfig = { ...DEFAULT_COMPACTION_CONFIG, ...config };
+    const status = this.getBackpressureStatus(messages, fullConfig);
+
+    if (status.action !== "compact") {
+      return { messages, wasCompacted: false };
+    }
+
+    const result = this.compactMessages(messages, fullConfig);
+    return {
+      messages: result.messages,
+      wasCompacted: result.wasCompacted,
+      compactionResult: result,
+    };
+  }
+
+  /**
+   * Estimate tokens for the given messages.
+   *
+   * @param messages - The messages array
+   * @returns Estimated token count
+   */
+  estimateTokens(messages: any[]): number {
+    return estimateTokensForMessages(messages);
+  }
+
+  /**
+   * Get a summary string of context usage for logging/debugging.
+   *
+   * @param messages - The messages array
+   * @param config - Optional compaction configuration
+   * @returns Human-readable summary string
+   */
+  getContextSummary(messages: any[], config?: Partial<CompactionConfig>): string {
+    return getContextSummary(messages, config);
   }
 }
