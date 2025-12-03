@@ -13,11 +13,11 @@ describe("models registry", () => {
 
   it("returns typed model by provider/id", () => {
     const providers = getProviders();
-    const provider = providers.find((p) => getModels(p).length > 0);
+    const provider = providers.find((p) => getModels(p as any).length > 0) as any;
     expect(provider).toBeTruthy();
     if (!provider) return;
 
-    const [firstModel] = getModels(provider);
+    const [firstModel] = getModels(provider as any);
     const resolved = getModel(provider as any, firstModel.id as any);
     expect(resolved).toBeDefined();
     expect(resolved.id).toBe(firstModel.id);
@@ -26,8 +26,8 @@ describe("models registry", () => {
 
   it("calculates usage cost using million-token pricing", () => {
     const providers = getProviders();
-    const provider = providers.find((p) => getModels(p).length > 0)!;
-    const model = getModels(provider)[0]!;
+    const provider = providers.find((p) => getModels(p as any).length > 0)! as any;
+    const model = getModels(provider as any)[0]!;
 
     const usage = calculateCost(model as any, {
       input: 1_000_000,
