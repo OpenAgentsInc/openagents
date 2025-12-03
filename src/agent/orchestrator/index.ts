@@ -35,5 +35,22 @@ export {
 // Subagent
 export { runSubagent, createSubagentConfig } from "./subagent.js";
 
+// Decomposition
+export {
+  analyzeTask,
+  decomposeTask,
+  decomposeByRules,
+  generateSubtaskId,
+  readSubtasks,
+  writeSubtasks,
+  updateSubtaskStatus,
+  createSubtaskList,
+  getPendingSubtasks,
+  getNextSubtask,
+  isAllSubtasksComplete,
+  hasFailedSubtasks,
+} from "./decompose.js";
+export type { DecompositionHeuristics } from "./decompose.js";
+
 // Orchestrator
 export { runOrchestrator } from "./orchestrator.js";

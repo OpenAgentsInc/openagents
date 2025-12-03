@@ -22,6 +22,14 @@ import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
 import { runSubagent, createSubagentConfig } from "./subagent.js";
 import {
+  decomposeTask,
+  readSubtasks,
+  writeSubtasks,
+  createSubtaskList,
+  getNextSubtask,
+  updateSubtaskStatus,
+} from "./decompose.js";
+import {
   type OrchestratorConfig,
   type OrchestratorState,
   type OrchestratorEvent,
@@ -30,7 +38,6 @@ import {
   type SubtaskList,
   type SessionProgress,
   type SubagentResult,
-  getSubtasksPath,
   getProgressPath,
 } from "./types.js";
 
@@ -46,12 +53,6 @@ const generateSessionId = (): string => {
   const rand = Math.random().toString(36).substring(2, 8);
   return `session-${ts}-${rand}`;
 };
-
-/**
- * Generate a unique subtask ID
- */
-const generateSubtaskId = (taskId: string, index: number): string =>
-  `${taskId}-sub-${String(index + 1).padStart(3, "0")}`;
 
 /**
  * Read the previous session's progress file if it exists
@@ -105,51 +106,6 @@ Completed: ${progress.completedAt || "In Progress"}
 `;
 
   fs.writeFileSync(progressPath, markdown);
-};
-
-/**
- * Read subtasks file for a task
- */
-const readSubtasks = (openagentsDir: string, taskId: string): SubtaskList | null => {
-  const subtasksPath = getSubtasksPath(openagentsDir, taskId);
-  if (!fs.existsSync(subtasksPath)) return null;
-  
-  try {
-    const content = fs.readFileSync(subtasksPath, "utf-8");
-    return JSON.parse(content) as SubtaskList;
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Write subtasks file for a task
- */
-const writeSubtasks = (openagentsDir: string, subtaskList: SubtaskList): void => {
-  const subtasksDir = path.join(openagentsDir, "subtasks");
-  if (!fs.existsSync(subtasksDir)) {
-    fs.mkdirSync(subtasksDir, { recursive: true });
-  }
-  
-  const subtasksPath = getSubtasksPath(openagentsDir, subtaskList.taskId);
-  fs.writeFileSync(subtasksPath, JSON.stringify(subtaskList, null, 2));
-};
-
-/**
- * Decompose a task into subtasks.
- * For now, creates a single subtask matching the task.
- * TODO: Use LLM to intelligently decompose complex tasks.
- */
-const decomposeTask = (task: Task): Subtask[] => {
-  // Simple decomposition: one subtask per task
-  // Future: Use orchestrator LLM to break down complex tasks
-  return [
-    {
-      id: generateSubtaskId(task.id, 0),
-      description: `${task.title}\n\n${task.description || ""}`.trim(),
-      status: "pending",
-    },
-  ];
 };
 
 /**
@@ -340,34 +296,24 @@ export const runOrchestrator = (
 
       // Phase 3: Decompose
       state.phase = "decomposing";
-      const existingSubtasks = readSubtasks(config.openagentsDir, taskResult.id);
+      let subtaskList = readSubtasks(config.openagentsDir, taskResult.id);
       
-      let subtasks: Subtask[];
-      if (existingSubtasks) {
-        // Resume from existing subtasks
-        subtasks = existingSubtasks.subtasks;
-      } else {
-        // Decompose task into subtasks
-        subtasks = decomposeTask(taskResult);
+      if (!subtaskList) {
+        // Create new subtask list with intelligent decomposition
+        subtaskList = createSubtaskList(taskResult, {
+          maxSubtasks: config.maxSubtasksPerTask,
+        });
       }
-
-      const subtaskList: SubtaskList = {
-        taskId: taskResult.id,
-        taskTitle: taskResult.title,
-        subtasks,
-        createdAt: existingSubtasks?.createdAt || now,
-        updatedAt: now,
-      };
 
       state.subtasks = subtaskList;
       writeSubtasks(config.openagentsDir, subtaskList);
-      emit({ type: "task_decomposed", subtasks });
+      emit({ type: "task_decomposed", subtasks: subtaskList.subtasks });
 
       // Phase 4: Execute Subtasks
       state.phase = "executing_subtask";
       const allFilesModified: string[] = [];
       
-      for (const subtask of subtasks) {
+      for (const subtask of subtaskList.subtasks) {
         if (subtask.status === "done" || subtask.status === "verified") {
           continue; // Skip completed subtasks
         }
