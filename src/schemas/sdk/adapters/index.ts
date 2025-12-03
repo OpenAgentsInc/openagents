@@ -68,3 +68,31 @@ export type {
   MessageConversionResult,
   MessageAdapterOptions,
 } from "./message-adapter.js";
+
+// Result adaptation (note: toolContentToMcpContent, effectResultToMcpResult, effectErrorToMcpResult already exported from tool-adapter)
+export {
+  // MCP → Internal conversion
+  mcpContentToToolContent,
+  mcpContentsToToolContent,
+  mcpResultToToolResult,
+  isMcpErrorResult,
+  getMcpErrorMessage,
+  // Internal → MCP conversion
+  toolResultToMcpResult,
+  createMcpErrorResult,
+  // SubagentResult conversion
+  subagentResultToSdk,
+  sdkSubagentResultToInternal,
+  subagentResultToMcp,
+  // Utility functions
+  createTextResult,
+  createResult,
+  mergeResults,
+  getResultText,
+  resultHasImages,
+} from "./result-adapter.js";
+
+export type {
+  SDKSubagentResult,
+  ResultAdapterOptions,
+} from "./result-adapter.js";
