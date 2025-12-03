@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import { CLAUDE_CODE_MCP_SERVER_NAME, getAllowedClaudeCodeTools } from "./claude-code-mcp.js";
 import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 
@@ -92,5 +93,182 @@ describe("runClaudeCodeSubagent", () => {
     });
 
     expect(inputs[0]?.options?.permissionMode).toBe("bypassPermissions");
+  });
+
+  test("retries on rate_limit error with exponential backoff", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      if (attemptCount === 1) {
+        // First attempt: rate limit error
+        yield { error: "rate_limit" };
+      } else {
+        // Second attempt: success
+        yield { type: "result", subtype: "success" };
+      }
+    };
+
+    const startTime = Date.now();
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+    const elapsed = Date.now() - startTime;
+
+    expect(result.success).toBe(true);
+    expect(attemptCount).toBe(2);
+    expect(elapsed).toBeGreaterThanOrEqual(1000); // At least 1 second delay
+    expect(result.sessionMetadata?.blockers?.some(b => b.includes("rate limit"))).toBe(true);
+  });
+
+  test("retries on server_error", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      if (attemptCount === 1) {
+        yield { error: "server_error" };
+      } else {
+        yield { type: "result", subtype: "success" };
+      }
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(true);
+    expect(attemptCount).toBe(2);
+    expect(result.sessionMetadata?.blockers?.some(b => b.includes("server error"))).toBe(true);
+  });
+
+  test("stops immediately on authentication_failed error", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      yield { error: "authentication_failed" };
+      yield { type: "result", subtype: "success" };
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(false);
+    expect(attemptCount).toBe(1); // No retry
+    expect(result.error).toBeTruthy();
+    expect(result.sessionMetadata?.blockers?.some(b =>
+      b.includes("authentication") || b.toLowerCase().includes("auth")
+    )).toBe(true);
+  });
+
+  test("stops immediately on billing_error", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      yield { error: "billing_error" };
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(false);
+    expect(attemptCount).toBe(1); // No retry
+    expect(result.error).toBeTruthy();
+    expect(result.sessionMetadata?.blockers?.some(b =>
+      b.includes("billing") || b.includes("authentication") || b.toLowerCase().includes("auth")
+    )).toBe(true);
+  });
+
+  test("exhausts retries and signals fallback", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      // Always fail with rate_limit
+      yield { error: "rate_limit" };
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(false);
+    expect(attemptCount).toBe(4); // Initial + 3 retries
+    expect(result.error).toBeTruthy();
+    // Should have logged multiple retry attempts
+    expect(result.sessionMetadata?.blockers?.length).toBeGreaterThan(3);
+  }, 10000); // 10 second timeout for exponential backoff (1s + 2s + 4s = 7s)
+
+  test("retries on network error exceptions", async () => {
+    let attemptCount = 0;
+    const queryFn = async function* () {
+      attemptCount++;
+      if (attemptCount === 1) {
+        throw new Error("Network timeout");
+      } else {
+        yield { type: "result", subtype: "success" };
+      }
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(true);
+    expect(attemptCount).toBe(2);
+    expect(result.sessionMetadata?.blockers?.some(b => b.includes("network error"))).toBe(true);
+  });
+
+  test("propagates authentication errors with recovery hints", async () => {
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn: makeQuery([{ type: "assistant", error: "authentication_failed" }]),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.toLowerCase()).toContain("authentication");
+    expect(result.sessionMetadata?.blockers?.some((b) => b.toLowerCase().includes("authentication"))).toBe(true);
+    expect(result.sessionMetadata?.suggestedNextSteps?.some((s) => s.includes("ANTHROPIC_API_KEY"))).toBe(true);
+  });
+
+  test("aborts long-running sessions via timeout", async () => {
+    const queryFn = async function* (input: any) {
+      const signal: AbortSignal | undefined = input?.options?.abortController?.signal;
+      await new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => reject(new AbortError("timeout")));
+      });
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+      timeoutMs: 10,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("timed out");
+    expect(result.sessionMetadata?.blockers?.some((b) => b.includes("timed out"))).toBe(true);
+  });
+
+  test("handles API rate limits with suggested recovery", async () => {
+    const queryFn = async function* () {
+      const err = new Error("rate limited");
+      (err as any).status = 429;
+      throw err;
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("rate limited");
+    expect(result.sessionMetadata?.suggestedNextSteps?.some((s) => s.toLowerCase().includes("rate limit"))).toBe(true);
   });
 });

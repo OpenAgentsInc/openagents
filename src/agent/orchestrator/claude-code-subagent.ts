@@ -3,10 +3,22 @@ import {
   createMechaCoderMcpServer,
   getAllowedClaudeCodeTools,
 } from "./claude-code-mcp.js";
-import type { PermissionMode, McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import {
+  AbortError,
+  type PermissionMode,
+  type McpServerConfig,
+  type SDKAssistantMessageError,
+} from "@anthropic-ai/claude-agent-sdk";
 import { type SubagentResult, type Subtask, type ClaudeCodePermissionMode } from "./types.js";
 
 type QueryFn = (input: unknown) => AsyncIterable<any>;
+
+interface RetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+}
 
 export interface ClaudeCodeSubagentOptions {
   cwd: string;
@@ -17,6 +29,8 @@ export interface ClaudeCodeSubagentOptions {
   openagentsDir?: string;
   allowedTools?: string[];
   mcpServers?: Record<string, unknown>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -32,9 +46,123 @@ ${subtask.description}
 
 Focus on minimal, correct changes.`;
 
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 32000,
+  backoffMultiplier: 2,
+};
+
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+
+const assistantErrorMessages: Record<SDKAssistantMessageError, { message: string; suggestion?: string }> = {
+  authentication_failed: {
+    message: "Claude Code authentication failed",
+    suggestion: "Set a valid ANTHROPIC_API_KEY before retrying",
+  },
+  billing_error: {
+    message: "Claude Code billing error",
+    suggestion: "Check billing status for Anthropic API access",
+  },
+  rate_limit: {
+    message: "Claude Code hit rate limits",
+    suggestion: "Back off and retry later or fall back to the minimal subagent",
+  },
+  invalid_request: {
+    message: "Claude Code rejected the request",
+    suggestion: "Inspect Claude Code inputs and configuration for invalid parameters",
+  },
+  server_error: {
+    message: "Claude Code server error",
+    suggestion: "Retry after a short delay or fall back to the minimal subagent",
+  },
+  unknown: { message: "Claude Code returned an unknown error" },
+};
+
+const describeAssistantError = (errorType?: SDKAssistantMessageError): { message: string; suggestion?: string } => {
+  if (!errorType) return { message: "Claude Code reported an error" };
+  return assistantErrorMessages[errorType] ?? { message: `Claude Code reported ${errorType}` };
+};
+
+const createAbortController = (signal?: AbortSignal, timeoutMs?: number) => {
+  const controller = new AbortController();
+  let abortReason: string | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const propagateAbort = () => {
+    if (controller.signal.aborted) return;
+    abortReason =
+      typeof signal?.reason === "string"
+        ? signal.reason
+        : signal?.reason instanceof Error
+          ? signal.reason.message
+          : "Claude Code run aborted";
+    controller.abort(new Error(abortReason));
+  };
+
+  if (signal?.aborted) {
+    propagateAbort();
+  } else if (signal) {
+    signal.addEventListener("abort", propagateAbort);
+  }
+
+  const timeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (timeout && timeout > 0) {
+    timeoutId = setTimeout(() => {
+      abortReason = `Claude Code timed out after ${timeout}ms`;
+      controller.abort(new Error(abortReason));
+    }, timeout);
+  }
+
+  const cleanup = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", propagateAbort);
+  };
+
+  return {
+    controller,
+    getAbortReason: () => abortReason,
+    cleanup,
+  };
+};
+
 /**
- * Run a subtask using Claude Code Agent SDK's query() streaming API.
- * Designed to be dependency-injected in tests via queryFn to avoid network calls.
+ * Check if an error is retryable (rate limit or server error)
+ */
+const isRetryableError = (errorType?: SDKAssistantMessageError | string): boolean => {
+  return errorType === "rate_limit" || errorType === "server_error";
+};
+
+/**
+ * Check if an error is a fatal auth error (should stop immediately)
+ */
+const isFatalAuthError = (errorType?: SDKAssistantMessageError | string): boolean => {
+  return errorType === "authentication_failed" || errorType === "billing_error";
+};
+
+/**
+ * Calculate delay for exponential backoff
+ */
+const calculateBackoffDelay = (
+  attempt: number,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+): number => {
+  const delay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt);
+  return Math.min(delay, config.maxDelayMs);
+};
+
+/**
+ * Sleep for a specified number of milliseconds
+ */
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run a subtask using Claude Code Agent SDK's query() streaming API with retry logic.
+ * Implements:
+ * - Exponential backoff for rate limits
+ * - Retry for server errors
+ * - Immediate failure for auth errors
+ * - Logs all errors to blockers for progress.md
  */
 export const runClaudeCodeSubagent = async (
   subtask: Subtask,
@@ -46,9 +174,11 @@ export const runClaudeCodeSubagent = async (
   const toolsUsed: Map<string, number> = new Map();
   const blockers: string[] = [];
   const assistantMessages: string[] = [];
+  const suggestedNextSteps: string[] = [];
   let success = false;
   let error: string | undefined;
   let turns = 0;
+  let lastErrorType: SDKAssistantMessageError | string | undefined;
 
   const mcpServers: Record<string, McpServerConfig> =
     (options.mcpServers as Record<string, McpServerConfig> | undefined) ??
@@ -60,62 +190,179 @@ export const runClaudeCodeSubagent = async (
 
   const allowedTools = options.allowedTools ?? getAllowedClaudeCodeTools();
 
-  try {
-    for await (const message of query({
-      prompt: defaultBuildPrompt(subtask),
-      options: {
-        cwd: options.cwd,
-        ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
-        maxTurns: options.maxTurns ?? 30,
-        ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
-        mcpServers,
-        allowedTools,
-      },
-    })) {
-      // Track tool calls
-      if (isToolCallMessage(message) && message.tool_calls) {
-        for (const call of message.tool_calls) {
-          const name = call?.name;
-          if (name) {
-            toolsUsed.set(name, (toolsUsed.get(name) || 0) + 1);
+  const retryConfig = DEFAULT_RETRY_CONFIG;
+  let retryAttempt = 0;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  // Retry loop for rate limits and server errors
+  while (retryAttempt <= retryConfig.maxRetries) {
+    const { controller, getAbortReason, cleanup } = createAbortController(options.signal, timeoutMs);
+
+    try {
+      for await (const message of query({
+        prompt: defaultBuildPrompt(subtask),
+        options: {
+          cwd: options.cwd,
+          ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+          maxTurns: options.maxTurns ?? 30,
+          ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+          mcpServers,
+          allowedTools,
+          abortController: controller,
+        },
+      })) {
+        // Track tool calls
+        if (isToolCallMessage(message) && message.tool_calls) {
+          for (const call of message.tool_calls) {
+            const name = call?.name;
+            if (name) {
+              toolsUsed.set(name, (toolsUsed.get(name) || 0) + 1);
+            }
+
+            const filePath = call?.input?.file_path || call?.input?.path;
+            if (filePath && (name === "Edit" || name === "Write")) {
+              filesModified.add(String(filePath));
+            }
+          }
+        }
+
+        // Capture assistant messages for context
+        if ((message as any).role === "assistant" && (message as any).content) {
+          const content = String((message as any).content);
+          if (content.length > 0 && content.length < 500) {
+            assistantMessages.push(content);
+          }
+        }
+
+        // Capture SDK error messages with error types
+        if ((message as any).error) {
+          lastErrorType = (message as any).error as SDKAssistantMessageError;
+          const assistantError = describeAssistantError(lastErrorType as SDKAssistantMessageError);
+          error = assistantError.message;
+          blockers.push(assistantError.message);
+          if (assistantError.suggestion) {
+            suggestedNextSteps.push(assistantError.suggestion);
           }
 
-          const filePath = call?.input?.file_path || call?.input?.path;
-          if (filePath && (name === "Edit" || name === "Write")) {
-            filesModified.add(String(filePath));
+          // Check for fatal auth errors - stop immediately
+          if (isFatalAuthError(lastErrorType)) {
+            success = false;
+            const fatalMessage =
+              assistantError.suggestion && !assistantError.message.includes(assistantError.suggestion)
+                ? `${assistantError.message}. ${assistantError.suggestion}`
+                : assistantError.message;
+            error = fatalMessage;
+            blockers.push(fatalMessage);
+            controller.abort(new Error(fatalMessage));
+            break; // Exit message loop
           }
+        } else if ((message as any).isError) {
+          const errorMsg = String((message as any).message || "Unknown error");
+          blockers.push(errorMsg);
+        }
+
+        if (isResultMessage(message) && message.type === "result") {
+          turns = (message as any).turns ?? (message as any).num_turns ?? turns;
+          if (message.subtype === "success") {
+            success = true;
+          } else {
+            success = false;
+            error = `Claude Code finished with: ${message.subtype ?? "unknown"}`;
+            if (error) blockers.push(error);
+          }
+          break;
         }
       }
 
-      // Capture assistant messages for context
-      if ((message as any).role === "assistant" && (message as any).content) {
-        const content = String((message as any).content);
-        if (content.length > 0 && content.length < 500) {
-          assistantMessages.push(content);
+      // If successful or fatal error, break retry loop
+      if (controller.signal.aborted) {
+        success = false;
+        if (!error) {
+          error = getAbortReason() ?? "Claude Code run aborted";
         }
+        blockers.push(error);
+        break;
       }
 
-      // Capture error messages as blockers
-      if ((message as any).error || (message as any).isError) {
-        const errorMsg = String((message as any).error || (message as any).message || "Unknown error");
-        blockers.push(errorMsg);
+      if (success || isFatalAuthError(lastErrorType)) {
+        break;
       }
 
-      if (isResultMessage(message) && message.type === "result") {
-        turns = (message as any).turns ?? turns;
-        if (message.subtype === "success") {
-          success = true;
-        } else {
-          success = false;
-          error = `Claude Code finished with: ${message.subtype ?? "unknown"}`;
-          if (error) blockers.push(error);
-        }
+      // If we have a retryable error and haven't exhausted retries, retry
+      if (lastErrorType && isRetryableError(lastErrorType) && retryAttempt < retryConfig.maxRetries) {
+        const delay = calculateBackoffDelay(retryAttempt, retryConfig);
+        const retryMsg = `Retrying after ${lastErrorType} (attempt ${retryAttempt + 1}/${retryConfig.maxRetries}, delay ${delay}ms)`;
+        blockers.push(retryMsg);
+        await sleep(delay);
+        retryAttempt++;
+        // Reset error state for retry
+        lastErrorType = undefined;
+        continue;
       }
+
+      // No retryable error or retries exhausted - exit loop
+      break;
+    } catch (e: any) {
+      success = false;
+      const abortReason = getAbortReason();
+      if (e instanceof AbortError || e?.name === "AbortError") {
+        error = abortReason ?? e?.message ?? "Claude Code run aborted";
+      } else if (typeof e?.status === "number" && (e.status === 401 || e.status === 403)) {
+        error = "Claude Code authentication failed (401/403)";
+        suggestedNextSteps.push("Verify ANTHROPIC_API_KEY and SDK authentication");
+      } else if (typeof e?.status === "number" && e.status === 429) {
+        error = "Claude Code rate limited (429)";
+        suggestedNextSteps.push("Back off and retry after rate limit resets");
+        lastErrorType = "rate_limit";
+      } else {
+        error = e?.message || String(e);
+      }
+      const catchMsg = `Exception during query: ${error}`;
+      blockers.push(catchMsg);
+
+      if (abortReason) {
+        break;
+      }
+
+      // Check if exception might be retryable (network errors, etc)
+      const errorLower = (error ?? "").toLowerCase();
+      const isNetworkError =
+        errorLower.includes("network") ||
+        errorLower.includes("timeout") ||
+        errorLower.includes("econnrefused");
+
+      if (isNetworkError && retryAttempt < retryConfig.maxRetries) {
+        const delay = calculateBackoffDelay(retryAttempt, retryConfig);
+        const retryMsg = `Retrying after network error (attempt ${retryAttempt + 1}/${retryConfig.maxRetries}, delay ${delay}ms)`;
+        blockers.push(retryMsg);
+        await sleep(delay);
+        retryAttempt++;
+        continue;
+      }
+
+      // Non-retryable exception or retries exhausted
+      break;
+    } finally {
+      cleanup();
     }
-  } catch (e: any) {
-    success = false;
-    error = e?.message || String(e);
+  }
+
+  if (success) {
+    error = undefined;
+  }
+
+  if (!success && !error) {
+    error = "Claude Code ended without a result";
     blockers.push(error);
+  }
+
+  // Add hint if retries were exhausted (signals orchestrator to fallback)
+  if (!success && retryAttempt >= retryConfig.maxRetries && lastErrorType) {
+    const exhaustedMsg = `Retries exhausted after ${retryAttempt} attempts. Consider fallback to minimal subagent.`;
+    blockers.push(exhaustedMsg);
+    if (!error) {
+      error = exhaustedMsg;
+    }
   }
 
   const result: SubagentResult = {
@@ -123,6 +370,7 @@ export const runClaudeCodeSubagent = async (
     subtaskId: subtask.id,
     filesModified: Array.from(filesModified),
     turns,
+    agent: "claude-code",
   };
 
   if (error) {
@@ -130,7 +378,7 @@ export const runClaudeCodeSubagent = async (
   }
 
   // Add session metadata for progress.md bridging
-  if (toolsUsed.size > 0 || blockers.length > 0 || assistantMessages.length > 0) {
+  if (toolsUsed.size > 0 || blockers.length > 0 || assistantMessages.length > 0 || suggestedNextSteps.length > 0) {
     result.sessionMetadata = {};
 
     if (toolsUsed.size > 0) {
@@ -139,6 +387,10 @@ export const runClaudeCodeSubagent = async (
 
     if (blockers.length > 0) {
       result.sessionMetadata.blockers = blockers;
+    }
+
+    if (suggestedNextSteps.length > 0) {
+      result.sessionMetadata.suggestedNextSteps = Array.from(new Set(suggestedNextSteps));
     }
 
     // Use the last assistant message as summary
