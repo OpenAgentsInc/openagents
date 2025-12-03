@@ -1,3 +1,33 @@
+/**
+ * HUD Event Mapping Tests
+ *
+ * This test file serves dual purposes:
+ * 1. Unit tests for the orchestratorEventToHudMessage mapping function
+ * 2. Integration tests verifying HUD receives correct messages over WebSocket
+ *
+ * ## Test Fixtures
+ *
+ * The file exports reusable fixtures for testing HUD integrations:
+ * - SAMPLE_GOLDEN_LOOP_EVENTS: Complete event sequence for a Golden Loop iteration
+ * - FORWARDED_EVENT_TYPES: Event types that produce HudMessages
+ * - INTERNAL_EVENT_TYPES: Event types filtered out (not sent to HUD)
+ *
+ * ## Test Structure
+ *
+ * 1. orchestratorEventToHudMessage tests:
+ *    - Forwarded events: Verify each event type produces correct HudMessage
+ *    - Internal events: Verify internal events return null (filtered)
+ *    - Golden Loop sequence: Verify complete loop produces expected messages
+ *
+ * 2. HUD emitter integration tests:
+ *    - Uses a real WebSocket server to verify message delivery
+ *    - Tests filtering (internal events not sent)
+ *    - Tests streaming output callback
+ *    - Simulates full Golden Loop event sequence
+ *
+ * @see emit.ts for the implementation and phase mapping documentation
+ */
+
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
   orchestratorEventToHudMessage,
@@ -10,7 +40,12 @@ import type { HudMessage } from "./protocol.js";
 import { parseHudMessage } from "./protocol.js";
 
 // ============================================================================
-// Test Fixtures: Sample OrchestratorEvents for each type
+// Test Fixtures: Sample OrchestratorEvents for Golden Loop Phases
+//
+// These fixtures model a complete Golden Loop iteration, useful for:
+// - Testing HUD message filtering
+// - Verifying event-to-message mapping
+// - Integration testing with mock HUD servers
 // ============================================================================
 
 const sampleTask = {
@@ -42,8 +77,45 @@ const sampleSubagentResult = {
 };
 
 /**
- * Complete set of sample orchestrator events for Golden Loop phases.
- * Use this to verify HUD receives expected messages during a sample loop.
+ * Complete set of sample orchestrator events for a full Golden Loop iteration.
+ *
+ * This fixture models the event sequence for a successful task completion:
+ *
+ * 1. Session Start (session_start)
+ * 2. Orient Phase:
+ *    - lock_acquired (internal)
+ *    - init_script_start/complete (internal)
+ *    - orientation_complete (internal)
+ * 3. Select Phase: task_selected
+ * 4. Decompose Phase: task_decomposed
+ * 5. Execute Phase (per subtask):
+ *    - subtask_start
+ *    - subtask_complete
+ * 6. Verify Phase:
+ *    - verification_start (typecheck)
+ *    - verification_complete (typecheck)
+ *    - verification_start (tests)
+ *    - verification_complete (tests)
+ * 7. Commit Phase:
+ *    - commit_created
+ *    - push_complete
+ * 8. Update Phase:
+ *    - task_updated (internal)
+ *    - progress_written (internal)
+ * 9. Session End: session_complete
+ *
+ * Use this to test that the HUD receives the expected subset of messages
+ * (internal events should be filtered out).
+ *
+ * @example
+ * ```typescript
+ * import { SAMPLE_GOLDEN_LOOP_EVENTS } from "./emit.test.js";
+ *
+ * for (const event of SAMPLE_GOLDEN_LOOP_EVENTS) {
+ *   emit(event);
+ * }
+ * // HUD should receive ~13 messages (not the full 17 events)
+ * ```
  */
 export const SAMPLE_GOLDEN_LOOP_EVENTS: OrchestratorEvent[] = [
   // Session start
@@ -113,7 +185,17 @@ export const SAMPLE_GOLDEN_LOOP_EVENTS: OrchestratorEvent[] = [
 ];
 
 /**
- * Events that should produce HudMessages (forwarded to HUD)
+ * Event types that ARE forwarded to the HUD (produce HudMessages).
+ *
+ * These events represent user-visible state changes that the HUD displays:
+ * - Session lifecycle (start/complete)
+ * - Task selection and decomposition
+ * - Subtask execution progress
+ * - Verification results
+ * - Git operations (commit/push)
+ * - Errors
+ *
+ * Use this list to verify your HUD implementation handles all event types.
  */
 export const FORWARDED_EVENT_TYPES = [
   "session_start",
@@ -131,7 +213,17 @@ export const FORWARDED_EVENT_TYPES = [
 ] as const;
 
 /**
- * Events that should NOT produce HudMessages (internal only)
+ * Event types that are NOT forwarded to the HUD (internal bookkeeping).
+ *
+ * These events are used by the orchestrator for internal state management
+ * but don't need to be displayed to users:
+ * - orientation_complete: Initial repo state assessment
+ * - init_script_*: Preflight script execution
+ * - task_updated: Redundant with task_selected/decomposed
+ * - progress_written: Internal file writes
+ * - lock_*: Agent lock management
+ *
+ * orchestratorEventToHudMessage() returns null for these event types.
  */
 export const INTERNAL_EVENT_TYPES = [
   "orientation_complete",

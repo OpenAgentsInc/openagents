@@ -115,6 +115,27 @@ Following Anthropic's ["Effective Harnesses for Long-Running Agents"](https://ww
 | `.openagents/subtasks/{taskId}.json` | Subtask list with status tracking |
 | `.openagents/init.sh` | Startup script to verify clean state |
 
+**HUD Event Mapping:**
+
+The orchestrator emits events during each phase of the Golden Loop. These events are filtered and forwarded to the HUD UI for real-time progress display.
+
+| Phase | Events Emitted | Forwarded to HUD |
+|-------|----------------|------------------|
+| Session Start | `session_start` | ✅ |
+| Orient | `lock_acquired`, `init_script_*`, `orientation_complete` | ❌ (internal) |
+| Select Task | `task_selected` | ✅ |
+| Decompose | `task_decomposed` | ✅ |
+| Execute | `subtask_start`, `subtask_complete`, `subtask_failed` | ✅ |
+| Verify | `verification_start`, `verification_complete` | ✅ |
+| Commit | `commit_created`, `push_complete` | ✅ |
+| Update | `task_updated`, `progress_written` | ❌ (internal) |
+| Session End | `session_complete` | ✅ |
+| Errors | `error` | ✅ |
+
+Internal events (lock management, init scripts, task updates, progress writes) are filtered out – they're bookkeeping that doesn't need UI display. The HUD receives only user-visible state changes.
+
+**Implementation:** See `src/hud/emit.ts` for the mapping function and `src/hud/emit.test.ts` for sample event sequences used in testing.
+
 ---
 
 ### 2.1. Implementation Contract
