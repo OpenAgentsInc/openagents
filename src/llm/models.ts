@@ -13,21 +13,23 @@ for (const [provider, models] of Object.entries(custom)) {
   registry.set(provider as Provider, providerModels);
 }
 
+type ProviderKey = keyof typeof MODELS;
+
 type ModelApi<
-  TProvider extends Provider,
+  TProvider extends ProviderKey,
   TModelId extends keyof (typeof MODELS)[TProvider],
 > = (typeof MODELS)[TProvider][TModelId] extends { api: infer TApi } ? (TApi extends Api ? TApi : never) : never;
 
 export const getProviders = (): Provider[] => Array.from(registry.keys());
 
-export function getModel<TProvider extends Provider, TModelId extends keyof (typeof MODELS)[TProvider]>(
+export function getModel<TProvider extends ProviderKey, TModelId extends keyof (typeof MODELS)[TProvider]>(
   provider: TProvider,
   modelId: TModelId,
 ): Model<ModelApi<TProvider, TModelId>> {
   return registry.get(provider)?.get(modelId as string) as Model<ModelApi<TProvider, TModelId>>;
 }
 
-export function getModels<TProvider extends Provider>(
+export function getModels<TProvider extends ProviderKey>(
   provider: TProvider,
 ): Array<Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>> {
   const models = registry.get(provider);

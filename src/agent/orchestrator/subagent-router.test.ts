@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { runBestAvailableSubagent, shouldUseClaudeCode } from "./subagent-router.js";
 import type { SubagentResult, Subtask } from "./types.js";
-import { OpenRouterClient } from "../../llm/openrouter.js";
+import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 
 // Mock OpenRouterClient for tests
-const MockOpenRouterClient = Layer.succeed(OpenRouterClient, {} as OpenRouterClient);
+const mockClient: OpenRouterClientShape = {
+  chat: () => Effect.fail(new Error("Mock client should not be called in routing tests")),
+};
+const MockOpenRouterClient = Layer.succeed(OpenRouterClient, mockClient);
 
 const makeSubtask = (description = "Refactor multi-file module"): Subtask => ({
   id: "sub-1",
