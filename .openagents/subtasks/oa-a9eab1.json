@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-a9eab1",
+  "taskTitle": "Document/pilot git conflict & push failure handling in Golden Loop",
+  "subtasks": [
+    {
+      "id": "oa-a9eab1-sub-001",
+      "description": "Document/pilot git conflict & push failure handling in Golden Loop\n\nEnhance GOLDEN-LOOP-v2.md with guidance for merge/rebase conflicts and rejected pushes, including safe backoff, follow-up task creation, and expectations for keeping working tree intact during retries.",
+      "status": "done",
+      "startedAt": "2025-12-03T09:01:05.914Z",
+      "claudeCode": {
+        "sessionId": "a9ef5c1e-05c0-433e-b933-a10044b1b82a"
+      },
+      "completedAt": "2025-12-03T09:03:15.530Z"
+    }
+  ],
+  "createdAt": "2025-12-03T09:01:05.914Z",
+  "updatedAt": "2025-12-03T09:01:05.914Z"
+}
