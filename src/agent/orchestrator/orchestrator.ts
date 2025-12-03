@@ -42,6 +42,10 @@ import {
   type InitScriptResult,
   getProgressPath,
 } from "./types.js";
+import {
+  runVerificationWithSandbox,
+  type SandboxRunnerConfig,
+} from "./sandbox-runner.js";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -69,9 +73,10 @@ const buildVerificationCommands = (
 ): string[] => [...(typecheckCommands ?? []), ...testCommands];
 
 /**
- * Run verification commands (typecheck, tests)
+ * Run verification commands (typecheck, tests) on the host.
+ * Used when sandbox is not enabled or as a fallback.
  */
-const runVerification = (
+const runVerificationOnHost = (
   commands: string[],
   cwd: string,
   emit: (event: OrchestratorEvent) => void
@@ -105,6 +110,33 @@ const runVerification = (
     },
     catch: (error: any) => error as Error,
   });
+
+/**
+ * Run verification commands (typecheck, tests).
+ * Uses sandbox when config.sandbox is enabled and available, otherwise runs on host.
+ */
+const runVerification = (
+  commands: string[],
+  cwd: string,
+  emit: (event: OrchestratorEvent) => void,
+  sandboxConfig?: SandboxRunnerConfig
+): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> => {
+  // If no sandbox config or sandbox explicitly disabled, run on host
+  if (!sandboxConfig || sandboxConfig.sandboxConfig.enabled === false) {
+    return runVerificationOnHost(commands, cwd, emit);
+  }
+
+  // Try sandbox execution with automatic fallback to host
+  // Cast emit to compatible type for sandbox runner
+  const sandboxEmit = emit as (event: { type: string; [key: string]: any }) => void;
+  return runVerificationWithSandbox(commands, sandboxConfig, sandboxEmit).pipe(
+    Effect.map((result) => ({
+      passed: result.passed,
+      outputs: result.outputs,
+    })),
+    Effect.catchAll(() => runVerificationOnHost(commands, cwd, emit))
+  );
+};
 
 /**
  * Create a git commit with the task ID
@@ -186,6 +218,24 @@ export const runOrchestrator = (
       config.typecheckCommands,
       config.testCommands
     );
+
+    // Build sandbox runner config if sandbox is enabled
+    const sandboxRunnerConfig: SandboxRunnerConfig | undefined = config.sandbox
+      ? {
+          sandboxConfig: config.sandbox,
+          cwd: config.cwd,
+          emit: (event) => {
+            // Forward sandbox events as orchestrator events
+            if (event.type === "sandbox_available") {
+              emit({ type: "sandbox_status", status: "available", backend: event.backend } as any);
+            } else if (event.type === "sandbox_unavailable") {
+              emit({ type: "sandbox_status", status: "unavailable", reason: event.reason } as any);
+            } else if (event.type === "sandbox_fallback") {
+              emit({ type: "sandbox_fallback", reason: event.reason } as any);
+            }
+          },
+        }
+      : undefined;
 
     // Initialize progress
     const progress: SessionProgress = {
@@ -356,7 +406,8 @@ ${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
         const testResult = yield* runVerification(
           [verificationCommands[0]],
           config.cwd,
-          emit
+          emit,
+          sandboxRunnerConfig
         ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
         progress.orientation.testsPassingAtStart = testResult.passed;
       } else {
@@ -464,7 +515,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           verificationCommands,
           verifyFn: (commands, cwd) =>
             Effect.runPromise(
-              runVerification(commands, cwd, emit).pipe(
+              runVerification(commands, cwd, emit, sandboxRunnerConfig).pipe(
                 Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] }))
               )
             ),
@@ -629,11 +680,12 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       // Phase 5: Verify
       state.phase = "verifying";
       progress.work.testsRun = true;
-      
+
       const verifyResult = yield* runVerification(
         verificationCommands,
         config.cwd,
-        emit
+        emit,
+        sandboxRunnerConfig
       ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
 
       progress.work.testsPassingAfterWork = verifyResult.passed;

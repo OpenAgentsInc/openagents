@@ -5,7 +5,7 @@
  * - Orchestrator: Manages task selection, decomposition, verification, session coordination
  * - Subagent: Minimal coding agent that implements one subtask at a time
  */
-import type { Task } from "../../tasks/index.js";
+import type { Task, SandboxConfig } from "../../tasks/index.js";
 import type { Tool } from "../../tools/schema.js";
 
 // ============================================================================
@@ -190,6 +190,8 @@ export interface OrchestratorConfig {
   maxSubtasksPerTask?: number;
   /** Claude Code integration settings */
   claudeCode?: ClaudeCodeSettings;
+  /** Sandbox execution settings */
+  sandbox?: SandboxConfig;
   /** Abort signal */
   signal?: AbortSignal;
   /** Callback for streaming text output from Claude Code */
