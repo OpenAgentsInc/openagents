@@ -203,7 +203,7 @@ describe("Typecheck failure handling", () => {
         } as SubagentResult;
       });
 
-    const state = await runWithBun(
+    await runWithBun(
       runOrchestrator(
         {
           cwd: dir,
@@ -276,14 +276,13 @@ describe("Typecheck failure handling", () => {
   test("includes failure context in prompt when retrying", async () => {
     const { dir, taskId, openagentsDir } = createTestRepo("retry-context");
     const events: OrchestratorEvent[] = [];
-    let promptReceived = "";
 
     // Mock subagent that captures the prompt and fails first time, succeeds second
     let callCount = 0;
     const subagentRunner: typeof runBestAvailableSubagent = (options) =>
       Effect.sync(() => {
         callCount++;
-        promptReceived = options.subtask.description;
+        void options.subtask.description; // Captured for potential debugging
 
         if (callCount === 1) {
           return {
