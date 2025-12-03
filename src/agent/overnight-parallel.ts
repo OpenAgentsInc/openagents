@@ -667,6 +667,10 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     taskIndex += batchSize;
   }
 
+  // Final cleanup: prune any orphaned worktrees
+  log("\nFinal cleanup...");
+  await runGit(config.workDir, ["worktree", "prune"]);
+
   log(`\n${"#".repeat(60)}`);
   log("PARALLEL OVERNIGHT AGENT FINISHED");
   log(`Tasks completed: ${tasksCompleted}/${tasksToProcess.length}`);
