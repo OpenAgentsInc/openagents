@@ -178,7 +178,7 @@ describe("ProjectConfig", () => {
     expect(config.claudeCode?.enabled).toBe(true);
     expect(config.claudeCode?.preferForComplexTasks).toBe(true);
     expect(config.claudeCode?.fallbackToMinimal).toBe(true);
-    expect(config.claudeCode?.maxTurnsPerSubtask).toBe(30);
+    expect(config.claudeCode?.maxTurnsPerSubtask).toBe(300);
     expect(config.claudeCode?.permissionMode).toBe("bypassPermissions");
   });
 

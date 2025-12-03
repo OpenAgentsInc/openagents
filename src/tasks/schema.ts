@@ -94,7 +94,7 @@ export type TaskUpdate = S.Schema.Type<typeof TaskUpdate>;
 const ClaudeCodeConfig = S.Struct({
   enabled: S.optionalWith(S.Boolean, { default: () => true }),
   preferForComplexTasks: S.optionalWith(S.Boolean, { default: () => true }),
-  maxTurnsPerSubtask: S.optionalWith(S.Number, { default: () => 30 }),
+  maxTurnsPerSubtask: S.optionalWith(S.Number, { default: () => 300 }),
   permissionMode: S.optionalWith(
     S.Literal("default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"),
     { default: () => "bypassPermissions" },

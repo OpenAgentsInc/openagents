@@ -19,7 +19,7 @@
   "claudeCode": {
     "enabled": true,
     "preferForComplexTasks": false,
-    "maxTurnsPerSubtask": 30,
+    "maxTurnsPerSubtask": 300,
     "permissionMode": "bypassPermissions",
     "fallbackToMinimal": false
   }
