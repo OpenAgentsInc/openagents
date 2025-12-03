@@ -44,7 +44,7 @@ const defaultFallbackEnabled = (settings?: ClaudeCodeSettings): boolean =>
  */
 export const runBestAvailableSubagent = <R = OpenRouterClient>(
   options: RunBestAvailableSubagentOptions<R>
-): Effect.Effect<SubagentResult, Error, R> =>
+): Effect.Effect<SubagentResult, Error, R | OpenRouterClient> =>
   Effect.gen(function* () {
     const { subtask, claudeCode } = options;
     const tryClaude = shouldUseClaudeCode(subtask, claudeCode);

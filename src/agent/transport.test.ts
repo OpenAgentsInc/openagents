@@ -35,8 +35,8 @@ describe("createProviderTransport", () => {
     const messages: ChatMessage[] = [{ role: "system", content: "sys" }];
     const user: ChatMessage = { role: "user", content: "hi" };
 
-    const events = transport.run(messages, user, config);
-    const first = await events.next();
+    const iter = transport.run(messages, user, config)[Symbol.asyncIterator]();
+    const first = await iter.next();
     expect(first.value?.type).toBe("llm_response");
     expect(first.value?.pendingToolCalls).toEqual(["call-1"]);
 

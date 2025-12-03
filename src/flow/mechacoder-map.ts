@@ -293,16 +293,16 @@ export function createMechaCoderState(opts: {
   rollup?: TaskRollup
 }): MechaCoderState {
   const repos = opts.repos.map((r) => {
-    const tasks = r.tasks.map((t) => ({
+    const tasks: TaskInfo[] = r.tasks.map((t) => ({
       id: t.id,
       title: t.title,
       status: t.status,
       priority: t.priority,
       type: t.type,
       labels: t.labels ?? [],
-      deps: t.deps ?? [],
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
+      deps: (t.deps ?? []) as readonly TaskDependencyInfo[],
+      ...(t.createdAt ? { createdAt: t.createdAt } : {}),
+      ...(t.updatedAt ? { updatedAt: t.updatedAt } : {}),
     }))
 
     return {

@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer, Context } from "effect";
 import { runBestAvailableSubagent, shouldUseClaudeCode } from "./subagent-router.js";
 import type { SubagentResult, Subtask } from "./types.js";
+import type { OpenRouterClient } from "../../llm/openrouter.js";
+
+// Mock OpenRouterClient for tests
+const MockOpenRouterClient = Layer.succeed(
+  Context.Tag<OpenRouterClient>(),
+  {} as OpenRouterClient
+);
 
 const makeSubtask = (description = "Refactor multi-file module"): Subtask => ({
   id: "sub-1",
@@ -39,7 +46,7 @@ describe("runBestAvailableSubagent", () => {
     let claudeCalled = false;
 
     const result = await Effect.runPromise(
-      runBestAvailableSubagent<never>({
+      runBestAvailableSubagent({
         subtask: makeSubtask(),
         cwd: "/tmp",
         openagentsDir: "/tmp/.openagents",
@@ -54,7 +61,7 @@ describe("runBestAvailableSubagent", () => {
           minimalCalled = true;
           return Effect.succeed(minimalResult);
         },
-      })
+      }).pipe(Effect.provide(MockOpenRouterClient))
     );
 
     expect(result.success).toBe(true);
@@ -84,7 +91,7 @@ describe("runBestAvailableSubagent", () => {
           minimalCalled = true;
           return Effect.succeed(minimalResult);
         },
-      })
+      }).pipe(Effect.provide(MockOpenRouterClient))
     );
 
     expect(result.success).toBe(true);
@@ -110,7 +117,7 @@ describe("runBestAvailableSubagent", () => {
           minimalCalled = true;
           return Effect.succeed(minimalResult);
         },
-      })
+      }).pipe(Effect.provide(MockOpenRouterClient))
     );
 
     expect(result.success).toBe(true);
@@ -139,7 +146,7 @@ describe("runBestAvailableSubagent", () => {
           };
         },
         runMinimalSubagent: () => Effect.succeed(minimalResult),
-      })
+      }).pipe(Effect.provide(MockOpenRouterClient))
     );
 
     expect(result.success).toBe(true);
