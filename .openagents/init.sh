@@ -39,19 +39,7 @@ log "=== Golden Loop v2 Preflight Checklist ==="
 log "Working directory: $(pwd)"
 log "Project: $(jq -r '.projectId // "unknown"' .openagents/project.json 2>/dev/null || echo 'unknown')"
 
-# 1. Check for stale lock file
-log "Checking agent lock..."
-if [ -f ".openagents/agent.lock" ]; then
-    LOCK_PID=$(head -1 .openagents/agent.lock)
-    if kill -0 "$LOCK_PID" 2>/dev/null; then
-        fatal "Another agent is running (PID $LOCK_PID). Aborting."
-    else
-        log "Removing stale lock from dead process $LOCK_PID"
-        rm -f .openagents/agent.lock
-    fi
-fi
-
-# 2. Check git status (uncommitted changes)
+# 1. Check git status (uncommitted changes)
 log "Checking git status..."
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     warn "Uncommitted changes detected:"
@@ -59,14 +47,14 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     # Policy: continue with warning (change to 'fatal' for strict mode)
 fi
 
-# 3. Smoke test: typecheck
+# 2. Smoke test: typecheck
 log "Running smoke test (typecheck)..."
 if ! bun run typecheck >> "$LOG_FILE" 2>&1; then
     fatal "Typecheck failed at preflight. Fix errors before running agent."
 fi
 log "Typecheck passed."
 
-# 4. Smoke test: quick test run (optional, based on project config)
+# 3. Smoke test: quick test run (optional, based on project config)
 SMOKE_TEST=$(jq -r '.smokeTestCommand // empty' .openagents/project.json 2>/dev/null)
 if [ -n "$SMOKE_TEST" ]; then
     log "Running smoke test: $SMOKE_TEST"
@@ -78,7 +66,7 @@ else
     log "No smokeTestCommand configured, skipping test smoke."
 fi
 
-# 5. Check Claude Code CLI is available (if Claude Code enabled)
+# 4. Check Claude Code CLI is available (if Claude Code enabled)
 CLAUDE_ENABLED=$(jq -r '.claudeCode.enabled // false' .openagents/project.json 2>/dev/null)
 if [ "$CLAUDE_ENABLED" = "true" ]; then
     log "Checking Claude Code CLI..."
@@ -89,7 +77,7 @@ if [ "$CLAUDE_ENABLED" = "true" ]; then
     log "Claude Code CLI available."
 fi
 
-# 6. Check network connectivity (if not offline mode)
+# 5. Check network connectivity (if not offline mode)
 OFFLINE_MODE=$(jq -r '.offlineMode // "block"' .openagents/project.json 2>/dev/null)
 log "Checking network connectivity..."
 if ! curl -s --connect-timeout 5 https://api.github.com >/dev/null 2>&1; then
@@ -102,14 +90,14 @@ else
     log "Network connectivity confirmed."
 fi
 
-# 7. Check disk space (warn if < 1GB free)
+# 6. Check disk space (warn if < 1GB free)
 log "Checking disk space..."
 FREE_KB=$(df -k . | tail -1 | awk '{print $4}')
 if [ "$FREE_KB" -lt 1048576 ]; then
     warn "Low disk space: $(($FREE_KB / 1024))MB free"
 fi
 
-# 8. Sync with remote (optional, fetch only)
+# 7. Sync with remote (optional, fetch only)
 ALLOW_PUSH=$(jq -r '.allowPush // false' .openagents/project.json 2>/dev/null)
 if [ "$ALLOW_PUSH" = "true" ]; then
     log "Fetching from remote..."
