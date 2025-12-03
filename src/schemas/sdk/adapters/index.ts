@@ -34,3 +34,35 @@ export type {
   EffectToolExecutionError,
   ToolAdapterOptions,
 } from "./tool-adapter.js";
+
+// Message adaptation
+export {
+  // Content block conversion
+  internalContentToSdk,
+  internalContentsToSdk,
+  sdkContentToInternal,
+  sdkContentsToInternal,
+  // Tool call conversion
+  toolCallToToolUseBlock,
+  toolUseBlockToToolCall,
+  extractToolCalls,
+  // Message conversion (internal → SDK)
+  internalMessageToSdkChat,
+  internalToSdkUserMessage,
+  internalToSdkAssistantMessage,
+  // Message conversion (SDK → internal)
+  sdkChatToInternalMessage,
+  sdkUserToInternalMessage,
+  sdkAssistantToInternalMessage,
+  // Tool result helpers
+  createToolResultBlock,
+  createInternalToolResult,
+  // Batch conversion
+  internalMessagesToSdkChat,
+  sdkChatToInternalMessages,
+} from "./message-adapter.js";
+
+export type {
+  MessageConversionResult,
+  MessageAdapterOptions,
+} from "./message-adapter.js";

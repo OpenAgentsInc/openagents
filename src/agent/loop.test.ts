@@ -62,7 +62,10 @@ describe("agentLoop", () => {
     const toolResult: ToolResult = { content: [{ type: "text", text: "ok" }] };
     const result = await runLoop(responses, [stubTool("echo", toolResult)], events);
 
-    expect(result.turns[0].toolResults?.[0].result.content[0]?.text).toContain("ok");
+    const textBlock = result.turns[0].toolResults?.[0].result.content.find(
+      (c): c is { type: "text"; text: string } => c.type === "text"
+    );
+    expect(textBlock?.text).toContain("ok");
     expect(events.map((e) => e.type)).toContain("tool_result");
     expect(events.map((e) => e.type)).toContain("llm_response");
   });
@@ -93,7 +96,10 @@ describe("agentLoop", () => {
     const result = await runLoop(responses, [stubTool("echo", toolResult)], events);
 
     expect(result.turns[0].toolResults?.[0].isError).toBe(true);
-    expect(result.turns[0].toolResults?.[0].result.content[0]?.text).toContain("Invalid arguments");
+    const textBlock = result.turns[0].toolResults?.[0].result.content.find(
+      (c): c is { type: "text"; text: string } => c.type === "text"
+    );
+    expect(textBlock?.text).toContain("Invalid arguments");
   });
 
   test("tracks verification state via bash output", async () => {

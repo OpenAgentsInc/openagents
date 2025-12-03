@@ -397,7 +397,14 @@ const doOneTask = (config: Config) =>
     };
     
     // Emit run_start event IMMEDIATELY
-    emit({ type: "run_start", ts: nowTs(), runId, taskId: inProgressTask.id, workDir, model: "x-ai/grok-4.1-fast" });
+    emit({
+      type: "run_start",
+      ts: nowTs(),
+      runId,
+      taskId: inProgressTask.id,
+      workDir: config.workDir,
+      model: "x-ai/grok-4.1-fast",
+    });
     emit({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
 
     // Agent loop with retry on typecheck/test failures
@@ -438,11 +445,31 @@ const doOneTask = (config: Config) =>
             if (loopEvent.type === "turn_start") {
               emit({ type: "turn_start", ts: nowTs(), turn: totalTurnsUsed + loopEvent.turn });
             } else if (loopEvent.type === "llm_response") {
-              emit({ type: "llm_response", ts: nowTs(), turn: totalTurnsUsed + loopEvent.turn, hasToolCalls: loopEvent.hasToolCalls });
+              emit({
+                type: "llm_response",
+                ts: nowTs(),
+                turn: totalTurnsUsed + loopEvent.turn,
+                hasToolCalls: loopEvent.hasToolCalls,
+                message: loopEvent.message,
+                toolCalls: loopEvent.toolCalls ?? [],
+              });
             } else if (loopEvent.type === "tool_call") {
-              emit({ type: "tool_call", ts: nowTs(), tool: loopEvent.tool, argsPreview: loopEvent.argsPreview });
+              emit({
+                type: "tool_call",
+                ts: nowTs(),
+                tool: loopEvent.tool,
+                toolCallId: loopEvent.toolCallId,
+                args: loopEvent.args,
+              });
             } else if (loopEvent.type === "tool_result") {
-              emit({ type: "tool_result", ts: nowTs(), tool: loopEvent.tool, ok: loopEvent.ok });
+              emit({
+                type: "tool_result",
+                ts: nowTs(),
+                tool: loopEvent.tool,
+                toolCallId: loopEvent.toolCallId,
+                ok: loopEvent.ok,
+                result: loopEvent.result,
+              });
             } else if (loopEvent.type === "edit_detected") {
               emit({ type: "edit_detected", ts: nowTs(), tool: loopEvent.tool });
             }

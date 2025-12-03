@@ -261,6 +261,24 @@ export {
   toolContentToMcpContent,
   effectResultToMcpResult,
   effectErrorToMcpResult,
+  // Message adaptation
+  internalContentToSdk,
+  internalContentsToSdk,
+  sdkContentToInternal,
+  sdkContentsToInternal,
+  toolCallToToolUseBlock,
+  toolUseBlockToToolCall,
+  extractToolCalls,
+  internalMessageToSdkChat,
+  internalToSdkUserMessage,
+  internalToSdkAssistantMessage,
+  sdkChatToInternalMessage,
+  sdkUserToInternalMessage,
+  sdkAssistantToInternalMessage,
+  createToolResultBlock,
+  createInternalToolResult,
+  internalMessagesToSdkChat,
+  sdkChatToInternalMessages,
 } from "./adapters/index.js";
 
 export type {
@@ -271,6 +289,8 @@ export type {
   EffectToolResult,
   EffectToolExecutionError,
   ToolAdapterOptions,
+  MessageConversionResult,
+  MessageAdapterOptions,
 } from "./adapters/index.js";
 
 // =============================================================================
