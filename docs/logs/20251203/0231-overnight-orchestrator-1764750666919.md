@@ -191,3 +191,9 @@ Started: 2025-12-03T08:31:06.920Z
 [2025-12-03T09:05:41.340Z] [2025-12-03T09:05:41.340Z] PASS: bun run typecheck
 [2025-12-03T09:05:41.340Z] [2025-12-03T09:05:41.340Z] Running: bun test
 [2025-12-03T09:05:56.169Z] [2025-12-03T09:05:56.168Z] PASS: bun test
+[2025-12-03T09:05:56.238Z] [2025-12-03T09:05:56.238Z] Commit: 4505ff0b - Clarify offline/network failure fallback & Claude Code resume paths
+[2025-12-03T09:05:57.345Z] [2025-12-03T09:05:57.345Z] Pushed to main
+[2025-12-03T09:05:57.355Z] [2025-12-03T09:05:57.355Z] Session SUCCESS: Completed task oa-87d2fc: Clarify offline/network failure fallback & Claude Code resume paths
+[2025-12-03T09:05:57.355Z] 
+✓ Task 6 completed
+[2025-12-03T09:05:57.383Z] [Cycle cleanup] Committing pending changes...
