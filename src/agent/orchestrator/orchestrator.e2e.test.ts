@@ -394,3 +394,292 @@ describe("Typecheck failure handling", () => {
     expect(originalSubtask.claudeCode.resumeStrategy).toBe("fork");
   });
 });
+
+describe("Golden Loop negative path: failing tests leave task in-progress", () => {
+  test("no commit when tests fail after subagent changes", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("test-fail-no-commit");
+    const events: OrchestratorEvent[] = [];
+    const createdFile = path.join(dir, "feature.txt");
+
+    // Get initial commit count
+    const initialCommitCount = parseInt(
+      execSync("git rev-list --count HEAD", { cwd: dir, encoding: "utf-8" }).trim()
+    );
+
+    // Mock subagent that "succeeds" in making changes
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        fs.writeFileSync(createdFile, "changes by subagent");
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [path.relative(dir, createdFile)],
+          turns: 1,
+          agent: "claude-code",
+        } satisfies SubagentResult;
+      });
+
+    const state = await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["false"], // Intentionally failing test command
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify no commit was created
+    const finalCommitCount = parseInt(
+      execSync("git rev-list --count HEAD", { cwd: dir, encoding: "utf-8" }).trim()
+    );
+    expect(finalCommitCount).toBe(initialCommitCount);
+
+    // Verify state reflects failure
+    expect(state.phase).toBe("failed");
+    expect(state.error).toContain("Verification failed");
+
+    // Verify task remains open (not closed)
+    const tasks = readTasks(path.join(openagentsDir, "tasks.jsonl"));
+    const task = tasks.find((t) => t.id === taskId);
+    expect(task?.status).not.toBe("closed");
+    // Task should still be open or in_progress (picked but not completed)
+    expect(["open", "in_progress"]).toContain(task?.status);
+  });
+
+  test("task remains in_progress when subagent fails", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("subagent-fail");
+    const events: OrchestratorEvent[] = [];
+
+    // Mock subagent that fails
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => ({
+        success: false,
+        subtaskId: options.subtask.id,
+        filesModified: [],
+        turns: 1,
+        agent: "claude-code",
+        error: "Simulated subagent failure",
+      } satisfies SubagentResult));
+
+    const state = await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["echo tests"],
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify state reflects failure
+    expect(state.phase).toBe("failed");
+    expect(state.error).toBe("Simulated subagent failure");
+
+    // Verify task is not closed
+    const tasks = readTasks(path.join(openagentsDir, "tasks.jsonl"));
+    const task = tasks.find((t) => t.id === taskId);
+    expect(task?.status).not.toBe("closed");
+
+    // Verify progress file has blockers
+    const progress = fs.readFileSync(path.join(openagentsDir, "progress.md"), "utf-8");
+    expect(progress).toContain("Failure 1/3");
+    expect(progress).toContain("Simulated subagent failure");
+  });
+
+  test("logs capture verification failure details", async () => {
+    const { dir, openagentsDir } = createTestRepo("log-verify-fail");
+    const events: OrchestratorEvent[] = [];
+    const createdFile = path.join(dir, "feature.txt");
+
+    // Create a test script that outputs specific error message
+    const failingTestScript = path.join(dir, "failing-test.sh");
+    fs.writeFileSync(failingTestScript, '#!/bin/bash\necho "Error: TypeScript type mismatch at line 42"\nexit 1');
+    fs.chmodSync(failingTestScript, 0o755);
+
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        fs.writeFileSync(createdFile, "changes by subagent");
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [path.relative(dir, createdFile)],
+          turns: 1,
+          agent: "claude-code",
+        } satisfies SubagentResult;
+      });
+
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: [failingTestScript], // Custom failing test with error output
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify progress file contains the error details
+    const progress = fs.readFileSync(path.join(openagentsDir, "progress.md"), "utf-8");
+    expect(progress).toContain("Tests or typecheck failed");
+
+    // Verify verification_complete event was emitted with failure
+    const verifyEvents = events.filter((e) => e.type === "verification_complete") as Array<{
+      type: "verification_complete";
+      command: string;
+      passed: boolean;
+      output: string;
+    }>;
+    expect(verifyEvents.length).toBeGreaterThan(0);
+    const failedVerification = verifyEvents.find((e) => !e.passed);
+    expect(failedVerification).toBeDefined();
+  });
+
+  test("no push occurs when tests fail (even if allowPush is true)", async () => {
+    const { dir, openagentsDir } = createTestRepo("no-push-on-fail");
+    const events: OrchestratorEvent[] = [];
+    const createdFile = path.join(dir, "feature.txt");
+
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        fs.writeFileSync(createdFile, "changes by subagent");
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [path.relative(dir, createdFile)],
+          turns: 1,
+          agent: "claude-code",
+        } satisfies SubagentResult;
+      });
+
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["false"], // Failing tests
+          allowPush: true, // Would push if tests passed
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify no push event occurred
+    const pushEvents = events.filter((e) => e.type === "push_complete");
+    expect(pushEvents.length).toBe(0);
+
+    // Verify no commit event occurred either
+    const commitEvents = events.filter((e) => e.type === "commit_created");
+    expect(commitEvents.length).toBe(0);
+  });
+
+  test("subtask marked as failed with error details", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("subtask-fail-details");
+    const events: OrchestratorEvent[] = [];
+
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => ({
+        success: false,
+        subtaskId: options.subtask.id,
+        filesModified: [],
+        turns: 1,
+        agent: "claude-code",
+        error: "Cannot read file: permission denied",
+      } satisfies SubagentResult));
+
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["echo tests"],
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify subtask file has error details
+    const subtasksFile = path.join(openagentsDir, "subtasks", `${taskId}.json`);
+    expect(fs.existsSync(subtasksFile)).toBe(true);
+    const subtasks = JSON.parse(fs.readFileSync(subtasksFile, "utf-8"));
+
+    const failedSubtask = subtasks.subtasks[0];
+    expect(failedSubtask.status).toBe("failed");
+    expect(failedSubtask.error).toBe("Cannot read file: permission denied");
+    expect(failedSubtask.failureCount).toBe(1);
+    expect(failedSubtask.lastFailureReason).toBe("Cannot read file: permission denied");
+
+    // Verify subtask_failed event was emitted
+    const failedEvents = events.filter((e) => e.type === "subtask_failed") as Array<{
+      type: "subtask_failed";
+      subtask: any;
+      error: string;
+    }>;
+    expect(failedEvents.length).toBe(1);
+    expect(failedEvents[0].error).toBe("Cannot read file: permission denied");
+  });
+
+  test("working tree changes preserved when tests fail (no git reset)", async () => {
+    const { dir, openagentsDir } = createTestRepo("preserve-changes");
+    const events: OrchestratorEvent[] = [];
+    const createdFile = path.join(dir, "feature.txt");
+    const fileContent = "important work that should not be lost";
+
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        fs.writeFileSync(createdFile, fileContent);
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [path.relative(dir, createdFile)],
+          turns: 1,
+          agent: "claude-code",
+        } satisfies SubagentResult;
+      });
+
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["false"], // Failing tests
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Verify the file still exists with its content (not reset)
+    expect(fs.existsSync(createdFile)).toBe(true);
+    expect(fs.readFileSync(createdFile, "utf-8")).toBe(fileContent);
+
+    // Verify git status shows the file as untracked or modified
+    const gitStatus = execSync("git status --porcelain", { cwd: dir, encoding: "utf-8" });
+    expect(gitStatus).toContain("feature.txt");
+  });
+});
