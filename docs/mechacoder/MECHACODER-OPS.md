@@ -313,7 +313,51 @@ Look for:
 3. Look in `.openagents/tasks.jsonl` for tasks stuck in `in_progress` too long.
 4. Either update them to `blocked` with a reason, or `open` to retry.
 
-### 4.4. API / model issues
+### 4.4. Parallel Runner Issues
+
+**Stale subtasks files causing tasks to be skipped:**
+
+If the parallel runner skips subtasks showing them as "done" when they should execute:
+```bash
+# Check for stale subtasks files
+ls .openagents/subtasks/
+
+# Remove specific stale file
+rm .openagents/subtasks/oa-TASKID.json
+git add .openagents/subtasks/oa-TASKID.json
+git commit -m "chore: remove stale subtasks file"
+git push
+```
+
+**Worktree cleanup issues:**
+```bash
+# Clean up all worktrees
+rm -rf .worktrees
+git worktree prune
+
+# List worktrees
+git worktree list
+```
+
+**Claude Code not available:**
+
+If subtasks don't execute and you see `Claude CLI not found`:
+```bash
+# Check if Claude Code CLI is installed
+which claude
+
+# Install if needed (requires Claude Max subscription)
+npm install -g @anthropic-ai/claude-code
+```
+
+**Sandbox container failures:**
+
+If tests fail in sandbox but pass locally, check:
+1. Does the container image have required tools (git, etc.)?
+2. Are all environment variables available in the container?
+3. Try disabling sandbox: set `"enabled": false` in project.json
+
+### 4.5. API / model issues
 
 * Check `OPENROUTER_API_KEY` is configured for the environment where the agent runs (launchd vs CLI).
 
@@ -454,10 +498,44 @@ bun run mechacoder:parallel --dir ~/code/other-repo --max-agents 2 --max-tasks 5
 4. After each batch completes, changes are merged to main sequentially
 5. Worktrees are cleaned up after merging
 
+**Verbose mode for debugging:**
+```bash
+# Add --verbose or -v to see detailed event logs
+bun run mechacoder:parallel --max-agents 1 --max-tasks 1 --cc-only --verbose
+```
+
+In verbose mode, you'll see:
+- All orchestrator events (`[event] session_start`, `[event] subtask_start`, etc.)
+- Sandbox status (available/unavailable)
+- Verification exit codes and outputs (first 5 + last 10 lines)
+- Claude Code streaming output (when connected)
+
 **Recommended overnight command:**
 ```bash
 bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only
 ```
+
+### Sandbox Configuration
+
+The parallel runner can run verification commands (typecheck, tests) in a sandboxed container for isolation. Configure in `.openagents/project.json`:
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": false,    // Set to true to enable container execution
+    "backend": "auto",   // "auto", "docker", "podman", or "none"
+    "memoryLimit": "8G", // Container memory limit
+    "timeoutMs": 300000  // Command timeout in milliseconds
+  }
+}
+```
+
+**Why sandbox is currently disabled for openagents:**
+- Tests require `git` and other tools not present in the default `oven/bun:latest` container
+- Worktrees already provide isolation between agents
+- Enable when using a custom image with all required tools
+
+When sandbox is enabled, verification commands run in containers with the worktree mounted at `/workspace`.
 
 ### Task Management (External Agents)
 
