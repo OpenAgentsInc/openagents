@@ -120,4 +120,61 @@ describe("ProjectService", () => {
     expect(result?.claudeCode?.permissionMode).toBe("dontAsk");
     expect(result?.claudeCode?.fallbackToMinimal).toBe(false);
   });
+
+  // Regression tests for loadProjectConfig path handling
+  // Bug fixed: overnight.ts was passing openagentsDir instead of workDir,
+  // causing loadProjectConfig to look for .openagents/.openagents/project.json
+
+  test("loadProjectConfig expects root dir, not .openagents dir", async () => {
+    // This test documents the API contract: pass the PROJECT ROOT, not .openagents
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+
+        // Create a temp directory structure: /tmp/xxx/.openagents/project.json
+        const rootDir = yield* fs.makeTempDirectory({ prefix: "project-root" });
+        const openagentsDir = path.join(rootDir, ".openagents");
+        yield* fs.makeDirectory(openagentsDir, { recursive: true });
+
+        // Save config to rootDir (which creates rootDir/.openagents/project.json)
+        yield* saveProjectConfig(rootDir, {
+          ...defaultProjectConfig("path-test"),
+          typecheckCommands: ["npm run types"],
+        });
+
+        // Correct usage: pass rootDir
+        const correctResult = yield* loadProjectConfig(rootDir);
+
+        // Incorrect usage (the bug): passing openagentsDir would look for
+        // .openagents/.openagents/project.json which doesn't exist
+        const incorrectResult = yield* loadProjectConfig(openagentsDir);
+
+        return { correctResult, incorrectResult };
+      }),
+    );
+
+    // Correct usage should find the config
+    expect(result.correctResult).not.toBeNull();
+    expect(result.correctResult?.projectId).toBe("path-test");
+    expect(result.correctResult?.typecheckCommands).toEqual(["npm run types"]);
+
+    // Incorrect usage (passing .openagents dir) should return null
+    // because it looks for .openagents/.openagents/project.json
+    expect(result.incorrectResult).toBeNull();
+  });
+
+  test("projectConfigPath constructs path with .openagents subdirectory", async () => {
+    // Verify projectConfigPath adds .openagents to the provided root
+    const configPath = await runWithBun(
+      Effect.gen(function* () {
+        return yield* projectConfigPath("/some/project/root");
+      }),
+    );
+
+    // Should be: /some/project/root/.openagents/project.json
+    expect(configPath).toBe("/some/project/root/.openagents/project.json");
+    expect(configPath).toContain(".openagents");
+    expect(configPath).not.toContain(".openagents/.openagents");
+  });
 });
