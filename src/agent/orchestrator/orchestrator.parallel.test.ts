@@ -225,7 +225,7 @@ describe("Pre-assigned task (config.task)", () => {
   test("simulates parallel runners with different pre-assigned tasks", async () => {
     // This test simulates what happens with the parallel runner:
     // Two agents get different tasks pre-assigned, should work on different tasks
-    const { dir, task1, task2, openagentsDir } = createTestRepo("parallel-sim");
+    const { dir, task1, task2 } = createTestRepo("parallel-sim");
 
     // Create separate openagents dirs to simulate worktrees
     const worktree1Dir = fs.mkdtempSync(path.join(tmpdir(), "worktree1-"));

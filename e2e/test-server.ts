@@ -66,6 +66,18 @@ function broadcastHudMessage(message: HudMessage): void {
   console.log(`[WS] Broadcast ${message.type} to ${wsClients.size} clients`);
 }
 
+// Broadcast raw data (for malformed message testing)
+function broadcastRawMessage(data: string): void {
+  if (wsClients.size === 0) {
+    console.log(`[WS] No clients, cannot send raw message`);
+    return;
+  }
+  for (const client of wsClients) {
+    (client as unknown as { send: (data: string) => void }).send(data);
+  }
+  console.log(`[WS] Broadcast raw data to ${wsClients.size} clients`);
+}
+
 // Inline test mainview HTML with mock Electrobun and test WebSocket
 const testMainviewHtml = `<!doctype html>
 <html lang="en">
@@ -98,6 +110,20 @@ const testMainviewHtml = `<!doctype html>
       }
       .ws-connected { background: #22c55e; color: white; }
       .ws-disconnected { background: #ef4444; color: white; }
+      #error-indicator {
+        position: fixed;
+        top: 70px;
+        right: 10px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        z-index: 9999;
+        background: #ef4444;
+        color: white;
+        display: none;
+        max-width: 300px;
+      }
+      #error-indicator.visible { display: block; }
       #controls {
         position: fixed;
         bottom: 20px;
@@ -144,6 +170,7 @@ const testMainviewHtml = `<!doctype html>
   <body>
     <div id="test-indicator">E2E TEST MODE</div>
     <div id="ws-status" class="ws-disconnected">WS: Disconnected</div>
+    <div id="error-indicator"></div>
 
     <div id="flow-container">
       <svg id="flow-svg" width="100%" height="100%">
@@ -258,6 +285,38 @@ const httpServer = Bun.serve({
       }
     }
 
+    // API endpoint for injecting raw/malformed data
+    if (url.pathname === "/api/inject-raw" && req.method === "POST") {
+      try {
+        const rawData = await req.text();
+        broadcastRawMessage(rawData);
+        return new Response(JSON.stringify({ ok: true, raw: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ ok: false, error: String(e) }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // API endpoint to disconnect all WebSocket clients (for testing)
+    if (url.pathname === "/api/disconnect-ws" && req.method === "POST") {
+      const clientCount = wsClients.size;
+      for (const client of wsClients) {
+        try {
+          (client as unknown as { close: () => void }).close();
+        } catch {
+          // Ignore close errors
+        }
+      }
+      wsClients.clear();
+      return new Response(JSON.stringify({ ok: true, disconnected: clientCount }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // Serve mainview CSS
     if (url.pathname === "/mainview.css") {
       return new Response(mainviewCss, {
@@ -296,7 +355,21 @@ const httpServer = Bun.serve({
               apmWidget.setAttribute('transform', 'translate(20, 20)');
               content.appendChild(apmWidget);
             }
-            apmWidget.innerHTML = '<rect width="180" height="100" fill="#1a1a2e" rx="8"/><text x="10" y="30" fill="#fff" class="apm-value">APM: ' + msg.sessionAPM.toFixed(1) + '</text><text x="10" y="50" fill="#888">Actions: ' + msg.totalActions + '</text>';
+            // Handle NaN/Infinity gracefully for APM display
+            const apmValue = Number.isFinite(msg.sessionAPM) ? msg.sessionAPM.toFixed(1) : '0.0';
+            const actionsValue = Number.isFinite(msg.totalActions) && msg.totalActions >= 0 ? msg.totalActions : 0;
+            apmWidget.innerHTML = '<rect width="180" height="100" fill="#1a1a2e" rx="8"/><text x="10" y="30" fill="#fff" class="apm-value">APM: ' + apmValue + '</text><text x="10" y="50" fill="#888">Actions: ' + actionsValue + '</text>';
+          }
+
+          if (msg.type === 'error') {
+            const errorIndicator = document.getElementById('error-indicator');
+            if (errorIndicator) {
+              errorIndicator.textContent = 'Error: ' + msg.error;
+              errorIndicator.className = 'visible';
+              // Store error for recovery testing
+              window.__lastError = msg;
+              window.__errorCount = (window.__errorCount || 0) + 1;
+            }
           }
         });
 

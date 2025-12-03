@@ -1,0 +1,28 @@
+{
+  "taskId": "oa-91f147",
+  "taskTitle": "E2E: Error handling and resilience tests",
+  "subtasks": [
+    {
+      "id": "oa-91f147-fix-typecheck",
+      "description": "## CRITICAL: Fix Typecheck Errors First\n\nThe codebase has typecheck errors that MUST be fixed before any other work can proceed.\n\nRun `bun run typecheck` to see the errors, then fix them.\n\nCommon causes:\n- Unused imports or variables (TS6133)\n- Type mismatches (TS2322)\n- Missing or extra arguments (TS2554)\n\nAfter fixing, verify with `bun run typecheck` that it passes before proceeding.",
+      "status": "done",
+      "startedAt": "2025-12-03T21:54:54.711Z",
+      "claudeCode": {
+        "sessionId": "6fb720c8-e409-4a3a-8d65-0a00d07da01b"
+      },
+      "completedAt": "2025-12-03T21:56:36.147Z"
+    },
+    {
+      "id": "oa-91f147-sub-001",
+      "description": "E2E: Error handling and resilience tests\n\nTest app resilience to errors and malformed data. Covers: HUD-060 (no crash on WS disconnect), HUD-061 (malformed messages handled), HUD-062 (error indicators visible), HUD-063 (recovery from multiple errors). Inject bad data via test server and verify graceful degradation.",
+      "status": "done",
+      "startedAt": "2025-12-03T21:56:36.147Z",
+      "claudeCode": {
+        "sessionId": "0a746878-7a88-471a-8633-720488861166"
+      },
+      "completedAt": "2025-12-03T22:03:06.623Z"
+    }
+  ],
+  "createdAt": "2025-12-03T21:54:54.710Z",
+  "updatedAt": "2025-12-03T21:54:54.710Z"
+}
