@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import * as S from "effect/Schema";
-import { agentLoop, type AgentTurn, type LoopEvent } from "./loop.js";
+import { agentLoop, type LoopEvent } from "./loop.js";
 import type { Tool, ToolResult } from "../tools/schema.js";
 import type { ChatRequest, ChatResponse } from "../llm/openrouter.js";
 import { OpenRouterClient } from "../llm/openrouter.js";

@@ -27,8 +27,6 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-const isImage = (path: string): boolean => Boolean(IMAGE_MIME_TYPES[extname(path).toLowerCase()]);
-
 export const parseArgs = (argv: string[]): ParsedArgs => {
   const out: ParsedArgs = { mode: "text", messages: [], files: [] };
 

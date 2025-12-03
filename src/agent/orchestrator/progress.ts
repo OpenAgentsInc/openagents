@@ -106,7 +106,6 @@ export const parseProgressMarkdown = (markdown: string): Partial<SessionProgress
     orientation: {
       repoState: "",
       testsPassingAtStart: false,
-      initScript: undefined,
     },
     work: {
       subtasksCompleted: [],

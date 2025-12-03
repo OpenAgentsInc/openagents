@@ -6,7 +6,6 @@ import type { Task } from "../../tasks/index.js";
 import {
   analyzeTask,
   decomposeTask,
-  decomposeByRules,
   generateSubtaskId,
   readSubtasks,
   writeSubtasks,

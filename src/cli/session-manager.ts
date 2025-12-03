@@ -136,10 +136,10 @@ export class SessionManager {
       id: this.sessionId,
       timestamp: new Date().toISOString(),
       cwd: process.cwd(),
-      provider,
-      model,
       thinkingLevel,
     };
+    if (provider) header.provider = provider;
+    if (model) header.model = model;
     appendFileSync(this.sessionFile, JSON.stringify(header) + "\n");
 
     for (const entry of this.pendingMessages) {

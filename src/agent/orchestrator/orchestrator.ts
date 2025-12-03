@@ -29,17 +29,12 @@ import {
 } from "./decompose.js";
 import {
   writeProgress,
-  readProgress,
-  createEmptyProgress,
   getPreviousSessionSummary,
 } from "./progress.js";
 import {
   type OrchestratorConfig,
   type OrchestratorState,
   type OrchestratorEvent,
-  type OrchestratorPhase,
-  type Subtask,
-  type SubtaskList,
   type SessionProgress,
   type SubagentResult,
 } from "./types.js";
@@ -289,9 +284,9 @@ export const runOrchestrator = (
       
       if (!subtaskList) {
         // Create new subtask list with intelligent decomposition
-        subtaskList = createSubtaskList(taskResult, {
-          maxSubtasks: config.maxSubtasksPerTask,
-        });
+        const subtaskOptions =
+          config.maxSubtasksPerTask !== undefined ? { maxSubtasks: config.maxSubtasksPerTask } : undefined;
+        subtaskList = createSubtaskList(taskResult, subtaskOptions);
       }
 
       state.subtasks = subtaskList;
@@ -314,9 +309,9 @@ export const runOrchestrator = (
         const result: SubagentResult = yield* runBestAvailableSubagent({
           subtask,
           cwd: config.cwd,
-          openagentsDir: config.openagentsDir,
+          openagentsDir: config.openagentsDir ?? config.cwd,
           tools: SUBAGENT_TOOLS,
-          model: config.subagentModel,
+          ...(config.subagentModel ? { model: config.subagentModel } : {}),
           claudeCode: config.claudeCode,
           signal: config.signal,
         }).pipe(
