@@ -1,16 +1,28 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
+import { Effect, Layer } from "effect";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { runOrchestrator } from "./orchestrator.js";
-import { runBestAvailableSubagent, type RunBestAvailableSubagentOptions } from "./subagent-router.js";
+import { runBestAvailableSubagent } from "./subagent-router.js";
 import type { OrchestratorEvent, SubagentResult } from "./types.js";
+import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 
-const runWithBun = <A, E>(program: Effect.Effect<A, E, any>) =>
-  Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
+const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
+  chat: () => Effect.fail(new Error("not used")),
+} satisfies OpenRouterClientShape);
+const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer);
+
+const runWithBun = <A, E>(
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient>
+) =>
+  Effect.runPromise(
+    program.pipe(Effect.provide(testLayer))
+  );
 
 const createTestRepo = (name: string) => {
   const dir = fs.mkdtempSync(path.join(tmpdir(), `claude-e2e-${name}-`));
@@ -63,9 +75,7 @@ describe("Golden Loop with Claude Code", () => {
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
 
-    const claudeRunner = (
-      options: RunBestAvailableSubagentOptions<never>,
-    ): Effect.Effect<SubagentResult, Error, never> =>
+    const claudeRunner: typeof runBestAvailableSubagent = (options) =>
       Effect.sync(() => {
         fs.writeFileSync(createdFile, "updated by Claude Code");
         return {
@@ -73,11 +83,12 @@ describe("Golden Loop with Claude Code", () => {
           subtaskId: options.subtask.id,
           filesModified: [path.relative(dir, createdFile)],
           turns: 2,
+          agent: "claude-code",
           sessionMetadata: {
             toolsUsed: { Edit: 1 },
             summary: "Completed via Claude Code",
           },
-        };
+        } satisfies SubagentResult;
       });
 
     const state = await runWithBun(
@@ -116,7 +127,7 @@ describe("Golden Loop with Claude Code", () => {
     const events: OrchestratorEvent[] = [];
     const fallbackFile = path.join(dir, "fallback.txt");
 
-    const subagentRunner = (options: RunBestAvailableSubagentOptions<never>) =>
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
       runBestAvailableSubagent({
         ...options,
         claudeCode: { enabled: true, fallbackToMinimal: true },
@@ -136,6 +147,7 @@ describe("Golden Loop with Claude Code", () => {
               subtaskId: options.subtask.id,
               filesModified: [path.relative(dir, fallbackFile)],
               turns: 1,
+              agent: "minimal",
               sessionMetadata: { summary: "fallback to minimal subagent" },
             };
           }),
