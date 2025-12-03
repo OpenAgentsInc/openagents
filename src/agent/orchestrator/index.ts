@@ -39,6 +39,9 @@ export { runSubagent, createSubagentConfig } from "./subagent.js";
 // Init Script
 export { runInitScript } from "./init-script.js";
 
+// Claude Code integration
+export { detectClaudeCode } from "./claude-code-detector.js";
+
 // Decomposition
 export {
   analyzeTask,
