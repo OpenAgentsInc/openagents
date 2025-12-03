@@ -374,6 +374,37 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 **Recovery**: Init failures are warnings, not blockers. Session continues.
 
+### 4.8. Network & External Service Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| Network unavailable at startup | Orchestrator detects via ping/fetch. Logs warning. Falls back to local-only mode if `offlineMode: "allow"` in project.json. |
+| Network lost mid-session | Current operation times out. Uncommitted work preserved. Task marked `blocked` with reason. |
+| Claude Code API unreachable | Falls back to minimal subagent (if `fallbackToMinimal: true`). |
+| Claude Code rate-limited | Exponential backoff (3 retries). Then fallback to minimal subagent. |
+| OpenRouter / LLM provider unavailable | Same as Claude Code - fallback to minimal or block task. |
+| Git push fails (network) | Work committed locally. Task stays `in_progress`. Push retried on next session. |
+
+**Recovery**: See **Section 5.7: Playbook: Network & Offline Recovery** for detailed procedures.
+
+**Offline-Capable Operations:**
+- Reading/writing local files
+- Running local tests (`bun test`, `bun run typecheck`)
+- Committing to local git (no push)
+- Updating `.openagents/tasks.jsonl`
+- Writing progress files and logs
+
+**Operations Requiring Network:**
+- Git push/fetch
+- Claude Code subagent invocation
+- LLM API calls (OpenRouter, Anthropic)
+- Any external API integrations
+
+**Fallback Hierarchy:**
+1. **Claude Code** (preferred) - Full agentic coding with tools
+2. **Minimal Subagent** (fallback) - Basic read/edit/bash, lower capability
+3. **Block Task** (last resort) - Mark task blocked, preserve state for resumption
+
 ---
 
 ## 5. Recovery Playbooks
@@ -1017,6 +1048,304 @@ Can't resume Claude Code session?
     │
     └── Want completely fresh start
         └── Remove claudeCode.sessionId from subtask JSON
+
+Network / external service unavailable?
+    │
+    ├── Check: Can reach external services?
+    │   └── ping 8.8.8.8 || curl -s https://api.anthropic.com/health
+    │
+    ├── Network down at startup
+    │   ├── offlineMode: "allow" → Continue with local-only work
+    │   └── offlineMode: "block" → Exit, wait for network
+    │
+    ├── Claude Code unavailable
+    │   ├── fallbackToMinimal: true → Use minimal subagent
+    │   └── fallbackToMinimal: false → Block task
+    │
+    └── Network lost mid-session
+        ├── Commit work locally (no push)
+        ├── Mark task as blocked with reason
+        └── Retry push on next session
+```
+
+---
+
+### 5.7. Playbook: Network & Offline Recovery
+
+**Goal:** Handle network outages and external service unavailability without losing work.
+
+#### Detecting Network State
+
+```bash
+# Quick connectivity check
+check_network() {
+    # Try multiple endpoints
+    if curl -s --connect-timeout 5 https://api.anthropic.com/health >/dev/null 2>&1; then
+        echo "claude-api: online"
+    else
+        echo "claude-api: offline"
+    fi
+
+    if curl -s --connect-timeout 5 https://api.github.com >/dev/null 2>&1; then
+        echo "github: online"
+    else
+        echo "github: offline"
+    fi
+
+    if git ls-remote origin HEAD >/dev/null 2>&1; then
+        echo "git-remote: online"
+    else
+        echo "git-remote: offline"
+    fi
+}
+```
+
+#### Scenario A: Network Unavailable at Startup
+
+**Symptoms:**
+- `git fetch` fails with connection error
+- Claude Code invocation times out
+- Orchestrator logs network-related errors
+
+**Recovery Options:**
+
+**Option 1: Wait for network (recommended for short outages)**
+```bash
+# Check network status
+ping -c 1 8.8.8.8 || echo "Network unreachable"
+
+# Wait and retry
+while ! ping -c 1 8.8.8.8 >/dev/null 2>&1; do
+    echo "Waiting for network..."
+    sleep 30
+done
+
+# Resume orchestrator
+bun run src/cli/mechacoder.ts --dir . --once
+```
+
+**Option 2: Enable offline mode (for extended outages)**
+```bash
+# Edit .openagents/project.json to allow offline work
+# Add: "offlineMode": "allow"
+
+# In offline mode, orchestrator will:
+# - Skip git fetch/push
+# - Fall back to minimal subagent (no Claude Code API)
+# - Commit changes locally only
+# - Mark tasks for "push pending" on network return
+```
+
+**Option 3: Work on local-only tasks**
+```bash
+# Filter to tasks that don't require network
+# (e.g., documentation, refactoring, tests that run locally)
+
+# Mark network-dependent tasks as blocked
+bun run tasks:update --id oa-<taskId> --status blocked --reason "Requires network - offline"
+```
+
+#### Scenario B: Claude Code Unavailable (API Down/Rate Limited)
+
+**Symptoms:**
+- Claude Code invocation returns 503/429
+- Timeout waiting for Claude Code response
+- Authentication errors
+
+**Recovery Flow:**
+
+```
+Claude Code Fails
+    │
+    ├── Is fallbackToMinimal enabled?
+    │   │
+    │   ├── Yes
+    │   │   └── Switch to minimal subagent
+    │   │       ├── Minimal has: read, write, edit, bash
+    │   │       ├── Minimal lacks: full reasoning, multi-step planning
+    │   │       └── Best for: simple, well-specified subtasks
+    │   │
+    │   └── No
+    │       └── Block task with reason
+    │           ├── Set status: "blocked"
+    │           ├── Set reason: "Claude Code unavailable"
+    │           └── Preserve progress for later resumption
+    │
+    └── Update progress.md with service status
+```
+
+**Manual fallback configuration:**
+```bash
+# Edit .openagents/project.json
+{
+  "fallbackToMinimal": true,  # Enable minimal subagent fallback
+  "minimalSubagentModel": "gpt-4o-mini",  # Alternative model for minimal
+  "claudeCodeRetries": 3,  # Retries before fallback
+  "claudeCodeTimeout": 300000  # 5 min timeout
+}
+```
+
+**Forcing minimal subagent:**
+```bash
+# To force a subtask to use minimal subagent (bypass Claude Code)
+# Edit .openagents/subtasks/<taskId>.json:
+{
+  "subtasks": [
+    {
+      "id": "sub-001",
+      "forceMinimal": true,  # Skip Claude Code entirely
+      ...
+    }
+  ]
+}
+```
+
+#### Scenario C: Network Lost Mid-Session
+
+**Symptoms:**
+- Git push fails after successful commit
+- Claude Code session disconnects
+- Timeouts during file operations
+
+**Immediate Response:**
+
+1. **Preserve all work locally:**
+   ```bash
+   # Ensure changes are committed locally
+   git status
+   # If uncommitted changes exist:
+   git add -A
+   git commit -m "WIP: $(cat <<'EOF'
+   oa-<taskId>: work in progress (network lost)
+
+   Session interrupted due to network failure.
+   Push pending when connectivity restored.
+
+   🤖 Generated with [OpenAgents](https://openagents.com)
+
+   Co-Authored-By: MechaCoder <noreply@openagents.com>
+   EOF
+   )"
+   ```
+
+2. **Update task status:**
+   ```bash
+   # Mark task appropriately - NOT closed (work not pushed)
+   bun run tasks:update --id oa-<taskId> --status in_progress --reason "Work complete locally; push pending (network lost)"
+   ```
+
+3. **Record state in progress.md:**
+   ```markdown
+   ### Network Failure - Session Interrupted
+
+   - Time: <timestamp>
+   - Task: oa-<taskId>
+   - Local commits: <sha1>, <sha2>
+   - Push status: PENDING (network unavailable)
+   - Subtask status: work complete, verification pending push
+
+   On network restore:
+   1. git push origin HEAD
+   2. Verify CI passes
+   3. Close task
+   ```
+
+4. **Set up resumption:**
+   ```bash
+   # In subtask JSON, mark for push-on-resume:
+   {
+     "subtasks": [
+       {
+         "id": "sub-001",
+         "status": "pending_push",  # Custom status for this scenario
+         "localCommits": ["abc123", "def456"],
+         "pushAttempts": 1
+       }
+     ]
+   }
+   ```
+
+#### Scenario D: Resuming After Network Restored
+
+**Steps:**
+
+1. **Verify connectivity:**
+   ```bash
+   git ls-remote origin HEAD && echo "Git remote accessible"
+   curl -s https://api.anthropic.com/health && echo "Claude API accessible"
+   ```
+
+2. **Push pending commits:**
+   ```bash
+   # Check for unpushed commits
+   git log --oneline origin/main..HEAD
+
+   # Push if any
+   git push origin HEAD
+   ```
+
+3. **Resume Claude Code session (if applicable):**
+   ```bash
+   # If sessionId exists in subtask JSON, orchestrator will attempt resume
+   # To force fresh session instead:
+   # Edit subtask JSON: set claudeCode.resumeStrategy = "fork"
+   ```
+
+4. **Clear blocked status:**
+   ```bash
+   # If task was blocked due to network
+   bun run tasks:update --id oa-<taskId> --status in_progress --reason ""
+   ```
+
+5. **Restart orchestrator:**
+   ```bash
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+#### Session Persistence for Network Resilience
+
+To maximize recoverability during network issues, the orchestrator persists:
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| Claude Code session ID | `.openagents/subtasks/<taskId>.json` | Resume interrupted sessions |
+| Local commits | Git reflog | Recover uncommitted work |
+| Progress summary | `.openagents/progress.md` | Orient next session |
+| Subtask state | `.openagents/subtasks/<taskId>.json` | Track completion status |
+| Push pending flag | subtask `status: "pending_push"` | Retry push on network restore |
+
+**Session Resume Options:**
+
+```json
+// In subtask claudeCode config:
+{
+  "claudeCode": {
+    "sessionId": "session-abc123",  // Previous session to resume
+    "resumeStrategy": "continue",   // "continue" | "fork" | "fresh"
+    "lastActivityAt": "2025-12-03T10:00:00Z",
+    "sessionExpiry": "2025-12-03T22:00:00Z"  // Sessions expire after ~12h
+  }
+}
+```
+
+**Resume strategies:**
+- `continue`: Try to resume exact session state (may fail if expired)
+- `fork`: Create new session with context from previous (recommended after failures)
+- `fresh`: Start completely new session (loses all session context)
+
+#### Logging Service Unavailability
+
+When external services fail, log clearly for debugging:
+
+```markdown
+<!-- In progress.md -->
+### Service Unavailability Log
+
+| Time | Service | Error | Action Taken |
+|------|---------|-------|--------------|
+| 10:30 | Claude Code | 503 Service Unavailable | Fallback to minimal subagent |
+| 10:45 | GitHub API | Connection timeout | Deferred push, task stays in_progress |
+| 11:00 | Claude Code | 429 Rate Limited | Backoff 60s, retry succeeded |
 ```
 
 ---
