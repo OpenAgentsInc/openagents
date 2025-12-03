@@ -425,6 +425,40 @@ bun src/agent/overnight.ts --dir . --max-tasks 3
 bun src/agent/overnight.ts --dir . --max-tasks 2 --dry-run
 ```
 
+### Running Parallel MechaCoders
+
+For overnight runs with multiple agents in parallel:
+
+```bash
+# Run 2 agents in parallel, processing up to 10 tasks (uses Claude Code)
+bun run mechacoder:parallel --max-agents 2 --max-tasks 10 --cc-only
+
+# Dry run to preview which tasks would be processed
+bun run mechacoder:parallel --max-agents 4 --max-tasks 20 --dry-run
+
+# Run against a different directory
+bun run mechacoder:parallel --dir ~/code/other-repo --max-agents 2 --max-tasks 5 --cc-only
+```
+
+**Parallel runner options:**
+- `--max-agents <N>` - Maximum parallel agents (default: 2)
+- `--max-tasks <N>` - Maximum total tasks to complete (default: 10)
+- `--cc-only` - Use Claude Code only (recommended for overnight runs)
+- `--dry-run` - Preview what would run without executing
+- `--dir, --cwd <path>` - Target repo directory (default: current directory)
+
+**How parallel execution works:**
+1. Each agent runs in an **isolated git worktree** (`.worktrees/<task-id>/`)
+2. Agents run in batches of `--max-agents` at a time
+3. Init script is **skipped** in worktrees (main repo is validated at start)
+4. After each batch completes, changes are merged to main sequentially
+5. Worktrees are cleaned up after merging
+
+**Recommended overnight command:**
+```bash
+bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only
+```
+
 ### Task Management (External Agents)
 
 Tasks live in `.openagents/tasks.jsonl`. External agents can use the CLI:
@@ -453,6 +487,7 @@ For in-process access, use `TaskService` and `ProjectService` from `src/tasks/`.
 | Stop launchd agent          | `launchctl unload ~/Library/LaunchAgents/com.openagents.mechacoder.plist`            |
 | Start launchd agent         | `cd ~/code/openagents && ./scripts/start-mechacoder.sh`                              |
 | Run MechaCoder once (repo)  | `cd ~/code/openagents && bun src/agent/do-one-task.ts --dir /path/to/repo`           |
+| Run parallel overnight      | `cd ~/code/openagents && bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only` |
 | View latest log             | `cd ~/code/openagents && cat $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)`     |
 | Watch latest log            | `cd ~/code/openagents && tail -f $(ls -t docs/logs/$(date +%Y%m%d)/*.md \| head -1)` |
 | Inspect tasks (.openagents) | `cd /path/to/repo && cat .openagents/tasks.jsonl \| jq '.'`                          |

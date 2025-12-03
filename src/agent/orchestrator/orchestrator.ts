@@ -39,6 +39,7 @@ import {
   type SessionProgress,
   type SubagentResult,
   type Subtask,
+  type InitScriptResult,
   getProgressPath,
 } from "./types.js";
 
@@ -216,7 +217,14 @@ export const runOrchestrator = (
         progress.orientation.previousSessionSummary = prevSummary;
       }
 
-      let initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
+      let initScriptResult: InitScriptResult;
+      if (config.skipInitScript) {
+        // Skip init script (e.g., in worktree runs where main repo is already validated)
+        initScriptResult = { ran: false, success: true, output: "Skipped (skipInitScript=true)" };
+        emit({ type: "init_script_complete", result: initScriptResult });
+      } else {
+        initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
+      }
       progress.orientation.initScript = initScriptResult;
 
       // Safe mode: Attempt self-healing for recoverable failures

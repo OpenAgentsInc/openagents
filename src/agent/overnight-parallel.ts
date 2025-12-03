@@ -34,7 +34,7 @@ import {
 } from "./orchestrator/agent-lock.js";
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import { loadProjectConfig } from "../tasks/project.js";
-import { loadTasks } from "../tasks/task.js";
+import { readTasks } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer } from "../llm/openrouter.js";
 
@@ -276,6 +276,8 @@ const runAgentInWorktree = async (
     subagentModel: projectConfig.defaultModel,
     // Force picking specific task
     taskId: slot.task.id,
+    // Skip init script in worktrees - main repo is already validated
+    skipInitScript: true,
   };
 
   // Merge layers
@@ -362,8 +364,9 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   log(`Project: ${projectConfig.projectId}`);
 
   // Load ready tasks
+  const tasksPath = path.join(openagentsDir, "tasks.jsonl");
   const allTasks = await Effect.runPromise(
-    loadTasks(openagentsDir).pipe(
+    readTasks(tasksPath).pipe(
       Effect.provide(BunContext.layer),
       Effect.catchAll(() => Effect.succeed([] as Task[])),
     ),
@@ -375,7 +378,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
       t.status === "open" &&
       !t.deps?.some((d) => {
         if (d.type !== "blocks") return false;
-        const blocker = allTasks.find((x) => x.id === d.taskId);
+        const blocker = allTasks.find((x) => x.id === d.id);
         return blocker && blocker.status !== "closed";
       }),
   );
@@ -433,6 +436,11 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
       log(`[Agent ${slotId}] Creating worktree for ${task.id}...`);
 
       try {
+        // Try to remove existing worktree first (in case of stale state)
+        await Effect.runPromise(
+          removeWorktree(config.workDir, task.id).pipe(Effect.catchAll(() => Effect.void)),
+        );
+
         const worktree = await Effect.runPromise(createWorktree(config.workDir, worktreeConfig));
         log(`[Agent ${slotId}] Worktree: ${worktree.path}`);
 
@@ -476,7 +484,9 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
           log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to main...`);
           const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch);
           if (mergeResult.success) {
-            slot.commitSha = mergeResult.commitSha;
+            if (mergeResult.commitSha) {
+              slot.commitSha = mergeResult.commitSha;
+            }
             log(`[Agent ${slot.id}] ✅ Merged: ${mergeResult.commitSha?.slice(0, 8)}`);
             tasksCompleted++;
           } else {

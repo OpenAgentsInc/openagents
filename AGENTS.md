@@ -493,3 +493,24 @@ By default, MechaCoder reads and writes tasks from `.openagents/tasks.jsonl` in 
 - [MECHACODER-OPS.md](docs/mechacoder/MECHACODER-OPS.md) - Operations guide (start/stop, logs, troubleshooting)
 - [GOLDEN-LOOP-v2.md](docs/mechacoder/GOLDEN-LOOP-v2.md) - Golden Loop v2 spec (desktop agent loop)
 - [spec.md](docs/mechacoder/spec.md) - .openagents project format and architecture
+
+### Parallel MechaCoder (Overnight Runs)
+
+For overnight runs with multiple agents in parallel:
+
+```bash
+# Run 4 agents in parallel, processing up to 50 tasks
+bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only
+```
+
+**How it works:**
+- Each agent runs in an **isolated git worktree** (`.worktrees/<task-id>/`)
+- Init script is skipped in worktrees (main repo is validated at start)
+- Changes are merged to main sequentially after each batch completes
+- Worktrees are cleaned up automatically
+
+**Options:**
+- `--max-agents <N>` - Parallel agents (default: 2)
+- `--max-tasks <N>` - Total tasks to complete (default: 10)
+- `--cc-only` - Use Claude Code only (recommended)
+- `--dry-run` - Preview without executing
