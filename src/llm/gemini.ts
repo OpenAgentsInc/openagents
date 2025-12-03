@@ -53,25 +53,24 @@ export const toolToFunctionDeclaration = (tool: Tool<any>): Record<string, unkno
   };
 };
 
-const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) =>
-  messages.flatMap((m) => {
+const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) => {
+  const mapped: Array<Record<string, unknown>> = [];
+
+  for (const m of messages) {
     if (m.role === "user") {
       if (typeof m.content === "string") {
-        return [{ role: "user", parts: [{ text: m.content }] }];
-      }
-      const parts =
-        m.content?.flatMap((c) => {
-          if (c.type === "text") return [{ text: c.text }];
+        mapped.push({ role: "user", parts: [{ text: m.content }] });
+      } else if (Array.isArray(m.content)) {
+        const parts: Array<Record<string, unknown>> = [];
+        for (const c of m.content) {
+          if (c.type === "text") parts.push({ text: c.text });
           if (c.type === "image" && modelSupportsImages) {
-            return [{ inlineData: { mimeType: c.mimeType, data: c.data } }];
+            parts.push({ inlineData: { mimeType: c.mimeType, data: c.data } });
           }
-          return [];
-        }) ?? [];
-      if (parts.length === 0) return [];
-      return [{ role: "user", parts }];
-    }
-
-    if (m.role === "assistant") {
+        }
+        if (parts.length > 0) mapped.push({ role: "user", parts });
+      }
+    } else if (m.role === "assistant") {
       const parts: Array<Record<string, unknown>> = [];
       if (typeof m.content === "string") {
         parts.push({ text: m.content });
@@ -80,29 +79,24 @@ const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) =>
           if (c.type === "text") parts.push({ text: c.text });
         }
       }
-      if (parts.length === 0) return [];
-      return [{ role: "model", parts }];
-    }
-
-    if (m.role === "tool") {
-      // Map tool results to functionResponse parts
-      return [
-        {
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: m.name ?? "tool",
-                response: { name: m.name ?? "tool", content: m.content },
-              },
+      if (parts.length > 0) mapped.push({ role: "model", parts });
+    } else if (m.role === "tool") {
+      mapped.push({
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: m.name ?? "tool",
+              response: { name: m.name ?? "tool", content: m.content },
             },
-          ],
-        },
-      ];
+          },
+        ],
+      });
     }
+  }
 
-    return [];
-  });
+  return mapped;
+};
 
 export const makeGeminiRequestBody = (config: GeminiConfigShape, request: ChatRequest) => {
   const tools = request.tools?.map(toolToFunctionDeclaration);

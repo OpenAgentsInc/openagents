@@ -67,6 +67,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               cwd: options.cwd,
               openagentsDir: options.openagentsDir ?? options.cwd,
               maxTurns,
+              ...(claudeCode?.permissionMode ? { permissionMode: claudeCode.permissionMode } : {}),
             }),
           catch: (error: any) => error as Error,
         }).pipe(
