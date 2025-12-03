@@ -287,9 +287,22 @@ export const getAgentLockPath = (openagentsDir: string): string =>
 // Init Script Types
 // ============================================================================
 
+/**
+ * Result from running the preflight init.sh script.
+ *
+ * Exit codes (per GOLDEN-LOOP-v2.md Section 2.2.1):
+ * - 0: All checks passed → success=true, hasWarnings=false
+ * - 1: Fatal error → success=false (abort session)
+ * - 2: Warnings only → success=true, hasWarnings=true (continue with caution)
+ */
 export interface InitScriptResult {
   ran: boolean;
+  /** true if script exited with 0 or 2 (proceed), false if exit 1 (abort) */
   success: boolean;
+  /** true if script exited with 2 (warnings present but proceed) */
+  hasWarnings?: boolean;
+  /** exit code from the script (0, 1, or 2) */
+  exitCode?: number;
   output?: string;
   durationMs?: number;
   error?: string;

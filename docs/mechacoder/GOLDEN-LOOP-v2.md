@@ -139,6 +139,190 @@ Given a working directory:
     - Prompt the user via Desktop UI to initialize `.openagents`, or
     - Use a CLI flow to generate a minimal project.json (v2+).
 
+### 2.2.1. Preflight Checklist (init.sh)
+
+Before selecting a task, the orchestrator runs a **preflight checklist** to verify the environment is ready for work. This checklist is defined in `.openagents/init.sh` (optional but recommended).
+
+**Purpose:** Fail fast if the environment is broken, rather than discovering issues mid-task and leaving partial work behind.
+
+#### Recommended Preflight Checks
+
+| Check | Why | Fail-Fast Behavior |
+|-------|-----|-------------------|
+| **Git clean** | Uncommitted changes may conflict with new work | Warning (continue) or Error (abort) based on policy |
+| **Smoke test** | Codebase must compile/pass basic tests | Error (abort) – no point working on broken code |
+| **API keys present** | Claude Code / LLM APIs need credentials | Error (abort) if Claude Code enabled and no keys |
+| **Lock file absent** | Another agent may be running | Error (abort) – prevent concurrent modifications |
+| **Disk space** | Builds may fail with insufficient space | Warning (continue) with logged alert |
+| **Network reachable** | Push/fetch and API calls need connectivity | Warning (continue) if `offlineMode: "allow"`, else Error (abort) |
+
+#### Reference init.sh Template
+
+```bash
+#!/bin/bash
+# .openagents/init.sh - Preflight checklist for Golden Loop v2
+#
+# Exit codes:
+#   0 = All checks passed
+#   1 = Fatal error (abort session)
+#   2 = Warnings only (continue with caution)
+#
+# Logged to: docs/logs/YYYYMMDD/HHMM-preflight.log
+
+set -o pipefail
+
+DAY=$(TZ=America/Chicago date +%Y%m%d)
+TS=$(TZ=America/Chicago date +%H%M)
+LOG_DIR="docs/logs/$DAY"
+LOG_FILE="$LOG_DIR/${TS}-preflight.log"
+
+mkdir -p "$LOG_DIR"
+
+log() {
+    echo "[$(date -Iseconds)] $1" | tee -a "$LOG_FILE"
+}
+
+warn() {
+    log "WARNING: $1"
+    WARNINGS=$((WARNINGS + 1))
+}
+
+fatal() {
+    log "FATAL: $1"
+    exit 1
+}
+
+WARNINGS=0
+
+log "=== Golden Loop v2 Preflight Checklist ==="
+log "Working directory: $(pwd)"
+log "Project: $(jq -r '.projectId // "unknown"' .openagents/project.json 2>/dev/null || echo 'unknown')"
+
+# 1. Check for stale lock file
+log "Checking agent lock..."
+if [ -f ".openagents/agent.lock" ]; then
+    LOCK_PID=$(head -1 .openagents/agent.lock)
+    if kill -0 "$LOCK_PID" 2>/dev/null; then
+        fatal "Another agent is running (PID $LOCK_PID). Aborting."
+    else
+        log "Removing stale lock from dead process $LOCK_PID"
+        rm -f .openagents/agent.lock
+    fi
+fi
+
+# 2. Check git status (uncommitted changes)
+log "Checking git status..."
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    warn "Uncommitted changes detected:"
+    git status --short >> "$LOG_FILE"
+    # Policy: continue with warning (change to 'fatal' for strict mode)
+fi
+
+# 3. Smoke test: typecheck
+log "Running smoke test (typecheck)..."
+if ! bun run typecheck >> "$LOG_FILE" 2>&1; then
+    fatal "Typecheck failed at preflight. Fix errors before running agent."
+fi
+log "Typecheck passed."
+
+# 4. Smoke test: quick test run (optional, based on project config)
+SMOKE_TEST=$(jq -r '.smokeTestCommand // empty' .openagents/project.json 2>/dev/null)
+if [ -n "$SMOKE_TEST" ]; then
+    log "Running smoke test: $SMOKE_TEST"
+    if ! eval "$SMOKE_TEST" >> "$LOG_FILE" 2>&1; then
+        fatal "Smoke test failed: $SMOKE_TEST"
+    fi
+    log "Smoke test passed."
+else
+    log "No smokeTestCommand configured, skipping test smoke."
+fi
+
+# 5. Check API keys (if Claude Code enabled)
+CLAUDE_ENABLED=$(jq -r '.claudeCode.enabled // false' .openagents/project.json 2>/dev/null)
+if [ "$CLAUDE_ENABLED" = "true" ]; then
+    log "Checking API credentials for Claude Code..."
+    if [ -z "$ANTHROPIC_API_KEY" ] && [ ! -f ~/.config/claude/credentials.json ]; then
+        fatal "Claude Code enabled but no API credentials found. Set ANTHROPIC_API_KEY or configure ~/.config/claude/credentials.json"
+    fi
+    log "API credentials present."
+fi
+
+# 6. Check network connectivity (if not offline mode)
+OFFLINE_MODE=$(jq -r '.offlineMode // "block"' .openagents/project.json 2>/dev/null)
+log "Checking network connectivity..."
+if ! curl -s --connect-timeout 5 https://api.github.com >/dev/null 2>&1; then
+    if [ "$OFFLINE_MODE" = "allow" ]; then
+        warn "Network unreachable. Continuing in offline mode."
+    else
+        fatal "Network unreachable and offlineMode is not 'allow'. Aborting."
+    fi
+else
+    log "Network connectivity confirmed."
+fi
+
+# 7. Check disk space (warn if < 1GB free)
+log "Checking disk space..."
+FREE_KB=$(df -k . | tail -1 | awk '{print $4}')
+if [ "$FREE_KB" -lt 1048576 ]; then
+    warn "Low disk space: $(($FREE_KB / 1024))MB free"
+fi
+
+# 8. Sync with remote (optional, fetch only)
+ALLOW_PUSH=$(jq -r '.allowPush // false' .openagents/project.json 2>/dev/null)
+if [ "$ALLOW_PUSH" = "true" ]; then
+    log "Fetching from remote..."
+    if git fetch origin >> "$LOG_FILE" 2>&1; then
+        BEHIND=$(git rev-list --count HEAD..origin/$(git rev-parse --abbrev-ref HEAD) 2>/dev/null || echo 0)
+        if [ "$BEHIND" -gt 0 ]; then
+            warn "Local branch is $BEHIND commits behind remote."
+        fi
+    else
+        warn "git fetch failed (continuing with local state)"
+    fi
+fi
+
+# Summary
+log "=== Preflight Complete ==="
+if [ "$WARNINGS" -gt 0 ]; then
+    log "Completed with $WARNINGS warning(s). Review $LOG_FILE for details."
+    exit 2
+else
+    log "All checks passed. Ready for Golden Loop."
+    exit 0
+fi
+```
+
+#### Fail-Fast Policy Options
+
+Configure fail-fast behavior in `.openagents/project.json`:
+
+```json
+{
+  "preflight": {
+    "abortOnDirtyWorkTree": false,      // true = abort if uncommitted changes
+    "abortOnTypecheckFail": true,       // true = abort if typecheck fails
+    "abortOnNetworkUnavailable": true,  // false = allow offline work
+    "smokeTestCommand": "bun test --bail",  // Optional quick test
+    "timeoutSeconds": 120               // Max time for all preflight checks
+  }
+}
+```
+
+#### Logging Preflight Results
+
+Preflight logs are written to `docs/logs/YYYYMMDD/HHMM-preflight.log` alongside other session logs. This provides:
+
+1. **Audit trail** – see what state the repo was in when the agent started
+2. **Debugging** – understand why a session was aborted
+3. **Metrics** – track how often preflight catches issues vs. mid-task failures
+
+The orchestrator reads the init.sh exit code:
+- `0` = proceed with task selection
+- `1` = abort session (fatal error)
+- `2` = proceed with warnings logged
+
+If init.sh is missing, the orchestrator proceeds without preflight (equivalent to exit 0).
+
 ### 2.3. Task selection
 
 - Load tasks from `.openagents/tasks.jsonl`:
@@ -443,13 +627,26 @@ Tests for lock behavior are in `src/agent/orchestrator/agent-lock.test.ts`:
 
 ### 4.7. Init Script Failures
 
+The init.sh preflight checklist (see Section 2.2.1) uses exit codes to signal severity:
+
+| Exit Code | Meaning | Orchestrator Behavior |
+|-----------|---------|----------------------|
+| `0` | All checks passed | Proceed with task selection |
+| `1` | Fatal error | **Abort session** – do not proceed |
+| `2` | Warnings only | Proceed with caution, warnings logged |
+
 | Scenario | Behavior |
 |----------|----------|
-| Missing init.sh | Continues without init (non-fatal). |
-| Init script fails | Failure logged. Continues with warning. |
-| Init script times out (60s) | Treated as failure. Continues with warning. |
+| Missing init.sh | Continues without preflight (non-fatal). |
+| Init script exits with `1` | **Session aborted.** Fatal error logged to `docs/logs/YYYYMMDD/HHMM-preflight.log`. |
+| Init script exits with `2` | Warnings logged. Session continues. |
+| Init script times out (default 120s) | Treated as exit `1` (fatal). Session aborted. |
+| Init script throws unexpected error | Logged. Session aborted (fail-safe default). |
 
-**Recovery**: Init failures are warnings, not blockers. Session continues.
+**Recovery**:
+- For exit `1` (fatal): Fix the underlying issue (e.g., failing typecheck, missing API keys) and rerun.
+- For exit `2` (warning): Review `docs/logs/YYYYMMDD/HHMM-preflight.log` to understand warnings.
+- For missing init.sh: Consider adding the reference template from Section 2.2.1.
 
 ### 4.8. Network & External Service Failures
 
@@ -634,63 +831,17 @@ This section provides step-by-step instructions for recovering from common failu
 
 **Goal:** Ensure the working tree is in a clean, known state before starting work.
 
-**Detection (via init.sh or manual):**
+**Automated Detection (via init.sh):**
 
-Create `.openagents/init.sh` to automate detection:
+Use the comprehensive preflight checklist from **Section 2.2.1** which includes:
+- Git dirty state detection
+- Stale lock file cleanup
+- Typecheck verification
+- API key validation
+- Network connectivity check
+- Disk space monitoring
 
-```bash
-#!/bin/bash
-# .openagents/init.sh - Workspace health check
-
-set -e
-
-echo "=== Workspace Health Check ==="
-
-# 1. Check for uncommitted changes
-if [ -n "$(git status --porcelain)" ]; then
-    echo "WARNING: Uncommitted changes detected:"
-    git status --short
-
-    # Option: Fail init to prevent work on dirty tree
-    # exit 1
-
-    # Option: Continue with warning (current behavior)
-    echo "Proceeding with dirty working tree..."
-fi
-
-# 2. Check for stale lock files
-if [ -f ".openagents/agent.lock" ]; then
-    LOCK_PID=$(cat .openagents/agent.lock | head -1)
-    if ! kill -0 "$LOCK_PID" 2>/dev/null; then
-        echo "WARNING: Stale lock file from PID $LOCK_PID (process not running)"
-        rm -f .openagents/agent.lock
-        echo "Removed stale lock file"
-    else
-        echo "ERROR: Another agent is running (PID $LOCK_PID)"
-        exit 1
-    fi
-fi
-
-# 3. Check for in-progress subtasks from crashed sessions
-for subtask_file in .openagents/subtasks/*.json; do
-    if [ -f "$subtask_file" ]; then
-        IN_PROGRESS=$(jq -r '.subtasks[] | select(.status == "in_progress") | .id' "$subtask_file" 2>/dev/null || true)
-        if [ -n "$IN_PROGRESS" ]; then
-            echo "WARNING: Found in-progress subtask: $IN_PROGRESS"
-            echo "Previous session may have crashed. Will attempt resumption."
-        fi
-    fi
-done
-
-# 4. Verify tests pass at session start
-echo "Running quick typecheck..."
-if ! bun run typecheck 2>&1; then
-    echo "WARNING: Typecheck failing at session start"
-    echo "Orchestrator will inject fix-typecheck subtask"
-fi
-
-echo "=== Health check complete ==="
-```
+The preflight script logs all findings to `docs/logs/YYYYMMDD/HHMM-preflight.log` for debugging.
 
 **Manual Cleanup Procedure:**
 
