@@ -283,6 +283,25 @@ export {
   sdkChatToInternalMessages,
 } from "./adapters/index.js";
 
+export {
+  // Result adaptation
+  mcpContentToToolContent,
+  mcpContentsToToolContent,
+  mcpResultToToolResult,
+  isMcpErrorResult,
+  getMcpErrorMessage,
+  toolResultToMcpResult,
+  createMcpErrorResult,
+  subagentResultToSdk,
+  sdkSubagentResultToInternal,
+  subagentResultToMcp,
+  createTextResult,
+  createResult,
+  mergeResults,
+  getResultText,
+  resultHasImages,
+} from "./adapters/index.js";
+
 export type {
   McpContentItem,
   McpCallToolResult,
@@ -293,6 +312,8 @@ export type {
   ToolAdapterOptions,
   MessageConversionResult,
   MessageAdapterOptions,
+  SDKSubagentResult,
+  ResultAdapterOptions,
 } from "./adapters/index.js";
 
 // =============================================================================
