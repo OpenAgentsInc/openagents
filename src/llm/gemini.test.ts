@@ -32,7 +32,7 @@ describe("makeGeminiRequestBody", () => {
   test("maps tool messages to functionResponse parts", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "hi" },
-      { role: "assistant", content: null, tool_calls: [{ id: "1", name: "mock", arguments: "{}" }] as any },
+      { role: "assistant", content: "", tool_calls: [{ id: "1", name: "mock", arguments: "{}" }] as any },
       { role: "tool", tool_call_id: "1", content: "ok", name: "mock" },
     ];
 

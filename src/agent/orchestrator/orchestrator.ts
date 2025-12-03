@@ -15,7 +15,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
-import { OpenRouterClient } from "../../llm/openrouter.js";
+import type { OpenRouterClient } from "../../llm/openrouter.js";
 import { readTool } from "../../tools/read.js";
 import { editTool } from "../../tools/edit.js";
 import { bashTool } from "../../tools/bash.js";
@@ -37,6 +37,7 @@ import {
   type OrchestratorEvent,
   type SessionProgress,
   type SubagentResult,
+  getProgressPath,
 } from "./types.js";
 
 // Minimal tools for subagent (pi-mono pattern)
@@ -401,11 +402,14 @@ export const runOrchestrator = (
 
       // Phase 8: Update Task
       state.phase = "updating_task";
-      yield* updateTask(config.cwd, {
+      yield* updateTask({
+        tasksPath: `${config.cwd}/.openagents/tasks.jsonl`,
         id: taskResult.id,
-        status: "closed",
-        commits: [sha],
-        closeReason: "Completed by MechaCoder orchestrator",
+        update: {
+          status: "closed",
+          closeReason: "Completed by MechaCoder orchestrator",
+        },
+        appendCommits: [sha],
       }).pipe(Effect.catchAll(() => Effect.void));
 
       emit({ type: "task_updated", task: taskResult, status: "closed" });
