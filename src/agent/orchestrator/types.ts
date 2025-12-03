@@ -49,6 +49,8 @@ export interface ClaudeCodeSettings {
   maxTurnsPerSubtask?: number;
   permissionMode?: ClaudeCodePermissionMode;
   fallbackToMinimal?: boolean;
+  /** Abort Claude Code runs that exceed this duration to avoid stuck sessions */
+  timeoutMsPerSubtask?: number;
 }
 
 export interface SessionProgress {
@@ -72,6 +74,13 @@ export interface SessionProgress {
     claudeCodeSession?: {
       toolsUsed?: Record<string, number>;
       summary?: string;
+      usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadInputTokens?: number;
+        cacheCreationInputTokens?: number;
+      };
+      totalCostUsd?: number;
     };
   };
   nextSession: {
@@ -107,10 +116,12 @@ export interface SubagentResult {
   filesModified: string[];
   error?: string;
   turns: number;
+  agent?: "claude-code" | "minimal";
   tokenUsage?: {
     input: number;
     output: number;
   };
+  verificationOutputs?: string[];
   /** Claude Code session metadata for progress.md bridging */
   sessionMetadata?: {
     /** Tools used during session with counts */
@@ -121,6 +132,15 @@ export interface SubagentResult {
     suggestedNextSteps?: string[];
     /** Final assistant message or summary */
     summary?: string;
+    /** Token usage from Claude API */
+    usage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+    };
+    /** Total cost in USD from Claude API */
+    totalCostUsd?: number;
   };
 }
 
@@ -137,6 +157,8 @@ export interface OrchestratorConfig {
   model?: string;
   /** Model to use for coding subagent */
   subagentModel?: string;
+  /** Typecheck commands from project.json */
+  typecheckCommands?: string[];
   /** Test commands from project.json */
   testCommands: string[];
   /** E2E commands from project.json */
