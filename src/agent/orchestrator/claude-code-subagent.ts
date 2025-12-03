@@ -45,6 +45,8 @@ export interface ClaudeCodeSubagentOptions {
   forkSession?: boolean;
   /** Callback for streaming text output */
   onOutput?: (text: string) => void;
+  /** Additional context (e.g., AGENTS.md content) to prepend to the prompt */
+  additionalContext?: string;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -53,8 +55,21 @@ const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name
 const isResultMessage = (message: any): message is { type?: string; subtype?: string } =>
   typeof message === "object" && message !== null && "type" in message;
 
-const defaultBuildPrompt = (subtask: Subtask): string => {
-  let prompt = `## Subtask: ${subtask.id}
+const defaultBuildPrompt = (subtask: Subtask, additionalContext?: string): string => {
+  let prompt = "";
+
+  // Prepend additional context if provided (e.g., AGENTS.md content)
+  if (additionalContext) {
+    prompt += `## Project Context
+
+${additionalContext}
+
+---
+
+`;
+  }
+
+  prompt += `## Subtask: ${subtask.id}
 
 ${subtask.description}
 
@@ -281,7 +296,7 @@ export const runClaudeCodeSubagent = async (
 
     try {
       for await (const message of query({
-        prompt: defaultBuildPrompt(subtask),
+        prompt: defaultBuildPrompt(subtask, options.additionalContext),
         options: {
           cwd: options.cwd,
           // Use Claude Code's system prompt with CLAUDE.md context

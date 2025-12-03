@@ -2,7 +2,7 @@
 /**
  * Overnight Agent - Long-running autonomous coding agent
  *
- * Usage: bun src/agent/overnight.ts [--cwd ~/code/some-repo] [--max-tasks 5] [--dry-run] [--cc-only]
+ * Usage: bun src/agent/overnight.ts [--cwd ~/code/some-repo] [--max-tasks 5] [--dry-run] [--cc-only] [--safe-mode] [--load-context]
  *
  * Options:
  *   --cwd, --dir    Target repo directory (default: current directory)
@@ -10,6 +10,8 @@
  *   --dry-run       Print what would happen without executing
  *   --cc-only       Use Claude Code only (no Grok fallback)
  *   --legacy        Use legacy Grok-based agentLoop
+ *   --safe-mode     Enable self-healing for init script failures (typecheck errors, etc.)
+ *   --load-context  Load AGENTS.md/CLAUDE.md context files from working directory
  *
  * The agent will:
  * 1. Check for ready tasks in <cwd>/.openagents/tasks.jsonl
@@ -19,6 +21,10 @@
  * 5. Commit and push to main
  * 6. Close the task
  * 7. Repeat until no more tasks or max reached
+ *
+ * Safe Mode:
+ * When enabled, if the init script fails with typecheck errors, the agent will
+ * spawn a Claude Code emergency subtask to fix the errors before continuing.
  *
  * Logs are saved to <cwd>/docs/logs/YYYYMMDD/
  */
@@ -48,6 +54,7 @@ import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.
 import { loadProjectConfig } from "../tasks/project.js";
 import { createHudCallbacks } from "../hud/index.js";
 import { acquireLock, releaseLock } from "./orchestrator/agent-lock.js";
+import { loadContextFiles } from "../cli/context-loader.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -188,6 +195,10 @@ interface OvernightConfig {
   legacy: boolean;
   /** Force Claude Code only - no Grok fallback */
   ccOnly: boolean;
+  /** Enable self-healing for init script failures */
+  safeMode: boolean;
+  /** Load AGENTS.md/CLAUDE.md context from working directory */
+  loadContext: boolean;
 }
 
 const parseArgs = (): OvernightConfig => {
@@ -197,6 +208,8 @@ const parseArgs = (): OvernightConfig => {
   let dryRun = false;
   let legacy = false;
   let ccOnly = false;
+  let safeMode = false;
+  let loadContext = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
@@ -213,6 +226,10 @@ const parseArgs = (): OvernightConfig => {
       legacy = true;
     } else if (args[i] === "--cc-only") {
       ccOnly = true;
+    } else if (args[i] === "--safe-mode") {
+      safeMode = true;
+    } else if (args[i] === "--load-context") {
+      loadContext = true;
     }
   }
 
@@ -224,6 +241,8 @@ const parseArgs = (): OvernightConfig => {
     sessionsDir: `${workDir}/.openagents/sessions`,
     legacy,
     ccOnly,
+    safeMode,
+    loadContext,
   };
 };
 
@@ -441,6 +460,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     log(`Work directory: ${config.workDir}`);
     log(`Max tasks: ${config.maxTasks}`);
     log(`Claude Code enabled: ${projectConfig.claudeCode?.enabled ?? true}`);
+    log(`Safe mode: ${config.safeMode}`);
     log(`${"#".repeat(60)}\n`);
 
     // Change to work directory
@@ -470,6 +490,18 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     let consecutiveFailures = 0;
     let lastFailureReason = "";
     const MAX_CONSECUTIVE_FAILURES = 3;
+
+    // Load AGENTS.md/CLAUDE.md context if --load-context is enabled
+    let additionalContext: string | undefined;
+    if (config.loadContext) {
+      const contextFiles = loadContextFiles(config.workDir);
+      if (contextFiles.length > 0) {
+        additionalContext = contextFiles.join("\n\n---\n\n");
+        log(`Loaded ${contextFiles.length} context file(s) (${additionalContext.length} chars)`);
+      } else {
+        log("No context files found (AGENTS.md/CLAUDE.md)");
+      }
+    }
 
     // Create HUD callbacks for real-time updates to the desktop HUD
     // These silently fail if the HUD isn't running
@@ -558,12 +590,15 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
         allowPush: projectConfig.allowPush ?? true,
         claudeCode: claudeCodeConfig,
+        safeMode: config.safeMode,
         ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
         // Stream Claude Code output to console AND HUD
         onOutput: (text: string) => {
           process.stdout.write(text);
           hudOnOutput(text);
         },
+        // Pass additional context if --load-context was specified
+        ...(additionalContext ? { additionalContext } : {}),
       };
 
       const state: PartialOrchestratorState = yield* runOrchestrator(orchestratorConfig, emit).pipe(
@@ -712,6 +747,12 @@ if (config.legacy) {
   console.log("[Orchestrator mode: Claude Code ONLY - no Grok fallback]");
 } else {
   console.log("[Orchestrator mode: Claude Code primary, Grok fallback]");
+}
+if (config.safeMode) {
+  console.log("[Safe mode: Self-healing enabled for init script failures]");
+}
+if (config.loadContext) {
+  console.log("[Context loading: Will load AGENTS.md/CLAUDE.md from working directory]");
 }
 
 Effect.runPromise((program as any).pipe(Effect.provide(liveLayer)))

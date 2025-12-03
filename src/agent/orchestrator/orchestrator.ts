@@ -22,6 +22,7 @@ import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
 import { runBestAvailableSubagent } from "./subagent-router.js";
 import { runInitScript } from "./init-script.js";
+import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 import {
   readSubtasks,
   writeSubtasks,
@@ -215,12 +216,108 @@ export const runOrchestrator = (
         progress.orientation.previousSessionSummary = prevSummary;
       }
 
-      const initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
+      let initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
       progress.orientation.initScript = initScriptResult;
 
+      // Safe mode: Attempt self-healing for recoverable failures
+      if (initScriptResult.ran && !initScriptResult.success && config.safeMode && initScriptResult.canSelfHeal) {
+        emit({ type: "error", phase: "orienting", error: `Init script failed with ${initScriptResult.failureType}, attempting self-heal...` });
+
+        // Create emergency subtask for self-healing
+        const healingSubtask: Subtask = {
+          id: `emergency-${initScriptResult.failureType}-fix`,
+          description: initScriptResult.failureType === "typecheck_failed"
+            ? `## EMERGENCY: Fix All TypeScript Errors
+
+The init script failed due to typecheck errors. You MUST fix ALL typecheck errors immediately.
+
+Init script output:
+\`\`\`
+${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
+\`\`\`
+
+Steps:
+1. Run \`bun run typecheck\` to see all errors
+2. Fix each error - do NOT just suppress them
+3. Verify fix with \`bun run typecheck\`
+4. All errors must be resolved before continuing`
+            : initScriptResult.failureType === "test_failed"
+            ? `## EMERGENCY: Fix Failing Tests
+
+The init script failed due to test failures. You MUST fix ALL failing tests.
+
+Init script output:
+\`\`\`
+${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
+\`\`\`
+
+Steps:
+1. Run \`bun test\` to see all failing tests
+2. Fix the root cause of each failure
+3. Verify fix with \`bun test\`
+4. All tests must pass before continuing`
+            : `## EMERGENCY: Fix Init Script Error
+
+The init script failed. Fix the issue.
+
+Init script output:
+\`\`\`
+${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
+\`\`\``,
+          status: "in_progress",
+          startedAt: new Date().toISOString(),
+        };
+
+        emit({ type: "subtask_start", subtask: healingSubtask });
+
+        // Run Claude Code to fix the issue
+        const healResult = yield* Effect.tryPromise({
+          try: () => runClaudeCodeSubagent(healingSubtask, {
+            cwd: config.cwd,
+            openagentsDir,
+            maxTurns: 50,
+            permissionMode: config.claudeCode?.permissionMode ?? "bypassPermissions",
+            ...(config.onOutput ? { onOutput: config.onOutput } : {}),
+            ...(config.signal ? { signal: config.signal } : {}),
+          }),
+          catch: (e: any) => new Error(`Self-healing failed: ${e.message}`),
+        }).pipe(
+          Effect.catchAll((error) => Effect.succeed({
+            success: false,
+            subtaskId: healingSubtask.id,
+            filesModified: [],
+            turns: 0,
+            error: error.message,
+          }))
+        );
+
+        if (healResult.success) {
+          emit({ type: "subtask_complete", subtask: healingSubtask, result: healResult });
+
+          // Re-run init script to verify the fix
+          const retryResult = yield* runInitScript(openagentsDir, config.cwd, emit);
+
+          if (retryResult.success) {
+            // Self-healing succeeded! Update the init script result and continue
+            initScriptResult = retryResult;
+            progress.orientation.initScript = retryResult;
+            emit({ type: "error", phase: "orienting", error: `Self-healing succeeded for ${healingSubtask.id}` });
+          } else {
+            // Self-healing fixed something but init still fails
+            emit({ type: "subtask_failed", subtask: healingSubtask, error: "Self-healing completed but init script still fails" });
+          }
+        } else {
+          emit({ type: "subtask_failed", subtask: healingSubtask, error: healResult.error || "Self-healing failed" });
+        }
+      }
+
+      // Check if init script still failed after potential self-healing
       if (initScriptResult.ran && !initScriptResult.success) {
         state.phase = "failed";
-        state.error = "Init script failed";
+        const failureInfo = initScriptResult.failureType
+          ? ` (${initScriptResult.failureType}${initScriptResult.canSelfHeal ? ", self-heal attempted" : ""})`
+          : "";
+        state.error = `Init script failed${failureInfo}`;
         progress.orientation.repoState = "init script failed";
         progress.orientation.testsPassingAtStart = false;
 
@@ -232,16 +329,17 @@ export const runOrchestrator = (
         });
 
         progress.nextSession.blockers = [
-          "Init script failed",
+          `Init script failed${failureInfo}`,
           ...(summarizeOutput(initScriptResult.output) ? [summarizeOutput(initScriptResult.output)!] : []),
         ];
         progress.nextSession.suggestedNextSteps = [
           "Inspect .openagents/init.sh output",
           "Fix init script errors before rerunning",
+          ...(config.safeMode && initScriptResult.canSelfHeal ? ["Self-healing was attempted but failed"] : []),
         ];
 
         writeProgress(openagentsDir, progress);
-        emit({ type: "session_complete", success: false, summary: "Init script failed" });
+        emit({ type: "session_complete", success: false, summary: state.error });
         return state;
       }
 
@@ -364,6 +462,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             ),
           ...(config.signal ? { signal: config.signal } : {}),
           ...(config.onOutput ? { onOutput: config.onOutput } : {}),
+          ...(config.additionalContext ? { additionalContext: config.additionalContext } : {}),
         }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({

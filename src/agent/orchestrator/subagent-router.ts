@@ -31,6 +31,8 @@ export interface RunBestAvailableSubagentOptions<R> {
   runMinimalSubagent?: (config: SubagentConfig) => Effect.Effect<SubagentResult, Error, R>;
   /** Callback for streaming text output from Claude Code */
   onOutput?: (text: string) => void;
+  /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
+  additionalContext?: string;
 }
 
 const shouldEnableClaudeCode = (settings?: ClaudeCodeSettings): boolean =>
@@ -131,6 +133,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               ...(resumeSessionId ? { resumeSessionId } : {}),
               ...(forkSession ? { forkSession } : {}),
               ...(options.onOutput ? { onOutput: options.onOutput } : {}),
+              ...(options.additionalContext ? { additionalContext: options.additionalContext } : {}),
             }),
           catch: (error: any) => error as Error,
         }).pipe(
