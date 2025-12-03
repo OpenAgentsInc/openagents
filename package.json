@@ -20,7 +20,9 @@
     "tasks:create": "bun src/tasks/cli.ts create",
     "tasks:update": "bun src/tasks/cli.ts update",
     "mechacoder": "bun src/agent/do-one-task.ts",
-    "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy"
+    "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy",
+    "mechacoder:overnight": "bun src/agent/overnight.ts",
+    "mechacoder:overnight:legacy": "bun src/agent/overnight.ts --legacy"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
