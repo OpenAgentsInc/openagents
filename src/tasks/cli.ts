@@ -26,6 +26,7 @@ import {
   createTask,
   updateTask,
   closeTask,
+  reopenTask,
   listTasks,
   archiveTasks,
   searchAllTasks,

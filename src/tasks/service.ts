@@ -463,6 +463,56 @@ export const closeTask = ({
   return updateTask(updateOptions);
 };
 
+export interface ReopenTaskOptions {
+  tasksPath: string;
+  id: string;
+  timestamp?: Date;
+}
+
+export const reopenTask = ({
+  tasksPath,
+  id,
+  timestamp,
+}: ReopenTaskOptions): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const tasks = yield* readTasks(tasksPath);
+    const index = tasks.findIndex((t) => t.id === id);
+    if (index === -1) {
+      return yield* Effect.fail(
+        new TaskServiceError("not_found", `Task not found: ${id}`),
+      );
+    }
+
+    const current = tasks[index];
+    if (current.status !== "closed") {
+      return yield* Effect.fail(
+        new TaskServiceError("conflict", `Task ${id} is not closed (status: ${current.status})`),
+      );
+    }
+
+    const updated: Task = {
+      ...current,
+      status: "open",
+      closedAt: null,
+      closeReason: undefined,
+      updatedAt: nowIso(now),
+    };
+
+    const validatedTask = yield* Effect.try({
+      try: () => decodeTask(updated),
+      catch: (error) =>
+        new TaskServiceError(
+          "validation_error",
+          `Invalid task after reopen: ${(error as Error).message}`,
+        ),
+    });
+
+    tasks[index] = validatedTask;
+    yield* writeTasks(tasksPath, tasks);
+    return validatedTask;
+  });
+
 export const listTasks = (
   tasksPath: string,
   filter?: TaskFilter,
