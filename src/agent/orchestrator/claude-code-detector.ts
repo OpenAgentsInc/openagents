@@ -23,7 +23,7 @@ export interface DetectClaudeCodeOptions {
 const defaultSdkResolver = async (): Promise<{ version?: string }> => {
   const require = createRequire(import.meta.url);
   const pkg = require("@anthropic-ai/claude-agent-sdk/package.json") as { version?: string };
-  return { version: pkg.version };
+  return pkg.version ? { version: pkg.version } : {};
 };
 
 const defaultHealthCheck = async (): Promise<void> => {
@@ -59,12 +59,13 @@ export const detectClaudeCode = async (
   const apiKeySource: ApiKeySource = apiKey ? "env" : "none";
 
   if (!apiKey) {
-    return {
+    const unavailable: ClaudeCodeAvailability = {
       available: false,
-      version,
       apiKeySource,
       reason: "ANTHROPIC_API_KEY not set",
     };
+    if (version) unavailable.version = version;
+    return unavailable;
   }
 
   if (options?.healthCheck) {
@@ -72,18 +73,20 @@ export const detectClaudeCode = async (
     try {
       await healthCheckFn();
     } catch (error: any) {
-      return {
+      const unavailable: ClaudeCodeAvailability = {
         available: false,
-        version,
         apiKeySource,
         reason: `Health check failed: ${error?.message || String(error)}`,
       };
+      if (version) unavailable.version = version;
+      return unavailable;
     }
   }
 
-  return {
+  const available: ClaudeCodeAvailability = {
     available: true,
-    version,
     apiKeySource,
   };
+  if (version) available.version = version;
+  return available;
 };
