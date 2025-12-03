@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { Tool, ToolResult } from "../tools/schema.js";
 import { ToolExecutionError, runTool } from "../tools/schema.js";
-import type { ChatMessage, ChatRequest } from "../llm/openrouter.js";
+import type { ChatMessage, ChatRequest, ContentBlock } from "../llm/openrouter.js";
 import { OpenRouterClient } from "../llm/openrouter.js";
 
 // Event types that can be emitted during the loop
@@ -185,6 +185,7 @@ export const agentLoop = (
 
       const assistantMessage = choice.message;
       const toolCalls = assistantMessage.tool_calls ?? [];
+      const assistantContent: string | ContentBlock[] = assistantMessage.content ?? "";
       
       // EMIT llm_response AFTER LLM returns
       emit({
@@ -197,12 +198,12 @@ export const agentLoop = (
 
       messages.push({
         role: "assistant",
-        content: assistantMessage.content ?? "",
+        content: assistantContent,
       });
 
       const turn: AgentTurn = {
         role: "assistant",
-        content: assistantMessage.content,
+        content: assistantContent,
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
       };
 
@@ -278,9 +279,23 @@ export const agentLoop = (
     }
 
     const lastTurn = turns[turns.length - 1];
+    let finalMessage: string | null = null;
+    if (lastTurn) {
+      const content = lastTurn.content;
+      if (typeof content === "string") {
+        finalMessage = content;
+      } else if (Array.isArray(content)) {
+        const text = content
+          .filter((c): c is { type: "text"; text: string } => c.type === "text")
+          .map((c) => c.text)
+          .join("\n")
+          .trim();
+        finalMessage = text || null;
+      }
+    }
     return {
       turns,
-      finalMessage: lastTurn?.content ?? null,
+      finalMessage,
       totalTurns: turnCount,
       verifyState,
     };

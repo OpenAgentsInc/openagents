@@ -23,11 +23,11 @@ export interface TaskInfo {
 }
 
 export interface TaskRollup {
-  readonly total: number
-  readonly open: number
-  readonly inProgress: number
-  readonly blocked: number
-  readonly closed: number
+  total: number
+  open: number
+  inProgress: number
+  blocked: number
+  closed: number
 }
 
 export const buildTaskRollup = (tasks: readonly TaskInfo[]): TaskRollup => {
@@ -300,7 +300,7 @@ export function createMechaCoderState(opts: {
       priority: t.priority,
       type: t.type,
       labels: t.labels ?? [],
-      deps: t.deps,
+      deps: t.deps ?? [],
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     }))

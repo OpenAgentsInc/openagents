@@ -149,7 +149,7 @@ export const createSubagentConfig = (
   subtask,
   cwd,
   tools,
-  model: options?.model,
   maxTurns: options?.maxTurns ?? 15,
-  signal: options?.signal,
+  ...(options?.model ? { model: options.model } : {}),
+  ...(options?.signal ? { signal: options.signal } : {}),
 });
