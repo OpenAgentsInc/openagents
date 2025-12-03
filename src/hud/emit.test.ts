@@ -20,6 +20,9 @@ const sampleTask = {
   status: "in_progress" as const,
   priority: 1,
   type: "task" as const,
+  labels: [] as readonly string[],
+  deps: [] as readonly { readonly id: string; readonly type: "blocks" | "related" | "parent-child" | "discovered-from" }[],
+  commits: [] as readonly string[],
   createdAt: "2025-12-03T10:00:00Z",
   updatedAt: "2025-12-03T10:00:00Z",
 };
