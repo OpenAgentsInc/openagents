@@ -41,6 +41,7 @@ export { runInitScript } from "./init-script.js";
 
 // Claude Code integration
 export { detectClaudeCode } from "./claude-code-detector.js";
+export { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 
 // Decomposition
 export {
