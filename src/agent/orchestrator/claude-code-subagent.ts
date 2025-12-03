@@ -273,6 +273,7 @@ export const runClaudeCodeSubagent = async (
           allowedTools,
           abortController: controller,
           hooks,
+          settingSources: ["project"], // Load CLAUDE.md for project context
         },
       })) {
         // Track tool calls from messages
@@ -492,28 +493,28 @@ export const runClaudeCodeSubagent = async (
     usage ||
     totalCostUsd !== undefined
   ) {
-    result.sessionMetadata = {};
+    const sessionMetadata = { ...(result.sessionMetadata ?? {}) };
 
     if (toolsUsed.size > 0) {
-      result.sessionMetadata.toolsUsed = Object.fromEntries(toolsUsed);
+      sessionMetadata.toolsUsed = Object.fromEntries(toolsUsed);
     }
 
     if (blockers.length > 0) {
-      result.sessionMetadata.blockers = blockers;
+      sessionMetadata.blockers = blockers;
     }
 
     if (suggestedNextSteps.length > 0) {
-      result.sessionMetadata.suggestedNextSteps = Array.from(new Set(suggestedNextSteps));
+      sessionMetadata.suggestedNextSteps = Array.from(new Set(suggestedNextSteps));
     }
 
     // Use the last assistant message as summary
     if (assistantMessages.length > 0) {
-      result.sessionMetadata.summary = assistantMessages[assistantMessages.length - 1];
+      sessionMetadata.summary = assistantMessages[assistantMessages.length - 1];
     }
 
     // Add token usage and cost data
     if (usage) {
-      result.sessionMetadata.usage = {
+      sessionMetadata.usage = {
         inputTokens: usage.input_tokens ?? usage.inputTokens,
         outputTokens: usage.output_tokens ?? usage.outputTokens,
         cacheReadInputTokens: usage.cache_read_input_tokens ?? usage.cacheReadInputTokens,
@@ -522,8 +523,10 @@ export const runClaudeCodeSubagent = async (
     }
 
     if (totalCostUsd !== undefined) {
-      result.sessionMetadata.totalCostUsd = totalCostUsd;
+      sessionMetadata.totalCostUsd = totalCostUsd;
     }
+
+    result.sessionMetadata = sessionMetadata;
   }
 
   return result;

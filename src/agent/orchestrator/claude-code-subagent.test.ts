@@ -17,6 +17,21 @@ const makeQuery = (messages: any[]) =>
   };
 
 describe("runClaudeCodeSubagent", () => {
+  test("captures session id and exposes it for resumption", async () => {
+    const queryFn = makeQuery([
+      { type: "system", subtype: "init", session_id: "sess-123", model: "sonnet", tools: [] },
+      { type: "result", subtype: "success", session_id: "sess-123" },
+    ]);
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.claudeCodeSessionId).toBe("sess-123");
+    expect(result.sessionMetadata?.sessionId).toBe("sess-123");
+  });
+
   test("captures file modifications and success result", async () => {
     const queryFn = makeQuery([
       { type: "assistant", tool_calls: [{ name: "Edit", input: { file_path: "a.ts" } }] },
@@ -94,6 +109,43 @@ describe("runClaudeCodeSubagent", () => {
     });
 
     expect(inputs[0]?.options?.permissionMode).toBe("bypassPermissions");
+  });
+
+  test("loads project settings to provide CLAUDE.md context", async () => {
+    const inputs: any[] = [];
+    const queryFn = async function* (input: any) {
+      inputs.push(input);
+      yield { type: "result", subtype: "success" };
+    };
+
+    await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(inputs[0]?.options?.settingSources).toEqual(["project"]);
+  });
+
+  test("resumes and optionally forks a prior session", async () => {
+    const inputs: any[] = [];
+    const queryFn = async function* (input: any) {
+      inputs.push(input);
+      yield { type: "system", subtype: "init", session_id: "sess-new" };
+      yield { type: "result", subtype: "success", session_id: "sess-new" };
+    };
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+      resumeSessionId: "sess-old",
+      forkSession: true,
+    });
+
+    expect(inputs[0]?.options?.resume).toBe("sess-old");
+    expect(inputs[0]?.options?.forkSession).toBe(true);
+    expect(result.claudeCodeSessionId).toBe("sess-new");
+    expect(result.claudeCodeForkedFromSessionId).toBe("sess-old");
+    expect(result.sessionMetadata?.forkedFromSessionId).toBe("sess-old");
   });
 
   test("retries on rate_limit error with exponential backoff", async () => {

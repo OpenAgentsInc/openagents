@@ -340,9 +340,37 @@ export const runOrchestrator = (
 
         progress.work.filesModified.push(...result.filesModified);
 
+        // Persist Claude Code session metadata for resumption across runs
+        const previousClaudeState = subtask.claudeCode ?? {};
+        if (result.claudeCodeSessionId || previousClaudeState.sessionId) {
+          subtask.claudeCode = {
+            ...previousClaudeState,
+            sessionId: result.claudeCodeSessionId ?? previousClaudeState.sessionId,
+            ...(result.claudeCodeForkedFromSessionId
+              ? { forkedFromSessionId: result.claudeCodeForkedFromSessionId }
+              : previousClaudeState.forkedFromSessionId
+                ? { forkedFromSessionId: previousClaudeState.forkedFromSessionId }
+                : {}),
+            // After forking once, default to continuing the new branch unless explicitly reset
+            resumeStrategy:
+              previousClaudeState.resumeStrategy === "fork" && result.claudeCodeSessionId
+                ? "continue"
+                : previousClaudeState.resumeStrategy,
+          };
+        }
+
         // Capture Claude Code session metadata for context bridging
         if (result.sessionMetadata) {
+          const sessionId =
+            result.sessionMetadata.sessionId ?? result.claudeCodeSessionId ?? subtask.claudeCode?.sessionId;
+          const forkedFromSessionId =
+            result.sessionMetadata.forkedFromSessionId ??
+            result.claudeCodeForkedFromSessionId ??
+            subtask.claudeCode?.forkedFromSessionId;
+
           progress.work.claudeCodeSession = {
+            ...(sessionId ? { sessionId } : {}),
+            ...(forkedFromSessionId ? { forkedFromSessionId } : {}),
             ...(result.sessionMetadata.toolsUsed ? { toolsUsed: result.sessionMetadata.toolsUsed } : {}),
             ...(result.sessionMetadata.summary ? { summary: result.sessionMetadata.summary } : {}),
             ...(result.sessionMetadata.usage ? { usage: result.sessionMetadata.usage } : {}),

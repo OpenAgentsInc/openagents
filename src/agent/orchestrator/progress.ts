@@ -71,6 +71,14 @@ export const formatProgressMarkdown = (progress: SessionProgress): string => {
   if (progress.work.claudeCodeSession) {
     lines.push("", "### Claude Code Session");
 
+    if (progress.work.claudeCodeSession.sessionId) {
+      lines.push(`- **Session ID**: ${progress.work.claudeCodeSession.sessionId}`);
+    }
+
+    if (progress.work.claudeCodeSession.forkedFromSessionId) {
+      lines.push(`- **Forked From**: ${progress.work.claudeCodeSession.forkedFromSessionId}`);
+    }
+
     if (progress.work.claudeCodeSession.toolsUsed) {
       const tools = Object.entries(progress.work.claudeCodeSession.toolsUsed)
         .map(([tool, count]) => `${tool}(${count})`)
@@ -148,6 +156,7 @@ export const parseProgressMarkdown = (markdown: string): Partial<SessionProgress
       filesModified: [],
       testsRun: false,
       testsPassingAfterWork: false,
+      claudeCodeSession: {},
     },
     nextSession: {
       suggestedNextSteps: [],
@@ -288,6 +297,46 @@ const parseKeyValue = (
         result.work!.testsPassingAfterWork = trimmedValue.toLowerCase() === "yes";
       }
       break;
+
+    case "claude code session":
+      if (key === "session id") {
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          sessionId: trimmedValue,
+        };
+      }
+      if (key === "forked from") {
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          forkedFromSessionId: trimmedValue,
+        };
+      }
+      if (key === "tools used") {
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          toolsUsed: parseToolCounts(trimmedValue),
+        };
+      }
+      if (key === "summary") {
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          summary: trimmedValue,
+        };
+      }
+      if (key === "token usage") {
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          usage: parseTokenUsage(trimmedValue),
+        };
+      }
+      if (key === "cost") {
+        const costNumber = Number(trimmedValue.replace(/[^0-9.]/g, ""));
+        result.work!.claudeCodeSession = {
+          ...(result.work!.claudeCodeSession ?? {}),
+          totalCostUsd: Number.isFinite(costNumber) ? costNumber : undefined,
+        };
+      }
+      break;
   }
 };
 
@@ -379,3 +428,49 @@ export const createEmptyProgress = (sessionId: string, taskId: string, taskTitle
     suggestedNextSteps: [],
   },
 });
+
+const parseToolCounts = (value: string): Record<string, number> => {
+  const entries = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const result: Record<string, number> = {};
+
+  for (const entry of entries) {
+    const match = entry.match(/^(.+?)\((\d+)\)$/);
+    if (match) {
+      const [, tool, count] = match;
+      result[tool] = Number(count);
+    }
+  }
+
+  return result;
+};
+
+const parseTokenUsage = (
+  value: string
+): {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+} => {
+  const parts = value.split(",").map((part) => part.trim());
+  const usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  } = {};
+
+  for (const part of parts) {
+    if (part.endsWith("in")) {
+      usage.inputTokens = Number(part.replace(/[^\d]/g, ""));
+    } else if (part.endsWith("out")) {
+      usage.outputTokens = Number(part.replace(/[^\d]/g, ""));
+    } else if (part.includes("cache hits")) {
+      usage.cacheReadInputTokens = Number(part.replace(/[^\d]/g, ""));
+    } else if (part.includes("cache writes")) {
+      usage.cacheCreationInputTokens = Number(part.replace(/[^\d]/g, ""));
+    }
+  }
+
+  return usage;
+};
