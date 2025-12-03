@@ -62,6 +62,10 @@ export class MainviewPage {
     return this.page.locator("#ws-status");
   }
 
+  get errorIndicator(): Locator {
+    return this.page.locator("#error-indicator");
+  }
+
   // Queries
   async getZoomLevel(): Promise<string> {
     return (await this.zoomLevelDisplay.textContent()) ?? "100%";
@@ -150,6 +154,38 @@ export class HudInjector {
       await this.inject(msg);
       await new Promise((r) => setTimeout(r, delayMs));
     }
+  }
+
+  /**
+   * Inject raw/malformed data directly to WebSocket clients
+   */
+  async injectRaw(rawData: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/inject-raw`, {
+      method: "POST",
+      body: rawData,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to inject raw message: ${error}`);
+    }
+  }
+
+  /**
+   * Disconnect all WebSocket clients (for testing resilience)
+   */
+  async disconnectAll(): Promise<number> {
+    const response = await fetch(`${this.baseUrl}/api/disconnect-ws`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to disconnect WebSocket clients: ${error}`);
+    }
+
+    const result = await response.json();
+    return result.disconnected;
   }
 }
 
