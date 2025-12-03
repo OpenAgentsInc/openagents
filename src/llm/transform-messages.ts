@@ -8,7 +8,7 @@
  * @module
  */
 
-import type { Api, Provider, Model } from "./model-types.js";
+import type { Api, Model } from "./model-types.js";
 import type {
   ContentBlock as SDKContentBlock,
   ChatMessage as SDKChatMessage,

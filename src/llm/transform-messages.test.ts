@@ -12,7 +12,7 @@ import {
   hasThinkingBlocks,
   hasXmlThinkingTags,
 } from "./transform-messages.js";
-import type { Api, Model } from "./model-types.js";
+import type { Model } from "./model-types.js";
 import type {
   ChatMessage as SDKChatMessage,
   ContentBlock as SDKContentBlock,

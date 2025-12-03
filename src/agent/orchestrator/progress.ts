@@ -454,7 +454,8 @@ const parseTokenUsage = (
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
 } => {
-  const parts = value.split(",").map((part) => part.trim());
+  // Split on comma-space patterns that separate usage parts (e.g., "10,000 in, 5,000 out")
+  // Using regex to match the pattern: number (with optional commas) + space + label
   const usage: {
     inputTokens?: number;
     outputTokens?: number;
@@ -462,16 +463,23 @@ const parseTokenUsage = (
     cacheCreationInputTokens?: number;
   } = {};
 
-  for (const part of parts) {
-    if (part.endsWith("in")) {
-      usage.inputTokens = Number(part.replace(/[^\d]/g, ""));
-    } else if (part.endsWith("out")) {
-      usage.outputTokens = Number(part.replace(/[^\d]/g, ""));
-    } else if (part.includes("cache hits")) {
-      usage.cacheReadInputTokens = Number(part.replace(/[^\d]/g, ""));
-    } else if (part.includes("cache writes")) {
-      usage.cacheCreationInputTokens = Number(part.replace(/[^\d]/g, ""));
-    }
+  // Match patterns like "10,000 in" or "5,000 out" or "2,000 cache hits"
+  const inputMatch = value.match(/([\d,]+)\s+in(?:\b|$)/);
+  const outputMatch = value.match(/([\d,]+)\s+out(?:\b|$)/);
+  const cacheReadMatch = value.match(/([\d,]+)\s+cache hits/);
+  const cacheWriteMatch = value.match(/([\d,]+)\s+cache writes/);
+
+  if (inputMatch) {
+    usage.inputTokens = Number(inputMatch[1].replace(/,/g, ""));
+  }
+  if (outputMatch) {
+    usage.outputTokens = Number(outputMatch[1].replace(/,/g, ""));
+  }
+  if (cacheReadMatch) {
+    usage.cacheReadInputTokens = Number(cacheReadMatch[1].replace(/,/g, ""));
+  }
+  if (cacheWriteMatch) {
+    usage.cacheCreationInputTokens = Number(cacheWriteMatch[1].replace(/,/g, ""));
   }
 
   return usage;

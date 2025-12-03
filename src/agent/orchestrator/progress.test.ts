@@ -266,3 +266,205 @@ describe("createEmptyProgress", () => {
     expect(progress.startedAt <= after).toBe(true);
   });
 });
+
+describe("Claude Code session metadata", () => {
+  test("formats Claude Code session data to markdown", () => {
+    const progress = createMockProgress();
+    progress.work.claudeCodeSession = {
+      sessionId: "sess-abc123",
+      forkedFromSessionId: "sess-old456",
+      toolsUsed: { Read: 5, Edit: 3, Bash: 2 },
+      summary: "Implemented feature X",
+      usage: {
+        inputTokens: 10000,
+        outputTokens: 5000,
+        cacheReadInputTokens: 2000,
+        cacheCreationInputTokens: 500,
+      },
+      totalCostUsd: 0.1234,
+    };
+    const markdown = formatProgressMarkdown(progress);
+
+    expect(markdown).toContain("### Claude Code Session");
+    expect(markdown).toContain("Session ID**: sess-abc123");
+    expect(markdown).toContain("Forked From**: sess-old456");
+    expect(markdown).toContain("Tools Used**: Read(5), Edit(3), Bash(2)");
+    expect(markdown).toContain("Summary**: Implemented feature X");
+    expect(markdown).toContain("Token Usage**: 10,000 in, 5,000 out, 2,000 cache hits, 500 cache writes");
+    expect(markdown).toContain("Cost**: $0.1234 USD");
+  });
+
+  test("parses Claude Code session data from markdown", () => {
+    const progress = createMockProgress();
+    progress.work.claudeCodeSession = {
+      sessionId: "sess-abc123",
+      forkedFromSessionId: "sess-old456",
+      toolsUsed: { Read: 5, Edit: 3, Bash: 2 },
+      summary: "Implemented feature X",
+      usage: {
+        inputTokens: 10000,
+        outputTokens: 5000,
+        cacheReadInputTokens: 2000,
+        cacheCreationInputTokens: 500,
+      },
+      totalCostUsd: 0.1234,
+    };
+    const markdown = formatProgressMarkdown(progress);
+    const parsed = parseProgressMarkdown(markdown);
+
+    expect(parsed.work?.claudeCodeSession?.sessionId).toBe("sess-abc123");
+    expect(parsed.work?.claudeCodeSession?.forkedFromSessionId).toBe("sess-old456");
+    expect(parsed.work?.claudeCodeSession?.toolsUsed).toEqual({ Read: 5, Edit: 3, Bash: 2 });
+    expect(parsed.work?.claudeCodeSession?.summary).toBe("Implemented feature X");
+    expect(parsed.work?.claudeCodeSession?.usage?.inputTokens).toBe(10000);
+    expect(parsed.work?.claudeCodeSession?.usage?.outputTokens).toBe(5000);
+    expect(parsed.work?.claudeCodeSession?.usage?.cacheReadInputTokens).toBe(2000);
+    expect(parsed.work?.claudeCodeSession?.usage?.cacheCreationInputTokens).toBe(500);
+    expect(parsed.work?.claudeCodeSession?.totalCostUsd).toBe(0.1234);
+  });
+
+  test("handles partial Claude Code session data", () => {
+    const progress = createMockProgress();
+    progress.work.claudeCodeSession = {
+      sessionId: "sess-only",
+    };
+    const markdown = formatProgressMarkdown(progress);
+    const parsed = parseProgressMarkdown(markdown);
+
+    expect(parsed.work?.claudeCodeSession?.sessionId).toBe("sess-only");
+    expect(parsed.work?.claudeCodeSession?.forkedFromSessionId).toBeUndefined();
+  });
+});
+
+describe("malformed progress file recovery", () => {
+  let tempDir: string;
+  let openagentsDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "progress-corrupt-test-"));
+    openagentsDir = path.join(tempDir, ".openagents");
+    fs.mkdirSync(openagentsDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test("readProgress returns null for empty file", () => {
+    fs.writeFileSync(path.join(openagentsDir, "progress.md"), "");
+    const result = readProgress(openagentsDir);
+    // Should return partial result with defaults, not null
+    expect(result).not.toBeNull();
+    expect(result?.work?.subtasksCompleted).toEqual([]);
+  });
+
+  test("readProgress handles file with only headers", () => {
+    const malformed = `# Session Progress
+
+## Session Info
+
+## Orientation
+
+## Work Done
+`;
+    fs.writeFileSync(path.join(openagentsDir, "progress.md"), malformed);
+    const result = readProgress(openagentsDir);
+    expect(result).not.toBeNull();
+    expect(result?.orientation?.testsPassingAtStart).toBe(false);
+  });
+
+  test("readProgress handles truncated markdown", () => {
+    const truncated = `# Session Progress
+
+## Session Info
+- **Session ID**: session-123
+- **Started**: 2025-01-01T12:00:00.000Z
+- **Task**: oa-test - Test task
+
+## Orientat`;  // Truncated mid-section
+    fs.writeFileSync(path.join(openagentsDir, "progress.md"), truncated);
+    const result = readProgress(openagentsDir);
+    expect(result).not.toBeNull();
+    expect(result?.sessionId).toBe("session-123");
+    expect(result?.taskId).toBe("oa-test");
+  });
+
+  test("readProgress handles garbled content", () => {
+    const garbled = `# Session Progress
+
+## Session Info
+- **Session ID**: session-123
+GARBLED_BINARY_DATA_HERE\x00\x01\x02
+- **Task**: oa-test - Still parses
+
+## Work Done
+- **Tests Run**: Yes
+`;
+    fs.writeFileSync(path.join(openagentsDir, "progress.md"), garbled);
+    const result = readProgress(openagentsDir);
+    expect(result).not.toBeNull();
+    expect(result?.sessionId).toBe("session-123");
+    expect(result?.taskId).toBe("oa-test");
+    expect(result?.work?.testsRun).toBe(true);
+  });
+
+  test("readProgress handles missing required sections", () => {
+    const minimal = `# Session Progress
+Completed: In Progress
+`;
+    fs.writeFileSync(path.join(openagentsDir, "progress.md"), minimal);
+    const result = readProgress(openagentsDir);
+    expect(result).not.toBeNull();
+    expect(result?.completedAt).toBeUndefined();
+  });
+
+  test("parseProgressMarkdown handles malformed key-value pairs", () => {
+    const malformed = `# Session Progress
+
+## Session Info
+- **Session ID**:
+- **Started**
+- Task: oa-test - missing bold markers
+- **Tests Passing at Start**: maybe
+`;
+    const parsed = parseProgressMarkdown(malformed);
+    expect(parsed).not.toBeNull();
+    // Empty session ID should be parsed as empty string
+    expect(parsed.sessionId).toBe("");
+  });
+
+  test("parseProgressMarkdown handles non-standard formatting", () => {
+    const nonStandard = `# Session Progress
+
+##Session Info
+-**Session ID**:session-123
+- **Started** : 2025-01-01T12:00:00.000Z
+-  **Task**:   oa-test  -  Test task
+`;
+    const parsed = parseProgressMarkdown(nonStandard);
+    // Should handle these gracefully even if not perfectly parsed
+    expect(parsed).not.toBeNull();
+  });
+});
+
+describe("edge cases in list parsing", () => {
+  test("handles lists with extra whitespace", () => {
+    const progress = createMockProgress();
+    progress.work.filesModified = ["  src/file.ts  ", "src/other.ts"];
+    const markdown = formatProgressMarkdown(progress);
+    const parsed = parseProgressMarkdown(markdown);
+
+    expect(parsed.work?.filesModified).toContain("src/file.ts");
+  });
+
+  test("handles lists with empty entries", () => {
+    const markdown = `# Session Progress
+
+## Work Done
+- **Subtasks Completed**: sub1, , sub2, ,
+- **Files Modified**: None
+`;
+    const parsed = parseProgressMarkdown(markdown);
+    expect(parsed.work?.subtasksCompleted).toEqual(["sub1", "sub2"]);
+  });
+});

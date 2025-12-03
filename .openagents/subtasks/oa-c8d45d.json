@@ -1,0 +1,28 @@
+{
+  "taskId": "oa-c8d45d",
+  "taskTitle": "Epic: Harden Golden Loop v2 resiliency & test coverage",
+  "subtasks": [
+    {
+      "id": "oa-c8d45d-fix-typecheck",
+      "description": "## CRITICAL: Fix Typecheck Errors First\n\nThe codebase has typecheck errors that MUST be fixed before any other work can proceed.\n\nRun `bun run typecheck` to see the errors, then fix them.\n\nCommon causes:\n- Unused imports or variables (TS6133)\n- Type mismatches (TS2322)\n- Missing or extra arguments (TS2554)\n\nAfter fixing, verify with `bun run typecheck` that it passes before proceeding.",
+      "status": "done",
+      "startedAt": "2025-12-03T08:49:09.236Z",
+      "claudeCode": {
+        "sessionId": "ecfa0d1a-b0b4-45e8-a65b-820627d165bd"
+      },
+      "completedAt": "2025-12-03T08:50:08.389Z"
+    },
+    {
+      "id": "oa-c8d45d-sub-001",
+      "description": "Epic: Harden Golden Loop v2 resiliency & test coverage\n\nTrack work to strengthen Golden Loop v2 with better failure handling, documentation clarity, and expanded tests (integration, browser, verification).",
+      "status": "done",
+      "startedAt": "2025-12-03T08:50:08.390Z",
+      "claudeCode": {
+        "sessionId": "e8253c47-5f32-4b1c-b916-ec14d25dc025"
+      },
+      "completedAt": "2025-12-03T08:57:47.059Z"
+    }
+  ],
+  "createdAt": "2025-12-03T08:49:09.236Z",
+  "updatedAt": "2025-12-03T08:49:09.236Z"
+}

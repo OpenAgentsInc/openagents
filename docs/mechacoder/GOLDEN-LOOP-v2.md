@@ -299,7 +299,84 @@ Golden Loop v2 is considered **implemented** when the following are true for at 
 
 ---
 
-## 4. Future Extensions (Out of Scope for v2)
+## 4. Failure Modes & Recovery
+
+This section documents known failure scenarios and how Golden Loop v2 handles them.
+
+### 4.1. Test/Typecheck Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| Tests fail after code change | No commit. Task stays `in_progress`. Blocker logged in progress file. |
+| Typecheck fails at session start | Orchestrator injects "fix-typecheck" subtask before proceeding. |
+| Consecutive failures (3x) | Task blocked. `MAX_CONSECUTIVE_FAILURES` prevents infinite retry loops. |
+
+**Recovery**: The next session reads blockers from `progress.md` and either retries or marks the task `blocked`.
+
+### 4.2. Verification Command Issues
+
+| Scenario | Behavior |
+|----------|----------|
+| Verification times out (120s default) | Treated as failure. Falls back to minimal subagent if enabled. |
+| Verification throws error | Caught and treated as failure with empty outputs. |
+| Empty/whitespace outputs | Default error message: "Verification failed (typecheck/tests)". |
+
+**Recovery**: Fallback to minimal subagent (if `fallbackToMinimal: true`). Error details preserved in `verificationOutputs`.
+
+### 4.3. Claude Code Subagent Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| Claude Code unavailable | Falls back to minimal subagent. |
+| Claude Code detection fails | Falls back to minimal subagent. |
+| Claude Code times out (50min default) | Retried up to 3x with exponential backoff. |
+| Rate limit / auth errors | Falls back to minimal subagent (if enabled). |
+
+**Recovery**: Session resume via `resumeSessionId` and `forkSession` options. Previous session ID tracked in progress file.
+
+### 4.4. Progress File Issues
+
+| Scenario | Behavior |
+|----------|----------|
+| Missing progress file | Fresh session created. No previous context. |
+| Malformed/corrupted progress file | Parser returns partial results with safe defaults. |
+| Truncated file | Parses what's available, missing fields get defaults. |
+
+**Recovery**: Progress parsing is fault-tolerant. Missing sections don't crash the orchestrator.
+
+### 4.5. Git Operation Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| Push fails (conflicts) | Changes kept in working tree. Task stays `in_progress`. |
+| Push fails (remote changes) | Option A: New task for conflict resolution. Option B: Rebase if policy allows. |
+| Force push required | **Never** force-pushed unless `allowForcePush` explicitly set. |
+
+**Recovery**: Conflict tasks created for human review. Changes preserved locally.
+
+### 4.6. Task System Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| No ready tasks | Loop exits cleanly. |
+| Task blocked by dependencies | Skipped. Next ready task selected. |
+| Concurrent modification of tasks.jsonl | **Not fully handled** - single agent per repo assumed in v2. |
+
+**Recovery**: Lock file (`.openagents/agent.lock`) prevents overlapping runs.
+
+### 4.7. Init Script Failures
+
+| Scenario | Behavior |
+|----------|----------|
+| Missing init.sh | Continues without init (non-fatal). |
+| Init script fails | Failure logged. Continues with warning. |
+| Init script times out (60s) | Treated as failure. Continues with warning. |
+
+**Recovery**: Init failures are warnings, not blockers. Session continues.
+
+---
+
+## 5. Future Extensions (Out of Scope for v2)
 
 These belong in future loops or specs, not in Golden Loop v2:
 
@@ -310,7 +387,7 @@ These belong in future loops or specs, not in Golden Loop v2:
 
 ---
 
-If you’re updating or extending MechaCoder:
+If you're updating or extending MechaCoder:
 
 > **Golden rule for v2:**
 > **If a change affects how MechaCoder chooses tasks, edits code, runs tests, commits, or updates `.openagents/tasks.jsonl`, you must re-run the Desktop Golden Loop and ensure it still matches this spec.**
