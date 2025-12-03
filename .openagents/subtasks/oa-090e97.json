@@ -1,0 +1,26 @@
+{
+  "taskId": "oa-090e97",
+  "taskTitle": "Document HUD event mapping for Golden Loop phases and add tests",
+  "subtasks": [
+    {
+      "id": "oa-090e97-sub-001",
+      "description": "Implement: Document HUD event mapping for Golden Loop phases and add tests\n\nExpand docs to show how orchestrator events map to HUD messages, including phase transitions, tool calls, and log streaming. Add a small test harness/fixture to assert HUD receives expected messages during a sample loop.",
+      "status": "failed",
+      "startedAt": "2025-12-03T16:46:23.618Z",
+      "claudeCode": {
+        "sessionId": "227f3969-5d47-456b-9fc6-98fe0a877fd3",
+        "resumeStrategy": "fork"
+      },
+      "failureCount": 1,
+      "lastFailureReason": "Verification failed (typecheck/tests): src/hud/emit.test.ts(64,28): error TS2739: Type '{ id: string; title: string; description: string; status: \"in_progress\"; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits src/hud/emit.test.ts(105,27): error TS2739: Type '{ status: \"closed\"; id: string; title: string; description: string; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits src/hud/emit.test.ts(176,65): error TS2739: Type '{ id: string; title: string; description: string; status: \"in_progress\"; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits",
+      "error": "Verification failed (typecheck/tests): src/hud/emit.test.ts(64,28): error TS2739: Type '{ id: string; title: string; description: string; status: \"in_progress\"; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits src/hud/emit.test.ts(105,27): error TS2739: Type '{ status: \"closed\"; id: string; title: string; description: string; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits src/hud/emit.test.ts(176,65): error TS2739: Type '{ id: string; title: string; description: string; status: \"in_progress\"; priority: number; type: \"task\"; createdAt: string; updatedAt: string; }' is missing the following properties from type '{ readonly id: string; readonly title: string; readonly description: string; readonly status: \"in_progress\" | \"open\" | \"blocked\" | \"closed\"; readonly priority: number; readonly type: \"task\" | \"bug\" | \"feature\" | \"epic\" | \"chore\"; ... 12 more ...; readonly estimatedMinutes?: number | ... 1 more ... | undefined; }': labels, deps, commits"
+    },
+    {
+      "id": "oa-090e97-sub-002",
+      "description": "Document: Document HUD event mapping for Golden Loop phases and add tests\n\nAdd appropriate documentation/comments.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T16:46:23.618Z",
+  "updatedAt": "2025-12-03T16:46:23.618Z"
+}
