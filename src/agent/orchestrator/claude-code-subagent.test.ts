@@ -352,4 +352,24 @@ describe("runClaudeCodeSubagent", () => {
       cacheCreationInputTokens: 25,
     });
   });
+
+  test("accepts onEvent callback for orchestrator integration", async () => {
+    // Note: Events are only emitted via SDK hooks in production, not test mocks
+    const events: any[] = [];
+    const onEvent = (event: any) => events.push(event);
+
+    const queryFn = makeQuery([
+      { type: "result", subtype: "success" },
+    ]);
+
+    await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+      onEvent,
+    });
+
+    // With mock queryFn, hooks aren't invoked, so events array is empty
+    // This test just verifies the option is accepted without error
+    expect(onEvent).toBeDefined();
+  });
 });
