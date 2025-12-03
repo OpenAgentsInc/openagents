@@ -265,24 +265,6 @@ export const runOrchestrator = (
         initScript: initScriptResult,
       });
 
-      // If typecheck is failing at start, we need to fix it first before picking a task
-      // This prevents the loop where we keep picking the same task but can't make progress
-      if (!progress.orientation.testsPassingAtStart) {
-        state.phase = "failed";
-        state.error = "Typecheck/tests failing at session start - fix before picking tasks";
-        progress.nextSession.blockers = [
-          "Typecheck or tests failing at session start",
-          "Must fix existing errors before working on new tasks",
-        ];
-        progress.nextSession.suggestedNextSteps = [
-          "Run bun run typecheck to see errors",
-          "Fix typecheck errors first",
-        ];
-        writeProgress(openagentsDir, progress);
-        emit({ type: "session_complete", success: false, summary: "Typecheck failing at start" });
-        return state;
-      }
-
       // Phase 2: Select Task
       state.phase = "selecting_task";
       const taskResult = yield* pickNextTask(tasksPath).pipe(
@@ -311,6 +293,34 @@ export const runOrchestrator = (
         const subtaskOptions =
           config.maxSubtasksPerTask !== undefined ? { maxSubtasks: config.maxSubtasksPerTask } : undefined;
         subtaskList = createSubtaskList(taskResult, subtaskOptions);
+      }
+
+      // If typecheck is failing at start, inject a "fix typecheck" subtask at the beginning
+      if (!progress.orientation.testsPassingAtStart) {
+        const fixTypecheckSubtaskId = `${taskResult.id}-fix-typecheck`;
+        const existingFixSubtask = subtaskList.subtasks.find(s => s.id === fixTypecheckSubtaskId);
+
+        if (!existingFixSubtask) {
+          const fixTypecheckSubtask: Subtask = {
+            id: fixTypecheckSubtaskId,
+            description: `## CRITICAL: Fix Typecheck Errors First
+
+The codebase has typecheck errors that MUST be fixed before any other work can proceed.
+
+Run \`bun run typecheck\` to see the errors, then fix them.
+
+Common causes:
+- Unused imports or variables (TS6133)
+- Type mismatches (TS2322)
+- Missing or extra arguments (TS2554)
+
+After fixing, verify with \`bun run typecheck\` that it passes before proceeding.`,
+            status: "pending",
+          };
+          // Insert at the beginning
+          subtaskList.subtasks.unshift(fixTypecheckSubtask);
+          subtaskList.updatedAt = new Date().toISOString();
+        }
       }
 
       state.subtasks = subtaskList;
