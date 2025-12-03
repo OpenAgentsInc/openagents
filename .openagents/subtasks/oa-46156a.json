@@ -1,0 +1,28 @@
+{
+  "taskId": "oa-46156a",
+  "taskTitle": "Add Electrobun/Playwright Golden Loop smoke for start/stop & log UI",
+  "subtasks": [
+    {
+      "id": "oa-46156a-sub-001",
+      "description": "Implement: Add Electrobun/Playwright Golden Loop smoke for start/stop & log UI\n\nCreate a browser/electron integration test that launches the desktop UI, starts a one-task Golden Loop run with a stub project, verifies live log/phase output appears, and confirms graceful stop/cleanup behavior.",
+      "status": "done",
+      "startedAt": "2025-12-03T16:03:36.144Z",
+      "claudeCode": {
+        "sessionId": "d424dc9d-03df-4f68-8fae-b2782c9df312"
+      },
+      "completedAt": "2025-12-03T16:10:57.091Z"
+    },
+    {
+      "id": "oa-46156a-sub-002",
+      "description": "Add tests for: Add Electrobun/Playwright Golden Loop smoke for start/stop & log UI\n\nVerify the implementation works correctly with unit tests.",
+      "status": "done",
+      "startedAt": "2025-12-03T16:10:57.091Z",
+      "claudeCode": {
+        "sessionId": "a074b297-8235-4d2d-bedb-bbc6bd2552d2"
+      },
+      "completedAt": "2025-12-03T16:12:30.810Z"
+    }
+  ],
+  "createdAt": "2025-12-03T16:03:36.144Z",
+  "updatedAt": "2025-12-03T16:03:36.144Z"
+}
