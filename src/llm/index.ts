@@ -6,3 +6,4 @@ export * from "./partialToolArgs.js";
 export * from "./gemini.js";
 export * from "./model-types.js";
 export * from "./models.js";
+export * from "./model-selector.js";
