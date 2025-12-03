@@ -29,8 +29,9 @@ test.describe("Visual/Layout Tests", () => {
 
     test("A2: SVG flow diagram renders with container", async ({ mainviewPage }) => {
       await expect(mainviewPage.flowSvg).toBeVisible();
-      await expect(mainviewPage.flowCanvas).toBeVisible();
-      await expect(mainviewPage.flowContent).toBeVisible();
+      // SVG <g> elements don't have intrinsic dimensions, so we check they're attached
+      await expect(mainviewPage.flowCanvas).toHaveCount(1);
+      await expect(mainviewPage.flowContent).toHaveCount(1);
 
       // SVG should have proper structure
       const svgHtml = await mainviewPage.getSvgContent();
