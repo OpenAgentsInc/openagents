@@ -60,11 +60,16 @@ const summarizeOutput = (output?: string, maxLength = 400): string | undefined =
   return `${trimmed.slice(0, maxLength)}...`;
 };
 
+const buildVerificationCommands = (
+  typecheckCommands: string[] | undefined,
+  testCommands: string[]
+): string[] => [...(typecheckCommands ?? []), ...testCommands];
+
 /**
  * Run verification commands (typecheck, tests)
  */
 const runVerification = (
-  testCommands: string[],
+  commands: string[],
   cwd: string,
   emit: (event: OrchestratorEvent) => void
 ): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
@@ -73,7 +78,7 @@ const runVerification = (
       const outputs: string[] = [];
       let allPassed = true;
 
-      for (const cmd of testCommands) {
+      for (const cmd of commands) {
         emit({ type: "verification_start", command: cmd });
         try {
           const { execSync } = require("node:child_process") as typeof import("node:child_process");
@@ -155,11 +160,15 @@ const pushToRemote = (
  */
 export const runOrchestrator = (
   config: OrchestratorConfig,
-  emit: (event: OrchestratorEvent) => void = () => {}
+  emit: (event: OrchestratorEvent) => void = () => {},
+  deps?: { runSubagent?: typeof runBestAvailableSubagent }
 ): Effect.Effect<OrchestratorState, Error, FileSystem.FileSystem | Path.Path | OpenRouterClient> =>
   Effect.gen(function* () {
     const sessionId = generateSessionId();
     const now = new Date().toISOString();
+    const subagentRunner = deps?.runSubagent ?? runBestAvailableSubagent;
+    const openagentsDir = config.openagentsDir ?? `${config.cwd}/.openagents`;
+    const tasksPath = `${openagentsDir}/tasks.jsonl`;
     
     emit({ type: "session_start", sessionId, timestamp: now });
 
@@ -170,6 +179,10 @@ export const runOrchestrator = (
       progress: null,
       phase: "orienting",
     };
+    const verificationCommands = buildVerificationCommands(
+      config.typecheckCommands,
+      config.testCommands
+    );
 
     // Initialize progress
     const progress: SessionProgress = {
@@ -196,16 +209,12 @@ export const runOrchestrator = (
     try {
       // Phase 1: Orient
       state.phase = "orienting";
-      const prevSummary = getPreviousSessionSummary(config.openagentsDir);
+      const prevSummary = getPreviousSessionSummary(openagentsDir);
       if (prevSummary) {
         progress.orientation.previousSessionSummary = prevSummary;
       }
 
-      const initScriptResult = yield* runInitScript(
-        config.openagentsDir,
-        config.cwd,
-        emit
-      );
+      const initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
       progress.orientation.initScript = initScriptResult;
 
       if (initScriptResult.ran && !initScriptResult.success) {
@@ -230,15 +239,15 @@ export const runOrchestrator = (
           "Fix init script errors before rerunning",
         ];
 
-        writeProgress(config.openagentsDir, progress);
+        writeProgress(openagentsDir, progress);
         emit({ type: "session_complete", success: false, summary: "Init script failed" });
         return state;
       }
 
       // Quick test check
-      if (config.testCommands.length > 0) {
+      if (verificationCommands.length > 0) {
         const testResult = yield* runVerification(
-          [config.testCommands[0]],
+          [verificationCommands[0]],
           config.cwd,
           emit
         ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
@@ -257,14 +266,14 @@ export const runOrchestrator = (
 
       // Phase 2: Select Task
       state.phase = "selecting_task";
-      const taskResult = yield* pickNextTask(config.cwd).pipe(
+      const taskResult = yield* pickNextTask(tasksPath).pipe(
         Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
       );
 
       if (!taskResult) {
         state.phase = "done";
         progress.nextSession.suggestedNextSteps = ["No tasks available - add new tasks"];
-        writeProgress(config.openagentsDir, progress);
+        writeProgress(openagentsDir, progress);
         emit({ type: "session_complete", success: true, summary: "No tasks to process" });
         return state;
       }
@@ -276,7 +285,7 @@ export const runOrchestrator = (
 
       // Phase 3: Decompose
       state.phase = "decomposing";
-      let subtaskList = readSubtasks(config.openagentsDir, taskResult.id);
+      let subtaskList = readSubtasks(openagentsDir, taskResult.id);
       
       if (!subtaskList) {
         // Create new subtask list with intelligent decomposition
@@ -286,7 +295,7 @@ export const runOrchestrator = (
       }
 
       state.subtasks = subtaskList;
-      writeSubtasks(config.openagentsDir, subtaskList);
+      writeSubtasks(openagentsDir, subtaskList);
       emit({ type: "task_decomposed", subtasks: subtaskList.subtasks });
 
       // Phase 4: Execute Subtasks
@@ -302,13 +311,20 @@ export const runOrchestrator = (
         progress.work.subtasksInProgress.push(subtask.id);
         emit({ type: "subtask_start", subtask });
 
-        const result: SubagentResult = yield* runBestAvailableSubagent({
+        const result: SubagentResult = yield* subagentRunner({
           subtask,
           cwd: config.cwd,
-          openagentsDir: config.openagentsDir ?? config.cwd,
+          openagentsDir,
           tools: SUBAGENT_TOOLS,
           ...(config.subagentModel ? { model: config.subagentModel } : {}),
           ...(config.claudeCode ? { claudeCode: config.claudeCode } : {}),
+          verificationCommands,
+          verifyFn: (commands, cwd) =>
+            Effect.runPromise(
+              runVerification(commands, cwd, emit).pipe(
+                Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] }))
+              )
+            ),
           ...(config.signal ? { signal: config.signal } : {}),
         }).pipe(
           Effect.catchAll((error) =>
@@ -365,14 +381,19 @@ export const runOrchestrator = (
           if (result.error) {
             state.error = result.error;
           }
-          progress.nextSession.blockers = [result.error || "Subtask failed"];
-          writeProgress(config.openagentsDir, progress);
-          writeSubtasks(config.openagentsDir, subtaskList);
+          const blockers: string[] = [result.error || "Subtask failed"];
+          const verificationHint = summarizeOutput(result.verificationOutputs?.[0]);
+          if (verificationHint) {
+            blockers.push(verificationHint);
+          }
+          progress.nextSession.blockers = blockers;
+          writeProgress(openagentsDir, progress);
+          writeSubtasks(openagentsDir, subtaskList);
           return state;
         }
 
         // Update subtasks file after each subtask
-        writeSubtasks(config.openagentsDir, subtaskList);
+        writeSubtasks(openagentsDir, subtaskList);
       }
 
       // Phase 5: Verify
@@ -380,7 +401,7 @@ export const runOrchestrator = (
       progress.work.testsRun = true;
       
       const verifyResult = yield* runVerification(
-        config.testCommands,
+        verificationCommands,
         config.cwd,
         emit
       ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
@@ -390,9 +411,12 @@ export const runOrchestrator = (
       if (!verifyResult.passed) {
         state.phase = "failed";
         state.error = "Verification failed";
-        progress.nextSession.blockers = ["Tests failed after changes"];
-        progress.nextSession.suggestedNextSteps = ["Fix failing tests", "Review changes"];
-        writeProgress(config.openagentsDir, progress);
+        progress.nextSession.blockers = [
+          "Tests or typecheck failed after changes",
+          ...(verifyResult.outputs[0] ? [summarizeOutput(verifyResult.outputs[0]) ?? ""] : []),
+        ].filter(Boolean) as string[];
+        progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
+        writeProgress(openagentsDir, progress);
         emit({ type: "session_complete", success: false, summary: "Verification failed" });
         return state;
       }
@@ -423,7 +447,7 @@ export const runOrchestrator = (
       // Phase 8: Update Task
       state.phase = "updating_task";
       yield* updateTask({
-        tasksPath: `${config.cwd}/.openagents/tasks.jsonl`,
+        tasksPath,
         id: taskResult.id,
         update: {
           status: "closed",
@@ -438,8 +462,8 @@ export const runOrchestrator = (
       state.phase = "logging";
       progress.completedAt = new Date().toISOString();
       progress.nextSession.suggestedNextSteps = ["Pick next task"];
-      writeProgress(config.openagentsDir, progress);
-      emit({ type: "progress_written", path: getProgressPath(config.openagentsDir) });
+      writeProgress(openagentsDir, progress);
+      emit({ type: "progress_written", path: getProgressPath(openagentsDir) });
 
       state.phase = "done";
       emit({
@@ -455,7 +479,7 @@ export const runOrchestrator = (
       emit({ type: "error", phase: state.phase, error: error.message });
       
       progress.nextSession.blockers = [error.message];
-      writeProgress(config.openagentsDir, progress);
+      writeProgress(openagentsDir, progress);
       
       return state;
     }
