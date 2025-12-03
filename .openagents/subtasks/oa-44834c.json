@@ -1,0 +1,13 @@
+{
+  "taskId": "oa-44834c",
+  "taskTitle": "Auto-install helper tools (rg/fd) for agent usage",
+  "subtasks": [
+    {
+      "id": "oa-44834c-sub-001",
+      "description": "Auto-install helper tools (rg/fd) for agent usage\n\nPort pi tools-manager to download/cache ripgrep and fd binaries per platform, expose paths to tools, and add tests for install path resolution. Critical for headless MechaCoder runs where binaries may not be in PATH.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T07:24:25.135Z",
+  "updatedAt": "2025-12-03T07:24:25.135Z"
+}
