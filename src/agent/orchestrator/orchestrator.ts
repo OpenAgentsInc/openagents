@@ -324,6 +324,27 @@ export const runOrchestrator = (
 
         progress.work.filesModified.push(...result.filesModified);
 
+        // Capture Claude Code session metadata for context bridging
+        if (result.sessionMetadata) {
+          progress.work.claudeCodeSession = {
+            ...(result.sessionMetadata.toolsUsed ? { toolsUsed: result.sessionMetadata.toolsUsed } : {}),
+            ...(result.sessionMetadata.summary ? { summary: result.sessionMetadata.summary } : {}),
+          };
+
+          // Merge session blockers into next session blockers
+          if (result.sessionMetadata.blockers && result.sessionMetadata.blockers.length > 0) {
+            progress.nextSession.blockers = [
+              ...(progress.nextSession.blockers || []),
+              ...result.sessionMetadata.blockers,
+            ];
+          }
+
+          // Merge suggested next steps
+          if (result.sessionMetadata.suggestedNextSteps && result.sessionMetadata.suggestedNextSteps.length > 0) {
+            progress.nextSession.suggestedNextSteps.push(...result.sessionMetadata.suggestedNextSteps);
+          }
+        }
+
         if (result.success) {
           subtask.status = "done";
           subtask.completedAt = new Date().toISOString();

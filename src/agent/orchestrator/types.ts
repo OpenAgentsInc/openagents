@@ -68,6 +68,11 @@ export interface SessionProgress {
     filesModified: string[];
     testsRun: boolean;
     testsPassingAfterWork: boolean;
+    /** Claude Code session metadata for context bridging */
+    claudeCodeSession?: {
+      toolsUsed?: Record<string, number>;
+      summary?: string;
+    };
   };
   nextSession: {
     suggestedNextSteps: string[];
@@ -105,6 +110,17 @@ export interface SubagentResult {
   tokenUsage?: {
     input: number;
     output: number;
+  };
+  /** Claude Code session metadata for progress.md bridging */
+  sessionMetadata?: {
+    /** Tools used during session with counts */
+    toolsUsed?: Record<string, number>;
+    /** Blockers or errors encountered */
+    blockers?: string[];
+    /** Suggested next steps from agent */
+    suggestedNextSteps?: string[];
+    /** Final assistant message or summary */
+    summary?: string;
   };
 }
 
