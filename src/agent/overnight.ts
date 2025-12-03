@@ -37,8 +37,76 @@ import {
   getSessionPath,
 } from "./session.js";
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
-import type { OrchestratorEvent } from "./orchestrator/types.js";
+import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
+
+/**
+ * Generate a descriptive commit message based on orchestrator state
+ * Accepts either full OrchestratorState or minimal error state from catchAll
+ */
+type PartialOrchestratorState = Partial<OrchestratorState> & { phase: string; error?: string };
+
+const generateCommitMessage = (state: PartialOrchestratorState, cwd: string): string => {
+  const { execSync } = require("node:child_process") as typeof import("node:child_process");
+
+  // Get task info
+  const taskId = state.task?.id ?? "unknown";
+  const taskTitle = state.task?.title ?? "task cycle";
+  const shortId = taskId.replace("oa-", "");
+
+  // Determine prefix based on success/failure
+  const prefix = state.phase === "done" ? "feat" : "wip";
+
+  // Get changed files summary
+  let filesSummary = "";
+  try {
+    const diffStat = execSync("git diff --cached --stat --stat-width=50", { cwd, encoding: "utf-8" });
+    const lines = diffStat.trim().split("\n");
+    if (lines.length > 1) {
+      // Last line is the summary like "3 files changed, 10 insertions(+), 2 deletions(-)"
+      filesSummary = lines[lines.length - 1].trim();
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  // Get subtask summary
+  let subtaskSummary = "";
+  if (state.subtasks?.subtasks) {
+    const completed = state.subtasks.subtasks.filter(s => s.status === "done" || s.status === "verified").length;
+    const total = state.subtasks.subtasks.length;
+    if (total > 0) {
+      subtaskSummary = `Subtasks: ${completed}/${total} completed`;
+    }
+  }
+
+  // Build the message
+  const lines = [
+    `${prefix}(${shortId}): ${taskTitle}`,
+    "",
+  ];
+
+  if (state.phase === "failed" && state.error) {
+    lines.push(`Status: Failed - ${state.error}`);
+  } else if (state.phase === "done") {
+    lines.push("Status: Completed successfully");
+  }
+
+  if (subtaskSummary) {
+    lines.push(subtaskSummary);
+  }
+
+  if (filesSummary) {
+    lines.push(`Changes: ${filesSummary}`);
+  }
+
+  lines.push("");
+  lines.push("🤖 Generated with [OpenAgents](https://openagents.com)");
+  lines.push("");
+  lines.push("Co-Authored-By: MechaCoder <noreply@openagents.com>");
+
+  return lines.join("\n");
+};
 
 // Logging setup
 const OPENAGENTS_ROOT = "/Users/christopherdavid/code/openagents";
@@ -470,12 +538,13 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         if (status.trim()) {
           log("[Cycle cleanup] Committing pending changes...");
           execSync("git add -A", { cwd: config.workDir, encoding: "utf-8" });
-          const commitMsg = `tasks: update after cycle ${taskNum + 1}
-
-🤖 Generated with [OpenAgents](https://openagents.com)
-
-Co-Authored-By: MechaCoder <noreply@openagents.com>`;
-          execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: config.workDir, encoding: "utf-8" });
+          const commitMsg = generateCommitMessage(state, config.workDir);
+          // Use heredoc to handle multiline commit message properly
+          execSync(`git commit -m "$(cat <<'COMMITMSG'\n${commitMsg}\nCOMMITMSG\n)"`, {
+            cwd: config.workDir,
+            encoding: "utf-8",
+            shell: "/bin/bash"
+          });
           execSync("git push", { cwd: config.workDir, encoding: "utf-8" });
           log("[Cycle cleanup] Changes committed and pushed.");
         }
