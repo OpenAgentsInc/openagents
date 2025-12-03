@@ -39,7 +39,7 @@ import {
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
-import { createHudCallbacks, closeHudClient } from "../hud/index.js";
+import { createHudCallbacks } from "../hud/index.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state

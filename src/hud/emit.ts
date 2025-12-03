@@ -5,7 +5,7 @@
  * Use createHudEmitter() to get an emit function compatible with runOrchestrator().
  */
 
-import type { OrchestratorEvent, OrchestratorPhase } from "../agent/orchestrator/types.js";
+import type { OrchestratorEvent } from "../agent/orchestrator/types.js";
 import type { HudMessage, HudTaskInfo, HudSubtaskInfo, HudSubagentResult } from "./protocol.js";
 import { HudClient, getHudClient, type HudClientOptions } from "./client.js";
 
@@ -65,10 +65,10 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
       };
       const result: HudSubagentResult = {
         success: event.result.success,
-        agent: event.result.agent,
         filesModified: event.result.filesModified,
         turns: event.result.turns,
-        error: event.result.error,
+        ...(event.result.agent ? { agent: event.result.agent } : {}),
+        ...(event.result.error ? { error: event.result.error } : {}),
       };
       return { type: "subtask_complete", subtask, result };
     }
