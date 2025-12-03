@@ -475,6 +475,32 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   const projectConfig = loadedConfig ?? defaultProjectConfig;
   log(`Project: ${projectConfig.projectId}`);
 
+  // Validate main branch is clean (typecheck) before spawning parallel agents
+  // This prevents all agents from trying to fix the same base errors
+  if (!config.dryRun) {
+    log(`\nValidating main branch...`);
+    const typecheckCmd = projectConfig.typecheckCommands?.[0] || "bun run typecheck";
+    const typecheck = Bun.spawn(typecheckCmd.split(" "), {
+      cwd: config.workDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await typecheck.exited;
+    if (typecheck.exitCode !== 0) {
+      const stderr = await new Response(typecheck.stderr).text();
+      log(`❌ Main branch has typecheck errors. Fix them before running parallel agents.`);
+      log(`   Run: ${typecheckCmd}`);
+      if (config.verbose) {
+        const lines = stderr.split("\n").slice(0, 15);
+        for (const line of lines) {
+          log(`   ${line}`);
+        }
+      }
+      return { tasksCompleted: 0, sessionId };
+    }
+    log(`✅ Main branch typecheck passed`);
+  }
+
   // Load ready tasks
   const tasksPath = path.join(openagentsDir, "tasks.jsonl");
   const allTasks = await Effect.runPromise(
