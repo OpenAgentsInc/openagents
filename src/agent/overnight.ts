@@ -36,6 +36,9 @@ import {
   writeSessionEnd,
   getSessionPath,
 } from "./session.js";
+import { runOrchestrator } from "./orchestrator/orchestrator.js";
+import type { OrchestratorEvent } from "./orchestrator/types.js";
+import { loadProjectConfig } from "../tasks/project.js";
 
 // Logging setup
 const OPENAGENTS_ROOT = "/Users/christopherdavid/code/openagents";
@@ -103,6 +106,8 @@ interface OvernightConfig {
   maxTasks: number;
   dryRun: boolean;
   sessionsDir: string;
+  /** Use legacy Grok-based agentLoop instead of orchestrator */
+  legacy: boolean;
 }
 
 const parseArgs = (): OvernightConfig => {
@@ -110,10 +115,11 @@ const parseArgs = (): OvernightConfig => {
   let workDir = process.cwd();
   let maxTasks = 10;
   let dryRun = false;
+  let legacy = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dir" && args[i + 1]) {
-      workDir = args[i + 1].startsWith("~") 
+      workDir = args[i + 1].startsWith("~")
         ? args[i + 1].replace("~", process.env.HOME || "")
         : args[i + 1];
       i++;
@@ -122,6 +128,8 @@ const parseArgs = (): OvernightConfig => {
       i++;
     } else if (args[i] === "--dry-run") {
       dryRun = true;
+    } else if (args[i] === "--legacy") {
+      legacy = true;
     }
   }
 
@@ -131,6 +139,7 @@ const parseArgs = (): OvernightConfig => {
     maxTasks,
     dryRun,
     sessionsDir: `${workDir}/.openagents/sessions`,
+    legacy,
   };
 };
 
@@ -309,17 +318,164 @@ const overnightLoop = (config: OvernightConfig) =>
     return { tasksCompleted, sessionId: session.id };
   });
 
+/**
+ * Orchestrator-based overnight loop (Claude Code primary, Grok fallback).
+ * This is the new default path for overnight runs.
+ */
+const overnightLoopOrchestrator = (config: OvernightConfig) =>
+  Effect.gen(function* () {
+    const openagentsDir = path.join(config.workDir, ".openagents");
+
+    // Load project config with defaults
+    const defaultConfig = {
+      projectId: "unknown",
+      defaultBranch: "main",
+      testCommands: ["bun test"],
+      typecheckCommands: ["bun run typecheck"],
+      allowPush: true,
+      claudeCode: {
+        enabled: true,
+        preferForComplexTasks: true,
+        fallbackToMinimal: true,
+      },
+    };
+    const loadedConfig = yield* loadProjectConfig(openagentsDir).pipe(
+      Effect.catchAll(() => Effect.succeed(null))
+    );
+    const projectConfig = loadedConfig ?? defaultConfig;
+
+    // Initialize logging
+    const sessionId = `orchestrator-${Date.now()}`;
+    initLog(sessionId);
+
+    log(`${"#".repeat(60)}`);
+    log("OVERNIGHT AGENT STARTING - Orchestrator Mode");
+    log(`Session: ${sessionId}`);
+    log(`Work directory: ${config.workDir}`);
+    log(`Max tasks: ${config.maxTasks}`);
+    log(`Claude Code enabled: ${projectConfig.claudeCode?.enabled ?? true}`);
+    log(`${"#".repeat(60)}\n`);
+
+    // Change to work directory
+    process.chdir(config.workDir);
+    log(`Changed to directory: ${process.cwd()}`);
+
+    let tasksCompleted = 0;
+
+    // Event handler for logging
+    const emit = (event: OrchestratorEvent) => {
+      const ts = new Date().toISOString();
+      switch (event.type) {
+        case "session_start":
+          log(`[${ts}] Orchestrator session started: ${event.sessionId}`);
+          break;
+        case "task_selected":
+          log(`[${ts}] Task selected: ${event.task.id} - ${event.task.title}`);
+          break;
+        case "subtask_start":
+          log(`[${ts}] Subtask started: ${event.subtask.id}`);
+          break;
+        case "subtask_complete":
+          log(`[${ts}] Subtask complete: ${event.subtask.id} (agent: ${event.result.agent})`);
+          break;
+        case "subtask_failed":
+          log(`[${ts}] Subtask FAILED: ${event.subtask.id} - ${event.error}`);
+          break;
+        case "verification_start":
+          log(`[${ts}] Running: ${event.command}`);
+          break;
+        case "verification_complete":
+          log(`[${ts}] ${event.passed ? "PASS" : "FAIL"}: ${event.command}`);
+          break;
+        case "commit_created":
+          log(`[${ts}] Commit: ${event.sha.slice(0, 8)} - ${event.message}`);
+          break;
+        case "push_complete":
+          log(`[${ts}] Pushed to ${event.branch}`);
+          break;
+        case "session_complete":
+          log(`[${ts}] Session ${event.success ? "SUCCESS" : "FAILED"}: ${event.summary}`);
+          break;
+        case "error":
+          log(`[${ts}] ERROR in ${event.phase}: ${event.error}`);
+          break;
+      }
+    };
+
+    // Run orchestrator loop for multiple tasks
+    for (let taskNum = 0; taskNum < config.maxTasks; taskNum++) {
+      log(`\n${"=".repeat(60)}`);
+      log(`TASK CYCLE ${taskNum + 1}/${config.maxTasks}`);
+      log(`${"=".repeat(60)}\n`);
+
+      if (config.dryRun) {
+        log("[DRY RUN] Would run orchestrator");
+        break;
+      }
+
+      const orchestratorConfig = {
+        cwd: config.workDir,
+        openagentsDir,
+        testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
+        allowPush: projectConfig.allowPush ?? true,
+        claudeCode: projectConfig.claudeCode,
+        ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
+      };
+
+      const state = yield* runOrchestrator(orchestratorConfig, emit).pipe(
+        Effect.catchAll((error) => {
+          log(`Orchestrator error: ${error.message}`);
+          return Effect.succeed({ phase: "failed" as const, error: error.message });
+        })
+      );
+
+      if (state.phase === "done") {
+        tasksCompleted++;
+        log(`\n✓ Task ${tasksCompleted} completed`);
+      } else if (state.phase === "failed") {
+        log(`\n✗ Task failed: ${state.error || "Unknown error"}`);
+        // Continue to next task unless it's a critical failure
+        if (state.error?.includes("No ready tasks")) {
+          log("No more ready tasks available");
+          break;
+        }
+      } else {
+        log(`\n✗ Task incomplete: phase=${state.phase}`);
+        break;
+      }
+
+      // Small delay between tasks
+      if (taskNum < config.maxTasks - 1) {
+        yield* Effect.sleep(2000);
+      }
+    }
+
+    log(`\n${"#".repeat(60)}`);
+    log("OVERNIGHT AGENT FINISHED - Orchestrator Mode");
+    log(`Tasks completed: ${tasksCompleted}`);
+    log(`${"#".repeat(60)}\n`);
+
+    return { tasksCompleted, sessionId };
+  });
+
 // Main
 const config = parseArgs();
 
 if (!config.workDir) {
-  console.error("Usage: bun src/agent/overnight.ts --dir <work-directory> [--max-tasks N] [--dry-run]");
+  console.error("Usage: bun src/agent/overnight.ts --dir <work-directory> [--max-tasks N] [--dry-run] [--legacy]");
   process.exit(1);
 }
 
 const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
 
-Effect.runPromise((overnightLoop(config) as any).pipe(Effect.provide(liveLayer)))
+// Route based on --legacy flag
+const program = config.legacy
+  ? overnightLoop(config) // Legacy: Grok-based agentLoop
+  : overnightLoopOrchestrator(config); // Default: Orchestrator with Claude Code
+
+console.log(config.legacy ? "[Legacy mode: Grok-based agentLoop]" : "[Orchestrator mode: Claude Code primary]");
+
+Effect.runPromise((program as any).pipe(Effect.provide(liveLayer)))
   .then((result: unknown) => {
     const r = result as { tasksCompleted: number; sessionId: string };
     console.log(`\nDone! Completed ${r.tasksCompleted} tasks.`);
