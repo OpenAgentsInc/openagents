@@ -1,3 +1,8 @@
+import {
+  CLAUDE_CODE_MCP_SERVER_NAME,
+  createMechaCoderMcpServer,
+  getAllowedClaudeCodeTools,
+} from "./claude-code-mcp.js";
 import { type SubagentResult, type Subtask } from "./types.js";
 
 type QueryFn = (input: unknown) => AsyncIterable<any>;
@@ -7,6 +12,9 @@ export interface ClaudeCodeSubagentOptions {
   maxTurns?: number;
   systemPrompt?: string;
   queryFn?: QueryFn;
+  openagentsDir?: string;
+  allowedTools?: string[];
+  mcpServers?: Record<string, unknown>;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -37,6 +45,14 @@ export const runClaudeCodeSubagent = async (
   let error: string | undefined;
   let turns = 0;
 
+  const mcpServers =
+    options.mcpServers ??
+    {
+      [CLAUDE_CODE_MCP_SERVER_NAME]: createMechaCoderMcpServer({ openagentsDir: options.openagentsDir }),
+    };
+
+  const allowedTools = options.allowedTools ?? getAllowedClaudeCodeTools();
+
   try {
     for await (const message of query({
       prompt: defaultBuildPrompt(subtask),
@@ -44,6 +60,8 @@ export const runClaudeCodeSubagent = async (
         cwd: options.cwd,
         ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
         maxTurns: options.maxTurns ?? 30,
+        mcpServers,
+        allowedTools,
       },
     })) {
       if (isToolCallMessage(message) && message.tool_calls) {
