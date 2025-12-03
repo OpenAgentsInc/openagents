@@ -5,7 +5,15 @@
     {
       "id": "oa-pi07-sub-001",
       "description": "Port slash commands system for workflow shortcuts\n\nPort pi slash command system: load markdown commands from ~/.openagents/commands and .openagents/commands, parse frontmatter (description, args), substitute $@ args, and expand in CLI input. Enable common workflow shortcuts without hardcoding.",
-      "status": "pending"
+      "status": "failed",
+      "startedAt": "2025-12-03T15:52:36.329Z",
+      "claudeCode": {
+        "sessionId": "c2bb3186-eb16-4776-8427-9d5891ce8e9e",
+        "resumeStrategy": "fork"
+      },
+      "failureCount": 1,
+      "lastFailureReason": "Verification failed (typecheck/tests): src/cli/slash-commands.ts(184,5): error TS2375: Type '{ name: string; path: string; description: string | undefined; args: CommandArg[] | undefined; source: \"user\" | \"project\"; body: string; }' is not assignable to type 'SlashCommand' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties. Types of property 'description' are incompatible. Type 'string | undefined' is not assignable to type 'string'.",
+      "error": "Verification failed (typecheck/tests): src/cli/slash-commands.ts(184,5): error TS2375: Type '{ name: string; path: string; description: string | undefined; args: CommandArg[] | undefined; source: \"user\" | \"project\"; body: string; }' is not assignable to type 'SlashCommand' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties. Types of property 'description' are incompatible. Type 'string | undefined' is not assignable to type 'string'."
     }
   ],
   "createdAt": "2025-12-03T15:52:36.329Z",
