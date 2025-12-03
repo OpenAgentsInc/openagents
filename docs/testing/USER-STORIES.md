@@ -162,7 +162,10 @@ The orchestrator runs the autonomous task completion loop.
 | ORCH-011 | P0 | As MechaCoder, I can use minimal subagent | Fallback for simple tasks or when CC unavailable |
 | ORCH-012 | P1 | As MechaCoder, I track turns per subtask | maxTurnsPerSubtask enforced |
 | ORCH-013 | P1 | As MechaCoder, I capture files modified | filesModified array in result |
-| ORCH-014 | P2 | As MechaCoder, I fallback on subagent failure | fallbackToMinimal config respected |
+| ORCH-014 | P0 | As MechaCoder, I prefer Claude Code for complex subtasks | When `claudeCode.enabled=true` and a subtask is labeled complex (epic, multi-file, or long description), orchestrator routes it to Claude Code instead of the minimal subagent |
+| ORCH-015 | P0 | As MechaCoder, I fall back to minimal subagent on CC error | If Claude Code fails (timeout, rate limit, auth error) and `fallbackToMinimal=true`, orchestrator retries the subtask with the minimal subagent and logs the fallback |
+| ORCH-016 | P1 | As MechaCoder, I resume Claude Code sessions across cycles | When a subtask spans multiple orchestrator cycles, the previously stored CC session ID is used so CC continues with full context |
+| ORCH-017 | P1 | As a user, I can force CC-only or minimal-only mode | CLI flags (`--cc-only`, `--minimal-only`) override routing heuristics, and runs are logged with the chosen mode |
 
 ### 3.3 Verification
 
@@ -195,6 +198,8 @@ The orchestrator runs the autonomous task completion loop.
 | ORCH-042 | P1 | As MechaCoder, I can resume interrupted sessions | Session state persisted and recoverable |
 | ORCH-043 | P1 | As MechaCoder, I prevent concurrent runs | agent.lock file prevents overlap |
 | ORCH-044 | P2 | As MechaCoder, I log full session to run-logs | JSONL log with all events |
+| ORCH-045 | P1 | As MechaCoder, I write a full JSONL event stream | Each session creates `.openagents/run-logs/YYYYMMDD/run-<id>.jsonl` with all events (turn_start, llm_response, tool_call/result, retry_prompt, run_end) |
+| ORCH-046 | P2 | As MechaCoder, I support session replay | A replay harness can reconstruct the agent's conversation and tool calls from the JSONL event stream without additional state |
 
 ### 3.6 Error Recovery
 
@@ -204,6 +209,22 @@ The orchestrator runs the autonomous task completion loop.
 | ORCH-051 | P1 | As MechaCoder, I track consecutive failures | After N failures, mark task blocked |
 | ORCH-052 | P1 | As MechaCoder, I include retry context | Previous failure info in retry prompt |
 | ORCH-053 | P2 | As MechaCoder, I gracefully handle stop signals | Clean shutdown on SIGTERM/SIGINT |
+
+### 3.7 Safe Mode & Preflight
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| ORCH-070 | P0 | As MechaCoder, I run preflight checks before doing work | `.openagents/init.sh` is executed before task selection; failures abort the session with a clear error in logs and HUD |
+| ORCH-071 | P1 | As a user, I can enable safe mode self-healing | With `--safe-mode`, when preflight fails due to typecheck errors, orchestrator attempts a repair subtask (e.g., "fix type errors") before giving up |
+| ORCH-072 | P1 | As MechaCoder, I keep the workspace clean on preflight failure | After failed init, no partial commits are created and working tree changes are either reverted or clearly logged as needing manual cleanup |
+
+### 3.8 Sandbox Execution
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| ORCH-080 | P1 | As MechaCoder, I run inside a sandbox when configured | For a project with `sandbox.enabled=true`, agent processes execute in the sandbox (container/Seatbelt) and cannot read/write outside the workspace |
+| ORCH-081 | P1 | As MechaCoder, I fail clearly if sandbox startup fails | Missing/invalid container runtime produces a clear error and aborts the session without partially-modified tasks |
+| ORCH-082 | P2 | As MechaCoder, I gracefully fall back when allowed | If `sandbox.backend="auto"` and preferred backend is unavailable, orchestrator either selects a fallback backend or runs unsandboxed according to config, and logs this decision |
 
 ---
 
@@ -227,11 +248,12 @@ Command-line interfaces for external agent interaction.
 
 | ID | Priority | User Story | Acceptance Criteria |
 |----|----------|------------|---------------------|
-| CLI-010 | P0 | As a user, I can run `bun run mechacoder` | Executes one task (do-one-task) |
-| CLI-011 | P0 | As a user, I can run `bun run mechacoder:overnight` | Runs until maxTasks or maxRuntime |
+| CLI-010 | P0 | As a user, I can run `bun run mechacoder` | Executes one task via orchestrator (do-one-task); uses `--legacy` flag to hit the old direct agentLoop |
+| CLI-011 | P0 | As a user, I can run `bun run mechacoder:overnight` | Runs orchestrator until maxTasks or maxRuntime; uses `--legacy` flag for direct agentLoop |
 | CLI-012 | P1 | As a user, I can run `--cc-only` mode | Forces Claude Code subagent |
-| CLI-013 | P1 | As a user, I can run `--legacy` mode | Uses legacy minimal agent |
-| CLI-014 | P2 | As a user, I can run `mechacoder:parallel` | Parallel task execution |
+| CLI-013 | P1 | As a user, I can run `--minimal-only` mode | Uses minimal agent exclusively |
+| CLI-014 | P2 | As a user, I can run `mechacoder:parallel` | Parallel task execution with worktrees |
+| CLI-015 | P2 | As a user, I can run `mechacoder:parallel` with N agents | `bun run mechacoder:parallel --max-agents 4` runs up to 4 agents using worktrees, honoring ParallelExecutionConfig |
 
 ### 4.3 Session CLI
 
@@ -241,6 +263,17 @@ Command-line interfaces for external agent interaction.
 | CLI-021 | P1 | As a user, I can run `session:show` | Shows session details |
 | CLI-022 | P2 | As a user, I can run `session:search` | Searches session content |
 | CLI-023 | P2 | As a user, I can run `session:by-task` | Finds sessions for a task |
+| CLI-024 | P1 | As a user, I can tail a running session's events | `tail -f .openagents/run-logs/YYYYMMDD/run-*.jsonl` shows streaming events (run_start, turn_start, tool_call, run_end) during an active run |
+| CLI-025 | P2 | As a user, I can export a session to HTML | `bun run session:export-html <sessionId>` produces an HTML transcript from JSONL |
+| CLI-026 | P2 | As a user, I can import a pi-mono JSONL session | `session:import-pi <path>` converts a pi-mono session file into `.openagents/sessions` format for replay |
+
+### 4.4 Worktree CLI
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| CLI-030 | P1 | As a user, I can list active worktrees | `mechacoder:worktrees list` shows active worktrees with task IDs and branch names |
+| CLI-031 | P1 | As a user, I can prune stale worktrees | `mechacoder:worktrees prune` removes stale/finished worktrees safely |
+| CLI-032 | P2 | As a user, I can inspect a worktree | `mechacoder:worktrees show <id>` shows worktree details including task, branch, and status |
 
 ---
 
@@ -252,7 +285,7 @@ Provider abstraction for multiple AI backends.
 
 | ID | Priority | User Story | Acceptance Criteria |
 |----|----------|------------|---------------------|
-| LLM-001 | P0 | As the system, I use OpenRouter by default | Default provider works out of box |
+| LLM-001 | P0 | As the system, I use Claude Code as the primary coding subagent | When `claudeCode.enabled=true`, Claude Code handles complex subtasks; OpenRouter/others serve as underlying chat providers where configured |
 | LLM-002 | P1 | As the system, I can use Anthropic direct | ANTHROPIC_API_KEY enables direct calls |
 | LLM-003 | P1 | As the system, I can use OpenAI | OPENAI_API_KEY enables OpenAI calls |
 | LLM-004 | P2 | As the system, I can use Google Gemini | GOOGLE_API_KEY enables Gemini calls |
@@ -354,6 +387,41 @@ Built-in tools for file operations and system interaction.
 | CONF-021 | P1 | As a user, I can set maxTurnsPerSubtask | Limits subagent iterations |
 | CONF-022 | P2 | As a user, I can set permissionMode | Controls bypass behavior |
 | CONF-023 | P2 | As a user, I can set fallbackToMinimal | Enables minimal fallback |
+| CONF-024 | P1 | As a user, I can control CC routing heuristics | `claudeCode.preferForComplexTasks`, `complexityThreshold`, and label overrides (`forceMinimalLabels`, `forceClaudeCodeLabels`) change which subtasks are routed to CC vs minimal subagent |
+
+### 7.4 Sandbox Configuration
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| CONF-030 | P1 | As a user, I can enable sandbox mode per project | `sandbox.enabled=true` in project.json causes MechaCoder to run tasks via the configured sandbox backend instead of directly on the host |
+| CONF-031 | P1 | As a user, I can choose a sandbox backend | `sandbox.backend` accepts `"apple-container"`, `"docker"`, `"none"` (or `"auto"`), and orchestrator respects this choice |
+| CONF-032 | P2 | As a user, I can set sandbox resource limits | `sandbox.memoryLimit` and `sandbox.cpuLimit` constrain container resources (verified via stress test) |
+| CONF-033 | P2 | As a user, I can override sandbox at runtime | `--no-sandbox` CLI flag disables sandboxing even if enabled in project.json |
+
+---
+
+## 8. Parallel Execution & Worktrees
+
+Multi-agent parallel task execution with git worktrees.
+
+### 8.1 Parallel Orchestrator
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| PAR-001 | P1 | As MechaCoder, I can run multiple tasks in parallel | With `parallelExecution.enabled=true` and `maxAgents=2`, orchestrator starts two agents concurrently, each working on a different ready task |
+| PAR-002 | P1 | As MechaCoder, each agent uses its own worktree | Each parallel agent runs in its own git worktree/branch (e.g., `.worktrees/oa-123` on `agent/oa-123`), and commits only affect that branch |
+| PAR-003 | P1 | As a user, I can list and prune active worktrees | `mechacoder:worktrees list` shows active worktrees; `mechacoder:worktrees prune` removes stale/finished ones safely |
+| PAR-004 | P2 | As MechaCoder, I respect configured merge strategy | `parallelExecution.mergeStrategy` (`direct` / `queue` / `pr` / `auto`) results in the expected main-branch update flow |
+| PAR-005 | P2 | As a user, parallel mode doesn't corrupt main | After a parallel run, `git status` is clean on main, and all merged commits correspond to closed tasks |
+
+### 8.2 Worktree Isolation
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| PAR-010 | P1 | As MechaCoder, worktrees are isolated | Changes in one worktree don't affect others or main until merged |
+| PAR-011 | P1 | As MechaCoder, worktrees have full .openagents context | Each worktree has access to project.json and can update its task in tasks.jsonl |
+| PAR-012 | P2 | As MechaCoder, I handle worktree conflicts | When multiple agents complete, merge conflicts are detected and reported |
+| PAR-013 | P2 | As MechaCoder, I cleanup worktrees on completion | Finished worktrees are automatically removed after successful merge |
 
 ---
 
@@ -363,9 +431,9 @@ Built-in tools for file operations and system interaction.
 
 | Priority | Count | Description |
 |----------|-------|-------------|
-| P0 | ~50 | Critical - Must work for basic functionality |
-| P1 | ~45 | High - Important for production use |
-| P2 | ~35 | Medium - Nice to have, improves UX |
+| P0 | ~55 | Critical - Must work for basic functionality |
+| P1 | ~60 | High - Important for production use |
+| P2 | ~45 | Medium - Nice to have, improves UX |
 | P3 | ~10 | Low - Polish, future enhancements |
 
 ### By Category
@@ -374,11 +442,12 @@ Built-in tools for file operations and system interaction.
 |----------|----|----|----|----|-------|
 | HUD/Desktop | 15 | 15 | 10 | 3 | 43 |
 | Task System | 8 | 8 | 10 | 0 | 26 |
-| Orchestrator | 12 | 12 | 6 | 0 | 30 |
-| CLI | 6 | 5 | 3 | 0 | 14 |
+| Orchestrator | 14 | 16 | 8 | 0 | 38 |
+| CLI | 6 | 9 | 7 | 0 | 22 |
 | LLM Providers | 3 | 5 | 4 | 1 | 13 |
 | Core Tools | 8 | 4 | 4 | 0 | 16 |
-| Configuration | 2 | 4 | 4 | 0 | 10 |
+| Configuration | 2 | 6 | 6 | 0 | 14 |
+| Parallel/Worktrees | 0 | 6 | 4 | 0 | 10 |
 
 ### Current E2E Coverage
 
@@ -391,6 +460,8 @@ Built-in tools for file operations and system interaction.
 - Real-time Updates: C1-C10 (HUD-030 to HUD-040)
 - Integration: E1-E5 (ORCH-001 to ORCH-044)
 - Desktop Screenshots: (visual regression)
+- Parallel Execution: (PAR-001 to PAR-013)
+- Sandbox: (ORCH-080 to ORCH-082, CONF-030 to CONF-033)
 
 ---
 
@@ -400,5 +471,9 @@ Built-in tools for file operations and system interaction.
 2. **Integration Tests (P1)**: Implement E1-E5 covering full Golden Loop
 3. **CLI Tests (P1)**: Add integration tests for task CLI commands
 4. **Orchestrator Tests (P1)**: Expand golden-loop-smoke.e2e.test.ts coverage
-5. **Provider Tests (P2)**: Add mock-based LLM provider tests
-6. **Tool Tests (P0)**: Ensure all core tools have comprehensive coverage
+5. **Parallel Execution Tests (P1)**: Test worktree creation, isolation, and merging
+6. **Sandbox Tests (P1)**: Test container/seatbelt execution and fallback behavior
+7. **Safe Mode Tests (P1)**: Test preflight checks and self-healing behavior
+8. **Provider Tests (P2)**: Add mock-based LLM provider tests
+9. **Tool Tests (P0)**: Ensure all core tools have comprehensive coverage
+10. **Session Replay Tests (P2)**: Test JSONL export/import and HTML generation
