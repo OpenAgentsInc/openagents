@@ -424,7 +424,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         fallbackToMinimal: true,
       },
     };
-    const loadedConfig = yield* loadProjectConfig(openagentsDir).pipe(
+    // Note: loadProjectConfig expects the root dir, not the .openagents dir
+    const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
       Effect.catchAll(() => Effect.succeed(null))
     );
     const projectConfig = loadedConfig ?? defaultConfig;
