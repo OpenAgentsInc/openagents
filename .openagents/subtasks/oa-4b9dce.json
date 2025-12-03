@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-4b9dce",
+  "taskTitle": "Integrate HudClient into do-one-task.ts",
+  "subtasks": [
+    {
+      "id": "oa-4b9dce-sub-001",
+      "description": "Implement: Integrate HudClient into do-one-task.ts\n\nWire HudClient into the single-task agent, same pattern as overnight.ts.\n\n## File: src/agent/do-one-task.ts\n\n## Changes\nSame integration pattern as overnight.ts:\n\n1. Import HudClient and mapOrchestratorEvent\n2. Create and connect HudClient instance\n3. Wrap emit() to send orchestrator events to HUD\n4. Wrap onOutput() to send streaming text to HUD\n5. Send tool calls to HUD\n6. Close HudClient on exit\n\n## Code Pattern\n```typescript\nimport { HudClient, mapOrchestratorEvent } from \"../hud/index.js\";\n\nconst hudClient = new HudClient();\nhudClient.connect();\n\n// Wrap emit\nconst emit = (event: OrchestratorEvent) => {\n  logOrchestratorEvent(event);\n  hudClient.send(mapOrchestratorEvent(event));\n};\n\n// Wrap onOutput\nconst onOutput = (text: string) => {\n  process.stdout.write(text);\n  hudClient.sendText(text);\n};\n\n// ... use emit and onOutput in orchestrator ...\n\n// Cleanup\nhudClient.close();\n```\n\n## Notes\n- This is a simpler agent than overnight.ts but same HUD integration\n- If do-one-task.ts doesn't exist yet, this may be deferred\n\n## Reference\n- See oa-574d83 (overnight.ts integration) for full pattern",
+      "status": "done",
+      "startedAt": "2025-12-03T08:09:35.121Z",
+      "claudeCode": {
+        "sessionId": "78cf4ab7-8898-4282-9dae-1879c3d64eb9"
+      },
+      "completedAt": "2025-12-03T08:11:35.209Z"
+    }
+  ],
+  "createdAt": "2025-12-03T08:09:35.121Z",
+  "updatedAt": "2025-12-03T08:09:35.121Z"
+}
