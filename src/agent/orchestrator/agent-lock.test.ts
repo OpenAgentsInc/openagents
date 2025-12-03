@@ -31,7 +31,6 @@ import {
   getWorktreeLockPath,
   readWorktreeLock,
   type AgentLock,
-  type WorktreeLock,
 } from "./agent-lock.js";
 
 describe("agent-lock", () => {

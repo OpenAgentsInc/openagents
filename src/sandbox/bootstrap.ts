@@ -10,7 +10,6 @@ import { ContainerError } from "./schema.js";
 
 const GITHUB_API = "https://api.github.com/repos/apple/container/releases/latest";
 const CONTAINER_CLI = "container";
-const INSTALL_DIR = "/usr/local/bin";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -118,7 +117,7 @@ export const downloadInstaller = Effect.gen(function* () {
     a.name.includes("installer-signed.pkg"),
   );
   if (!installer) {
-    yield* Effect.fail(
+    return yield* Effect.fail(
       new ContainerError("not_available", "No signed installer found in release"),
     );
   }
@@ -210,7 +209,7 @@ export const installSilent = (pkgPath: string) =>
     });
 
     if (result !== 0) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new ContainerError("start_failed", `Installer exited with code ${result}`),
       );
     }
@@ -244,7 +243,7 @@ export const startSystem = Effect.gen(function* () {
   });
 
   if (result !== 0) {
-    yield* Effect.fail(
+    return yield* Effect.fail(
       new ContainerError("start_failed", `System start exited with code ${result}`),
     );
   }
@@ -292,7 +291,7 @@ export const bootstrap = Effect.gen(function* () {
 
   // Must be on macOS
   if (status.platform !== "darwin") {
-    yield* Effect.fail(
+    return yield* Effect.fail(
       new ContainerError(
         "not_available",
         "Container CLI only available on macOS",
@@ -304,7 +303,7 @@ export const bootstrap = Effect.gen(function* () {
   if (status.macOSVersion) {
     const majorVersion = parseInt(status.macOSVersion.split(".")[0], 10);
     if (majorVersion < 26) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new ContainerError(
           "not_available",
           `macOS 26+ required, found ${status.macOSVersion}`,

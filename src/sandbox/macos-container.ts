@@ -5,7 +5,6 @@ import { Effect, Layer, Stream } from "effect";
 import { ContainerBackendTag, type ContainerBackend } from "./backend.js";
 import {
   ContainerError,
-  type ContainerConfig,
   type ContainerRunResult,
 } from "./schema.js";
 
@@ -21,9 +20,9 @@ const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
 // Helper: Collect stream with size limit (from bash.ts pattern)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const collectLimited = (
-  stream: Stream.Stream<Uint8Array, unknown, unknown>,
-): Effect.Effect<string, unknown, unknown> =>
+const collectLimited = <E, R>(
+  stream: Stream.Stream<Uint8Array, E, R>,
+): Effect.Effect<string, E, R> =>
   Stream.runFold(stream, "", (acc, chunk) => {
     if (acc.length >= MAX_OUTPUT_SIZE) {
       return acc;
@@ -127,10 +126,15 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
           ),
         );
 
-        // Collect output
+        // Collect output (cast streams to proper type)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stdoutStream = process.stdout as Stream.Stream<Uint8Array, never, never>;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stderrStream = process.stderr as Stream.Stream<Uint8Array, never, never>;
+
         const baseCollect = Effect.all([
-          collectLimited(process.stdout as any),
-          collectLimited(process.stderr as any),
+          collectLimited(stdoutStream),
+          collectLimited(stderrStream),
           process.exitCode,
         ] as const).pipe(
           Effect.mapError(
@@ -193,9 +197,15 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
           ),
         );
 
+        // Cast streams to proper type
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stdoutStream = process.stdout as Stream.Stream<Uint8Array, never, never>;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stderrStream = process.stderr as Stream.Stream<Uint8Array, never, never>;
+
         const [_stdout, stderr, exitCode] = yield* Effect.all([
-          collectLimited(process.stdout as any),
-          collectLimited(process.stderr as any),
+          collectLimited(stdoutStream),
+          collectLimited(stderrStream),
           process.exitCode,
         ] as const).pipe(
           Effect.mapError(
@@ -204,7 +214,7 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
         );
 
         if (Number(exitCode) !== 0) {
-          yield* Effect.fail(
+          return yield* Effect.fail(
             new ContainerError(
               "execution_failed",
               `Build failed: ${stderr}`,

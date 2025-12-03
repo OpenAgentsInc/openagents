@@ -59,7 +59,7 @@ export class WorktreeError extends Error {
       | "already_exists"
       | "git_error",
     message: string,
-    readonly cause?: unknown,
+    override readonly cause?: unknown,
   ) {
     super(message);
     this.name = "WorktreeError";
@@ -138,7 +138,7 @@ export const createWorktree = (
 
     // Check if worktree already exists
     if (fs.existsSync(worktreePath)) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new WorktreeError(
           "already_exists",
           `Worktree already exists at ${worktreePath}`,
@@ -178,7 +178,7 @@ export const createWorktree = (
           branchName,
         ]);
         if (retryResult.exitCode !== 0) {
-          yield* Effect.fail(
+          return yield* Effect.fail(
             new WorktreeError(
               "create_failed",
               `Failed to create worktree: ${retryResult.stderr}`,
@@ -186,7 +186,7 @@ export const createWorktree = (
           );
         }
       } else {
-        yield* Effect.fail(
+        return yield* Effect.fail(
           new WorktreeError(
             "create_failed",
             `Failed to create worktree: ${result.stderr}`,
@@ -224,7 +224,7 @@ export const removeWorktree = (
     ]);
 
     if (removeResult.exitCode !== 0 && !removeResult.stderr.includes("is not a working tree")) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new WorktreeError(
           "remove_failed",
           `Failed to remove worktree: ${removeResult.stderr}`,
@@ -255,7 +255,7 @@ export const listWorktrees = (
     const result = yield* runGit(repoPath, ["worktree", "list", "--porcelain"]);
 
     if (result.exitCode !== 0) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new WorktreeError("list_failed", `Failed to list worktrees: ${result.stderr}`),
       );
     }
@@ -367,7 +367,7 @@ export const getWorktreeInfo = (
     const branchName = getBranchName(taskId);
 
     if (!fs.existsSync(worktreePath)) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new WorktreeError("not_found", `Worktree not found for task ${taskId}`),
       );
     }
