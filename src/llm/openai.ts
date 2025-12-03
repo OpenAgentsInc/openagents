@@ -70,8 +70,9 @@ const messagesToOpenAI = (messages: ChatMessage[]) =>
     return msg;
   });
 
-const makeRequestBody = (config: OpenAIConfigShape, request: ChatRequest) => {
+export const buildOpenAIRequestBody = (config: OpenAIConfigShape, request: ChatRequest) => {
   const tools = request.tools?.map(toolToOpenAIDefinition);
+
   return {
     model: request.model ?? config.defaultModel,
     messages: messagesToOpenAI(request.messages),
@@ -82,12 +83,12 @@ const makeRequestBody = (config: OpenAIConfigShape, request: ChatRequest) => {
   };
 };
 
-const sendOpenAI = (
+const sendCompletions = (
   config: OpenAIConfigShape,
   request: ChatRequest,
 ): Effect.Effect<ChatResponse, Error> =>
   Effect.gen(function* () {
-    const body = makeRequestBody(config, request);
+    const body = buildOpenAIRequestBody(config, request);
 
     const response = yield* Effect.tryPromise({
       try: async () => {
@@ -137,7 +138,7 @@ export const openAIClientLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* OpenAIConfig;
     return {
-      chat: (request: ChatRequest) => sendOpenAI(config, request),
+      chat: (request: ChatRequest) => sendCompletions(config, request),
     };
   }),
 );
