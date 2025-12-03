@@ -16,7 +16,90 @@ import {
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
 import Electrobun, { Electroview } from "electrobun/view"
-import type { HudMessage } from "../hud/protocol.js"
+import type { HudMessage, APMUpdateMessage, APMSnapshotMessage } from "../hud/protocol.js"
+
+// ============================================================================
+// APM Widget State
+// ============================================================================
+
+interface APMState {
+  sessionAPM: number
+  recentAPM: number
+  totalActions: number
+  durationMinutes: number
+  // Historical snapshot data
+  apm1h: number
+  apm6h: number
+  apm1d: number
+  apmLifetime: number
+  claudeCodeAPM: number
+  mechaCoderAPM: number
+  efficiencyRatio: number
+}
+
+let apmState: APMState = {
+  sessionAPM: 0,
+  recentAPM: 0,
+  totalActions: 0,
+  durationMinutes: 0,
+  apm1h: 0,
+  apm6h: 0,
+  apm1d: 0,
+  apmLifetime: 0,
+  claudeCodeAPM: 0,
+  mechaCoderAPM: 0,
+  efficiencyRatio: 0,
+}
+
+function getAPMColor(apm: number): string {
+  if (apm >= 30) return "#f59e0b" // Gold - Elite
+  if (apm >= 15) return "#22c55e" // Green - High velocity
+  if (apm >= 5) return "#3b82f6" // Blue - Active
+  return "#6b7280" // Gray - Baseline
+}
+
+function renderAPMWidget(): string {
+  const color = getAPMColor(apmState.sessionAPM)
+  const efficiencyText = apmState.efficiencyRatio > 0
+    ? `${apmState.efficiencyRatio.toFixed(1)}x faster`
+    : ""
+  const deltaPercent = apmState.efficiencyRatio > 0
+    ? `+${((apmState.efficiencyRatio - 1) * 100).toFixed(0)}%`
+    : ""
+
+  return `
+    <g transform="translate(20, 20)" class="apm-widget">
+      <!-- Background -->
+      <rect x="0" y="0" width="260" height="110" rx="8" ry="8"
+            fill="#141017" stroke="rgba(245, 158, 11, 0.25)" stroke-width="1"/>
+
+      <!-- Header: APM value -->
+      <text x="16" y="32" fill="${color}" font-size="24" font-weight="bold" font-family="Berkeley Mono, monospace">
+        APM: ${apmState.sessionAPM.toFixed(1)}
+      </text>
+      ${efficiencyText ? `
+      <text x="140" y="32" fill="#22c55e" font-size="14" font-family="Berkeley Mono, monospace">
+        ▲ ${efficiencyText}
+      </text>` : ""}
+
+      <!-- Session stats -->
+      <text x="16" y="54" fill="#9ca3af" font-size="12" font-family="Berkeley Mono, monospace">
+        Session: ${apmState.totalActions} actions | ${apmState.durationMinutes.toFixed(0)}m
+      </text>
+
+      <!-- Time windows -->
+      <text x="16" y="74" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
+        1h: ${apmState.apm1h.toFixed(1)} | 6h: ${apmState.apm6h.toFixed(1)} | 24h: ${apmState.apm1d.toFixed(1)}
+      </text>
+
+      <!-- Comparison -->
+      ${apmState.mechaCoderAPM > 0 ? `
+      <text x="16" y="94" fill="#f59e0b" font-size="11" font-family="Berkeley Mono, monospace">
+        MechaCoder vs Claude Code: ${deltaPercent}
+      </text>` : ""}
+    </g>
+  `
+}
 
 // ============================================================================
 // RPC Schema for HUD Messages (must match src/bun/index.ts)
@@ -61,6 +144,36 @@ function handleHudMessage(message: HudMessage): void {
   }
 
   console.log("[HUD] Received:", message.type, message)
+
+  // Handle APM-specific messages
+  if (message.type === "apm_update") {
+    const apmMsg = message as APMUpdateMessage
+    apmState = {
+      ...apmState,
+      sessionAPM: apmMsg.sessionAPM,
+      recentAPM: apmMsg.recentAPM,
+      totalActions: apmMsg.totalActions,
+      durationMinutes: apmMsg.durationMinutes,
+    }
+    render() // Update APM widget
+    return
+  }
+
+  if (message.type === "apm_snapshot") {
+    const snapMsg = message as APMSnapshotMessage
+    apmState = {
+      ...apmState,
+      apm1h: snapMsg.combined.apm1h,
+      apm6h: snapMsg.combined.apm6h,
+      apm1d: snapMsg.combined.apm1d,
+      apmLifetime: snapMsg.combined.apmLifetime,
+      claudeCodeAPM: snapMsg.comparison.claudeCodeAPM,
+      mechaCoderAPM: snapMsg.comparison.mechaCoderAPM,
+      efficiencyRatio: snapMsg.comparison.efficiencyRatio,
+    }
+    render() // Update APM widget
+    return
+  }
 
   // Trigger immediate refresh for important state changes
   if (REFRESH_TRIGGER_EVENTS.has(message.type)) {
@@ -139,8 +252,10 @@ canvasState = { ...canvasState, ...initialPan }
 // Render SVG content
 function render(): void {
   const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
-  svg.innerHTML = svgElementToString(flowGroup)
-  
+  // Add APM widget as fixed overlay (not affected by pan/zoom)
+  const apmOverlay = renderAPMWidget()
+  svg.innerHTML = svgElementToString(flowGroup) + apmOverlay
+
   // Update zoom display
   zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`
 }
