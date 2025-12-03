@@ -48,7 +48,26 @@ interface ParallelConfig {
   maxTasks: number;
   dryRun: boolean;
   ccOnly: boolean;
+  verbose: boolean;
 }
+
+// Agent colors for terminal output
+const AGENT_COLORS = [
+  "\x1b[36m", // cyan
+  "\x1b[33m", // yellow
+  "\x1b[35m", // magenta
+  "\x1b[32m", // green
+  "\x1b[34m", // blue
+  "\x1b[91m", // bright red
+  "\x1b[92m", // bright green
+  "\x1b[93m", // bright yellow
+];
+const RESET = "\x1b[0m";
+const DIM = "\x1b[2m";
+
+const getAgentColor = (agentId: number): string => {
+  return AGENT_COLORS[(agentId - 1) % AGENT_COLORS.length];
+};
 
 interface AgentSlot {
   id: number;
@@ -114,6 +133,7 @@ const parseArgs = (): ParallelConfig => {
   let maxTasks = 10;
   let dryRun = false;
   let ccOnly = false;
+  let verbose = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
@@ -131,10 +151,12 @@ const parseArgs = (): ParallelConfig => {
       dryRun = true;
     } else if (args[i] === "--cc-only") {
       ccOnly = true;
+    } else if (args[i] === "--verbose" || args[i] === "-v") {
+      verbose = true;
     }
   }
 
-  return { workDir, maxAgents, maxTasks, dryRun, ccOnly };
+  return { workDir, maxAgents, maxTasks, dryRun, ccOnly, verbose };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,9 +197,21 @@ const mergeToMain = async (
   branch: string,
 ): Promise<{ success: boolean; commitSha?: string; error?: string }> => {
   try {
+    // Check for uncommitted changes and stash them
+    let result = await runGit(repoPath, ["status", "--porcelain"]);
+    const hasChanges = result.stdout.trim().length > 0;
+    if (hasChanges) {
+      // Stash any uncommitted changes (likely log files from parallel runs)
+      result = await runGit(repoPath, ["stash", "push", "-m", "parallel-merge-stash"]);
+      if (result.exitCode !== 0) {
+        return { success: false, error: `Stash failed: ${result.stderr}` };
+      }
+    }
+
     // Checkout main
-    let result = await runGit(repoPath, ["checkout", "main"]);
+    result = await runGit(repoPath, ["checkout", "main"]);
     if (result.exitCode !== 0) {
+      if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
       return { success: false, error: `Checkout main failed: ${result.stderr}` };
     }
 
@@ -186,6 +220,7 @@ const mergeToMain = async (
     if (result.exitCode !== 0) {
       result = await runGit(repoPath, ["pull", "--rebase", "origin", "main"]);
       if (result.exitCode !== 0) {
+        if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Pull failed: ${result.stderr}` };
       }
     }
@@ -195,6 +230,7 @@ const mergeToMain = async (
     if (result.exitCode !== 0) {
       result = await runGit(repoPath, ["merge", "--no-edit", branch]);
       if (result.exitCode !== 0) {
+        if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Merge failed: ${result.stderr}` };
       }
     }
@@ -206,7 +242,13 @@ const mergeToMain = async (
     // Push
     result = await runGit(repoPath, ["push", "origin", "main"]);
     if (result.exitCode !== 0) {
+      if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
       return { success: false, error: `Push failed: ${result.stderr}` };
+    }
+
+    // Pop stash if we had changes
+    if (hasChanges) {
+      await runGit(repoPath, ["stash", "pop"]);
     }
 
     return { success: true, commitSha };
@@ -228,10 +270,19 @@ const runAgentInWorktree = async (
   openagentsDir: string,
   projectConfig: any,
   ccOnly: boolean,
+  verbose: boolean,
 ): Promise<void> => {
   if (!slot.worktree || !slot.task) return;
 
-  log(`[Agent ${slot.id}] Starting task: ${slot.task.id} - ${slot.task.title}`);
+  const color = getAgentColor(slot.id);
+  const prefix = `${color}[Agent ${slot.id}]${RESET}`;
+
+  const agentLog = (msg: string) => log(`${prefix} ${msg}`);
+  const verboseLog = (msg: string) => {
+    if (verbose) log(`${prefix} ${DIM}${msg}${RESET}`);
+  };
+
+  agentLog(`Starting task: ${slot.task.id} - ${slot.task.title}`);
 
   const worktreeOpenagentsDir = path.join(slot.worktree.path, ".openagents");
 
@@ -244,7 +295,7 @@ const runAgentInWorktree = async (
   }
 
   // Install dependencies
-  log(`[Agent ${slot.id}] Installing dependencies...`);
+  agentLog(`Installing dependencies...`);
   const bunInstall = Bun.spawn(["bun", "install"], {
     cwd: slot.worktree.path,
     stdout: "pipe",
@@ -255,10 +306,10 @@ const runAgentInWorktree = async (
     const stderr = await new Response(bunInstall.stderr).text();
     slot.status = "failed";
     slot.error = `bun install failed: ${stderr}`;
-    log(`[Agent ${slot.id}] ❌ ${slot.error}`);
+    agentLog(`❌ ${slot.error}`);
     return;
   }
-  log(`[Agent ${slot.id}] Dependencies installed.`);
+  agentLog(`Dependencies installed.`);
 
   // Build orchestrator config
   const claudeCodeConfig = ccOnly
@@ -278,6 +329,16 @@ const runAgentInWorktree = async (
     taskId: slot.task.id,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
+    // Stream Claude Code output when verbose
+    onOutput: verbose
+      ? (text: string) => {
+          // Stream CC output line by line with agent prefix
+          const lines = text.split("\n").filter((l) => l.trim());
+          for (const line of lines) {
+            process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
+          }
+        }
+      : undefined,
   };
 
   // Merge layers
@@ -290,31 +351,55 @@ const runAgentInWorktree = async (
     const state = await Effect.runPromise(
       runOrchestrator(orchestratorConfig, (event) => {
         if (event.type === "session_start") {
-          log(`[Agent ${slot.id}] Session: ${event.sessionId}`);
+          agentLog(`Session: ${event.sessionId}`);
+        } else if (event.type === "task_selected") {
+          verboseLog(`Task selected: ${event.task.title}`);
+        } else if (event.type === "task_decomposed") {
+          verboseLog(`Decomposed into ${event.subtasks.length} subtask(s)`);
+          if (verbose) {
+            for (const st of event.subtasks) {
+              verboseLog(`  → ${st.id}: ${st.description.slice(0, 60)}...`);
+            }
+          }
+        } else if (event.type === "subtask_start") {
+          agentLog(`▶ Subtask: ${event.subtask.id}`);
+          verboseLog(`  ${event.subtask.description.slice(0, 100)}...`);
         } else if (event.type === "subtask_complete") {
-          log(`[Agent ${slot.id}] ✅ Subtask complete`);
+          agentLog(`✅ Subtask complete: ${event.subtask.id}`);
         } else if (event.type === "subtask_failed") {
-          log(`[Agent ${slot.id}] ❌ Subtask failed: ${event.error}`);
+          agentLog(`❌ Subtask failed: ${event.error}`);
+        } else if (event.type === "verification_start") {
+          verboseLog(`Running: ${event.command}`);
+        } else if (event.type === "verification_complete") {
+          agentLog(`${event.passed ? "✅" : "❌"} Verification: ${event.command}`);
+          if (verbose && !event.passed && event.output) {
+            const lines = event.output.split("\n").slice(0, 10);
+            for (const line of lines) {
+              verboseLog(`  ${line}`);
+            }
+          }
         } else if (event.type === "commit_created") {
-          log(`[Agent ${slot.id}] Commit: ${event.sha.slice(0, 8)}`);
+          agentLog(`📝 Commit: ${event.sha.slice(0, 8)} - ${event.message.split("\n")[0]}`);
+        } else if (event.type === "error") {
+          agentLog(`⚠️ Error in ${event.phase}: ${event.error}`);
         } else if (event.type === "session_complete") {
-          log(`[Agent ${slot.id}] ${event.success ? "✅" : "❌"} ${event.summary}`);
+          agentLog(`${event.success ? "✅" : "❌"} ${event.summary}`);
         }
       }).pipe(Effect.provide(combinedLayer)),
     );
 
     if (state.phase === "done") {
       slot.status = "completed";
-      log(`[Agent ${slot.id}] ✅ Task completed`);
+      agentLog(`✅ Task completed`);
     } else {
       slot.status = "failed";
       slot.error = state.error || "Unknown error";
-      log(`[Agent ${slot.id}] ❌ Task failed: ${slot.error}`);
+      agentLog(`❌ Task failed: ${slot.error}`);
     }
   } catch (error: any) {
     slot.status = "failed";
     slot.error = error.message;
-    log(`[Agent ${slot.id}] ❌ Exception: ${error.message}`);
+    agentLog(`❌ Exception: ${error.message}`);
   }
 };
 
@@ -337,6 +422,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   log(`Max agents: ${config.maxAgents}`);
   log(`Max tasks: ${config.maxTasks}`);
   log(`Claude Code only: ${config.ccOnly}`);
+  log(`Verbose: ${config.verbose}`);
   log(`Dry run: ${config.dryRun}`);
   log(`${"#".repeat(60)}\n`);
 
@@ -467,7 +553,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     log(`\nRunning ${batchSlots.length} agents in parallel...`);
     await Promise.all(
       batchSlots.map((slot) =>
-        runAgentInWorktree(slot, config.workDir, openagentsDir, projectConfig, config.ccOnly),
+        runAgentInWorktree(slot, config.workDir, openagentsDir, projectConfig, config.ccOnly, config.verbose),
       ),
     );
 
