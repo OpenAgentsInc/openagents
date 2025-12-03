@@ -345,6 +345,10 @@ export const runOrchestrator = (
           progress.work.claudeCodeSession = {
             ...(result.sessionMetadata.toolsUsed ? { toolsUsed: result.sessionMetadata.toolsUsed } : {}),
             ...(result.sessionMetadata.summary ? { summary: result.sessionMetadata.summary } : {}),
+            ...(result.sessionMetadata.usage ? { usage: result.sessionMetadata.usage } : {}),
+            ...(result.sessionMetadata.totalCostUsd !== undefined
+              ? { totalCostUsd: result.sessionMetadata.totalCostUsd }
+              : {}),
           };
 
           // Merge session blockers into next session blockers

@@ -81,6 +81,22 @@ export const formatProgressMarkdown = (progress: SessionProgress): string => {
     if (progress.work.claudeCodeSession.summary) {
       lines.push(`- **Summary**: ${progress.work.claudeCodeSession.summary}`);
     }
+
+    if (progress.work.claudeCodeSession.usage) {
+      const u = progress.work.claudeCodeSession.usage;
+      const parts: string[] = [];
+      if (u.inputTokens) parts.push(`${u.inputTokens.toLocaleString()} in`);
+      if (u.outputTokens) parts.push(`${u.outputTokens.toLocaleString()} out`);
+      if (u.cacheReadInputTokens) parts.push(`${u.cacheReadInputTokens.toLocaleString()} cache hits`);
+      if (u.cacheCreationInputTokens) parts.push(`${u.cacheCreationInputTokens.toLocaleString()} cache writes`);
+      if (parts.length > 0) {
+        lines.push(`- **Token Usage**: ${parts.join(", ")}`);
+      }
+    }
+
+    if (progress.work.claudeCodeSession.totalCostUsd !== undefined) {
+      lines.push(`- **Cost**: $${progress.work.claudeCodeSession.totalCostUsd.toFixed(4)} USD`);
+    }
   }
 
   lines.push(
