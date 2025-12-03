@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-a4ed60",
+  "taskTitle": "Epic: Complete pi-mono parity (non-TUI)",
+  "subtasks": [
+    {
+      "id": "oa-a4ed60-sub-001",
+      "description": "Epic: Complete pi-mono parity (non-TUI)\n\nTrack remaining pi-mono features to port into MechaCoder/OpenAgents (excluding TUI). Focus on automation-safe parity: tools-manager auto-install, context compaction, session import/export, model registry generation, retry/backoff parity, log/traces parity.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:18:01.470Z",
+      "claudeCode": {
+        "sessionId": "ba418eef-f107-4d6b-91d6-c6be4c30ce27"
+      },
+      "completedAt": "2025-12-03T15:21:42.048Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:18:01.470Z",
+  "updatedAt": "2025-12-03T15:18:01.470Z"
+}
