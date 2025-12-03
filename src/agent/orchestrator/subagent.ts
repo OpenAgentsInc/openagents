@@ -112,6 +112,7 @@ export const runSubagent = (
         filesModified,
         error: result.error,
         turns: result.totalTurns,
+        agent: "minimal",
       };
     }
 
@@ -122,6 +123,7 @@ export const runSubagent = (
         filesModified,
         error: "Subtask did not complete - SUBTASK_COMPLETE not found in output",
         turns: result.totalTurns,
+        agent: "minimal",
       };
     }
 
@@ -130,6 +132,7 @@ export const runSubagent = (
       subtaskId: subtask.id,
       filesModified,
       turns: result.totalTurns,
+      agent: "minimal",
     };
   });
 

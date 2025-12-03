@@ -4,6 +4,9 @@
   "defaultBranch": "main",
   "defaultModel": "x-ai/grok-4.1-fast",
   "rootDir": ".",
+  "typecheckCommands": [
+    "bun run typecheck"
+  ],
   "testCommands": [
     "bun test"
   ],
