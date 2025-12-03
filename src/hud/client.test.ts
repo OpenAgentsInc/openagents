@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { HudClient, getHudClient, sendToHud, closeHudClient } from "./client.js";
-import { HUD_WS_PORT, type HudMessage, parseHudMessage } from "./protocol.js";
+import { type HudMessage, parseHudMessage } from "./protocol.js";
 
 describe("HudClient", () => {
   describe("constructor and initial state", () => {
@@ -130,7 +130,7 @@ describe("HudClient with mock server", () => {
     server = Bun.serve({
       port: TEST_PORT,
       fetch(req, server) {
-        if (server.upgrade(req)) {
+        if (server.upgrade(req, { data: undefined })) {
           return; // WebSocket upgrade handled
         }
         return new Response("Not a WebSocket request", { status: 400 });

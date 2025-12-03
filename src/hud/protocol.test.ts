@@ -195,7 +195,7 @@ describe("parseHudMessage", () => {
       { type: "subtask_start", subtask: { id: "st1", description: "D", status: "pending" } },
       {
         type: "subtask_complete",
-        subtask: { id: "st1", description: "D", status: "completed" },
+        subtask: { id: "st1", description: "D", status: "done" },
         result: { success: true, filesModified: [], turns: 1 },
       },
       { type: "subtask_failed", subtask: { id: "st1", description: "D", status: "failed" }, error: "Err" },
@@ -204,7 +204,7 @@ describe("parseHudMessage", () => {
       { type: "commit_created", sha: "abc", message: "msg" },
       { type: "push_complete", branch: "main" },
       { type: "phase_change", phase: "idle" },
-      { type: "error", phase: "executing", error: "Something went wrong" },
+      { type: "error", phase: "executing_subtask", error: "Something went wrong" },
       { type: "text_output", text: "hello" },
       { type: "tool_call", toolName: "bash", arguments: "{}" },
       { type: "tool_result", toolName: "bash", result: "{}", isError: false },
