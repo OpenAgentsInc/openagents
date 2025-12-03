@@ -27,6 +27,8 @@ import {
   updateTask,
   closeTask,
   listTasks,
+  archiveTasks,
+  searchAllTasks,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -57,6 +59,12 @@ interface CliOptions {
   reason?: string;
   commit?: string;
   stage?: boolean;
+  // archive command options
+  days?: number;
+  dryRun?: boolean;
+  // search command options
+  query?: string;
+  includeArchived?: boolean;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -172,6 +180,24 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
         break;
       case "--stage":
         options.stage = true;
+        break;
+      case "--days":
+        if (nextArg) {
+          options.days = parseInt(nextArg, 10);
+          i++;
+        }
+        break;
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--query":
+        if (nextArg) {
+          options.query = nextArg;
+          i++;
+        }
+        break;
+      case "--include-archived":
+        options.includeArchived = true;
         break;
     }
   }
@@ -481,6 +507,91 @@ const cmdClose = (options: CliOptions) =>
     return task;
   });
 
+const cmdArchive = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const result = yield* archiveTasks({
+      tasksPath,
+      daysOld: options.days ?? 30,
+      dryRun: options.dryRun ?? false,
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    const summary = {
+      archivedCount: result.archived.length,
+      remainingCount: result.remaining.length,
+      archivePath: result.archivePath,
+      dryRun: result.dryRun,
+      archivedIds: result.archived.map((t) => t.id),
+    };
+
+    output(summary, options.json);
+    return summary;
+  });
+
+const cmdSearch = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const filter: TaskFilter = {
+      status: options.status as TaskFilter["status"],
+      priority: options.priority,
+      type: options.type as TaskFilter["type"],
+      labelsAny: options.labels && options.labels.length > 0 ? options.labels : undefined,
+      assignee: options.assignee,
+      unassigned: options.unassigned,
+      limit: options.limit,
+    };
+
+    const result = yield* searchAllTasks({
+      tasksPath,
+      filter,
+      includeArchived: options.includeArchived ?? true,
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    // If a query string is provided, filter by title/description containing it
+    let { active, archived } = result;
+    if (options.query) {
+      const q = options.query.toLowerCase();
+      active = active.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          (t.description && t.description.toLowerCase().includes(q)),
+      );
+      archived = archived.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          (t.description && t.description.toLowerCase().includes(q)),
+      );
+    }
+
+    const summary = {
+      activeCount: active.length,
+      archivedCount: archived.length,
+      active,
+      archived,
+    };
+
+    output(summary, options.json);
+    return summary;
+  });
+
 const showHelp = (): void => {
   console.log(`
 OpenAgents Task CLI
@@ -495,6 +606,8 @@ Commands:
   create    Create a new task
   update    Update an existing task
   close     Close a task with optional commit SHA capture
+  archive   Archive old closed tasks to tasks-archive.jsonl
+  search    Search tasks across active and archived
 
 Global Options:
   --json          Output as JSON
@@ -527,6 +640,15 @@ close Options:
   --commit <sha>          Commit SHA to attach (default: auto-detect from HEAD)
   --stage                 Stage .openagents/tasks.jsonl after updating
 
+archive Options:
+  --days <n>              Archive tasks closed more than N days ago (default: 30)
+  --dry-run               Show what would be archived without making changes
+
+search Options:
+  --query <text>          Search text in title/description
+  --include-archived      Include archived tasks (default: true)
+  (Also supports list/ready filter options)
+
 Examples:
   bun src/tasks/cli.ts init --json
   bun src/tasks/cli.ts list --status open --json
@@ -536,6 +658,10 @@ Examples:
   bun src/tasks/cli.ts close --id oa-123 --reason "Implemented feature" --json
   bun src/tasks/cli.ts close --id oa-123 --stage --json  # auto-capture HEAD commit and stage
   echo '{"id":"oa-123","status":"closed","reason":"Done"}' | bun src/tasks/cli.ts update --json-input --json
+  bun src/tasks/cli.ts archive --dry-run --json  # preview what would be archived
+  bun src/tasks/cli.ts archive --days 7 --json  # archive tasks closed >7 days ago
+  bun src/tasks/cli.ts search --query "auth" --json  # search all tasks
+  bun src/tasks/cli.ts search --query "login" --status closed --json  # search closed tasks only
 `);
 };
 
@@ -618,6 +744,30 @@ const main = async () => {
     case "close":
       try {
         await Effect.runPromise(cmdClose(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "archive":
+      try {
+        await Effect.runPromise(cmdArchive(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "search":
+      try {
+        await Effect.runPromise(cmdSearch(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));

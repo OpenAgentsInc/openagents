@@ -47,3 +47,7 @@ Started: 2025-12-03T07:49:04.025Z
 [2025-12-03T07:50:33.377Z] [2025-12-03T07:50:33.377Z] PASS: bun run typecheck
 [2025-12-03T07:50:33.383Z] [2025-12-03T07:50:33.383Z] Task selected: oa-e21ac5 - Add task archival/compaction for .openagents tasks.jsonl
 [2025-12-03T07:50:33.384Z] [2025-12-03T07:50:33.384Z] Subtask started: oa-e21ac5-sub-001
+[2025-12-03T07:55:33.412Z] [2025-12-03T07:55:33.412Z] Subtask FAILED: oa-e21ac5-sub-001 - Claude Code timed out after 300000ms
+[2025-12-03T07:55:33.413Z] 
+✗ Task failed: Claude Code timed out after 300000ms
+[2025-12-03T07:55:33.433Z] [Cycle cleanup] Committing pending changes...

@@ -31,6 +31,7 @@ repo/
 └── .openagents/
     ├── project.json         # ProjectConfig (tests, branches, models, etc.)
     ├── tasks.jsonl          # Tasks, 1 per line (canonical task store)
+    ├── tasks-archive.jsonl  # Archived tasks (auto-created by archive command)
     ├── models.json          # Optional model overrides
     └── agents.json          # Optional per-agent settings
 ````
@@ -126,6 +127,9 @@ Core operations:
 * `TaskService.close(id: TaskId, ClosePayload): Effect<Task>`
 * `TaskService.ready(options?): Effect<ReadonlyArray<Task>>`
 * `TaskService.pickNextReady(options?): Effect<Option<Task>>`
+* `TaskService.archiveTasks(ArchiveOptions): Effect<ArchiveResult>` — Move old closed tasks to archive
+* `TaskService.readArchivedTasks(archivePath): Effect<ReadonlyArray<Task>>` — Read archived tasks
+* `TaskService.searchAllTasks(SearchOptions): Effect<{ active, archived }>` — Search across both active and archived
 
 Responsibilities:
 
@@ -194,7 +198,9 @@ In `package.json`:
     "tasks:ready": "bun src/tasks/cli.ts ready",
     "tasks:next": "bun src/tasks/cli.ts next",
     "tasks:create": "bun src/tasks/cli.ts create",
-    "tasks:update": "bun src/tasks/cli.ts update"
+    "tasks:update": "bun src/tasks/cli.ts update",
+    "tasks:archive": "bun src/tasks/cli.ts archive",
+    "tasks:search": "bun src/tasks/cli.ts search"
   }
 }
 ```
@@ -325,6 +331,75 @@ printf '{
 
 **Agents must not edit `.openagents/tasks.jsonl` by hand.** They should always go through `tasks:*` scripts or, if running in-process, through TaskService.
 
+#### 4.1.7. Archive old tasks (`tasks:archive`)
+
+Move closed tasks older than N days to `tasks-archive.jsonl`. This keeps the main `tasks.jsonl` lean while preserving history.
+
+```bash
+# Preview what would be archived (dry-run)
+bun run tasks:archive --dry-run --json
+
+# Archive tasks closed more than 30 days ago (default)
+bun run tasks:archive --json
+
+# Archive tasks closed more than 7 days ago
+bun run tasks:archive --days 7 --json
+```
+
+Example output:
+
+```jsonc
+{
+  "archivedCount": 5,
+  "remainingCount": 12,
+  "archivePath": ".openagents/tasks-archive.jsonl",
+  "dryRun": false,
+  "archivedIds": ["oa-1a2b3c", "oa-4d5e6f", ...]
+}
+```
+
+Options:
+
+* `--days <n>` — Archive tasks closed more than N days ago (default: 30)
+* `--dry-run` — Show what would be archived without making changes
+
+#### 4.1.8. Search tasks (`tasks:search`)
+
+Search across both active and archived tasks. Useful for finding historical context or checking if a similar task was done before.
+
+```bash
+# Search all tasks for "auth"
+bun run tasks:search --query "auth" --json
+
+# Search only closed tasks
+bun run tasks:search --query "login" --status closed --json
+
+# Search with priority filter
+bun run tasks:search --query "bug" --priority 0 --json
+```
+
+Example output:
+
+```jsonc
+{
+  "activeCount": 2,
+  "archivedCount": 5,
+  "active": [
+    { "id": "oa-abc123", "title": "Auth bug fix", ... }
+  ],
+  "archived": [
+    { "id": "oa-def456", "title": "Auth refactor", ... },
+    ...
+  ]
+}
+```
+
+Options:
+
+* `--query <text>` — Search text in title/description
+* `--include-archived` — Include archived tasks (default: true)
+* Plus all `list/ready` filter options (`--status`, `--priority`, `--type`, `--labels`, etc.)
+
 ---
 
 ## 5. Standard Flows for Different Agent Types
@@ -422,9 +497,12 @@ Agents that depend on the CLI interface should:
 ## 8. Summary
 
 * `.openagents/project.json` + `.openagents/tasks.jsonl` form a **shared substrate** for tasks in this repo.
+* `.openagents/tasks-archive.jsonl` stores old closed tasks to keep the main file lean.
 * **In-process agents** (MechaCoder, internal tools) use TaskService/ProjectService directly.
 * **External agents** (Claude Code, Codex, shell scripts) use a small set of `bun run tasks:*` scripts that read/write JSON.
 * **No beads (`bd`) are needed in this repo anymore.** All tracking is done via `.openagents/*`.
+* Use `tasks:archive` periodically to move old closed tasks to the archive file.
+* Use `tasks:search` to find tasks across both active and archived stores.
 
 If you are an agent working in this repo:
 
