@@ -1,0 +1,3 @@
+[test]
+# Exclude e2e folder from bun test - Playwright tests use a different runner
+exclude = ["e2e"]
