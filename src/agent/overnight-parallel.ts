@@ -200,6 +200,7 @@ const hasCommitsAhead = async (
 const mergeToMain = async (
   repoPath: string,
   branch: string,
+  taskInfo?: { id: string; title: string },
 ): Promise<{ success: boolean; commitSha?: string; error?: string }> => {
   try {
     // Check for uncommitted changes and stash them
@@ -230,10 +231,15 @@ const mergeToMain = async (
       }
     }
 
-    // Merge branch
+    // Merge branch (try ff-only first, then regular merge with descriptive message)
     result = await runGit(repoPath, ["merge", "--ff-only", branch]);
     if (result.exitCode !== 0) {
-      result = await runGit(repoPath, ["merge", "--no-edit", branch]);
+      // Build merge commit message
+      const mergeMessage = taskInfo
+        ? `${taskInfo.id}: ${taskInfo.title}\n\nMerge branch '${branch}' (parallel agent)\n\n🤖 Generated with [OpenAgents](https://openagents.com)\n\nCo-Authored-By: MechaCoder <noreply@openagents.com>`
+        : `Merge branch '${branch}' (parallel agent)`;
+
+      result = await runGit(repoPath, ["merge", "-m", mergeMessage, branch]);
       if (result.exitCode !== 0) {
         if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Merge failed: ${result.stderr}` };
@@ -624,7 +630,8 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
 
         if (hasCommits) {
           log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to main...`);
-          const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch);
+          const taskInfo = slot.task ? { id: slot.task.id, title: slot.task.title } : undefined;
+          const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch, taskInfo);
           if (mergeResult.success) {
             if (mergeResult.commitSha) {
               slot.commitSha = mergeResult.commitSha;
