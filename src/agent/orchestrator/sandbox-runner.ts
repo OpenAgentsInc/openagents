@@ -305,7 +305,14 @@ export const runVerificationWithSandbox = (
       }
 
       const passed = result.exitCode === 0;
-      emit?.({ type: "verification_complete", command: cmd, passed, output });
+      emit?.({
+        type: "verification_complete",
+        command: cmd,
+        passed,
+        output,
+        exitCode: result.exitCode,
+        sandboxed: result.sandboxed,
+      });
 
       if (!passed) {
         allPassed = false;

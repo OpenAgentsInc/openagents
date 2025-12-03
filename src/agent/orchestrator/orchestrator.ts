@@ -494,7 +494,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       // Phase 4: Execute Subtasks
       state.phase = "executing_subtask";
-      
+
       for (const subtask of subtaskList.subtasks) {
         if (subtask.status === "done" || subtask.status === "verified") {
           continue; // Skip completed subtasks

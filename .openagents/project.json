@@ -24,7 +24,7 @@
     "fallbackToMinimal": false
   },
   "sandbox": {
-    "enabled": true,
+    "enabled": false,
     "backend": "auto",
     "memoryLimit": "8G",
     "timeoutMs": 300000
