@@ -22,12 +22,7 @@ const compressOutput = (output: string, maxLength = 500): string => {
  */
 export const writeProgress = (openagentsDir: string, progress: SessionProgress): void => {
   const progressPath = getProgressPath(openagentsDir);
-
-  // Ensure directory exists (might be missing in worktrees or after cleanup)
-  if (!fs.existsSync(openagentsDir)) {
-    fs.mkdirSync(openagentsDir, { recursive: true });
-  }
-
+  
   const markdown = formatProgressMarkdown(progress);
   fs.writeFileSync(progressPath, markdown);
 };

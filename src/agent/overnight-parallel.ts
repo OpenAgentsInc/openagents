@@ -309,31 +309,14 @@ const runAgentInWorktree = async (
     fs.writeFileSync(progressPath, "");
   }
 
-  // Install dependencies with timeout
-  // Use --frozen-lockfile to prevent lock contention between parallel agents
+  // Install dependencies
   agentLog(`Installing dependencies...`);
-  const bunInstall = Bun.spawn(["bun", "install", "--frozen-lockfile"], {
+  const bunInstall = Bun.spawn(["bun", "install"], {
     cwd: slot.worktree.path,
     stdout: "pipe",
     stderr: "pipe",
   });
-
-  // Add timeout for bun install (2 minutes)
-  const installTimeout = 120_000;
-  const timeoutPromise = new Promise<"timeout">((resolve) =>
-    setTimeout(() => resolve("timeout"), installTimeout)
-  );
-
-  const result = await Promise.race([bunInstall.exited, timeoutPromise]);
-
-  if (result === "timeout") {
-    bunInstall.kill();
-    slot.status = "failed";
-    slot.error = `bun install timed out after ${installTimeout / 1000}s`;
-    agentLog(`❌ ${slot.error}`);
-    return;
-  }
-
+  await bunInstall.exited;
   if (bunInstall.exitCode !== 0) {
     const stderr = await new Response(bunInstall.stderr).text();
     slot.status = "failed";
@@ -348,9 +331,6 @@ const runAgentInWorktree = async (
     ? { enabled: true, preferForComplexTasks: false, fallbackToMinimal: false }
     : projectConfig.claudeCode;
 
-  // Buffer for aggregating streamed tokens until newline
-  let outputBuffer = "";
-
   const orchestratorConfig = {
     cwd: slot.worktree.path,
     openagentsDir: worktreeOpenagentsDir,
@@ -364,24 +344,16 @@ const runAgentInWorktree = async (
     taskId: slot.task.id,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
-    // Stream Claude Code output when verbose (spread to avoid undefined with exactOptionalPropertyTypes)
-    ...(verbose
-      ? {
-          onOutput: (text: string) => {
-            // Aggregate tokens until we have complete lines
-            outputBuffer += text;
-            const lines = outputBuffer.split("\n");
-            // Keep the last incomplete line in buffer
-            outputBuffer = lines.pop() || "";
-            // Print complete lines with agent prefix
-            for (const line of lines) {
-              if (line.trim()) {
-                process.stdout.write(`${prefix} ${line}\n`);
-              }
-            }
-          },
+    // Stream Claude Code output when verbose
+    onOutput: verbose
+      ? (text: string) => {
+          // Stream CC output line by line with agent prefix
+          const lines = text.split("\n").filter((l) => l.trim());
+          for (const line of lines) {
+            process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
+          }
         }
-      : {}),
+      : undefined,
   };
 
   // Merge layers
@@ -491,32 +463,6 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   );
   const projectConfig = loadedConfig ?? defaultProjectConfig;
   log(`Project: ${projectConfig.projectId}`);
-
-  // Validate main branch is clean (typecheck) before spawning parallel agents
-  // This prevents all agents from trying to fix the same base errors
-  if (!config.dryRun) {
-    log(`\nValidating main branch...`);
-    const typecheckCmd = projectConfig.typecheckCommands?.[0] || "bun run typecheck";
-    const typecheck = Bun.spawn(typecheckCmd.split(" "), {
-      cwd: config.workDir,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await typecheck.exited;
-    if (typecheck.exitCode !== 0) {
-      const stderr = await new Response(typecheck.stderr).text();
-      log(`❌ Main branch has typecheck errors. Fix them before running parallel agents.`);
-      log(`   Run: ${typecheckCmd}`);
-      if (config.verbose) {
-        const lines = stderr.split("\n").slice(0, 15);
-        for (const line of lines) {
-          log(`   ${line}`);
-        }
-      }
-      return { tasksCompleted: 0, sessionId };
-    }
-    log(`✅ Main branch typecheck passed`);
-  }
 
   // Load ready tasks
   const tasksPath = path.join(openagentsDir, "tasks.jsonl");
@@ -666,10 +612,6 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     slots.push(...batchSlots);
     taskIndex += batchSize;
   }
-
-  // Final cleanup: prune any orphaned worktrees
-  log("\nFinal cleanup...");
-  await runGit(config.workDir, ["worktree", "prune"]);
 
   log(`\n${"#".repeat(60)}`);
   log("PARALLEL OVERNIGHT AGENT FINISHED");
