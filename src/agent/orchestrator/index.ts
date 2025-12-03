@@ -76,3 +76,16 @@ export {
 
 // Orchestrator
 export { runOrchestrator } from "./orchestrator.js";
+
+// Agent Lock
+export {
+  acquireLock,
+  releaseLock,
+  checkLock,
+  readLock,
+  forceRemoveLock,
+  createLockGuard,
+  getLockPath,
+  isPidRunning,
+} from "./agent-lock.js";
+export type { AgentLock, AcquireLockResult, CheckLockResult } from "./agent-lock.js";

@@ -1,0 +1,28 @@
+{
+  "taskId": "oa-199210",
+  "taskTitle": "Document and test agent.lock enforcement for Golden Loop",
+  "subtasks": [
+    {
+      "id": "oa-199210-sub-001",
+      "description": "Implement: Document and test agent.lock enforcement for Golden Loop\n\nAdd coverage and doc notes for .openagents/agent.lock: how lock is created/checked, how to recover stale locks, and how the loop should abort when a running PID is detected. Include test plan or harness to validate lock behavior.",
+      "status": "done",
+      "startedAt": "2025-12-03T09:06:02.047Z",
+      "claudeCode": {
+        "sessionId": "0546dcec-0897-42d2-aaaf-ec01118ad8da"
+      },
+      "completedAt": "2025-12-03T09:13:24.132Z"
+    },
+    {
+      "id": "oa-199210-sub-002",
+      "description": "Document: Document and test agent.lock enforcement for Golden Loop\n\nAdd appropriate documentation/comments.",
+      "status": "done",
+      "startedAt": "2025-12-03T09:13:24.132Z",
+      "claudeCode": {
+        "sessionId": "395a8997-6d1a-497b-b42e-85cf59efe1e6"
+      },
+      "completedAt": "2025-12-03T09:15:35.916Z"
+    }
+  ],
+  "createdAt": "2025-12-03T09:06:02.047Z",
+  "updatedAt": "2025-12-03T09:06:02.047Z"
+}

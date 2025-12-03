@@ -224,6 +224,10 @@ export type OrchestratorPhase =
 
 export type OrchestratorEvent =
   | { type: "session_start"; sessionId: string; timestamp: string }
+  | { type: "lock_acquired"; pid: number; sessionId?: string }
+  | { type: "lock_stale_removed"; stalePid: number; newPid: number }
+  | { type: "lock_failed"; reason: string; existingPid?: number; existingSessionId?: string }
+  | { type: "lock_released" }
   | { type: "init_script_start"; path: string }
   | { type: "init_script_complete"; result: InitScriptResult }
   | { type: "orientation_complete"; repoState: string; testsPassingAtStart: boolean; initScript?: InitScriptResult }
@@ -275,6 +279,9 @@ export const getProgressPath = (openagentsDir: string): string =>
 
 export const getInitScriptPath = (openagentsDir: string): string =>
   `${openagentsDir}/init.sh`;
+
+export const getAgentLockPath = (openagentsDir: string): string =>
+  `${openagentsDir}/agent.lock`;
 
 // ============================================================================
 // Init Script Types
