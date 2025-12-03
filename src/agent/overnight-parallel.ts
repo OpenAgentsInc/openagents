@@ -378,8 +378,19 @@ const runAgentInWorktree = async (
   try {
     const state = await Effect.runPromise(
       runOrchestrator(orchestratorConfig, (event) => {
+        // Debug: log all event types
+        if (verbose) {
+          verboseLog(`[event] ${event.type}`);
+        }
         if (event.type === "session_start") {
           agentLog(`Session: ${event.sessionId}`);
+        } else if ((event as any).type === "sandbox_status") {
+          const e = event as any;
+          if (e.status === "available") {
+            verboseLog(`Sandbox available: ${e.backend}`);
+          } else {
+            verboseLog(`Sandbox unavailable: ${e.reason}`);
+          }
         } else if (event.type === "task_selected") {
           verboseLog(`Task selected: ${event.task.title}`);
         } else if (event.type === "task_decomposed") {
@@ -399,10 +410,22 @@ const runAgentInWorktree = async (
         } else if (event.type === "verification_start") {
           verboseLog(`Running: ${event.command}`);
         } else if (event.type === "verification_complete") {
-          agentLog(`${event.passed ? "✅" : "❌"} Verification: ${event.command}`);
-          if (verbose && !event.passed && event.output) {
-            const lines = event.output.split("\n").slice(0, 10);
-            for (const line of lines) {
+          const e = event as any;
+          const sandboxedNote = e.sandboxed ? " [sandbox]" : " [host]";
+          const exitNote = e.exitCode !== undefined ? ` (exit: ${e.exitCode})` : "";
+          agentLog(`${event.passed ? "✅" : "❌"} Verification: ${event.command}${exitNote}${sandboxedNote}`);
+          if (verbose && event.output) {
+            // Show first and last 10 lines to capture summary
+            const lines = event.output.split("\n");
+            const head = lines.slice(0, 5);
+            const tail = lines.slice(-10);
+            for (const line of head) {
+              verboseLog(`  ${line}`);
+            }
+            if (lines.length > 15) {
+              verboseLog(`  ... (${lines.length - 15} lines omitted) ...`);
+            }
+            for (const line of tail) {
               verboseLog(`  ${line}`);
             }
           }
