@@ -25,6 +25,9 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   toolChoice?: "auto" | "required" | { type: "function"; function: { name: string } };
+  baseUrl?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
 }
 
 export interface ChatToolCall {

@@ -83,20 +83,52 @@ export const buildOpenAIRequestBody = (config: OpenAIConfigShape, request: ChatR
   };
 };
 
+const resolveProviderApiKey = (request: ChatRequest, config: OpenAIConfigShape): Secret.Secret => {
+  if (request.apiKey) return Secret.fromString(request.apiKey);
+
+  const env = typeof Bun !== "undefined" ? Bun.env : process.env;
+  const model = request.model ?? config.defaultModel;
+
+  const isGroq = model.includes("groq");
+  const isCerebras = model.includes("cerebras");
+  const isXAI = model.includes("grok") || model.includes("xai");
+
+  if (isGroq && env.GROQ_API_KEY) return Secret.fromString(env.GROQ_API_KEY);
+  if (isCerebras && env.CEREBRAS_API_KEY) return Secret.fromString(env.CEREBRAS_API_KEY);
+  if (isXAI && env.XAI_API_KEY) return Secret.fromString(env.XAI_API_KEY);
+
+  return config.apiKey;
+};
+
+const resolveBaseUrl = (request: ChatRequest, config: OpenAIConfigShape): string => {
+  if (request.baseUrl) return request.baseUrl;
+  const env = typeof Bun !== "undefined" ? Bun.env : process.env;
+  const model = request.model ?? config.defaultModel;
+
+  if (model.includes("groq")) return env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+  if (model.includes("cerebras")) return env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1";
+  if (model.includes("grok") || model.includes("xai")) return env.XAI_BASE_URL || "https://api.x.ai/v1";
+
+  return config.baseUrl;
+};
+
 const sendCompletions = (
   config: OpenAIConfigShape,
   request: ChatRequest,
 ): Effect.Effect<ChatResponse, Error> =>
   Effect.gen(function* () {
     const body = buildOpenAIRequestBody(config, request);
+    const baseUrl = resolveBaseUrl(request, config);
+    const apiKey = resolveProviderApiKey(request, config);
 
     const response = yield* Effect.tryPromise({
       try: async () => {
-        const res = await fetch(`${config.baseUrl}/chat/completions`, {
+        const res = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${Secret.value(config.apiKey)}`,
+            "Authorization": `Bearer ${Secret.value(apiKey)}`,
             "Content-Type": "application/json",
+            ...(request.headers ?? {}),
           },
           body: JSON.stringify(body),
         });
