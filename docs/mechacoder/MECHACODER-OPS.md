@@ -187,7 +187,7 @@ Example `project.json` (simplified):
   "version": 1,
   "projectId": "openagents",
   "defaultBranch": "main",
-  "defaultModel": "x-ai/grok-4.1-fast",
+  "defaultModel": "x-ai/grok-4.1-fast:free",
   "rootDir": ".",
   "testCommands": ["bun test"],
   "e2eCommands": [],
@@ -320,7 +320,7 @@ Look for:
 * Model is currently pinned to:
 
   ```text
-  x-ai/grok-4.1-fast
+  x-ai/grok-4.1-fast:free
   ```
 
 * The LLM client in `src/llm/openrouter.ts` uses **raw fetch** (not SDK) to avoid response validation issues.
@@ -335,7 +335,7 @@ If you see repeated model/API failures in logs, you may need to:
 
 ## 5. Model Configuration (Current Constraints)
 
-**Current rule:** MechaCoder uses `x-ai/grok-4.1-fast` via OpenRouter.
+**Current rule:** MechaCoder uses `x-ai/grok-4.1-fast:free` via OpenRouter.
 
 * Do **not** change the default model ID unless you also:
 

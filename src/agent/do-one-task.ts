@@ -308,7 +308,7 @@ const doOneTask = (config: Config) =>
     
     // Create session
     const session = createSession(
-      { model: "x-ai/grok-4.1-fast", systemPrompt: SYSTEM_PROMPT, maxTurns: 30 },
+      { model: "x-ai/grok-4.1-fast:free", systemPrompt: SYSTEM_PROMPT, maxTurns: 30 },
       "Do one task",
     );
     const sessionPath = yield* getSessionPath(config.sessionsDir, session.id);
@@ -411,7 +411,7 @@ const doOneTask = (config: Config) =>
       runId,
       taskId: inProgressTask.id,
       workDir: config.workDir,
-      model: "x-ai/grok-4.1-fast",
+      model: "x-ai/grok-4.1-fast:free",
     });
     emit({ type: "task_selected", ts: nowTs(), taskId: inProgressTask.id, title: inProgressTask.title });
 
@@ -447,7 +447,7 @@ const doOneTask = (config: Config) =>
         {
           systemPrompt: SYSTEM_PROMPT,
           maxTurns: Math.min(30, turnsRemaining),
-          model: "x-ai/grok-4.1-fast",
+          model: "x-ai/grok-4.1-fast:free",
           onEvent: (loopEvent) => {
             // Convert loop events to run events with timestamp
             if (loopEvent.type === "turn_start") {

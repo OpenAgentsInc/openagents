@@ -32,7 +32,7 @@ const main = Effect.gen(function* () {
 
   yield* Console.log(colors.bold("== Grok read-only tool demo =="));
   yield* Console.log(
-    `Model: x-ai/grok-4.1-fast | File: ${targetFile}\nTools: read (read-only)\nSystem: ${systemPrompt}`,
+    `Model: x-ai/grok-4.1-fast:free | File: ${targetFile}\nTools: read (read-only)\nSystem: ${systemPrompt}`,
   );
 
   const tools = [toolToOpenRouterDefinition(readTool)];
@@ -40,7 +40,7 @@ const main = Effect.gen(function* () {
   const response = yield* Effect.tryPromise({
     try: () =>
       client.chat.send({
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.1-fast:free",
         tools,
         toolChoice: "auto",
         messages: [

@@ -28,7 +28,7 @@ describe("createProviderTransport", () => {
     const config: AgentRunConfig = {
       getQueuedMessages: async () => queued,
       tools: [],
-      model: "x-ai/grok-4.1-fast",
+      model: "x-ai/grok-4.1-fast:free",
       queueMode: "one-at-a-time",
     };
 

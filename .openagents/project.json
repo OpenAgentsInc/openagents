@@ -2,7 +2,7 @@
   "version": 1,
   "projectId": "openagents",
   "defaultBranch": "main",
-  "defaultModel": "x-ai/grok-4.1-fast",
+  "defaultModel": "x-ai/grok-4.1-fast:free",
   "rootDir": ".",
   "typecheckCommands": [
     "bun run typecheck"

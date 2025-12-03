@@ -108,7 +108,7 @@ export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
   projectId: S.String,
   defaultBranch: S.optionalWith(S.String, { default: () => "main" }),
-  defaultModel: S.optionalWith(S.String, { default: () => "x-ai/grok-4.1-fast" }),
+  defaultModel: S.optionalWith(S.String, { default: () => "x-ai/grok-4.1-fast:free" }),
   rootDir: S.optionalWith(S.String, { default: () => "." }),
   typecheckCommands: S.optionalWith(S.Array(S.String), {
     default: () => [] as string[],

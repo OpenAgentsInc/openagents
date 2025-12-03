@@ -43,7 +43,7 @@ const callGrok = (client: OpenRouter, offset: number, limit: number) =>
   Effect.tryPromise({
     try: () =>
       client.chat.send({
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.1-fast:free",
         tools: [toolToOpenRouterDefinition(readTool)],
         toolChoice: "auto",
         messages: [
@@ -62,7 +62,7 @@ const main = Effect.gen(function* () {
 
   yield* Console.log(colors.bold("== Grok read-only chain demo =="));
   yield* Console.log(
-    `File: ${targetFile} | Steps: ${steps.length} | Model: x-ai/grok-4.1-fast\nSystem: ${systemPrompt}`,
+    `File: ${targetFile} | Steps: ${steps.length} | Model: x-ai/grok-4.1-fast:free\nSystem: ${systemPrompt}`,
   );
 
   for (const step of steps) {

@@ -24,7 +24,7 @@ const jsonOption = Options.boolean("json").pipe(
 
 const chatCommand = Command.make("chat", { prompt: promptOption, model: modelOption, json: jsonOption }, (input) =>
   Effect.gen(function* () {
-    const model = typeof input.model === "string" ? input.model : "x-ai/grok-4.1-fast";
+    const model = typeof input.model === "string" ? input.model : "x-ai/grok-4.1-fast:free";
     const response = yield* runOpenRouterChat({
       model,
       messages: [{ role: "user", content: input.prompt }],
