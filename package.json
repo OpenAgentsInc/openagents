@@ -20,8 +20,10 @@
     "tasks:create": "bun src/tasks/cli.ts create",
     "tasks:update": "bun src/tasks/cli.ts update",
     "mechacoder": "bun src/agent/do-one-task.ts",
+    "mechacoder:cc-only": "bun src/agent/do-one-task.ts --cc-only",
     "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy",
     "mechacoder:overnight": "bun src/agent/overnight.ts",
+    "mechacoder:overnight:cc-only": "bun src/agent/overnight.ts --cc-only",
     "mechacoder:overnight:legacy": "bun src/agent/overnight.ts --legacy"
   },
   "dependencies": {
