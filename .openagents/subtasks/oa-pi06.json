@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-pi06",
+  "taskTitle": "Port HTML transcript export from pi-mono",
+  "subtasks": [
+    {
+      "id": "oa-pi06-sub-001",
+      "description": "Port HTML transcript export from pi-mono\n\nPort pi-mono's export-html.ts to generate beautiful session exports from JSONL run logs. Valuable for: debugging failed runs, sharing solutions, building corpus for analysis. Integrate with run-log infrastructure under .openagents/run-logs/.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:46:32.556Z",
+      "claudeCode": {
+        "sessionId": "cb381d81-0393-4bd8-b1c1-65a9230fe883"
+      },
+      "completedAt": "2025-12-03T15:52:08.093Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:46:32.556Z",
+  "updatedAt": "2025-12-03T15:46:32.556Z"
+}
