@@ -21,6 +21,7 @@
     "tasks:update": "bun src/tasks/cli.ts update"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.1.56",
     "@effect/cli": "0.72.1",
     "@effect/platform": "0.93.6",
     "@effect/platform-bun": "0.86.0",
