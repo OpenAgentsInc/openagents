@@ -23,6 +23,8 @@ export type {
   OrchestratorState,
   OrchestratorPhase,
   OrchestratorEvent,
+  ClaudeCodeSettings,
+  ClaudeCodePermissionMode,
 } from "./types.js";
 
 export {
@@ -35,6 +37,7 @@ export {
 
 // Subagent
 export { runSubagent, createSubagentConfig } from "./subagent.js";
+export { runBestAvailableSubagent, shouldUseClaudeCode } from "./subagent-router.js";
 
 // Init Script
 export { runInitScript } from "./init-script.js";

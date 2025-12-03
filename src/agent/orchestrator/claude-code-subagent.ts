@@ -3,7 +3,8 @@ import {
   createMechaCoderMcpServer,
   getAllowedClaudeCodeTools,
 } from "./claude-code-mcp.js";
-import { type SubagentResult, type Subtask } from "./types.js";
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import { type SubagentResult, type Subtask, type ClaudeCodePermissionMode } from "./types.js";
 
 type QueryFn = (input: unknown) => AsyncIterable<any>;
 
@@ -11,6 +12,7 @@ export interface ClaudeCodeSubagentOptions {
   cwd: string;
   maxTurns?: number;
   systemPrompt?: string;
+  permissionMode?: ClaudeCodePermissionMode | PermissionMode;
   queryFn?: QueryFn;
   openagentsDir?: string;
   allowedTools?: string[];
@@ -45,10 +47,12 @@ export const runClaudeCodeSubagent = async (
   let error: string | undefined;
   let turns = 0;
 
-  const mcpServers =
+  const mcpServers: Record<string, unknown> =
     options.mcpServers ??
     {
-      [CLAUDE_CODE_MCP_SERVER_NAME]: createMechaCoderMcpServer({ openagentsDir: options.openagentsDir }),
+      [CLAUDE_CODE_MCP_SERVER_NAME]: createMechaCoderMcpServer({
+        openagentsDir: options.openagentsDir ?? "",
+      }),
     };
 
   const allowedTools = options.allowedTools ?? getAllowedClaudeCodeTools();
@@ -60,6 +64,7 @@ export const runClaudeCodeSubagent = async (
         cwd: options.cwd,
         ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
         maxTurns: options.maxTurns ?? 30,
+        ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
         mcpServers,
         allowedTools,
       },

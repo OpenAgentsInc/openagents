@@ -11,14 +11,16 @@
  * 7. Update Task - Mark as done
  * 8. Log - Write progress for next session
  */
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
-import { pickNextTask, updateTask, type Task } from "../../tasks/index.js";
+import { pickNextTask, updateTask } from "../../tasks/index.js";
 import { OpenRouterClient } from "../../llm/openrouter.js";
 import { readTool } from "../../tools/read.js";
 import { editTool } from "../../tools/edit.js";
 import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
-import { runSubagent, createSubagentConfig } from "./subagent.js";
+import { runBestAvailableSubagent } from "./subagent-router.js";
 import { runInitScript } from "./init-script.js";
 import {
   readSubtasks,
@@ -166,7 +168,7 @@ const pushToRemote = (
 export const runOrchestrator = (
   config: OrchestratorConfig,
   emit: (event: OrchestratorEvent) => void = () => {}
-): Effect.Effect<OrchestratorState, Error, OpenRouterClient> =>
+): Effect.Effect<OrchestratorState, Error, FileSystem.FileSystem | Path.Path | OpenRouterClient> =>
   Effect.gen(function* () {
     const sessionId = generateSessionId();
     const now = new Date().toISOString();
@@ -298,7 +300,6 @@ export const runOrchestrator = (
 
       // Phase 4: Execute Subtasks
       state.phase = "executing_subtask";
-      const allFilesModified: string[] = [];
       
       for (const subtask of subtaskList.subtasks) {
         if (subtask.status === "done" || subtask.status === "verified") {
@@ -310,14 +311,15 @@ export const runOrchestrator = (
         progress.work.subtasksInProgress.push(subtask.id);
         emit({ type: "subtask_start", subtask });
 
-        const subagentConfig = createSubagentConfig(
+        const result: SubagentResult = yield* runBestAvailableSubagent({
           subtask,
-          config.cwd,
-          SUBAGENT_TOOLS,
-          { model: config.subagentModel }
-        );
-
-        const result: SubagentResult = yield* runSubagent(subagentConfig).pipe(
+          cwd: config.cwd,
+          openagentsDir: config.openagentsDir,
+          tools: SUBAGENT_TOOLS,
+          model: config.subagentModel,
+          claudeCode: config.claudeCode,
+          signal: config.signal,
+        }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({
               success: false,
@@ -329,7 +331,6 @@ export const runOrchestrator = (
           )
         );
 
-        allFilesModified.push(...result.filesModified);
         progress.work.filesModified.push(...result.filesModified);
 
         if (result.success) {

@@ -174,6 +174,10 @@ describe("ProjectConfig", () => {
     expect(config.allowPush).toBe(true);
     expect(config.allowForcePush).toBe(false);
     expect(config.idPrefix).toBe("oa");
+    expect(config.claudeCode?.enabled).toBe(true);
+    expect(config.claudeCode?.fallbackToMinimal).toBe(true);
+    expect(config.claudeCode?.maxTurnsPerSubtask).toBe(30);
+    expect(config.claudeCode?.permissionMode).toBe("bypassPermissions");
   });
 
   test("decodes full config", () => {
@@ -185,6 +189,13 @@ describe("ProjectConfig", () => {
       e2eCommands: ["bun test:e2e"],
       maxTasksPerRun: 5,
       idPrefix: "openagents",
+      claudeCode: {
+        enabled: false,
+        preferForComplexTasks: false,
+        maxTurnsPerSubtask: 20,
+        permissionMode: "dontAsk",
+        fallbackToMinimal: false,
+      },
       cloud: {
         useGateway: true,
         sendTelemetry: false,
@@ -194,6 +205,11 @@ describe("ProjectConfig", () => {
     expect(config.testCommands).toEqual(["bun test"]);
     expect(config.maxTasksPerRun).toBe(5);
     expect(config.idPrefix).toBe("openagents");
+    expect(config.claudeCode?.enabled).toBe(false);
+    expect(config.claudeCode?.preferForComplexTasks).toBe(false);
+    expect(config.claudeCode?.maxTurnsPerSubtask).toBe(20);
+    expect(config.claudeCode?.permissionMode).toBe("dontAsk");
+    expect(config.claudeCode?.fallbackToMinimal).toBe(false);
     expect(config.cloud?.useGateway).toBe(true);
   });
 });

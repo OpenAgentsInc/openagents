@@ -91,6 +91,18 @@ export const TaskUpdate = S.Struct({
 });
 export type TaskUpdate = S.Schema.Type<typeof TaskUpdate>;
 
+const ClaudeCodeConfig = S.Struct({
+  enabled: S.optionalWith(S.Boolean, { default: () => true }),
+  preferForComplexTasks: S.optionalWith(S.Boolean, { default: () => true }),
+  maxTurnsPerSubtask: S.optionalWith(S.Number, { default: () => 30 }),
+  permissionMode: S.optionalWith(
+    S.Literal("default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"),
+    { default: () => "bypassPermissions" },
+  ),
+  fallbackToMinimal: S.optionalWith(S.Boolean, { default: () => true }),
+});
+export type ClaudeCodeConfig = S.Schema.Type<typeof ClaudeCodeConfig>;
+
 // ProjectConfig matches .openagents/project.json
 export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
@@ -108,6 +120,9 @@ export const ProjectConfig = S.Struct({
   // Session and run log directories (relative to .openagents/)
   sessionDir: S.optionalWith(S.String, { default: () => ".openagents/sessions" }),
   runLogDir: S.optionalWith(S.String, { default: () => ".openagents/run-logs" }),
+  claudeCode: S.optionalWith(ClaudeCodeConfig, {
+    default: () => S.decodeUnknownSync(ClaudeCodeConfig)({}),
+  }),
   cloud: S.optional(
     S.Struct({
       useGateway: S.optionalWith(S.Boolean, { default: () => false }),

@@ -77,4 +77,20 @@ describe("runClaudeCodeSubagent", () => {
     expect(options?.mcpServers?.[CLAUDE_CODE_MCP_SERVER_NAME]).toBeDefined();
     expect(options?.allowedTools).toEqual(expect.arrayContaining(getAllowedClaudeCodeTools()));
   });
+
+  test("passes permission mode when provided", async () => {
+    const inputs: any[] = [];
+    const queryFn = async function* (input: any) {
+      inputs.push(input);
+      yield { type: "result", subtype: "success" };
+    };
+
+    await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      permissionMode: "bypassPermissions",
+      queryFn,
+    });
+
+    expect(inputs[0]?.options?.permissionMode).toBe("bypassPermissions");
+  });
 });
