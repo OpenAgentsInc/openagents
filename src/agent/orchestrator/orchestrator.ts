@@ -197,7 +197,9 @@ export const runOrchestrator = (
       // Phase 1: Orient
       state.phase = "orienting";
       const prevSummary = getPreviousSessionSummary(config.openagentsDir);
-      progress.orientation.previousSessionSummary = prevSummary ?? undefined;
+      if (prevSummary) {
+        progress.orientation.previousSessionSummary = prevSummary;
+      }
 
       const initScriptResult = yield* runInitScript(
         config.openagentsDir,
@@ -306,8 +308,8 @@ export const runOrchestrator = (
           openagentsDir: config.openagentsDir ?? config.cwd,
           tools: SUBAGENT_TOOLS,
           ...(config.subagentModel ? { model: config.subagentModel } : {}),
-          claudeCode: config.claudeCode,
-          signal: config.signal,
+          ...(config.claudeCode ? { claudeCode: config.claudeCode } : {}),
+          ...(config.signal ? { signal: config.signal } : {}),
         }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({
@@ -332,12 +334,16 @@ export const runOrchestrator = (
           emit({ type: "subtask_complete", subtask, result });
         } else {
           subtask.status = "failed";
-          subtask.error = result.error;
+          if (result.error) {
+            subtask.error = result.error;
+          }
           emit({ type: "subtask_failed", subtask, error: result.error || "Unknown error" });
-          
+
           // Stop on first failure
           state.phase = "failed";
-          state.error = result.error;
+          if (result.error) {
+            state.error = result.error;
+          }
           progress.nextSession.blockers = [result.error || "Subtask failed"];
           writeProgress(config.openagentsDir, progress);
           writeSubtasks(config.openagentsDir, subtaskList);

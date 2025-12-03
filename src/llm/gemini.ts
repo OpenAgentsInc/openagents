@@ -73,21 +73,12 @@ const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) =>
 
     if (m.role === "assistant") {
       const parts: Array<Record<string, unknown>> = [];
-      const toolCalls = (m as any).tool_calls as
-        | Array<{ id: string; name: string; arguments: string }>
-        | undefined;
-      if (toolCalls && toolCalls.length > 0) {
-        for (const call of toolCalls) {
-          parts.push({
-            functionCall: {
-              id: call.id,
-              name: call.name,
-              args: JSON.parse(call.arguments || "{}"),
-            },
-          });
+      if (typeof m.content === "string") {
+        parts.push({ text: m.content });
+      } else if (Array.isArray(m.content)) {
+        for (const c of m.content) {
+          if (c.type === "text") parts.push({ text: c.text });
         }
-      } else if (m.content) {
-        parts.push({ text: m.content as string });
       }
       if (parts.length === 0) return [];
       return [{ role: "model", parts }];
