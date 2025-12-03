@@ -462,6 +462,27 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         break;
       }
 
+      // Commit and push any pending changes after each task (success or failure)
+      // This ensures tasks.jsonl updates and progress files are not left uncommitted
+      try {
+        const { execSync } = require("node:child_process") as typeof import("node:child_process");
+        const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
+        if (status.trim()) {
+          log("[Cycle cleanup] Committing pending changes...");
+          execSync("git add -A", { cwd: config.workDir, encoding: "utf-8" });
+          const commitMsg = `tasks: update after cycle ${taskNum + 1}
+
+🤖 Generated with [OpenAgents](https://openagents.com)
+
+Co-Authored-By: MechaCoder <noreply@openagents.com>`;
+          execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: config.workDir, encoding: "utf-8" });
+          execSync("git push", { cwd: config.workDir, encoding: "utf-8" });
+          log("[Cycle cleanup] Changes committed and pushed.");
+        }
+      } catch (e) {
+        // Ignore commit errors (might be nothing to commit)
+      }
+
       // Small delay between tasks
       if (taskNum < config.maxTasks - 1) {
         yield* Effect.sleep(2000);

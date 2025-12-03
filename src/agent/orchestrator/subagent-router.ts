@@ -88,7 +88,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
   Effect.gen(function* () {
     const { subtask, claudeCode } = options;
     const tryClaude = shouldUseClaudeCode(subtask, claudeCode);
-    const maxTurns = claudeCode?.maxTurnsPerSubtask ?? 30;
+    const maxTurns = claudeCode?.maxTurnsPerSubtask ?? 300;
     const timeoutMs = claudeCode?.timeoutMsPerSubtask;
     const verificationCommands = options.verificationCommands;
     const resumeSessionId = subtask.claudeCode?.sessionId;

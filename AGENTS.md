@@ -90,7 +90,16 @@ bun run tasks:next --json
 # Create a task
 bun run tasks:create --title "Fix live e2e harness" --type bug --priority 1 --labels "e2e,golden-loop" --json
 
-# Update/close a task (via JSON stdin)
+# Close a task (auto-captures HEAD commit SHA)
+bun run tasks:close --id oa-abc123 --reason "Implemented feature" --json
+
+# Close a task with explicit commit SHA
+bun run tasks:close --id oa-abc123 --reason "Done" --commit abc123def --json
+
+# Close and stage tasks.jsonl for commit (useful for single-commit workflow)
+bun run tasks:close --id oa-abc123 --reason "Done" --stage --json
+
+# Update a task (via JSON stdin) - alternative to close command
 echo '{"id":"oa-abc123","status":"closed","reason":"Done","commits":["abc123"]}' | bun run tasks:update --json-input --json
 ```
 
@@ -103,8 +112,38 @@ See `docs/mechacoder/TASK-SPEC.md` for the complete task system specification.
 2. **Claim your task**: Update task to `status: "in_progress"`
 3. **Work on it**: Implement, test, document
 4. **Discover new work?** Create new task with `discoveredFrom` pointing to current task
-5. **Complete**: Close task with reason, append commit SHAs
+5. **Complete**: Close task using `bun run tasks:close --id <id> --reason "<reason>"`
 6. **Commit together**: Always commit `.openagents/tasks.jsonl` together with code changes
+
+### Recommended Commit/Task Update Flow
+
+To avoid awkward double-commits when closing tasks with commit SHAs:
+
+**Option A: Single commit (recommended for MechaCoder)**
+```bash
+# 1. Make code changes
+# 2. Close task with --stage to prepare tasks.jsonl
+bun run tasks:close --id oa-abc123 --reason "Done" --stage --json
+# 3. Commit everything together (code + updated tasks.jsonl)
+git add -A && git commit -m "oa-abc123: implement feature"
+```
+
+**Option B: Post-commit update (recommended for interactive agents)**
+```bash
+# 1. Make code changes
+# 2. Commit code changes (tasks.jsonl still shows in_progress)
+git add -A && git commit -m "oa-abc123: implement feature"
+# 3. Close task (auto-captures the commit SHA from HEAD)
+bun run tasks:close --id oa-abc123 --reason "Done" --json
+# 4. Commit the task update
+git add .openagents/tasks.jsonl && git commit -m "tasks: close oa-abc123"
+```
+
+**Option C: Pre-known commit (for CI/automation)**
+```bash
+# Close with explicit commit SHA
+bun run tasks:close --id oa-abc123 --reason "Done" --commit $GIT_SHA --json
+```
 
 ### Work Logs (Required)
 

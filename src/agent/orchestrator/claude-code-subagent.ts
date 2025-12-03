@@ -268,7 +268,7 @@ export const runClaudeCodeSubagent = async (
           cwd: options.cwd,
           // Use Claude Code's system prompt with CLAUDE.md context
           systemPrompt: options.systemPrompt ?? { type: "preset", preset: "claude_code" },
-          maxTurns: options.maxTurns ?? 30,
+          maxTurns: options.maxTurns ?? 300,
           ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
           ...(options.resumeSessionId ? { resume: options.resumeSessionId } : {}),
           ...(options.forkSession ? { forkSession: true } : {}),
