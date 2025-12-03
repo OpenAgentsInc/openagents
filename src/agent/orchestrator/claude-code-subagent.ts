@@ -504,6 +504,9 @@ export const runClaudeCodeSubagent = async (
     if (options.resumeSessionId && options.forkSession && sessionId !== options.resumeSessionId) {
       result.claudeCodeForkedFromSessionId = options.resumeSessionId;
     }
+
+    // Log session for debugging
+    console.log(`[Claude Code] Session: ${sessionId}${options.resumeSessionId ? ` (resumed from ${options.resumeSessionId})` : " (new)"}`);
   }
 
   if (error) {
