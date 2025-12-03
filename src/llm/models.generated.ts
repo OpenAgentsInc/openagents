@@ -2161,8 +2161,8 @@ export const MODELS = {
       contextWindow: 65536,
       maxTokens: 65536,
     } satisfies Model<"openai-completions">,
-    "x-ai/grok-4.1-fast:free": {
-      id: "x-ai/grok-4.1-fast:free",
+    "x-ai/grok-4.1-fast:free:free": {
+      id: "x-ai/grok-4.1-fast:free:free",
       name: "xAI: Grok 4.1 Fast (free)",
       api: "openai-completions",
       provider: "openrouter",

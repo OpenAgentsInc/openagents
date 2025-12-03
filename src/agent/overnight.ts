@@ -185,7 +185,7 @@ Otherwise, complete the next highest priority task.`;
     const result = yield* agentLoop(prompt, tools as any, {
       systemPrompt: OVERNIGHT_SYSTEM_PROMPT,
       maxTurns: 20,
-      model: "x-ai/grok-4.1-fast",
+      model: "x-ai/grok-4.1-fast:free",
     });
 
     log(`\nCompleted in ${result.totalTurns} turn(s)`);
@@ -237,7 +237,7 @@ const overnightLoop = (config: OvernightConfig) =>
 
     // Create session
     const session = createSession(
-      { model: "x-ai/grok-4.1-fast", systemPrompt: OVERNIGHT_SYSTEM_PROMPT, maxTurns: 25 },
+      { model: "x-ai/grok-4.1-fast:free", systemPrompt: OVERNIGHT_SYSTEM_PROMPT, maxTurns: 25 },
       "Overnight agent session",
     );
     

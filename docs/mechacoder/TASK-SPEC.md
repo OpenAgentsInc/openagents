@@ -90,7 +90,7 @@ Validation rules are encoded via `src/tasks/schema.ts` (Effect Schema). Any agen
   "version": 1,
   "projectId": "openagents",
   "defaultBranch": "main",
-  "defaultModel": "x-ai/grok-4.1-fast",
+  "defaultModel": "x-ai/grok-4.1-fast:free",
   "rootDir": ".",
   "testCommands": ["bun test"],
   "e2eCommands": [],

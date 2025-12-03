@@ -170,7 +170,7 @@ describe("ProjectConfig", () => {
     expect(config.projectId).toBe("my-project");
     expect(config.version).toBe(1);
     expect(config.defaultBranch).toBe("main");
-    expect(config.defaultModel).toBe("x-ai/grok-4.1-fast");
+    expect(config.defaultModel).toBe("x-ai/grok-4.1-fast:free");
     expect(config.typecheckCommands).toEqual([]);
     expect(config.allowPush).toBe(true);
     expect(config.allowForcePush).toBe(false);

@@ -129,7 +129,7 @@ Minimal schema (v0):
   "version": 1,
   "projectId": "openagents",             // human-readable
   "defaultBranch": "main",
-  "defaultModel": "x-ai/grok-4.1-fast",  // or other, per-project
+  "defaultModel": "x-ai/grok-4.1-fast:free",  // or other, per-project
   "rootDir": ".",                        // relative to repo root
   "testCommands": ["bun test"],
   "e2eCommands": [],                     // e.g. ["E2E_STUB=1 pnpm run test:golden-loop-e2e:local-stub"]
@@ -197,7 +197,7 @@ Optional, but useful for specifying local loops:
       "id": "mechacoder-desktop",
       "enabled": true,
       "models": {
-        "default": "x-ai/grok-4.1-fast"
+        "default": "x-ai/grok-4.1-fast:free"
       },
       "policy": {
         "maxTasksPerRun": 3,

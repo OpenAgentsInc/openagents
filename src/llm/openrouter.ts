@@ -111,7 +111,7 @@ export const toolToOpenRouterDefinition = (tool: Tool<any>): Record<string, unkn
 };
 
 const makeRequestBody = (request: ChatRequest) => {
-  const defaultModel = "x-ai/grok-4.1-fast";
+  const defaultModel = "x-ai/grok-4.1-fast:free";
   const tools = request.tools?.map(toolToOpenRouterDefinition);
 
   const messages = request.messages.map((msg) => {

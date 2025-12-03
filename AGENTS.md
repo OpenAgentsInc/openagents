@@ -439,7 +439,7 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 ### Model Selection
 
-**NEVER change the model from `x-ai/grok-4.1-fast`** - it is the only free model available on OpenRouter. Do not switch to Claude, GPT, or any other paid model.
+**NEVER change the model from `x-ai/grok-4.1-fast:free`** - it is the only free model available on OpenRouter. Do not switch to Claude, GPT, or any other paid model.
 
 
 
