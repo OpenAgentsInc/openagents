@@ -352,7 +352,7 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 | Push fails (remote changes) | Option A: New task for conflict resolution. Option B: Rebase if policy allows. |
 | Force push required | **Never** force-pushed unless `allowForcePush` explicitly set. |
 
-**Recovery**: Conflict tasks created for human review. Changes preserved locally.
+**Recovery**: Conflict tasks created for human review. Changes preserved locally. See **Section 5.5: Playbook: Git Conflict & Push Failure Handling** for detailed recovery procedures.
 
 ### 4.6. Task System Failures
 
@@ -728,7 +728,238 @@ Orchestrator Start
 
 ---
 
-### 5.5. Quick Reference: Recovery Decision Tree
+### 5.5. Playbook: Git Conflict & Push Failure Handling
+
+**Goal:** Handle merge conflicts, rejected pushes, and diverged branches without losing work or corrupting state.
+
+#### Understanding Git Failure Modes
+
+| Failure Type | Cause | Symptoms |
+|--------------|-------|----------|
+| **Rejected push** | Remote has commits not in local | `! [rejected] main -> main (fetch first)` |
+| **Merge conflict** | Concurrent changes to same lines | `CONFLICT (content): Merge conflict in <file>` |
+| **Rebase conflict** | Local commits conflict with upstream | `Could not apply <sha>... <message>` |
+| **Diverged branches** | Local and remote both advanced | `Your branch and 'origin/main' have diverged` |
+
+#### Core Principle: Never Lose Work
+
+**CRITICAL:** The orchestrator must **never discard uncommitted changes** or **lose committed work** during conflict resolution. The working tree represents potentially hours of agent work.
+
+**Safe Operations:**
+- `git fetch origin` - Always safe
+- `git status` - Always safe
+- `git stash push` - Safe, preserves changes
+- `git rebase --abort` - Safe, returns to pre-rebase state
+- `git merge --abort` - Safe, returns to pre-merge state
+
+**Dangerous Operations (require explicit policy):**
+- `git reset --hard` - Loses uncommitted changes
+- `git checkout -- .` - Loses uncommitted changes
+- `git clean -fd` - Removes untracked files
+- `git push --force` - Overwrites remote history
+
+#### Recovery Flow: Rejected Push
+
+When `git push` fails with "rejected (fetch first)":
+
+```
+Push Rejected
+    │
+    ├── 1. Preserve current state
+    │   └── Commit any uncommitted changes to a WIP commit
+    │
+    ├── 2. Fetch remote changes
+    │   └── git fetch origin
+    │
+    ├── 3. Assess divergence
+    │   ├── git log --oneline HEAD..origin/main  # What's new on remote
+    │   └── git log --oneline origin/main..HEAD  # What's local-only
+    │
+    ├── 4. Choose resolution strategy
+    │   │
+    │   ├── Option A: Rebase (preferred for small changes)
+    │   │   └── git rebase origin/main
+    │   │       ├── Success → git push
+    │   │       └── Conflict → See "Handling Rebase Conflicts"
+    │   │
+    │   ├── Option B: Merge (preserves commit history)
+    │   │   └── git merge origin/main
+    │   │       ├── Success → git push
+    │   │       └── Conflict → See "Handling Merge Conflicts"
+    │   │
+    │   └── Option C: Create follow-up task (safe backoff)
+    │       └── See "Safe Backoff with Follow-up Task"
+    │
+    └── 5. Update task status appropriately
+```
+
+#### Handling Rebase Conflicts
+
+```bash
+# 1. Start rebase
+git rebase origin/main
+
+# 2. If conflicts occur, for each conflicted file:
+#    - Open the file and find conflict markers (<<<<<<, =======, >>>>>>)
+#    - Resolve by choosing correct version or merging both
+#    - Stage the resolved file
+git add <resolved-file>
+
+# 3. Continue rebase
+git rebase --continue
+
+# 4. If unable to resolve (complex conflicts):
+git rebase --abort  # Return to pre-rebase state
+# Then use "Safe Backoff" strategy below
+```
+
+#### Handling Merge Conflicts
+
+```bash
+# 1. Start merge
+git merge origin/main
+
+# 2. If conflicts occur:
+#    - Resolve conflicts in each file
+#    - Stage resolved files
+git add <resolved-file>
+
+# 3. Complete merge
+git commit  # Merge commit message auto-generated
+
+# 4. If unable to resolve:
+git merge --abort  # Return to pre-merge state
+# Then use "Safe Backoff" strategy below
+```
+
+#### Safe Backoff with Follow-up Task
+
+When conflicts are too complex for automatic resolution, the orchestrator should:
+
+1. **Preserve all local work:**
+   ```bash
+   # Ensure all changes are committed locally
+   git add -A
+   git commit -m "WIP: $(cat <<'EOF'
+   oa-<taskId>: work in progress (push blocked by conflicts)
+
+   Remote has diverged. This commit preserves local work.
+   Requires manual conflict resolution before pushing.
+
+   🤖 Generated with [OpenAgents](https://openagents.com)
+
+   Co-Authored-By: MechaCoder <noreply@openagents.com>
+   EOF
+   )"
+   ```
+
+2. **Create a follow-up task for conflict resolution:**
+   ```bash
+   bun run tasks:create \
+     --title "Resolve git conflicts for oa-<taskId>" \
+     --type task \
+     --priority 1 \
+     --labels "git,conflicts,manual" \
+     --description "$(cat <<'EOF'
+   The push for oa-<taskId> was rejected due to remote changes.
+
+   Local commits to resolve:
+   - <list commit SHAs>
+
+   Remote commits causing conflict:
+   - <list remote commit SHAs>
+
+   Steps:
+   1. git fetch origin
+   2. git rebase origin/main (or merge)
+   3. Resolve conflicts
+   4. git push
+
+   Original task work is preserved in local commits.
+   EOF
+   )" \
+     --json
+   ```
+
+3. **Update original task status:**
+   ```bash
+   # Mark as blocked, not closed
+   bun run tasks:update \
+     --id oa-<taskId> \
+     --status blocked \
+     --reason "Push rejected - conflicts with remote. See follow-up task for resolution."
+   ```
+
+4. **Log the situation in progress.md:**
+   ```markdown
+   ### Git Conflict Encountered
+
+   - Task: oa-<taskId>
+   - Local commits: <sha1>, <sha2>
+   - Conflict cause: Remote advanced with <N> new commits
+   - Resolution: Follow-up task created (oa-<newTaskId>)
+   - Local work: Preserved in commits on local branch
+   ```
+
+#### Orchestrator Decision Matrix
+
+| Situation | Automatic Resolution | Manual Task |
+|-----------|---------------------|-------------|
+| 1-2 files conflicted, simple changes | ✅ Try rebase | Fallback |
+| Many files conflicted | ❌ | ✅ Create task |
+| Conflicts in generated/lock files | ✅ Regenerate | Fallback |
+| Conflicts in core logic | ❌ | ✅ Create task |
+| Same file modified by both sides | ❌ | ✅ Create task |
+| Only additions on both sides | ✅ Try merge | Fallback |
+
+#### Preventing Conflicts
+
+To minimize conflicts during overnight runs:
+
+1. **Work on isolated branches:**
+   ```json
+   // .openagents/project.json
+   {
+     "workBranch": "mechacoder/work",
+     "defaultBranch": "main"
+   }
+   ```
+
+2. **Fetch before starting work:**
+   ```bash
+   # In .openagents/init.sh
+   git fetch origin
+   LOCAL=$(git rev-parse HEAD)
+   REMOTE=$(git rev-parse origin/main)
+   if [ "$LOCAL" != "$REMOTE" ]; then
+       echo "WARNING: Local is behind remote. Pulling..."
+       git pull --rebase origin main
+   fi
+   ```
+
+3. **Keep tasks small and focused:**
+   - Smaller changes = fewer conflict opportunities
+   - Complete and push quickly
+
+#### Working Tree Preservation Rules
+
+During any git operation that might fail:
+
+1. **Never run `git reset --hard` or `git checkout -- .`** unless explicitly recovering from a known-bad state
+2. **Always check for uncommitted changes** before any destructive operation
+3. **Use `git stash` as insurance** before complex operations:
+   ```bash
+   git stash push -m "Pre-operation backup $(date +%Y%m%d-%H%M%S)"
+   # ... do risky operation ...
+   # If successful, can drop stash
+   # If failed, can restore: git stash pop
+   ```
+4. **Keep WIP commits on the branch** rather than discarding partial work
+5. **Log the state** in `.openagents/progress.md` before and after
+
+---
+
+### 5.6. Quick Reference: Recovery Decision Tree
 
 ```
 Agent stopped unexpectedly?
@@ -757,6 +988,27 @@ Tests failing after changes?
     │
     └── Skip option: Mark task as blocked
         └── bun run tasks:update --id <id> --status blocked
+
+Git push rejected / conflicts?
+    │
+    ├── Check: Are there uncommitted changes?
+    │   └── Yes → Commit them first (WIP commit is fine)
+    │
+    ├── Fetch and assess: git fetch origin
+    │   └── git log --oneline HEAD..origin/main
+    │
+    ├── Simple divergence (few commits, no overlap)?
+    │   └── git rebase origin/main && git push
+    │
+    ├── Conflicts during rebase/merge?
+    │   ├── Can resolve? → Fix conflicts → git rebase --continue → push
+    │   └── Too complex? → git rebase --abort → Safe Backoff
+    │
+    └── Safe Backoff:
+        ├── Commit local work (WIP)
+        ├── Create follow-up task for conflict resolution
+        ├── Mark original task as blocked
+        └── Log in progress.md
 
 Can't resume Claude Code session?
     │
