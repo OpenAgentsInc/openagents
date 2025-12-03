@@ -58,6 +58,9 @@ export {
   archiveTasks,
   readArchivedTasks,
   searchAllTasks,
+  getTaskStats,
+  getStaleTasks,
+  getTaskWithDeps,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
@@ -65,6 +68,9 @@ export {
   type ArchiveOptions,
   type ArchiveResult,
   type SearchAllTasksOptions,
+  type TaskStats,
+  type StaleTasksOptions,
+  type TaskWithDeps,
 } from "./service.js";
 
 export {

@@ -687,6 +687,125 @@ export interface SearchAllTasksOptions {
   includeArchived?: boolean;
 }
 
+// --- Stats functionality ---
+
+export interface TaskStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  byPriority: Record<number, number>;
+  openCount: number;
+  closedCount: number;
+  inProgressCount: number;
+  blockedCount: number;
+}
+
+export const getTaskStats = (
+  tasksPath: string,
+): Effect.Effect<TaskStats, TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tasks = yield* readTasks(tasksPath);
+
+    const byStatus: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    const byPriority: Record<number, number> = {};
+
+    for (const task of tasks) {
+      byStatus[task.status] = (byStatus[task.status] || 0) + 1;
+      byType[task.type] = (byType[task.type] || 0) + 1;
+      byPriority[task.priority] = (byPriority[task.priority] || 0) + 1;
+    }
+
+    return {
+      total: tasks.length,
+      byStatus,
+      byType,
+      byPriority,
+      openCount: byStatus["open"] || 0,
+      closedCount: byStatus["closed"] || 0,
+      inProgressCount: byStatus["in_progress"] || 0,
+      blockedCount: byStatus["blocked"] || 0,
+    };
+  });
+
+// --- Stale detection functionality ---
+
+export interface StaleTasksOptions {
+  tasksPath: string;
+  days?: number;
+  status?: string;
+  timestamp?: Date;
+}
+
+export const getStaleTasks = ({
+  tasksPath,
+  days = 30,
+  status,
+  timestamp,
+}: StaleTasksOptions): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const thresholdMs = days * 24 * 60 * 60 * 1000;
+    const threshold = now.getTime() - thresholdMs;
+
+    const tasks = yield* readTasks(tasksPath);
+
+    return tasks.filter((task) => {
+      // Filter by status if specified
+      if (status && task.status !== status) return false;
+
+      // Check if updatedAt is older than threshold
+      const updatedAt = new Date(task.updatedAt).getTime();
+      return updatedAt < threshold;
+    });
+  });
+
+// --- Show task with dependencies ---
+
+export interface TaskWithDeps {
+  task: Task;
+  blockedBy: Task[];   // Tasks that block this one
+  blocking: Task[];    // Tasks that this one blocks
+}
+
+export const getTaskWithDeps = (
+  tasksPath: string,
+  id: string,
+): Effect.Effect<TaskWithDeps, TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tasks = yield* readTasks(tasksPath);
+    const task = tasks.find((t) => t.id === id);
+
+    if (!task) {
+      return yield* Effect.fail(
+        new TaskServiceError("not_found", `Task not found: ${id}`),
+      );
+    }
+
+    // Find tasks that block this one (deps where type is "blocks")
+    const blockedBy: Task[] = [];
+    for (const dep of task.deps || []) {
+      if (dep.type === "blocks") {
+        const blocker = tasks.find((t) => t.id === dep.id);
+        if (blocker) blockedBy.push(blocker);
+      }
+    }
+
+    // Find tasks that this task blocks (tasks that have this task in their deps)
+    const blocking: Task[] = [];
+    for (const t of tasks) {
+      if (t.id === task.id) continue;
+      for (const dep of t.deps || []) {
+        if (dep.id === task.id && dep.type === "blocks") {
+          blocking.push(t);
+          break;
+        }
+      }
+    }
+
+    return { task, blockedBy, blocking };
+  });
+
 export const searchAllTasks = ({
   tasksPath,
   archivePath: archivePathOpt,

@@ -30,6 +30,9 @@ import {
   listTasks,
   archiveTasks,
   searchAllTasks,
+  getTaskStats,
+  getStaleTasks,
+  getTaskWithDeps,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -508,6 +511,31 @@ const cmdClose = (options: CliOptions) =>
     return task;
   });
 
+const cmdReopen = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.id) {
+      output({ error: "Missing required --id <task-id>" }, options.json);
+      return null;
+    }
+
+    const task = yield* reopenTask({
+      tasksPath,
+      id: options.id,
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (task) {
+      output(task, options.json);
+    }
+    return task;
+  });
+
 const cmdArchive = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -593,6 +621,161 @@ const cmdSearch = (options: CliOptions) =>
     return summary;
   });
 
+const cmdStats = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const stats = yield* getTaskStats(tasksPath).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!stats) {
+      return null;
+    }
+
+    if (options.json) {
+      output(stats, true);
+    } else {
+      console.log(`Task Statistics`);
+      console.log(`===============`);
+      console.log(`Total tasks: ${stats.total}`);
+      console.log();
+      console.log(`By Status:`);
+      console.log(`  Open:        ${stats.openCount}`);
+      console.log(`  In Progress: ${stats.inProgressCount}`);
+      console.log(`  Blocked:     ${stats.blockedCount}`);
+      console.log(`  Closed:      ${stats.closedCount}`);
+      console.log();
+      console.log(`By Type:`);
+      for (const [type, count] of Object.entries(stats.byType).sort(([, a], [, b]) => b - a)) {
+        console.log(`  ${type}: ${count}`);
+      }
+      console.log();
+      console.log(`By Priority:`);
+      for (const [priority, count] of Object.entries(stats.byPriority).sort(([a], [b]) => Number(a) - Number(b))) {
+        const label = ["P0 (Critical)", "P1 (High)", "P2 (Medium)", "P3 (Low)", "P4 (Backlog)"][Number(priority)] || `P${priority}`;
+        console.log(`  ${label}: ${count}`);
+      }
+    }
+
+    return stats;
+  });
+
+const cmdStale = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const staleOptions: { tasksPath: string; days: number; status?: string } = {
+      tasksPath,
+      days: options.days ?? 30,
+    };
+    if (options.status) {
+      staleOptions.status = options.status;
+    }
+    const staleTasks = yield* getStaleTasks(staleOptions).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!staleTasks) {
+      return null;
+    }
+
+    if (options.json) {
+      output(staleTasks, true);
+    } else {
+      if (staleTasks.length === 0) {
+        console.log(`No stale tasks found (threshold: ${options.days ?? 30} days)`);
+      } else {
+        console.log(`Stale tasks (not updated in ${options.days ?? 30}+ days):`);
+        console.log(`===============================================`);
+        for (const task of staleTasks) {
+          const daysSince = Math.floor(
+            (Date.now() - new Date(task.updatedAt).getTime()) / (24 * 60 * 60 * 1000)
+          );
+          console.log(`[${task.id}] ${task.title}`);
+          console.log(`  Status: ${task.status}, Last updated: ${daysSince} days ago`);
+        }
+        console.log();
+        console.log(`Total: ${staleTasks.length} stale tasks`);
+      }
+    }
+
+    return staleTasks;
+  });
+
+const cmdShow = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.id) {
+      output({ error: "Missing required --id <task-id>" }, options.json);
+      return null;
+    }
+
+    const result = yield* getTaskWithDeps(tasksPath, options.id).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    const { task, blockedBy, blocking } = result;
+
+    if (options.json) {
+      output({ task, blockedBy, blocking }, true);
+    } else {
+      const priorityLabel = ["P0 (Critical)", "P1 (High)", "P2 (Medium)", "P3 (Low)", "P4 (Backlog)"][task.priority] || `P${task.priority}`;
+
+      console.log(`Task: ${task.id}`);
+      console.log(`======================================`);
+      console.log(`Title: ${task.title}`);
+      console.log(`Status: ${task.status}`);
+      console.log(`Priority: ${priorityLabel}`);
+      console.log(`Type: ${task.type}`);
+      if (task.assignee) console.log(`Assignee: ${task.assignee}`);
+      if (task.labels?.length) console.log(`Labels: ${task.labels.join(", ")}`);
+      console.log(`Created: ${task.createdAt}`);
+      console.log(`Updated: ${task.updatedAt}`);
+      if (task.closedAt) console.log(`Closed: ${task.closedAt}`);
+      if (task.closeReason) console.log(`Close Reason: ${task.closeReason}`);
+      if (task.commits?.length) console.log(`Commits: ${task.commits.join(", ")}`);
+
+      if (task.description) {
+        console.log();
+        console.log(`Description:`);
+        console.log(task.description);
+      }
+
+      if (blockedBy.length > 0) {
+        console.log();
+        console.log(`Blocked by (${blockedBy.length}):`);
+        for (const t of blockedBy) {
+          const statusIcon = t.status === "closed" ? "[x]" : "[ ]";
+          console.log(`  ${statusIcon} ${t.id}: ${t.title}`);
+        }
+      }
+
+      if (blocking.length > 0) {
+        console.log();
+        console.log(`Blocking (${blocking.length}):`);
+        for (const t of blocking) {
+          const statusIcon = t.status === "closed" ? "[x]" : "[ ]";
+          console.log(`  ${statusIcon} ${t.id}: ${t.title}`);
+        }
+      }
+    }
+
+    return result;
+  });
+
 const showHelp = (): void => {
   console.log(`
 OpenAgents Task CLI
@@ -607,6 +790,10 @@ Commands:
   create    Create a new task
   update    Update an existing task
   close     Close a task with optional commit SHA capture
+  reopen    Reopen a closed task
+  show      Show task details with dependency tree
+  stats     Show task statistics (counts by status, type, priority)
+  stale     Find tasks not updated in N days
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
 
@@ -641,6 +828,16 @@ close Options:
   --commit <sha>          Commit SHA to attach (default: auto-detect from HEAD)
   --stage                 Stage .openagents/tasks.jsonl after updating
 
+reopen Options:
+  --id <task-id>          Task ID to reopen (required)
+
+show Options:
+  --id <task-id>          Task ID to show (required)
+
+stale Options:
+  --days <n>              Find tasks not updated in N days (default: 30)
+  --status <status>       Filter by status (open, in_progress, blocked, closed)
+
 archive Options:
   --days <n>              Archive tasks closed more than N days ago (default: 30)
   --dry-run               Show what would be archived without making changes
@@ -658,6 +855,10 @@ Examples:
   bun src/tasks/cli.ts create --title "Fix bug" --type bug --priority 1 --json
   bun src/tasks/cli.ts close --id oa-123 --reason "Implemented feature" --json
   bun src/tasks/cli.ts close --id oa-123 --stage --json  # auto-capture HEAD commit and stage
+  bun src/tasks/cli.ts reopen --id oa-123 --json  # reopen a closed task
+  bun src/tasks/cli.ts show --id oa-123 --json  # show task details and deps
+  bun src/tasks/cli.ts stats --json  # show task statistics
+  bun src/tasks/cli.ts stale --days 7 --status open --json  # find stale open tasks
   echo '{"id":"oa-123","status":"closed","reason":"Done"}' | bun src/tasks/cli.ts update --json-input --json
   bun src/tasks/cli.ts archive --dry-run --json  # preview what would be archived
   bun src/tasks/cli.ts archive --days 7 --json  # archive tasks closed >7 days ago
@@ -745,6 +946,54 @@ const main = async () => {
     case "close":
       try {
         await Effect.runPromise(cmdClose(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "reopen":
+      try {
+        await Effect.runPromise(cmdReopen(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "show":
+      try {
+        await Effect.runPromise(cmdShow(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "stats":
+      try {
+        await Effect.runPromise(cmdStats(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "stale":
+      try {
+        await Effect.runPromise(cmdStale(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
