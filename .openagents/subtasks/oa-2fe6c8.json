@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-2fe6c8",
+  "taskTitle": "Full session tracking for replayability (like Claude ~/.claude/)",
+  "subtasks": [
+    {
+      "id": "oa-2fe6c8-sub-001",
+      "description": "Implement: Full session tracking for replayability (like Claude ~/.claude/)\n\n## Problem\n\nWhen investigating overnight agent runs, the user has to manually paste logs to ask about what happened. We should be tracking ALL conversation data for FULL replayability.\n\n## Reference: Claude Code's Session Storage\n\nClaude Code stores sessions at `~/.claude/projects/<project-path>/<session-id>.jsonl`:\n- Each line is a complete JSON object with: type, message, uuid, parentUuid, timestamp, sessionId\n- Messages include full content (text + tool_use with ALL params)\n- Usage metrics with token counts and cache info\n- Parent UUIDs for threading/conversation structure\n\n## Current State\n\nOpenAgents has `.openagents/sessions/` with basic session tracking, but it doesn't capture:\n- Full tool call inputs\n- Full tool results (truncated currently)\n- Usage/cost metrics per message\n- Parent-child message linking for conversation structure\n- Session summary/metadata\n\n## Requirements\n\n1. **Session Storage Format**: Store sessions like Claude does:\n   - Per-project: `.openagents/sessions/<session-id>.jsonl`\n   - Each line: `{ type, message, uuid, parentUuid, timestamp, sessionId, usage }`\n   - Include FULL tool inputs (not truncated)\n   - Include tool results (configurable truncation)\n\n2. **Session Metadata**: Track:\n   - Task ID being worked on\n   - Start/end times\n   - Total turns, tokens, cost\n   - Outcome (success/failure/blocked)\n\n3. **Session Viewer CLI**:\n   - `bun run session:show <id>` - Pretty-print session\n   - `bun run session:replay <id>` - Step through with timing\n   - `bun run session:diff <id1> <id2>` - Compare sessions\n\n4. **Session Query**:\n   - `bun run session:list` - List recent sessions\n   - `bun run session:search <term>` - Search in sessions\n   - `bun run session:by-task <task-id>` - Find sessions for task\n\n## Implementation Notes\n\n- Use JSONL format for append-only writes during streaming\n- Keep sessions separate from tasks (sessions are transient, tasks are durable)\n- Consider compression for old sessions",
+      "status": "done",
+      "startedAt": "2025-12-03T17:05:10.158Z",
+      "claudeCode": {
+        "sessionId": "4915d2aa-96b0-4f57-bed3-7cde1952aab0"
+      },
+      "completedAt": "2025-12-03T17:12:23.582Z"
+    }
+  ],
+  "createdAt": "2025-12-03T17:05:10.157Z",
+  "updatedAt": "2025-12-03T17:05:10.157Z"
+}
