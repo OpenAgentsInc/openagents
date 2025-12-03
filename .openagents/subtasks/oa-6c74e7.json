@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-6c74e7",
+  "taskTitle": "Add tests for HUD protocol and client",
+  "subtasks": [
+    {
+      "id": "oa-6c74e7-sub-001",
+      "description": "Implement: Add tests for HUD protocol and client\n\nAdd unit and integration tests for HUD protocol and client.\n\n## Files\n- src/hud/protocol.test.ts\n- src/hud/client.test.ts\n\n## Protocol Tests (protocol.test.ts)\n```typescript\nimport { test, expect } from \"bun:test\";\nimport { mapOrchestratorEvent } from \"./protocol.js\";\n\ntest(\"mapOrchestratorEvent converts task_selected\", () => {\n  const event = { type: \"task_selected\", task: { id: \"t1\", title: \"Test\" } };\n  const msg = mapOrchestratorEvent(event);\n  expect(msg.type).toBe(\"task_selected\");\n  expect(msg.taskId).toBe(\"t1\");\n  expect(msg.ts).toBeDefined();\n});\n\n// Test all event types map correctly\n// Test ts field is always present\n// Test unknown events throw or return error type\n```\n\n## Client Tests (client.test.ts)\n```typescript\nimport { test, expect } from \"bun:test\";\nimport { HudClient } from \"./client.js\";\n\ntest(\"HudClient queues messages when disconnected\", () => {\n  const client = new HudClient();\n  // Don't connect\n  client.send({ type: \"text\", text: \"hello\", ts: new Date().toISOString() });\n  // Verify message is queued (may need to expose queue for testing)\n});\n\ntest(\"HudClient flushes queue on connect\", async () => {\n  // Requires mock WebSocket server\n  // Start test server, connect client, verify queued messages arrive\n});\n\ntest(\"HudClient reconnects on disconnect\", async () => {\n  // Start server, connect, kill server, restart, verify reconnect\n});\n\ntest(\"HudClient silently fails when server unavailable\", () => {\n  const client = new HudClient();\n  // Should not throw\n  expect(() => client.connect()).not.toThrow();\n});\n```\n\n## Integration Test (optional)\n- Start HUD server\n- Create HudClient, connect\n- Send messages, verify server receives\n- Disconnect, reconnect, verify queue flushed\n\n## Reference\n- Use bun:test\n- See existing test patterns in src/**/*.test.ts",
+      "status": "failed",
+      "startedAt": "2025-12-03T08:14:49.797Z",
+      "claudeCode": {
+        "sessionId": "a313576d-08ac-4620-a601-0b07cd05858e"
+      },
+      "error": "Verification failed (typecheck/tests): src/hud/client.test.ts(3,10): error TS6133: 'HUD_WS_PORT' is declared but its value is never read. src/hud/client.test.ts(133,20): error TS2554: Expected 2 arguments, but got 1. src/hud/protocol.test.ts(198,49): error TS2322: Type '\"completed\"' is not assignable to type 'SubtaskStatus'."
+    }
+  ],
+  "createdAt": "2025-12-03T08:14:49.796Z",
+  "updatedAt": "2025-12-03T08:14:49.796Z"
+}
