@@ -60,3 +60,6 @@ docs/scratchpad/
 logs/*.log
 runlog-test-*/
 tasks-cli-*/
+
+# Agent runtime files
+.openagents/agent.lock
