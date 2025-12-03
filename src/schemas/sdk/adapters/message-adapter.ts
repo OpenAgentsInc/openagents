@@ -26,6 +26,8 @@ import type {
   ChatMessage as SDKChatMessage,
 } from "../messages.js";
 
+import type { ToolContent } from "../tool-outputs.js";
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -35,7 +37,7 @@ import type {
  */
 export interface MessageConversionResult {
   message: InternalChatMessage;
-  toolCalls?: ChatToolCall[];
+  toolCalls?: ChatToolCall[] | undefined;
 }
 
 /**
@@ -91,6 +93,30 @@ export const internalContentToSdk = (
 export const internalContentsToSdk = (
   contents: InternalContentBlock[]
 ): SDKContentBlock[] => contents.map(internalContentToSdk);
+
+/**
+ * Convert internal content to ToolContent (text/image only).
+ * Used for tool results which have a more restricted content type.
+ */
+export const internalContentToToolContent = (
+  content: InternalContentBlock
+): ToolContent => {
+  if (content.type === "text") {
+    return { type: "text", text: content.text };
+  }
+  if (content.type === "image") {
+    return { type: "image", data: content.data, mimeType: content.mimeType };
+  }
+  // Fallback - convert unknown to text
+  return { type: "text", text: JSON.stringify(content) };
+};
+
+/**
+ * Convert array of internal content to ToolContent array.
+ */
+export const internalContentsToToolContent = (
+  contents: InternalContentBlock[]
+): ToolContent[] => contents.map(internalContentToToolContent);
 
 // =============================================================================
 // SDK → Internal Content Block Conversion
@@ -189,7 +215,7 @@ export const toolUseBlockToToolCall = (block: ToolUseBlock): ChatToolCall => ({
  * Extract tool calls from SDK content blocks.
  */
 export const extractToolCalls = (
-  contents: SDKContentBlock[]
+  contents: readonly SDKContentBlock[]
 ): ChatToolCall[] =>
   contents
     .filter((c): c is ToolUseBlock => c.type === "tool_use")
@@ -361,7 +387,7 @@ export const createToolResultBlock = (
   tool_use_id: toolUseId,
   content: typeof result === "string"
     ? [{ type: "text", text: result }]
-    : internalContentsToSdk(result),
+    : internalContentsToToolContent(result),
   is_error: isError,
 });
 
@@ -376,7 +402,7 @@ export const createInternalToolResult = (
   role: "tool",
   content,
   tool_call_id: toolCallId,
-  name: toolName,
+  ...(toolName ? { name: toolName } : {}),
 });
 
 // =============================================================================
