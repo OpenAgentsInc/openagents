@@ -14,7 +14,10 @@ const getTool = (name: string) => buildMechaCoderMcpTools().find((toolDef) => to
 describe("claude-code-mcp tools", () => {
   test("read_progress returns placeholder when path missing", async () => {
     const tool = getTool("read_progress");
-    const result = await tool.handler({}, {});
+    const result = await tool.handler(
+      { issue: "none", summary: "n/a", filesModified: [] },
+      {}
+    );
 
     expect(result.content?.[0]?.type).toBe("text");
     expect(result.content?.[0]?.text).toContain("openagentsDir not provided");
@@ -25,7 +28,10 @@ describe("claude-code-mcp tools", () => {
     writeProgress(openagentsDir, createEmptyProgress("session-1", "task-1", "Task title"));
 
     const tool = buildMechaCoderMcpTools({ openagentsDir }).find((toolDef) => toolDef.name === "read_progress")!;
-    const result = await tool.handler({}, {});
+    const result = await tool.handler(
+      { issue: "none", summary: "n/a", filesModified: [] },
+      {}
+    );
 
     expect(result.content?.[0]?.text).toContain("session-1");
     expect(result.content?.[0]?.text).toContain("task-1");

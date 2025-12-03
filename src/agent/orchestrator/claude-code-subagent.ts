@@ -3,7 +3,7 @@ import {
   createMechaCoderMcpServer,
   getAllowedClaudeCodeTools,
 } from "./claude-code-mcp.js";
-import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import type { PermissionMode, McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { type SubagentResult, type Subtask, type ClaudeCodePermissionMode } from "./types.js";
 
 type QueryFn = (input: unknown) => AsyncIterable<any>;
@@ -47,7 +47,7 @@ export const runClaudeCodeSubagent = async (
   let error: string | undefined;
   let turns = 0;
 
-  const mcpServers: Record<string, unknown> =
+  const mcpServers: Record<string, McpServerConfig> =
     options.mcpServers ??
     {
       [CLAUDE_CODE_MCP_SERVER_NAME]: createMechaCoderMcpServer({
