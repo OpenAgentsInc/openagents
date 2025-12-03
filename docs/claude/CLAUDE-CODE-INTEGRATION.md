@@ -500,6 +500,7 @@ Create these tasks in `.openagents/tasks.jsonl`:
 2. **API Keys**: Never log or expose `ANTHROPIC_API_KEY`
 3. **Sandboxing**: Consider enabling Claude Code's sandbox for untrusted repos
 4. **Tool Restrictions**: Use `allowedTools` to limit what CC can do in sensitive contexts
+5. **Permission Schemas**: SDK-compatible permission types live at `src/schemas/sdk/permissions.ts` to mirror Claude Agent SDK behavior when bridging permission decisions or rule updates.
 
 ## Cost Optimization
 
