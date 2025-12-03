@@ -58,3 +58,5 @@ docs/scratchpad/
 *bead-run.md
 *task-run.md
 logs/*.log
+runlog-test-*/
+tasks-cli-*/
