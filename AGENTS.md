@@ -285,6 +285,7 @@ history/
 - ❌ Do NOT use external issue trackers.
 - ❌ Do NOT duplicate tracking systems.
 - ❌ Do NOT clutter repo root with planning documents.
+- ❌ Do NOT edit any `tsconfig*.json` unless a user explicitly asks; EffectTS types rely on the current settings.
 
 ### SDK Layering Rule
 
