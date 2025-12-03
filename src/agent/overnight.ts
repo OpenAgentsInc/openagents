@@ -1,19 +1,26 @@
 #!/usr/bin/env bun
 /**
  * Overnight Agent - Long-running autonomous coding agent
- * 
- * Usage: bun src/agent/overnight.ts --dir ~/code/some-repo [--max-tasks 5] [--dry-run]
- * 
+ *
+ * Usage: bun src/agent/overnight.ts [--cwd ~/code/some-repo] [--max-tasks 5] [--dry-run] [--cc-only]
+ *
+ * Options:
+ *   --cwd, --dir    Target repo directory (default: current directory)
+ *   --max-tasks     Maximum tasks to complete (default: 10)
+ *   --dry-run       Print what would happen without executing
+ *   --cc-only       Use Claude Code only (no Grok fallback)
+ *   --legacy        Use legacy Grok-based agentLoop
+ *
  * The agent will:
- * 1. Check for ready tasks in .openagents/tasks.jsonl
+ * 1. Check for ready tasks in <cwd>/.openagents/tasks.jsonl
  * 2. Claim the highest priority task
  * 3. Read relevant files and implement the fix
  * 4. Run tests
  * 5. Commit and push to main
  * 6. Close the task
  * 7. Repeat until no more tasks or max reached
- * 
- * Logs are saved to ~/code/openagents/docs/logs/YYYYMMDD/
+ *
+ * Logs are saved to <cwd>/docs/logs/YYYYMMDD/
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -686,9 +693,9 @@ Co-Authored-By: MechaCoder <noreply@openagents.com>`;
 // Main
 const config = parseArgs();
 
+// workDir defaults to process.cwd() if not specified
 if (!config.workDir) {
-  console.error("Usage: bun src/agent/overnight.ts --dir <work-directory> [--max-tasks N] [--dry-run] [--legacy]");
-  process.exit(1);
+  config.workDir = process.cwd();
 }
 
 const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
