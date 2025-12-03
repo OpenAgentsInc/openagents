@@ -1,0 +1,13 @@
+{
+  "taskId": "oa-pi07",
+  "taskTitle": "Port slash commands system for workflow shortcuts",
+  "subtasks": [
+    {
+      "id": "oa-pi07-sub-001",
+      "description": "Port slash commands system for workflow shortcuts\n\nPort pi slash command system: load markdown commands from ~/.openagents/commands and .openagents/commands, parse frontmatter (description, args), substitute $@ args, and expand in CLI input. Enable common workflow shortcuts without hardcoding.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T15:52:36.329Z",
+  "updatedAt": "2025-12-03T15:52:36.329Z"
+}

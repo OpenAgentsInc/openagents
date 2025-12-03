@@ -305,6 +305,20 @@ export const runClaudeCodeSubagent = async (
           if (event?.type === "content_block_delta" && event?.delta?.type === "text_delta") {
             options.onOutput(event.delta.text);
           }
+          // Log tool_use when content block starts
+          if (event?.type === "content_block_start" && event?.content_block?.type === "tool_use") {
+            const block = event.content_block;
+            const toolJson = JSON.stringify({ tool: block.name, id: block.id }, null, 0);
+            options.onOutput(`\n[TOOL_USE] ${toolJson}\n`);
+            // Track tool usage
+            if (block.name) {
+              toolsUsed.set(block.name, (toolsUsed.get(block.name) || 0) + 1);
+            }
+          }
+          // Log tool input when we get the full input delta
+          if (event?.type === "content_block_delta" && event?.delta?.type === "input_json_delta") {
+            // Input comes in chunks, we'll log the final result in content_block_stop
+          }
           // Add newline at end of text blocks
           if (event?.type === "content_block_stop") {
             options.onOutput("\n");
@@ -314,6 +328,10 @@ export const runClaudeCodeSubagent = async (
         // Log all non-stream messages as JSON for visibility
         if (options.onOutput && (message as any).type !== "stream_event") {
           const msgType = (message as any).type || (message as any).role || "unknown";
+
+          // Debug: log message types we receive (comment out in production)
+          // options.onOutput(`[DEBUG_MSG] type=${msgType} keys=${Object.keys(message).join(",")}\n`);
+
           // Log tool use from assistant messages
           if ((message as any).role === "assistant" && Array.isArray((message as any).content)) {
             for (const block of (message as any).content) {
@@ -323,14 +341,14 @@ export const runClaudeCodeSubagent = async (
               }
             }
           }
-          // Log tool results
+          // Log tool results from user messages (tool execution results)
           if ((message as any).role === "user" && Array.isArray((message as any).content)) {
             for (const block of (message as any).content) {
               if (block.type === "tool_result") {
                 const truncatedContent = typeof block.content === "string" && block.content.length > 200
                   ? block.content.slice(0, 200) + "..."
                   : block.content;
-                const resultJson = JSON.stringify({ tool_result: block.tool_use_id, content: truncatedContent }, null, 0);
+                const resultJson = JSON.stringify({ tool_result: block.tool_use_id, is_error: block.is_error, content: truncatedContent }, null, 0);
                 options.onOutput(`[TOOL_RESULT] ${resultJson}\n`);
               }
             }
