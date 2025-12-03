@@ -288,6 +288,18 @@ export const getAgentLockPath = (openagentsDir: string): string =>
 // ============================================================================
 
 /**
+ * Structured failure types for init script errors.
+ * Allows safe mode to determine appropriate recovery strategy.
+ */
+export type InitScriptFailureType =
+  | "typecheck_failed"      // TypeScript/type errors - can self-heal
+  | "test_failed"           // Tests failing - can attempt fix
+  | "network_error"         // Network issues - can continue in offline mode
+  | "disk_full"             // Disk space issues - cannot self-heal
+  | "permission_denied"     // Permission issues - cannot self-heal
+  | "unknown";              // Unknown error - fallback
+
+/**
  * Result from running the preflight init.sh script.
  *
  * Exit codes (per GOLDEN-LOOP-v2.md Section 2.2.1):
@@ -306,4 +318,8 @@ export interface InitScriptResult {
   output?: string;
   durationMs?: number;
   error?: string;
+  /** Structured failure type for safe mode recovery */
+  failureType?: InitScriptFailureType;
+  /** Whether this failure type can potentially be self-healed */
+  canSelfHeal?: boolean;
 }

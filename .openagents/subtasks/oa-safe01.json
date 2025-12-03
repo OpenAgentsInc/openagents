@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-safe01",
+  "taskTitle": "Add safe mode with self-healing for init script failures",
+  "subtasks": [
+    {
+      "id": "oa-safe01-sub-001",
+      "description": "Implement: Add safe mode with self-healing for init script failures\n\nWhen init script fails (especially typecheck), try to self-heal before giving up.\n\n## Problem\nInit script typecheck failure → session aborts → retry 3x → same failure → give up.\nNo attempt to fix the issue automatically.\n\n## Solution Design\n1. Add `--safe-mode` flag to overnight agent\n2. In safe mode, when init script fails with typecheck error:\n   - Parse the init script output to detect typecheck failure\n   - Spawn a Claude Code emergency subtask: 'Fix all typecheck errors'\n   - Re-run init script to verify fix\n   - Continue if passes, abort if still fails\n3. For other failures (network, disk space), use degraded mode with warnings\n\n## Implementation\n- overnight.ts: Add --safe-mode flag and recovery logic\n- init-script.ts: Return structured error info (typecheck_failed, network_down, etc.)\n- orchestrator.ts: Handle recovery subtask before normal task selection\n\n## Test Cases\n- Init fails with typecheck → agent fixes it → continues\n- Init fails with network → warns and continues (if offlineMode allows)\n- Init fails with unknown error → abort after 3 tries (existing behavior)",
+      "status": "pending"
+    },
+    {
+      "id": "oa-safe01-sub-002",
+      "description": "Add tests for: Add safe mode with self-healing for init script failures\n\nVerify the implementation works correctly with unit tests.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T16:12:58.182Z",
+  "updatedAt": "2025-12-03T16:12:58.182Z"
+}
