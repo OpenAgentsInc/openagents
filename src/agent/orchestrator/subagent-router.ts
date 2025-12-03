@@ -29,6 +29,8 @@ export interface RunBestAvailableSubagentOptions<R> {
   detectClaudeCodeFn?: () => Promise<ClaudeCodeAvailability>;
   runClaudeCodeFn?: typeof runClaudeCodeSubagent;
   runMinimalSubagent?: (config: SubagentConfig) => Effect.Effect<SubagentResult, Error, R>;
+  /** Callback for streaming text output from Claude Code */
+  onOutput?: (text: string) => void;
 }
 
 const shouldEnableClaudeCode = (settings?: ClaudeCodeSettings): boolean =>
@@ -123,6 +125,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               ...(claudeCode?.permissionMode ? { permissionMode: claudeCode.permissionMode } : {}),
               ...(resumeSessionId ? { resumeSessionId } : {}),
               ...(forkSession ? { forkSession } : {}),
+              ...(options.onOutput ? { onOutput: options.onOutput } : {}),
             }),
           catch: (error: any) => error as Error,
         }).pipe(

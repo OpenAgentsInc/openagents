@@ -43,6 +43,8 @@ export interface ClaudeCodeSubagentOptions {
   resumeSessionId?: string;
   /** Fork the resumed session to a new branch */
   forkSession?: boolean;
+  /** Callback for streaming text output */
+  onOutput?: (text: string) => void;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -274,8 +276,17 @@ export const runClaudeCodeSubagent = async (
           abortController: controller,
           hooks,
           settingSources: ["project"], // Load CLAUDE.md for project context
+          includePartialMessages: !!options.onOutput, // Enable streaming if callback provided
         },
       })) {
+        // Handle streaming partial messages
+        if ((message as any).type === "stream_event" && options.onOutput) {
+          const event = (message as any).event;
+          // Extract text delta from content_block_delta events
+          if (event?.type === "content_block_delta" && event?.delta?.type === "text_delta") {
+            options.onOutput(event.delta.text);
+          }
+        }
         // Track tool calls from messages
         // NOTE: Hooks provide event emission, but message parsing tracks usage/files
         // for consistency across real SDK and test mocks

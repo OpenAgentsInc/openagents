@@ -436,6 +436,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         allowPush: projectConfig.allowPush ?? true,
         claudeCode: claudeCodeConfig,
         ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
+        // Stream Claude Code output to console
+        onOutput: (text: string) => process.stdout.write(text),
       };
 
       const state = yield* runOrchestrator(orchestratorConfig, emit).pipe(
