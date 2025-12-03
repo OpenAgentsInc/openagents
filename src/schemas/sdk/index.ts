@@ -166,6 +166,37 @@ export type {
 } from "./tool-outputs.js";
 
 // =============================================================================
+// Permission Schemas
+// =============================================================================
+
+export {
+  PermissionMode,
+  PermissionBehavior,
+  PermissionRuleValue,
+  PermissionUpdateDestination,
+  AddRulesPermissionUpdate,
+  ReplaceRulesPermissionUpdate,
+  RemoveRulesPermissionUpdate,
+  SetModePermissionUpdate,
+  AddDirectoriesPermissionUpdate,
+  RemoveDirectoriesPermissionUpdate,
+  PermissionUpdate,
+  AllowPermissionResult,
+  DenyPermissionResult,
+  PermissionResult,
+} from "./permissions.js";
+
+export type {
+  PermissionMode as PermissionModeType,
+  PermissionBehavior as PermissionBehaviorType,
+  PermissionRuleValue as PermissionRuleValueType,
+  PermissionUpdateDestination as PermissionUpdateDestinationType,
+  PermissionUpdate as PermissionUpdateType,
+  PermissionResult as PermissionResultType,
+  CanUseTool,
+} from "./permissions.js";
+
+// =============================================================================
 // Message Schemas
 // =============================================================================
 
@@ -303,6 +334,42 @@ export type {
   SessionStartHookSpecificOutput as SessionStartHookSpecificOutputType,
   HookJSONOutput as HookJSONOutputType,
 } from "./hooks.js";
+
+// =============================================================================
+// Agent Schemas
+// =============================================================================
+
+export {
+  // Model and permission types
+  AgentModel,
+  // Agent definition
+  AgentDefinition,
+  // Subagent configuration
+  SubagentConfig,
+  // Session resume support
+  ResumeStrategy,
+  SessionMetadata,
+  // Subagent result
+  SubagentResult,
+  // Agent registry
+  AgentRegistry,
+  // Type guards
+  hasToolRestriction,
+  hasModelOverride,
+  isSuccessfulResult,
+  isFailedResult,
+  hasClaudeCodeSession,
+} from "./agents.js";
+
+export type {
+  AgentModel as AgentModelValue,
+  AgentDefinition as AgentDefinitionType,
+  SubagentConfig as SubagentConfigType,
+  ResumeStrategy as ResumeStrategyValue,
+  SessionMetadata as SessionMetadataType,
+  SubagentResult as SubagentResultType,
+  AgentRegistry as AgentRegistryType,
+} from "./agents.js";
 
 // =============================================================================
 // Adapters

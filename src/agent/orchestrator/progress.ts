@@ -331,10 +331,12 @@ const parseKeyValue = (
       }
       if (key === "cost") {
         const costNumber = Number(trimmedValue.replace(/[^0-9.]/g, ""));
-        result.work!.claudeCodeSession = {
-          ...(result.work!.claudeCodeSession ?? {}),
-          totalCostUsd: Number.isFinite(costNumber) ? costNumber : undefined,
-        };
+        if (Number.isFinite(costNumber)) {
+          result.work!.claudeCodeSession = {
+            ...(result.work!.claudeCodeSession ?? {}),
+            totalCostUsd: costNumber,
+          };
+        }
       }
       break;
   }
