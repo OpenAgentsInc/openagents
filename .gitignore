@@ -51,6 +51,7 @@ models/
 .beads/beads.db-*
 .beads/.exclusive-lock
 .git/beads-worktrees/
+.worktrees/
 
 docs/scratchpad/
 
@@ -63,6 +64,7 @@ tasks-cli-*/
 
 # Agent runtime files
 .openagents/agent.lock
+.openagents/locks/
 
 # Playwright test artifacts
 playwright-report/

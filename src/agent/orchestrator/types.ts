@@ -198,6 +198,8 @@ export interface OrchestratorConfig {
   safeMode?: boolean;
   /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
   additionalContext?: string;
+  /** Skip init script (useful for worktree runs where main repo is already validated) */
+  skipInitScript?: boolean;
 }
 
 export interface OrchestratorState {
