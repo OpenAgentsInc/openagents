@@ -286,6 +286,24 @@ history/
 - ❌ Do NOT duplicate tracking systems.
 - ❌ Do NOT clutter repo root with planning documents.
 
+### SDK Layering Rule
+
+> **OpenAgents stays OpenAgents-native; Claude Code and the SDK integrate via `src/schemas/sdk/**` + adapters.**
+> We adapt *outward* to Claude Code; we don't rewrite our core around it.
+
+**Architecture:**
+- `src/schemas/sdk/**` and `src/interop/**` are the **ONLY** places that know about Claude Agent SDK naming/types
+- Core tools (`src/tools/*.ts`) use OpenAgents-native naming (`path`, `oldText`, `newText`)
+- SDK layer presents SDK-shaped names (`file_path`, `old_string`, `new_string`) only at the edge
+- **Never** edit core tools to match SDK naming conventions
+- **Never** let Claude Code or MechaCoder rename internal parameters to SDK style
+
+**Rationale:**
+- Core stays human-friendly and OpenAgents-idiomatic
+- SDK compatibility is a *view*, not the source of truth
+- Adapters can evolve independently of core logic
+- Prevents coupling to external SDK breaking changes
+
 ---
 
 ## Lessons Learned
