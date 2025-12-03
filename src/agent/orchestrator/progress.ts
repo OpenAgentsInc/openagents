@@ -65,6 +65,25 @@ export const formatProgressMarkdown = (progress: SessionProgress): string => {
     `- **Files Modified**: ${progress.work.filesModified.length > 0 ? progress.work.filesModified.join(", ") : "None"}`,
     `- **Tests Run**: ${progress.work.testsRun ? "Yes" : "No"}`,
     `- **Tests Passing After Work**: ${progress.work.testsPassingAfterWork ? "Yes" : "No"}`,
+  );
+
+  // Add Claude Code session metadata if present
+  if (progress.work.claudeCodeSession) {
+    lines.push("", "### Claude Code Session");
+
+    if (progress.work.claudeCodeSession.toolsUsed) {
+      const tools = Object.entries(progress.work.claudeCodeSession.toolsUsed)
+        .map(([tool, count]) => `${tool}(${count})`)
+        .join(", ");
+      lines.push(`- **Tools Used**: ${tools}`);
+    }
+
+    if (progress.work.claudeCodeSession.summary) {
+      lines.push(`- **Summary**: ${progress.work.claudeCodeSession.summary}`);
+    }
+  }
+
+  lines.push(
     "",
     "## Next Session Should",
   );
