@@ -266,7 +266,8 @@ export const runClaudeCodeSubagent = async (
         prompt: defaultBuildPrompt(subtask),
         options: {
           cwd: options.cwd,
-          ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+          // Use Claude Code's system prompt with CLAUDE.md context
+          systemPrompt: options.systemPrompt ?? { type: "preset", preset: "claude_code" },
           maxTurns: options.maxTurns ?? 30,
           ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
           ...(options.resumeSessionId ? { resume: options.resumeSessionId } : {}),
@@ -285,6 +286,20 @@ export const runClaudeCodeSubagent = async (
           // Extract text delta from content_block_delta events
           if (event?.type === "content_block_delta" && event?.delta?.type === "text_delta") {
             options.onOutput(event.delta.text);
+          }
+          // Add newline at end of text blocks
+          if (event?.type === "content_block_stop") {
+            options.onOutput("\n");
+          }
+        }
+
+        // Log tool calls as JSON (separate from streaming text)
+        if (isToolCallMessage(message) && message.tool_calls && options.onOutput) {
+          for (const call of message.tool_calls) {
+            if (call?.name) {
+              const toolJson = JSON.stringify({ tool: call.name, input: call.input });
+              options.onOutput(`\n[TOOL] ${toolJson}\n`);
+            }
           }
         }
         // Track tool calls from messages
