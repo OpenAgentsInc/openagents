@@ -202,6 +202,10 @@ export interface OrchestratorConfig {
   additionalContext?: string;
   /** Skip init script (useful for worktree runs where main repo is already validated) */
   skipInitScript?: boolean;
+  /** Pre-assigned task (skip pickNextTask if provided) - used by parallel runner */
+  task?: Task;
+  /** Force creating new subtasks instead of reading existing ones - used by parallel runner */
+  forceNewSubtasks?: boolean;
 }
 
 export interface OrchestratorState {

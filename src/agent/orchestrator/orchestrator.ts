@@ -424,9 +424,16 @@ ${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
 
       // Phase 2: Select Task
       state.phase = "selecting_task";
-      const taskResult = yield* pickNextTask(tasksPath).pipe(
-        Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
-      );
+
+      // Use pre-assigned task if provided (parallel runner), otherwise pick next ready task
+      let taskResult: ReturnType<typeof pickNextTask> extends Effect.Effect<infer T, any, any> ? T : never;
+      if (config.task) {
+        taskResult = config.task;
+      } else {
+        taskResult = yield* pickNextTask(tasksPath).pipe(
+          Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
+        );
+      }
 
       if (!taskResult) {
         state.phase = "done";
@@ -443,8 +450,12 @@ ${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
 
       // Phase 3: Decompose
       state.phase = "decomposing";
-      let subtaskList = readSubtasks(openagentsDir, taskResult.id);
-      
+
+      // Read existing subtasks unless forceNewSubtasks is set (for parallel runs)
+      let subtaskList = config.forceNewSubtasks
+        ? null
+        : readSubtasks(openagentsDir, taskResult.id);
+
       if (!subtaskList) {
         // Create new subtask list with intelligent decomposition
         const subtaskOptions =
