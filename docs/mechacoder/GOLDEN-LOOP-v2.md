@@ -417,7 +417,7 @@ If tests pass:
 
 ### 2.9. Log and exit (or loop)
 
-* Write a per-run log under `docs/logs/YYYYMMDD/HHMMSS-agent-run.md` with:
+* Write a per-run log under `docs/logs/YYYYMMDD/HHMM-overnight-{sessionId}.md` with:
 
   * Task ID, title,
   * Summary of changes,
@@ -436,6 +436,78 @@ If tests pass:
     * No ready tasks remain,
     * `maxTasksPerRun` is reached, or
     * `maxRuntimeMinutes` is exceeded.
+
+### 2.10. Log Retention and Rotation
+
+Run logs are stored in `docs/logs/` with the following structure and policies:
+
+#### Directory Structure
+
+```
+docs/logs/
+├── 20251201/
+│   ├── 0935-overnight-orchestrator-1234567890.md
+│   ├── 1420-overnight-orchestrator-1234567891.md
+│   └── 2135-init.md
+├── 20251202/
+│   ├── 0813-overnight-orchestrator-1234567892.md
+│   └── 0956-supervisor-handoff.md
+└── 20251203/
+    └── 1056-overnight-orchestrator-1234567893.md
+```
+
+#### Naming Convention
+
+| Component | Format | Example |
+|-----------|--------|---------|
+| Date folder | `YYYYMMDD` | `20251203` |
+| Time prefix | `HHMM` | `1056` |
+| Type | `overnight` or descriptive | `overnight`, `preflight`, `init` |
+| Session ID | `orchestrator-{timestamp}` | `orchestrator-1764780987762` |
+| Extension | `.md` | `.md` |
+
+Full path: `docs/logs/YYYYMMDD/HHMM-overnight-orchestrator-{timestamp}.md`
+
+#### Log Content
+
+Each run log contains:
+
+1. **Header**: Session ID and start timestamp
+2. **Configuration**: Work directory, max tasks, enabled features
+3. **Task cycles**: Per-task entries with:
+   - Task ID and title
+   - Subtask execution logs
+   - Verification results (typecheck, tests)
+   - Commit SHA and message
+   - Success/failure status
+4. **Summary**: Tasks completed, final status
+
+#### Retention Policy (Manual)
+
+Log rotation is currently **manual**. Recommendations:
+
+| Age | Action |
+|-----|--------|
+| < 7 days | Keep all logs |
+| 7-30 days | Keep logs with failures or notable events |
+| > 30 days | Archive or delete |
+
+**Cleanup command:**
+```bash
+# Remove log folders older than 30 days
+find docs/logs -type d -name "20*" -mtime +30 -exec rm -rf {} +
+```
+
+#### Size Guidelines
+
+- Individual logs: Typically 5-50 KB depending on session length
+- Daily folders: Up to 1 MB for active days
+- Total `docs/logs/`: Monitor if exceeding 100 MB
+
+**Note:** Logs are committed to git. Large log accumulation will increase repository size. Consider:
+1. Adding `docs/logs/` to `.gitignore` for repositories with frequent overnight runs
+2. Using a separate logging system for production deployments
+3. Periodically pruning old log folders
 
 ---
 
