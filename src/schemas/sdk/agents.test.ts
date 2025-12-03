@@ -71,7 +71,7 @@ describe("Agent Schemas", () => {
         description: "Full-featured agent",
         prompt: "Do everything",
         tools: ["Read", "Write", "Edit", "Bash"],
-        model: "sonnet",
+        model: "sonnet" as const,
       };
 
       const decoded = S.decodeUnknownSync(AgentDefinition)(def);

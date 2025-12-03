@@ -35,7 +35,6 @@ import {
   ContentBlock,
   MessageRole,
   SDKAssistantMessage,
-  SDKMessage,
   SDKResultMessage,
   SDKUserMessage,
   TextBlock,
