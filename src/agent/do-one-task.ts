@@ -41,6 +41,7 @@ import {
   getSessionPath,
 } from "./session.js";
 import { runOrchestrator, type OrchestratorEvent } from "./orchestrator/index.js";
+import { createHudCallbacks } from "../hud/index.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
 
@@ -758,8 +759,12 @@ const doOneTaskOrchestrator = (config: Config) =>
 
     process.chdir(config.workDir);
 
-    // Event handler for logging
-    const emit = (event: OrchestratorEvent) => {
+    // Create HUD callbacks for real-time updates to the desktop HUD
+    // These silently fail if the HUD isn't running
+    const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
+
+    // Event handler for logging (also forwards to HUD)
+    const logOrchestratorEvent = (event: OrchestratorEvent) => {
       const ts = new Date().toISOString();
       switch (event.type) {
         case "session_start":
@@ -798,6 +803,12 @@ const doOneTaskOrchestrator = (config: Config) =>
       }
     };
 
+    // Wrap emit to send orchestrator events to both log and HUD
+    const emit = (event: OrchestratorEvent) => {
+      logOrchestratorEvent(event);
+      hudEmit(event);
+    };
+
     // Build claudeCode config, applying --cc-only override if specified
     const claudeCodeConfig = config.ccOnly
       ? {
@@ -815,11 +826,19 @@ const doOneTaskOrchestrator = (config: Config) =>
       allowPush: projectConfig.allowPush ?? true,
       claudeCode: claudeCodeConfig,
       ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
+      // Stream Claude Code output to console AND HUD
+      onOutput: (text: string) => {
+        process.stdout.write(text);
+        hudOnOutput(text);
+      },
     };
     const state = yield* runOrchestrator(orchestratorConfig, emit);
 
     // Generate a placeholder log file path for compatibility with legacy return type
     const logFile = nodePath.join(config.runLogDir, `orchestrator-${Date.now()}.log`);
+
+    // Close HUD client connection
+    hudClient.close();
 
     console.log("=".repeat(60));
     if (state.phase === "done") {
