@@ -286,12 +286,27 @@ const runAgentInWorktree = async (
 
   const worktreeOpenagentsDir = path.join(slot.worktree.path, ".openagents");
 
+  // Ensure .openagents directory exists in worktree
+  fs.mkdirSync(worktreeOpenagentsDir, { recursive: true });
+
   // Copy tasks.jsonl to worktree
   const srcTasksPath = path.join(openagentsDir, "tasks.jsonl");
   const dstTasksPath = path.join(worktreeOpenagentsDir, "tasks.jsonl");
   if (!fs.existsSync(dstTasksPath) && fs.existsSync(srcTasksPath)) {
-    fs.mkdirSync(worktreeOpenagentsDir, { recursive: true });
     fs.copyFileSync(srcTasksPath, dstTasksPath);
+  }
+
+  // Copy project.json to worktree
+  const srcProjectPath = path.join(openagentsDir, "project.json");
+  const dstProjectPath = path.join(worktreeOpenagentsDir, "project.json");
+  if (!fs.existsSync(dstProjectPath) && fs.existsSync(srcProjectPath)) {
+    fs.copyFileSync(srcProjectPath, dstProjectPath);
+  }
+
+  // Create empty progress.md so orchestrator can write to it
+  const progressPath = path.join(worktreeOpenagentsDir, "progress.md");
+  if (!fs.existsSync(progressPath)) {
+    fs.writeFileSync(progressPath, "");
   }
 
   // Install dependencies
