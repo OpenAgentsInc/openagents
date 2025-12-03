@@ -275,12 +275,15 @@ interface Config {
   runLogDir: string;
   /** Use legacy Grok-based agentLoop instead of orchestrator+Claude Code */
   legacy: boolean;
+  /** Force Claude Code only - no Grok fallback */
+  ccOnly: boolean;
 }
 
 const parseArgs = (): Config => {
   const args = process.argv.slice(2);
   let workDir = process.cwd();
   let legacy = false;
+  let ccOnly = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dir" && args[i + 1]) {
@@ -290,6 +293,8 @@ const parseArgs = (): Config => {
       i++;
     } else if (args[i] === "--legacy") {
       legacy = true;
+    } else if (args[i] === "--cc-only") {
+      ccOnly = true;
     }
   }
 
@@ -298,6 +303,7 @@ const parseArgs = (): Config => {
     sessionsDir: `${workDir}/.openagents/sessions`,
     runLogDir: `${workDir}/.openagents/run-logs`,
     legacy,
+    ccOnly,
   };
 };
 
@@ -792,12 +798,22 @@ const doOneTaskOrchestrator = (config: Config) =>
       }
     };
 
+    // Build claudeCode config, applying --cc-only override if specified
+    const claudeCodeConfig = config.ccOnly
+      ? {
+          ...projectConfig.claudeCode,
+          enabled: true,
+          preferForComplexTasks: false, // Use CC for ALL tasks
+          fallbackToMinimal: false, // No Grok fallback
+        }
+      : projectConfig.claudeCode;
+
     const orchestratorConfig = {
       cwd: config.workDir,
       openagentsDir,
       testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
       allowPush: projectConfig.allowPush ?? true,
-      claudeCode: projectConfig.claudeCode,
+      claudeCode: claudeCodeConfig,
       ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
     };
     const state = yield* runOrchestrator(orchestratorConfig, emit);
@@ -828,7 +844,13 @@ const program = config.legacy
   ? doOneTask(config) // Legacy: Grok-based agentLoop
   : doOneTaskOrchestrator(config); // Default: Orchestrator with Claude Code
 
-console.log(config.legacy ? "[Legacy mode: Grok-based agentLoop]" : "[Orchestrator mode: Claude Code primary]");
+if (config.legacy) {
+  console.log("[Legacy mode: Grok-based agentLoop]");
+} else if (config.ccOnly) {
+  console.log("[Orchestrator mode: Claude Code ONLY - no Grok fallback]");
+} else {
+  console.log("[Orchestrator mode: Claude Code primary, Grok fallback]");
+}
 
 Effect.runPromise(program.pipe(Effect.provide(liveLayer)))
   .then(() => process.exit(0))

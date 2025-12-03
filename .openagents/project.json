@@ -18,9 +18,9 @@
   "idPrefix": "oa",
   "claudeCode": {
     "enabled": true,
-    "preferForComplexTasks": true,
+    "preferForComplexTasks": false,
     "maxTurnsPerSubtask": 30,
     "permissionMode": "bypassPermissions",
-    "fallbackToMinimal": true
+    "fallbackToMinimal": false
   }
 }
