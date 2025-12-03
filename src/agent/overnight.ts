@@ -39,6 +39,7 @@ import {
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
+import { createHudCallbacks, closeHudClient } from "../hud/index.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -436,8 +437,16 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
     let tasksCompleted = 0;
 
-    // Event handler for logging
+    // Create HUD callbacks for real-time updates to the desktop HUD
+    // These silently fail if the HUD isn't running
+    const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
+
+    // Event handler for logging (also forwards to HUD)
     const emit = (event: OrchestratorEvent) => {
+      // Forward to HUD for real-time UI updates
+      hudEmit(event);
+
+      // Log to file/console
       const ts = new Date().toISOString();
       switch (event.type) {
         case "session_start":
@@ -504,8 +513,11 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         allowPush: projectConfig.allowPush ?? true,
         claudeCode: claudeCodeConfig,
         ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
-        // Stream Claude Code output to console
-        onOutput: (text: string) => process.stdout.write(text),
+        // Stream Claude Code output to console AND HUD
+        onOutput: (text: string) => {
+          process.stdout.write(text);
+          hudOnOutput(text);
+        },
       };
 
       const state = yield* runOrchestrator(orchestratorConfig, emit).pipe(
@@ -562,6 +574,9 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     log("OVERNIGHT AGENT FINISHED - Orchestrator Mode");
     log(`Tasks completed: ${tasksCompleted}`);
     log(`${"#".repeat(60)}\n`);
+
+    // Close HUD client connection
+    hudClient.close();
 
     // Final cleanup commit - commit any remaining progress/log files
     // Note: Use console.log not log() to avoid writing to the file we're about to commit

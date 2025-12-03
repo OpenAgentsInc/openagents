@@ -67,7 +67,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   backoffMultiplier: 2,
 };
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 50 * 60 * 1000; // 50 minutes
 
 const assistantErrorMessages: Record<SDKAssistantMessageError, { message: string; suggestion?: string }> = {
   authentication_failed: {
