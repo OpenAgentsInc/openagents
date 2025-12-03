@@ -10,7 +10,7 @@
   "testCommands": [
     "bun test"
   ],
-  "e2eCommands": [],
+  "e2eCommands": ["bun run e2e:test"],
   "allowPush": true,
   "allowForcePush": false,
   "maxTasksPerRun": 3,

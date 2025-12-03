@@ -1,5 +1,7 @@
 https://x.com/OpenAgentsInc/status/1948617421654245436
 
+July 25, 2025
+
 Episode 186: Actions Per Minute
 
 Flawed ground-truth data in agent benchmark "Humanity's Last Exam" underscores the need for better ways to measure agent effectiveness.

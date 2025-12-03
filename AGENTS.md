@@ -39,6 +39,7 @@ This repo uses `.openagents/` as its **sole task system**:
 - Do NOT use markdown TODOs, task lists, or other ad-hoc tracking methods.
 - Do NOT use `bd` or `.beads/` in this repo - that system is not used here.
 - All task operations go through `.openagents/tasks.jsonl`.
+- **NEVER manually edit `.openagents/tasks.jsonl`** - always use the `bun run tasks:*` CLI commands. Manual edits break schema validation (e.g., `taskId` vs `id` in deps).
 
 ### Task Schema
 
