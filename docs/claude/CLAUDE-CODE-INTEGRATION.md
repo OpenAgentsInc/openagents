@@ -417,6 +417,43 @@ Add to `.openagents/project.json`:
 - `permissionMode` (default `"bypassPermissions"`): Claude Code permission behavior (`default`, `acceptEdits`, `bypassPermissions`, `plan`, `dontAsk`).
 - `fallbackToMinimal` (default `true`): if Claude Code fails, run the minimal subagent instead.
 
+## Project Context via CLAUDE.md
+
+Claude Code reads `CLAUDE.md` from the project directory when `settingSources: ['project']` is configured in query options. This provides project-specific instructions and context.
+
+**Setup for this repo:**
+
+1. **Symlink**: `CLAUDE.md -> AGENTS.md`
+   - Single source of truth: maintain `AGENTS.md`
+   - Claude Code automatically loads it via the symlink
+   - No separate file to keep in sync
+
+2. **SDK Configuration**: Pass `settingSources: ['project']` to `query()`
+   ```typescript
+   for await (const message of query({
+     prompt: subtaskPrompt,
+     options: {
+       cwd: options.cwd,
+       settingSources: ["project"], // Loads CLAUDE.md
+       // ... other options
+     },
+   })) {
+     // Handle messages
+   }
+   ```
+
+3. **Content**: `AGENTS.md` contains:
+   - Agent startup checklist (read docs, check health)
+   - Task tracking with `.openagents/`
+   - Git and GitHub CLI conventions
+   - Work logging requirements
+   - Common patterns and lessons learned
+
+**Maintenance:**
+- Update `AGENTS.md` when project patterns or conventions change
+- Claude Code will automatically see updates via the symlink
+- No code generation or sync scripts needed
+
 ## Implementation Tasks
 
 Create these tasks in `.openagents/tasks.jsonl`:
