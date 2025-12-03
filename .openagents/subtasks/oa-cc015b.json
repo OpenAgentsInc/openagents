@@ -5,12 +5,12 @@
     {
       "id": "oa-cc015b-sub-001",
       "description": "Implement: Improve commit/task update flow\n\nDesign and implement a smoother flow to capture commit SHA when closing tasks (e.g., helper script/CLI to update tasks/logs with latest commit after a code commit, without awkward double commits). Document recommended workflow.",
-      "status": "failed",
-      "startedAt": "2025-12-03T07:42:49.248Z",
+      "status": "done",
+      "startedAt": "2025-12-03T07:49:05.295Z",
       "claudeCode": {
         "sessionId": "1b3af33a-78b8-4508-8838-cacf3e40f497"
       },
-      "error": "Verification failed (typecheck/tests): src/tasks/cli.ts(443,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'. Type 'null' is not assignable to type 'string | undefined'."
+      "completedAt": "2025-12-03T07:50:13.244Z"
     }
   ],
   "createdAt": "2025-12-03T07:40:19.955Z",
