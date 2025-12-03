@@ -116,7 +116,10 @@ const mapMessages = (messages: ChatMessage[], modelSupportsImages: boolean) =>
 export const makeGeminiRequestBody = (config: GeminiConfigShape, request: ChatRequest) => {
   const tools = request.tools?.map(toolToFunctionDeclaration);
   const model = request.model ?? config.defaultModel;
-  const contents = mapMessages(request.messages, Boolean(model.includes("pro") || model.includes("flash")));
+  const contents = mapMessages(
+    request.messages,
+    Boolean(model.includes("pro") || model.includes("flash") || model.includes("vision")),
+  );
 
   const generationConfig: Record<string, unknown> = {};
   if (request.temperature !== undefined) generationConfig.temperature = request.temperature;

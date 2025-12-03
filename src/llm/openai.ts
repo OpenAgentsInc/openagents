@@ -57,17 +57,31 @@ export const toolToOpenAIDefinition = (tool: Tool<any>): Record<string, unknown>
   };
 };
 
+const contentBlocksToOpenAI = (content: string | any) => {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  return content.map((block: any) => {
+    if (block.type === "text") {
+      return { type: "text", text: block.text };
+    }
+    return {
+      type: "image_url",
+      image_url: { url: `data:${block.mimeType};base64,${block.data}` },
+    };
+  });
+};
+
 const messagesToOpenAI = (messages: ChatMessage[]) =>
   messages.map((msg) => {
     if (msg.role === "tool" && msg.tool_call_id) {
       return {
         role: "tool",
         tool_call_id: msg.tool_call_id,
-        content: msg.content,
+        content: typeof msg.content === "string" ? msg.content : "",
         ...(msg.name ? { name: msg.name } : {}),
       };
     }
-    return msg;
+    return { ...msg, content: contentBlocksToOpenAI(msg.content) };
   });
 
 export const buildOpenAIRequestBody = (config: OpenAIConfigShape, request: ChatRequest) => {
