@@ -245,6 +245,66 @@ export type {
 } from "./messages.js";
 
 // =============================================================================
+// Hook Schemas
+// =============================================================================
+
+export {
+  // Hook event types
+  HookEvent,
+  // Hook input types
+  BaseHookInput,
+  PreToolUseHookInput,
+  PostToolUseHookInput,
+  NotificationHookInput,
+  UserPromptSubmitHookInput,
+  SessionStartHookInput,
+  SessionEndHookInput,
+  StopHookInput,
+  SubagentStopHookInput,
+  PreCompactHookInput,
+  HookInput,
+  // Hook output types
+  AsyncHookJSONOutput,
+  SyncHookJSONOutput,
+  PreToolUseHookSpecificOutput,
+  UserPromptSubmitHookSpecificOutput,
+  SessionStartHookSpecificOutput,
+  HookJSONOutput,
+  HookCallbackMatcher,
+  // Type guards
+  isPreToolUseHookInput,
+  isPostToolUseHookInput,
+  isSessionStartHookInput,
+  isSessionEndHookInput,
+  isNotificationHookInput,
+  isUserPromptSubmitHookInput,
+  isStopHookInput,
+  isSubagentStopHookInput,
+  isPreCompactHookInput,
+} from "./hooks.js";
+
+export type {
+  HookEvent as HookEventValue,
+  BaseHookInput as BaseHookInputType,
+  PreToolUseHookInput as PreToolUseHookInputType,
+  PostToolUseHookInput as PostToolUseHookInputType,
+  NotificationHookInput as NotificationHookInputType,
+  UserPromptSubmitHookInput as UserPromptSubmitHookInputType,
+  SessionStartHookInput as SessionStartHookInputType,
+  SessionEndHookInput as SessionEndHookInputType,
+  StopHookInput as StopHookInputType,
+  SubagentStopHookInput as SubagentStopHookInputType,
+  PreCompactHookInput as PreCompactHookInputType,
+  HookInput as HookInputType,
+  AsyncHookJSONOutput as AsyncHookJSONOutputType,
+  SyncHookJSONOutput as SyncHookJSONOutputType,
+  PreToolUseHookSpecificOutput as PreToolUseHookSpecificOutputType,
+  UserPromptSubmitHookSpecificOutput as UserPromptSubmitHookSpecificOutputType,
+  SessionStartHookSpecificOutput as SessionStartHookSpecificOutputType,
+  HookJSONOutput as HookJSONOutputType,
+} from "./hooks.js";
+
+// =============================================================================
 // Adapters
 // =============================================================================
 
