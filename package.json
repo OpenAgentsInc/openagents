@@ -19,6 +19,7 @@
     "tasks:next": "bun src/tasks/cli.ts next",
     "tasks:create": "bun src/tasks/cli.ts create",
     "tasks:update": "bun src/tasks/cli.ts update",
+    "tasks:close": "bun src/tasks/cli.ts close",
     "mechacoder": "bun src/agent/do-one-task.ts",
     "mechacoder:cc-only": "bun src/agent/do-one-task.ts --cc-only",
     "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy",

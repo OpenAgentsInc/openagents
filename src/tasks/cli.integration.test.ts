@@ -63,4 +63,121 @@ describe("tasks CLI integration", () => {
     const readyList = JSON.parse(ready.stdout);
     expect(readyList).toHaveLength(0);
   });
+
+  test("close command with explicit commit SHA", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-"));
+
+    // Initialize
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    // Create a task
+    const create = runCli(
+      [
+        "create",
+        "--dir",
+        tmp,
+        "--title",
+        "task to close",
+        "--type",
+        "task",
+        "--priority",
+        "1",
+        "--json",
+      ],
+      tmp,
+    );
+    expect(create.code).toBe(0);
+    const created = JSON.parse(create.stdout);
+
+    // Close the task with explicit commit SHA
+    const close = runCli(
+      [
+        "close",
+        "--dir",
+        tmp,
+        "--id",
+        created.id,
+        "--reason",
+        "Done via close command",
+        "--commit",
+        "abc123def456",
+        "--json",
+      ],
+      tmp,
+    );
+    expect(close.code).toBe(0);
+    const closed = JSON.parse(close.stdout);
+    expect(closed.status).toBe("closed");
+    expect(closed.closeReason).toBe("Done via close command");
+    expect(closed.commits).toContain("abc123def456");
+
+    // Verify no ready tasks remain
+    const ready = runCli(["ready", "--dir", tmp, "--json"], tmp);
+    const readyList = JSON.parse(ready.stdout);
+    expect(readyList).toHaveLength(0);
+  });
+
+  test("close command without commit SHA (defaults to empty when not in git repo)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-nogit-"));
+
+    // Initialize
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    // Create a task
+    const create = runCli(
+      [
+        "create",
+        "--dir",
+        tmp,
+        "--title",
+        "task without commit",
+        "--type",
+        "task",
+        "--json",
+      ],
+      tmp,
+    );
+    expect(create.code).toBe(0);
+    const created = JSON.parse(create.stdout);
+
+    // Close the task without commit SHA (not a git repo, so auto-detect fails)
+    const close = runCli(
+      [
+        "close",
+        "--dir",
+        tmp,
+        "--id",
+        created.id,
+        "--json",
+      ],
+      tmp,
+    );
+    expect(close.code).toBe(0);
+    const closed = JSON.parse(close.stdout);
+    expect(closed.status).toBe("closed");
+    expect(closed.closeReason).toBe("Completed"); // default reason
+  });
+
+  test("close command requires --id", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-noid-"));
+
+    // Initialize
+    runCli(["init", "--dir", tmp, "--json"], tmp);
+
+    // Close without --id should fail
+    const close = runCli(
+      [
+        "close",
+        "--dir",
+        tmp,
+        "--json",
+      ],
+      tmp,
+    );
+    expect(close.code).toBe(0); // exits 0 but outputs error
+    const output = JSON.parse(close.stdout);
+    expect(output.error).toContain("Missing required --id");
+  });
 });

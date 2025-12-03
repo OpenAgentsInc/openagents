@@ -52,6 +52,11 @@ interface CliOptions {
   title?: string;
   description?: string;
   projectId?: string;
+  // close command options
+  id?: string;
+  reason?: string;
+  commit?: string;
+  stage?: boolean;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -147,6 +152,27 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
           i++;
         }
         break;
+      case "--id":
+        if (nextArg) {
+          options.id = nextArg;
+          i++;
+        }
+        break;
+      case "--reason":
+        if (nextArg) {
+          options.reason = nextArg;
+          i++;
+        }
+        break;
+      case "--commit":
+        if (nextArg) {
+          options.commit = nextArg;
+          i++;
+        }
+        break;
+      case "--stage":
+        options.stage = true;
+        break;
     }
   }
 
@@ -170,6 +196,36 @@ const readStdin = async (): Promise<string> => {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString("utf-8");
+};
+
+const getLatestCommitSha = async (rootDir: string): Promise<string | null> => {
+  try {
+    const result = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+      cwd: rootDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode === 0) {
+      return result.stdout.toString().trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const stageTasksFile = async (rootDir: string): Promise<boolean> => {
+  try {
+    const tasksPath = nodePath.join(OPENAGENTS_DIR, TASKS_FILE);
+    const result = Bun.spawnSync(["git", "add", tasksPath], {
+      cwd: rootDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
 };
 
 const cmdInit = (options: CliOptions) =>
@@ -372,6 +428,59 @@ const cmdUpdate = (options: CliOptions) =>
     return task;
   });
 
+const cmdClose = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.id) {
+      output({ error: "Missing required --id <task-id>" }, options.json);
+      return null;
+    }
+
+    // Get commit SHA: use provided, or fetch from git
+    let commitSha: string | undefined = options.commit;
+    if (!commitSha) {
+      const sha = yield* Effect.tryPromise({
+        try: () => getLatestCommitSha(options.rootDir),
+        catch: () => new Error("Failed to get latest commit SHA"),
+      });
+      commitSha = sha ?? undefined;
+    }
+
+    const commits = commitSha ? [commitSha] : [];
+    const reason = options.reason || "Completed";
+
+    const task = yield* closeTask({
+      tasksPath,
+      id: options.id,
+      reason,
+      commits,
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!task) {
+      return null;
+    }
+
+    // Stage tasks file if requested
+    if (options.stage) {
+      const staged = yield* Effect.tryPromise({
+        try: () => stageTasksFile(options.rootDir),
+        catch: () => new Error("Failed to stage tasks file"),
+      });
+      if (!staged) {
+        output({ warning: "Task closed but failed to stage tasks file" }, options.json);
+      }
+    }
+
+    output(task, options.json);
+    return task;
+  });
+
 const showHelp = (): void => {
   console.log(`
 OpenAgents Task CLI
@@ -385,6 +494,7 @@ Commands:
   next      Pick the next ready task and mark it in_progress
   create    Create a new task
   update    Update an existing task
+  close     Close a task with optional commit SHA capture
 
 Global Options:
   --json          Output as JSON
@@ -411,12 +521,20 @@ create Options:
 init Options:
   --project-id <id>       Custom project ID (default: directory name)
 
+close Options:
+  --id <task-id>          Task ID to close (required)
+  --reason <reason>       Close reason (default: "Completed")
+  --commit <sha>          Commit SHA to attach (default: auto-detect from HEAD)
+  --stage                 Stage .openagents/tasks.jsonl after updating
+
 Examples:
   bun src/tasks/cli.ts init --json
   bun src/tasks/cli.ts list --status open --json
   bun src/tasks/cli.ts ready --limit 5 --json
   bun src/tasks/cli.ts next --json
   bun src/tasks/cli.ts create --title "Fix bug" --type bug --priority 1 --json
+  bun src/tasks/cli.ts close --id oa-123 --reason "Implemented feature" --json
+  bun src/tasks/cli.ts close --id oa-123 --stage --json  # auto-capture HEAD commit and stage
   echo '{"id":"oa-123","status":"closed","reason":"Done"}' | bun src/tasks/cli.ts update --json-input --json
 `);
 };
@@ -488,6 +606,18 @@ const main = async () => {
     case "update":
       try {
         await Effect.runPromise(cmdUpdate(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "close":
+      try {
+        await Effect.runPromise(cmdClose(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
