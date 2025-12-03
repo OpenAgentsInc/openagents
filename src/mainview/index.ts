@@ -15,6 +15,58 @@ import {
   svgElementToString,
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
+import Electrobun, { Electroview } from "electrobun/view"
+import type { HudMessage } from "../hud/protocol.js"
+
+// ============================================================================
+// RPC Schema for HUD Messages (must match src/bun/index.ts)
+// ============================================================================
+
+interface HudRpcSchema {
+  bun: {
+    requests: {};
+    messages: {
+      hudMessage: HudMessage;
+    };
+  };
+  webview: {
+    requests: {};
+    messages: {};
+  };
+}
+
+// ============================================================================
+// HUD Event State
+// ============================================================================
+
+/** Store recent HUD events for display */
+const hudEventHistory: HudMessage[] = []
+const MAX_HUD_HISTORY = 50
+
+/** Events that should trigger an immediate refresh */
+const REFRESH_TRIGGER_EVENTS = new Set([
+  "task_selected",
+  "task_decomposed",
+  "subtask_complete",
+  "subtask_failed",
+  "session_complete",
+  "commit_created",
+])
+
+function handleHudMessage(message: HudMessage): void {
+  // Store in history
+  hudEventHistory.push(message)
+  if (hudEventHistory.length > MAX_HUD_HISTORY) {
+    hudEventHistory.shift()
+  }
+
+  console.log("[HUD] Received:", message.type, message)
+
+  // Trigger immediate refresh for important state changes
+  if (REFRESH_TRIGGER_EVENTS.has(message.type)) {
+    void refreshLayoutFromState()
+  }
+}
 
 // Larger padding/spacing to keep stacked agent->repo->task columns readable
 const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
@@ -205,8 +257,29 @@ container.addEventListener("mouseup", (e) => {
 // Initial render
 render()
 
-// Load live data and refresh periodically
+// Load live data and refresh periodically (fallback polling)
 void refreshLayoutFromState()
 setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
 
-console.log("Flow HUD loaded")
+// ============================================================================
+// Electrobun RPC Setup for Real-time HUD Events
+// ============================================================================
+
+// Set up RPC to receive hudMessage events from the Bun process
+const rpc = Electroview.defineRPC<HudRpcSchema>({
+  maxRequestTime: 10000,
+  handlers: {
+    requests: {},
+    messages: {
+      hudMessage: (message: HudMessage) => {
+        handleHudMessage(message)
+      },
+    },
+  },
+})
+
+// Initialize Electrobun with RPC
+const electrobunInstance = new Electrobun.Electroview({ rpc })
+void electrobunInstance // Keep reference to avoid GC
+
+console.log("Flow HUD loaded with WebSocket support")
