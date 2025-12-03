@@ -376,7 +376,400 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 ---
 
-## 5. Future Extensions (Out of Scope for v2)
+## 5. Recovery Playbooks
+
+This section provides step-by-step instructions for recovering from common failure scenarios. Use these playbooks when the orchestrator stops or encounters issues.
+
+### 5.1. Playbook: Test/Typecheck Failure Recovery
+
+**Symptoms:**
+- Session ends with `testsPassingAfterWork: false` in progress.md
+- Subtask marked as `failed` with `error` field populated
+- Task remains `in_progress` (not committed)
+
+**Recovery Steps:**
+
+1. **Inspect the failure output:**
+   ```bash
+   # Check progress file for failure details
+   cat .openagents/progress.md
+
+   # Check subtask file for error and failure count
+   cat .openagents/subtasks/<taskId>.json | jq '.subtasks[] | select(.status == "failed")'
+   ```
+
+2. **Understand what changed:**
+   ```bash
+   # See uncommitted changes from the failed attempt
+   git status
+   git diff
+
+   # Check which files were modified
+   jq '.subtasks[].filesModified' .openagents/subtasks/<taskId>.json
+   ```
+
+3. **Decide on recovery strategy:**
+
+   **Option A: Retry (let orchestrator fix it)**
+   - The orchestrator tracks `failureCount` per subtask
+   - On next run, it will retry with `resumeStrategy: "fork"` (fresh context)
+   - After 3 consecutive failures, task is marked `blocked`
+
+   ```bash
+   # Simply rerun - orchestrator will retry
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+   **Option B: Manual fix before retry**
+   ```bash
+   # Fix the failing tests/typecheck manually
+   bun run typecheck
+   bun test
+
+   # Reset subtask status for fresh attempt
+   # Edit .openagents/subtasks/<taskId>.json:
+   # - Set failed subtask's status to "pending"
+   # - Reset failureCount to 0
+   # - Clear claudeCode.sessionId to force fresh start
+
+   # Rerun orchestrator
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+   **Option C: Discard changes and skip**
+   ```bash
+   # Discard all uncommitted changes
+   git checkout -- .
+   git clean -fd
+
+   # Mark task as blocked to skip it
+   bun run tasks:update --id <taskId> --status blocked --reason "Manual: skipped due to persistent failures"
+   ```
+
+4. **Prevent infinite loops:**
+   - After 3 consecutive failures (`MAX_CONSECUTIVE_FAILURES`), the task is automatically blocked
+   - The orchestrator sets `resumeStrategy: "fork"` after each failure to try fresh context
+   - Check `failureCount` in subtask JSON to see how many attempts have been made
+
+---
+
+### 5.2. Playbook: Agent Crash Recovery
+
+**Symptoms:**
+- Orchestrator process terminated unexpectedly (killed, OOM, power loss)
+- `.openagents/progress.md` may be incomplete or missing `completedAt`
+- Subtask status shows `in_progress` but no agent is running
+- Git working tree may have uncommitted changes
+
+**Recovery Steps:**
+
+1. **Detect the crash state:**
+   ```bash
+   # Check if any agent process is running
+   ps aux | grep mechacoder
+
+   # Check for stale lock file
+   cat .openagents/agent.lock 2>/dev/null && echo "Lock exists" || echo "No lock"
+
+   # Check progress file completion status
+   grep "Completed:" .openagents/progress.md
+   ```
+
+2. **Clean up stale state:**
+   ```bash
+   # Remove stale lock file if process is dead
+   rm -f .openagents/agent.lock
+
+   # Check progress for in-progress subtasks
+   grep "Subtasks In Progress" .openagents/progress.md
+   ```
+
+3. **Assess working tree state:**
+   ```bash
+   # Check for uncommitted changes
+   git status --porcelain
+
+   # If changes exist, decide:
+   # - Keep them (they may be partial work)
+   # - Discard them (start fresh)
+   ```
+
+4. **Reset subtask for resumption:**
+   ```bash
+   # Find the in-progress subtask
+   cat .openagents/subtasks/<taskId>.json | jq '.subtasks[] | select(.status == "in_progress")'
+
+   # Option A: Resume from where it left off
+   # Leave subtask as-is; orchestrator will continue using sessionId
+
+   # Option B: Force fresh start
+   # Edit subtask JSON:
+   # - Set status to "pending"
+   # - Set claudeCode.resumeStrategy to "fork"
+   # - Optionally clear claudeCode.sessionId
+   ```
+
+5. **Restart the orchestrator:**
+   ```bash
+   # The orchestrator will read progress.md and resume appropriately
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+**Session Resumption Behavior:**
+- If `claudeCode.sessionId` exists, orchestrator attempts to resume that session
+- If `resumeStrategy: "fork"`, it creates a new session forked from the previous one
+- If resumption fails, it falls back to minimal subagent or fresh start
+
+---
+
+### 5.3. Playbook: Dirty Workspace Detection & Cleanup
+
+**Goal:** Ensure the working tree is in a clean, known state before starting work.
+
+**Detection (via init.sh or manual):**
+
+Create `.openagents/init.sh` to automate detection:
+
+```bash
+#!/bin/bash
+# .openagents/init.sh - Workspace health check
+
+set -e
+
+echo "=== Workspace Health Check ==="
+
+# 1. Check for uncommitted changes
+if [ -n "$(git status --porcelain)" ]; then
+    echo "WARNING: Uncommitted changes detected:"
+    git status --short
+
+    # Option: Fail init to prevent work on dirty tree
+    # exit 1
+
+    # Option: Continue with warning (current behavior)
+    echo "Proceeding with dirty working tree..."
+fi
+
+# 2. Check for stale lock files
+if [ -f ".openagents/agent.lock" ]; then
+    LOCK_PID=$(cat .openagents/agent.lock | head -1)
+    if ! kill -0 "$LOCK_PID" 2>/dev/null; then
+        echo "WARNING: Stale lock file from PID $LOCK_PID (process not running)"
+        rm -f .openagents/agent.lock
+        echo "Removed stale lock file"
+    else
+        echo "ERROR: Another agent is running (PID $LOCK_PID)"
+        exit 1
+    fi
+fi
+
+# 3. Check for in-progress subtasks from crashed sessions
+for subtask_file in .openagents/subtasks/*.json; do
+    if [ -f "$subtask_file" ]; then
+        IN_PROGRESS=$(jq -r '.subtasks[] | select(.status == "in_progress") | .id' "$subtask_file" 2>/dev/null || true)
+        if [ -n "$IN_PROGRESS" ]; then
+            echo "WARNING: Found in-progress subtask: $IN_PROGRESS"
+            echo "Previous session may have crashed. Will attempt resumption."
+        fi
+    fi
+done
+
+# 4. Verify tests pass at session start
+echo "Running quick typecheck..."
+if ! bun run typecheck 2>&1; then
+    echo "WARNING: Typecheck failing at session start"
+    echo "Orchestrator will inject fix-typecheck subtask"
+fi
+
+echo "=== Health check complete ==="
+```
+
+**Manual Cleanup Procedure:**
+
+```bash
+# 1. Identify dirty state
+git status
+git stash list  # Check for stashed changes
+
+# 2. Decide what to do with uncommitted changes
+# Option A: Commit them (if they're valid work)
+git add -A
+git commit -m "WIP: save uncommitted work from crashed session"
+
+# Option B: Stash them (to review later)
+git stash push -m "Uncommitted work from crashed session $(date +%Y%m%d-%H%M)"
+
+# Option C: Discard them (if they're invalid/partial)
+git checkout -- .
+git clean -fd
+
+# 3. Clean up orchestrator state
+rm -f .openagents/agent.lock
+
+# 4. Reset in-progress subtasks
+# Edit .openagents/subtasks/<taskId>.json as needed
+
+# 5. Verify clean state
+git status  # Should show clean working tree
+bun run typecheck
+bun test
+```
+
+---
+
+### 5.4. Playbook: Safe Task Resumption
+
+**Goal:** Resume a partially-completed task without losing progress or creating duplicate work.
+
+**Understanding Resumption State:**
+
+The orchestrator tracks resumption through:
+1. `.openagents/progress.md` - Session summary with blockers and next steps
+2. `.openagents/subtasks/<taskId>.json` - Per-subtask status and Claude Code session IDs
+3. `.openagents/tasks.jsonl` - Overall task status
+
+**Resumption Flow:**
+
+```
+Orchestrator Start
+    │
+    ├── Read progress.md
+    │   └── Extract: previous blockers, completed subtasks, session IDs
+    │
+    ├── Run init.sh (if exists)
+    │   └── Verify workspace health
+    │
+    ├── Check task status
+    │   ├── If task is "closed" → skip, pick next task
+    │   ├── If task is "blocked" → skip, pick next task
+    │   └── If task is "in_progress" → resume
+    │
+    ├── Load subtasks/<taskId>.json
+    │   ├── Skip subtasks with status "done" or "verified"
+    │   ├── Resume subtasks with status "in_progress" or "pending"
+    │   └── Check claudeCode.sessionId for session resumption
+    │
+    └── For each pending/in-progress subtask:
+        ├── If claudeCode.sessionId exists:
+        │   ├── If resumeStrategy == "fork" → fork from that session
+        │   └── If resumeStrategy == "continue" → resume session directly
+        └── If no sessionId → start fresh
+```
+
+**Step-by-Step Resumption:**
+
+1. **Check what was completed:**
+   ```bash
+   # View completed subtasks
+   cat .openagents/subtasks/<taskId>.json | jq '.subtasks[] | select(.status == "done") | .id'
+
+   # View what's still pending
+   cat .openagents/subtasks/<taskId>.json | jq '.subtasks[] | select(.status != "done") | {id, status, failureCount}'
+   ```
+
+2. **Check for blockers from last session:**
+   ```bash
+   grep -A 5 "### Blockers" .openagents/progress.md
+   ```
+
+3. **Decide on resumption strategy:**
+
+   **Option A: Continue where left off (default)**
+   ```bash
+   # Just run - orchestrator handles resumption automatically
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+   **Option B: Force fresh start on specific subtask**
+   ```bash
+   # Edit .openagents/subtasks/<taskId>.json:
+   # - Set claudeCode.resumeStrategy to "fork"
+   # - Or remove claudeCode.sessionId entirely
+
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+   **Option C: Skip problematic subtask**
+   ```bash
+   # Edit .openagents/subtasks/<taskId>.json:
+   # - Set subtask status to "done" (mark as complete even if not)
+   # - Add a note in the description
+
+   bun run src/cli/mechacoder.ts --dir . --once
+   ```
+
+4. **Handle merge conflicts or remote changes:**
+   ```bash
+   # If push failed due to remote changes
+   git fetch origin
+   git log --oneline HEAD..origin/main
+
+   # Rebase local work
+   git rebase origin/main
+
+   # If conflicts, resolve manually then continue
+   git rebase --continue
+
+   # Push the resolved changes
+   git push origin HEAD
+   ```
+
+5. **Verify resumption was successful:**
+   ```bash
+   # Check progress file was updated
+   cat .openagents/progress.md | head -20
+
+   # Check subtask status
+   cat .openagents/subtasks/<taskId>.json | jq '.subtasks[] | {id, status}'
+
+   # Check task was closed
+   grep <taskId> .openagents/tasks.jsonl | jq '.status'
+   ```
+
+---
+
+### 5.5. Quick Reference: Recovery Decision Tree
+
+```
+Agent stopped unexpectedly?
+    │
+    ├── Check: Is there a stale lock file?
+    │   └── Yes → Remove .openagents/agent.lock
+    │
+    ├── Check: Are there uncommitted changes?
+    │   ├── Yes, valid work → git stash or commit
+    │   └── Yes, garbage → git checkout -- . && git clean -fd
+    │
+    ├── Check: What does progress.md say?
+    │   ├── Has blockers → Address blockers first
+    │   └── In progress → Resumption will continue
+    │
+    └── Restart: bun run src/cli/mechacoder.ts --dir . --once
+
+Tests failing after changes?
+    │
+    ├── Check: failureCount in subtask JSON
+    │   ├── < 3 → Orchestrator will retry automatically
+    │   └── >= 3 → Task blocked, needs manual intervention
+    │
+    ├── Fix option: Manual code fix
+    │   └── Fix code → Reset subtask status → Retry
+    │
+    └── Skip option: Mark task as blocked
+        └── bun run tasks:update --id <id> --status blocked
+
+Can't resume Claude Code session?
+    │
+    ├── Session expired or unavailable
+    │   └── Set claudeCode.resumeStrategy = "fork" in subtask JSON
+    │
+    └── Want completely fresh start
+        └── Remove claudeCode.sessionId from subtask JSON
+```
+
+---
+
+## 6. Future Extensions (Out of Scope for v2)
 
 These belong in future loops or specs, not in Golden Loop v2:
 
