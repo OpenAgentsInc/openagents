@@ -10,6 +10,7 @@ export {
   TaskUpdate,
   ProjectConfig,
   TaskFilter,
+  SandboxConfig,
   // Types
   type Status as StatusType,
   type IssueType as IssueTypeType,
@@ -21,6 +22,7 @@ export {
   type TaskUpdate as TaskUpdateT,
   type ProjectConfig as ProjectConfigT,
   type TaskFilter as TaskFilterT,
+  type SandboxConfig as SandboxConfigT,
   // Helpers
   isTaskReady,
   decodeTask,

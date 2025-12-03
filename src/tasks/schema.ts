@@ -103,6 +103,25 @@ const ClaudeCodeConfig = S.Struct({
 });
 export type ClaudeCodeConfig = S.Schema.Type<typeof ClaudeCodeConfig>;
 
+export const SandboxConfig = S.Struct({
+  /** Enable sandboxed execution (default: true if available) */
+  enabled: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Backend to use: auto-detect, macos-container, docker, seatbelt, or none */
+  backend: S.optionalWith(
+    S.Literal("auto", "macos-container", "docker", "seatbelt", "none"),
+    { default: () => "auto" as const },
+  ),
+  /** Container image to use (only for container backends) */
+  image: S.optional(S.String),
+  /** Memory limit with suffix K/M/G (e.g., "4G") */
+  memoryLimit: S.optional(S.String),
+  /** Number of CPUs to allocate */
+  cpuLimit: S.optional(S.Number),
+  /** Timeout in milliseconds for sandboxed operations */
+  timeoutMs: S.optionalWith(S.Number, { default: () => 300_000 }),
+});
+export type SandboxConfig = S.Schema.Type<typeof SandboxConfig>;
+
 // ProjectConfig matches .openagents/project.json
 export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
@@ -125,6 +144,9 @@ export const ProjectConfig = S.Struct({
   runLogDir: S.optionalWith(S.String, { default: () => ".openagents/run-logs" }),
   claudeCode: S.optionalWith(ClaudeCodeConfig, {
     default: () => S.decodeUnknownSync(ClaudeCodeConfig)({}),
+  }),
+  sandbox: S.optionalWith(SandboxConfig, {
+    default: () => S.decodeUnknownSync(SandboxConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({

@@ -1,4 +1,4 @@
-import * as S from "@effect/schema/Schema";
+import * as S from "effect/Schema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error Types (following ToolExecutionError pattern from src/tools/schema.ts)
