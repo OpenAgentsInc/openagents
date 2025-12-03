@@ -53,12 +53,30 @@ const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name
 const isResultMessage = (message: any): message is { type?: string; subtype?: string } =>
   typeof message === "object" && message !== null && "type" in message;
 
-const defaultBuildPrompt = (subtask: Subtask): string =>
-  `## Subtask: ${subtask.id}
+const defaultBuildPrompt = (subtask: Subtask): string => {
+  let prompt = `## Subtask: ${subtask.id}
 
 ${subtask.description}
 
 Focus on minimal, correct changes.`;
+
+  // Include failure context if this is a retry
+  if (subtask.failureCount && subtask.failureCount > 0 && subtask.lastFailureReason) {
+    prompt += `
+
+## IMPORTANT: Previous Attempt Failed
+
+This subtask has failed ${subtask.failureCount} time(s). The last failure was:
+\`\`\`
+${subtask.lastFailureReason}
+\`\`\`
+
+You MUST address this error before proceeding. Do NOT repeat the same approach that caused the failure.
+Run \`bun run typecheck\` and \`bun test\` to verify your changes pass before completing.`;
+  }
+
+  return prompt;
+};
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
