@@ -48,11 +48,11 @@ export const runClaudeCodeSubagent = async (
   let turns = 0;
 
   const mcpServers: Record<string, McpServerConfig> =
-    options.mcpServers ??
+    (options.mcpServers as Record<string, McpServerConfig> | undefined) ??
     {
       [CLAUDE_CODE_MCP_SERVER_NAME]: createMechaCoderMcpServer({
         openagentsDir: options.openagentsDir ?? "",
-      }),
+      }) as McpServerConfig,
     };
 
   const allowedTools = options.allowedTools ?? getAllowedClaudeCodeTools();

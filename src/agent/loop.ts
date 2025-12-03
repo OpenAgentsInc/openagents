@@ -208,9 +208,11 @@ export const agentLoop = (
         content: safeAssistantMessage.content,
       });
 
+      const turnContent =
+        typeof safeAssistantMessage.content === "string" ? safeAssistantMessage.content : "";
       const turn: AgentTurn = {
         role: "assistant",
-        content: safeAssistantMessage.content,
+        content: turnContent,
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
       };
 

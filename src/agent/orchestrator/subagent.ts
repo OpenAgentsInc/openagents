@@ -6,7 +6,7 @@
  * they don't need 10K tokens of instructions.
  */
 import { Effect } from "effect";
-import { agentLoop, type LoopEvent } from "../loop.js";
+import { agentLoop } from "../loop.js";
 import { OpenRouterClient } from "../../llm/openrouter.js";
 import type { Tool } from "../../tools/schema.js";
 import {

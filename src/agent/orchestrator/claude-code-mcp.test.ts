@@ -15,8 +15,8 @@ describe("claude-code-mcp tools", () => {
   test("read_progress returns placeholder when path missing", async () => {
     const tool = getTool("read_progress");
     const result = await tool.handler(
-      { issue: "none", summary: "n/a", filesModified: [] },
-      {}
+      { issue: "none", summary: "n/a", filesModified: [] } as any,
+      {} as any
     );
 
     expect(result.content?.[0]?.type).toBe("text");
@@ -29,8 +29,8 @@ describe("claude-code-mcp tools", () => {
 
     const tool = buildMechaCoderMcpTools({ openagentsDir }).find((toolDef) => toolDef.name === "read_progress")!;
     const result = await tool.handler(
-      { issue: "none", summary: "n/a", filesModified: [] },
-      {}
+      { issue: "none", summary: "n/a", filesModified: [] } as any,
+      {} as any
     );
 
     expect(result.content?.[0]?.text).toContain("session-1");
@@ -40,8 +40,8 @@ describe("claude-code-mcp tools", () => {
   test("subtask_complete echoes summary and files", async () => {
     const tool = getTool("subtask_complete");
     const result = await tool.handler(
-      { summary: "Updated tests", filesModified: ["a.ts", "b.ts"] },
-      {}
+      { summary: "Updated tests", filesModified: ["a.ts", "b.ts"] } as any,
+      {} as any
     );
 
     expect(result.content?.[0]?.text).toContain("Updated tests");

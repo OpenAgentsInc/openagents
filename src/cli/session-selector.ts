@@ -1,5 +1,5 @@
 import { basename } from "path";
-import { SessionManager, type SessionMessageEntry, type SessionHeader } from "./session-manager.js";
+import { SessionManager, type SessionEntry, type SessionMessageEntry, type SessionHeader } from "./session-manager.js";
 
 export interface SessionSummary {
   path: string;
@@ -22,7 +22,7 @@ const withWorkingDir = <A>(cwd: string | undefined, fn: () => A): A => {
   }
 };
 
-const summarizeLabel = (path: string, entries: Array<SessionHeader | SessionMessageEntry>, maxLength = 80): string => {
+const summarizeLabel = (path: string, entries: SessionEntry[], maxLength = 80): string => {
   const fallback = basename(path);
   const firstMessage = entries.find((e): e is SessionMessageEntry => e.type === "message");
   if (!firstMessage) return fallback;
@@ -51,7 +51,12 @@ export const getSessionSummaries = (options: SessionSelectorOptions = {}): Sessi
     const sessions = manager.listSessions();
     return sessions.map((path) => ({
       path,
-      label: summarizeLabel(path, manager.load(path)),
+      label: summarizeLabel(
+        path,
+        manager
+          .load(path)
+          .filter((e): e is SessionHeader | SessionMessageEntry => e.type === "session" || e.type === "message"),
+      ),
     }));
   });
 

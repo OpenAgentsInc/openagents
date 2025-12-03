@@ -67,43 +67,35 @@ const runVerification = (
   testCommands: string[],
   cwd: string,
   emit: (event: OrchestratorEvent) => void
-): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, OpenRouterClient> =>
-  Effect.gen(function* () {
-    const outputs: string[] = [];
-    let allPassed = true;
+): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
+  Effect.try({
+    try: () => {
+      const outputs: string[] = [];
+      let allPassed = true;
 
-    for (const cmd of testCommands) {
-      emit({ type: "verification_start", command: cmd });
-
-      // Run the command via bash tool
-      const result = yield* Effect.tryPromise({
-        try: async () => {
-          const { execSync } = await import("node:child_process");
+      for (const cmd of testCommands) {
+        emit({ type: "verification_start", command: cmd });
+        try {
+          const { execSync } = require("node:child_process") as typeof import("node:child_process");
           const output = execSync(cmd, {
             cwd,
             encoding: "utf-8",
             stdio: ["pipe", "pipe", "pipe"],
-            timeout: 120000, // 2 minute timeout
+            timeout: 120000,
           });
-          return { passed: true, output };
-        },
-        catch: (error: any) => {
-          return { passed: false, output: error.stdout || error.stderr || error.message };
-        },
-      });
-
-      const passed = typeof result === "object" && "passed" in result ? result.passed : false;
-      const output = typeof result === "object" && "output" in result ? String(result.output) : String(result);
-
-      outputs.push(output);
-      emit({ type: "verification_complete", command: cmd, passed, output });
-
-      if (!passed) {
-        allPassed = false;
+          outputs.push(String(output));
+          emit({ type: "verification_complete", command: cmd, passed: true, output: String(output) });
+        } catch (error: any) {
+          const output = String(error?.stdout || error?.stderr || error?.message || error);
+          outputs.push(output);
+          emit({ type: "verification_complete", command: cmd, passed: false, output });
+          allPassed = false;
+        }
       }
-    }
 
-    return { passed: allPassed, outputs };
+      return { passed: allPassed, outputs };
+    },
+    catch: (error: any) => error as Error,
   });
 
 /**
