@@ -11,9 +11,13 @@ import * as Secret from "effect/Secret";
 
 import type { Tool } from "../tools/schema.js";
 
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  content: string | ContentBlock[];
   tool_call_id?: string;
   name?: string;
 }

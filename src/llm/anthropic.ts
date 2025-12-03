@@ -56,21 +56,27 @@ const messagesToAnthropic = (messages: ChatMessage[]): Array<{ role: "user" | "a
   const anthropicMessages: Array<{ role: "user" | "assistant"; content: any[] }> = [];
 
   for (const message of messages) {
-    if (message.role === "system") {
-      continue;
-    }
+    if (message.role === "system") continue;
+
     if (message.role === "tool") {
-      // Represent tool results as user messages with a text block
+      const text = typeof message.content === "string" ? message.content : "";
       anthropicMessages.push({
         role: "user",
-        content: [{ type: "text", text: message.content }],
+        content: [{ type: "text", text }],
       });
       continue;
     }
-    anthropicMessages.push({
-      role: message.role,
-      content: [{ type: "text", text: message.content ?? "" }],
-    });
+
+    const content = Array.isArray(message.content)
+      ? message.content.filter((c) => c.type === "text")
+      : [{ type: "text", text: message.content ?? "" }];
+
+    if (content.length > 0) {
+      anthropicMessages.push({
+        role: message.role,
+        content,
+      });
+    }
   }
 
   return anthropicMessages;
