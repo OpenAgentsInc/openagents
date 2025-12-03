@@ -327,6 +327,7 @@ export const runOrchestrator = (
               )
             ),
           ...(config.signal ? { signal: config.signal } : {}),
+          ...(config.onOutput ? { onOutput: config.onOutput } : {}),
         }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({

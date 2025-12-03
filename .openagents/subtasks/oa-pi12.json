@@ -5,7 +5,12 @@
     {
       "id": "oa-pi12-sub-001",
       "description": "Epic: Pi-mono integration phase 2 - Orchestrator Architecture\n\nAdopt Anthropic's long-running agent pattern: split MechaCoder into orchestrator + minimal coding subagent. Orchestrator handles task selection, subtask decomposition, verification, session coordination. Coding subagent stays minimal like pi-mono. Key deliverables: orchestrator design (oa-pi13), subtask decomposition (oa-pi14), progress files (oa-pi15), init scripts (oa-pi16), minimal subagent (oa-pi17). Also: tools manager (oa-44834c), session branching (oa-pi05), benchmarking (oa-pi03).",
-      "status": "pending"
+      "status": "failed",
+      "startedAt": "2025-12-03T07:14:52.242Z",
+      "claudeCode": {
+        "sessionId": "2908c450-a29f-4931-9347-9d7ee2ae0a19"
+      },
+      "error": "Claude Code finished with: error_max_turns"
     }
   ],
   "createdAt": "2025-12-03T07:14:52.242Z",

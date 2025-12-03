@@ -188,6 +188,8 @@ export interface OrchestratorConfig {
   claudeCode?: ClaudeCodeSettings;
   /** Abort signal */
   signal?: AbortSignal;
+  /** Callback for streaming text output from Claude Code */
+  onOutput?: (text: string) => void;
 }
 
 export interface OrchestratorState {
