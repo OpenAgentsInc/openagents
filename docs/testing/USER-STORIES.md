@@ -5,6 +5,39 @@
 
 ---
 
+## Task Tracking Process
+
+### How to Track Implementation
+
+Each user story can be linked to one or more OpenAgents tasks. The mapping is tracked in the **Task Tracking Matrix** section at the end of this document.
+
+**Workflow:**
+1. **Creating tests**: When creating a task to implement tests for user stories, note which story IDs it covers in the task description
+2. **Update matrix**: Add the mapping to the Task Tracking Matrix below
+3. **Mark completion**: When tests pass and task is closed, update the Status column
+
+**Status Legend:**
+- ` ` (blank) - No task created yet
+- `📋` - Task created, not started
+- `🔄` - Task in progress
+- `✅` - Tests implemented and passing
+- `❌` - Tests failing / blocked
+
+### Quick Reference: P0 Stories Needing Tasks
+
+The following P0 stories still need tasks created:
+- HUD-020..024 (Node display)
+- HUD-030..034 (Real-time updates)
+- HUD-050..051 (APM widget)
+- TASK-001..003, TASK-010..012, TASK-020..022
+- ORCH-001..002, ORCH-010..011, ORCH-020..022, ORCH-030..032, ORCH-040..041, ORCH-050, ORCH-070
+- CLI-001..005
+- LLM-010..012
+- TOOL-001..002, TOOL-010..011, TOOL-020..021, TOOL-030..031
+- CONF-001..002, CONF-010..011
+
+---
+
 ## 1. Desktop Application (Electrobun HUD)
 
 The HUD is the primary user interface - a real-time visualization of autonomous agent work.
@@ -477,3 +510,56 @@ Multi-agent parallel task execution with git worktrees.
 8. **Provider Tests (P2)**: Add mock-based LLM provider tests
 9. **Tool Tests (P0)**: Ensure all core tools have comprehensive coverage
 10. **Session Replay Tests (P2)**: Test JSONL export/import and HTML generation
+
+---
+
+## Task Tracking Matrix
+
+This matrix maps user stories to OpenAgents tasks. Update this when creating or completing test tasks.
+
+### HUD / Desktop Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| HUD-001, HUD-002, HUD-010, HUD-012 | `oa-22017b` | E2E infra + smoke test | 📋 |
+| HUD-010, HUD-011, HUD-012, HUD-014 | `oa-c21ca0` | Basic UI load + canvas | 📋 |
+| HUD-060, HUD-061, HUD-062, HUD-063 | `oa-91f147` | Error handling + resilience | 📋 |
+| HUD-020..024 | - | Node display tests | |
+| HUD-030..034 | - | Real-time update tests | |
+| HUD-050..051 | - | APM widget tests | |
+
+### Task System Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| TASK-001..022 | - | Task CLI tests | |
+
+### Orchestrator Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| ORCH-001..053 | - | Golden Loop tests | |
+| ORCH-070..072 | - | Safe mode tests | |
+| ORCH-080..082 | - | Sandbox tests | |
+
+### CLI Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| CLI-001..007 | - | Task CLI | |
+| CLI-010..015 | - | MechaCoder CLI | |
+| CLI-020..026 | - | Session CLI | |
+| CLI-030..032 | - | Worktree CLI | |
+
+### Core Infrastructure Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| LLM-001..024 | - | LLM provider tests | |
+| TOOL-001..033 | - | Core tool tests | |
+| CONF-001..033 | - | Config validation tests | |
+| PAR-001..013 | - | Parallel/worktree tests | |
+
+---
+
+*Last updated: 2025-12-03*
