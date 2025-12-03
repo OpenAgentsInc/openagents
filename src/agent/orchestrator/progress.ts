@@ -10,6 +10,12 @@
 import * as fs from "node:fs";
 import { type SessionProgress, getProgressPath } from "./types.js";
 
+const compressOutput = (output: string, maxLength = 500): string => {
+  const condensed = output.replace(/\s+/g, " ").trim();
+  if (condensed.length <= maxLength) return condensed;
+  return `${condensed.slice(0, maxLength)}...`;
+};
+
 /**
  * Write progress file for next session to read.
  * Uses markdown format for human readability.
@@ -37,6 +43,15 @@ export const formatProgressMarkdown = (progress: SessionProgress): string => {
     `- **Repo State**: ${progress.orientation.repoState}`,
     `- **Tests Passing at Start**: ${progress.orientation.testsPassingAtStart ? "Yes" : "No"}`,
   ];
+
+  if (progress.orientation.initScript) {
+    const init = progress.orientation.initScript;
+    lines.push(`- **Init Script**: ${init.ran ? (init.success ? "Success" : "Failed") : "Not Found"}`);
+
+    if (init.output) {
+      lines.push(`- **Init Output**: ${compressOutput(init.output)}`);
+    }
+  }
 
   if (progress.orientation.previousSessionSummary) {
     lines.push(`- **Previous Session**: ${progress.orientation.previousSessionSummary}`);
@@ -91,6 +106,7 @@ export const parseProgressMarkdown = (markdown: string): Partial<SessionProgress
     orientation: {
       repoState: "",
       testsPassingAtStart: false,
+      initScript: undefined,
     },
     work: {
       subtasksCompleted: [],
@@ -190,6 +206,34 @@ const parseKeyValue = (
       }
       if (key === "previous session") {
         result.orientation!.previousSessionSummary = trimmedValue;
+      }
+      if (key === "init script") {
+        const init =
+          result.orientation!.initScript ?? {
+            ran: false,
+            success: true,
+          };
+        const normalized = trimmedValue.toLowerCase();
+        if (normalized.includes("success")) {
+          init.ran = true;
+          init.success = true;
+        } else if (normalized.includes("failed")) {
+          init.ran = true;
+          init.success = false;
+        } else {
+          init.ran = false;
+          init.success = true;
+        }
+        result.orientation!.initScript = init;
+      }
+      if (key === "init output") {
+        const init =
+          result.orientation!.initScript ?? {
+            ran: false,
+            success: true,
+          };
+        init.output = trimmedValue;
+        result.orientation!.initScript = init;
       }
       break;
 

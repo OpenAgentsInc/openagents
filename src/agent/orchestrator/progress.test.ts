@@ -22,6 +22,11 @@ const createMockProgress = (): SessionProgress => ({
     repoState: "clean",
     testsPassingAtStart: true,
     previousSessionSummary: "Completed setup tasks",
+    initScript: {
+      ran: true,
+      success: true,
+      output: "Init ok",
+    },
   },
   work: {
     subtasksCompleted: ["oa-test01-sub-001"],
@@ -48,6 +53,8 @@ describe("formatProgressMarkdown", () => {
     expect(markdown).toContain("oa-test01 - Test task");
     expect(markdown).toContain("Repo State**: clean");
     expect(markdown).toContain("Tests Passing at Start**: Yes");
+    expect(markdown).toContain("Init Script**: Success");
+    expect(markdown).toContain("Init Output**: Init ok");
     expect(markdown).toContain("oa-test01-sub-001");
     expect(markdown).toContain("src/test.ts, src/utils.ts");
     expect(markdown).toContain("Continue with sub-002");
@@ -93,6 +100,9 @@ describe("parseProgressMarkdown", () => {
     expect(parsed.orientation?.repoState).toBe("clean");
     expect(parsed.orientation?.testsPassingAtStart).toBe(true);
     expect(parsed.orientation?.previousSessionSummary).toBe("Completed setup tasks");
+    expect(parsed.orientation?.initScript?.ran).toBe(true);
+    expect(parsed.orientation?.initScript?.success).toBe(true);
+    expect(parsed.orientation?.initScript?.output).toBe("Init ok");
   });
 
   test("parses work done", () => {

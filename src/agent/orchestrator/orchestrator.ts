@@ -12,8 +12,6 @@
  * 8. Log - Write progress for next session
  */
 import { Effect } from "effect";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { pickNextTask, updateTask, type Task } from "../../tasks/index.js";
 import { OpenRouterClient } from "../../llm/openrouter.js";
 import { readTool } from "../../tools/read.js";
@@ -21,6 +19,7 @@ import { editTool } from "../../tools/edit.js";
 import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
 import { runSubagent, createSubagentConfig } from "./subagent.js";
+import { runInitScript } from "./init-script.js";
 import {
   readSubtasks,
   writeSubtasks,
@@ -54,6 +53,13 @@ const generateSessionId = (): string => {
   const ts = now.toISOString().replace(/[:.]/g, "-");
   const rand = Math.random().toString(36).substring(2, 8);
   return `session-${ts}-${rand}`;
+};
+
+const summarizeOutput = (output?: string, maxLength = 400): string | undefined => {
+  if (!output) return undefined;
+  const trimmed = output.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength)}...`;
 };
 
 /**
@@ -202,6 +208,40 @@ export const runOrchestrator = (
       state.phase = "orienting";
       progress.orientation.previousSessionSummary = getPreviousSessionSummary(config.openagentsDir) || undefined;
 
+      const initScriptResult = yield* runInitScript(
+        config.openagentsDir,
+        config.cwd,
+        emit
+      );
+      progress.orientation.initScript = initScriptResult;
+
+      if (initScriptResult.ran && !initScriptResult.success) {
+        state.phase = "failed";
+        state.error = "Init script failed";
+        progress.orientation.repoState = "init script failed";
+        progress.orientation.testsPassingAtStart = false;
+
+        emit({
+          type: "orientation_complete",
+          repoState: progress.orientation.repoState,
+          testsPassingAtStart: progress.orientation.testsPassingAtStart,
+          initScript: initScriptResult,
+        });
+
+        progress.nextSession.blockers = [
+          "Init script failed",
+          ...(summarizeOutput(initScriptResult.output) ? [summarizeOutput(initScriptResult.output)!] : []),
+        ];
+        progress.nextSession.suggestedNextSteps = [
+          "Inspect .openagents/init.sh output",
+          "Fix init script errors before rerunning",
+        ];
+
+        writeProgress(config.openagentsDir, progress);
+        emit({ type: "session_complete", success: false, summary: "Init script failed" });
+        return state;
+      }
+
       // Quick test check
       if (config.testCommands.length > 0) {
         const testResult = yield* runVerification(
@@ -214,10 +254,12 @@ export const runOrchestrator = (
         progress.orientation.testsPassingAtStart = true;
       }
 
+      progress.orientation.repoState = "clean";
       emit({
         type: "orientation_complete",
-        repoState: "clean",
+        repoState: progress.orientation.repoState,
         testsPassingAtStart: progress.orientation.testsPassingAtStart,
+        initScript: initScriptResult,
       });
 
       // Phase 2: Select Task
