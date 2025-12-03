@@ -2,24 +2,34 @@ import { describe, test, expect } from "bun:test";
 import { detectClaudeCode, type ClaudeCodeAvailability } from "./claude-code-detector.js";
 
 describe("detectClaudeCode", () => {
-  test("returns available when SDK present and API key set", async () => {
+  test("returns available when CLI found and SDK present", async () => {
     const result = await detectClaudeCode({
-      env: { ANTHROPIC_API_KEY: "test-key" },
+      cliChecker: () => ({ available: true, path: "/usr/bin/claude" }),
       sdkResolver: async () => ({ version: "0.1.0" }),
     });
 
     const expected: ClaudeCodeAvailability = {
       available: true,
       version: "0.1.0",
-      apiKeySource: "env",
+      cliPath: "/usr/bin/claude",
     };
 
     expect(result).toEqual(expected);
   });
 
+  test("returns unavailable when CLI is not found", async () => {
+    const result = await detectClaudeCode({
+      cliChecker: () => ({ available: false }),
+      sdkResolver: async () => ({ version: "0.1.0" }),
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.reason).toContain("Claude CLI not found");
+  });
+
   test("returns unavailable when SDK is missing", async () => {
     const result = await detectClaudeCode({
-      env: { ANTHROPIC_API_KEY: "test-key" },
+      cliChecker: () => ({ available: true, path: "/usr/bin/claude" }),
       sdkResolver: async () => {
         throw new Error("MODULE_NOT_FOUND");
       },
@@ -27,22 +37,12 @@ describe("detectClaudeCode", () => {
 
     expect(result.available).toBe(false);
     expect(result.reason).toContain("SDK not installed");
-  });
-
-  test("returns unavailable when API key is missing", async () => {
-    const result = await detectClaudeCode({
-      sdkResolver: async () => ({ version: "0.1.0" }),
-      env: {},
-    });
-
-    expect(result.available).toBe(false);
-    expect(result.apiKeySource).toBe("none");
-    expect(result.reason).toContain("ANTHROPIC_API_KEY");
+    expect(result.cliPath).toBe("/usr/bin/claude");
   });
 
   test("health check failure surfaces as unavailable", async () => {
     const result = await detectClaudeCode({
-      env: { ANTHROPIC_API_KEY: "test-key" },
+      cliChecker: () => ({ available: true, path: "/usr/bin/claude" }),
       sdkResolver: async () => ({ version: "0.1.0" }),
       healthCheck: true,
       healthCheckFn: async () => {

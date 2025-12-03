@@ -1,23 +1,22 @@
 import { createRequire } from "node:module";
-
-export type ApiKeySource = "env" | "config" | "none";
+import { execSync } from "node:child_process";
 
 export interface ClaudeCodeAvailability {
   available: boolean;
   version?: string;
-  apiKeySource?: ApiKeySource;
+  cliPath?: string;
   reason?: string;
 }
 
 export interface DetectClaudeCodeOptions {
-  /** Override environment (defaults to process.env) */
-  env?: Record<string, string | undefined>;
   /** Whether to run an optional health check (defaults to false) */
   healthCheck?: boolean;
   /** Custom health check (used in tests to avoid network calls) */
   healthCheckFn?: () => Promise<void>;
   /** Custom SDK resolver (used in tests to simulate presence/absence) */
   sdkResolver?: () => Promise<{ version?: string }>;
+  /** Custom CLI checker (used in tests) */
+  cliChecker?: () => { available: boolean; path?: string };
 }
 
 const defaultSdkResolver = async (): Promise<{ version?: string }> => {
@@ -33,38 +32,45 @@ const defaultHealthCheck = async (): Promise<void> => {
   }
 };
 
+const defaultCliChecker = (): { available: boolean; path?: string } => {
+  try {
+    const path = execSync("which claude", { encoding: "utf-8" }).trim();
+    return { available: true, path };
+  } catch {
+    return { available: false };
+  }
+};
+
 /**
  * Detect whether Claude Code/Agent SDK is available for use.
- * Checks SDK installation, API key presence, and optional health check hook.
+ * Checks for claude CLI binary (authenticates via Claude Max subscription).
  */
 export const detectClaudeCode = async (
   options?: DetectClaudeCodeOptions
 ): Promise<ClaudeCodeAvailability> => {
-  const env = options?.env ?? process.env;
   const resolveSdk = options?.sdkResolver ?? defaultSdkResolver;
+  const checkCli = options?.cliChecker ?? defaultCliChecker;
 
+  // Check for claude CLI binary
+  const cliResult = checkCli();
+  if (!cliResult.available) {
+    return {
+      available: false,
+      reason: "Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code",
+    };
+  }
+
+  // Check SDK is installed
   let version: string | undefined;
   try {
     const sdk = await resolveSdk();
     version = sdk.version;
   } catch {
-    return {
-      available: false,
-      apiKeySource: "none",
-      reason: "SDK not installed: bun add -E @anthropic-ai/claude-agent-sdk",
-    };
-  }
-
-  const apiKey = env.ANTHROPIC_API_KEY || env.CLAUDE_API_KEY;
-  const apiKeySource: ApiKeySource = apiKey ? "env" : "none";
-
-  if (!apiKey) {
     const unavailable: ClaudeCodeAvailability = {
       available: false,
-      apiKeySource,
-      reason: "ANTHROPIC_API_KEY not set",
+      reason: "SDK not installed: bun add -E @anthropic-ai/claude-agent-sdk",
     };
-    if (version) unavailable.version = version;
+    if (cliResult.path) unavailable.cliPath = cliResult.path;
     return unavailable;
   }
 
@@ -75,9 +81,9 @@ export const detectClaudeCode = async (
     } catch (error: any) {
       const unavailable: ClaudeCodeAvailability = {
         available: false,
-        apiKeySource,
         reason: `Health check failed: ${error?.message || String(error)}`,
       };
+      if (cliResult.path) unavailable.cliPath = cliResult.path;
       if (version) unavailable.version = version;
       return unavailable;
     }
@@ -85,8 +91,8 @@ export const detectClaudeCode = async (
 
   const available: ClaudeCodeAvailability = {
     available: true,
-    apiKeySource,
   };
+  if (cliResult.path) available.cliPath = cliResult.path;
   if (version) available.version = version;
   return available;
 };
