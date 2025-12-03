@@ -196,7 +196,9 @@ export const createAPMEmitter = (client: HudClient) => {
 
 ## HUD Widget Spec
 
-The APM widget in Electrobun should display:
+The APM widget renders as an **SVG overlay** in the Electrobun mainview, following the same architecture as the Flow visualization.
+
+### Widget Layout
 
 ```
 ┌─────────────────────────────────────┐
@@ -209,24 +211,50 @@ The APM widget in Electrobun should display:
 └─────────────────────────────────────┘
 ```
 
-### Visual Elements
+### SVG Rendering
 
-| Element | Description |
-|---------|-------------|
-| **Large APM number** | Current session or lifetime APM (prominent) |
-| **Efficiency indicator** | Arrow + multiplier vs baseline |
-| **Progress bar** | Visual velocity indicator |
-| **Time windows** | Compact 1h/6h/24h readout |
-| **Comparison** | MechaCoder vs Claude Code delta |
+Following the pattern in `src/flow-host-svg/render.ts`:
 
-### Colors
+```typescript
+// APM overlay SVG group (positioned in viewport, not canvas)
+const apmWidget: SVGGroup = {
+  type: "group",
+  transform: "translate(20, 20)", // Top-left corner
+  children: [
+    // Background rect with theme colors
+    { type: "rect", x: 0, y: 0, width: 280, height: 120, fill: "#141017", stroke: "rgba(245, 158, 11, 0.25)" },
+    // APM value text
+    { type: "text", x: 16, y: 32, text: `APM: ${apm.toFixed(2)}`, fill: "#f59e0b", fontSize: 24 },
+    // ... more elements
+  ],
+};
+```
+
+### Colors (matching Flow theme)
 
 | APM Range | Color | Meaning |
 |-----------|-------|---------|
-| 0-5 | Gray | Baseline/idle |
-| 5-15 | Blue | Active |
-| 15-30 | Green | High velocity |
-| 30+ | Gold | Elite performance |
+| 0-5 | `#6b7280` (gray) | Baseline/idle |
+| 5-15 | `#3b82f6` (blue) | Active |
+| 15-30 | `#22c55e` (green) | High velocity |
+| 30+ | `#f59e0b` (amber/gold) | Elite performance |
+
+### Message Handling in mainview/index.ts
+
+```typescript
+messages: {
+  hudMessage: (message: HudMessage) => {
+    switch (message.type) {
+      case "apm_update":
+        updateAPMWidget(message.sessionAPM, message.recentAPM, message.totalActions);
+        break;
+      case "apm_snapshot":
+        updateAPMSnapshot(message.combined, message.comparison);
+        break;
+    }
+  },
+}
+```
 
 ## Related Files
 
@@ -235,9 +263,11 @@ The APM widget in Electrobun should display:
 | `src/agent/apm.ts` | Core APM types and APMCollector |
 | `src/agent/apm-parser.ts` | Historical data parser |
 | `src/cli/apm.ts` | CLI command |
-| `src/hud/protocol.ts` | HUD message types (add APM messages) |
-| `src/hud/emit.ts` | Event conversion (add APM emitter) |
-| `src/agent/overnight.ts` | Orchestrator integration point |
+| `src/hud/protocol.ts` | HUD message types |
+| `src/hud/emit.ts` | Event conversion + APM emitters |
+| `src/agent/overnight.ts` | Orchestrator integration |
+| `src/mainview/index.ts` | HUD controller (add APM widget here) |
+| `src/flow-host-svg/render.ts` | SVG rendering patterns |
 | `docs/apm.md` | APM specification |
 
 ## Tasks
@@ -245,7 +275,7 @@ The APM widget in Electrobun should display:
 - [x] `oa-4cbc15` - Core APM types and collector
 - [x] `oa-d2ad64` - Claude Code conversation parser
 - [x] `oa-20d3d1` - CLI command
-- [ ] `oa-5a59e1` - Integrate APM into overnight.ts orchestrator
-- [ ] `oa-710f93` - Add APM message types to HUD protocol
-- [ ] NEW - Create APM emitter helpers in emit.ts
-- [ ] NEW - Build APM widget in Electrobun HUD
+- [x] `oa-5a59e1` - Integrate APM into overnight.ts orchestrator
+- [x] `oa-710f93` - Add APM message types to HUD protocol
+- [x] `oa-2248cf` - Create APM emitter helpers in emit.ts
+- [ ] `oa-25ca85` - Build APM SVG widget in mainview/index.ts
