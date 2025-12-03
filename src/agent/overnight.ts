@@ -52,9 +52,11 @@ import {
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
-import { createHudCallbacks } from "../hud/index.js";
+import { createHudCallbacks, sendAPMSnapshot, createAPMEmitter } from "../hud/index.js";
 import { acquireLock, releaseLock } from "./orchestrator/agent-lock.js";
 import { loadContextFiles } from "../cli/context-loader.js";
+import { APMCollector } from "./apm.js";
+import { parseProjectConversations } from "./apm-parser.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -507,10 +509,40 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     // These silently fail if the HUD isn't running
     const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
-    // Event handler for logging (also forwards to HUD)
+    // Create APM collector for tracking actions per minute
+    const projectName = path.basename(config.workDir);
+    const apmCollector = new APMCollector(sessionId, projectName);
+    const apmEmit = createAPMEmitter(hudClient, apmCollector);
+
+    // Send initial APM snapshot with historical data
+    yield* parseProjectConversations(config.workDir).pipe(
+      Effect.tap((stats) => {
+        sendAPMSnapshot(hudClient, stats);
+        log(`[APM] Lifetime: ${stats.combined.apmLifetime.toFixed(2)} | MechaCoder: ${stats.mechaCoder.apmLifetime.toFixed(2)} vs Claude Code: ${stats.claudeCode.apmLifetime.toFixed(2)}`);
+      }),
+      Effect.catchAll(() => Effect.void), // Ignore errors, APM is optional
+    );
+
+    // Event handler for logging (also forwards to HUD + APM tracking)
     const emit = (event: OrchestratorEvent) => {
       // Forward to HUD for real-time UI updates
       hudEmit(event);
+
+      // Track APM-relevant events
+      switch (event.type) {
+        case "subtask_start":
+          apmCollector.recordAction("message");
+          break;
+        case "subtask_complete":
+          // Each subtask completion represents significant tool usage
+          apmCollector.recordAction("tool_call", event.result.agent);
+          apmEmit(); // Send periodic APM update
+          break;
+        case "verification_start":
+        case "commit_created":
+          apmCollector.recordAction("tool_call", event.type);
+          break;
+      }
 
       // Log to file/console
       const ts = new Date().toISOString();
