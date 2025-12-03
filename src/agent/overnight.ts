@@ -624,6 +624,24 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         const currentError = state.error || "Unknown error";
         log(`\n✗ Task failed: ${currentError}`);
 
+        // GUARDRAIL: Revert uncommitted changes on failure to prevent broken code
+        // from being committed in cleanup. This ensures failed work doesn't persist.
+        try {
+          const { execSync } = require("node:child_process") as typeof import("node:child_process");
+          const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
+          if (status.trim()) {
+            log("[Guardrail] Reverting uncommitted changes from failed subtask...");
+            // Only revert tracked files - leave untracked files alone
+            execSync("git checkout -- .", { cwd: config.workDir, encoding: "utf-8" });
+            // Also clean up any new untracked files that were created
+            // Use -f (force) and -d (directories) but NOT -x (keep .gitignore'd files)
+            execSync("git clean -fd", { cwd: config.workDir, encoding: "utf-8" });
+            log("[Guardrail] Uncommitted changes reverted.");
+          }
+        } catch (e) {
+          log(`[Guardrail] Warning: Failed to revert changes: ${e}`);
+        }
+
         // Check if this is a pre-task failure (init script, no tasks, etc.)
         const isPreTaskFailure = !taskWasPicked;
 
@@ -696,14 +714,22 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     // Close HUD client connection
     hudClient.close();
 
-    // Final cleanup commit - commit any remaining progress/log files
+    // Final cleanup commit - commit ONLY progress/log files, NOT any code changes
+    // This is a guardrail to prevent accidentally committing broken code from failed subtasks
     // Note: Use console.log not log() to avoid writing to the file we're about to commit
     try {
       const { execSync } = require("node:child_process") as typeof import("node:child_process");
-      const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
-      if (status.trim()) {
+      // Only add specific paths - progress files and logs, NOT all files
+      // This prevents broken code from failed subtasks from being committed
+      execSync("git add .openagents/progress.md .openagents/subtasks/ docs/logs/ 2>/dev/null || true", {
+        cwd: config.workDir,
+        encoding: "utf-8",
+        shell: "/bin/bash"
+      });
+      // Check if we staged anything
+      const staged = execSync("git diff --cached --name-only", { cwd: config.workDir, encoding: "utf-8" });
+      if (staged.trim()) {
         console.log("[Cleanup] Committing remaining progress files...");
-        execSync("git add -A", { cwd: config.workDir, encoding: "utf-8" });
         const commitMsg = `chore: update progress files and logs
 
 🤖 Generated with [OpenAgents](https://openagents.com)
