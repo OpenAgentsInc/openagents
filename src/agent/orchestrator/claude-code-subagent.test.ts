@@ -32,6 +32,7 @@ describe("runClaudeCodeSubagent", () => {
     expect(result.success).toBe(true);
     expect(result.filesModified.sort()).toEqual(["a.ts", "b.ts"]);
     expect(result.turns).toBe(5);
+    expect(result.agent).toBe("claude-code");
   });
 
   test("surfaces failure subtype as error", async () => {
@@ -270,5 +271,85 @@ describe("runClaudeCodeSubagent", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("rate limited");
     expect(result.sessionMetadata?.suggestedNextSteps?.some((s) => s.toLowerCase().includes("rate limit"))).toBe(true);
+  });
+
+  test("records permission denials for recovery", async () => {
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn: makeQuery([
+        {
+          type: "result",
+          subtype: "success",
+          permission_denials: [{ tool_name: "Edit", tool_use_id: "1", tool_input: { path: "secret.txt" } }],
+        },
+      ]),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.sessionMetadata?.blockers?.some((b) => b.includes("Permission denied for Edit"))).toBe(true);
+    expect(
+      result.sessionMetadata?.suggestedNextSteps?.some((s) => s.toLowerCase().includes("permissions"))
+    ).toBe(true);
+  });
+
+  test("captures token usage and cost from result message", async () => {
+    const queryFn = makeQuery([
+      { type: "assistant", tool_calls: [{ name: "Edit", input: { file_path: "a.ts" } }] },
+      {
+        type: "result",
+        subtype: "success",
+        turns: 5,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_read_input_tokens: 200,
+          cache_creation_input_tokens: 50,
+        },
+        total_cost_usd: 0.0123,
+      },
+    ]);
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.sessionMetadata?.usage).toEqual({
+      inputTokens: 1000,
+      outputTokens: 500,
+      cacheReadInputTokens: 200,
+      cacheCreationInputTokens: 50,
+    });
+    expect(result.sessionMetadata?.totalCostUsd).toBe(0.0123);
+  });
+
+  test("handles camelCase usage fields from SDK", async () => {
+    const queryFn = makeQuery([
+      {
+        type: "result",
+        subtype: "success",
+        usage: {
+          inputTokens: 800,
+          outputTokens: 400,
+          cacheReadInputTokens: 100,
+          cacheCreationInputTokens: 25,
+        },
+        total_cost_usd: 0.0098,
+      },
+    ]);
+
+    const result = await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      queryFn,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.sessionMetadata?.usage).toEqual({
+      inputTokens: 800,
+      outputTokens: 400,
+      cacheReadInputTokens: 100,
+      cacheCreationInputTokens: 25,
+    });
   });
 });

@@ -179,6 +179,8 @@ export const runClaudeCodeSubagent = async (
   let error: string | undefined;
   let turns = 0;
   let lastErrorType: SDKAssistantMessageError | string | undefined;
+  let totalCostUsd: number | undefined;
+  let usage: any | undefined;
 
   const mcpServers: Record<string, McpServerConfig> =
     (options.mcpServers as Record<string, McpServerConfig> | undefined) ??
@@ -262,7 +264,26 @@ export const runClaudeCodeSubagent = async (
         }
 
         if (isResultMessage(message) && message.type === "result") {
+          const permissionDenials = (message as any).permission_denials;
+          if (Array.isArray(permissionDenials)) {
+            for (const denial of permissionDenials) {
+              const toolName = denial?.tool_name;
+              const reason = toolName ? `Permission denied for ${toolName}` : "Permission denied for tool use";
+              blockers.push(reason);
+              suggestedNextSteps.push("Update Claude Code permissions or enable bypassPermissions for automation runs");
+            }
+          }
+
           turns = (message as any).turns ?? (message as any).num_turns ?? turns;
+
+          // Capture usage and cost data
+          if ((message as any).usage) {
+            usage = (message as any).usage;
+          }
+          if (typeof (message as any).total_cost_usd === "number") {
+            totalCostUsd = (message as any).total_cost_usd;
+          }
+
           if (message.subtype === "success") {
             success = true;
           } else {
@@ -378,7 +399,14 @@ export const runClaudeCodeSubagent = async (
   }
 
   // Add session metadata for progress.md bridging
-  if (toolsUsed.size > 0 || blockers.length > 0 || assistantMessages.length > 0 || suggestedNextSteps.length > 0) {
+  if (
+    toolsUsed.size > 0 ||
+    blockers.length > 0 ||
+    assistantMessages.length > 0 ||
+    suggestedNextSteps.length > 0 ||
+    usage ||
+    totalCostUsd !== undefined
+  ) {
     result.sessionMetadata = {};
 
     if (toolsUsed.size > 0) {
@@ -396,6 +424,20 @@ export const runClaudeCodeSubagent = async (
     // Use the last assistant message as summary
     if (assistantMessages.length > 0) {
       result.sessionMetadata.summary = assistantMessages[assistantMessages.length - 1];
+    }
+
+    // Add token usage and cost data
+    if (usage) {
+      result.sessionMetadata.usage = {
+        inputTokens: usage.input_tokens ?? usage.inputTokens,
+        outputTokens: usage.output_tokens ?? usage.outputTokens,
+        cacheReadInputTokens: usage.cache_read_input_tokens ?? usage.cacheReadInputTokens,
+        cacheCreationInputTokens: usage.cache_creation_input_tokens ?? usage.cacheCreationInputTokens,
+      };
+    }
+
+    if (totalCostUsd !== undefined) {
+      result.sessionMetadata.totalCostUsd = totalCostUsd;
     }
   }
 
