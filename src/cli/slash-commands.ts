@@ -181,11 +181,13 @@ export function loadCommand(
 
     const { frontmatter, body } = parseFrontmatter(content);
 
+    const desc = frontmatter.description as string | undefined;
+    const cmdArgs = frontmatter.args as CommandArg[] | undefined;
     return {
       name,
       path: filePath,
-      description: frontmatter.description as string | undefined,
-      args: frontmatter.args as CommandArg[] | undefined,
+      ...(desc !== undefined ? { description: desc } : {}),
+      ...(cmdArgs !== undefined ? { args: cmdArgs } : {}),
       source,
       body,
     };
@@ -346,7 +348,7 @@ export function listCommands(
 ): Array<{ name: string; description?: string; source: "user" | "project" }> {
   return Array.from(commands.values()).map((cmd) => ({
     name: cmd.name,
-    description: cmd.description,
+    ...(cmd.description !== undefined ? { description: cmd.description } : {}),
     source: cmd.source,
   }));
 }
