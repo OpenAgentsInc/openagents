@@ -7,7 +7,7 @@ describe("models registry", () => {
     expect(providers.length).toBeGreaterThan(0);
 
     const firstProvider = providers[0];
-    const models = getModels(firstProvider);
+    const models = getModels(firstProvider as any);
     expect(models.length).toBeGreaterThan(0);
   });
 

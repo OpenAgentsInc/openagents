@@ -101,7 +101,7 @@ describe("ProjectService", () => {
             enabled: false,
             preferForComplexTasks: false,
             maxTurnsPerSubtask: 15,
-            permissionMode: "dontAsk",
+            permissionMode: "dontAsk" as const,
             fallbackToMinimal: false,
           },
         };
