@@ -9,11 +9,17 @@
  * - Per-worktree locking to prevent conflicts
  * - Supports direct commit, queue, and PR merge strategies
  * - Integrates with container sandbox (optional)
+ * - Enforces Golden Loop invariants per worktree
  *
  * @see docs/claude/plans/containers-impl-v2.md
+ * @see docs/mechacoder/GOLDEN-LOOP-v2.md
  */
-import { Effect } from "effect";
-import type { Task } from "../../tasks/index.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as BunContext from "@effect/platform-bun/BunContext";
+import { Effect, Layer } from "effect";
+import type { Task, ParallelExecutionConfig } from "../../tasks/index.js";
+import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../../llm/openrouter.js";
 import {
   createWorktree,
   removeWorktree,
@@ -26,6 +32,8 @@ import {
   releaseWorktreeLock,
   pruneWorktreeLocks,
 } from "./agent-lock.js";
+import { runOrchestrator } from "./orchestrator.js";
+import type { OrchestratorConfig, ClaudeCodeSettings } from "./types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -58,6 +66,23 @@ export interface ParallelRunnerConfig {
   timeoutMs?: number;
   /** Event callback */
   onAgentEvent?: (agentId: string, event: AgentEvent) => void;
+  // ─── Orchestrator Settings ─────────────────────────────────────────────────
+  /** Test commands from project.json */
+  testCommands?: string[];
+  /** Typecheck commands from project.json */
+  typecheckCommands?: string[];
+  /** E2E commands from project.json */
+  e2eCommands?: string[];
+  /** Claude Code settings */
+  claudeCode?: ClaudeCodeSettings;
+  /** Model to use for subagents */
+  subagentModel?: string;
+  /** Use Claude Code only mode (no OpenRouter fallback) */
+  ccOnly?: boolean;
+  /** Verbose logging */
+  verbose?: boolean;
+  /** Allow push after merge */
+  allowPush?: boolean;
 }
 
 export type AgentStatus = "pending" | "running" | "completed" | "failed";
@@ -208,14 +233,22 @@ const mergeAgentBranch = (
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Agent Execution (Placeholder)
+// Agent Execution
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Noop OpenRouter layer for cc-only mode
+const noopOpenRouterLayer = Layer.succeed(OpenRouterClient, {
+  chat: () => Effect.fail(new Error("OpenRouter not available in cc-only mode")),
+});
+
 /**
- * Run a single agent in a worktree.
+ * Run a single agent in a worktree using the orchestrator.
  *
- * This is a placeholder that will be implemented to integrate with
- * claude-code-subagent or minimal subagent.
+ * Implements Golden Loop invariants:
+ * - Skip init script (worktree inherits from main repo)
+ * - Force new subtasks (avoid stale state)
+ * - Pre-assign task (prevent all agents picking same task)
+ * - Don't push from worktree (merge handles push)
  */
 const runAgentInWorktree = (
   worktree: WorktreeInfo,
@@ -230,23 +263,109 @@ const runAgentInWorktree = (
       worktreePath: worktree.path,
     });
 
-    // TODO: Integrate with actual agent execution
-    // For now, this is a placeholder that simulates work
+    const worktreeOpenagentsDir = path.join(worktree.path, ".openagents");
+
+    // Ensure .openagents directory exists in worktree
+    if (!fs.existsSync(worktreeOpenagentsDir)) {
+      fs.mkdirSync(worktreeOpenagentsDir, { recursive: true });
+    }
+
+    // Copy tasks.jsonl to worktree
+    const srcTasksPath = path.join(config.openagentsDir, "tasks.jsonl");
+    const dstTasksPath = path.join(worktreeOpenagentsDir, "tasks.jsonl");
+    if (!fs.existsSync(dstTasksPath) && fs.existsSync(srcTasksPath)) {
+      fs.copyFileSync(srcTasksPath, dstTasksPath);
+    }
+
+    // Copy project.json to worktree
+    const srcProjectPath = path.join(config.openagentsDir, "project.json");
+    const dstProjectPath = path.join(worktreeOpenagentsDir, "project.json");
+    if (!fs.existsSync(dstProjectPath) && fs.existsSync(srcProjectPath)) {
+      fs.copyFileSync(srcProjectPath, dstProjectPath);
+    }
+
+    // Install dependencies in worktree
     yield* Effect.tryPromise({
-      try: () => new Promise((resolve) => setTimeout(resolve, 100)),
-      catch: (e) => new ParallelRunnerError("agent_failed", `Agent failed: ${e}`, e),
+      try: async () => {
+        const proc = Bun.spawn(["bun", "install"], {
+          cwd: worktree.path,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        await proc.exited;
+        if (proc.exitCode !== 0) {
+          const stderr = await new Response(proc.stderr).text();
+          throw new Error(`bun install failed: ${stderr}`);
+        }
+      },
+      catch: (e) => new ParallelRunnerError("agent_failed", `Dependency install failed: ${e}`, e),
     });
 
-    // The real implementation would:
-    // 1. Create SubagentConfig with cwd = worktree.path
-    // 2. Run runSubagent or runClaudeCodeSubagent
-    // 3. Collect results
+    // Build orchestrator config with Golden Loop invariants
+    const orchestratorConfig: OrchestratorConfig = {
+      cwd: worktree.path,
+      openagentsDir: worktreeOpenagentsDir,
+      testCommands: config.testCommands ?? ["bun test"],
+      allowPush: false, // Don't push from worktree - merge handles this
+      skipInitScript: true, // Worktree inherits validated state from main
+      task, // Pre-assigned task (CRITICAL: prevents race condition)
+      forceNewSubtasks: true, // Avoid stale subtask files from git
+      claudeCode: config.claudeCode ?? { enabled: true },
+    };
 
-    return {
-      success: true,
-      filesModified: [],
+    // Only set optional properties if they have values
+    if (config.typecheckCommands) {
+      orchestratorConfig.typecheckCommands = config.typecheckCommands;
+    }
+    if (config.e2eCommands) {
+      orchestratorConfig.e2eCommands = config.e2eCommands;
+    }
+    if (config.subagentModel) {
+      orchestratorConfig.subagentModel = config.subagentModel;
+    }
+
+    // Select layer based on cc-only mode
+    const combinedLayer = config.ccOnly
+      ? Layer.merge(BunContext.layer, noopOpenRouterLayer)
+      : Layer.merge(
+          BunContext.layer,
+          Layer.provide(openRouterClientLayer, openRouterConfigLayer),
+        );
+
+    // Run orchestrator
+    const state = yield* Effect.tryPromise({
+      try: async () => {
+        return await Effect.runPromise(
+          runOrchestrator(orchestratorConfig, (event) => {
+            // Forward relevant events to parent
+            if (event.type === "commit_created") {
+              config.onAgentEvent?.(task.id, {
+                type: "agent_completed",
+                taskId: task.id,
+                success: true,
+                filesModified: [],
+              });
+            }
+          }).pipe(Effect.provide(combinedLayer)),
+        );
+      },
+      catch: (e: any) => new ParallelRunnerError("agent_failed", `Orchestrator failed: ${e.message}`, e),
+    });
+
+    const success = state.phase === "done";
+    const filesModified: string[] = [];
+
+    const result: AgentResult = {
+      success,
+      filesModified,
       turns: 0,
-    } satisfies AgentResult;
+    };
+
+    if (state.error) {
+      result.error = state.error;
+    }
+
+    return result;
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -432,21 +551,49 @@ export const runParallelAgents = (
         });
       }
     } else {
-      // PR strategy: Create PRs instead of merging
-      // TODO: Implement PR creation via gh CLI
+      // PR strategy: Create PRs via gh CLI
       for (const slot of successfulSlots) {
+        if (!slot.worktree) continue;
+
         config.onAgentEvent?.(slot.task.id, {
           type: "merge_started",
           taskId: slot.task.id,
           strategy: "pr",
         });
 
-        // PR creation would go here
-        // For now, just mark as complete without merge
+        // Push the branch first
+        yield* runGit(repoPath, ["push", "-u", "origin", slot.worktree.branch]).pipe(
+          Effect.catchAll(() => Effect.succeed({ exitCode: 1, stdout: "", stderr: "" })),
+        );
+
+        // Create PR using gh CLI
+        const prResult = yield* Effect.tryPromise({
+          try: async () => {
+            const title = `${slot.task.id}: ${slot.task.title}`;
+            const body = `## Summary\n\n${slot.task.description || "Automated task completion"}\n\n🤖 Generated with [OpenAgents](https://openagents.com)`;
+            const proc = Bun.spawn(["gh", "pr", "create", "--title", title, "--body", body, "--head", slot.worktree!.branch], {
+              cwd: repoPath,
+              stdout: "pipe",
+              stderr: "pipe",
+            });
+            const stdout = await new Response(proc.stdout).text();
+            const exitCode = await proc.exited;
+            return { exitCode, stdout: stdout.trim() };
+          },
+          catch: (e) => new ParallelRunnerError("merge_failed", `PR creation failed: ${e}`, e),
+        }).pipe(
+          Effect.catchAll(() => Effect.succeed({ exitCode: 1, stdout: "" })),
+        );
+
+        // Store PR URL as commitSha for tracking
+        if (prResult.exitCode === 0 && slot.result) {
+          slot.result.commitSha = prResult.stdout; // PR URL
+        }
 
         config.onAgentEvent?.(slot.task.id, {
           type: "merge_completed",
           taskId: slot.task.id,
+          ...(prResult.exitCode === 0 ? { commitSha: prResult.stdout } : {}),
         });
       }
     }
@@ -480,3 +627,114 @@ export const runParallelAgents = (
 export const runParallelAgentsAsync = (
   config: ParallelRunnerConfig,
 ): Promise<AgentSlot[]> => Effect.runPromise(runParallelAgents(config));
+
+/**
+ * Configuration for creating a parallel runner from ParallelExecutionConfig.
+ */
+export interface CreateParallelRunnerOptions {
+  /** Path to the repository root */
+  repoPath: string;
+  /** Path to .openagents directory */
+  openagentsDir: string;
+  /** Base branch (from ProjectConfig.defaultBranch) */
+  baseBranch: string;
+  /** Tasks to run in parallel */
+  tasks: Task[];
+  /** ParallelExecutionConfig from project.json */
+  parallelConfig: ParallelExecutionConfig;
+  /** Test commands from project.json */
+  testCommands?: string[];
+  /** Typecheck commands from project.json */
+  typecheckCommands?: string[];
+  /** E2E commands from project.json */
+  e2eCommands?: string[];
+  /** Claude Code settings */
+  claudeCode?: ClaudeCodeSettings;
+  /** Model for subagents */
+  subagentModel?: string;
+  /** Use Claude Code only (no OpenRouter fallback) */
+  ccOnly?: boolean;
+  /** Allow push to remote */
+  allowPush?: boolean;
+  /** Event callback */
+  onAgentEvent?: (agentId: string, event: AgentEvent) => void;
+}
+
+/**
+ * Create and run a parallel runner from ParallelExecutionConfig.
+ *
+ * This is the main entry point for running parallel agents using the
+ * configuration from .openagents/project.json.
+ *
+ * @example
+ * ```typescript
+ * const projectConfig = await loadProjectConfig(repoPath);
+ * const tasks = await readyTasks(tasksPath);
+ *
+ * if (projectConfig.parallelExecution?.enabled) {
+ *   const result = await runParallelFromConfig({
+ *     repoPath,
+ *     openagentsDir: `${repoPath}/.openagents`,
+ *     baseBranch: projectConfig.defaultBranch,
+ *     tasks: tasks.slice(0, projectConfig.parallelExecution.maxAgents),
+ *     parallelConfig: projectConfig.parallelExecution,
+ *     testCommands: projectConfig.testCommands,
+ *     typecheckCommands: projectConfig.typecheckCommands,
+ *     claudeCode: projectConfig.claudeCode,
+ *   });
+ * }
+ * ```
+ */
+export const runParallelFromConfig = (
+  options: CreateParallelRunnerOptions,
+): Effect.Effect<AgentSlot[], ParallelRunnerError> => {
+  const sessionId = `parallel-${Date.now()}`;
+
+  const config: ParallelRunnerConfig = {
+    repoPath: options.repoPath,
+    openagentsDir: options.openagentsDir,
+    maxAgents: options.parallelConfig.maxAgents ?? 4,
+    tasks: options.tasks,
+    baseBranch: options.baseBranch,
+    sessionId,
+    mergeStrategy: options.parallelConfig.mergeStrategy ?? "auto",
+    mergeThreshold: options.parallelConfig.mergeThreshold ?? 4,
+    prThreshold: options.parallelConfig.prThreshold ?? 50,
+    timeoutMs: options.parallelConfig.worktreeTimeout ?? 30 * 60 * 1000,
+  };
+
+  // Only set optional properties if they have values
+  if (options.testCommands) {
+    config.testCommands = options.testCommands;
+  }
+  if (options.typecheckCommands) {
+    config.typecheckCommands = options.typecheckCommands;
+  }
+  if (options.e2eCommands) {
+    config.e2eCommands = options.e2eCommands;
+  }
+  if (options.claudeCode) {
+    config.claudeCode = options.claudeCode;
+  }
+  if (options.subagentModel) {
+    config.subagentModel = options.subagentModel;
+  }
+  if (options.ccOnly !== undefined) {
+    config.ccOnly = options.ccOnly;
+  }
+  if (options.allowPush !== undefined) {
+    config.allowPush = options.allowPush;
+  }
+  if (options.onAgentEvent) {
+    config.onAgentEvent = options.onAgentEvent;
+  }
+
+  return runParallelAgents(config);
+};
+
+/**
+ * Run parallel agents from config and return a Promise.
+ */
+export const runParallelFromConfigAsync = (
+  options: CreateParallelRunnerOptions,
+): Promise<AgentSlot[]> => Effect.runPromise(runParallelFromConfig(options));
