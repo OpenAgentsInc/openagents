@@ -74,4 +74,47 @@ describe("ProjectService", () => {
     expect(config?.testCommands).toEqual(["bun test"]);
     expect(config?.allowPush).toBe(false);
   });
+
+  test("applies claudeCode defaults when missing", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { dir } = yield* setup();
+        yield* saveProjectConfig(dir, defaultProjectConfig("claude-defaults"));
+        return yield* loadProjectConfig(dir);
+      }),
+    );
+
+    expect(result?.claudeCode?.enabled).toBe(true);
+    expect(result?.claudeCode?.preferForComplexTasks).toBe(true);
+    expect(result?.claudeCode?.maxTurnsPerSubtask).toBe(30);
+    expect(result?.claudeCode?.permissionMode).toBe("bypassPermissions");
+    expect(result?.claudeCode?.fallbackToMinimal).toBe(true);
+  });
+
+  test("persists claudeCode overrides", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { dir } = yield* setup();
+        const overrides = {
+          ...defaultProjectConfig("claude-overrides"),
+          claudeCode: {
+            enabled: false,
+            preferForComplexTasks: false,
+            maxTurnsPerSubtask: 15,
+            permissionMode: "dontAsk",
+            fallbackToMinimal: false,
+          },
+        };
+
+        yield* saveProjectConfig(dir, overrides);
+        return yield* loadProjectConfig(dir);
+      }),
+    );
+
+    expect(result?.claudeCode?.enabled).toBe(false);
+    expect(result?.claudeCode?.preferForComplexTasks).toBe(false);
+    expect(result?.claudeCode?.maxTurnsPerSubtask).toBe(15);
+    expect(result?.claudeCode?.permissionMode).toBe("dontAsk");
+    expect(result?.claudeCode?.fallbackToMinimal).toBe(false);
+  });
 });
