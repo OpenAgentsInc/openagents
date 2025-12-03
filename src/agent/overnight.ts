@@ -126,9 +126,34 @@ const generateCommitMessage = (state: PartialOrchestratorState, cwd: string): st
   return lines.join("\n");
 };
 
-// Logging setup - uses workDir for logs, not hardcoded path
+/**
+ * Log Retention and Rotation
+ *
+ * Run logs are stored with the following structure:
+ *   docs/logs/YYYYMMDD/HHMM-overnight-{sessionId}.md
+ *
+ * Naming convention:
+ *   - Date folder: YYYYMMDD (e.g., 20251203)
+ *   - Time prefix: HHMM (e.g., 1056)
+ *   - Type: "overnight" for orchestrator runs
+ *   - Session ID: "orchestrator-{timestamp}" (e.g., orchestrator-1764780987762)
+ *
+ * Retention is currently manual. Recommendations:
+ *   - < 7 days: Keep all logs
+ *   - 7-30 days: Keep logs with failures or notable events
+ *   - > 30 days: Archive or delete
+ *
+ * Cleanup command:
+ *   find docs/logs -type d -name "20*" -mtime +30 -exec rm -rf {} +
+ *
+ * See docs/mechacoder/GOLDEN-LOOP-v2.md Section 2.10 for full specification.
+ */
 let _logWorkDir = process.cwd();
 
+/**
+ * Returns the log directory for the current date.
+ * Format: {workDir}/docs/logs/YYYYMMDD
+ */
 const getLogDir = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -137,6 +162,10 @@ const getLogDir = () => {
   return path.join(_logWorkDir, "docs", "logs", `${year}${month}${day}`);
 };
 
+/**
+ * Returns the full log file path for a session.
+ * Format: {logDir}/HHMM-overnight-{sessionId}.md
+ */
 const getLogPath = (sessionId: string) => {
   const now = new Date();
   const hours = String(now.getHours()).padStart(2, "0");
@@ -248,6 +277,10 @@ const parseArgs = (): OvernightConfig => {
   };
 };
 
+/**
+ * Initializes the log file for a session.
+ * Creates the date-based log directory if needed and writes the initial header.
+ */
 const initLog = (sessionId: string) => {
   const logDir = getLogDir();
   if (!fs.existsSync(logDir)) {
