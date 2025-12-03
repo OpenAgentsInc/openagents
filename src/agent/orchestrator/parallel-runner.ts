@@ -13,12 +13,10 @@
  * @see docs/claude/plans/containers-impl-v2.md
  */
 import { Effect } from "effect";
-import * as path from "node:path";
 import type { Task } from "../../tasks/index.js";
 import {
   createWorktree,
   removeWorktree,
-  listWorktrees,
   pruneStaleWorktrees,
   type WorktreeInfo,
   type WorktreeConfig,
@@ -102,7 +100,7 @@ export class ParallelRunnerError extends Error {
       | "cleanup_failed"
       | "timeout",
     message: string,
-    readonly cause?: unknown,
+    override readonly cause?: unknown,
   ) {
     super(message);
     this.name = "ParallelRunnerError";
@@ -186,7 +184,7 @@ const mergeAgentBranch = (
       // Try rebase if ff-only fails
       const rebaseResult = yield* runGit(repoPath, ["rebase", "main", branch]);
       if (rebaseResult.exitCode !== 0) {
-        yield* Effect.fail(
+        return yield* Effect.fail(
           new ParallelRunnerError(
             "merge_failed",
             `Could not merge ${branch}: ${rebaseResult.stderr}`,
@@ -198,7 +196,7 @@ const mergeAgentBranch = (
       yield* runGit(repoPath, ["checkout", "main"]);
       const retryResult = yield* runGit(repoPath, ["merge", "--ff-only", branch]);
       if (retryResult.exitCode !== 0) {
-        yield* Effect.fail(
+        return yield* Effect.fail(
           new ParallelRunnerError("merge_failed", `Merge failed after rebase: ${retryResult.stderr}`),
         );
       }
@@ -316,7 +314,7 @@ export const runParallelAgents = (
       // Acquire lock
       const lockAcquired = acquireWorktreeLock(openagentsDir, slot.task.id, config.sessionId);
       if (!lockAcquired) {
-        yield* Effect.fail(
+        return yield* Effect.fail(
           new ParallelRunnerError("setup_failed", `Could not acquire lock for ${slot.task.id}`),
         );
       }
@@ -356,11 +354,13 @@ export const runParallelAgents = (
             filesModified: result.filesModified,
           });
         } else {
-          slot.error = result.error;
+          if (result.error !== undefined) {
+            slot.error = result.error;
+          }
           config.onAgentEvent?.(slot.task.id, {
             type: "agent_failed",
             taskId: slot.task.id,
-            error: result.error || "Unknown error",
+            error: result.error ?? "Unknown error",
           });
         }
 
@@ -399,7 +399,7 @@ export const runParallelAgents = (
         config.onAgentEvent?.(slot.task.id, {
           type: "merge_completed",
           taskId: slot.task.id,
-          commitSha: commitSha || undefined,
+          ...(commitSha ? { commitSha } : {}),
         });
       }
     } else if (strategy === "queue") {
@@ -414,21 +414,21 @@ export const runParallelAgents = (
           strategy: "queue",
         });
 
-        const commitSha = yield* mergeAgentBranch(repoPath, slot.worktree.branch).pipe(
+        const commitShaQueue = yield* mergeAgentBranch(repoPath, slot.worktree.branch).pipe(
           Effect.catchAll((error) => {
             slot.error = error.message;
             return Effect.succeed(null);
           }),
         );
 
-        if (commitSha && slot.result) {
-          slot.result.commitSha = commitSha;
+        if (commitShaQueue && slot.result) {
+          slot.result.commitSha = commitShaQueue;
         }
 
         config.onAgentEvent?.(slot.task.id, {
           type: "merge_completed",
           taskId: slot.task.id,
-          commitSha: commitSha || undefined,
+          ...(commitShaQueue ? { commitSha: commitShaQueue } : {}),
         });
       }
     } else {

@@ -25,7 +25,9 @@ import { macOSContainerLive } from "./macos-container.js";
 
 const command = process.argv[2];
 
-const run = <A, E>(effect: Effect.Effect<A, E, any>) =>
+type BunCtx = BunContext.BunContext;
+
+const run = <A, E>(effect: Effect.Effect<A, E, BunCtx>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
 
 const runWithContainer = <A, E>(
