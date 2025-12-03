@@ -309,14 +309,31 @@ const runAgentInWorktree = async (
     fs.writeFileSync(progressPath, "");
   }
 
-  // Install dependencies
+  // Install dependencies with timeout
+  // Use --frozen-lockfile to prevent lock contention between parallel agents
   agentLog(`Installing dependencies...`);
-  const bunInstall = Bun.spawn(["bun", "install"], {
+  const bunInstall = Bun.spawn(["bun", "install", "--frozen-lockfile"], {
     cwd: slot.worktree.path,
     stdout: "pipe",
     stderr: "pipe",
   });
-  await bunInstall.exited;
+
+  // Add timeout for bun install (2 minutes)
+  const installTimeout = 120_000;
+  const timeoutPromise = new Promise<"timeout">((resolve) =>
+    setTimeout(() => resolve("timeout"), installTimeout)
+  );
+
+  const result = await Promise.race([bunInstall.exited, timeoutPromise]);
+
+  if (result === "timeout") {
+    bunInstall.kill();
+    slot.status = "failed";
+    slot.error = `bun install timed out after ${installTimeout / 1000}s`;
+    agentLog(`❌ ${slot.error}`);
+    return;
+  }
+
   if (bunInstall.exitCode !== 0) {
     const stderr = await new Response(bunInstall.stderr).text();
     slot.status = "failed";
