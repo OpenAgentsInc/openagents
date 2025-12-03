@@ -70,7 +70,7 @@ export const runSubagent = (
   config: SubagentConfig
 ): Effect.Effect<SubagentResult, Error, OpenRouterClient> =>
   Effect.gen(function* () {
-    const { subtask, tools, model, maxTurns = 15, signal } = config;
+    const { subtask, tools, model, maxTurns = 15 } = config;
 
     const userPrompt = buildSubagentPrompt(subtask);
 

@@ -65,9 +65,8 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
           try: () =>
             claudeRunner(subtask, {
               cwd: options.cwd,
-              openagentsDir: options.openagentsDir,
+              openagentsDir: options.openagentsDir ?? options.cwd,
               maxTurns,
-              permissionMode: claudeCode?.permissionMode,
             }),
           catch: (error: any) => error as Error,
         }).pipe(
@@ -89,11 +88,16 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
     }
 
     const minimalRunner = options.runMinimalSubagent ?? runSubagent;
+    const configOptions =
+      options.model || options.signal
+        ? {
+            ...(options.model ? { model: options.model } : {}),
+            ...(options.signal ? { signal: options.signal } : {}),
+            maxTurns,
+          }
+        : { maxTurns };
+
     return yield* minimalRunner(
-      createSubagentConfig(subtask, options.cwd, options.tools, {
-        model: options.model,
-        maxTurns,
-        signal: options.signal,
-      })
+      createSubagentConfig(subtask, options.cwd, options.tools, configOptions)
     );
   });

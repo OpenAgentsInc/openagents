@@ -4,7 +4,6 @@
  * Breaks tasks into implementable subtasks to prevent "one-shot" failures.
  * Uses heuristics and optionally LLM for complex task decomposition.
  */
-import { Effect } from "effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Task } from "../../tasks/index.js";
@@ -200,7 +199,11 @@ export const updateSubtaskStatus = (
   if (!subtask) return null;
   
   subtask.status = status;
-  subtask.error = error;
+  if (error !== undefined) {
+    subtask.error = error;
+  } else {
+    delete subtask.error;
+  }
   
   if (status === "in_progress") {
     subtask.startedAt = new Date().toISOString();
