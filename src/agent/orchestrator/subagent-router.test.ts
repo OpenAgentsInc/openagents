@@ -73,7 +73,7 @@ describe("runBestAvailableSubagent", () => {
     let minimalCalled = false;
 
     const result = await Effect.runPromise(
-      runBestAvailableSubagent<never>({
+      runBestAvailableSubagent({
         subtask: makeSubtask(),
         cwd: "/tmp",
         openagentsDir: "/tmp/.openagents",
@@ -103,7 +103,7 @@ describe("runBestAvailableSubagent", () => {
     let detectCalled = false;
 
     const result = await Effect.runPromise(
-      runBestAvailableSubagent<never>({
+      runBestAvailableSubagent({
         subtask: makeSubtask("Simple change"),
         cwd: "/tmp",
         openagentsDir: "/tmp/.openagents",
@@ -129,7 +129,7 @@ describe("runBestAvailableSubagent", () => {
     let receivedPermission: string | undefined;
 
     const result = await Effect.runPromise(
-      runBestAvailableSubagent<never>({
+      runBestAvailableSubagent({
         subtask: makeSubtask("Complex refactor"),
         cwd: "/tmp",
         openagentsDir: "/tmp/.openagents",
