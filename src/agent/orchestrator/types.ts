@@ -22,6 +22,10 @@ export interface Subtask {
   completedAt?: string;
   verifiedAt?: string;
   error?: string;
+  /** Number of consecutive failures on this subtask */
+  failureCount?: number;
+  /** Last failure reason (for context when resuming) */
+  lastFailureReason?: string;
   /** Claude Code session tracking for resumption across orchestrator runs */
   claudeCode?: {
     /** Active Claude Code session ID used for this subtask */

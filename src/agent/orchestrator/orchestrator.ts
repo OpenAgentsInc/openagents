@@ -257,13 +257,31 @@ export const runOrchestrator = (
         progress.orientation.testsPassingAtStart = true;
       }
 
-      progress.orientation.repoState = "clean";
+      progress.orientation.repoState = progress.orientation.testsPassingAtStart ? "clean" : "typecheck_failing";
       emit({
         type: "orientation_complete",
         repoState: progress.orientation.repoState,
         testsPassingAtStart: progress.orientation.testsPassingAtStart,
         initScript: initScriptResult,
       });
+
+      // If typecheck is failing at start, we need to fix it first before picking a task
+      // This prevents the loop where we keep picking the same task but can't make progress
+      if (!progress.orientation.testsPassingAtStart) {
+        state.phase = "failed";
+        state.error = "Typecheck/tests failing at session start - fix before picking tasks";
+        progress.nextSession.blockers = [
+          "Typecheck or tests failing at session start",
+          "Must fix existing errors before working on new tasks",
+        ];
+        progress.nextSession.suggestedNextSteps = [
+          "Run bun run typecheck to see errors",
+          "Fix typecheck errors first",
+        ];
+        writeProgress(openagentsDir, progress);
+        emit({ type: "session_complete", success: false, summary: "Typecheck failing at start" });
+        return state;
+      }
 
       // Phase 2: Select Task
       state.phase = "selecting_task";
@@ -413,23 +431,67 @@ export const runOrchestrator = (
           );
           emit({ type: "subtask_complete", subtask, result });
         } else {
+          // Track consecutive failures
+          const MAX_CONSECUTIVE_FAILURES = 3;
+          subtask.failureCount = (subtask.failureCount ?? 0) + 1;
+          subtask.lastFailureReason = result.error || "Unknown error";
           subtask.status = "failed";
           if (result.error) {
             subtask.error = result.error;
           }
           emit({ type: "subtask_failed", subtask, error: result.error || "Unknown error" });
 
-          // Stop on first failure
+          // Check if we've exceeded max consecutive failures
+          if (subtask.failureCount >= MAX_CONSECUTIVE_FAILURES) {
+            // Mark the parent task as blocked to prevent infinite loops
+            state.phase = "failed";
+            state.error = `Task blocked after ${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${result.error}`;
+            progress.nextSession.blockers = [
+              `Task failed ${MAX_CONSECUTIVE_FAILURES} times consecutively`,
+              `Last error: ${result.error || "Unknown"}`,
+              "Task marked as blocked - requires manual intervention",
+            ];
+            progress.nextSession.suggestedNextSteps = [
+              "Review the task requirements and errors",
+              "Fix underlying issues before retrying",
+              "Consider breaking the task into smaller pieces",
+            ];
+
+            // Mark the task as blocked in tasks.jsonl
+            yield* updateTask({
+              tasksPath,
+              id: taskResult.id,
+              update: {
+                status: "blocked",
+                closeReason: `Blocked after ${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${result.error}`,
+              },
+            }).pipe(Effect.catchAll(() => Effect.void));
+
+            writeProgress(openagentsDir, progress);
+            writeSubtasks(openagentsDir, subtaskList);
+            emit({ type: "session_complete", success: false, summary: `Task blocked after ${MAX_CONSECUTIVE_FAILURES} failures` });
+            return state;
+          }
+
+          // Stop on failure, but allow retry next cycle (under MAX_CONSECUTIVE_FAILURES)
           state.phase = "failed";
           if (result.error) {
             state.error = result.error;
           }
-          const blockers: string[] = [result.error || "Subtask failed"];
+          const blockers: string[] = [
+            `Failure ${subtask.failureCount}/${MAX_CONSECUTIVE_FAILURES}: ${result.error || "Subtask failed"}`,
+          ];
           const verificationHint = summarizeOutput(result.verificationOutputs?.[0]);
           if (verificationHint) {
             blockers.push(verificationHint);
           }
           progress.nextSession.blockers = blockers;
+
+          // Clear session for fresh start on next attempt (fork instead of continue)
+          if (subtask.claudeCode) {
+            subtask.claudeCode.resumeStrategy = "fork";
+          }
+
           writeProgress(openagentsDir, progress);
           writeSubtasks(openagentsDir, subtaskList);
           return state;
