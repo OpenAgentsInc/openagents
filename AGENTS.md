@@ -16,8 +16,8 @@ Before you make any code changes in this repo, do the following:
    - Skim `.openagents/tasks.jsonl` to see how work is structured.
 
 3. **Check current health:**
-   - Run `bun test` in this repo and make sure it passes.
-   - If tests fail, treat fixing them as P0 before starting new work.
+   - Run `bun test` in this repo to see current status.
+   - If tests fail, note the failures in your log; continue with your task but re-check after your changes before committing.
 
 4. **Start a work log:**
    - Use the `DAY`/`TS` snippet under "Work Logs".

@@ -28,7 +28,8 @@
     "@openrouter/sdk": "0.1.27",
     "diff": "8.0.2",
     "effect": "3.19.8",
-    "electrobun": "0.1.12"
+    "electrobun": "0.1.12",
+    "zod": "3.24.4"
   },
   "devDependencies": {
     "@effect/language-service": "0.58.0",

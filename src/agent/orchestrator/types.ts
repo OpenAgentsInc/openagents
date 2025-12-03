@@ -36,6 +36,21 @@ export interface SubtaskList {
 // Progress File Types
 // ============================================================================
 
+export type ClaudeCodePermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "bypassPermissions"
+  | "plan"
+  | "dontAsk";
+
+export interface ClaudeCodeSettings {
+  enabled?: boolean;
+  preferForComplexTasks?: boolean;
+  maxTurnsPerSubtask?: number;
+  permissionMode?: ClaudeCodePermissionMode;
+  fallbackToMinimal?: boolean;
+}
+
 export interface SessionProgress {
   sessionId: string;
   startedAt: string;
@@ -114,6 +129,8 @@ export interface OrchestratorConfig {
   allowPush: boolean;
   /** Max subtasks per task */
   maxSubtasksPerTask?: number;
+  /** Claude Code integration settings */
+  claudeCode?: ClaudeCodeSettings;
   /** Abort signal */
   signal?: AbortSignal;
 }
