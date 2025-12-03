@@ -456,6 +456,9 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     }
 
     let tasksCompleted = 0;
+    let consecutiveFailures = 0;
+    let lastFailureReason = "";
+    const MAX_CONSECUTIVE_FAILURES = 3;
 
     // Create HUD callbacks for real-time updates to the desktop HUD
     // These silently fail if the HUD isn't running
@@ -552,19 +555,50 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         },
       };
 
-      const state = yield* runOrchestrator(orchestratorConfig, emit).pipe(
+      const state: PartialOrchestratorState = yield* runOrchestrator(orchestratorConfig, emit).pipe(
         Effect.catchAll((error) => {
           log(`Orchestrator error: ${error.message}`);
-          return Effect.succeed({ phase: "failed" as const, error: error.message });
+          return Effect.succeed({ phase: "failed" as const, error: error.message } as PartialOrchestratorState);
         })
+      );
+
+      // Determine if we made meaningful progress (picked a task)
+      const taskWasPicked = state.task !== null && state.task !== undefined;
+      const didMeaningfulWork = taskWasPicked && (
+        (state.phase === "done") ||
+        (state.subtasks?.subtasks?.some(s => s.status === "done" || s.status === "in_progress"))
       );
 
       if (state.phase === "done") {
         tasksCompleted++;
+        consecutiveFailures = 0; // Reset on success
+        lastFailureReason = "";
         log(`\n✓ Task ${tasksCompleted} completed`);
       } else if (state.phase === "failed") {
-        log(`\n✗ Task failed: ${state.error || "Unknown error"}`);
-        // Continue to next task unless it's a critical failure
+        const currentError = state.error || "Unknown error";
+        log(`\n✗ Task failed: ${currentError}`);
+
+        // Check if this is a pre-task failure (init script, no tasks, etc.)
+        const isPreTaskFailure = !taskWasPicked;
+
+        // Track consecutive failures - especially for pre-task failures
+        if (isPreTaskFailure || currentError === lastFailureReason) {
+          consecutiveFailures++;
+          log(`[Guardrail] Consecutive failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}`);
+        } else {
+          // Different error on a picked task - reset counter but record the error
+          consecutiveFailures = 1;
+        }
+        lastFailureReason = currentError;
+
+        // Stop if we've had too many consecutive failures
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          log(`[Guardrail] STOPPING: ${MAX_CONSECUTIVE_FAILURES} consecutive failures without progress`);
+          log(`[Guardrail] Last error: ${currentError}`);
+          break;
+        }
+
+        // Also stop for specific terminal errors
         if (state.error?.includes("No ready tasks")) {
           log("No more ready tasks available");
           break;
@@ -574,8 +608,14 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         break;
       }
 
-      // Commit and push any pending changes after each task (success or failure)
-      // This ensures tasks.jsonl updates and progress files are not left uncommitted
+      // GUARDRAIL: Only commit when meaningful work was done
+      // This prevents empty commits from pre-task failures (init script, etc.)
+      if (!didMeaningfulWork) {
+        log("[Guardrail] Skipping commit - no meaningful work done this cycle");
+        continue;
+      }
+
+      // Commit and push pending changes only after meaningful work
       try {
         const { execSync } = require("node:child_process") as typeof import("node:child_process");
         const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
