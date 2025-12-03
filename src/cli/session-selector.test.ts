@@ -11,11 +11,11 @@ describe("session selector", () => {
 
     const first = new SessionManager(dir);
     first.start("openai", "gpt-4");
-    first.saveMessage("user", "first message");
+    first.saveMessage({ role: "user", content: "first message" });
 
     const second = new SessionManager(dir);
     second.start("openai", "gpt-4");
-    second.saveMessage("user", "second message");
+    second.saveMessage({ role: "user", content: "second message" });
 
     const latest = findLatestSession({ baseDir: dir, cwd: dir });
     const sessions = new SessionManager(dir).listSessions();
@@ -32,7 +32,7 @@ describe("session selector", () => {
 
     const session = new SessionManager(dir);
     session.start("openai", "gpt-4");
-    session.saveMessage("user", "implement feature xyz");
+    session.saveMessage({ role: "user", content: "implement feature xyz" });
 
     const summaries = getSessionSummaries({ baseDir: dir, cwd: dir });
 
