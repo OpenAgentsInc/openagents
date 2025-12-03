@@ -36,7 +36,12 @@ import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import { loadProjectConfig } from "../tasks/project.js";
 import { readTasks } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
-import { openRouterClientLayer, openRouterConfigLayer } from "../llm/openrouter.js";
+import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../llm/openrouter.js";
+
+// Noop OpenRouter layer for cc-only mode - satisfies type but throws if actually called
+const noopOpenRouterLayer = Layer.succeed(OpenRouterClient, {
+  chat: () => Effect.fail(new Error("OpenRouter not available in cc-only mode")),
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -361,11 +366,14 @@ const runAgentInWorktree = async (
       : {}),
   };
 
-  // Merge layers
-  const combinedLayer = Layer.merge(
-    BunContext.layer,
-    Layer.provide(openRouterClientLayer, openRouterConfigLayer),
-  );
+  // Merge layers - use noop OpenRouter layer in cc-only mode (no API key needed)
+  // When ccOnly is true, we provide a stub that throws if accidentally called
+  const combinedLayer = ccOnly
+    ? Layer.merge(BunContext.layer, noopOpenRouterLayer)
+    : Layer.merge(
+        BunContext.layer,
+        Layer.provide(openRouterClientLayer, openRouterConfigLayer),
+      );
 
   try {
     const state = await Effect.runPromise(
