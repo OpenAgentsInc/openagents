@@ -10,8 +10,9 @@ test.describe("HUD Smoke (HUD-001/002/010/012)", () => {
   test("loads HUD and supports pan/reset", async ({ mainviewPage }) => {
     // App launch + render
     await expect(mainviewPage.flowSvg).toBeVisible();
-    await expect(mainviewPage.flowCanvas).toBeVisible();
-    await expect(mainviewPage.flowContent).toBeVisible();
+    // SVG <g> elements don't have intrinsic dimensions, so we check they're attached
+    await expect(mainviewPage.flowCanvas).toHaveCount(1);
+    await expect(mainviewPage.flowContent).toHaveCount(1);
     await expect(mainviewPage.resetButton).toBeVisible();
 
     // WebSocket should be connected for HUD updates
