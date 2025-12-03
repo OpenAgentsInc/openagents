@@ -183,3 +183,149 @@ describe("Golden Loop with Claude Code", () => {
     expect(log).toContain(taskId);
   });
 });
+
+describe("Typecheck failure handling", () => {
+  test("injects fix-typecheck subtask when typecheck fails at start", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("typecheck-fail");
+    const events: OrchestratorEvent[] = [];
+
+    // Mock subagent that "fixes" the typecheck by creating a file
+    const fixedFile = path.join(dir, "typecheck-fixed.txt");
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        fs.writeFileSync(fixedFile, "typecheck fixed");
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [fixedFile],
+          turns: 1,
+          agent: "claude-code",
+        } as SubagentResult;
+      });
+
+    const state = await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          // First command fails (simulating typecheck failure), second passes
+          testCommands: ["echo tests"],
+          typecheckCommands: ["false"], // This will fail
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Should have created a fix-typecheck subtask
+    const subtasksFile = path.join(openagentsDir, "subtasks", `${taskId}.json`);
+    expect(fs.existsSync(subtasksFile)).toBe(true);
+    const subtasks = JSON.parse(fs.readFileSync(subtasksFile, "utf-8"));
+    const fixTypecheckSubtask = subtasks.subtasks.find((s: any) => s.id.includes("fix-typecheck"));
+    expect(fixTypecheckSubtask).toBeDefined();
+    expect(fixTypecheckSubtask.description).toContain("CRITICAL: Fix Typecheck Errors First");
+  });
+
+  test("tracks consecutive failures and blocks task after max failures", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("max-fail");
+    const events: OrchestratorEvent[] = [];
+    let failCount = 0;
+
+    // Mock subagent that always fails
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        failCount++;
+        return {
+          success: false,
+          subtaskId: options.subtask.id,
+          filesModified: [],
+          turns: 1,
+          agent: "claude-code",
+          error: `Simulated failure #${failCount}`,
+        } as SubagentResult;
+      });
+
+    // Run orchestrator 3 times (MAX_CONSECUTIVE_FAILURES = 3)
+    for (let i = 0; i < 3; i++) {
+      await runWithBun(
+        runOrchestrator(
+          {
+            cwd: dir,
+            openagentsDir,
+            testCommands: ["echo tests"],
+            allowPush: false,
+            maxSubtasksPerTask: 1,
+            claudeCode: { enabled: true },
+          },
+          (event) => events.push(event),
+          { runSubagent: subagentRunner },
+        ),
+      );
+    }
+
+    // After 3 failures, task should be blocked
+    const tasks = readTasks(path.join(openagentsDir, "tasks.jsonl"));
+    const blockedTask = tasks.find((t: any) => t.id === taskId);
+    expect(blockedTask?.status).toBe("blocked");
+    expect(blockedTask?.closeReason).toContain("consecutive failures");
+  });
+
+  test("includes failure context in prompt when retrying", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("retry-context");
+    const events: OrchestratorEvent[] = [];
+    let promptReceived = "";
+
+    // Mock subagent that captures the prompt and fails first time, succeeds second
+    let callCount = 0;
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => {
+        callCount++;
+        promptReceived = options.subtask.description;
+
+        if (callCount === 1) {
+          return {
+            success: false,
+            subtaskId: options.subtask.id,
+            filesModified: [],
+            turns: 1,
+            agent: "claude-code",
+            error: "TypeScript error: Cannot find module 'foo'",
+          } as SubagentResult;
+        }
+
+        return {
+          success: true,
+          subtaskId: options.subtask.id,
+          filesModified: [],
+          turns: 1,
+          agent: "claude-code",
+        } as SubagentResult;
+      });
+
+    // First run - fails
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["echo tests"],
+          allowPush: false,
+          maxSubtasksPerTask: 1,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Check subtask has failure info
+    const subtasksFile = path.join(openagentsDir, "subtasks", `${taskId}.json`);
+    const subtasksAfterFail = JSON.parse(fs.readFileSync(subtasksFile, "utf-8"));
+    const failedSubtask = subtasksAfterFail.subtasks[0];
+    expect(failedSubtask.failureCount).toBe(1);
+    expect(failedSubtask.lastFailureReason).toContain("Cannot find module");
+  });
+});
