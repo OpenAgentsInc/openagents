@@ -89,7 +89,7 @@ describe("ProjectService", () => {
 
     expect(result?.claudeCode?.enabled).toBe(true);
     expect(result?.claudeCode?.preferForComplexTasks).toBe(true);
-    expect(result?.claudeCode?.maxTurnsPerSubtask).toBe(30);
+    expect(result?.claudeCode?.maxTurnsPerSubtask).toBe(300);
     expect(result?.claudeCode?.permissionMode).toBe("bypassPermissions");
     expect(result?.claudeCode?.fallbackToMinimal).toBe(true);
   });
