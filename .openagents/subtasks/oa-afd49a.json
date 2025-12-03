@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-afd49a",
+  "taskTitle": "Add Golden Loop negative-path e2e (failing tests leave task in-progress)",
+  "subtasks": [
+    {
+      "id": "oa-afd49a-sub-001",
+      "description": "Add Golden Loop negative-path e2e (failing tests leave task in-progress)\n\nBuild a stub repo/test harness to run the orchestrator end-to-end with intentional failing tests, asserting no commit/push occurs, task remains in_progress or blocked with a clear reason, and logs capture the failure.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:14:32.979Z",
+      "claudeCode": {
+        "sessionId": "c9ce15ab-e63e-406f-b656-b944bd9b6d8f"
+      },
+      "completedAt": "2025-12-03T15:17:36.299Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:14:32.979Z",
+  "updatedAt": "2025-12-03T15:14:32.979Z"
+}
