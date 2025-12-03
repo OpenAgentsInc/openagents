@@ -110,14 +110,15 @@ const generateCommitMessage = (state: PartialOrchestratorState, cwd: string): st
   return lines.join("\n");
 };
 
-// Logging setup
-const OPENAGENTS_ROOT = "/Users/christopherdavid/code/openagents";
+// Logging setup - uses workDir for logs, not hardcoded path
+let _logWorkDir = process.cwd();
+
 const getLogDir = () => {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-  return path.join(OPENAGENTS_ROOT, "docs", "logs", `${year}${month}${day}`);
+  return path.join(_logWorkDir, "docs", "logs", `${year}${month}${day}`);
 };
 
 const getLogPath = (sessionId: string) => {
@@ -191,10 +192,10 @@ const parseArgs = (): OvernightConfig => {
   let ccOnly = false;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--dir" && args[i + 1]) {
+    if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
       workDir = args[i + 1].startsWith("~")
         ? args[i + 1].replace("~", process.env.HOME || "")
-        : args[i + 1];
+        : path.resolve(args[i + 1]);
       i++;
     } else if ((args[i] === "--max-tasks" || args[i] === "--max-beads") && args[i + 1]) {
       maxTasks = parseInt(args[i + 1], 10);
@@ -325,8 +326,9 @@ const overnightLoop = (config: OvernightConfig) =>
       { model: "x-ai/grok-4.1-fast:free", systemPrompt: OVERNIGHT_SYSTEM_PROMPT, maxTurns: 25 },
       "Overnight agent session",
     );
-    
-    // Initialize logging
+
+    // Initialize logging (set log directory to workDir)
+    _logWorkDir = config.workDir;
     initLog(session.id);
     
     const sessionPath = yield* getSessionPath(config.sessionsDir, session.id);
@@ -420,7 +422,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     );
     const projectConfig = loadedConfig ?? defaultConfig;
 
-    // Initialize logging
+    // Initialize logging (set log directory to workDir)
+    _logWorkDir = config.workDir;
     const sessionId = `orchestrator-${Date.now()}`;
     initLog(sessionId);
 

@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-pi03",
+  "taskTitle": "Build benchmarking harness for agent evaluation",
+  "subtasks": [
+    {
+      "id": "oa-pi03-sub-001",
+      "description": "Build benchmarking harness for agent evaluation\n\nCreate src/bench/ with: harness.ts (run tasks with metrics), terminal-bench.ts (Terminal-Bench 2.0 adapter), metrics.ts (token usage, latency, success rate), reporter.ts (comparison reports). Track: task completion rate, verification pass rate, token efficiency, tool call distribution, retry rate.",
+      "status": "done",
+      "startedAt": "2025-12-03T15:33:44.448Z",
+      "claudeCode": {
+        "sessionId": "4bd94e1f-185d-4440-b213-b14933e473fa"
+      },
+      "completedAt": "2025-12-03T15:42:38.298Z"
+    }
+  ],
+  "createdAt": "2025-12-03T15:33:44.447Z",
+  "updatedAt": "2025-12-03T15:33:44.447Z"
+}
