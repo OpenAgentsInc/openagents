@@ -264,6 +264,8 @@ export {
   // Message adaptation
   internalContentToSdk,
   internalContentsToSdk,
+  internalContentToToolContent,
+  internalContentsToToolContent,
   sdkContentToInternal,
   sdkContentsToInternal,
   toolCallToToolUseBlock,

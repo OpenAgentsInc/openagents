@@ -40,6 +40,8 @@ export {
   // Content block conversion
   internalContentToSdk,
   internalContentsToSdk,
+  internalContentToToolContent,
+  internalContentsToToolContent,
   sdkContentToInternal,
   sdkContentsToInternal,
   // Tool call conversion
