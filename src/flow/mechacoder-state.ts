@@ -55,11 +55,10 @@ const toTaskInfo = (task: Task, tasksById: Map<string, Task>): TaskInfo => ({
   priority: task.priority,
   type: task.type,
   labels: task.labels ?? [],
-  deps: (task.deps ?? []).map((dep): TaskDependencyInfo => ({
-    id: dep.id,
-    type: dep.type,
-    status: tasksById.get(dep.id)?.status,
-  })),
+  deps: (task.deps ?? []).map((dep): TaskDependencyInfo => {
+    const status = tasksById.get(dep.id)?.status;
+    return status !== undefined ? { id: dep.id, type: dep.type, status } : { id: dep.id, type: dep.type };
+  }),
   createdAt: task.createdAt,
   updatedAt: task.updatedAt,
 });

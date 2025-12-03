@@ -6,6 +6,7 @@ describe("openrouter mapping", () => {
   test("converts Effect schema tool to OpenRouter function definition", () => {
     const tool = {
       name: "read",
+      label: "read",
       description: "Read a file",
       schema: S.Struct({ path: S.String }),
       execute: () => null as any,

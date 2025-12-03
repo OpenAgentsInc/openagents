@@ -8,6 +8,7 @@ export interface Model<TApi extends Api = Api> {
   api: TApi;
   provider: Provider;
   baseUrl: string;
+  headers?: Record<string, string>;
   reasoning: boolean;
   input: Array<"text" | "image">;
   cost: {

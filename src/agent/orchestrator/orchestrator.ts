@@ -196,7 +196,8 @@ export const runOrchestrator = (
     try {
       // Phase 1: Orient
       state.phase = "orienting";
-      progress.orientation.previousSessionSummary = getPreviousSessionSummary(config.openagentsDir) || undefined;
+      const prevSummary = getPreviousSessionSummary(config.openagentsDir);
+      progress.orientation.previousSessionSummary = prevSummary ?? undefined;
 
       const initScriptResult = yield* runInitScript(
         config.openagentsDir,

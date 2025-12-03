@@ -33,7 +33,7 @@ describe("buildOpenAIRequestBody", () => {
   test("maps tool role to tool_call_id shape", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "hi" },
-      { role: "assistant", content: null, tool_calls: [{ id: "1", name: "mock", arguments: "{}" }] },
+      { role: "assistant", content: "" },
       { role: "tool", tool_call_id: "1", content: "ok", name: "mock" },
     ];
 

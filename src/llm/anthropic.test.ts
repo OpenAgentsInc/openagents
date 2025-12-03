@@ -6,6 +6,7 @@ describe("anthropic mapping", () => {
   test("converts Effect schema tool to Anthropic input_schema", () => {
     const tool = {
       name: "read",
+      label: "read",
       description: "Read a file",
       schema: S.Struct({ path: S.String }),
       execute: () => null as any,
