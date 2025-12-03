@@ -22,6 +22,15 @@ export interface Subtask {
   completedAt?: string;
   verifiedAt?: string;
   error?: string;
+  /** Claude Code session tracking for resumption across orchestrator runs */
+  claudeCode?: {
+    /** Active Claude Code session ID used for this subtask */
+    sessionId?: string;
+    /** Session ID this run was forked from (when branching) */
+    forkedFromSessionId?: string;
+    /** Whether the next resume should fork instead of continue */
+    resumeStrategy?: "continue" | "fork";
+  };
 }
 
 export interface SubtaskList {
@@ -72,6 +81,8 @@ export interface SessionProgress {
     testsPassingAfterWork: boolean;
     /** Claude Code session metadata for context bridging */
     claudeCodeSession?: {
+      sessionId?: string;
+      forkedFromSessionId?: string;
       toolsUsed?: Record<string, number>;
       summary?: string;
       usage?: {
@@ -117,6 +128,10 @@ export interface SubagentResult {
   error?: string;
   turns: number;
   agent?: "claude-code" | "minimal";
+  /** Session ID returned by Claude Code for resumption */
+  claudeCodeSessionId?: string;
+  /** Original session ID when a forked branch was created */
+  claudeCodeForkedFromSessionId?: string;
   tokenUsage?: {
     input: number;
     output: number;
@@ -124,6 +139,8 @@ export interface SubagentResult {
   verificationOutputs?: string[];
   /** Claude Code session metadata for progress.md bridging */
   sessionMetadata?: {
+    sessionId?: string;
+    forkedFromSessionId?: string;
     /** Tools used during session with counts */
     toolsUsed?: Record<string, number>;
     /** Blockers or errors encountered */

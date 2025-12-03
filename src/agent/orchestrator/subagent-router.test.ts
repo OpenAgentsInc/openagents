@@ -224,4 +224,40 @@ describe("runBestAvailableSubagent", () => {
     expect(result.success).toBe(true);
     expect(receivedPermission).toBe("dontAsk");
   });
+
+  test("passes resume/fork options to Claude Code runner and returns session metadata", async () => {
+    let receivedOptions: any;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: {
+          ...makeSubtask("Resume prior session"),
+          claudeCode: { sessionId: "sess-old", resumeStrategy: "fork" },
+        },
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, preferForComplexTasks: false },
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (_subtask, options) => {
+          receivedOptions = options;
+          return {
+            success: true,
+            subtaskId: _subtask.id,
+            filesModified: [],
+            turns: 1,
+            claudeCodeSessionId: "sess-new",
+            claudeCodeForkedFromSessionId: "sess-old",
+          };
+        },
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(receivedOptions?.resumeSessionId).toBe("sess-old");
+    expect(receivedOptions?.forkSession).toBe(true);
+    expect(result.claudeCodeSessionId).toBe("sess-new");
+    expect(result.claudeCodeForkedFromSessionId).toBe("sess-old");
+  });
 });

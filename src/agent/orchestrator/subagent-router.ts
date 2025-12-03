@@ -89,6 +89,8 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
     const maxTurns = claudeCode?.maxTurnsPerSubtask ?? 30;
     const timeoutMs = claudeCode?.timeoutMsPerSubtask;
     const verificationCommands = options.verificationCommands;
+    const resumeSessionId = subtask.claudeCode?.sessionId;
+    const forkSession = subtask.claudeCode?.resumeStrategy === "fork";
 
     const runMinimal = () =>
       (options.runMinimalSubagent ?? runSubagent)(
@@ -119,6 +121,8 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               ...(timeoutMs ? { timeoutMs } : {}),
               ...(options.signal ? { signal: options.signal } : {}),
               ...(claudeCode?.permissionMode ? { permissionMode: claudeCode.permissionMode } : {}),
+              ...(resumeSessionId ? { resumeSessionId } : {}),
+              ...(forkSession ? { forkSession } : {}),
             }),
           catch: (error: any) => error as Error,
         }).pipe(
