@@ -331,7 +331,10 @@ const runAgentInWorktree = async (
     ? { enabled: true, preferForComplexTasks: false, fallbackToMinimal: false }
     : projectConfig.claudeCode;
 
-  const orchestratorConfig = {
+  // Build sandbox config (pass through from project config)
+  const sandboxConfig = projectConfig.sandbox;
+
+  const orchestratorConfig: Parameters<typeof runOrchestrator>[0] = {
     cwd: slot.worktree.path,
     openagentsDir: worktreeOpenagentsDir,
     testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
@@ -339,21 +342,23 @@ const runAgentInWorktree = async (
     e2eCommands: [...(projectConfig.e2eCommands ?? [])],
     allowPush: false, // Don't push from worktree
     claudeCode: claudeCodeConfig,
+    // Pass sandbox config for sandboxed verification (when available)
+    ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
     subagentModel: projectConfig.defaultModel,
-    // Force picking specific task
-    taskId: slot.task.id,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
     // Stream Claude Code output when verbose
-    onOutput: verbose
-      ? (text: string) => {
-          // Stream CC output line by line with agent prefix
-          const lines = text.split("\n").filter((l) => l.trim());
-          for (const line of lines) {
-            process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
-          }
+    ...(verbose
+      ? {
+          onOutput: (text: string) => {
+            // Stream CC output line by line with agent prefix
+            const lines = text.split("\n").filter((l) => l.trim());
+            for (const line of lines) {
+              process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
+            }
+          },
         }
-      : undefined,
+      : {}),
   };
 
   // Merge layers

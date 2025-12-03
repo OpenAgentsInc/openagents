@@ -89,3 +89,18 @@ export {
   isPidRunning,
 } from "./agent-lock.js";
 export type { AgentLock, AcquireLockResult, CheckLockResult } from "./agent-lock.js";
+
+// Sandbox Runner
+export {
+  runCommand,
+  runCommandString,
+  runVerificationWithSandbox,
+  checkSandboxAvailable,
+  buildContainerConfig,
+} from "./sandbox-runner.js";
+export type {
+  SandboxRunnerConfig,
+  SandboxRunnerEvent,
+  CommandResult,
+  VerificationResult,
+} from "./sandbox-runner.js";
