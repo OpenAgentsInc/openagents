@@ -12,5 +12,12 @@
   "allowForcePush": false,
   "maxTasksPerRun": 3,
   "maxRuntimeMinutes": 240,
-  "idPrefix": "oa"
+  "idPrefix": "oa",
+  "claudeCode": {
+    "enabled": true,
+    "preferForComplexTasks": true,
+    "maxTurnsPerSubtask": 30,
+    "permissionMode": "bypassPermissions",
+    "fallbackToMinimal": true
+  }
 }
