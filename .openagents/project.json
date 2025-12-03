@@ -22,5 +22,11 @@
     "maxTurnsPerSubtask": 300,
     "permissionMode": "bypassPermissions",
     "fallbackToMinimal": false
+  },
+  "sandbox": {
+    "enabled": true,
+    "backend": "auto",
+    "memoryLimit": "8G",
+    "timeoutMs": 300000
   }
 }
