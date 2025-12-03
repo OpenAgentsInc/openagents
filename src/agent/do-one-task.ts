@@ -18,18 +18,19 @@ import {
   type TaskFilter,
   TaskServiceError,
 } from "../tasks/index.js";
+import { loadProjectConfig } from "../tasks/project.js";
 import { readTool } from "../tools/read.js";
 import { editTool } from "../tools/edit.js";
 import { bashTool } from "../tools/bash.js";
 import { writeTool } from "../tools/write.js";
 import { openRouterLive } from "../llm/openrouter.js";
-import { 
-  createRunMetadata, 
-  writeRunLog, 
-  appendRunEventSync, 
-  generateRunId, 
+import {
+  createRunMetadata,
+  writeRunLog,
+  appendRunEventSync,
+  generateRunId,
   nowTs,
-  type TaskRunEvent 
+  type TaskRunEvent,
 } from "./runLog.js";
 import {
   createSession,
@@ -39,6 +40,7 @@ import {
   writeSessionEnd,
   getSessionPath,
 } from "./session.js";
+import { runOrchestrator, type OrchestratorEvent } from "./orchestrator/index.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
 
@@ -271,18 +273,23 @@ interface Config {
   workDir: string;
   sessionsDir: string;
   runLogDir: string;
+  /** Use legacy Grok-based agentLoop instead of orchestrator+Claude Code */
+  legacy: boolean;
 }
 
 const parseArgs = (): Config => {
   const args = process.argv.slice(2);
   let workDir = process.cwd();
+  let legacy = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dir" && args[i + 1]) {
-      workDir = args[i + 1].startsWith("~") 
+      workDir = args[i + 1].startsWith("~")
         ? args[i + 1].replace("~", process.env.HOME || "")
         : args[i + 1];
       i++;
+    } else if (args[i] === "--legacy") {
+      legacy = true;
     }
   }
 
@@ -290,6 +297,7 @@ const parseArgs = (): Config => {
     workDir,
     sessionsDir: `${workDir}/.openagents/sessions`,
     runLogDir: `${workDir}/.openagents/run-logs`,
+    legacy,
   };
 };
 
@@ -709,12 +717,120 @@ Fix the errors by editing the code, then re-run the failing command. Do NOT send
     return { success: isCompleted, logFile, incomplete: !isCompleted, status: runStatus };
   });
 
+/**
+ * Orchestrator-based task execution (Claude Code primary, Grok fallback).
+ * This is the new default path for do-one-task.
+ */
+const doOneTaskOrchestrator = (config: Config) =>
+  Effect.gen(function* () {
+    const openagentsDir = nodePath.join(config.workDir, ".openagents");
+
+    // Load project config with defaults
+    const defaultConfig = {
+      projectId: "unknown",
+      defaultBranch: "main",
+      testCommands: ["bun test"],
+      typecheckCommands: ["bun run typecheck"],
+      allowPush: true,
+      claudeCode: {
+        enabled: true,
+        preferForComplexTasks: true,
+        fallbackToMinimal: true,
+      },
+    };
+    const loadedConfig = yield* loadProjectConfig(openagentsDir).pipe(
+      Effect.catchAll(() => Effect.succeed(null))
+    );
+    const projectConfig = loadedConfig ?? defaultConfig;
+
+    console.log("=".repeat(60));
+    console.log("DO ONE TASK - Orchestrator Mode (Claude Code primary)");
+    console.log(`Work directory: ${config.workDir}`);
+    console.log(`Test commands: ${projectConfig.testCommands?.join(", ") || "none"}`);
+    console.log(`Claude Code enabled: ${projectConfig.claudeCode?.enabled ?? true}`);
+    console.log("=".repeat(60));
+
+    process.chdir(config.workDir);
+
+    // Event handler for logging
+    const emit = (event: OrchestratorEvent) => {
+      const ts = new Date().toISOString();
+      switch (event.type) {
+        case "session_start":
+          console.log(`[${ts}] Session started: ${event.sessionId}`);
+          break;
+        case "task_selected":
+          console.log(`[${ts}] Task selected: ${event.task.id} - ${event.task.title}`);
+          break;
+        case "subtask_start":
+          console.log(`[${ts}] Subtask started: ${event.subtask.id}`);
+          break;
+        case "subtask_complete":
+          console.log(`[${ts}] Subtask complete: ${event.subtask.id} (agent: ${event.result.agent})`);
+          break;
+        case "subtask_failed":
+          console.log(`[${ts}] Subtask FAILED: ${event.subtask.id} - ${event.error}`);
+          break;
+        case "verification_start":
+          console.log(`[${ts}] Running: ${event.command}`);
+          break;
+        case "verification_complete":
+          console.log(`[${ts}] ${event.passed ? "PASS" : "FAIL"}: ${event.command}`);
+          break;
+        case "commit_created":
+          console.log(`[${ts}] Commit: ${event.sha.slice(0, 8)} - ${event.message}`);
+          break;
+        case "push_complete":
+          console.log(`[${ts}] Pushed to ${event.branch}`);
+          break;
+        case "session_complete":
+          console.log(`[${ts}] Session ${event.success ? "SUCCESS" : "FAILED"}: ${event.summary}`);
+          break;
+        case "error":
+          console.log(`[${ts}] ERROR in ${event.phase}: ${event.error}`);
+          break;
+      }
+    };
+
+    const orchestratorConfig = {
+      cwd: config.workDir,
+      openagentsDir,
+      testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
+      allowPush: projectConfig.allowPush ?? true,
+      claudeCode: projectConfig.claudeCode,
+      ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
+    };
+    const state = yield* runOrchestrator(orchestratorConfig, emit);
+
+    // Generate a placeholder log file path for compatibility with legacy return type
+    const logFile = nodePath.join(config.runLogDir, `orchestrator-${Date.now()}.log`);
+
+    console.log("=".repeat(60));
+    if (state.phase === "done") {
+      console.log(`SUCCESS - Task ${state.task?.id} completed`);
+      return { success: true, logFile, incomplete: false, status: "success" as const };
+    } else if (state.phase === "failed") {
+      console.log(`FAILED - ${state.error || "Unknown error"}`);
+      return { success: false, logFile, incomplete: true, status: "failed" as const };
+    } else {
+      console.log(`INCOMPLETE - Phase: ${state.phase}`);
+      return { success: false, logFile, incomplete: true, status: "incomplete" as const };
+    }
+  });
+
 // Main
 const config = parseArgs();
 
 const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
 
-Effect.runPromise(doOneTask(config).pipe(Effect.provide(liveLayer)))
+// Route based on --legacy flag
+const program = config.legacy
+  ? doOneTask(config) // Legacy: Grok-based agentLoop
+  : doOneTaskOrchestrator(config); // Default: Orchestrator with Claude Code
+
+console.log(config.legacy ? "[Legacy mode: Grok-based agentLoop]" : "[Orchestrator mode: Claude Code primary]");
+
+Effect.runPromise(program.pipe(Effect.provide(liveLayer)))
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Fatal:", err);
