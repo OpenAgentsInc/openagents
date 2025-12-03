@@ -12,7 +12,7 @@ describe("openrouter mapping", () => {
       execute: () => null as any,
     };
 
-    const def = toolToOpenRouterDefinition(tool);
+    const def: any = toolToOpenRouterDefinition(tool);
 
     expect(def.type).toBe("function");
     expect(def.function?.name).toBe("read");
