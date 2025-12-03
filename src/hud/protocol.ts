@@ -174,6 +174,64 @@ export interface ToolResultMessage {
 }
 
 // ============================================================================
+// APM (Actions Per Minute) Events
+// ============================================================================
+
+/**
+ * Real-time APM update during session
+ */
+export interface APMUpdateMessage {
+  type: "apm_update";
+  sessionId: string;
+  /** Current session APM */
+  sessionAPM: number;
+  /** APM over last 5 minutes */
+  recentAPM: number;
+  /** Total actions (messages + tool calls) this session */
+  totalActions: number;
+  /** Session duration in minutes */
+  durationMinutes: number;
+}
+
+/**
+ * APM snapshot with historical context (sent at session boundaries)
+ */
+export interface APMSnapshotMessage {
+  type: "apm_snapshot";
+  /** Combined APM across all sources */
+  combined: {
+    apm1h: number;
+    apm6h: number;
+    apm1d: number;
+    apm1w: number;
+    apm1m: number;
+    apmLifetime: number;
+    totalSessions: number;
+    totalActions: number;
+  };
+  /** MechaCoder vs Claude Code comparison */
+  comparison: {
+    claudeCodeAPM: number;
+    mechaCoderAPM: number;
+    /** mechaCoder / claudeCode */
+    efficiencyRatio: number;
+  };
+}
+
+/**
+ * Tool usage breakdown
+ */
+export interface APMToolUsageMessage {
+  type: "apm_tool_usage";
+  tools: Array<{
+    name: string;
+    count: number;
+    percentage: number;
+    category: string;
+  }>;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -193,7 +251,10 @@ export type HudMessage =
   | ErrorMessage
   | TextOutputMessage
   | ToolCallMessage
-  | ToolResultMessage;
+  | ToolResultMessage
+  | APMUpdateMessage
+  | APMSnapshotMessage
+  | APMToolUsageMessage;
 
 // ============================================================================
 // Protocol Constants

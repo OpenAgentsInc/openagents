@@ -60,8 +60,17 @@
  */
 
 import type { OrchestratorEvent } from "../agent/orchestrator/types.js";
-import type { HudMessage, HudTaskInfo, HudSubtaskInfo, HudSubagentResult } from "./protocol.js";
+import type {
+  HudMessage,
+  HudTaskInfo,
+  HudSubtaskInfo,
+  HudSubagentResult,
+  APMUpdateMessage,
+  APMSnapshotMessage,
+} from "./protocol.js";
 import { HudClient, getHudClient, type HudClientOptions } from "./client.js";
+import type { APMCollector } from "../agent/apm.js";
+import type { APMBySource } from "../agent/apm.js";
 
 /**
  * Convert an OrchestratorEvent to a HudMessage.
@@ -260,4 +269,128 @@ export const createHudCallbacks = (clientOptions?: HudClientOptions) => {
   };
 
   return { emit, onOutput, client };
+};
+
+// ============================================================================
+// APM Emitters
+// ============================================================================
+
+const APM_UPDATE_INTERVAL = 30000; // 30 seconds
+
+/**
+ * Create an APM emitter that sends periodic updates to the HUD.
+ *
+ * Call the returned function periodically (or after significant actions)
+ * to update the HUD with current APM metrics.
+ *
+ * @example
+ * ```typescript
+ * const apmEmit = createAPMEmitter(client, collector);
+ *
+ * // In orchestrator loop:
+ * apmEmit(); // Sends update if interval elapsed
+ * apmEmit(true); // Force send regardless of interval
+ * ```
+ */
+export const createAPMEmitter = (
+  client: HudClient,
+  collector: APMCollector,
+): ((force?: boolean) => void) => {
+  let lastUpdate = 0;
+
+  return (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastUpdate < APM_UPDATE_INTERVAL) return;
+    lastUpdate = now;
+
+    const message: APMUpdateMessage = {
+      type: "apm_update",
+      sessionId: (collector as any).sessionId,
+      sessionAPM: collector.getSessionAPM(),
+      recentAPM: collector.getRecentAPM(5),
+      totalActions: (collector as any).actions?.length ?? 0,
+      durationMinutes: (Date.now() - (collector as any).startMs) / 60000,
+    };
+
+    client.send(message);
+  };
+};
+
+/**
+ * Send an APM snapshot with historical data to the HUD.
+ *
+ * Call this at session start/end to provide full context.
+ */
+export const sendAPMSnapshot = (
+  client: HudClient,
+  stats: APMBySource,
+): void => {
+  const message: APMSnapshotMessage = {
+    type: "apm_snapshot",
+    combined: {
+      apm1h: stats.combined.apm1h,
+      apm6h: stats.combined.apm6h,
+      apm1d: stats.combined.apm1d,
+      apm1w: stats.combined.apm1w,
+      apm1m: stats.combined.apm1m,
+      apmLifetime: stats.combined.apmLifetime,
+      totalSessions: stats.combined.totalSessions,
+      totalActions: stats.combined.totalMessages + stats.combined.totalToolCalls,
+    },
+    comparison: {
+      claudeCodeAPM: stats.claudeCode.apmLifetime,
+      mechaCoderAPM: stats.mechaCoder.apmLifetime,
+      efficiencyRatio: stats.comparison.efficiencyRatio,
+    },
+  };
+
+  client.send(message);
+};
+
+/**
+ * Extended HUD callbacks including APM support.
+ *
+ * @example
+ * ```typescript
+ * const { emit, onOutput, client, apmCollector, apmEmit } = createHudCallbacksWithAPM({
+ *   sessionId: "session-123",
+ *   projectName: "openagents",
+ * });
+ *
+ * runOrchestrator({ ...config, onOutput }, (event) => {
+ *   emit(event);
+ *   if (event.type === "subtask_complete") {
+ *     apmCollector.recordAction("tool_call");
+ *     apmEmit();
+ *   }
+ * });
+ * ```
+ */
+export const createHudCallbacksWithAPM = (
+  options: HudClientOptions & { sessionId: string; projectName: string },
+) => {
+  // Import APMCollector dynamically to avoid circular dependency issues
+  const { APMCollector } = require("../agent/apm.js") as typeof import("../agent/apm.js");
+
+  const client = new HudClient(options);
+  const apmCollector = new APMCollector(options.sessionId, options.projectName);
+
+  const emit = (event: OrchestratorEvent) => {
+    const hudMessage = orchestratorEventToHudMessage(event);
+    if (hudMessage) {
+      client.send(hudMessage);
+    }
+  };
+
+  const onOutput = (text: string) => {
+    client.send({
+      type: "text_output",
+      text,
+      source: "claude-code",
+    });
+  };
+
+  const apmEmit = createAPMEmitter(client, apmCollector);
+
+  return { emit, onOutput, client, apmCollector, apmEmit };
 };
