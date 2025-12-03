@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
 import type { SandboxConfig } from "../../tasks/schema.js";
 import {
@@ -11,10 +11,14 @@ import {
   type SandboxRunnerEvent,
 } from "./sandbox-runner.js";
 
+// Default sandbox config values for tests
+const DEFAULT_BACKEND = "auto" as const;
+const DEFAULT_TIMEOUT_MS = 300_000;
+
 describe("sandbox-runner", () => {
   describe("checkSandboxAvailable", () => {
     test("returns false when sandbox.enabled is false", async () => {
-      const config: SandboxConfig = { enabled: false };
+      const config: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const events: SandboxRunnerEvent[] = [];
       const emit = (e: SandboxRunnerEvent) => events.push(e);
 
@@ -28,7 +32,7 @@ describe("sandbox-runner", () => {
     });
 
     test("returns false when sandbox.backend is 'none'", async () => {
-      const config: SandboxConfig = { enabled: true, backend: "none" };
+      const config: SandboxConfig = { enabled: true, backend: "none", timeoutMs: DEFAULT_TIMEOUT_MS };
       const events: SandboxRunnerEvent[] = [];
       const emit = (e: SandboxRunnerEvent) => events.push(e);
 
@@ -42,7 +46,7 @@ describe("sandbox-runner", () => {
     });
 
     test("emits sandbox_check_start event", async () => {
-      const config: SandboxConfig = { enabled: false };
+      const config: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const events: SandboxRunnerEvent[] = [];
       const emit = (e: SandboxRunnerEvent) => events.push(e);
 
@@ -54,7 +58,7 @@ describe("sandbox-runner", () => {
 
   describe("buildContainerConfig", () => {
     test("builds config with defaults", () => {
-      const sandboxConfig: SandboxConfig = { enabled: true };
+      const sandboxConfig: SandboxConfig = { enabled: true, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const cwd = "/test/project";
 
       const config = buildContainerConfig(sandboxConfig, cwd);
@@ -68,6 +72,8 @@ describe("sandbox-runner", () => {
     test("uses custom image from config", () => {
       const sandboxConfig: SandboxConfig = {
         enabled: true,
+        backend: DEFAULT_BACKEND,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
         image: "custom:image",
       };
       const cwd = "/test/project";
@@ -80,6 +86,7 @@ describe("sandbox-runner", () => {
     test("passes resource limits", () => {
       const sandboxConfig: SandboxConfig = {
         enabled: true,
+        backend: DEFAULT_BACKEND,
         memoryLimit: "4G",
         cpuLimit: 2,
         timeoutMs: 60000,
@@ -94,7 +101,7 @@ describe("sandbox-runner", () => {
     });
 
     test("passes environment variables", () => {
-      const sandboxConfig: SandboxConfig = { enabled: true };
+      const sandboxConfig: SandboxConfig = { enabled: true, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const cwd = "/test/project";
       const env = { TEST_VAR: "test_value" };
 
@@ -106,7 +113,7 @@ describe("sandbox-runner", () => {
 
   describe("runCommand", () => {
     test("runs on host when sandbox is disabled", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const config: SandboxRunnerConfig = {
         sandboxConfig,
         cwd: process.cwd(),
@@ -120,7 +127,7 @@ describe("sandbox-runner", () => {
     });
 
     test("emits events during execution", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const events: SandboxRunnerEvent[] = [];
       const config: SandboxRunnerConfig = {
         sandboxConfig,
@@ -136,7 +143,7 @@ describe("sandbox-runner", () => {
     });
 
     test("reports exit code on failure", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const config: SandboxRunnerConfig = {
         sandboxConfig,
         cwd: process.cwd(),
@@ -151,7 +158,7 @@ describe("sandbox-runner", () => {
 
   describe("runCommandString", () => {
     test("parses command string and runs", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const config: SandboxRunnerConfig = {
         sandboxConfig,
         cwd: process.cwd(),
@@ -167,7 +174,7 @@ describe("sandbox-runner", () => {
 
   describe("runVerificationWithSandbox", () => {
     test("runs verification commands on host when sandbox disabled", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const config: SandboxRunnerConfig = {
         sandboxConfig,
         cwd: process.cwd(),
@@ -187,7 +194,7 @@ describe("sandbox-runner", () => {
     });
 
     test("returns failed when a command fails", async () => {
-      const sandboxConfig: SandboxConfig = { enabled: false };
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
       const config: SandboxRunnerConfig = {
         sandboxConfig,
         cwd: process.cwd(),
