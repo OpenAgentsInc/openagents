@@ -327,4 +327,70 @@ describe("Typecheck failure handling", () => {
     expect(failedSubtask.failureCount).toBe(1);
     expect(failedSubtask.lastFailureReason).toContain("Cannot find module");
   });
+
+  test("clears session resumption for other subtasks when injecting fix-typecheck", async () => {
+    const { dir, taskId, openagentsDir } = createTestRepo("clear-sessions");
+
+    // Pre-create a subtask file with an existing session ID
+    const subtasksDir = path.join(openagentsDir, "subtasks");
+    fs.mkdirSync(subtasksDir, { recursive: true });
+    const existingSubtaskList = {
+      taskId,
+      taskTitle: "Test task",
+      subtasks: [
+        {
+          id: `${taskId}-sub-001`,
+          description: "Existing subtask",
+          status: "pending",
+          claudeCode: {
+            sessionId: "old-session-123",
+            resumeStrategy: "continue",
+          },
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(
+      path.join(subtasksDir, `${taskId}.json`),
+      JSON.stringify(existingSubtaskList, null, 2)
+    );
+
+    const events: OrchestratorEvent[] = [];
+    const subagentRunner: typeof runBestAvailableSubagent = (options) =>
+      Effect.sync(() => ({
+        success: true,
+        subtaskId: options.subtask.id,
+        filesModified: [],
+        turns: 1,
+        agent: "claude-code",
+      } as SubagentResult));
+
+    await runWithBun(
+      runOrchestrator(
+        {
+          cwd: dir,
+          openagentsDir,
+          testCommands: ["echo tests"],
+          typecheckCommands: ["false"], // Fails - triggers fix-typecheck injection
+          allowPush: false,
+          claudeCode: { enabled: true },
+        },
+        (event) => events.push(event),
+        { runSubagent: subagentRunner },
+      ),
+    );
+
+    // Check that the existing subtask now has resumeStrategy: "fork"
+    const subtasksFile = path.join(subtasksDir, `${taskId}.json`);
+    const subtasks = JSON.parse(fs.readFileSync(subtasksFile, "utf-8"));
+
+    // Should have fix-typecheck at the beginning
+    expect(subtasks.subtasks[0].id).toContain("fix-typecheck");
+
+    // The original subtask should have resumeStrategy changed to "fork"
+    const originalSubtask = subtasks.subtasks.find((s: any) => s.id === `${taskId}-sub-001`);
+    expect(originalSubtask).toBeDefined();
+    expect(originalSubtask.claudeCode.resumeStrategy).toBe("fork");
+  });
 });

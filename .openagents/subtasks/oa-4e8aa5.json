@@ -1,0 +1,13 @@
+{
+  "taskId": "oa-4e8aa5",
+  "taskTitle": "Task System Enhancement Epic (from beads)",
+  "subtasks": [
+    {
+      "id": "oa-4e8aa5-sub-001",
+      "description": "Task System Enhancement Epic (from beads)\n\nPort valuable features from beads CLI to our task system. Includes: reopen, stats, stale detection, doctor/validate, comments, delete/cleanup, config CLI, duplicates/merge, git hooks, compaction, and more.",
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2025-12-03T08:33:43.337Z",
+  "updatedAt": "2025-12-03T08:33:43.337Z"
+}

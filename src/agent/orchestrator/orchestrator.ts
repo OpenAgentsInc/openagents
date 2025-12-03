@@ -320,6 +320,14 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           // Insert at the beginning
           subtaskList.subtasks.unshift(fixTypecheckSubtask);
           subtaskList.updatedAt = new Date().toISOString();
+
+          // Clear session resumption for all other subtasks - they need fresh context
+          // after typecheck is fixed, not stale sessions from before the fix
+          for (const s of subtaskList.subtasks) {
+            if (s.id !== fixTypecheckSubtaskId && s.claudeCode?.sessionId) {
+              s.claudeCode.resumeStrategy = "fork";
+            }
+          }
         }
       }
 
