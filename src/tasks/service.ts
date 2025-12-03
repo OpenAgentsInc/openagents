@@ -496,3 +496,164 @@ export const pickNextTask = (
   filter?: TaskFilter,
 ): Effect.Effect<Task | null, TaskServiceError, FileSystem.FileSystem> =>
   readyTasks(tasksPath, filter).pipe(Effect.map((tasks) => tasks[0] ?? null));
+
+// --- Archive functionality ---
+
+const DEFAULT_ARCHIVE_DAYS = 30;
+
+export interface ArchiveOptions {
+  tasksPath: string;
+  archivePath?: string;
+  daysOld?: number;
+  dryRun?: boolean;
+  timestamp?: Date;
+}
+
+export interface ArchiveResult {
+  archived: Task[];
+  remaining: Task[];
+  archivePath: string;
+  dryRun: boolean;
+}
+
+const getArchivePath = (tasksPath: string, archivePath?: string): string => {
+  if (archivePath) return archivePath;
+  return tasksPath.replace(/tasks\.jsonl$/, "tasks-archive.jsonl");
+};
+
+const isOldEnough = (task: Task, daysOld: number, now: Date): boolean => {
+  if (task.status !== "closed") return false;
+  const closedAt = task.closedAt ? new Date(task.closedAt) : null;
+  if (!closedAt) return false;
+  const thresholdMs = daysOld * 24 * 60 * 60 * 1000;
+  return now.getTime() - closedAt.getTime() >= thresholdMs;
+};
+
+export const archiveTasks = ({
+  tasksPath,
+  archivePath: archivePathOpt,
+  daysOld = DEFAULT_ARCHIVE_DAYS,
+  dryRun = false,
+  timestamp,
+}: ArchiveOptions): Effect.Effect<ArchiveResult, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const archivePath = getArchivePath(tasksPath, archivePathOpt);
+
+    const tasks = yield* readTasks(tasksPath);
+    const toArchive: Task[] = [];
+    const toKeep: Task[] = [];
+
+    for (const task of tasks) {
+      if (isOldEnough(task, daysOld, now)) {
+        toArchive.push(task);
+      } else {
+        toKeep.push(task);
+      }
+    }
+
+    if (dryRun || toArchive.length === 0) {
+      return {
+        archived: toArchive,
+        remaining: toKeep,
+        archivePath,
+        dryRun: true,
+      };
+    }
+
+    // Read existing archive and append
+    const existingArchive = yield* readArchivedTasks(archivePath);
+    const newArchive = [...existingArchive, ...toArchive];
+
+    // Write archive file
+    yield* writeTasks(archivePath, newArchive);
+
+    // Write remaining tasks back to active file
+    yield* writeTasks(tasksPath, toKeep);
+
+    return {
+      archived: toArchive,
+      remaining: toKeep,
+      archivePath,
+      dryRun: false,
+    };
+  });
+
+export const readArchivedTasks = (
+  archivePath: string,
+): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+
+    const exists = yield* fs.exists(archivePath).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "read_error",
+            `Failed to check archive file: ${e.message}`,
+          ),
+      ),
+    );
+    if (!exists) return [];
+
+    const content = yield* fs.readFileString(archivePath).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "read_error",
+            `Failed to read archive file: ${e.message}`,
+          ),
+      ),
+    );
+
+    const lines = content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length === 0) return [];
+
+    const tasks: Task[] = [];
+    for (const line of lines) {
+      const parsed = yield* parseJsonLine(line);
+      const task = yield* Effect.try({
+        try: () => decodeTask(parsed),
+        catch: (error) =>
+          new TaskServiceError(
+            "validation_error",
+            `Invalid archived task entry: ${(error as Error).message}`,
+          ),
+      });
+      tasks.push(task);
+    }
+
+    return tasks;
+  });
+
+export interface SearchAllTasksOptions {
+  tasksPath: string;
+  archivePath?: string;
+  filter?: TaskFilter;
+  includeArchived?: boolean;
+}
+
+export const searchAllTasks = ({
+  tasksPath,
+  archivePath: archivePathOpt,
+  filter,
+  includeArchived = true,
+}: SearchAllTasksOptions): Effect.Effect<{ active: Task[]; archived: Task[] }, TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const archivePath = getArchivePath(tasksPath, archivePathOpt);
+
+    const active = yield* listTasks(tasksPath, filter);
+
+    if (!includeArchived) {
+      return { active, archived: [] };
+    }
+
+    const allArchived = yield* readArchivedTasks(archivePath);
+    const archived = allArchived.filter((task) => matchesListFilter(task, filter));
+
+    return { active, archived };
+  });

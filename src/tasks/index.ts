@@ -54,9 +54,15 @@ export {
   listTasks,
   readyTasks,
   pickNextTask,
+  archiveTasks,
+  readArchivedTasks,
+  searchAllTasks,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
+  type ArchiveOptions,
+  type ArchiveResult,
+  type SearchAllTasksOptions,
 } from "./service.js";
 
 export {
