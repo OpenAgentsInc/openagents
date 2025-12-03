@@ -352,6 +352,11 @@ const runAgentInWorktree = async (
     subagentModel: projectConfig.defaultModel,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
+    // CRITICAL: Pass the pre-assigned task to prevent orchestrator from re-picking
+    // Without this, all parallel agents would pick the same first ready task!
+    task: slot.task,
+    // Force new subtasks - worktrees may have stale subtask files from previous runs
+    forceNewSubtasks: true,
     // Stream Claude Code output when verbose
     ...(verbose
       ? {
