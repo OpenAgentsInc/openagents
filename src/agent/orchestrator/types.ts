@@ -45,6 +45,7 @@ export interface SessionProgress {
     repoState: string;
     previousSessionSummary?: string;
     testsPassingAtStart: boolean;
+    initScript?: InitScriptResult;
   };
   work: {
     subtasksCompleted: string[];
@@ -145,7 +146,9 @@ export type OrchestratorPhase =
 
 export type OrchestratorEvent =
   | { type: "session_start"; sessionId: string; timestamp: string }
-  | { type: "orientation_complete"; repoState: string; testsPassingAtStart: boolean }
+  | { type: "init_script_start"; path: string }
+  | { type: "init_script_complete"; result: InitScriptResult }
+  | { type: "orientation_complete"; repoState: string; testsPassingAtStart: boolean; initScript?: InitScriptResult }
   | { type: "task_selected"; task: Task }
   | { type: "task_decomposed"; subtasks: Subtask[] }
   | { type: "subtask_start"; subtask: Subtask }
@@ -194,3 +197,15 @@ export const getProgressPath = (openagentsDir: string): string =>
 
 export const getInitScriptPath = (openagentsDir: string): string =>
   `${openagentsDir}/init.sh`;
+
+// ============================================================================
+// Init Script Types
+// ============================================================================
+
+export interface InitScriptResult {
+  ran: boolean;
+  success: boolean;
+  output?: string;
+  durationMs?: number;
+  error?: string;
+}

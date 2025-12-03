@@ -18,6 +18,7 @@ export type {
   SessionProgress,
   SubagentConfig,
   SubagentResult,
+  InitScriptResult,
   OrchestratorConfig,
   OrchestratorState,
   OrchestratorPhase,
@@ -34,6 +35,9 @@ export {
 
 // Subagent
 export { runSubagent, createSubagentConfig } from "./subagent.js";
+
+// Init Script
+export { runInitScript } from "./init-script.js";
 
 // Decomposition
 export {
