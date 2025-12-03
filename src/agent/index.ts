@@ -16,3 +16,27 @@ export {
 export type { Session } from "./session.js";
 export type { AgentTransport, AgentRunConfig, AgentEvent, QueuedMessage } from "./transport.js";
 export { createProviderTransport } from "./transport.js";
+
+// Orchestrator/Subagent Architecture
+export {
+  runOrchestrator,
+  runSubagent,
+  createSubagentConfig,
+  SUBAGENT_SYSTEM_PROMPT,
+  buildSubagentPrompt,
+  getSubtasksPath,
+  getProgressPath,
+  getInitScriptPath,
+} from "./orchestrator/index.js";
+export type {
+  Subtask,
+  SubtaskStatus,
+  SubtaskList,
+  SessionProgress,
+  SubagentConfig,
+  SubagentResult,
+  OrchestratorConfig,
+  OrchestratorState,
+  OrchestratorPhase,
+  OrchestratorEvent,
+} from "./orchestrator/index.js";

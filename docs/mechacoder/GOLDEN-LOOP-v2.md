@@ -89,13 +89,41 @@ That’s the **human** Golden Loop: open app → choose project → run → see 
 
 ---
 
-## 2. Golden Loop v2 – Agent Loop (Implementation Contract)
+## 2. Golden Loop v2 – Agent Architecture
 
-From the agent’s point of view, one iteration of the loop is:
+### 2.0. Orchestrator / Subagent Split
 
-> **Find project → load config → choose ready task → understand → implement → test → commit & push → update task → log.**
+Following Anthropic's ["Effective Harnesses for Long-Running Agents"](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), MechaCoder uses a two-agent architecture optimized for overnight automation:
 
-### 2.1. Project discovery
+| Agent | Runs | Responsibilities |
+|-------|------|------------------|
+| **Orchestrator** | Once per session | Orient, select task, decompose into subtasks, coordinate verification, commit/push, update task, write progress for next session |
+| **Coding Subagent** | Per subtask | Implement one subtask with minimal prompt (~50 tokens), 4 tools (read/write/edit/bash) |
+
+**Why this split?**
+
+1. **Coding prompts stay minimal** - Models are RL-trained for coding; they don't need 10K tokens of instructions
+2. **Orchestration is explicit** - Not hidden in a mega-prompt that confuses the model
+3. **Subtask decomposition prevents "one-shot" failures** - Breaking work into pieces keeps each invocation focused
+4. **Progress files bridge context windows** - Next session can orient quickly without re-exploring
+
+**Coordination Artifacts:**
+
+| File | Purpose |
+|------|---------|
+| `.openagents/progress.md` | Session summary for next session to read |
+| `.openagents/subtasks/{taskId}.json` | Subtask list with status tracking |
+| `.openagents/init.sh` | Startup script to verify clean state |
+
+---
+
+### 2.1. Implementation Contract
+
+From the orchestrator's point of view, one iteration of the loop is:
+
+> **Orient → select task → decompose → invoke subagent per subtask → verify → commit & push → update task → log for next session.**
+
+### 2.2. Project discovery
 
 Given a working directory:
 
@@ -111,7 +139,7 @@ Given a working directory:
     - Prompt the user via Desktop UI to initialize `.openagents`, or
     - Use a CLI flow to generate a minimal project.json (v2+).
 
-### 2.2. Task selection
+### 2.3. Task selection
 
 - Load tasks from `.openagents/tasks.jsonl`:
   - Filter to `status in ["open", "ready"]`.
@@ -122,7 +150,7 @@ Given a working directory:
 - Choose the top task and mark it `in_progress` with updated timestamp.
 - `.openagents/tasks.jsonl` is the source of truth for this repo.
 
-### 2.3. Understand
+### 2.4. Understand
 
 - Read:
   - Task `title`, `description`, `labels`, `deps`.
@@ -134,14 +162,14 @@ Given a working directory:
   - Which files to touch,
   - What tests to run.
 
-### 2.4. Implement
+### 2.5. Implement
 
 - Apply changes using the available code-editing tools (read/edit/write/bash).
 - Keep changes tightly scoped to the task.
 - If new follow-up work is discovered:
   - Add new entries to `.openagents/tasks.jsonl` with `discoveredFrom: <current-task-id>`.
 
-### 2.5. Test
+### 2.6. Test
 
 - Run all commands in `project.json.testCommands` (e.g. `["pnpm test"]`).
 - If task or labels require additional tests:
@@ -155,7 +183,7 @@ Given a working directory:
 **Golden Loop v2 acceptance rule:**
 **No commit or push is allowed if configured tests fail.**
 
-### 2.6. Commit & push
+### 2.7. Commit & push
 
 If tests pass:
 
@@ -175,14 +203,14 @@ If tests pass:
     * Option B: if policy allows, rebase & retry push with care.
   * Do **not** force-push unless explicitly configured.
 
-### 2.7. Update task
+### 2.8. Update task
 
 * Set `status: "closed"` if the task was fully completed, else `blocked`.
 * Append commit SHA(s) under `commits`.
 * Update `closedAt` and `updatedAt`.
 * If new tasks were created in the process, ensure they are written to `tasks.jsonl` in the same run.
 
-### 2.8. Log and exit (or loop)
+### 2.9. Log and exit (or loop)
 
 * Write a per-run log under `docs/logs/YYYYMMDD/HHMMSS-agent-run.md` with:
 
