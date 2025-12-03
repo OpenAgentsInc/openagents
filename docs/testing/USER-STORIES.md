@@ -521,12 +521,14 @@ This matrix maps user stories to OpenAgents tasks. Update this when creating or 
 
 | Story ID(s) | Task ID | Description | Status |
 |-------------|---------|-------------|--------|
-| HUD-001, HUD-002, HUD-010, HUD-012 | `oa-22017b` | E2E infra + smoke test | 📋 |
+| HUD-001, HUD-002, HUD-010, HUD-012 | `oa-22017b` | E2E infra + smoke test | ✅ |
 | HUD-010, HUD-011, HUD-012, HUD-014 | `oa-c21ca0` | Basic UI load + canvas | 📋 |
 | HUD-060, HUD-061, HUD-062, HUD-063 | `oa-91f147` | Error handling + resilience | 📋 |
 | HUD-020..024 | - | Node display tests | |
 | HUD-030..034 | - | Real-time update tests | |
 | HUD-050..051 | - | APM widget tests | |
+
+Smoke coverage for HUD-001/002/010/012 lives in `e2e/tests/smoke/basic-smoke.spec.ts`.
 
 ### Task System Tests
 

@@ -142,7 +142,7 @@ export const createVerificationStart = (
 export const createVerificationComplete = (
   command: string = "bun test",
   passed: boolean = true,
-  output?: string
+  output: string = ""
 ): VerificationCompleteMessage => ({
   type: "verification_complete",
   command,
@@ -215,7 +215,7 @@ export const createAPMSnapshot = (
 
 export const createError = (
   error: string = "Test error",
-  phase: ErrorMessage["phase"] = "implementing"
+  phase: ErrorMessage["phase"] = "executing_subtask"
 ): ErrorMessage => ({
   type: "error",
   phase,

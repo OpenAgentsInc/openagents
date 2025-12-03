@@ -62,7 +62,7 @@ test.describe("Canvas Interactions", () => {
       await page.mouse.up();
 
       // Get transform immediately after release
-      const transformAfterRelease = await mainviewPage.flowCanvas.getAttribute("transform");
+      await mainviewPage.flowCanvas.getAttribute("transform");
 
       // Wait for inertia (animation should continue)
       await page.waitForTimeout(300);

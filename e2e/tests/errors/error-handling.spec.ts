@@ -143,7 +143,7 @@ test.describe("Error Handling Tests", () => {
         durationMinutes: -1,
       });
 
-      await hudInjector.inject(createError("Error 1", "implementing"));
+      await hudInjector.inject(createError("Error 1", "executing_subtask"));
       await hudInjector.inject(createError("Error 2", "verifying"));
 
       await mainviewPage.waitForRender(500);
