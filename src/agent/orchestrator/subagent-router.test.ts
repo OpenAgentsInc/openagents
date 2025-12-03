@@ -261,3 +261,223 @@ describe("runBestAvailableSubagent", () => {
     expect(result.claudeCodeForkedFromSessionId).toBe("sess-old");
   });
 });
+
+describe("verification edge cases", () => {
+  test("handles verification function throwing error", async () => {
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: false },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => {
+          throw new Error("Command timed out");
+        },
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: ["a.ts"],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    // Should return failed result when verification throws
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Verification failed");
+  });
+
+  test("handles verification timeout by falling back to minimal subagent", async () => {
+    let minimalCalled = false;
+    let verifyCallCount = 0;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: true },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => {
+          verifyCallCount++;
+          if (verifyCallCount === 1) {
+            // First verification (after Claude Code) times out
+            throw new Error("ETIMEDOUT");
+          }
+          // Second verification (after fallback) passes
+          return { passed: true, outputs: ["ok"] };
+        },
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: ["cc.ts"],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(minimalCalled).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.agent).toBe("minimal");
+  });
+
+  test("returns verification outputs even on failure", async () => {
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: false },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => ({
+          passed: false,
+          outputs: ["error: line 42: expected 'foo' but got 'bar'"],
+        }),
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: [],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.verificationOutputs).toEqual(["error: line 42: expected 'foo' but got 'bar'"]);
+    expect(result.error).toContain("expected 'foo' but got 'bar'");
+  });
+
+  test("handles Claude Code detection failure gracefully", async () => {
+    let minimalCalled = false;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true },
+        detectClaudeCodeFn: async () => {
+          throw new Error("Detection failed");
+        },
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    // Should fall back to minimal when detection fails
+    expect(minimalCalled).toBe(true);
+    expect(result.success).toBe(true);
+  });
+
+  test("handles empty verification outputs array", async () => {
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: false },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => ({
+          passed: false,
+          outputs: [],
+        }),
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: [],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(false);
+    // Should have a default error message
+    expect(result.error).toBe("Verification failed (typecheck/tests)");
+  });
+
+  test("handles verification with whitespace-only outputs", async () => {
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: false },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => ({
+          passed: false,
+          outputs: ["   ", "\n\n", "\t"],
+        }),
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: [],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(false);
+    // Should fall back to default error message
+    expect(result.error).toBe("Verification failed (typecheck/tests)");
+  });
+
+  test("both Claude Code and fallback fail verification", async () => {
+    let verifyCallCount = 0;
+    let minimalCalled = false;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask(),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true, fallbackToMinimal: true },
+        verificationCommands: ["bun test"],
+        verifyFn: async () => {
+          verifyCallCount++;
+          return { passed: false, outputs: [`Failure #${verifyCallCount}`] };
+        },
+        detectClaudeCodeFn: async () => ({ available: true }),
+        runClaudeCodeFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: ["cc.ts"],
+          turns: 1,
+        }),
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(minimalCalled).toBe(true);
+    expect(verifyCallCount).toBe(2);
+    expect(result.success).toBe(false);
+    expect(result.agent).toBe("minimal");
+    // Should show the fallback verification failure
+    expect(result.error).toContain("Failure #2");
+  });
+});
