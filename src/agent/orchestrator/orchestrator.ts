@@ -22,13 +22,16 @@ import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
 import { runSubagent, createSubagentConfig } from "./subagent.js";
 import {
-  decomposeTask,
   readSubtasks,
   writeSubtasks,
   createSubtaskList,
-  getNextSubtask,
-  updateSubtaskStatus,
 } from "./decompose.js";
+import {
+  writeProgress,
+  readProgress,
+  createEmptyProgress,
+  getPreviousSessionSummary,
+} from "./progress.js";
 import {
   type OrchestratorConfig,
   type OrchestratorState,
@@ -38,7 +41,6 @@ import {
   type SubtaskList,
   type SessionProgress,
   type SubagentResult,
-  getProgressPath,
 } from "./types.js";
 
 // Minimal tools for subagent (pi-mono pattern)
@@ -52,60 +54,6 @@ const generateSessionId = (): string => {
   const ts = now.toISOString().replace(/[:.]/g, "-");
   const rand = Math.random().toString(36).substring(2, 8);
   return `session-${ts}-${rand}`;
-};
-
-/**
- * Read the previous session's progress file if it exists
- */
-const readPreviousProgress = (openagentsDir: string): SessionProgress | null => {
-  const progressPath = getProgressPath(openagentsDir);
-  if (!fs.existsSync(progressPath)) return null;
-  
-  try {
-    // Progress file is markdown, parse it for key info
-    const content = fs.readFileSync(progressPath, "utf-8");
-    // For now, just check if it exists - full parsing can come later
-    return null; // TODO: Parse markdown progress file
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Write progress file for next session
- */
-const writeProgress = (openagentsDir: string, progress: SessionProgress): void => {
-  const progressPath = getProgressPath(openagentsDir);
-  
-  const markdown = `# Session Progress
-
-## Session Info
-- **Session ID**: ${progress.sessionId}
-- **Started**: ${progress.startedAt}
-- **Task**: ${progress.taskId} - ${progress.taskTitle}
-
-## Orientation
-- **Repo State**: ${progress.orientation.repoState}
-- **Tests Passing at Start**: ${progress.orientation.testsPassingAtStart ? "Yes" : "No"}
-${progress.orientation.previousSessionSummary ? `- **Previous Session**: ${progress.orientation.previousSessionSummary}` : ""}
-
-## Work Done
-- **Subtasks Completed**: ${progress.work.subtasksCompleted.length > 0 ? progress.work.subtasksCompleted.join(", ") : "None"}
-- **Subtasks In Progress**: ${progress.work.subtasksInProgress.length > 0 ? progress.work.subtasksInProgress.join(", ") : "None"}
-- **Files Modified**: ${progress.work.filesModified.length > 0 ? progress.work.filesModified.join(", ") : "None"}
-- **Tests Run**: ${progress.work.testsRun ? "Yes" : "No"}
-- **Tests Passing After Work**: ${progress.work.testsPassingAfterWork ? "Yes" : "No"}
-
-## Next Session Should
-${progress.nextSession.suggestedNextSteps.map((s) => `- ${s}`).join("\n")}
-${progress.nextSession.blockers ? `\n### Blockers\n${progress.nextSession.blockers.map((b) => `- ${b}`).join("\n")}` : ""}
-${progress.nextSession.notes ? `\n### Notes\n${progress.nextSession.notes}` : ""}
-
----
-Completed: ${progress.completedAt || "In Progress"}
-`;
-
-  fs.writeFileSync(progressPath, markdown);
 };
 
 /**
@@ -252,10 +200,7 @@ export const runOrchestrator = (
     try {
       // Phase 1: Orient
       state.phase = "orienting";
-      const previousProgress = readPreviousProgress(config.openagentsDir);
-      progress.orientation.previousSessionSummary = previousProgress
-        ? `Previous session worked on task ${previousProgress.taskId}`
-        : undefined;
+      progress.orientation.previousSessionSummary = getPreviousSessionSummary(config.openagentsDir) || undefined;
 
       // Quick test check
       if (config.testCommands.length > 0) {

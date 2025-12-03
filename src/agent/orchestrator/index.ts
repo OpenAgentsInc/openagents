@@ -52,5 +52,16 @@ export {
 } from "./decompose.js";
 export type { DecompositionHeuristics } from "./decompose.js";
 
+// Progress Files
+export {
+  writeProgress,
+  readProgress,
+  formatProgressMarkdown,
+  parseProgressMarkdown,
+  progressExists,
+  getPreviousSessionSummary,
+  createEmptyProgress,
+} from "./progress.js";
+
 // Orchestrator
 export { runOrchestrator } from "./orchestrator.js";
