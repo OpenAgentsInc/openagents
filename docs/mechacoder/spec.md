@@ -132,11 +132,26 @@ Minimal schema (v0):
   "defaultModel": "x-ai/grok-4.1-fast:free",  // or other, per-project
   "rootDir": ".",                        // relative to repo root
   "testCommands": ["bun test"],
+  "typecheckCommands": ["bun run typecheck"],  // optional typecheck commands
   "e2eCommands": [],                     // e.g. ["E2E_STUB=1 pnpm run test:golden-loop-e2e:local-stub"]
   "allowPush": true,                     // whether agent may push
   "allowForcePush": false,
   "maxTasksPerRun": 3,                   // overnight safety
   "maxRuntimeMinutes": 240,              // 4 hours cap
+  "idPrefix": "oa",                      // prefix for generated task IDs
+  "claudeCode": {                        // Claude Code (claude CLI) settings
+    "enabled": true,                     // use Claude Code for subtask execution
+    "preferForComplexTasks": false,      // prefer Claude Code for complex tasks
+    "maxTurnsPerSubtask": 300,           // max turns per subtask
+    "permissionMode": "bypassPermissions",  // "bypassPermissions" or "default"
+    "fallbackToMinimal": false           // fall back to minimal subagent on failure
+  },
+  "sandbox": {                           // sandboxed execution settings
+    "enabled": false,                    // run verification in containers
+    "backend": "auto",                   // "auto", "docker", "podman", or "none"
+    "memoryLimit": "8G",                 // container memory limit
+    "timeoutMs": 300000                  // command timeout in milliseconds
+  },
   "cloud": {
     "useGateway": false,                 // later: OpenAgents cloud integration
     "sendTelemetry": false,
