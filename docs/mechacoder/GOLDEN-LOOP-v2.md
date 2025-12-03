@@ -507,7 +507,66 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 **Recovery**: Fallback to minimal subagent (if `fallbackToMinimal: true`). Error details preserved in `verificationOutputs`.
 
-### 4.3. Claude Code Subagent Failures
+### 4.3. Failed Subtask Cleanup Guardrails
+
+When a subtask fails (tests/typecheck don't pass), the orchestrator implements safety guardrails to prevent broken code from being committed.
+
+#### Revert on Failure
+
+Immediately after a subtask fails, the orchestrator reverts all uncommitted changes:
+
+```bash
+# Revert tracked file modifications
+git checkout -- .
+
+# Remove untracked files and directories (preserves .gitignore'd files)
+git clean -fd
+```
+
+**Why this is important:**
+- Failed subtasks may leave broken code in the working tree
+- Without this guardrail, the final cleanup commit could accidentally commit broken code
+- This ensures the repository always remains in a buildable state
+
+**What is preserved:**
+- All committed work (even WIP commits)
+- Files in `.gitignore` (node_modules, .env, etc.)
+- Progress files that were already committed
+
+**What is discarded:**
+- Uncommitted modifications to tracked files
+- New untracked files created during the failed subtask
+
+#### Selective Add in Cleanup Commit
+
+At the end of each orchestrator session, instead of `git add -A` (which would stage everything), the cleanup commit only stages specific paths:
+
+```bash
+# Only add progress/log files - NOT broken code
+git add .openagents/progress.md .openagents/subtasks/ docs/logs/ 2>/dev/null || true
+```
+
+**Rationale:**
+- Progress files should always be committed (they track session state)
+- Logs should always be committed (they provide audit trail)
+- Code changes should only be committed via per-task commits after verification passes
+
+**Files staged by cleanup commit:**
+| Path | Purpose |
+|------|---------|
+| `.openagents/progress.md` | Session summary for next run |
+| `.openagents/subtasks/*.json` | Subtask decomposition and status |
+| `docs/logs/**/*.md` | Session logs and preflight results |
+
+**Files NOT staged by cleanup commit:**
+- Source code (`src/**`)
+- Test files (`*.test.ts`)
+- Configuration files (`package.json`, `tsconfig.json`)
+- Any file not in the explicitly listed paths
+
+This two-layer guardrail (revert + selective add) ensures that even if the revert fails for some reason, the cleanup commit won't include source code changes.
+
+### 4.4. Claude Code Subagent Failures
 
 | Scenario | Behavior |
 |----------|----------|
@@ -518,7 +577,7 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 **Recovery**: Session resume via `resumeSessionId` and `forkSession` options. Previous session ID tracked in progress file.
 
-### 4.4. Progress File Issues
+### 4.5. Progress File Issues
 
 | Scenario | Behavior |
 |----------|----------|
@@ -528,7 +587,7 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 **Recovery**: Progress parsing is fault-tolerant. Missing sections don't crash the orchestrator.
 
-### 4.5. Git Operation Failures
+### 4.6. Git Operation Failures
 
 | Scenario | Behavior |
 |----------|----------|
@@ -538,17 +597,17 @@ This section documents known failure scenarios and how Golden Loop v2 handles th
 
 **Recovery**: Conflict tasks created for human review. Changes preserved locally. See **Section 5.5: Playbook: Git Conflict & Push Failure Handling** for detailed recovery procedures.
 
-### 4.6. Task System Failures
+### 4.7. Task System Failures
 
 | Scenario | Behavior |
 |----------|----------|
 | No ready tasks | Loop exits cleanly. |
 | Task blocked by dependencies | Skipped. Next ready task selected. |
-| Concurrent modification of tasks.jsonl | Prevented by agent lock (see Section 4.6.1). |
+| Concurrent modification of tasks.jsonl | Prevented by agent lock (see Section 4.7.1). |
 
 **Recovery**: Lock file (`.openagents/agent.lock`) prevents overlapping runs.
 
-#### 4.6.1. Agent Lock Enforcement
+#### 4.7.1. Agent Lock Enforcement
 
 The orchestrator uses `.openagents/agent.lock` to prevent concurrent runs on the same repository.
 
@@ -625,7 +684,7 @@ Tests for lock behavior are in `src/agent/orchestrator/agent-lock.test.ts`:
 - Lock release semantics
 - Guard pattern for automatic cleanup
 
-### 4.7. Init Script Failures
+### 4.8. Init Script Failures
 
 The init.sh preflight checklist (see Section 2.2.1) uses exit codes to signal severity:
 
@@ -648,7 +707,7 @@ The init.sh preflight checklist (see Section 2.2.1) uses exit codes to signal se
 - For exit `2` (warning): Review `docs/logs/YYYYMMDD/HHMM-preflight.log` to understand warnings.
 - For missing init.sh: Consider adding the reference template from Section 2.2.1.
 
-### 4.8. Network & External Service Failures
+### 4.9. Network & External Service Failures
 
 | Scenario | Behavior |
 |----------|----------|

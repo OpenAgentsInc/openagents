@@ -626,6 +626,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
         // GUARDRAIL: Revert uncommitted changes on failure to prevent broken code
         // from being committed in cleanup. This ensures failed work doesn't persist.
+        // See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 "Failed Subtask Cleanup Guardrails"
         try {
           const { execSync } = require("node:child_process") as typeof import("node:child_process");
           const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
@@ -716,6 +717,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
     // Final cleanup commit - commit ONLY progress/log files, NOT any code changes
     // This is a guardrail to prevent accidentally committing broken code from failed subtasks
+    // See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 "Failed Subtask Cleanup Guardrails"
     // Note: Use console.log not log() to avoid writing to the file we're about to commit
     try {
       const { execSync } = require("node:child_process") as typeof import("node:child_process");
