@@ -10,6 +10,7 @@ import * as DefaultServices from "effect/DefaultServices";
 import * as Secret from "effect/Secret";
 
 import type { Tool } from "../tools/schema.js";
+import { HttpError, retryWithBackoff, isRetryableLlmError } from "./retry.js";
 
 export type ContentBlock =
   | { type: "text"; text: string }
@@ -32,6 +33,7 @@ export interface ChatRequest {
   baseUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  retry?: Partial<import("./retry.js").RetryConfig>;
 }
 
 export interface ChatToolCall {
@@ -140,8 +142,8 @@ const makeRequestBody = (request: ChatRequest) => {
 const sendChatRaw = (
   config: OpenRouterConfigShape,
   request: ChatRequest,
-): Effect.Effect<ChatResponse, Error> =>
-  Effect.gen(function* () {
+): Effect.Effect<ChatResponse, Error> => {
+  const sendOnce = Effect.gen(function* () {
     const body = makeRequestBody(request);
     // Convert toolCallId back to tool_call_id for the API
     const apiMessages = body.messages.map((msg: any) => {
@@ -169,11 +171,14 @@ const sendChatRaw = (
         });
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(`HTTP ${res.status}: ${text}`);
+          throw new HttpError(`HTTP ${res.status}`, res.status, text);
         }
         return res.json();
       },
-      catch: (cause) => new Error(`OpenRouter request failed: ${String(cause)}`),
+      catch: (cause) =>
+        cause instanceof HttpError
+          ? cause
+          : new HttpError(`OpenRouter request failed: ${String(cause)}`),
     });
 
     console.log(`[OpenRouter] Response received, id: ${(response as any).id}`);
@@ -190,7 +195,7 @@ const sendChatRaw = (
       choices: [
         {
           message: {
-            role: "assistant",
+            role: "assistant" as const,
             content: message?.content ?? null,
             tool_calls: toolCalls.map((call: any) => ({
               id: call.id,
@@ -202,6 +207,9 @@ const sendChatRaw = (
       ],
     };
   });
+
+  return retryWithBackoff(() => sendOnce, request.retry, isRetryableLlmError);
+};
 
 export interface OpenRouterClientShape {
   chat: (request: ChatRequest) => Effect.Effect<ChatResponse, Error>;

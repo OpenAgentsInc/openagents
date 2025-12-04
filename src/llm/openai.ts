@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect";
 import * as Secret from "effect/Secret";
 import type { Tool } from "../tools/schema.js";
 import type { ChatRequest, ChatResponse, ChatMessage } from "./openrouter.js";
+import { HttpError, retryWithBackoff, isRetryableLlmError } from "./retry.js";
 
 export interface OpenAIConfigShape {
   apiKey: Secret.Secret;
@@ -129,8 +130,8 @@ const resolveBaseUrl = (request: ChatRequest, config: OpenAIConfigShape): string
 const sendCompletions = (
   config: OpenAIConfigShape,
   request: ChatRequest,
-): Effect.Effect<ChatResponse, Error> =>
-  Effect.gen(function* () {
+): Effect.Effect<ChatResponse, Error> => {
+  const sendOnce = Effect.gen(function* () {
     const body = buildOpenAIRequestBody(config, request);
     const baseUrl = resolveBaseUrl(request, config);
     const apiKey = resolveProviderApiKey(request, config);
@@ -148,11 +149,12 @@ const sendCompletions = (
         });
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(`HTTP ${res.status}: ${text}`);
+          throw new HttpError(`HTTP ${res.status}`, res.status, text);
         }
         return res.json();
       },
-      catch: (cause) => new Error(`OpenAI request failed: ${String(cause)}`),
+      catch: (cause) =>
+        cause instanceof HttpError ? cause : new HttpError(`OpenAI request failed: ${String(cause)}`),
     });
 
     const choice = (response as any).choices?.[0];
@@ -166,7 +168,7 @@ const sendCompletions = (
       choices: [
         {
           message: {
-            role: "assistant",
+            role: "assistant" as const,
             content: message?.content ?? null,
             tool_calls: toolCalls.map((call: any) => ({
               id: call.id,
@@ -178,6 +180,9 @@ const sendCompletions = (
       ],
     };
   });
+
+  return retryWithBackoff(() => sendOnce, request.retry, isRetryableLlmError);
+};
 
 export const openAIClientLive = Layer.effect(
   OpenAIClient,
