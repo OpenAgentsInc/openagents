@@ -4,6 +4,7 @@ export const UsageRecordSchema = S.Struct({
   sessionId: S.String,
   projectId: S.String,
   timestamp: S.String, // ISO8601
+  idempotencyKey: S.optional(S.String),
   inputTokens: S.Number,
   outputTokens: S.Number,
   cacheReadTokens: S.Number,

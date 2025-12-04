@@ -13,6 +13,7 @@ const sampleRecord = (overrides: Partial<UsageRecord> = {}): UsageRecord => ({
   sessionId: "s-1",
   projectId: "openagents",
   timestamp: "2024-01-01T00:00:00.000Z",
+  idempotencyKey: undefined,
   inputTokens: 10,
   outputTokens: 5,
   cacheReadTokens: 2,
@@ -61,5 +62,41 @@ describe("usage store", () => {
     expect(summary.byPeriod["2024-01-01"].inputTokens).toBe(40);
     expect(summary.byPeriod["2024-01-02"].inputTokens).toBe(5);
     expect(summary.overall.sessions).toBe(3);
+  });
+
+  test("deduplicates by idempotency key", async () => {
+    const records = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* fs.makeTempDirectory({ prefix: "usage-dedupe" });
+
+        const record = sampleRecord({ idempotencyKey: "key-1" });
+        yield* appendUsageRecord({ rootDir: dir, record });
+        yield* appendUsageRecord({ rootDir: dir, record });
+
+        return yield* readUsageRecords(dir);
+      }),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0].idempotencyKey).toBe("key-1");
+  });
+
+  test("auto-generated idempotency key prevents duplicate append", async () => {
+    const records = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* fs.makeTempDirectory({ prefix: "usage-auto-dedupe" });
+
+        const record = sampleRecord({ idempotencyKey: undefined });
+        yield* appendUsageRecord({ rootDir: dir, record });
+        yield* appendUsageRecord({ rootDir: dir, record });
+
+        return yield* readUsageRecords(dir);
+      }),
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0].idempotencyKey).toBeDefined();
   });
 });
