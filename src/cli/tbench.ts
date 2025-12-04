@@ -388,7 +388,13 @@ const main = async (): Promise<void> => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    eventRecorder.record("run_error", { error: errorMessage });
+    const errorStack = error instanceof Error ? error.stack : "";
+    console.error(`\n=== ERROR ===`);
+    console.error(`Message: ${errorMessage}`);
+    console.error(`Stack: ${errorStack}`);
+    console.error(`Full error: ${JSON.stringify(error, null, 2)}`);
+    console.error(`=============\n`);
+    eventRecorder.record("run_error", { error: errorMessage, stack: errorStack });
     trajectoryBuilder.addStep("system", `Execution error: ${errorMessage}`);
 
     result = {

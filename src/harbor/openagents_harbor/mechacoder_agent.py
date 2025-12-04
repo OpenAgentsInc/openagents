@@ -77,13 +77,14 @@ class MechaCoderAgent(BaseInstalledAgent):
                 env=env,
             ),
             # Run MechaCoder tbench CLI
+            # Set PATH to include npm global bin and bun for claude CLI
             ExecInput(
                 command=(
+                    f"export PATH=\"$(npm bin -g):$HOME/.bun/bin:$PATH\" && "
                     f"cd {mechacoder_dir} && "
                     f"bun {tbench_cli} "
                     f"--instruction {escaped_instruction} "
                     f"--output-dir {output_dir} "
-                    f"{model_args} "
                     f"--timeout 3600 "
                     f"2>&1 | tee {output_dir}/stdout.txt"
                 ),
