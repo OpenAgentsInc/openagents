@@ -54,6 +54,7 @@
     "diff": "8.0.2",
     "effect": "3.19.8",
     "electrobun": "0.1.12",
+    "smol-toml": "1.5.2",
     "zod": "3.24.4"
   },
   "devDependencies": {

@@ -1,0 +1,23 @@
+{
+  "name": "hello-world",
+  "version": "2.0.0",
+  "description": "Imported 1 tasks from Terminal-Bench",
+  "tasks": [
+    {
+      "id": "hello-world",
+      "name": "Hello World",
+      "description": "Create a file called hello.txt with \"Hello, world!\" as the content.",
+      "difficulty": "easy",
+      "category": "implementation",
+      "verification": {
+        "type": "test",
+        "command": "cd /app && pytest tests/ -v"
+      },
+      "timeout_seconds": 120,
+      "max_turns": 100,
+      "tags": [
+        "trivial"
+      ]
+    }
+  ]
+}
