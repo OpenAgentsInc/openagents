@@ -21,7 +21,6 @@ import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagen
 import type { Subtask } from "../agent/orchestrator/types.js";
 import {
   loadTerminalBenchSuite,
-  runTaskSetup,
   toBenchmarkResults,
   type TerminalBenchTask,
   type TerminalBenchSuite,
@@ -628,7 +627,7 @@ const main = async (): Promise<void> => {
       timeout,
       maxTurns,
       outputDir: args.output,
-      sourceRepo,
+      ...(sourceRepo !== undefined ? { sourceRepo } : {}),
       tbEmitter,
       taskIndex: i,
       totalTasks: tasksToRun.length,
