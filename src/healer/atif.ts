@@ -10,7 +10,6 @@ import type {
   Step,
   Trajectory,
   ObservationResult,
-  Metrics,
   SubagentTrajectoryRef,
 } from "../atif/schema.js";
 import {
@@ -19,11 +18,7 @@ import {
   generateSessionId,
 } from "../atif/schema.js";
 import type {
-  HealerContext,
   HealerOutcome,
-  HealerSpellId,
-  HealerSpellResult,
-  HealerScenario,
 } from "./types.js";
 import type { HealerEvent } from "./service.js";
 
@@ -360,7 +355,7 @@ export const createHealerInvocationStep = (
  */
 export class HealerEventCollector {
   private events: HealerEvent[] = [];
-  private parentSessionId?: string;
+  private parentSessionId: string | undefined;
 
   constructor(parentSessionId?: string) {
     this.parentSessionId = parentSessionId;
