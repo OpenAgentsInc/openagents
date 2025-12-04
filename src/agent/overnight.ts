@@ -53,6 +53,7 @@ import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
 import { readyTasks, type Task } from "../tasks/index.js";
+import type { ProjectConfig } from "../tasks/schema.js";
 import { createHudCallbacks, sendAPMSnapshot, createAPMEmitter } from "../hud/index.js";
 import { acquireLock, releaseLock } from "./orchestrator/agent-lock.js";
 import { loadContextFiles } from "../cli/context-loader.js";
@@ -468,16 +469,66 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     const openagentsDir = path.join(config.workDir, ".openagents");
 
     // Load project config with defaults
-    const defaultConfig = {
+    const defaultConfig: ProjectConfig = {
+      version: 1,
       projectId: "unknown",
       defaultBranch: "main",
+      defaultModel: "x-ai/grok-4.1-fast:free",
+      rootDir: ".",
       testCommands: ["bun test"],
       typecheckCommands: ["bun run typecheck"],
+      e2eCommands: [],
       allowPush: true,
+      allowForcePush: false,
+      maxTasksPerRun: 3,
+      maxRuntimeMinutes: 240,
+      idPrefix: "oa",
+      sessionDir: ".openagents/sessions",
+      runLogDir: ".openagents/run-logs",
       claudeCode: {
         enabled: true,
         preferForComplexTasks: true,
         fallbackToMinimal: true,
+        maxTurnsPerSubtask: 300,
+        permissionMode: "bypassPermissions",
+      },
+      sandbox: { enabled: false, backend: "auto", timeoutMs: 300000 },
+      parallelExecution: {
+        enabled: false,
+        maxAgents: 4,
+        worktreeTimeout: 30 * 60 * 1000,
+        installTimeoutMs: 15 * 60 * 1000,
+        installArgs: ["--frozen-lockfile"],
+        useContainers: false,
+        mergeStrategy: "auto",
+        mergeThreshold: 4,
+        prThreshold: 50,
+      },
+      trajectory: {
+        enabled: true,
+        retentionDays: 30,
+        maxSizeGB: 5,
+        includeToolArgs: true,
+        includeToolResults: true,
+        directory: "trajectories",
+      },
+      healer: {
+        enabled: true,
+        maxInvocationsPerSession: 3,
+        maxInvocationsPerSubtask: 2,
+        scenarios: {
+          onInitFailure: true,
+          onVerificationFailure: true,
+          onSubtaskFailure: true,
+          onRuntimeError: true,
+          onStuckSubtask: false,
+        },
+        spells: {
+          allowed: [],
+          forbidden: [],
+        },
+        mode: "conservative",
+        stuckThresholdHours: 2,
       },
     };
     // Note: loadProjectConfig expects the root dir, not the .openagents dir
@@ -550,18 +601,27 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
       log(`[Parallel] Ready tasks: ${ready.length}, will launch up to ${maxPerRun} agents`);
 
-      const agentSlots = yield* runParallelFromConfig({
+      const parallelOptions: Parameters<typeof runParallelFromConfig>[0] = {
         repoPath: config.workDir,
         openagentsDir,
         baseBranch: projectConfig.defaultBranch ?? "main",
         tasks: ready,
         parallelConfig: projectConfig.parallelExecution,
-        testCommands: projectConfig.testCommands,
-        typecheckCommands: projectConfig.typecheckCommands,
-        e2eCommands: projectConfig.e2eCommands,
         claudeCode: projectConfig.claudeCode,
         allowPush: projectConfig.allowPush,
-      }).pipe(
+      };
+
+      if (projectConfig.testCommands) {
+        parallelOptions.testCommands = [...projectConfig.testCommands];
+      }
+      if (projectConfig.typecheckCommands) {
+        parallelOptions.typecheckCommands = [...projectConfig.typecheckCommands];
+      }
+      if (projectConfig.e2eCommands) {
+        parallelOptions.e2eCommands = [...projectConfig.e2eCommands];
+      }
+
+      const agentSlots = yield* runParallelFromConfig(parallelOptions).pipe(
         Effect.provide(BunContext.layer),
         Effect.catchAll((e) => {
           log(`[Parallel] Runner failed: ${e.message}`);
