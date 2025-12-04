@@ -162,6 +162,57 @@ export const TrajectoryConfig = S.Struct({
 });
 export type TrajectoryConfig = S.Schema.Type<typeof TrajectoryConfig>;
 
+/** Healer mode determines aggressiveness of recovery attempts */
+export const HealerMode = S.Literal("conservative", "aggressive");
+export type HealerMode = S.Schema.Type<typeof HealerMode>;
+
+/** Configuration for which scenarios trigger Healer */
+export const HealerScenarioConfig = S.Struct({
+  /** Trigger on init script failures (typecheck, test) */
+  onInitFailure: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Trigger on verification failures after work */
+  onVerificationFailure: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Trigger on subtask execution failures */
+  onSubtaskFailure: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Trigger on runtime errors in orchestrator */
+  onRuntimeError: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Trigger on stuck subtasks (experimental) */
+  onStuckSubtask: S.optionalWith(S.Boolean, { default: () => false }),
+});
+export type HealerScenarioConfig = S.Schema.Type<typeof HealerScenarioConfig>;
+
+/** Configuration for allowed/forbidden spells */
+export const HealerSpellsConfig = S.Struct({
+  /** Spells explicitly allowed (empty = all allowed) */
+  allowed: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
+  /** Spells explicitly forbidden (takes precedence over allowed) */
+  forbidden: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
+});
+export type HealerSpellsConfig = S.Schema.Type<typeof HealerSpellsConfig>;
+
+/** Configuration for Healer self-healing subagent */
+export const HealerConfig = S.Struct({
+  /** Enable Healer (default: true, replaces safeMode) */
+  enabled: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Maximum Healer invocations per orchestrator session (default: 2) */
+  maxInvocationsPerSession: S.optionalWith(S.Number, { default: () => 2 }),
+  /** Maximum Healer invocations per subtask (default: 1) */
+  maxInvocationsPerSubtask: S.optionalWith(S.Number, { default: () => 1 }),
+  /** Which scenarios trigger Healer */
+  scenarios: S.optionalWith(HealerScenarioConfig, {
+    default: () => S.decodeUnknownSync(HealerScenarioConfig)({}),
+  }),
+  /** Spell allow/forbid lists */
+  spells: S.optionalWith(HealerSpellsConfig, {
+    default: () => S.decodeUnknownSync(HealerSpellsConfig)({}),
+  }),
+  /** Healer mode: conservative (safe) or aggressive (more attempts) */
+  mode: S.optionalWith(HealerMode, { default: () => "conservative" as const }),
+  /** Hours before a stuck subtask triggers Healer (default: 2) */
+  stuckThresholdHours: S.optionalWith(S.Number, { default: () => 2 }),
+});
+export type HealerConfig = S.Schema.Type<typeof HealerConfig>;
+
 // ProjectConfig matches .openagents/project.json
 export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
@@ -193,6 +244,9 @@ export const ProjectConfig = S.Struct({
   }),
   trajectory: S.optionalWith(TrajectoryConfig, {
     default: () => S.decodeUnknownSync(TrajectoryConfig)({}),
+  }),
+  healer: S.optionalWith(HealerConfig, {
+    default: () => S.decodeUnknownSync(HealerConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({
