@@ -28,5 +28,10 @@
     "backend": "auto",
     "memoryLimit": "8G",
     "timeoutMs": 300000
+  },
+  "healer": {
+    "enabled": true,
+    "maxInvocationsPerSession": 3,
+    "maxInvocationsPerSubtask": 2
   }
 }

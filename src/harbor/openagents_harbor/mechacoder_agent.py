@@ -58,6 +58,11 @@ class MechaCoderAgent(BaseInstalledAgent):
             if key in os.environ:
                 env[key] = os.environ[key]
 
+        # If ANTHROPIC_API_KEY is not set but ANTHROPIC_OAUTH_TOKEN is,
+        # use the OAuth token as the API key (Claude CLI accepts this)
+        if "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_OAUTH_TOKEN" in env:
+            env["ANTHROPIC_API_KEY"] = env["ANTHROPIC_OAUTH_TOKEN"]
+
         # Build model arguments
         model_args = ""
         if self.model_name:

@@ -748,10 +748,22 @@ const doOneTaskOrchestrator = (config: Config) =>
         fallbackToMinimal: true,
       },
     };
-    const loadedConfig = yield* loadProjectConfig(openagentsDir).pipe(
-      Effect.catchAll(() => Effect.succeed(null))
+    const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
+      Effect.catchAll((error) => {
+        console.log("[DEBUG] loadProjectConfig error type:", typeof error);
+        console.log("[DEBUG] loadProjectConfig error:", JSON.stringify(error, null, 2));
+        console.log("[DEBUG] loadProjectConfig error message:", error?.message);
+        console.log("[DEBUG] loadProjectConfig error reason:", error?.reason);
+        return Effect.succeed(null);
+      })
     );
+    console.log("[DEBUG] loadedConfig:", loadedConfig ? "loaded successfully" : "NULL (using defaults)");
     const projectConfig = loadedConfig ?? defaultConfig;
+
+    // DEBUG: Log what's in projectConfig
+    console.log("[DEBUG] projectConfig keys:", Object.keys(projectConfig));
+    console.log("[DEBUG] projectConfig.healer:", projectConfig.healer);
+    console.log("[DEBUG] 'healer' in projectConfig:", "healer" in projectConfig);
 
     console.log("=".repeat(60));
     console.log("DO ONE TASK - Orchestrator Mode (Claude Code primary)");
@@ -823,6 +835,13 @@ const doOneTaskOrchestrator = (config: Config) =>
       logOrchestratorEvent(event);
       hudEmit(event);
 
+      // DEBUG: Log all events
+      const ts = new Date().toISOString();
+      console.log(`[${ts}] [DEBUG] Event received: ${event.type}`);
+      if (event.type === "init_script_complete") {
+        console.log(`[${ts}] [DEBUG] init_script_complete event:`, JSON.stringify(event, null, 2));
+      }
+
       // Update tracked state from events
       if (event.type === "session_start") {
         currentState = {
@@ -832,24 +851,34 @@ const doOneTaskOrchestrator = (config: Config) =>
           subtasks: null,
           progress: null,
         };
+        console.log(`[${ts}] [DEBUG] Current state initialized:`, currentState);
       }
+
+      // DEBUG: Log Healer condition checks
+      console.log(`[${ts}] [DEBUG] Healer checks - currentState: ${!!currentState}, healer in config: ${"healer" in projectConfig}, enabled: ${projectConfig.healer?.enabled !== false}`);
 
       // Invoke Healer for self-healing on errors
       if (currentState && "healer" in projectConfig && projectConfig.healer?.enabled !== false) {
+        console.log(`[${ts}] [DEBUG] Calling healer.maybeRun for event: ${event.type}`);
         Effect.runPromise(
-          healerService.maybeRun(event, currentState, projectConfig as any, healerCounters)
+          healerService.maybeRun(event, currentState, projectConfig as any, healerCounters).pipe(
+            Effect.provide(BunContext.layer)
+          )
         ).then((outcome: HealerOutcome | null) => {
+          const ts2 = new Date().toISOString();
+          console.log(`[${ts2}] [DEBUG] Healer outcome:`, outcome);
           if (outcome) {
-            const ts = new Date().toISOString();
-            console.log(`[${ts}] [HEALER] Invoked for ${outcome.scenario}: ${outcome.status}`);
-            console.log(`[${ts}] [HEALER] Spells tried: ${outcome.spellsTried.join(", ")}`);
-            console.log(`[${ts}] [HEALER] Spells succeeded: ${outcome.spellsSucceeded.join(", ")}`);
-            console.log(`[${ts}] [HEALER] Summary: ${outcome.summary}`);
+            console.log(`[${ts2}] [HEALER] Invoked for ${outcome.scenario}: ${outcome.status}`);
+            console.log(`[${ts2}] [HEALER] Spells tried: ${outcome.spellsTried.join(", ")}`);
+            console.log(`[${ts2}] [HEALER] Spells succeeded: ${outcome.spellsSucceeded.join(", ")}`);
+            console.log(`[${ts2}] [HEALER] Summary: ${outcome.summary}`);
           }
         }).catch((err) => {
-          const ts = new Date().toISOString();
-          console.error(`[${ts}] [HEALER] Error:`, err);
+          const ts2 = new Date().toISOString();
+          console.error(`[${ts2}] [HEALER] Error:`, err);
         });
+      } else {
+        console.log(`[${ts}] [DEBUG] Healer conditions not met`);
       }
     };
 
