@@ -214,11 +214,11 @@ pip3 install numpy pandas  # example
 
 The desktop HUD lets you watch and control TB runs live:
 
-- **View modes:** Run summary (pass/fail counts, timing) and per-task detail panes (phases, turns, stdout/logs). Click a task row to focus its detail view; the summary always stays at the top.
-- **Triggering runs from UI:** Open the TB pane in Electrobun, load a suite (defaults to `tasks/terminal-bench-2.json`), pick tasks or leave “all”, set an output directory, then click **Run**. The HUD auto-connects to the TB WebSocket.
-- **Keyboard:** No dedicated shortcuts yet; use the on-screen controls. Electron defaults still work (`Cmd/Ctrl+R` reloads the window, `Esc` closes dialogs).
-- **Screenshots:** Capture during a run to share progress; the layout shows a header with progress, a task list with status chips, and a right-hand detail panel with logs/trajectory for the selected task.
-- **Troubleshooting:** If the HUD shows “Disconnected”, restart Electrobun (`bun run dev`) and rerun TB. Ensure the WebSocket port (default 4242) is free and that no stale `.worktrees/` directories remain from prior runs.
+- **View modes:** Run summary (pass/fail counts, timing) and per-task detail panes (phases, turns, stdout/logs). Click a task row to focus its detail view; the summary stays pinned. A collapsible live log stream is available for long-running tasks.
+- **Triggering runs from UI:** Open the TB pane in Electrobun, load a suite (defaults to `tasks/terminal-bench-2.json`), pick tasks or leave “all”, set an output directory, then click **Run**. The HUD auto-connects to the TB WebSocket; connection status appears in the header.
+- **Keyboard:** No dedicated TB shortcuts yet; use the on-screen controls. Electron defaults still work (`Cmd/Ctrl+R` reloads the window, `Esc` closes dialogs).
+- **Screenshots:** Capture during a run to share progress; the layout shows a header with progress, a task list with status chips, and a right-hand detail panel with logs/trajectory for the selected task. Add labels like “Summary” and “Task detail” when sharing.
+- **Troubleshooting:** If the HUD shows “Disconnected”, restart Electrobun (`bun run dev`) and rerun TB. Ensure the WebSocket port (default 4242) is free, no stale `.worktrees/` directories remain from prior runs, and the suite path is valid. When in doubt, re-run a single easy task first (e.g., `hello-world`) to confirm connectivity.
 
 ## Results Format
 
