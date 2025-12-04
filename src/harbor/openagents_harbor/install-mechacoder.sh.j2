@@ -6,7 +6,7 @@ echo "=== Installing MechaCoder ==="
 
 # Update package lists
 apt-get update
-apt-get install -y curl git unzip
+apt-get install -y curl git unzip npm
 
 # Install Bun runtime
 echo "Installing Bun..."
@@ -16,6 +16,11 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 # Verify Bun installation
 bun --version
+
+# Install Claude Code CLI (required by Claude Agent SDK)
+echo "Installing Claude Code CLI..."
+npm install -g @anthropic-ai/claude-code
+claude --version || echo "Claude Code installed"
 
 # Clone MechaCoder (OpenAgents)
 echo "Cloning MechaCoder..."
