@@ -16,6 +16,7 @@
  *   create   Create a new task
  *   update   Update an existing task
  *   validate Validate tasks.jsonl (schema + conflict markers)
+ *   doctor   Diagnose common issues in tasks.jsonl
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -39,6 +40,7 @@ import {
   hasConflictMarkers,
   mergeTaskFiles,
   TaskMergeError,
+  TaskServiceError,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -674,6 +676,66 @@ const findOrphanDependencies = (
   );
 };
 
+const findDuplicateIds = (tasks: Task[]): string[] => {
+  const counts = new Map<string, number>();
+  for (const task of tasks) {
+    counts.set(task.id, (counts.get(task.id) ?? 0) + 1);
+  }
+  return [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+};
+
+const findDependencyCycles = (tasks: Task[]): string[][] => {
+  const ids = new Set(tasks.map((t) => t.id));
+  const graph = new Map<string, string[]>();
+  for (const task of tasks) {
+    graph.set(
+      task.id,
+      (task.deps ?? []).map((dep) => dep.id).filter((depId) => ids.has(depId)),
+    );
+  }
+
+  const cycles: string[][] = [];
+  const seen = new Set<string>();
+  const stack = new Set<string>();
+  const path: string[] = [];
+  const recorded = new Set<string>();
+
+  const dfs = (node: string) => {
+    seen.add(node);
+    stack.add(node);
+    path.push(node);
+
+    for (const neighbor of graph.get(node) ?? []) {
+      if (!stack.has(neighbor)) {
+        if (!seen.has(neighbor)) {
+          dfs(neighbor);
+        }
+      } else {
+        const idx = path.indexOf(neighbor);
+        if (idx !== -1) {
+          const cycle = [...path.slice(idx), neighbor];
+          const key = cycle.join("->");
+          if (!recorded.has(key)) {
+            recorded.add(key);
+            cycles.push(cycle);
+          }
+        }
+      }
+    }
+
+    path.pop();
+    stack.delete(node);
+  };
+
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      dfs(id);
+    }
+  }
+
+  return cycles;
+};
+
 const cmdValidate = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -710,6 +772,76 @@ const cmdValidate = (options: CliOptions) =>
     }
 
     const result = { ok: true, message: "tasks.jsonl is valid" };
+    output(result, options.json);
+    return result;
+  });
+
+const cmdDoctor = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const fs = yield* FileSystem.FileSystem;
+    const issues: Array<Record<string, unknown>> = [];
+
+    const exists = yield* fs.exists(tasksPath);
+    if (!exists) {
+      const result = {
+        ok: false,
+        issues: [{ type: "missing_file", message: `${TASKS_FILE} is missing` }],
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    let tasks: Task[] | null = null;
+    try {
+      tasks = yield* readTasks(tasksPath);
+    } catch (err) {
+      if (err instanceof TaskServiceError) {
+        const type =
+          err.reason === "conflict"
+            ? "conflict_markers"
+            : err.reason === "parse_error"
+              ? "parse_error"
+              : "validation_error";
+        issues.push({ type, message: err.message });
+      } else {
+        issues.push({ type: "unknown_error", message: String(err) });
+      }
+    }
+
+    if (tasks) {
+      const orphanDeps = findOrphanDependencies(tasks);
+      if (orphanDeps.length > 0) {
+        issues.push({ type: "orphan_dependencies", orphanDeps });
+      }
+
+      const duplicates = findDuplicateIds(tasks);
+      if (duplicates.length > 0) {
+        issues.push({ type: "duplicate_ids", ids: duplicates });
+      }
+
+      const cycles = findDependencyCycles(tasks);
+      if (cycles.length > 0) {
+        issues.push({ type: "dependency_cycles", cycles });
+      }
+
+      const staleTasks = yield* getStaleTasks({
+        tasksPath,
+        status: "in_progress",
+        days: options.days ?? 14,
+      }).pipe(Effect.catchAll(() => Effect.succeed([])));
+      if (staleTasks.length > 0) {
+        const now = Date.now();
+        const stale = staleTasks.map((task) => ({
+          id: task.id,
+          status: task.status,
+          daysStale: Math.floor((now - new Date(task.updatedAt).getTime()) / (24 * 60 * 60 * 1000)),
+        }));
+        issues.push({ type: "stale_tasks", stale });
+      }
+    }
+
+    const result = { ok: issues.length === 0, issues };
     output(result, options.json);
     return result;
   });
@@ -915,6 +1047,7 @@ Commands:
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
   validate  Validate tasks.jsonl (schema + conflict markers)
+  doctor    Diagnose common tasks.jsonl issues (orphan deps, duplicates, cycles, stale tasks)
   merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
 
 Global Options:
@@ -970,6 +1103,9 @@ search Options:
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
 
+doctor Options:
+  --days <n>              Stale threshold (default: 14, in-progress tasks only)
+
 merge Options:
   --base <path>           Base/ancestor tasks.jsonl
   --current <path>        Current branch version (usually %A)
@@ -994,6 +1130,7 @@ Examples:
   bun src/tasks/cli.ts search --query "auth" --json  # search all tasks
   bun src/tasks/cli.ts search --query "login" --status closed --json  # search closed tasks only
   bun src/tasks/cli.ts validate --json  # validate tasks.jsonl and detect conflicts
+  bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
 `);
 };
 
@@ -1161,6 +1298,24 @@ const main = async () => {
       try {
         const result = await Effect.runPromise(
           cmdValidate(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        if (result && result.ok === false) {
+          process.exitCode = 1;
+        }
+      } catch (err) {
+        const payload = { ok: false, error: String(err) };
+        if (options.json) {
+          console.log(JSON.stringify(payload));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "doctor":
+      try {
+        const result = await Effect.runPromise(
+          cmdDoctor(options).pipe(Effect.provide(BunContext.layer)),
         );
         if (result && result.ok === false) {
           process.exitCode = 1;
