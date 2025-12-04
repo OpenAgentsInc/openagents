@@ -1,8 +1,21 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Headed mode options (via env vars)
-const headed = !!process.env.HEADED;
-const slowMo = process.env.SLOWMO ? parseInt(process.env.SLOWMO, 10) : 0;
+const normalizeBoolean = (value?: string | null) => {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+};
+
+const cliArgs = process.argv.slice(2);
+const debugEnabled = normalizeBoolean(process.env.PWDEBUG) || cliArgs.includes("--debug");
+const headed =
+  normalizeBoolean(process.env.HEADED) ||
+  normalizeBoolean(process.env.PLAYWRIGHT_HEADFUL) ||
+  cliArgs.includes("--headed") ||
+  debugEnabled;
+
+const slowMoValue =
+  process.env.SLOWMO ?? process.env.PLAYWRIGHT_SLOWMO ?? (debugEnabled ? "500" : undefined);
+const slowMo = slowMoValue ? parseInt(slowMoValue, 10) : 0;
 
 export default defineConfig({
   testDir: "./tests",
