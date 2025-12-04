@@ -310,8 +310,8 @@ Look for:
 
 1. Check the **latest run log** in `docs/logs/YYYYMMDD/*.md`.
 2. Check for repeated failures on the same task (tests failing, type errors).
-3. Look in `.openagents/tasks.jsonl` for tasks stuck in `in_progress` too long.
-4. Either update them to `blocked` with a reason, or `open` to retry.
+3. Run `bun run tasks:stale --days 7 --status in_progress` (tune `--days`) to spot likely-stale tasks, or manually inspect `.openagents/tasks.jsonl` for long-running `in_progress` items.
+4. Follow the stuck-task workflow in `docs/mechacoder/stuck-tasks.md`: review logs, clean up subtasks/worktrees, then either reopen (`tasks:reopen`) or mark `blocked` with a reason.
 
 ### 4.4. Parallel Runner Issues
 

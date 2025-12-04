@@ -15,6 +15,7 @@ import {
   archiveTasks,
   readArchivedTasks,
   searchAllTasks,
+  getStaleTasks,
 } from "./service.js";
 import type { TaskCreate } from "./schema.js";
 
@@ -225,6 +226,42 @@ describe("TaskService", () => {
     expect(result.ready).toHaveLength(1);
     expect(result.ready[0]?.title).toBe("Unassigned older");
     expect(result.listed.map((t) => t.id)).toEqual([result.unassigned.id, result.alsoOlder.id]);
+  });
+
+  test("finds stale in-progress tasks older than threshold", async () => {
+    const stale = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+        // Stale in_progress updated 40 days before the reference timestamp
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Stale in-progress", { status: "in_progress" }),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+        // Recent in_progress should be ignored
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Fresh in-progress", { status: "in_progress" }),
+          timestamp: new Date("2025-02-08T00:00:00Z"),
+        });
+        // Old closed task should not appear when filtering status
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Closed old", { status: "closed" }),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+
+        return yield* getStaleTasks({
+          tasksPath,
+          days: 30,
+          status: "in_progress",
+          timestamp: new Date("2025-02-10T00:00:00Z"), // deterministic threshold
+        });
+      }),
+    );
+
+    expect(stale).toHaveLength(1);
+    expect(stale[0]?.title).toBe("Stale in-progress");
   });
 });
 
