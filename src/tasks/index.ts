@@ -67,6 +67,7 @@ export {
   getTaskStats,
   getStaleTasks,
   getTaskWithDeps,
+  hasConflictMarkers,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,

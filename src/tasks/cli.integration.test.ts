@@ -160,6 +160,27 @@ describe("tasks CLI integration", () => {
     expect(closed.closeReason).toBe("Completed"); // default reason
   });
 
+  test("validate command fails on conflict markers", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-validate-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+    const tasksPath = path.join(tmp, ".openagents", "tasks.jsonl");
+    const conflict = `<<<<<<< ours
+{"id":"oa-1","title":"A","description":"","status":"open","priority":2,"type":"task","labels":[],"deps":[],"commits":[],"createdAt":"2024-01-01T00:00:00.000Z","updatedAt":"2024-01-01T00:00:00.000Z","closedAt":null}
+=======
+{"id":"oa-1","title":"B","description":"","status":"open","priority":2,"type":"task","labels":[],"deps":[],"commits":[],"createdAt":"2024-01-01T00:00:00.000Z","updatedAt":"2024-01-01T00:00:00.000Z","closedAt":null}
+>>>>>>> theirs
+`;
+    fs.writeFileSync(tasksPath, conflict, "utf8");
+
+    const validate = runCli(["validate", "--dir", tmp, "--check-conflicts", "--json"], tmp);
+    expect(validate.code).toBe(1);
+    const payload = JSON.parse(validate.stdout);
+    expect(payload.ok).toBe(false);
+    expect(String(payload.error)).toContain("conflict");
+  });
+
   test("close command requires --id", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-noid-"));
 
