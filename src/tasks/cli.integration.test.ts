@@ -232,6 +232,114 @@ describe("tasks CLI integration", () => {
     ]);
   });
 
+  test("doctor command reports multiple issues", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-doctor-"));
+    const dir = path.join(tmp, ".openagents");
+    fs.mkdirSync(dir, { recursive: true });
+    const tasksPath = path.join(dir, "tasks.jsonl");
+
+    const staleDate = "2023-01-01T00:00:00.000Z";
+    const now = "2024-01-01T00:00:00.000Z";
+    const tasks = [
+      {
+        id: "oa-1",
+        title: "Cycle A",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-2", type: "blocks" }],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-2",
+        title: "Cycle B",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-1", type: "blocks" }],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-dup",
+        title: "Duplicate entry 1",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-dup",
+        title: "Duplicate entry 2",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-orphan",
+        title: "Has missing dep",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-missing", type: "blocks" }],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-stale",
+        title: "Old in_progress task",
+        description: "",
+        status: "in_progress",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: staleDate,
+        updatedAt: staleDate,
+        closedAt: null,
+      },
+    ];
+
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+
+    const doctor = runCli(["doctor", "--dir", tmp, "--json", "--days", "14"], tmp);
+    expect(doctor.code).toBe(1);
+    const payload = JSON.parse(doctor.stdout);
+    const issueTypes = payload.issues.map((issue: { type: string }) => issue.type);
+    expect(payload.ok).toBe(false);
+    expect(issueTypes).toContain("orphan_dependencies");
+    expect(issueTypes).toContain("duplicate_ids");
+    expect(issueTypes).toContain("dependency_cycles");
+    expect(issueTypes).toContain("stale_tasks");
+  });
+
   test("close command requires --id", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-noid-"));
 
