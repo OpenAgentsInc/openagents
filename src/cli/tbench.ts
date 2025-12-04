@@ -354,6 +354,9 @@ const main = async (): Promise<void> => {
   console.log(`Instruction: ${args.instruction.slice(0, 100)}...`);
   console.log(`Model: ${modelName}`);
   console.log(`Output: ${args.outputDir}`);
+  console.log(`CWD: ${args.cwd || process.cwd()}`);
+  console.log(`ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "set" : "not set"}`);
+  console.log(`ANTHROPIC_OAUTH_TOKEN: ${process.env.ANTHROPIC_OAUTH_TOKEN ? "set (" + process.env.ANTHROPIC_OAUTH_TOKEN.slice(0, 20) + "...)" : "not set"}`);
   console.log(`===========================\n`);
 
   let result;
