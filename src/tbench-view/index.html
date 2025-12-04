@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terminal-Bench View</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="tb-app">
+      <header class="tb-header">
+        <div class="tb-header__title">
+          <div class="tb-pill">Terminal-Bench</div>
+          <h1 class="tb-heading">Suite: <span id="suite-name">Sample Suite</span></h1>
+          <div class="tb-subtitle">
+            v<span id="suite-version">1.0.0</span> •
+            <span id="task-count">8 tasks</span>
+          </div>
+        </div>
+        <div class="tb-header__metrics">
+          <div class="tb-metric">
+            <div class="tb-metric__label">Pass Rate</div>
+            <div class="tb-metric__value" id="pass-rate">84%</div>
+          </div>
+          <div class="tb-metric">
+            <div class="tb-metric__label">Avg Duration</div>
+            <div class="tb-metric__value" id="avg-duration">02:14</div>
+          </div>
+          <div class="tb-metric">
+            <div class="tb-metric__label">Active Task</div>
+            <div class="tb-metric__value tb-metric__value--accent" id="active-task">
+              TB-003
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="tb-main">
+        <aside class="tb-sidebar">
+          <div class="tb-sidebar__section">
+            <div class="tb-sidebar__title">Tasks</div>
+            <ul class="tb-task-list" id="task-list">
+              <li class="tb-task tb-task--active">
+                <div class="tb-task__meta">
+                  <span class="tb-chip tb-chip--green">pass</span>
+                  <span class="tb-chip">easy</span>
+                  <span class="tb-chip tb-chip--outline">algorithms</span>
+                </div>
+                <div class="tb-task__title">Two Sum Redux</div>
+                <div class="tb-task__desc">Implement optimized two-pass hash map solution.</div>
+              </li>
+              <li class="tb-task">
+                <div class="tb-task__meta">
+                  <span class="tb-chip tb-chip--yellow">running</span>
+                  <span class="tb-chip">medium</span>
+                  <span class="tb-chip tb-chip--outline">web</span>
+                </div>
+                <div class="tb-task__title">Markdown Renderer</div>
+                <div class="tb-task__desc">Build streaming markdown-to-HTML converter.</div>
+              </li>
+              <li class="tb-task">
+                <div class="tb-task__meta">
+                  <span class="tb-chip tb-chip--red">fail</span>
+                  <span class="tb-chip">hard</span>
+                  <span class="tb-chip tb-chip--outline">db</span>
+                </div>
+                <div class="tb-task__title">Replica Sync</div>
+                <div class="tb-task__desc">Fix snapshot sync race on restart.</div>
+              </li>
+            </ul>
+          </div>
+        </aside>
+
+        <section class="tb-content">
+          <div class="tb-panel">
+            <div class="tb-panel__header">
+              <div>
+                <div class="tb-panel__eyebrow">Progress</div>
+                <div class="tb-panel__title">Agent Output</div>
+              </div>
+              <div class="tb-panel__actions">
+                <button class="tb-button tb-button--ghost">Filter</button>
+                <button class="tb-button tb-button--primary">Pause Stream</button>
+              </div>
+            </div>
+            <div class="tb-log" id="output-log">
+              <div class="tb-log__line">[agent] Planning patch layout…</div>
+              <div class="tb-log__line">[agent] Running tests: <span class="tb-badge">bun test</span></div>
+              <div class="tb-log__line tb-log__line--success">[verify] Tests passed in 14.2s</div>
+              <div class="tb-log__line tb-log__line--info">
+                [agent] Commit planned: <code>tb-run: fix renderer cache</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="tb-panel tb-panel--stats">
+            <div class="tb-panel__header">
+              <div>
+                <div class="tb-panel__eyebrow">Stats</div>
+                <div class="tb-panel__title">Run Overview</div>
+              </div>
+            </div>
+            <div class="tb-stats">
+              <div class="tb-stat">
+                <div class="tb-stat__label">Passed</div>
+                <div class="tb-stat__value">5</div>
+              </div>
+              <div class="tb-stat">
+                <div class="tb-stat__label">Failed</div>
+                <div class="tb-stat__value">1</div>
+              </div>
+              <div class="tb-stat">
+                <div class="tb-stat__label">Timeout</div>
+                <div class="tb-stat__value">0</div>
+              </div>
+              <div class="tb-stat">
+                <div class="tb-stat__label">Pending</div>
+                <div class="tb-stat__value">2</div>
+              </div>
+              <div class="tb-stat">
+                <div class="tb-stat__label">Avg Tokens</div>
+                <div class="tb-stat__value">12.4k</div>
+              </div>
+              <div class="tb-stat">
+                <div class="tb-stat__label">Avg Turns</div>
+                <div class="tb-stat__value">4.1</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
