@@ -143,7 +143,6 @@ describe("parallel runner regression", () => {
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,
           installArgs: ["--skip-install"],
-          useContainers: false,
           mergeThreshold: 4,
           prThreshold: 50,
         },

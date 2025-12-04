@@ -539,4 +539,6 @@ bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only
 - `--max-agents <N>` - Parallel agents (default: 2)
 - `--max-tasks <N>` - Total tasks to complete (default: 10)
 - `--cc-only` - Use Claude Code only (recommended)
+- `--sandbox` - Force sandbox enabled (override project config)
+- `--no-sandbox` - Force sandbox disabled (override project config)
 - `--dry-run` - Preview without executing

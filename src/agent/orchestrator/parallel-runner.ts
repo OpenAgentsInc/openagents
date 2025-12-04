@@ -19,7 +19,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect, Layer } from "effect";
-import type { Task, ParallelExecutionConfig } from "../../tasks/index.js";
+import type { Task, ParallelExecutionConfig, SandboxConfig } from "../../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../../llm/openrouter.js";
 import {
   createWorktree,
@@ -61,8 +61,6 @@ export interface ParallelRunnerConfig {
   mergeThreshold?: number;
   /** Number of agents before switching from queue to PR (when auto) */
   prThreshold?: number;
-  /** Container image (optional - run in containers if provided) */
-  containerImage?: string;
   /** Timeout per agent in ms */
   timeoutMs?: number;
   /** Event callback */
@@ -76,6 +74,8 @@ export interface ParallelRunnerConfig {
   e2eCommands?: string[];
   /** Claude Code settings */
   claudeCode?: ClaudeCodeSettings;
+  /** Sandbox configuration for sandboxed verification */
+  sandbox?: SandboxConfig;
   /** Model to use for subagents */
   subagentModel?: string;
   /** Use Claude Code only mode (no OpenRouter fallback) */
@@ -472,6 +472,9 @@ const runAgentInWorktree = (
     if (config.subagentModel) {
       orchestratorConfig.subagentModel = config.subagentModel;
     }
+    if (config.sandbox) {
+      orchestratorConfig.sandbox = config.sandbox;
+    }
 
     const orchestratorRunner = config.runOrchestratorFn ?? runOrchestrator;
 
@@ -805,6 +808,8 @@ export interface CreateParallelRunnerOptions {
   e2eCommands?: string[];
   /** Claude Code settings */
   claudeCode?: ClaudeCodeSettings;
+  /** Sandbox configuration for sandboxed verification */
+  sandbox?: SandboxConfig;
   /** Model for subagents */
   subagentModel?: string;
   /** Use Claude Code only (no OpenRouter fallback) */
@@ -874,6 +879,9 @@ export const runParallelFromConfig = (
   }
   if (options.claudeCode) {
     config.claudeCode = options.claudeCode;
+  }
+  if (options.sandbox) {
+    config.sandbox = options.sandbox;
   }
   if (options.subagentModel) {
     config.subagentModel = options.subagentModel;
