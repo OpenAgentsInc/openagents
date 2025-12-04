@@ -10,6 +10,11 @@ import type { Tool } from "../../tools/schema.js";
 import type { HealerOutcome, HealerCounters } from "../../healer/index.js";
 import type { Effect } from "effect";
 import type { UsageRecord } from "../../usage/types.js";
+import type {
+  ReflectionType,
+  FailureContextType,
+  ReflexionConfigType,
+} from "./reflection/index.js";
 
 // ============================================================================
 // Subtask Types
@@ -224,6 +229,17 @@ export interface OrchestratorConfig {
   healerCounters?: HealerCounters;
   /** Full project config (needed for Healer's policy decisions) */
   projectConfig?: ProjectConfig;
+
+  // Reflexion integration (verbal self-reflection on failures)
+  /** ReflectionService for generating reflections after failures */
+  reflectionService?: {
+    generate: (failure: FailureContextType) => Effect.Effect<ReflectionType | null, Error>;
+    getRecent: (subtaskId: string, limit?: number) => Effect.Effect<ReflectionType[], Error>;
+    save: (reflection: ReflectionType) => Effect.Effect<void, Error>;
+    formatForPrompt: (reflections: ReflectionType[]) => Effect.Effect<string, Error>;
+  };
+  /** Reflexion configuration */
+  reflexionConfig?: ReflexionConfigType;
 }
 
 export interface OrchestratorState {

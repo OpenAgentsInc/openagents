@@ -53,6 +53,8 @@ export interface ClaudeCodeSubagentOptions {
   onOutput?: (text: string) => void;
   /** Additional context (e.g., AGENTS.md content) to prepend to the prompt */
   additionalContext?: string;
+  /** Formatted reflections from previous failures (Reflexion pattern) */
+  reflections?: string;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -61,7 +63,11 @@ const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name
 const isResultMessage = (message: any): message is { type?: string; subtype?: string } =>
   typeof message === "object" && message !== null && "type" in message;
 
-const defaultBuildPrompt = (subtask: Subtask, additionalContext?: string): string => {
+const defaultBuildPrompt = (
+  subtask: Subtask,
+  additionalContext?: string,
+  reflections?: string
+): string => {
   let prompt = "";
 
   // Prepend additional context if provided (e.g., AGENTS.md content)
@@ -94,6 +100,17 @@ ${subtask.lastFailureReason}
 
 You MUST address this error before proceeding. Do NOT repeat the same approach that caused the failure.
 Run \`bun run typecheck\` and \`bun test\` to verify your changes pass before completing.`;
+  }
+
+  // Include reflections from previous failures (Reflexion pattern)
+  if (reflections && reflections.trim().length > 0) {
+    prompt += `
+
+## Learning from Previous Failures
+
+The following reflections were generated from previous failed attempts. Use these insights to avoid repeating the same mistakes:
+
+${reflections}`;
   }
 
   return prompt;
@@ -303,7 +320,7 @@ export const runClaudeCodeSubagent = async (
 
     try {
       for await (const message of query({
-        prompt: defaultBuildPrompt(subtask, options.additionalContext),
+        prompt: defaultBuildPrompt(subtask, options.additionalContext, options.reflections),
         options: {
           cwd: options.cwd,
           // Use Claude Code's system prompt with CLAUDE.md context

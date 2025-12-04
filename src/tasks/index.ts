@@ -14,6 +14,7 @@ export {
   SandboxConfig,
   MergeStrategy,
   ParallelExecutionConfig,
+  ReflexionConfig,
   // Types
   type Status as StatusType,
   type IssueType as IssueTypeType,
@@ -29,6 +30,7 @@ export {
   type SandboxConfig as SandboxConfigT,
   type MergeStrategy as MergeStrategyT,
   type ParallelExecutionConfig as ParallelExecutionConfigT,
+  type ReflexionConfig as ReflexionConfigT,
   // Helpers
   isTaskReady,
   decodeTask,

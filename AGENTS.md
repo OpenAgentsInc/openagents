@@ -406,6 +406,27 @@ export class MyService extends Context.Tag("MyService")<
 export const MyService = Context.Tag<MyService>()  // Broken!
 ```
 
+**Never Use Inline Imports:**
+```typescript
+// ✅ CORRECT - Import at top of file
+import type { FailureContext, Reflection } from "./reflection/index.js";
+
+function doThing(failure: FailureContext): Reflection {
+  // ...
+}
+
+// ❌ HORRIBLE - Never use inline imports like this
+function doThing(failure: import("./reflection/index.js").FailureContext): import("./reflection/index.js").Reflection {
+  // This is unreadable and should be refactored immediately
+}
+```
+
+Inline imports (using `import("./path").Type`) are:
+- Hard to read and maintain
+- Make it difficult to see dependencies at a glance
+- Should be refactored whenever encountered
+- Always use proper imports at the top of the file instead
+
 ### Test Patterns
 
 **runWithBun Helper:**

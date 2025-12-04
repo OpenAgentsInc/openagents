@@ -33,6 +33,8 @@ export interface RunBestAvailableSubagentOptions<R> {
   onOutput?: (text: string) => void;
   /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
   additionalContext?: string;
+  /** Formatted reflections from previous failures (Reflexion pattern) */
+  reflections?: string;
 }
 
 const shouldEnableClaudeCode = (settings?: ClaudeCodeSettings): boolean =>
@@ -134,6 +136,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               ...(forkSession ? { forkSession } : {}),
               ...(options.onOutput ? { onOutput: options.onOutput } : {}),
               ...(options.additionalContext ? { additionalContext: options.additionalContext } : {}),
+              ...(options.reflections ? { reflections: options.reflections } : {}),
             }),
           catch: (error: any) => error as Error,
         }).pipe(
