@@ -6,9 +6,11 @@
  * - HealerConfig settings (enabled, scenarios, limits)
  * - HealerCounters (rate limiting)
  */
+import { createHash } from "node:crypto";
 import type {
   OrchestratorEvent,
   InitScriptResult,
+  OrchestratorState,
 } from "../agent/orchestrator/types.js";
 import type { HealerConfig } from "../tasks/schema.js";
 import type {
@@ -103,6 +105,58 @@ export const getErrorOutput = (event: OrchestratorEvent): string | null => {
     default:
       return null;
   }
+};
+
+// ============================================================================
+// Deduplication
+// ============================================================================
+
+const hashError = (input: string): string =>
+  createHash("sha256").update(input).digest("hex").slice(0, 16);
+
+const getTaskIdForKey = (state: OrchestratorState): string =>
+  state.subtasks?.taskId ?? state.task?.id ?? "unknown-task";
+
+const getSubtaskIdForKey = (
+  event: OrchestratorEvent,
+  state: OrchestratorState
+): string | undefined => {
+  if (event.type === "subtask_failed" || event.type === "subtask_complete" || event.type === "subtask_start") {
+    return event.subtask.id;
+  }
+
+  return state.subtasks?.subtasks.find(
+    (subtask) => subtask.status === "failed" || subtask.status === "in_progress"
+  )?.id;
+};
+
+/**
+ * Build a stable deduplication key for a healer invocation attempt.
+ */
+export const buildHealingKey = (params: {
+  scenario: HealerScenario;
+  event: OrchestratorEvent;
+  state: OrchestratorState;
+}): { key: string; errorHash: string; taskId: string; subtaskId?: string } => {
+  const { scenario, event, state } = params;
+  const taskId = getTaskIdForKey(state);
+  const subtaskId = getSubtaskIdForKey(event, state);
+  const errorOutput =
+    getErrorOutput(event) ??
+    state.subtasks?.subtasks.find(
+      (subtask) => subtask.status === "failed" || subtask.status === "in_progress"
+    )?.lastFailureReason ??
+    scenario;
+
+  const errorHash = hashError(`${scenario}:${errorOutput}`);
+  const key = `${taskId}:${subtaskId ?? "none"}:${scenario}:${errorHash}`;
+
+  return {
+    key,
+    errorHash,
+    taskId,
+    ...(subtaskId ? { subtaskId } : {}),
+  };
 };
 
 // ============================================================================

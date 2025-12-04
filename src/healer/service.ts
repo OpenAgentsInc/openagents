@@ -4,6 +4,8 @@
  * Main entry point for the Healer subagent.
  * Orchestrates policy checks, spell planning, and execution.
  */
+import * as path from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { Effect } from "effect";
 import type {
   HealerContext,
@@ -14,6 +16,7 @@ import type {
   HealerSpellId,
   HealerSpellResult,
   HealerTrigger,
+  HealingAttempt,
 } from "./types.js";
 import type { OrchestratorEvent, OrchestratorState } from "../agent/orchestrator/types.js";
 import type { ProjectConfig } from "../tasks/schema.js";
@@ -25,6 +28,7 @@ import type {
 import {
   shouldRunHealer,
   incrementCounters,
+  buildHealingKey,
 } from "./policy.js";
 import { buildHealerContext } from "./context.js";
 import { planSpells } from "./planner.js";
@@ -36,6 +40,14 @@ import {
   type VerificationRunner,
 } from "./spells/typecheck.js";
 import { generateSessionId } from "../atif/schema.js";
+
+type SpellSequenceRunner = (
+  ctx: HealerContext,
+  scenario: HealerScenario,
+  spells: HealerSpellId[],
+  options: HealerServiceOptions,
+  sessionId: string
+) => Effect.Effect<HealerOutcome, Error, never>;
 
 // ============================================================================
 // Types
@@ -61,6 +73,8 @@ export interface HealerServiceOptions {
   onEvent?: (event: HealerEvent) => void;
   /** Emit HUD messages (for UI integration) */
   onHudMessage?: (msg: HealerInvocationStartMessage | HealerSpellAppliedMessage | HealerInvocationCompleteMessage) => void;
+  /** Override spell execution (useful for testing) */
+  spellRunner?: SpellSequenceRunner;
 }
 
 /**
@@ -72,6 +86,83 @@ export type HealerEvent =
   | { type: "healer_spell_complete"; spellId: HealerSpellId; result: HealerSpellResult }
   | { type: "healer_complete"; outcome: HealerOutcome };
 
+const HEALER_STATE_FILENAME = "healer-state.json";
+
+const shouldSkipBasedOnAttempt = (attempt?: HealingAttempt): boolean =>
+  attempt?.outcome === "resolved" || attempt?.outcome === "contained";
+
+const getHealerStatePaths = (config: ProjectConfig, options: HealerServiceOptions) => {
+  const baseDir = options.openagentsDir ?? path.join(config.rootDir ?? ".", ".openagents");
+  return {
+    baseDir,
+    statePath: path.join(baseDir, HEALER_STATE_FILENAME),
+  };
+};
+
+const mergePersistedAttempts = (
+  counters: HealerCounters,
+  statePath: string
+): Effect.Effect<void, Error, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      let content: string;
+      try {
+        content = await readFile(statePath, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
+
+      const parsed = JSON.parse(content);
+      const attempts: HealingAttempt[] = Array.isArray(parsed?.attempts) ? parsed.attempts : [];
+      for (const attempt of attempts) {
+        if (!counters.healingAttempts.has(attempt.key)) {
+          counters.healingAttempts.set(attempt.key, attempt);
+        }
+      }
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to load healer state: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      ),
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.sync(() =>
+        console.warn("[Healer] Unable to load healer state:", error.message)
+      )
+    )
+  );
+
+const persistHealingAttempts = (
+  counters: HealerCounters,
+  baseDir: string,
+  statePath: string
+): Effect.Effect<void, Error, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(baseDir, { recursive: true });
+      const attempts = Array.from(counters.healingAttempts.values());
+      const payload = JSON.stringify({ attempts }, null, 2);
+      await writeFile(statePath, payload, "utf8");
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to persist healer state: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      ),
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.sync(() =>
+        console.warn("[Healer] Unable to persist healer state:", error.message)
+      )
+    )
+  );
+
 // ============================================================================
 // Healer Service
 // ============================================================================
@@ -80,6 +171,123 @@ export type HealerEvent =
  * Create a Healer service instance.
  */
 export const createHealerService = (options: HealerServiceOptions = {}) => {
+  const spellRunner: SpellSequenceRunner =
+    options.spellRunner ?? executeSpellSequence;
+
+  const invokeHealer = (
+    trigger: HealerTrigger,
+    state: OrchestratorState,
+    config: ProjectConfig,
+    counters: HealerCounters
+  ): Effect.Effect<HealerOutcome, Error, never> =>
+    Effect.gen(function* () {
+      const { baseDir, statePath } = getHealerStatePaths(config, options);
+      // Merge persisted attempts for crash recovery/deduplication.
+      yield* mergePersistedAttempts(counters, statePath);
+
+      const keyInfo = buildHealingKey({
+        scenario: trigger.scenario,
+        event: trigger.event,
+        state,
+      });
+      const previousAttempt = counters.healingAttempts.get(keyInfo.key);
+
+      if (shouldSkipBasedOnAttempt(previousAttempt)) {
+        return {
+          scenario: trigger.scenario,
+          status: "skipped",
+          spellsTried: previousAttempt?.spellsTried ?? [],
+          spellsSucceeded: previousAttempt?.spellsSucceeded ?? [],
+          summary: "Skipping Healer: previous attempt already resolved this failure",
+        };
+      }
+
+      incrementCounters(counters, keyInfo.subtaskId);
+
+      console.log("[DEBUG] Building Healer context...");
+      const ctx = yield* buildHealerContext(trigger, state, config, counters).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            console.log("[DEBUG] buildHealerContext ERROR:", error);
+            console.log("[DEBUG] Error stack:", error?.stack);
+          })
+        )
+      );
+      console.log("[DEBUG] Healer context built:", Object.keys(ctx));
+
+      // Plan spells
+      const spells = planSpells(ctx, {
+        skipLLMSpells: options.skipLLMSpells ?? false,
+      });
+
+      if (spells.length === 0) {
+        const skippedOutcome: HealerOutcome = {
+          scenario: trigger.scenario,
+          status: "skipped",
+          spellsTried: [],
+          spellsSucceeded: [],
+          summary: "No applicable spells for scenario",
+        };
+        return skippedOutcome;
+      }
+
+      // Generate session ID for this Healer invocation
+      const healerSessionId = generateSessionId();
+
+      // Emit start event
+      options.onEvent?.({ type: "healer_start", scenario: trigger.scenario, spells });
+
+      // Emit HUD start message
+      options.onHudMessage?.({
+        type: "healer_invocation_start",
+        sessionId: healerSessionId,
+        scenario: trigger.scenario,
+        plannedSpells: spells,
+        parentSessionId: state.sessionId,
+      });
+
+      // Execute spells
+      const outcome = yield* spellRunner(
+        ctx,
+        trigger.scenario,
+        spells,
+        options,
+        healerSessionId
+      );
+
+      // Emit complete event
+      options.onEvent?.({ type: "healer_complete", outcome });
+
+      // Emit HUD complete message
+      options.onHudMessage?.({
+        type: "healer_invocation_complete",
+        sessionId: healerSessionId,
+        status: outcome.status,
+        reason: outcome.summary,
+        spellsExecuted: outcome.spellsTried.length,
+        successfulSpells: outcome.spellsSucceeded.length,
+        failedSpells: outcome.spellsTried.length - outcome.spellsSucceeded.length,
+      });
+
+      const attempt: HealingAttempt = {
+        key: keyInfo.key,
+        scenario: trigger.scenario,
+        taskId: keyInfo.taskId,
+        ...(keyInfo.subtaskId ? { subtaskId: keyInfo.subtaskId } : {}),
+        errorHash: keyInfo.errorHash,
+        timestamp: new Date().toISOString(),
+        outcome: outcome.status,
+        spellsTried: outcome.spellsTried,
+        spellsSucceeded: outcome.spellsSucceeded,
+        summary: outcome.summary,
+      };
+
+      counters.healingAttempts.set(keyInfo.key, attempt);
+      yield* persistHealingAttempts(counters, baseDir, statePath);
+
+      return outcome;
+    });
+
   return {
     /**
      * Maybe run Healer based on policy and context.
@@ -117,68 +325,7 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
 
         console.log("[DEBUG] Healer will run for scenario:", scenario);
 
-        // Update counters
-        incrementCounters(counters, subtaskId);
-
-        console.log("[DEBUG] Building Healer context...");
-        // Build context
-        const ctx = yield* buildHealerContext(trigger, state, config, counters).pipe(
-          Effect.tapError((error) => Effect.sync(() => {
-            console.log("[DEBUG] buildHealerContext ERROR:", error);
-            console.log("[DEBUG] Error stack:", error?.stack);
-          }))
-        );
-        console.log("[DEBUG] Healer context built:", Object.keys(ctx));
-
-        // Plan spells
-        const spells = planSpells(ctx, {
-          skipLLMSpells: options.skipLLMSpells ?? false,
-        });
-
-        if (spells.length === 0) {
-          const skippedOutcome: HealerOutcome = {
-            scenario,
-            status: "skipped",
-            spellsTried: [],
-            spellsSucceeded: [],
-            summary: "No applicable spells for scenario",
-          };
-          return skippedOutcome;
-        }
-
-        // Generate session ID for this Healer invocation
-        const healerSessionId = generateSessionId();
-
-        // Emit start event
-        options.onEvent?.({ type: "healer_start", scenario, spells });
-
-        // Emit HUD start message
-        options.onHudMessage?.({
-          type: "healer_invocation_start",
-          sessionId: healerSessionId,
-          scenario,
-          plannedSpells: spells,
-          parentSessionId: state.sessionId,
-        });
-
-        // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, scenario, spells, options, healerSessionId);
-
-        // Emit complete event
-        options.onEvent?.({ type: "healer_complete", outcome });
-
-        // Emit HUD complete message
-        options.onHudMessage?.({
-          type: "healer_invocation_complete",
-          sessionId: healerSessionId,
-          status: outcome.status,
-          reason: outcome.summary,
-          spellsExecuted: outcome.spellsTried.length,
-          successfulSpells: outcome.spellsSucceeded.length,
-          failedSpells: outcome.spellsTried.length - outcome.spellsSucceeded.length,
-        });
-
-        return outcome;
+        return yield* invokeHealer(trigger, state, config, counters);
       }),
 
     /**
@@ -191,60 +338,7 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
       config: ProjectConfig,
       counters: HealerCounters
     ): Effect.Effect<HealerOutcome, Error, never> =>
-      Effect.gen(function* () {
-        // Build context
-        const ctx = yield* buildHealerContext(trigger, state, config, counters);
-
-        // Plan spells
-        const spells = planSpells(ctx, {
-          skipLLMSpells: options.skipLLMSpells ?? false,
-        });
-
-        if (spells.length === 0) {
-          const skippedOutcome: HealerOutcome = {
-            scenario: trigger.scenario,
-            status: "skipped",
-            spellsTried: [],
-            spellsSucceeded: [],
-            summary: "No applicable spells for scenario",
-          };
-          return skippedOutcome;
-        }
-
-        // Generate session ID for this Healer invocation
-        const healerSessionId = generateSessionId();
-
-        // Emit start event
-        options.onEvent?.({ type: "healer_start", scenario: trigger.scenario, spells });
-
-        // Emit HUD start message
-        options.onHudMessage?.({
-          type: "healer_invocation_start",
-          sessionId: healerSessionId,
-          scenario: trigger.scenario,
-          plannedSpells: spells,
-          parentSessionId: state.sessionId,
-        });
-
-        // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, trigger.scenario, spells, options, healerSessionId);
-
-        // Emit complete event
-        options.onEvent?.({ type: "healer_complete", outcome });
-
-        // Emit HUD complete message
-        options.onHudMessage?.({
-          type: "healer_invocation_complete",
-          sessionId: healerSessionId,
-          status: outcome.status,
-          reason: outcome.summary,
-          spellsExecuted: outcome.spellsTried.length,
-          successfulSpells: outcome.spellsSucceeded.length,
-          failedSpells: outcome.spellsTried.length - outcome.spellsSucceeded.length,
-        });
-
-        return outcome;
-      }),
+      invokeHealer(trigger, state, config, counters),
   };
 };
 

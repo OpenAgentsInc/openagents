@@ -20,6 +20,7 @@ export type {
   HealerHeuristics,
   HealerContext,
   HealerCounters,
+  HealingAttempt,
   HealerTrigger,
   HealerPolicyDecision,
 } from "./types.js";
@@ -45,6 +46,7 @@ export {
   incrementCounters,
   explainDecision,
   isHealableInitFailure,
+  buildHealingKey,
 } from "./policy.js";
 
 // Context builder
