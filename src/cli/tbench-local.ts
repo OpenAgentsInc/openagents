@@ -30,6 +30,7 @@ import {
 import { BunContext } from "@effect/platform-bun";
 import { Effect } from "effect";
 import { cpSync, readdirSync, statSync } from "fs";
+import { createTBEmitter, type TBEmitter } from "../tbench-hud/emit.js";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -237,6 +238,9 @@ const runTask = async (
     maxTurns: number;
     outputDir: string;
     sourceRepo?: string;
+    tbEmitter?: TBEmitter;
+    taskIndex?: number;
+    totalTasks?: number;
   }
 ): Promise<TaskResult> => {
   const startTime = Date.now();
@@ -251,6 +255,16 @@ const runTask = async (
   console.log(`Difficulty: ${tbTask.difficulty}`);
   console.log(`Category: ${tbTask.category}`);
   console.log(`Workspace: ${workspaceDir}`);
+
+  // Emit task start to HUD
+  if (options.tbEmitter && options.taskIndex !== undefined && options.totalTasks !== undefined) {
+    options.tbEmitter.taskStart(
+      { id: tbTask.id, name: tbTask.name, category: tbTask.category, difficulty: tbTask.difficulty },
+      options.taskIndex,
+      options.totalTasks
+    );
+    options.tbEmitter.taskProgress(tbTask.id, "setup", undefined, 0);
+  }
 
   // Set up workspace with environment and test files
   setupTaskWorkspace(tbTask, workspaceDir, options.sourceRepo);
@@ -295,10 +309,25 @@ const runTask = async (
 
   // Track output
   let outputText = "";
+  let turnCount = 0;
   const onOutput = (text: string): void => {
     process.stdout.write(text);
     outputText += text;
+    // Send output to HUD
+    if (options.tbEmitter) {
+      options.tbEmitter.taskOutput(tbTask.id, text, "agent");
+      // Track turns (rough estimate based on output patterns)
+      if (text.includes("[TOOL_USE]") || text.includes("[RESULT]")) {
+        turnCount++;
+        options.tbEmitter.taskProgress(tbTask.id, "agent", turnCount, Date.now() - startTime);
+      }
+    }
   };
+
+  // Emit agent phase start
+  if (options.tbEmitter) {
+    options.tbEmitter.taskProgress(tbTask.id, "agent", 0, Date.now() - startTime);
+  }
 
   let result;
   try {
@@ -332,13 +361,22 @@ const runTask = async (
 
   // Run verification
   console.log("\nRunning verification...");
+  if (options.tbEmitter) {
+    options.tbEmitter.taskProgress(tbTask.id, "verification", undefined, Date.now() - startTime);
+  }
   let verificationResult;
   try {
     verificationResult = await runLocalVerification(workspaceDir, tbTask);
     writeFileSync(join(taskOutputDir, "verification.txt"), verificationResult.output);
+    if (options.tbEmitter) {
+      options.tbEmitter.taskOutput(tbTask.id, verificationResult.output, "verification");
+    }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
     verificationResult = { passed: false, output: `Verification error: ${errorMsg}` };
+    if (options.tbEmitter) {
+      options.tbEmitter.taskOutput(tbTask.id, verificationResult.output, "verification");
+    }
   }
 
   // Determine outcome
@@ -361,6 +399,17 @@ const runTask = async (
   console.log(`Turns: ${result.turns}`);
   console.log(`Tokens: ${tokens}`);
   console.log(`Verification: ${verificationResult.passed ? "PASSED" : "FAILED"}`);
+
+  // Emit task complete to HUD
+  if (options.tbEmitter) {
+    options.tbEmitter.taskComplete(tbTask.id, {
+      outcome,
+      durationMs,
+      turns: result.turns,
+      tokens,
+      verificationOutput: verificationResult.output,
+    });
+  }
 
   return {
     taskId: tbTask.id,
@@ -552,17 +601,37 @@ const main = async (): Promise<void> => {
 
   const startTime = Date.now();
 
+  // Create TB HUD emitter (silently fails if HUD not running)
+  const tbEmitter = createTBEmitter();
+
+  // Emit run start to HUD
+  const suiteInfo = {
+    name: suite.name,
+    version: suite.version,
+    tasks: suite.tasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      category: t.category,
+      difficulty: t.difficulty,
+    })),
+  };
+  tbEmitter.runStart(suiteInfo, tasksToRun.map((t) => t.id));
+
   // Get source repo path from suite if available
   const sourceRepo = suite.source_repo;
 
   // Run tasks sequentially (parallel support can be added later)
-  for (const task of tasksToRun) {
+  for (let i = 0; i < tasksToRun.length; i++) {
+    const task = tasksToRun[i];
     const result = await runTask(task, {
       cwd,
       timeout,
       maxTurns,
       outputDir: args.output,
       sourceRepo,
+      tbEmitter,
+      taskIndex: i,
+      totalTasks: tasksToRun.length,
     });
     results.push(result);
 
@@ -584,6 +653,17 @@ const main = async (): Promise<void> => {
   const report = generateComparisonReport(finalResults, baseline);
   writeFileSync(join(args.output, "report.json"), JSON.stringify(report, null, 2));
   writeFileSync(join(args.output, "report.md"), formatMarkdownReport(report));
+
+  // Emit run complete to HUD
+  tbEmitter.runComplete({
+    passRate: finalResults.summary.pass_rate,
+    passed: finalResults.summary.passed,
+    failed: finalResults.summary.failed,
+    timeout: finalResults.summary.timeout,
+    error: finalResults.summary.error,
+    totalDurationMs: totalDuration,
+  });
+  tbEmitter.close();
 
   // Print summary
   console.log(`\n=== Terminal-Bench Run Complete ===`);
