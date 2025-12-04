@@ -96,6 +96,7 @@ describe("orchestrator stress harness", () => {
           '    case "$line" in',
           '      "?? .openagents/progress.md"|" M .openagents/progress.md") continue ;;',
           '      "?? .openagents/subtasks"*|" M .openagents/subtasks"*) continue ;;',
+          '      "?? .openagents/checkpoint.json"*|" M .openagents/checkpoint.json"*|" D .openagents/checkpoint.json"*) continue ;;',
           '      "?? docs/logs/"*|" M docs/logs/"*) continue ;;',
           '      "?? .tmp/"*|" M .tmp/"*) continue ;;',
           "    esac",
@@ -240,7 +241,9 @@ describe("orchestrator stress harness", () => {
       dirtyLines.every(
         (line) =>
           line.endsWith(".openagents/progress.md") ||
-          line.endsWith(".openagents/tasks.jsonl")
+          line.endsWith(".openagents/tasks.jsonl") ||
+          line.includes(".openagents/subtasks/") ||
+          line.includes(".openagents/checkpoint.json")
       ),
     ).toBe(true);
 
