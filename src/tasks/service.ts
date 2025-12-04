@@ -421,6 +421,9 @@ export const updateTask = ({
     if (validatedUpdate.notes !== undefined) current.notes = validatedUpdate.notes;
     if (validatedUpdate.estimatedMinutes !== undefined)
       current.estimatedMinutes = validatedUpdate.estimatedMinutes;
+    if (validatedUpdate.pendingCommit !== undefined) {
+      current.pendingCommit = validatedUpdate.pendingCommit;
+    }
 
     if (appendCommits.length > 0) {
       const nextCommits = new Set(current.commits ?? []);
@@ -556,6 +559,33 @@ export const pickNextTask = (
   filter?: TaskFilter,
 ): Effect.Effect<Task | null, TaskServiceError, FileSystem.FileSystem> =>
   readyTasks(tasksPath, filter).pipe(Effect.map((tasks) => tasks[0] ?? null));
+
+/**
+ * Find all tasks with a specific status.
+ * Used for crash recovery to find tasks in transient states like "commit_pending".
+ */
+export const findTasksWithStatus = (
+  tasksPath: string,
+  status: string,
+): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tasks = yield* readTasks(tasksPath);
+    return tasks.filter((task) => task.status === status);
+  });
+
+/**
+ * Find all tasks that have a pending commit.
+ * Used for crash recovery to complete interrupted two-phase commits.
+ */
+export const findTasksWithPendingCommit = (
+  tasksPath: string,
+): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tasks = yield* readTasks(tasksPath);
+    return tasks.filter((task) =>
+      task.status === "commit_pending" && task.pendingCommit != null
+    );
+  });
 
 // --- Archive functionality ---
 

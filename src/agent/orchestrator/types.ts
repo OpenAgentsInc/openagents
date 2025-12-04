@@ -261,6 +261,11 @@ export type OrchestratorEvent =
   | { type: "init_script_start"; path: string }
   | { type: "init_script_complete"; result: InitScriptResult }
   | { type: "orientation_complete"; repoState: string; testsPassingAtStart: boolean; initScript?: InitScriptResult }
+  // Recovery events (two-phase commit crash recovery)
+  | { type: "recovery_start"; pendingCount: number }
+  | { type: "recovery_task_closed"; taskId: string; sha: string }
+  | { type: "recovery_task_reset"; taskId: string }
+  | { type: "recovery_complete"; closedCount: number; resetCount: number; failedCount: number }
   | { type: "task_selected"; task: Task }
   | { type: "task_decomposed"; subtasks: Subtask[] }
   | { type: "subtask_start"; subtask: Subtask }

@@ -14,7 +14,80 @@ import type {
   HealerSpellResult,
   HealerContext,
   HealerSpellId,
+  HealerScenario,
 } from "../types.js";
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sanitizeScenarioKey = (scenario: string): string =>
+  scenario.replace(/[^A-Za-z0-9_-]/g, "_");
+
+const buildSectionWithMarkers = (scenario: HealerScenario, summary: string) => {
+  const scenarioKey = sanitizeScenarioKey(scenario);
+  const startMarker = `<!-- HEALER:${scenarioKey}:START -->`;
+  const endMarker = `<!-- HEALER:${scenarioKey}:END -->`;
+
+  return {
+    section: `${startMarker}\n${summary}\n${endMarker}\n`,
+    startMarker,
+    endMarker,
+  };
+};
+
+/**
+ * Insert or replace a Healer summary for a given scenario.
+ * - If markers for the scenario exist, replace that block.
+ * - If a legacy block (no markers) exists for the scenario, replace it.
+ * - Otherwise, append a new block.
+ */
+export const upsertHealerSummarySection = (params: {
+  existingContent: string;
+  scenario: HealerScenario;
+  summary: string;
+}): { content: string; changesApplied: boolean } => {
+  const existingContent = params.existingContent ?? "";
+  const { section, startMarker, endMarker } = buildSectionWithMarkers(
+    params.scenario,
+    params.summary
+  );
+
+  const markerPattern = new RegExp(
+    `${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\s*`,
+    "m"
+  );
+
+  if (markerPattern.test(existingContent)) {
+    const content = existingContent.replace(markerPattern, section);
+    return { content, changesApplied: content !== existingContent };
+  }
+
+  const scenarioLine = `**Scenario:** ${params.scenario}`;
+  const scenarioIndex = existingContent.indexOf(scenarioLine);
+  if (scenarioIndex !== -1) {
+    const headingIndex = existingContent.lastIndexOf(
+      "## Healer Summary",
+      scenarioIndex
+    );
+    if (headingIndex !== -1) {
+      const nextHeadingIndex = existingContent.indexOf(
+        "## Healer Summary",
+        scenarioIndex + scenarioLine.length
+      );
+      const before = existingContent.slice(0, headingIndex);
+      const after =
+        nextHeadingIndex === -1
+          ? existingContent.slice(existingContent.length)
+          : existingContent.slice(nextHeadingIndex);
+      const content = `${before}${section}${after}`;
+      return { content, changesApplied: content !== existingContent };
+    }
+  }
+
+  const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
+  const content = `${existingContent}${needsNewline ? "\n" : ""}${section}`;
+  return { content, changesApplied: content !== existingContent };
+};
 
 /**
  * Generate the Healer Summary markdown section.
@@ -193,7 +266,20 @@ export const updateProgressWithGuidance: HealerSpell = {
       // Try to append to progress.md
       try {
         const existingContent = ctx.progressMd ?? "";
-        const newContent = existingContent + summary;
+        const { content: newContent, changesApplied } = upsertHealerSummarySection({
+          existingContent,
+          scenario: ctx.heuristics.scenario,
+          summary,
+        });
+
+        if (!changesApplied) {
+          return {
+            success: true,
+            changesApplied: false,
+            summary: "progress.md already contains the Healer summary for this scenario",
+            filesModified: [],
+          };
+        }
 
         yield* Effect.tryPromise({
           try: async () => {
@@ -219,5 +305,5 @@ export const updateProgressWithGuidance: HealerSpell = {
     }),
 };
 
-// Export helper for use by HealerService
-export { generateRecommendations };
+// Export helper for use by HealerService and tests
+export { generateRecommendations, upsertHealerSummarySection };

@@ -15,6 +15,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
+import { recoverPendingCommits, type RecoveryEvent } from "./recovery.js";
 import type { OpenRouterClient } from "../../llm/openrouter.js";
 import { readTool } from "../../tools/read.js";
 import { editTool } from "../../tools/edit.js";
@@ -409,6 +410,30 @@ export const runOrchestrator = (
         initScript: initScriptResult,
       });
 
+      // Phase 1.5: Recover any interrupted commits from previous crash
+      const recoveryResult = yield* recoverPendingCommits({
+        tasksPath,
+        cwd: config.cwd,
+        emit: (event: RecoveryEvent) => {
+          if (event.type === "recovery_start" && event.pendingCount > 0) {
+            emit({ type: "recovery_start", pendingCount: event.pendingCount });
+          } else if (event.type === "task_closed") {
+            emit({ type: "recovery_task_closed", taskId: event.taskId, sha: event.sha });
+          } else if (event.type === "task_reset") {
+            emit({ type: "recovery_task_reset", taskId: event.taskId });
+          }
+        },
+      }).pipe(Effect.catchAll(() => Effect.succeed({ closed: [], reset: [], failed: [] })));
+
+      if (recoveryResult.closed.length > 0 || recoveryResult.reset.length > 0) {
+        emit({
+          type: "recovery_complete",
+          closedCount: recoveryResult.closed.length,
+          resetCount: recoveryResult.reset.length,
+          failedCount: recoveryResult.failed.length,
+        });
+      }
+
       // Phase 2: Select Task
       state.phase = "selecting_task";
 
@@ -798,30 +823,60 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         }
       }
 
-      // Phase 6: Commit
+      // Phase 6: Two-Phase Commit
+      // Phase 6a: Mark task as commit_pending BEFORE creating git commit
+      // This ensures we can recover if a crash occurs between git commit and task update
       state.phase = "committing";
       const commitMessage = taskResult.title;
+      const commitBranch = yield* Effect.tryPromise({
+        try: async () => {
+          const { execSync } = await import("node:child_process");
+          return execSync("git rev-parse --abbrev-ref HEAD", {
+            cwd: config.cwd,
+            encoding: "utf-8",
+          }).trim();
+        },
+        catch: () => new Error("Failed to get branch"),
+      });
+
+      yield* updateTask({
+        tasksPath,
+        id: taskResult.id,
+        update: {
+          status: "commit_pending",
+          pendingCommit: {
+            message: commitMessage,
+            timestamp: new Date().toISOString(),
+            branch: commitBranch,
+          },
+        },
+      }).pipe(Effect.catchAll(() => Effect.void));
+
+      // Phase 6b: Create git commit
       const sha = yield* createCommit(taskResult.id, commitMessage, config.cwd);
       emit({ type: "commit_created", sha, message: commitMessage });
 
-      // Phase 7: Push (if allowed)
-      if (config.allowPush) {
-        const branch = yield* Effect.tryPromise({
-          try: async () => {
-            const { execSync } = await import("node:child_process");
-            return execSync("git rev-parse --abbrev-ref HEAD", {
-              cwd: config.cwd,
-              encoding: "utf-8",
-            }).trim();
+      // Update pending commit with SHA (for crash recovery verification)
+      yield* updateTask({
+        tasksPath,
+        id: taskResult.id,
+        update: {
+          pendingCommit: {
+            message: commitMessage,
+            timestamp: new Date().toISOString(),
+            branch: commitBranch,
+            sha,
           },
-          catch: () => new Error("Failed to get branch"),
-        });
+        },
+      }).pipe(Effect.catchAll(() => Effect.void));
 
-        yield* pushToRemote(branch, config.cwd);
-        emit({ type: "push_complete", branch });
+      // Phase 7: Push (if allowed) - idempotent, safe to retry
+      if (config.allowPush) {
+        yield* pushToRemote(commitBranch, config.cwd);
+        emit({ type: "push_complete", branch: commitBranch });
       }
 
-      // Phase 8: Update Task
+      // Phase 8: Update Task - Complete the two-phase commit
       state.phase = "updating_task";
       yield* updateTask({
         tasksPath,
@@ -829,6 +884,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         update: {
           status: "closed",
           closeReason: "Completed by MechaCoder orchestrator",
+          pendingCommit: null, // Clear the pending commit
         },
         appendCommits: [sha],
       }).pipe(Effect.catchAll(() => Effect.void));

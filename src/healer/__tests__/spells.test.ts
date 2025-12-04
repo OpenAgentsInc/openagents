@@ -15,8 +15,17 @@ import {
 } from "../spells/index.js";
 import { rewindUncommittedChanges } from "../spells/rewind.js";
 import { markTaskBlockedWithFollowup } from "../spells/blocked.js";
-import { updateProgressWithGuidance, generateHealerSummary } from "../spells/progress.js";
-import type { HealerContext, HealerSpellId, HealerSpellResult } from "../types.js";
+import {
+  updateProgressWithGuidance,
+  generateHealerSummary,
+  upsertHealerSummarySection,
+} from "../spells/progress.js";
+import type {
+  HealerContext,
+  HealerScenario,
+  HealerSpellId,
+  HealerSpellResult,
+} from "../types.js";
 import {
   createMockProjectConfig,
   createMockHealerContext,
@@ -316,6 +325,81 @@ describe("updateProgressWithGuidance spell", () => {
   test("spell has correct properties", () => {
     expect(updateProgressWithGuidance.id).toBe("update_progress_with_guidance");
     expect(updateProgressWithGuidance.requiresLLM).toBe(false);
+  });
+
+  test("replaces existing section for the same scenario", () => {
+    const scenario: HealerScenario = "InitScriptTestFailure";
+    const first = upsertHealerSummarySection({
+      existingContent: "",
+      scenario,
+      summary: "first-summary",
+    });
+
+    const second = upsertHealerSummarySection({
+      existingContent: first.content,
+      scenario,
+      summary: "second-summary",
+    });
+
+    const marker = "<!-- HEALER:InitScriptTestFailure:START -->";
+    const markerCount = (second.content.match(new RegExp(marker, "g")) ?? []).length;
+    expect(markerCount).toBe(1);
+    expect(second.content).toContain("second-summary");
+    expect(second.content).not.toContain("first-summary");
+  });
+
+  test("keeps separate sections for different scenarios", () => {
+    const first = upsertHealerSummarySection({
+      existingContent: "",
+      scenario: "InitScriptTestFailure",
+      summary: "first-summary",
+    });
+    const second = upsertHealerSummarySection({
+      existingContent: first.content,
+      scenario: "VerificationFailed",
+      summary: "second-summary",
+    });
+
+    const markerCount = (second.content.match(/<!-- HEALER:/g) ?? []).length;
+    expect(markerCount).toBe(2);
+    expect(second.content).toContain("first-summary");
+    expect(second.content).toContain("second-summary");
+  });
+
+  test("replaces legacy Healer summary without markers", () => {
+    const ctx = createMockContext({
+      heuristics: {
+        scenario: "VerificationFailed",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: false,
+        hasTestAssertions: false,
+        errorPatterns: [],
+        previousAttempts: 0,
+      },
+    });
+
+    const legacySummary = generateHealerSummary(ctx, [], []);
+    const updatedSummary = generateHealerSummary(
+      {
+        ...ctx,
+        heuristics: { ...ctx.heuristics, previousAttempts: 1 },
+      },
+      [],
+      []
+    );
+
+    const result = upsertHealerSummarySection({
+      existingContent: legacySummary,
+      scenario: "VerificationFailed",
+      summary: updatedSummary,
+    });
+
+    const markerCount = (result.content.match(/HEALER:VerificationFailed:START/g) ?? []).length;
+    expect(markerCount).toBe(1);
+    expect(result.content).toContain(updatedSummary);
+    expect(result.content).not.toContain(legacySummary);
   });
 });
 
