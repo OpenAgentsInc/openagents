@@ -10,9 +10,9 @@
  */
 import { parseArgs } from "util";
 import { Effect } from "effect";
+import { FileSystem, Path } from "@effect/platform";
 import { BunContext } from "@effect/platform-bun";
 import { listTasks } from "../tasks/service.js";
-import { loadProjectConfig } from "../tasks/project.js";
 import {
   detectStuck,
   summarizeStuckDetection,
@@ -20,8 +20,9 @@ import {
 } from "./stuck.js";
 import type { Subtask } from "../agent/orchestrator/types.js";
 
-const runEffect = <A, E>(effect: Effect.Effect<A, E, any>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
+const runEffect = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
+) => Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
 
 // ============================================================================
 // CLI Argument Parsing
@@ -100,7 +101,6 @@ const runScan = async () => {
   const openagentsDir = `${projectRoot}/.openagents`;
   const tasksPath = `${openagentsDir}/tasks.jsonl`;
 
-  const projectConfig = await runEffect(loadProjectConfig(openagentsDir));
   const tasks = await runEffect(listTasks(tasksPath));
 
   // Gather subtasks from tasks (we don't have direct subtask access without orchestrator state)
