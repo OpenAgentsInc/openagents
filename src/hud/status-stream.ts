@@ -9,8 +9,7 @@ export interface StatusStreamOptions {
 
 type WsClient = ServerWebSocket<unknown>;
 
-const isAuthorized = (req: Request, token?: string): boolean => {
-  if (!token) return true;
+const isAuthorized = (req: Request, token: string): boolean => {
   const url = new URL(req.url);
   if (url.searchParams.get("token") === token) return true;
   const auth = req.headers.get("authorization");
@@ -36,7 +35,8 @@ export class StatusStreamServer {
     const envEnabled = process.env.STATUS_STREAM_ENABLED?.toLowerCase() === "true";
     this.verbose = options.verbose ?? false;
 
-    // Only start automatically when env enabled or explicit port provided via options
+    // Only start automatically when env enabled or explicit port/token provided.
+    // start() will refuse if token is missing (security requirement).
     if (envEnabled || options.port !== undefined || options.token !== undefined) {
       this.start();
     }
@@ -44,10 +44,15 @@ export class StatusStreamServer {
 
   start(): void {
     if (this.server) return;
+    if (!this.token) {
+      this.log("refusing to start: token is required");
+      return;
+    }
+    const token = this.token;
     this.server = Bun.serve({
       port: this.port,
       fetch: (req, server) => {
-        if (!isAuthorized(req, this.token)) {
+        if (!isAuthorized(req, token)) {
           return new Response("Unauthorized", { status: 401 });
         }
         if (server.upgrade(req, { data: undefined })) {

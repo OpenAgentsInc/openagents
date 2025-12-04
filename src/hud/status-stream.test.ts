@@ -5,6 +5,18 @@ import { StatusStreamServer } from "./status-stream.js";
 const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("StatusStreamServer", () => {
+  test("refuses to start without token", () => {
+    const server = new StatusStreamServer({ port: 0 });
+    expect(server.getPort()).toBeNull();
+    server.close();
+  });
+
+  test("starts when token is provided", () => {
+    const server = new StatusStreamServer({ port: 0, token: "secret" });
+    expect(server.getPort()).not.toBeNull();
+    server.close();
+  });
+
   test("rejects unauthorized clients", async () => {
     const server = new StatusStreamServer({ port: 0, token: "secret" });
     const port = server.getPort();
