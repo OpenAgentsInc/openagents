@@ -44,7 +44,8 @@
     "e2e:ui": "bunx playwright test --config e2e/playwright.config.ts --ui",
     "e2e:report": "bunx playwright show-report",
     "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots",
-    "health": "bun src/health/cli.ts"
+    "health": "bun src/health/cli.ts",
+    "deps:audit": "bun src/deps/audit-cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
