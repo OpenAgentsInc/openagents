@@ -173,8 +173,6 @@ export const ParallelExecutionConfig = S.Struct({
   installArgs: S.optionalWith(S.Array(S.String), {
     default: () => ["--frozen-lockfile"] as string[],
   }),
-  /** Run agents in containers for additional isolation */
-  useContainers: S.optionalWith(S.Boolean, { default: () => false }),
   /** Merge strategy: auto (select based on count), direct, queue, or pr */
   mergeStrategy: S.optionalWith(MergeStrategy, { default: () => "auto" as const }),
   /** Number of agents before switching from direct to queue (when auto) */
@@ -228,6 +226,19 @@ export const HealerSpellsConfig = S.Struct({
   forbidden: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
 });
 export type HealerSpellsConfig = S.Schema.Type<typeof HealerSpellsConfig>;
+
+/** Configuration for Reflexion (verbal self-reflection on failures) */
+export const ReflexionConfig = S.Struct({
+  /** Enable Reflexion pattern (default: true) */
+  enabled: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Maximum reflections to include in retry prompts (default: 3) */
+  maxReflectionsPerRetry: S.optionalWith(S.Number, { default: () => 3 }),
+  /** Timeout for reflection generation in ms (default: 30000) */
+  generationTimeoutMs: S.optionalWith(S.Number, { default: () => 30000 }),
+  /** Days to retain reflections before pruning (default: 30) */
+  retentionDays: S.optionalWith(S.Number, { default: () => 30 }),
+});
+export type ReflexionConfig = S.Schema.Type<typeof ReflexionConfig>;
 
 /** Configuration for Healer self-healing subagent */
 export const HealerConfig = S.Struct({
@@ -286,6 +297,9 @@ export const ProjectConfig = S.Struct({
   }),
   healer: S.optionalWith(HealerConfig, {
     default: () => S.decodeUnknownSync(HealerConfig)({}),
+  }),
+  reflexion: S.optionalWith(ReflexionConfig, {
+    default: () => S.decodeUnknownSync(ReflexionConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({

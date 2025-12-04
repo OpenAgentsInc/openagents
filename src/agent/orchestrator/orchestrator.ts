@@ -42,6 +42,7 @@ import {
   type InitScriptResult,
   getProgressPath,
 } from "./types.js";
+import type { FailureContextType } from "./reflection/index.js";
 import { createHealerCounters } from "../../healer/types.js";
 import {
   runVerificationWithSandbox,
@@ -534,6 +535,24 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         progress.work.subtasksInProgress.push(subtask.id);
         emit({ type: "subtask_start", subtask });
 
+        // Fetch reflections if this is a retry and reflexion is enabled
+        let reflectionsText: string | undefined;
+        if (
+          subtask.failureCount &&
+          subtask.failureCount > 0 &&
+          config.reflectionService &&
+          config.reflexionConfig?.enabled !== false
+        ) {
+          const recentReflections = yield* config.reflectionService.getRecent(subtask.id).pipe(
+            Effect.catchAll(() => Effect.succeed([]))
+          );
+          if (recentReflections.length > 0) {
+            reflectionsText = yield* config.reflectionService.formatForPrompt(recentReflections).pipe(
+              Effect.catchAll(() => Effect.succeed(undefined))
+            );
+          }
+        }
+
         const result: SubagentResult = yield* subagentRunner({
           subtask,
           cwd: config.cwd,
@@ -551,6 +570,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           ...(config.signal ? { signal: config.signal } : {}),
           ...(config.onOutput ? { onOutput: config.onOutput } : {}),
           ...(config.additionalContext ? { additionalContext: config.additionalContext } : {}),
+          ...(reflectionsText ? { reflections: reflectionsText } : {}),
         }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({
@@ -660,6 +680,41 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             subtask.error = result.error;
           }
           emit({ type: "subtask_failed", subtask, error: result.error || "Unknown error" });
+
+          // Reflexion: Generate a reflection on the failure
+          if (config.reflectionService && config.reflexionConfig?.enabled !== false) {
+            const failureContext: FailureContextType = {
+              id: `fc-${Date.now().toString(36)}`,
+              sessionId: state.sessionId,
+              taskId: taskResult.id,
+              subtaskId: subtask.id,
+              subtaskDescription: subtask.description.slice(0, 1000),
+              attemptNumber: subtask.failureCount ?? 1,
+              failureType: result.verificationOutputs?.some(o => o.includes("typecheck"))
+                ? "typecheck_failure"
+                : result.verificationOutputs?.some(o => o.includes("test"))
+                ? "test_failure"
+                : "runtime_error",
+              errorOutput: (result.error || "").slice(0, 2000),
+              filesModified: result.filesModified || [],
+              previousReflections: [], // TODO: Could load previous reflections here
+              createdAt: new Date().toISOString(),
+            };
+
+            const reflection = yield* config.reflectionService.generate(failureContext).pipe(
+              Effect.catchAll((e) => {
+                console.log(`[Reflexion] Failed to generate reflection: ${e instanceof Error ? e.message : e}`);
+                return Effect.succeed(null);
+              })
+            );
+
+            if (reflection) {
+              yield* config.reflectionService.save(reflection).pipe(
+                Effect.catchAll(() => Effect.void)
+              );
+              console.log(`[Reflexion] Generated reflection for attempt ${reflection.attemptNumber}: ${reflection.analysis.slice(0, 100)}...`);
+            }
+          }
 
           // Healer: Attempt to fix subtask failures
           if (config.healerService && config.projectConfig) {

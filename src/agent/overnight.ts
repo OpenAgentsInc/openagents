@@ -233,6 +233,8 @@ interface OvernightConfig {
   safeMode: boolean;
   /** Load AGENTS.md/CLAUDE.md context from working directory */
   loadContext: boolean;
+  /** Override sandbox enabled state (undefined = use project config) */
+  sandboxEnabled?: boolean;
 }
 
 const parseArgs = (): OvernightConfig => {
@@ -244,6 +246,7 @@ const parseArgs = (): OvernightConfig => {
   let ccOnly = false;
   let safeMode = false;
   let loadContext = false;
+  let sandboxEnabled: boolean | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
@@ -264,6 +267,10 @@ const parseArgs = (): OvernightConfig => {
       safeMode = true;
     } else if (args[i] === "--load-context") {
       loadContext = true;
+    } else if (args[i] === "--sandbox") {
+      sandboxEnabled = true;
+    } else if (args[i] === "--no-sandbox") {
+      sandboxEnabled = false;
     }
   }
 
@@ -277,6 +284,7 @@ const parseArgs = (): OvernightConfig => {
     ccOnly,
     safeMode,
     loadContext,
+    sandboxEnabled,
   };
 };
 
@@ -492,14 +500,13 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         maxTurnsPerSubtask: 300,
         permissionMode: "bypassPermissions",
       },
-      sandbox: { enabled: false, backend: "auto", timeoutMs: 300000 },
+      sandbox: { enabled: true, backend: "auto", timeoutMs: 300000 },
       parallelExecution: {
         enabled: false,
         maxAgents: 4,
         worktreeTimeout: 30 * 60 * 1000,
         installTimeoutMs: 15 * 60 * 1000,
         installArgs: ["--frozen-lockfile"],
-        useContainers: false,
         mergeStrategy: "auto",
         mergeThreshold: 4,
         prThreshold: 50,
@@ -529,6 +536,12 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         },
         mode: "conservative",
         stuckThresholdHours: 2,
+      },
+      reflexion: {
+        enabled: true,
+        maxReflectionsPerRetry: 3,
+        generationTimeoutMs: 30000,
+        retentionDays: 30,
       },
     };
     // Note: loadProjectConfig expects the root dir, not the .openagents dir
@@ -608,6 +621,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         tasks: ready,
         parallelConfig: projectConfig.parallelExecution,
         claudeCode: projectConfig.claudeCode,
+        sandbox: projectConfig.sandbox,
         allowPush: projectConfig.allowPush,
       };
 

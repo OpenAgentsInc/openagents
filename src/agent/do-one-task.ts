@@ -771,7 +771,6 @@ const doOneTaskOrchestrator = (config: Config) =>
         worktreeTimeout: 30 * 60 * 1000,
         installTimeoutMs: 15 * 60 * 1000,
         installArgs: ["--frozen-lockfile"],
-        useContainers: false,
         mergeStrategy: "auto",
         mergeThreshold: 4,
         prThreshold: 50,
@@ -801,6 +800,12 @@ const doOneTaskOrchestrator = (config: Config) =>
         },
         mode: "conservative",
         stuckThresholdHours: 2,
+      },
+      reflexion: {
+        enabled: true,
+        maxReflectionsPerRetry: 3,
+        generationTimeoutMs: 30000,
+        retentionDays: 30,
       },
     };
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
