@@ -149,14 +149,24 @@ export const createWorktree = (
     const worktreePath = getWorktreePath(repoPath, config.taskId);
     const branchName = getBranchName(config.taskId);
 
-    // Check if worktree already exists
+    // Check if worktree directory already exists (could be orphaned)
     if (fs.existsSync(worktreePath)) {
-      return yield* Effect.fail(
-        new WorktreeError(
-          "already_exists",
-          `Worktree already exists at ${worktreePath}`,
-        ),
+      const existingWorktrees = yield* listWorktrees(repoPath);
+      const isRegistered = existingWorktrees.some(
+        (wt) => path.resolve(wt.path) === path.resolve(worktreePath),
       );
+
+      if (isRegistered) {
+        return yield* Effect.fail(
+          new WorktreeError(
+            "already_exists",
+            `Worktree already exists at ${worktreePath}`,
+          ),
+        );
+      }
+
+      // Orphaned directory leftover from a previous run - clean it up first
+      fs.rmSync(worktreePath, { recursive: true, force: true });
     }
 
     // Ensure .worktrees directory exists
@@ -326,6 +336,25 @@ export const pruneStaleWorktrees = (
     // Get all worktrees
     const worktrees = yield* listWorktrees(repoPath);
     let pruned = 0;
+
+    // Remove orphaned directories that aren't registered worktrees
+    const registeredPaths = new Set(worktrees.map((wt) => path.resolve(wt.path)));
+    const worktreesDir = getWorktreesDir(repoPath);
+    if (fs.existsSync(worktreesDir)) {
+      const entries = fs.readdirSync(worktreesDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const candidatePath = path.resolve(path.join(worktreesDir, entry.name));
+        if (!registeredPaths.has(candidatePath)) {
+          try {
+            fs.rmSync(candidatePath, { recursive: true, force: true });
+            pruned++;
+          } catch {
+            // Ignore failure; best-effort cleanup
+          }
+        }
+      }
+    }
 
     // Check each worktree for staleness
     for (const worktree of worktrees) {

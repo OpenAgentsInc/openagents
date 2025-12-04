@@ -195,6 +195,25 @@ describe("Worktree Lifecycle", () => {
       expect(error._tag).toBe("Fail");
     }
   });
+
+  test("cleans up orphan directory before creating worktree", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    const orphanPath = getWorktreePath(TEST_REPO, testTaskId);
+    fs.mkdirSync(orphanPath, { recursive: true });
+    fs.writeFileSync(path.join(orphanPath, "orphan.txt"), "orphan");
+    expect(fs.existsSync(orphanPath)).toBe(true);
+
+    const info = await runEffect(createWorktree(TEST_REPO, config));
+
+    expect(info.path).toBe(orphanPath);
+    expect(fs.existsSync(path.join(info.path, ".git"))).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,6 +271,29 @@ describe("Worktree List and Prune", () => {
     // Should have pruned the worktree we just created
     expect(pruned).toBeGreaterThanOrEqual(1);
     expect(worktreeExists(TEST_REPO, testTaskId)).toBe(false);
+  });
+
+  test("prune removes orphan directories not registered as worktrees", async () => {
+    const activeConfig: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    const activeWorktree = await runEffect(createWorktree(TEST_REPO, activeConfig));
+
+    const orphanId = generateTestTaskId();
+    const orphanPath = getWorktreePath(TEST_REPO, orphanId);
+    fs.mkdirSync(orphanPath, { recursive: true });
+    fs.writeFileSync(path.join(orphanPath, "stale.txt"), "stale");
+    expect(fs.existsSync(orphanPath)).toBe(true);
+
+    const pruned = await runEffect(pruneStaleWorktrees(TEST_REPO, 60 * 60 * 1000));
+
+    expect(fs.existsSync(orphanPath)).toBe(false);
+    expect(worktreeExists(TEST_REPO, activeWorktree.taskId)).toBe(true);
+    expect(pruned).toBeGreaterThanOrEqual(1);
   });
 });
 
