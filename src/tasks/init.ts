@@ -2,6 +2,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import { defaultProjectConfig, saveProjectConfig } from "./project.js";
+import { ensureMergeDriverConfig } from "./merge.js";
 import { writeTasks } from "./service.js";
 
 export class InitProjectError extends Error {
@@ -128,6 +129,17 @@ export const initOpenAgentsProject = ({
           new InitProjectError(
             "write_error",
             `Failed to write .gitignore: ${e.message}`,
+          ),
+      ),
+    );
+
+    // Configure git merge driver for tasks.jsonl if a git repo is present
+    yield* ensureMergeDriverConfig(resolvedRoot).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to configure merge driver: ${e.message}`,
           ),
       ),
     );
