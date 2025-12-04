@@ -16,6 +16,11 @@ import type {
 } from "./types.js";
 import type { OrchestratorEvent, OrchestratorState } from "../agent/orchestrator/types.js";
 import type { ProjectConfig } from "../tasks/schema.js";
+import type {
+  HealerInvocationStartMessage,
+  HealerSpellAppliedMessage,
+  HealerInvocationCompleteMessage,
+} from "../hud/protocol.js";
 import {
   shouldRunHealer,
   incrementCounters,
@@ -29,6 +34,7 @@ import {
   type ClaudeCodeInvoker,
   type VerificationRunner,
 } from "./spells/typecheck.js";
+import { generateSessionId } from "../atif/schema.js";
 
 // ============================================================================
 // Types
@@ -50,8 +56,10 @@ export interface HealerServiceOptions {
   openagentsDir?: string;
   /** Skip LLM-based spells */
   skipLLMSpells?: boolean;
-  /** Emit events for HUD integration */
+  /** Emit internal Healer events (for ATIF trajectory capture) */
   onEvent?: (event: HealerEvent) => void;
+  /** Emit HUD messages (for UI integration) */
+  onHudMessage?: (msg: HealerInvocationStartMessage | HealerSpellAppliedMessage | HealerInvocationCompleteMessage) => void;
 }
 
 /**
@@ -123,14 +131,39 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
           };
         }
 
+        // Generate session ID for this Healer invocation
+        const healerSessionId = generateSessionId();
+
         // Emit start event
         options.onEvent?.({ type: "healer_start", scenario, spells });
 
+        // Emit HUD start message
+        options.onHudMessage?.({
+          type: "healer_invocation_start",
+          sessionId: healerSessionId,
+          scenario,
+          plannedSpells: spells,
+          parentSessionId: state.sessionId,
+        });
+
         // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, spells, options);
+        const outcome = yield* executeSpellSequence(ctx, spells, options, healerSessionId);
 
         // Emit complete event
         options.onEvent?.({ type: "healer_complete", outcome });
+
+        // Emit HUD complete message
+        const successfulSpells = outcome.spellsExecuted.filter((s) => s.result.success).length;
+        const failedSpells = outcome.spellsExecuted.filter((s) => !s.result.success).length;
+        options.onHudMessage?.({
+          type: "healer_invocation_complete",
+          sessionId: healerSessionId,
+          status: outcome.status,
+          reason: outcome.reason,
+          spellsExecuted: outcome.spellsExecuted.length,
+          successfulSpells,
+          failedSpells,
+        });
 
         return outcome;
       }),
@@ -163,14 +196,39 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
           };
         }
 
+        // Generate session ID for this Healer invocation
+        const healerSessionId = generateSessionId();
+
         // Emit start event
         options.onEvent?.({ type: "healer_start", scenario: trigger.scenario, spells });
 
+        // Emit HUD start message
+        options.onHudMessage?.({
+          type: "healer_invocation_start",
+          sessionId: healerSessionId,
+          scenario: trigger.scenario,
+          plannedSpells: spells,
+          parentSessionId: state.sessionId,
+        });
+
         // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, spells, options);
+        const outcome = yield* executeSpellSequence(ctx, spells, options, healerSessionId);
 
         // Emit complete event
         options.onEvent?.({ type: "healer_complete", outcome });
+
+        // Emit HUD complete message
+        const successfulSpells = outcome.spellsExecuted.filter((s) => s.result.success).length;
+        const failedSpells = outcome.spellsExecuted.filter((s) => !s.result.success).length;
+        options.onHudMessage?.({
+          type: "healer_invocation_complete",
+          sessionId: healerSessionId,
+          status: outcome.status,
+          reason: outcome.reason,
+          spellsExecuted: outcome.spellsExecuted.length,
+          successfulSpells,
+          failedSpells,
+        });
 
         return outcome;
       }),
@@ -187,7 +245,8 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
 const executeSpellSequence = (
   ctx: HealerContext,
   spells: HealerSpellId[],
-  options: HealerServiceOptions
+  options: HealerServiceOptions,
+  sessionId: string
 ): Effect.Effect<HealerOutcome, Error, never> =>
   Effect.gen(function* () {
     const spellsExecuted: Array<{ spellId: HealerSpellId; result: HealerSpellResult }> = [];
@@ -204,6 +263,18 @@ const executeSpellSequence = (
 
       // Emit spell complete event
       options.onEvent?.({ type: "healer_spell_complete", spellId, result });
+
+      // Emit HUD spell applied message
+      options.onHudMessage?.({
+        type: "healer_spell_applied",
+        sessionId,
+        spellId,
+        success: result.success,
+        changesApplied: result.changesApplied,
+        summary: result.summary,
+        filesModified: result.filesModified,
+        error: result.error,
+      });
 
       // Check if the spell resolved the issue
       if (result.success && result.changesApplied) {
@@ -266,25 +337,39 @@ const executeSpellWithLLM = (
 
       // Execute the appropriate LLM spell
       if (spellId === "fix_typecheck_errors") {
+        // Build options, omitting undefined values
+        const fixOptions: Record<string, unknown> = {};
+        if (options.onOutput) fixOptions.onOutput = options.onOutput;
+        if (options.signal) fixOptions.signal = options.signal;
+        if (options.openagentsDir) fixOptions.openagentsDir = options.openagentsDir;
+
         return yield* Effect.tryPromise({
           try: () =>
-            executeTypecheckFix(ctx, options.claudeCodeInvoker!, options.verificationRunner!, {
-              onOutput: options.onOutput,
-              signal: options.signal,
-              openagentsDir: options.openagentsDir,
-            }),
+            executeTypecheckFix(
+              ctx,
+              options.claudeCodeInvoker!,
+              options.verificationRunner!,
+              fixOptions
+            ),
           catch: (e) => new Error(`Typecheck fix failed: ${e}`),
         });
       }
 
       if (spellId === "fix_test_errors") {
+        // Build options, omitting undefined values
+        const fixOptions: Record<string, unknown> = {};
+        if (options.onOutput) fixOptions.onOutput = options.onOutput;
+        if (options.signal) fixOptions.signal = options.signal;
+        if (options.openagentsDir) fixOptions.openagentsDir = options.openagentsDir;
+
         return yield* Effect.tryPromise({
           try: () =>
-            executeTestFix(ctx, options.claudeCodeInvoker!, options.verificationRunner!, {
-              onOutput: options.onOutput,
-              signal: options.signal,
-              openagentsDir: options.openagentsDir,
-            }),
+            executeTestFix(
+              ctx,
+              options.claudeCodeInvoker!,
+              options.verificationRunner!,
+              fixOptions
+            ),
           catch: (e) => new Error(`Test fix failed: ${e}`),
         });
       }
@@ -344,11 +429,11 @@ const summarizeOutcome = (
  */
 export const createBasicHealerService = (
   onEvent?: (event: HealerEvent) => void
-) =>
-  createHealerService({
-    skipLLMSpells: true,
-    onEvent,
-  });
+) => {
+  const opts: HealerServiceOptions = { skipLLMSpells: true };
+  if (onEvent) opts.onEvent = onEvent;
+  return createHealerService(opts);
+};
 
 /**
  * Create a full Healer service with LLM capabilities.

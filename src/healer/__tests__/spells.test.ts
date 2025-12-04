@@ -492,7 +492,7 @@ describe("createEmergencySubtask", () => {
     expect(subtask.id).toContain("emergency-typecheck-fix");
     expect(subtask.description).toContain("EMERGENCY: Fix All TypeScript Errors");
     expect(subtask.status).toBe("in_progress");
-    expect(subtask.retryable).toBe(true);
+    expect(subtask.failureCount).toBe(0);
   });
 
   test("creates test emergency subtask", () => {
