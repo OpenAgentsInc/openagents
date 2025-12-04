@@ -188,11 +188,20 @@ function startTBRunProcess(options: TBRunOptions): { runId: string } {
   console.log(`[TB] Project root: ${PROJECT_ROOT}`);
 
   // Spawn subprocess from project root
+  // Explicitly pass environment so Claude CLI auth is available
+  // (GUI apps on macOS don't inherit terminal environment)
   activeTBRun = spawn({
     cmd: ["bun", ...args],
     cwd: PROJECT_ROOT,
     stdout: "inherit",
     stderr: "inherit",
+    env: {
+      ...process.env,
+      // Ensure HOME is set for Claude CLI config access
+      HOME: process.env.HOME ?? Bun.env.HOME,
+      // Preserve PATH for tool access
+      PATH: process.env.PATH ?? Bun.env.PATH,
+    },
   });
 
   // Clean up when done
