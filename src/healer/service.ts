@@ -105,6 +105,9 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
         // Check if we should run Healer
         const decision = shouldRunHealer(event, healerConfig, counters, subtaskId);
 
+        // DEBUG: Log the decision
+        console.log("[DEBUG] shouldRunHealer decision:", decision);
+
         if (!decision.run) {
           return null;
         }
@@ -112,11 +115,20 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
         const scenario = decision.scenario!;
         const trigger: HealerTrigger = { scenario, event, state };
 
+        console.log("[DEBUG] Healer will run for scenario:", scenario);
+
         // Update counters
         incrementCounters(counters, subtaskId);
 
+        console.log("[DEBUG] Building Healer context...");
         // Build context
-        const ctx = yield* buildHealerContext(trigger, state, config, counters);
+        const ctx = yield* buildHealerContext(trigger, state, config, counters).pipe(
+          Effect.tapError((error) => Effect.sync(() => {
+            console.log("[DEBUG] buildHealerContext ERROR:", error);
+            console.log("[DEBUG] Error stack:", error?.stack);
+          }))
+        );
+        console.log("[DEBUG] Healer context built:", Object.keys(ctx));
 
         // Plan spells
         const spells = planSpells(ctx, {
