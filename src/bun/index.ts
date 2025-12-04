@@ -3,6 +3,14 @@ import type { HudMessage } from "../hud/protocol.js";
 import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import { spawn } from "bun";
 import { resolve, dirname, join } from "node:path";
+import {
+  loadRecentRuns,
+  loadTBRun,
+  type TBRunWithPath,
+  type TBRunFile,
+  type TBTaskResult,
+  DEFAULT_TB_RUNS_DIR,
+} from "../tbench-hud/persistence.js";
 
 // Get the project root - handle both dev (from app bundle) and direct execution
 function getProjectRoot(): string {
@@ -55,12 +63,53 @@ let activeTBRun: ReturnType<typeof spawn> | null = null;
 // RPC Schema for HUD Messages
 // ============================================================================
 
+/**
+ * Response type for loadRecentTBRuns RPC
+ */
+interface TBRunHistoryItem {
+  runId: string;
+  suiteName: string;
+  suiteVersion: string;
+  timestamp: string;
+  passRate: number;
+  passed: number;
+  failed: number;
+  timeout: number;
+  error: number;
+  totalDurationMs: number;
+  totalTokens: number;
+  taskCount: number;
+  filepath: string;
+}
+
+/**
+ * Response type for loadTBRunDetails RPC
+ */
+interface TBRunDetailsResponse {
+  meta: TBRunHistoryItem;
+  tasks: Array<{
+    id: string;
+    name: string;
+    category: string;
+    difficulty: string;
+    outcome: string;
+    durationMs: number;
+    turns: number;
+    tokens: number;
+    outputLines?: number;
+  }>;
+}
+
 interface HudRpcSchema {
   bun: {
     requests: {
       loadTBSuite: (suitePath: string) => Promise<TBSuiteInfo>;
       startTBRun: (options: TBRunOptions) => Promise<{ runId: string }>;
       stopTBRun: () => Promise<{ stopped: boolean }>;
+      /** Load recent TB run metadata (for run history nodes) */
+      loadRecentTBRuns: (count?: number) => Promise<TBRunHistoryItem[]>;
+      /** Load full run details including tasks (for expanded view) */
+      loadTBRunDetails: (runId: string) => Promise<TBRunDetailsResponse | null>;
     };
     messages: {};
   };
@@ -165,6 +214,99 @@ function stopTBRunProcess(): { stopped: boolean } {
   return { stopped: false };
 }
 
+// ============================================================================
+// TB Run History Loading
+// ============================================================================
+
+/**
+ * Load recent TB run metadata from filesystem.
+ * This runs in the Bun process which has filesystem access.
+ */
+async function loadRecentTBRunsFromDisk(count: number): Promise<TBRunHistoryItem[]> {
+  const runsDir = join(PROJECT_ROOT, DEFAULT_TB_RUNS_DIR);
+  console.log(`[TB] Loading recent runs from: ${runsDir}`);
+
+  try {
+    const runs = await loadRecentRuns(count, runsDir);
+    console.log(`[TB] Loaded ${runs.length} run(s)`);
+
+    return runs.map((run) => ({
+      runId: run.runId,
+      suiteName: run.suiteName,
+      suiteVersion: run.suiteVersion,
+      timestamp: run.timestamp,
+      passRate: run.passRate,
+      passed: run.passed,
+      failed: run.failed,
+      timeout: run.timeout,
+      error: run.error,
+      totalDurationMs: run.totalDurationMs,
+      totalTokens: run.totalTokens,
+      taskCount: run.taskCount,
+      filepath: run.filepath,
+    }));
+  } catch (err) {
+    console.error("[TB] Failed to load runs:", err);
+    return [];
+  }
+}
+
+/**
+ * Load full TB run details including task results.
+ * This runs in the Bun process which has filesystem access.
+ */
+async function loadTBRunDetailsFromDisk(runId: string): Promise<TBRunDetailsResponse | null> {
+  const runsDir = join(PROJECT_ROOT, DEFAULT_TB_RUNS_DIR);
+  console.log(`[TB] Loading run details for: ${runId}`);
+
+  try {
+    // First get the list to find the filepath
+    const runs = await loadRecentRuns(50, runsDir);
+    const runMeta = runs.find((r) => r.runId === runId);
+
+    if (!runMeta) {
+      console.log(`[TB] Run not found: ${runId}`);
+      return null;
+    }
+
+    // Load full run file
+    const runFile = await loadTBRun(runMeta.filepath);
+    console.log(`[TB] Loaded run with ${runFile.tasks.length} tasks`);
+
+    return {
+      meta: {
+        runId: runFile.meta.runId,
+        suiteName: runFile.meta.suiteName,
+        suiteVersion: runFile.meta.suiteVersion,
+        timestamp: runFile.meta.timestamp,
+        passRate: runFile.meta.passRate,
+        passed: runFile.meta.passed,
+        failed: runFile.meta.failed,
+        timeout: runFile.meta.timeout,
+        error: runFile.meta.error,
+        totalDurationMs: runFile.meta.totalDurationMs,
+        totalTokens: runFile.meta.totalTokens,
+        taskCount: runFile.meta.taskCount,
+        filepath: runMeta.filepath,
+      },
+      tasks: runFile.tasks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        difficulty: t.difficulty,
+        outcome: t.outcome,
+        durationMs: t.durationMs,
+        turns: t.turns,
+        tokens: t.tokens,
+        outputLines: t.outputLines,
+      })),
+    };
+  } catch (err) {
+    console.error("[TB] Failed to load run details:", err);
+    return null;
+  }
+}
+
 // Define RPC with HUD message support
 const rpc = BrowserView.defineRPC<HudRpcSchema>({
   handlers: {
@@ -179,6 +321,14 @@ const rpc = BrowserView.defineRPC<HudRpcSchema>({
       },
       stopTBRun: async () => {
         return stopTBRunProcess();
+      },
+      loadRecentTBRuns: async (count?: number) => {
+        console.log(`[TB] Loading recent runs (count: ${count ?? 20})`);
+        return loadRecentTBRunsFromDisk(count ?? 20);
+      },
+      loadTBRunDetails: async (runId: string) => {
+        console.log(`[TB] Loading run details: ${runId}`);
+        return loadTBRunDetailsFromDisk(runId);
       },
     },
     messages: {},
