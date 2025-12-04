@@ -34,6 +34,8 @@ const createMockProgress = (): SessionProgress => ({
     filesModified: ["src/test.ts", "src/utils.ts"],
     testsRun: true,
     testsPassingAfterWork: true,
+    e2eRun: false,
+    e2ePassingAfterWork: false,
   },
   nextSession: {
     suggestedNextSteps: ["Continue with sub-002", "Run e2e tests"],

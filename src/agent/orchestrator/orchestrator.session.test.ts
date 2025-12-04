@@ -2,6 +2,7 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Effect, Layer } from "effect";
@@ -18,7 +19,7 @@ const runWithBun = <A, E>(
   program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient>
 ) => Effect.runPromise(program.pipe(Effect.provide(testLayer)));
 
-const writeTasksFile = (dir: string, taskId: string) => {
+const writeTasksFile = (dir: string, taskId: string, labels: string[] = []) => {
   const now = new Date().toISOString();
   const task = {
     id: taskId,
@@ -27,7 +28,7 @@ const writeTasksFile = (dir: string, taskId: string) => {
     status: "open",
     priority: 1,
     type: "task",
-    labels: [],
+    labels,
     deps: [],
     commits: [],
     createdAt: now,
@@ -87,6 +88,62 @@ describe("runOrchestrator Claude Code session persistence", () => {
       expect(progress).toContain("Claude Code Session");
       expect(progress).toContain("sess-new");
       expect(progress).toContain("sess-old");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runOrchestrator e2e execution", () => {
+  test("runs e2e commands when task labels require it", async () => {
+    const tmp = fs.mkdtempSync(path.join(process.cwd(), "tmp-e2e-run-"));
+    const openagentsDir = path.join(tmp, ".openagents");
+    fs.mkdirSync(path.join(openagentsDir, "subtasks"), { recursive: true });
+    writeTasksFile(openagentsDir, "oa-e2e", ["e2e"]);
+
+    // Initialize git repo for commit phase
+    execSync("git init", { cwd: tmp, stdio: "ignore" });
+    execSync('git config user.email "test@example.com"', { cwd: tmp, stdio: "ignore" });
+    execSync('git config user.name "Test User"', { cwd: tmp, stdio: "ignore" });
+    fs.writeFileSync(path.join(tmp, "README.md"), "# Test Repo\n");
+    execSync("git add .", { cwd: tmp, stdio: "ignore" });
+    execSync('git commit -m "init"', { cwd: tmp, stdio: "ignore" });
+
+    const resultPath = path.join(openagentsDir, "progress.md");
+    const claudeResult: SubagentResult = {
+      success: true,
+      subtaskId: "oa-e2e-sub-001",
+      filesModified: ["README.md"],
+      turns: 1,
+      agent: "claude-code",
+    };
+
+    try {
+      await runWithBun(
+        runOrchestrator(
+          {
+            cwd: tmp,
+            openagentsDir,
+            allowPush: false,
+            testCommands: [],
+            typecheckCommands: [],
+            e2eCommands: ['node -e "console.log(\\\"e2e pass\\\")"'],
+            claudeCode: { enabled: false },
+            skipInitScript: true,
+          },
+          () => {},
+          {
+            runSubagent: () => {
+              fs.appendFileSync(path.join(tmp, "README.md"), "updated\n");
+              return Effect.succeed(claudeResult);
+            },
+          }
+        )
+      );
+
+      const progress = fs.readFileSync(resultPath, "utf-8");
+      expect(progress).toContain("E2E Run: Yes");
+      expect(progress).toContain("E2E Passing After Work: Yes");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

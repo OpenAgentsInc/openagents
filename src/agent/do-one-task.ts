@@ -41,6 +41,7 @@ import {
   getSessionPath,
 } from "./session.js";
 import { runOrchestrator, type OrchestratorEvent, runClaudeCodeSubagent } from "./orchestrator/index.js";
+import { makeReflectionService } from "./orchestrator/reflection/index.js";
 import { createHudCallbacks } from "../hud/index.js";
 import type { Subtask } from "./orchestrator/types.js";
 import { createHealerService } from "../healer/service.js";
@@ -926,6 +927,11 @@ const doOneTaskOrchestrator = (config: Config) =>
           fallbackToMinimal: false, // No Grok fallback
         }
       : projectConfig.claudeCode;
+    const reflectionService = makeReflectionService({
+      openagentsDir,
+      cwd: config.workDir,
+      config: projectConfig.reflexion,
+    });
 
     const orchestratorConfig = {
       cwd: config.workDir,
@@ -949,6 +955,8 @@ const doOneTaskOrchestrator = (config: Config) =>
       healerService,
       healerCounters,
       projectConfig,
+      reflectionService,
+      reflexionConfig: projectConfig.reflexion,
     };
     const state = yield* runOrchestrator(orchestratorConfig, emit);
 

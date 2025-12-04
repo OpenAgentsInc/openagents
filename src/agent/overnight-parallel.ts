@@ -12,6 +12,7 @@
  *   --cc-only       Use Claude Code only (no Grok fallback)
  *   --sandbox       Force sandbox enabled (override project config)
  *   --no-sandbox    Force sandbox disabled (override project config)
+ *   --skip-typecheck Skip preflight typecheck (useful when types are broken elsewhere)
  *
  * Each agent runs in an isolated git worktree, enabling true parallel execution
  * without conflicts. Changes are merged back to main sequentially after completion.
@@ -35,6 +36,7 @@ import {
   pruneWorktreeLocks,
 } from "./orchestrator/agent-lock.js";
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
+import { makeReflectionService } from "./orchestrator/reflection/index.js";
 import { loadProjectConfig } from "../tasks/project.js";
 import { readTasks, updateTask } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
@@ -58,6 +60,8 @@ interface ParallelConfig {
   verbose: boolean;
   /** Override sandbox enabled state (undefined = use project config) */
   sandboxEnabled?: boolean;
+  /** Skip preflight typecheck (useful when types are broken elsewhere) */
+  skipTypecheck: boolean;
 }
 
 // Agent colors for terminal output
@@ -144,6 +148,7 @@ const parseArgs = (): ParallelConfig => {
   let ccOnly = false;
   let verbose = false;
   let sandboxEnabled: boolean | undefined;
+  let skipTypecheck = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
@@ -167,6 +172,8 @@ const parseArgs = (): ParallelConfig => {
       sandboxEnabled = true;
     } else if (args[i] === "--no-sandbox") {
       sandboxEnabled = false;
+    } else if (args[i] === "--skip-typecheck") {
+      skipTypecheck = true;
     }
   }
 
@@ -177,6 +184,7 @@ const parseArgs = (): ParallelConfig => {
     dryRun,
     ccOnly,
     verbose,
+    skipTypecheck,
     ...(sandboxEnabled !== undefined ? { sandboxEnabled } : {}),
   };
 };
@@ -534,6 +542,12 @@ const runAgentInWorktree = async (
       ? { ...projectConfig.sandbox, enabled: sandboxEnabled }
       : projectConfig.sandbox;
 
+  const reflectionService = makeReflectionService({
+    openagentsDir: worktreeOpenagentsDir,
+    cwd: slot.worktree.path,
+    config: projectConfig.reflexion,
+  });
+
   const orchestratorConfig: Parameters<typeof runOrchestrator>[0] = {
     cwd: slot.worktree.path,
     openagentsDir: worktreeOpenagentsDir,
@@ -548,6 +562,8 @@ const runAgentInWorktree = async (
     // Pass sandbox config for sandboxed verification (when available)
     ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
     subagentModel: projectConfig.defaultModel,
+    reflectionService,
+    reflexionConfig: projectConfig.reflexion,
     // Skip init script in worktrees - main repo is already validated
     skipInitScript: true,
     // CRITICAL: Pass the pre-assigned task to prevent orchestrator from re-picking
@@ -681,6 +697,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   log(`Verbose: ${config.verbose}`);
   log(`Dry run: ${config.dryRun}`);
   log(`Sandbox override: ${config.sandboxEnabled === undefined ? "use project config" : config.sandboxEnabled ? "enabled" : "disabled"}`);
+  log(`Skip typecheck: ${config.skipTypecheck}`);
   log(`${"#".repeat(60)}\n`);
 
   // Change to work directory
@@ -711,11 +728,14 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
 
   // Pre-flight typecheck on main repo before spawning worktrees
   const preflightTypecheck = projectConfig.typecheckCommands ?? [];
-  if (preflightTypecheck.length > 0) {
+  if (config.skipTypecheck) {
+    log("[Preflight] ⚠️ Skipping typecheck (--skip-typecheck flag)");
+  } else if (preflightTypecheck.length > 0) {
     log("[Preflight] Running typecheck before creating worktrees...");
     const tcResult = await runTypecheck(config.workDir, preflightTypecheck);
     if (!tcResult.success) {
       log("[Preflight] ❌ Typecheck failed; aborting parallel run to avoid duplicate failures");
+      log("[Preflight] ℹ️  Use --skip-typecheck to bypass this check");
       if (tcResult.error) {
         tcResult.error
           .split("\n")

@@ -51,7 +51,7 @@ import {
   type InitScriptResult,
   getProgressPath,
 } from "./types.js";
-import type { FailureContextType } from "./reflection/index.js";
+import type { FailureContextType, ReflectionType } from "./reflection/index.js";
 import { createHealerCounters } from "../../healer/types.js";
 import {
   runVerificationWithSandbox,
@@ -159,6 +159,62 @@ const runVerification = (
     Effect.catchAll(() => runVerificationOnHost(commands, cwd, emit))
   );
 };
+
+/**
+ * Run e2e test commands on the host.
+ * Similar to runVerificationOnHost but emits e2e-specific events.
+ */
+const runE2eOnHost = (
+  commands: string[],
+  cwd: string,
+  emit: (event: OrchestratorEvent) => void
+): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
+  Effect.try({
+    try: () => {
+      const outputs: string[] = [];
+      let allPassed = true;
+
+      for (const cmd of commands) {
+        emit({ type: "e2e_start", command: cmd });
+        try {
+          const { execSync } = require("node:child_process") as typeof import("node:child_process");
+          const output = execSync(cmd, {
+            cwd,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 300000,
+          });
+          outputs.push(String(output));
+          emit({ type: "e2e_complete", command: cmd, passed: true, output: String(output) });
+        } catch (error: any) {
+          const output = String(error?.stdout || error?.stderr || error?.message || error);
+          outputs.push(output);
+          emit({ type: "e2e_complete", command: cmd, passed: false, output });
+          allPassed = false;
+        }
+      }
+
+      return { passed: allPassed, outputs };
+    },
+    catch: (error: any) => error as Error,
+  });
+
+/**
+ * Check if a task should run e2e tests based on its labels.
+ */
+const shouldRunE2e = (taskLabels: readonly string[] = []): boolean => {
+  const e2eLabels = ["e2e", "golden-loop", "integration"];
+  return taskLabels.some((label) => e2eLabels.includes(label.toLowerCase()));
+};
+
+const buildE2eCommands = (commands: string[] | undefined): string[] =>
+  commands?.filter((cmd) => cmd.trim().length > 0) ?? [];
+
+const mapReflectionsToNotes = (reflections: ReflectionType[], limit: number): string[] =>
+  reflections
+    .slice(0, limit)
+    .map((r) => `${r.analysis} - Next: ${r.suggestion}`)
+    .map((text) => text.slice(0, 400));
 
 /**
  * Create a git commit with the task ID
@@ -356,6 +412,54 @@ export const runOrchestrator = (
         suggestedNextSteps: [],
       },
     };
+
+    const maxReflectionsPerRetry = config.reflexionConfig?.maxReflectionsPerRetry ?? 3;
+    const loadRecentReflections = (subtaskId: string, limit?: number) =>
+      config.reflectionService && config.reflexionConfig?.enabled !== false
+        ? config.reflectionService
+            .getRecent(subtaskId, limit ?? maxReflectionsPerRetry)
+            .pipe(Effect.catchAll(() => Effect.succeed([] as ReflectionType[])))
+        : Effect.succeed([] as ReflectionType[]);
+    const recordVerificationReflection = (
+      failureOutput: string | undefined,
+      failureType: FailureContextType["failureType"]
+    ) =>
+      config.reflectionService &&
+      config.reflexionConfig?.enabled !== false &&
+      state.task &&
+      state.subtasks &&
+      state.subtasks.subtasks.length > 0
+        ? Effect.gen(function* () {
+            const targetSubtask = state.subtasks!.subtasks[state.subtasks!.subtasks.length - 1];
+            const previous = yield* loadRecentReflections(targetSubtask.id);
+            const failureContext: FailureContextType = {
+              id: `vc-${Date.now().toString(36)}`,
+              sessionId,
+              taskId: state.task!.id,
+              subtaskId: targetSubtask.id,
+              subtaskDescription: targetSubtask.description.slice(0, 1000),
+              attemptNumber: (targetSubtask.failureCount ?? 0) + 1,
+              failureType,
+              errorOutput: (failureOutput ?? "Verification failed").slice(0, 2000),
+              filesModified: progress.work.filesModified ?? [],
+              previousReflections: mapReflectionsToNotes(previous, maxReflectionsPerRetry),
+              createdAt: new Date().toISOString(),
+            };
+
+            const reflection = yield* config.reflectionService!.generate(failureContext).pipe(
+              Effect.catchAll(() => Effect.succeed(null))
+            );
+
+            if (reflection) {
+              yield* config.reflectionService!.save(reflection).pipe(Effect.catchAll(() => Effect.void));
+            }
+
+            targetSubtask.status = "failed";
+            targetSubtask.failureCount = (targetSubtask.failureCount ?? 0) + 1;
+            targetSubtask.lastFailureReason = failureContext.errorOutput;
+            writeSubtasks(openagentsDir, state.subtasks!);
+          })
+        : Effect.void;
 
     // Track checkpoint for crash recovery
     let currentCheckpoint: OrchestratorCheckpoint | null = null;
@@ -632,18 +736,12 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         progress.work.subtasksInProgress.push(subtask.id);
         emit({ type: "subtask_start", subtask });
 
-        // Fetch reflections if this is a retry and reflexion is enabled
+        // Fetch reflections if Reflexion is enabled
         let reflectionsText: string | undefined;
-        if (
-          subtask.failureCount &&
-          subtask.failureCount > 0 &&
-          config.reflectionService &&
-          config.reflexionConfig?.enabled !== false
-        ) {
-          const recentReflections = yield* config.reflectionService.getRecent(subtask.id).pipe(
-            Effect.catchAll(() => Effect.succeed([]))
-          );
-          if (recentReflections.length > 0) {
+        let recentReflections: ReflectionType[] = [];
+        if (config.reflectionService && config.reflexionConfig?.enabled !== false) {
+          recentReflections = yield* loadRecentReflections(subtask.id);
+          if (recentReflections.length > 0 && (subtask.failureCount ?? 0) > 0) {
             reflectionsText = yield* config.reflectionService.formatForPrompt(recentReflections).pipe(
               Effect.catchAll(() => Effect.succeed(undefined))
             );
@@ -803,7 +901,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
                 : "runtime_error",
               errorOutput: (result.error || "").slice(0, 2000),
               filesModified: result.filesModified || [],
-              previousReflections: [], // TODO: Could load previous reflections here
+              previousReflections: mapReflectionsToNotes(recentReflections, maxReflectionsPerRetry),
               createdAt: new Date().toISOString(),
             };
 
@@ -949,6 +1047,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
               // Continue to commit phase
             } else {
               // Still failing after heal - proceed with failure
+              yield* recordVerificationReflection(retryResult.outputs[0], "verification_failed");
               state.phase = "failed";
               state.error = "Verification failed (after healing attempt)";
               progress.nextSession.blockers = [
@@ -964,6 +1063,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             }
           } else {
             // Healer didn't resolve or wasn't triggered - proceed with failure
+            yield* recordVerificationReflection(verifyResult.outputs[0], "verification_failed");
             state.phase = "failed";
             state.error = "Verification failed";
             progress.nextSession.blockers = [
@@ -979,6 +1079,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           }
         } else {
           // No Healer configured - proceed with failure
+          yield* recordVerificationReflection(verifyResult.outputs[0], "verification_failed");
           state.phase = "failed";
           state.error = "Verification failed";
           progress.nextSession.blockers = [
@@ -992,6 +1093,43 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           emit({ type: "session_complete", success: false, summary: "Verification failed" });
           return state;
         }
+      }
+
+      // Run e2e commands when configured and task requires them
+      const effectiveE2eCommands = buildE2eCommands(config.e2eCommands);
+      const shouldRunE2eTests =
+        effectiveE2eCommands.length > 0 && state.task && shouldRunE2e(state.task.labels ?? []);
+
+      if (shouldRunE2eTests) {
+        progress.work.e2eRun = true;
+        const e2eResult = yield* runE2eOnHost(effectiveE2eCommands, config.cwd, emit).pipe(
+          Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] }))
+        );
+        progress.work.e2ePassingAfterWork = e2eResult.passed;
+
+        if (!e2eResult.passed) {
+          yield* recordVerificationReflection(e2eResult.outputs[0], "test_failure");
+          state.phase = "failed";
+          state.error = "E2E failed";
+          progress.nextSession.blockers = [
+            "E2E tests failed after changes",
+            ...(e2eResult.outputs[0] ? [summarizeOutput(e2eResult.outputs[0]) ?? ""] : []),
+          ].filter(Boolean) as string[];
+          progress.nextSession.suggestedNextSteps = ["Fix failing e2e tests", "Review changes"];
+          writeProgress(openagentsDir, progress);
+          yield* recordUsage();
+          yield* clearCheckpoint(openagentsDir);
+          emit({ type: "session_complete", success: false, summary: "E2E failed" });
+          return state;
+        }
+      } else {
+        emit({
+          type: "e2e_skipped",
+          reason:
+            effectiveE2eCommands.length === 0
+              ? "No e2eCommands configured"
+              : "Task labels do not require e2e",
+        });
       }
 
       // Update checkpoint after verification passes
