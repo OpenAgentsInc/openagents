@@ -44,6 +44,10 @@ The **task system specification**. Defines:
 - Dependency types (`blocks`, `related`, `parent-child`, `discovered-from`)
 - CLI interface for external agents (`bun run tasks:*`)
 
+### Maintenance
+
+- `bun run health` runs the configured typecheck/test/e2e commands from `.openagents/project.json`. Use `--json` for machine-readable output; non-zero exit when any command fails.
+
 ## Quick Start
 
 ```bash
