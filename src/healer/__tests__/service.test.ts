@@ -12,31 +12,18 @@ import type { HealerEvent } from "../service.js";
 import { createHealerCounters } from "../types.js";
 import type { OrchestratorEvent, OrchestratorState } from "../../agent/orchestrator/types.js";
 import type { ProjectConfig } from "../../tasks/schema.js";
+import {
+  createMockProjectConfig,
+  createMockOrchestratorState,
+} from "./test-helpers.js";
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-const createMockState = (): OrchestratorState => ({
-  sessionId: "session-123",
-  phase: "executing",
-  subtasks: {
-    completed: [],
-    subtasks: [],
-  },
-});
+const createMockState = (): OrchestratorState => createMockOrchestratorState();
 
-const createMockConfig = (): ProjectConfig => ({
-  defaultBranch: "main",
-  testCommands: ["bun test"],
-  healer: {
-    enabled: true,
-    scenarios: {},
-    spells: {},
-    maxInvocationsPerSession: 5,
-    maxInvocationsPerSubtask: 3,
-  },
-});
+const createMockConfig = (): ProjectConfig => createMockProjectConfig();
 
 // ============================================================================
 // createHealerService Tests
@@ -56,9 +43,9 @@ describe("createHealerService", () => {
     const counters = createHealerCounters();
 
     const event: OrchestratorEvent = {
-      type: "phase_transition",
-      from: "orienting",
-      to: "planning",
+      type: "session_start",
+      sessionId: "session-123",
+      timestamp: "2024-01-01T00:00:00Z",
     };
 
     const result = await Effect.runPromise(
@@ -71,10 +58,26 @@ describe("createHealerService", () => {
   test("maybeRun returns null when Healer is disabled", async () => {
     const service = createHealerService();
     const state = createMockState();
-    const config: ProjectConfig = {
-      ...createMockConfig(),
-      healer: { enabled: false },
-    };
+    const config = createMockProjectConfig({
+      healer: {
+        enabled: false,
+        maxInvocationsPerSession: 5,
+        maxInvocationsPerSubtask: 3,
+        mode: "conservative",
+        stuckThresholdHours: 2,
+        scenarios: {
+          onInitFailure: false,
+          onVerificationFailure: false,
+          onSubtaskFailure: false,
+          onRuntimeError: false,
+          onStuckSubtask: false,
+        },
+        spells: {
+          allowed: [],
+          forbidden: [],
+        },
+      },
+    });
     const counters = createHealerCounters();
 
     const event: OrchestratorEvent = {
