@@ -2,6 +2,10 @@ import { BrowserWindow, BrowserView } from "electrobun/bun";
 import type { HudMessage } from "../hud/protocol.js";
 import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import { spawn } from "bun";
+import { resolve, dirname, join } from "node:path";
+
+// Get the project root (src/bun/index.ts -> go up 2 levels)
+const PROJECT_ROOT = resolve(dirname(import.meta.path), "../..");
 
 // ============================================================================
 // TB Run Types
@@ -55,7 +59,12 @@ interface HudRpcSchema {
 // ============================================================================
 
 async function loadTBSuiteFile(suitePath: string): Promise<TBSuiteInfo> {
-  const file = Bun.file(suitePath);
+  // Resolve relative paths from project root
+  const fullPath = suitePath.startsWith("/")
+    ? suitePath
+    : join(PROJECT_ROOT, suitePath);
+  console.log(`[TB] Loading suite file: ${fullPath}`);
+  const file = Bun.file(fullPath);
   const content = await file.text();
   const suite = JSON.parse(content);
 
@@ -81,11 +90,19 @@ function startTBRunProcess(options: TBRunOptions): { runId: string } {
   const random = Math.random().toString(36).slice(2, 8);
   const runId = `tb-${timestamp}-${random}`;
 
-  // Build command args
+  // Build command args with absolute paths
+  const scriptPath = join(PROJECT_ROOT, "src/cli/tbench-local.ts");
+  const suitePath = options.suitePath.startsWith("/")
+    ? options.suitePath
+    : join(PROJECT_ROOT, options.suitePath);
+  const outputDir = options.outputDir
+    ? (options.outputDir.startsWith("/") ? options.outputDir : join(PROJECT_ROOT, options.outputDir))
+    : join(PROJECT_ROOT, "results", runId);
+
   const args = [
-    "src/cli/tbench-local.ts",
-    "--suite", options.suitePath,
-    "--output", options.outputDir || `./results/${runId}`,
+    scriptPath,
+    "--suite", suitePath,
+    "--output", outputDir,
   ];
 
   if (options.taskIds?.length) {
@@ -101,10 +118,12 @@ function startTBRunProcess(options: TBRunOptions): { runId: string } {
   }
 
   console.log(`[TB] Starting run ${runId}:`, args.join(" "));
+  console.log(`[TB] Project root: ${PROJECT_ROOT}`);
 
-  // Spawn subprocess
+  // Spawn subprocess from project root
   activeTBRun = spawn({
     cmd: ["bun", ...args],
+    cwd: PROJECT_ROOT,
     stdout: "inherit",
     stderr: "inherit",
   });

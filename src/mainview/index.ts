@@ -20,17 +20,13 @@ import type {
   HudMessage,
   APMUpdateMessage,
   APMSnapshotMessage,
-  TBRunStartMessage,
-  TBRunCompleteMessage,
-  TBTaskStartMessage,
-  TBTaskProgressMessage,
-  TBTaskCompleteMessage,
 } from "../hud/protocol.js"
 import {
   isTBRunStart,
   isTBRunComplete,
   isTBTaskStart,
   isTBTaskProgress,
+  isTBTaskOutput,
   isTBTaskComplete,
 } from "../hud/protocol.js"
 
@@ -133,6 +129,12 @@ interface TBTaskState {
   turns?: number
 }
 
+interface TBOutputLine {
+  text: string
+  source: "agent" | "verification" | "system"
+  timestamp: number
+}
+
 interface TBState {
   isRunning: boolean
   runId: string | null
@@ -149,6 +151,9 @@ interface TBState {
   error: number
   passRate: number
   totalDurationMs: number
+  // Output streaming
+  outputBuffer: TBOutputLine[]
+  maxOutputLines: number
 }
 
 let tbState: TBState = {
@@ -167,6 +172,8 @@ let tbState: TBState = {
   error: 0,
   passRate: 0,
   totalDurationMs: 0,
+  outputBuffer: [],
+  maxOutputLines: 500,
 }
 
 // ============================================================================
@@ -502,6 +509,8 @@ function handleHudMessage(message: HudMessage): void {
       error: 0,
       passRate: 0,
       totalDurationMs: 0,
+      outputBuffer: [],
+      maxOutputLines: 500,
     }
     render()
     // Sync UI controls (elements set later, safe at runtime)
@@ -509,6 +518,9 @@ function handleHudMessage(message: HudMessage): void {
     document.getElementById("tb-status")!.className = "tb-status running"
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = true
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = false
+    // Show category tree (functions defined later in file)
+    ;(window as Record<string, () => void>).__showCategoryTree?.()
+    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -524,6 +536,7 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentPhase = "setup"
     tbState.currentTurn = 0
     render()
+    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -533,6 +546,22 @@ function handleHudMessage(message: HudMessage): void {
       tbState.currentTurn = message.currentTurn
     }
     render()
+    return
+  }
+
+  if (isTBTaskOutput(message)) {
+    // Add to output buffer
+    tbState.outputBuffer.push({
+      text: message.text,
+      source: message.source,
+      timestamp: Date.now(),
+    })
+    // Trim buffer if too large
+    if (tbState.outputBuffer.length > tbState.maxOutputLines) {
+      tbState.outputBuffer = tbState.outputBuffer.slice(-tbState.maxOutputLines)
+    }
+    // Update output viewer (throttled via requestAnimationFrame)
+    requestAnimationFrame(() => updateOutputViewer())
     return
   }
 
@@ -554,6 +583,7 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentPhase = null
     tbState.currentTurn = 0
     render()
+    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -654,7 +684,6 @@ const tbSelectAll = document.getElementById("tb-select-all")!
 const tbSelectNone = document.getElementById("tb-select-none")!
 
 // TB UI State
-let loadedSuite: TBSuiteInfo | null = null
 let selectedTaskIds: Set<string> = new Set()
 
 // Initialize canvas state with viewport size
@@ -821,10 +850,15 @@ void electrobunInstance // Keep reference to avoid GC
 // TB Run Controls (exposed for UI interaction)
 // ============================================================================
 
+// Type assertion for Electrobun RPC request interface
+const rpcRequest = rpc as unknown as {
+  request: HudRpcSchema["bun"]["requests"]
+}
+
 /** Load a TB suite and populate the task list */
 async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
   console.log("[TB] Loading suite:", suitePath)
-  const suiteInfo = await rpc.request.loadTBSuite(suitePath)
+  const suiteInfo = await rpcRequest.request.loadTBSuite(suitePath)
   console.log("[TB] Suite loaded:", suiteInfo.name, `(${suiteInfo.tasks.length} tasks)`)
   return suiteInfo
 }
@@ -832,7 +866,7 @@ async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
 /** Start a TB run with the given options */
 async function startTBRunRpc(options: TBRunOptions): Promise<string> {
   console.log("[TB] Starting run:", options)
-  const { runId } = await rpc.request.startTBRun(options)
+  const { runId } = await rpcRequest.request.startTBRun(options)
   console.log("[TB] Run started:", runId)
   return runId
 }
@@ -840,7 +874,7 @@ async function startTBRunRpc(options: TBRunOptions): Promise<string> {
 /** Stop the current TB run */
 async function stopTBRunRpc(): Promise<boolean> {
   console.log("[TB] Stopping run")
-  const { stopped } = await rpc.request.stopTBRun()
+  const { stopped } = await rpcRequest.request.stopTBRun()
   console.log("[TB] Stopped:", stopped)
   return stopped
 }
@@ -855,9 +889,9 @@ function updateTBStatus(status: string, className?: string): void {
 }
 
 function updateTBButtons(isRunning: boolean): void {
-  tbStartBtn.disabled = isRunning
-  tbStopBtn.disabled = !isRunning
-  tbLoadBtn.disabled = isRunning
+  (tbStartBtn as HTMLButtonElement).disabled = isRunning
+  ;(tbStopBtn as HTMLButtonElement).disabled = !isRunning
+  ;(tbLoadBtn as HTMLButtonElement).disabled = isRunning
   tbSuitePathInput.disabled = isRunning
 }
 
@@ -902,13 +936,11 @@ async function handleLoadSuite(): Promise<void> {
   try {
     updateTBStatus("Loading...")
     const suite = await loadTBSuiteRpc(suitePath)
-    loadedSuite = suite
     renderTaskList(suite)
     updateTBStatus("Ready")
   } catch (err) {
     console.error("[TB] Load failed:", err)
     updateTBStatus("Load failed", "error")
-    loadedSuite = null
     tbTaskSelector.classList.add("hidden")
   }
 }
@@ -929,7 +961,7 @@ async function handleStartRun(): Promise<void> {
 
     await startTBRunRpc({
       suitePath,
-      taskIds,
+      ...(taskIds !== undefined ? { taskIds } : {}),
     })
 
     updateTBStatus("Running...", "running")
@@ -986,17 +1018,6 @@ tbSelectNone.addEventListener("click", handleSelectNone)
 // View mode button handlers
 document.getElementById("view-flow-btn")?.addEventListener("click", () => setViewMode("flow"))
 document.getElementById("view-tb-btn")?.addEventListener("click", () => setViewMode("tbench"))
-
-// Update UI when TB state changes (from HUD messages)
-function syncTBUIWithState(): void {
-  if (tbState.isRunning) {
-    updateTBStatus("Running...", "running")
-    updateTBButtons(true)
-  } else if (tbState.passRate > 0) {
-    updateTBStatus(`Done ${(tbState.passRate * 100).toFixed(0)}%`)
-    updateTBButtons(false)
-  }
-}
 
 // ============================================================================
 // Keyboard Shortcuts
@@ -1071,3 +1092,223 @@ window.TB = {
 
 console.log("Flow HUD loaded with WebSocket support")
 console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
+
+// ============================================================================
+// TB Output Viewer
+// ============================================================================
+
+const outputViewer = document.getElementById("tb-output-viewer")
+const outputContent = document.getElementById("tb-output-content")
+const outputClearBtn = document.getElementById("tb-output-clear")
+const outputCopyBtn = document.getElementById("tb-output-copy")
+const outputCloseBtn = document.getElementById("tb-output-close")
+
+function showOutputViewer(): void {
+  outputViewer?.classList.remove("hidden")
+}
+
+function hideOutputViewer(): void {
+  outputViewer?.classList.add("hidden")
+}
+
+function updateOutputViewer(): void {
+  if (!outputContent) return
+
+  // Show viewer when there's output during a run
+  if (tbState.outputBuffer.length > 0 && tbState.isRunning) {
+    showOutputViewer()
+  }
+
+  // Render last 100 lines to avoid DOM bloat
+  const linesToShow = tbState.outputBuffer.slice(-100)
+  const html = linesToShow.map(line => {
+    const escaped = line.text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+    return `<div class="tb-output-line ${line.source}">${escaped}</div>`
+  }).join("")
+
+  outputContent.innerHTML = html
+
+  // Auto-scroll to bottom
+  outputContent.scrollTop = outputContent.scrollHeight
+}
+
+function clearOutput(): void {
+  tbState.outputBuffer = []
+  if (outputContent) outputContent.innerHTML = ""
+}
+
+function copyOutput(): void {
+  const text = tbState.outputBuffer.map(l => l.text).join("\n")
+  navigator.clipboard.writeText(text).then(() => {
+    console.log("[TB] Output copied to clipboard")
+  })
+}
+
+// Wire up output viewer buttons
+outputClearBtn?.addEventListener("click", clearOutput)
+outputCopyBtn?.addEventListener("click", copyOutput)
+outputCloseBtn?.addEventListener("click", hideOutputViewer)
+
+// ============================================================================
+// TB Category Tree
+// ============================================================================
+
+const categoryTree = document.getElementById("tb-category-tree")
+const treeContent = document.getElementById("tb-tree-content")
+const treeExpandBtn = document.getElementById("tb-tree-expand")
+const treeCollapseBtn = document.getElementById("tb-tree-collapse")
+const treeCloseBtn = document.getElementById("tb-tree-close")
+
+// Track collapsed categories
+const collapsedCategories = new Set<string>()
+
+function showCategoryTree(): void {
+  categoryTree?.classList.remove("hidden")
+}
+
+function hideCategoryTree(): void {
+  categoryTree?.classList.add("hidden")
+}
+
+interface CategoryData {
+  name: string
+  tasks: TBTaskState[]
+  passed: number
+  failed: number
+  total: number
+}
+
+function groupTasksByCategory(): Map<string, CategoryData> {
+  const categories = new Map<string, CategoryData>()
+
+  for (const task of tbState.tasks.values()) {
+    const cat = task.category || "uncategorized"
+    if (!categories.has(cat)) {
+      categories.set(cat, { name: cat, tasks: [], passed: 0, failed: 0, total: 0 })
+    }
+    const catData = categories.get(cat)!
+    catData.tasks.push(task)
+    catData.total++
+    if (task.status === "passed") catData.passed++
+    if (task.status === "failed" || task.status === "error" || task.status === "timeout") {
+      catData.failed++
+    }
+  }
+
+  return categories
+}
+
+function getTaskStatusIcon(status: TBTaskStatus): string {
+  switch (status) {
+    case "passed": return "✓"
+    case "failed": return "✗"
+    case "error": return "⚠"
+    case "timeout": return "⏱"
+    case "running": return "▶"
+    default: return "○"
+  }
+}
+
+function renderCategoryTree(): void {
+  if (!treeContent) return
+
+  const categories = groupTasksByCategory()
+  if (categories.size === 0) {
+    treeContent.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 11px;">No tasks loaded</div>'
+    return
+  }
+
+  const categoryHtml = Array.from(categories.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([catName, catData]) => {
+      const isCollapsed = collapsedCategories.has(catName)
+      const tasksHtml = catData.tasks.map(task => {
+        const icon = getTaskStatusIcon(task.status)
+        const isRunning = task.status === "running"
+        return `
+          <div class="tb-tree-task ${task.status}${isRunning ? " running" : ""}" data-task-id="${task.id}">
+            <span class="tb-task-status-icon ${task.status}">${icon}</span>
+            <span class="tb-tree-task-name" title="${task.name}">${task.name}</span>
+            ${task.difficulty ? `<span class="tb-tree-task-diff ${task.difficulty}">${task.difficulty.slice(0, 1).toUpperCase()}</span>` : ""}
+          </div>
+        `
+      }).join("")
+
+      const statsHtml = catData.passed > 0 || catData.failed > 0
+        ? `<span class="tb-category-pass">✓${catData.passed}</span><span class="tb-category-fail">✗${catData.failed}</span>`
+        : ""
+
+      return `
+        <div class="tb-category${isCollapsed ? " collapsed" : ""}" data-category="${catName}">
+          <div class="tb-category-header">
+            <span class="tb-category-chevron">▼</span>
+            <span class="tb-category-name">${catName}</span>
+            <div class="tb-category-stats">
+              ${statsHtml}
+              <span class="tb-category-count">${catData.total}</span>
+            </div>
+          </div>
+          <div class="tb-category-tasks">
+            ${tasksHtml}
+          </div>
+        </div>
+      `
+    }).join("")
+
+  treeContent.innerHTML = categoryHtml
+
+  // Add click handlers for category headers (toggle collapse)
+  treeContent.querySelectorAll(".tb-category-header").forEach(header => {
+    header.addEventListener("click", () => {
+      const category = header.closest(".tb-category") as HTMLElement
+      const catName = category?.dataset.category
+      if (catName) {
+        category.classList.toggle("collapsed")
+        if (category.classList.contains("collapsed")) {
+          collapsedCategories.add(catName)
+        } else {
+          collapsedCategories.delete(catName)
+        }
+      }
+    })
+  })
+
+  // Add click handlers for tasks
+  treeContent.querySelectorAll(".tb-tree-task").forEach(taskEl => {
+    taskEl.addEventListener("click", () => {
+      const taskId = (taskEl as HTMLElement).dataset.taskId
+      if (taskId) {
+        console.log("[TB] Task clicked:", taskId)
+      }
+    })
+  })
+}
+
+function expandAllCategories(): void {
+  collapsedCategories.clear()
+  treeContent?.querySelectorAll(".tb-category").forEach(cat => {
+    cat.classList.remove("collapsed")
+  })
+}
+
+function collapseAllCategories(): void {
+  const categories = groupTasksByCategory()
+  for (const catName of categories.keys()) {
+    collapsedCategories.add(catName)
+  }
+  treeContent?.querySelectorAll(".tb-category").forEach(cat => {
+    cat.classList.add("collapsed")
+  })
+}
+
+// Wire up tree controls
+treeExpandBtn?.addEventListener("click", expandAllCategories)
+treeCollapseBtn?.addEventListener("click", collapseAllCategories)
+treeCloseBtn?.addEventListener("click", hideCategoryTree)
+
+// Expose tree functions for triggering from handleHudMessage
+;(window as Record<string, unknown>).__showCategoryTree = showCategoryTree
+;(window as Record<string, unknown>).__renderCategoryTree = renderCategoryTree
