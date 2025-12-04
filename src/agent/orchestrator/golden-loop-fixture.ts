@@ -9,6 +9,11 @@ export type GoldenLoopFixtureOptions = {
   task?: Partial<Task>;
   testCommands?: string[];
   allowPush?: boolean;
+  /**
+   * Optional setup hook to customize the fixture before the initial commit.
+   * Useful for adding extra files (init scripts, fake tests) needed by harnesses.
+   */
+  setup?: (dir: string, openagentsDir: string) => void;
 };
 
 export type GoldenLoopFixture = {
@@ -66,6 +71,10 @@ export const createGoldenLoopFixture = (options: GoldenLoopFixtureOptions = {}):
     ),
   );
   fs.writeFileSync(path.join(oaDir, "tasks.jsonl"), `${JSON.stringify(task)}\n`);
+
+  if (options.setup) {
+    options.setup(dir, oaDir);
+  }
 
   execSync("git add -A", { cwd: dir, stdio: "ignore" });
   execSync('git commit -m "init"', { cwd: dir, stdio: "ignore" });

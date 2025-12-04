@@ -56,4 +56,18 @@ describe("createGoldenLoopFixture", () => {
     expect(tasks[0].priority).toBe(0);
     expect(tasks[0].labels).toEqual(["golden-loop", "custom"]);
   });
+
+  test("runs setup hook before initial commit", () => {
+    const fixture = createGoldenLoopFixture({
+      name: "with-setup",
+      setup: (dir) => {
+        const scriptsDir = path.join(dir, "scripts");
+        fs.mkdirSync(scriptsDir, { recursive: true });
+        fs.writeFileSync(path.join(scriptsDir, "custom.sh"), "echo setup", "utf-8");
+      },
+    });
+
+    const files = execSync("git ls-files", { cwd: fixture.dir, encoding: "utf-8" });
+    expect(files).toContain("scripts/custom.sh");
+  });
 });
