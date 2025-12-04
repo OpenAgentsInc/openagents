@@ -136,6 +136,11 @@ Internal events (lock management, init scripts, task updates, progress writes) a
 
 **Implementation:** See `src/hud/emit.ts` for the mapping function and `src/hud/emit.test.ts` for sample event sequences used in testing.
 
+**Headless status stream (pi-mono RPC style):**
+- Enable via `STATUS_STREAM_ENABLED=true` (optional `STATUS_STREAM_PORT`, `STATUS_STREAM_TOKEN`).
+- Streams `HudMessage` JSON over WebSocket for supervisors without the HUD UI; auth is `Authorization: Bearer <token>` or `?token=` query.
+- Powered by `StatusStreamServer` in `src/hud/status-stream.ts`; the same messages the HUD receives are mirrored to listeners.
+
 ---
 
 ### 2.1. Implementation Contract

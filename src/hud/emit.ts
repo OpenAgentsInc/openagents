@@ -71,6 +71,7 @@ import type {
 import { HudClient, getHudClient, type HudClientOptions } from "./client.js";
 import type { APMCollector } from "../agent/apm.js";
 import type { APMBySource } from "../agent/apm.js";
+import { StatusStreamServer, type StatusStreamOptions } from "./status-stream.js";
 
 /**
  * Convert an OrchestratorEvent to a HudMessage.
@@ -250,25 +251,40 @@ export const createHudOutputCallback = (
  *   // Later:
  *   client.close();
  */
-export const createHudCallbacks = (clientOptions?: HudClientOptions) => {
-  const client = new HudClient(clientOptions);
+export interface HudCallbackOptions extends HudClientOptions {
+  statusStream?: StatusStreamOptions & { enabled?: boolean };
+}
+
+export const createHudCallbacks = (options?: HudCallbackOptions) => {
+  const client = new HudClient(options);
+  const envEnabled = process.env.STATUS_STREAM_ENABLED?.toLowerCase() === "true";
+  const streamEnabled = options?.statusStream?.enabled ?? envEnabled ?? false;
+  const statusOpts: StatusStreamOptions = {
+    ...(options?.statusStream?.port !== undefined ? { port: options.statusStream.port } : {}),
+    ...(options?.statusStream?.token !== undefined ? { token: options.statusStream.token } : {}),
+    ...(options?.statusStream?.verbose !== undefined ? { verbose: options.statusStream.verbose } : {}),
+  };
+  const statusStream = streamEnabled ? new StatusStreamServer(statusOpts) : null;
 
   const emit = (event: OrchestratorEvent) => {
     const hudMessage = orchestratorEventToHudMessage(event);
     if (hudMessage) {
       client.send(hudMessage);
+      statusStream?.broadcast(hudMessage);
     }
   };
 
   const onOutput = (text: string) => {
-    client.send({
+    const msg: HudMessage = {
       type: "text_output",
       text,
       source: "claude-code",
-    });
+    };
+    client.send(msg);
+    statusStream?.broadcast(msg);
   };
 
-  return { emit, onOutput, client };
+  return { emit, onOutput, client, statusStream };
 };
 
 // ============================================================================
