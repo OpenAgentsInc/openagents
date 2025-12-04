@@ -79,6 +79,23 @@ export class MainviewPage {
     return await this.page.locator(".flow-node-group").count();
   }
 
+  async getHudMessages(): Promise<unknown[]> {
+    return await this.page.evaluate(
+      () => (window as unknown as { __hudMessages?: unknown[] }).__hudMessages || [],
+    );
+  }
+
+  async getHudMessagesByType(type: string): Promise<unknown[]> {
+    const messages = await this.getHudMessages();
+    return messages.filter((m) => (m as { type?: string }).type === type);
+  }
+
+  async getErrorCount(): Promise<number> {
+    return await this.page.evaluate(
+      () => (window as unknown as { __errorCount?: number }).__errorCount || 0,
+    );
+  }
+
   async getNode(nodeId: string): Promise<Locator> {
     return this.page.locator(`[data-node-id="${nodeId}"]`);
   }

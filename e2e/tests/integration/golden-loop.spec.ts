@@ -46,6 +46,17 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
       // 2. Flow content should have nodes (may include nodes from parallel tests)
       const svgContent = await mainviewPage.getSvgContent();
       expect(svgContent).toContain("flow-node-group");
+
+      // 3. All key message types received for full cycle
+      const messageTypes = new Set(
+        (await mainviewPage.getHudMessages()).map((m) => (m as { type: string }).type)
+      );
+      expect(messageTypes.has("session_start")).toBe(true);
+      expect(messageTypes.has("task_selected")).toBe(true);
+      expect(messageTypes.has("verification_complete")).toBe(true);
+      expect(messageTypes.has("commit_created")).toBe(true);
+      expect(messageTypes.has("push_complete")).toBe(true);
+      expect(messageTypes.has("session_complete")).toBe(true);
     });
 
     test("Golden Loop updates APM during execution", async ({
@@ -93,6 +104,7 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // APM should still be visible with updated value
       await svgAssertions.expectAPMVisible();
+      await svgAssertions.expectAPMValue(25.0);
     });
   });
 
@@ -117,6 +129,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
       // SVG should contain nodes (may include nodes from parallel tests in shared server)
       const svgContent = await mainviewPage.getSvgContent();
       expect(svgContent).toContain("flow-node-group");
+
+      const taskMessages = await mainviewPage.getHudMessagesByType("task_selected");
+      expect(taskMessages.length).toBeGreaterThan(0);
     });
 
     test("task_decomposed message is handled without crash", async ({
@@ -155,6 +170,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
       // Original task node should still exist (at minimum)
       const nodeCountAfter = await mainviewPage.getNodeCount();
       expect(nodeCountAfter).toBeGreaterThanOrEqual(nodeCountBefore);
+
+      const decomposedMessages = await mainviewPage.getHudMessagesByType("task_decomposed");
+      expect(decomposedMessages.length).toBeGreaterThan(0);
     });
 
     test("priority badge reflects task priority", async ({
@@ -224,6 +242,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should still be stable
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const verificationMessages = await mainviewPage.getHudMessagesByType("verification_complete");
+      expect(verificationMessages.length).toBeGreaterThan(0);
     });
 
     test("verification failure shows error state", async ({
@@ -251,6 +272,11 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle gracefully
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const failedVerification = (await mainviewPage.getHudMessagesByType("verification_complete"))[0] as
+        | { passed?: boolean }
+        | undefined;
+      expect(failedVerification?.passed).toBe(false);
     });
 
     test("subtask failure triggers error indicator", async ({
@@ -292,6 +318,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // Error indicator should be visible
       await expect(mainviewPage.errorIndicator).toHaveClass(/visible/);
+
+      const errorCount = await mainviewPage.getErrorCount();
+      expect(errorCount).toBeGreaterThan(0);
     });
   });
 
@@ -321,6 +350,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle commit event gracefully
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const commitMessages = await mainviewPage.getHudMessagesByType("commit_created");
+      expect(commitMessages.length).toBeGreaterThan(0);
     });
 
     test("push_complete message handled", async ({
@@ -343,6 +375,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle push event gracefully
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const pushMessages = await mainviewPage.getHudMessagesByType("push_complete");
+      expect(pushMessages.length).toBeGreaterThan(0);
     });
 
     test("full git workflow: verify -> commit -> push", async ({
@@ -393,6 +428,13 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
       await expect(mainviewPage.flowSvg).toBeVisible();
       const svgContent = await mainviewPage.getSvgContent();
       expect(svgContent).toContain("flow-node-group");
+
+      const messageTypes = new Set(
+        (await mainviewPage.getHudMessages()).map((m) => (m as { type: string }).type)
+      );
+      expect(messageTypes.has("commit_created")).toBe(true);
+      expect(messageTypes.has("push_complete")).toBe(true);
+      expect(messageTypes.has("session_complete")).toBe(true);
     });
   });
 
@@ -412,6 +454,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
       // Session ID should appear somewhere in the flow content
       // (may be contaminated by parallel test execution, so check for Session: prefix)
       expect(svgContent).toContain("Session:");
+
+      const sessionMessages = await mainviewPage.getHudMessagesByType("session_start");
+      expect(sessionMessages.length).toBeGreaterThan(0);
     });
 
     test("session_complete with success", async ({
@@ -435,6 +480,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle completion gracefully
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const completed = await mainviewPage.getHudMessagesByType("session_complete");
+      expect(completed.length).toBeGreaterThan(0);
     });
 
     test("session_complete with failure", async ({
@@ -458,6 +506,11 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle failure gracefully
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const failed = (await mainviewPage.getHudMessagesByType("session_complete"))[0] as
+        | { success?: boolean }
+        | undefined;
+      expect(failed?.success).toBe(false);
     });
 
     test("multiple sessions in sequence", async ({
@@ -491,6 +544,9 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // UI should handle multiple sessions
       await expect(mainviewPage.flowSvg).toBeVisible();
+
+      const sessionCompletes = await mainviewPage.getHudMessagesByType("session_complete");
+      expect(sessionCompletes.length).toBeGreaterThanOrEqual(2);
     });
 
     test("session with APM tracking throughout", async ({
@@ -545,6 +601,10 @@ test.describe("Integration Tests - Golden Loop (E1-E5)", () => {
 
       // APM widget should still be visible showing final state
       await expect(mainviewPage.flowSvg).toBeVisible();
+      await svgAssertions.expectAPMValue(28.3);
+
+      const sessionCompleteMessages = await mainviewPage.getHudMessagesByType("session_complete");
+      expect(sessionCompleteMessages.length).toBeGreaterThan(0);
     });
   });
 
