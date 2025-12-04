@@ -98,3 +98,12 @@ export {
   importBeadsIssues,
   BeadsImportError,
 } from "./beads.js";
+
+export {
+  mergeTasks,
+  mergeTaskFiles,
+  ensureMergeDriverConfig,
+  TaskMergeError,
+  type MergeResult,
+  type MergeFilesOptions,
+} from "./merge.js";

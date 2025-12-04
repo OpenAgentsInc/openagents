@@ -37,6 +37,8 @@ import {
   getTaskWithDeps,
   readTasks,
   hasConflictMarkers,
+  mergeTaskFiles,
+  TaskMergeError,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -75,6 +77,11 @@ interface CliOptions {
   includeArchived?: boolean;
   // validate options
   checkConflicts?: boolean;
+  // merge options
+  base?: string;
+  current?: string;
+  incoming?: string;
+  output?: string;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -211,6 +218,30 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
         break;
       case "--check-conflicts":
         options.checkConflicts = true;
+        break;
+      case "--base":
+        if (nextArg) {
+          options.base = nextArg;
+          i++;
+        }
+        break;
+      case "--current":
+        if (nextArg) {
+          options.current = nextArg;
+          i++;
+        }
+        break;
+      case "--incoming":
+        if (nextArg) {
+          options.incoming = nextArg;
+          i++;
+        }
+        break;
+      case "--output":
+        if (nextArg) {
+          options.output = nextArg;
+          i++;
+        }
         break;
     }
   }
@@ -655,6 +686,31 @@ const cmdValidate = (options: CliOptions) =>
     return result;
   });
 
+const cmdMerge = (options: CliOptions) =>
+  Effect.gen(function* () {
+    if (!options.base || !options.current || !options.incoming) {
+      return yield* Effect.fail(
+        new TaskMergeError("merge requires --base, --current, and --incoming paths"),
+      );
+    }
+
+    const resolvePath = (p: string) =>
+      nodePath.isAbsolute(p) ? p : nodePath.join(options.rootDir, p);
+
+    const mergeOptions = {
+      basePath: resolvePath(options.base),
+      currentPath: resolvePath(options.current),
+      incomingPath: resolvePath(options.incoming),
+      ...(options.output ? { outputPath: resolvePath(options.output) } : {}),
+    };
+
+    const result = yield* mergeTaskFiles(mergeOptions);
+
+    const payload = { ok: true, mergedPath: result.mergedPath, conflicts: result.conflicts };
+    output(payload, options.json);
+    return payload;
+  });
+
 const cmdStats = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -831,6 +887,7 @@ Commands:
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
   validate  Validate tasks.jsonl (schema + conflict markers)
+  merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
 
 Global Options:
   --json          Output as JSON
@@ -884,6 +941,12 @@ search Options:
 
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
+
+merge Options:
+  --base <path>           Base/ancestor tasks.jsonl
+  --current <path>        Current branch version (usually %A)
+  --incoming <path>       Incoming branch version (usually %B)
+  --output <path>         Output path (default: overwrite current)
 
 Examples:
   bun src/tasks/cli.ts init --json
@@ -1071,6 +1134,22 @@ const main = async () => {
         await Effect.runPromise(cmdValidate(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         const payload = { ok: false, error: String(err) };
+        if (options.json) {
+          console.log(JSON.stringify(payload));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "merge":
+      try {
+        await Effect.runPromise(cmdMerge(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        const payload =
+          err instanceof TaskMergeError
+            ? { ok: false, error: err.message }
+            : { ok: false, error: String(err) };
         if (options.json) {
           console.log(JSON.stringify(payload));
         } else {
