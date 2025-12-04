@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect";
 import * as Secret from "effect/Secret";
 import type { Tool } from "../tools/schema.js";
 import type { ChatRequest, ChatResponse, ChatMessage } from "./openrouter.js";
+import { HttpError, retryWithBackoff, isRetryableLlmError } from "./retry.js";
 
 export interface AnthropicConfigShape {
   apiKey: Secret.Secret;
@@ -100,8 +101,8 @@ const makeRequestBody = (config: AnthropicConfigShape, request: ChatRequest) => 
 const sendAnthropic = (
   config: AnthropicConfigShape,
   request: ChatRequest,
-): Effect.Effect<ChatResponse, Error> =>
-  Effect.gen(function* () {
+): Effect.Effect<ChatResponse, Error> => {
+  const sendOnce = Effect.gen(function* () {
     const body = makeRequestBody(config, request);
 
     const response = yield* Effect.tryPromise({
@@ -118,12 +119,13 @@ const sendAnthropic = (
 
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(`HTTP ${res.status}: ${text}`);
+          throw new HttpError(`HTTP ${res.status}`, res.status, text);
         }
 
         return res.json();
       },
-      catch: (cause) => new Error(`Anthropic request failed: ${String(cause)}`),
+      catch: (cause) =>
+        cause instanceof HttpError ? cause : new HttpError(`Anthropic request failed: ${String(cause)}`),
     });
 
     const message = (response as any).content?.[0];
@@ -134,7 +136,7 @@ const sendAnthropic = (
       choices: [
         {
           message: {
-            role: "assistant",
+            role: "assistant" as const,
             content: text ?? "",
             tool_calls: [],
           },
@@ -142,6 +144,9 @@ const sendAnthropic = (
       ],
     };
   });
+
+  return retryWithBackoff(() => sendOnce, request.retry, isRetryableLlmError);
+};
 
 export const anthropicClientLive = Layer.effect(
   AnthropicClient,
