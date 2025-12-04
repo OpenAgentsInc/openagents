@@ -74,3 +74,5 @@ playwright-report/
 test-results/
 
 results
+
+docs/local/
