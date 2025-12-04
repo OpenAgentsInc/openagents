@@ -22,11 +22,6 @@
     "typeRoots": [
       "./types",
       "./node_modules/@types"
-    ],
-    "plugins": [
-      {
-        "name": "@effect/language-service"
-      }
     ]
   },
   "include": [
