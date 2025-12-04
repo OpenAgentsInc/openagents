@@ -25,6 +25,7 @@ export interface InitProjectOptions {
 const OPENAGENTS_GITIGNORE = `# MechaCoder session and run logs (local only)
 sessions/
 run-logs/
+usage.jsonl
 `;
 
 export const initOpenAgentsProject = ({

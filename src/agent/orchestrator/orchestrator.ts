@@ -46,6 +46,8 @@ import {
   runVerificationWithSandbox,
   type SandboxRunnerConfig,
 } from "./sandbox-runner.js";
+import { appendUsageRecord } from "../../usage/store.js";
+import type { UsageRecord } from "../../usage/types.js";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -204,6 +206,16 @@ export const runOrchestrator = (
     const subagentRunner = deps?.runSubagent ?? runBestAvailableSubagent;
     const openagentsDir = config.openagentsDir ?? `${config.cwd}/.openagents`;
     const tasksPath = `${openagentsDir}/tasks.jsonl`;
+    const sessionStartedAt = Date.now();
+    const usageAccumulator = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      totalCostUsd: 0,
+      subtasks: 0,
+      agents: new Set<string>(),
+    };
     
     emit({ type: "session_start", sessionId, timestamp: now });
 
@@ -213,6 +225,43 @@ export const runOrchestrator = (
       subtasks: null,
       progress: null,
       phase: "orienting",
+    };
+    const recordUsage = (): Effect.Effect<void, never, FileSystem.FileSystem> => {
+      const agent: UsageRecord["agent"] =
+        usageAccumulator.agents.size === 0
+          ? config.claudeCode?.enabled
+            ? "claude-code"
+            : "unknown"
+          : usageAccumulator.agents.size === 1
+            ? (Array.from(usageAccumulator.agents)[0] as UsageRecord["agent"])
+            : "mixed";
+
+      const record = {
+        sessionId,
+        projectId: config.projectConfig?.projectId ?? "unknown",
+        timestamp: new Date().toISOString(),
+        inputTokens: usageAccumulator.inputTokens,
+        outputTokens: usageAccumulator.outputTokens,
+        cacheReadTokens: usageAccumulator.cacheReadTokens,
+        cacheCreationTokens: usageAccumulator.cacheCreationTokens,
+        totalCostUsd: usageAccumulator.totalCostUsd,
+        agent,
+        subtasks: usageAccumulator.subtasks,
+        durationMs: Date.now() - sessionStartedAt,
+      };
+
+      const hasActivity =
+        usageAccumulator.subtasks > 0 ||
+        usageAccumulator.inputTokens > 0 ||
+        usageAccumulator.outputTokens > 0 ||
+        usageAccumulator.totalCostUsd > 0;
+
+      if (!hasActivity) {
+        return Effect.void;
+      }
+
+      emit({ type: "usage_recorded", usage: record });
+      return appendUsageRecord({ rootDir: config.cwd, record }).pipe(Effect.catchAll(() => Effect.void));
     };
     const verificationCommands = buildVerificationCommands(
       config.typecheckCommands,
@@ -334,6 +383,7 @@ export const runOrchestrator = (
         ];
 
         writeProgress(openagentsDir, progress);
+        yield* recordUsage();
         emit({ type: "session_complete", success: false, summary: state.error });
         return state;
       }
@@ -376,6 +426,7 @@ export const runOrchestrator = (
         state.phase = "done";
         progress.nextSession.suggestedNextSteps = ["No tasks available - add new tasks"];
         writeProgress(openagentsDir, progress);
+        yield* recordUsage();
         emit({ type: "session_complete", success: true, summary: "No tasks to process" });
         return state;
       }
@@ -483,6 +534,21 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         );
 
         progress.work.filesModified.push(...result.filesModified);
+
+        // Accumulate usage metrics for the session
+        if (result.sessionMetadata?.usage || result.tokenUsage) {
+          usageAccumulator.inputTokens += result.sessionMetadata?.usage?.inputTokens ?? result.tokenUsage?.input ?? 0;
+          usageAccumulator.outputTokens += result.sessionMetadata?.usage?.outputTokens ?? result.tokenUsage?.output ?? 0;
+          usageAccumulator.cacheReadTokens += result.sessionMetadata?.usage?.cacheReadInputTokens ?? 0;
+          usageAccumulator.cacheCreationTokens += result.sessionMetadata?.usage?.cacheCreationInputTokens ?? 0;
+        }
+        if (result.sessionMetadata?.totalCostUsd !== undefined) {
+          usageAccumulator.totalCostUsd += result.sessionMetadata.totalCostUsd;
+        }
+        usageAccumulator.subtasks += 1;
+        if (result.agent) {
+          usageAccumulator.agents.add(result.agent);
+        }
 
         // Persist Claude Code session metadata for resumption across runs
         const previousClaudeState = subtask.claudeCode ?? {};
@@ -613,6 +679,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
             writeProgress(openagentsDir, progress);
             writeSubtasks(openagentsDir, subtaskList);
+            yield* recordUsage();
             emit({ type: "session_complete", success: false, summary: `Task blocked after ${MAX_CONSECUTIVE_FAILURES} failures` });
             return state;
           }
@@ -638,6 +705,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
           writeProgress(openagentsDir, progress);
           writeSubtasks(openagentsDir, subtaskList);
+          yield* recordUsage();
           return state;
         }
 
@@ -696,6 +764,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
               ].filter(Boolean) as string[];
               progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
               writeProgress(openagentsDir, progress);
+              yield* recordUsage();
               emit({ type: "session_complete", success: false, summary: "Verification failed after healing" });
               return state;
             }
@@ -709,6 +778,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             ].filter(Boolean) as string[];
             progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
             writeProgress(openagentsDir, progress);
+            yield* recordUsage();
             emit({ type: "session_complete", success: false, summary: "Verification failed" });
             return state;
           }
@@ -722,6 +792,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           ].filter(Boolean) as string[];
           progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
           writeProgress(openagentsDir, progress);
+          yield* recordUsage();
           emit({ type: "session_complete", success: false, summary: "Verification failed" });
           return state;
         }
@@ -772,6 +843,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       emit({ type: "progress_written", path: getProgressPath(openagentsDir) });
 
       state.phase = "done";
+      yield* recordUsage();
       emit({
         type: "session_complete",
         success: true,
@@ -786,6 +858,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       
       progress.nextSession.blockers = [error.message];
       writeProgress(openagentsDir, progress);
+      yield* recordUsage();
       
       return state;
     }

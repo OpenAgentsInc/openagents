@@ -286,6 +286,24 @@ export interface APMToolUsageMessage {
   }>;
 }
 
+// Usage metrics
+export interface UsageUpdateMessage {
+  type: "usage_update";
+  usage: {
+    sessionId: string;
+    projectId: string;
+    timestamp: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    totalCostUsd: number;
+    subtasks: number;
+    durationMs: number;
+    agent: string;
+  };
+}
+
 // ============================================================================
 // Healer (Self-Healing Subagent) Events
 // ============================================================================
@@ -477,6 +495,7 @@ export type HudMessage =
   | APMUpdateMessage
   | APMSnapshotMessage
   | APMToolUsageMessage
+  | UsageUpdateMessage
   | HealerInvocationStartMessage
   | HealerSpellAppliedMessage
   | HealerInvocationCompleteMessage
