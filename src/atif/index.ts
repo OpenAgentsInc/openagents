@@ -116,3 +116,20 @@ export {
   createEmptyTrajectory,
   mergeTrajectories,
 } from "./adapter.js";
+
+// Integration exports
+export {
+  // Types
+  type AgentLoopATIFContext,
+  type AgentLoopATIFOptions,
+  type OrchestratorATIFContext,
+  type OrchestratorATIFOptions,
+  type SubagentATIFContext,
+  type SubagentATIFOptions,
+  // Factory functions
+  createAgentLoopATIF,
+  createOrchestratorATIF,
+  createSubagentATIF,
+  // Utility
+  wrapEventHandler,
+} from "./integration.js";
