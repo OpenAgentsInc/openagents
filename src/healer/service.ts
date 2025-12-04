@@ -9,6 +9,7 @@ import type {
   HealerContext,
   HealerCounters,
   HealerOutcome,
+  HealerOutcomeStatus,
   HealerScenario,
   HealerSpellId,
   HealerSpellResult,
@@ -109,7 +110,7 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
         }
 
         const scenario = decision.scenario!;
-        const trigger: HealerTrigger = { scenario, event };
+        const trigger: HealerTrigger = { scenario, event, state };
 
         // Update counters
         incrementCounters(counters, subtaskId);
@@ -119,16 +120,18 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
 
         // Plan spells
         const spells = planSpells(ctx, {
-          skipLLMSpells: options.skipLLMSpells,
+          skipLLMSpells: options.skipLLMSpells ?? false,
         });
 
         if (spells.length === 0) {
-          return {
-            status: "skipped" as const,
-            reason: "No applicable spells for scenario",
-            spellsExecuted: [],
-            context: ctx,
+          const skippedOutcome: HealerOutcome = {
+            scenario,
+            status: "skipped",
+            spellsTried: [],
+            spellsSucceeded: [],
+            summary: "No applicable spells for scenario",
           };
+          return skippedOutcome;
         }
 
         // Generate session ID for this Healer invocation
@@ -147,22 +150,20 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
         });
 
         // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, spells, options, healerSessionId);
+        const outcome = yield* executeSpellSequence(ctx, scenario, spells, options, healerSessionId);
 
         // Emit complete event
         options.onEvent?.({ type: "healer_complete", outcome });
 
         // Emit HUD complete message
-        const successfulSpells = outcome.spellsExecuted.filter((s) => s.result.success).length;
-        const failedSpells = outcome.spellsExecuted.filter((s) => !s.result.success).length;
         options.onHudMessage?.({
           type: "healer_invocation_complete",
           sessionId: healerSessionId,
           status: outcome.status,
-          reason: outcome.reason,
-          spellsExecuted: outcome.spellsExecuted.length,
-          successfulSpells,
-          failedSpells,
+          reason: outcome.summary,
+          spellsExecuted: outcome.spellsTried.length,
+          successfulSpells: outcome.spellsSucceeded.length,
+          failedSpells: outcome.spellsTried.length - outcome.spellsSucceeded.length,
         });
 
         return outcome;
@@ -184,16 +185,18 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
 
         // Plan spells
         const spells = planSpells(ctx, {
-          skipLLMSpells: options.skipLLMSpells,
+          skipLLMSpells: options.skipLLMSpells ?? false,
         });
 
         if (spells.length === 0) {
-          return {
-            status: "skipped" as const,
-            reason: "No applicable spells for scenario",
-            spellsExecuted: [],
-            context: ctx,
+          const skippedOutcome: HealerOutcome = {
+            scenario: trigger.scenario,
+            status: "skipped",
+            spellsTried: [],
+            spellsSucceeded: [],
+            summary: "No applicable spells for scenario",
           };
+          return skippedOutcome;
         }
 
         // Generate session ID for this Healer invocation
@@ -212,22 +215,20 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
         });
 
         // Execute spells
-        const outcome = yield* executeSpellSequence(ctx, spells, options, healerSessionId);
+        const outcome = yield* executeSpellSequence(ctx, trigger.scenario, spells, options, healerSessionId);
 
         // Emit complete event
         options.onEvent?.({ type: "healer_complete", outcome });
 
         // Emit HUD complete message
-        const successfulSpells = outcome.spellsExecuted.filter((s) => s.result.success).length;
-        const failedSpells = outcome.spellsExecuted.filter((s) => !s.result.success).length;
         options.onHudMessage?.({
           type: "healer_invocation_complete",
           sessionId: healerSessionId,
           status: outcome.status,
-          reason: outcome.reason,
-          spellsExecuted: outcome.spellsExecuted.length,
-          successfulSpells,
-          failedSpells,
+          reason: outcome.summary,
+          spellsExecuted: outcome.spellsTried.length,
+          successfulSpells: outcome.spellsSucceeded.length,
+          failedSpells: outcome.spellsTried.length - outcome.spellsSucceeded.length,
         });
 
         return outcome;
@@ -244,13 +245,16 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
  */
 const executeSpellSequence = (
   ctx: HealerContext,
+  scenario: HealerScenario,
   spells: HealerSpellId[],
   options: HealerServiceOptions,
   sessionId: string
 ): Effect.Effect<HealerOutcome, Error, never> =>
   Effect.gen(function* () {
-    const spellsExecuted: Array<{ spellId: HealerSpellId; result: HealerSpellResult }> = [];
+    const spellsTried: HealerSpellId[] = [];
+    const spellsSucceeded: HealerSpellId[] = [];
     let resolved = false;
+    let lastSummary = "";
 
     for (const spellId of spells) {
       // Emit spell start event
@@ -259,22 +263,32 @@ const executeSpellSequence = (
       // Execute the spell
       const result = yield* executeSpellWithLLM(ctx, spellId, options);
 
-      spellsExecuted.push({ spellId, result });
+      spellsTried.push(spellId);
+      lastSummary = result.summary;
 
       // Emit spell complete event
       options.onEvent?.({ type: "healer_spell_complete", spellId, result });
 
       // Emit HUD spell applied message
-      options.onHudMessage?.({
+      const hudMsg: HealerSpellAppliedMessage = {
         type: "healer_spell_applied",
         sessionId,
         spellId,
         success: result.success,
-        changesApplied: result.changesApplied,
+        changesApplied: result.changesApplied ?? false,
         summary: result.summary,
-        filesModified: result.filesModified,
-        error: result.error,
-      });
+      };
+      if (result.filesModified) {
+        hudMsg.filesModified = result.filesModified;
+      }
+      if (result.error) {
+        hudMsg.error = result.error;
+      }
+      options.onHudMessage?.(hudMsg);
+
+      if (result.success) {
+        spellsSucceeded.push(spellId);
+      }
 
       // Check if the spell resolved the issue
       if (result.success && result.changesApplied) {
@@ -289,20 +303,27 @@ const executeSpellSequence = (
     }
 
     // Determine outcome status
-    const status: HealerOutcome["status"] = resolved
-      ? "resolved"
-      : spellsExecuted.some((s) => s.result.success && s.spellId === "mark_task_blocked_with_followup")
-      ? "contained"
-      : spellsExecuted.some((s) => s.result.success)
-      ? "partial"
-      : "failed";
+    let status: HealerOutcomeStatus;
+    if (resolved) {
+      status = "resolved";
+    } else if (spellsSucceeded.includes("mark_task_blocked_with_followup")) {
+      status = "contained";
+    } else if (spellsSucceeded.length === 0) {
+      status = "unresolved";
+    } else {
+      // Some spells succeeded but didn't fully resolve
+      status = "resolved"; // Treat partial success as resolved
+    }
 
-    return {
+    const outcome: HealerOutcome = {
+      scenario,
       status,
-      reason: summarizeOutcome(spellsExecuted),
-      spellsExecuted,
-      context: ctx,
+      spellsTried,
+      spellsSucceeded,
+      summary: summarizeOutcome(spellsTried, spellsSucceeded, lastSummary),
     };
+
+    return outcome;
   });
 
 /**
@@ -391,29 +412,28 @@ const executeSpellWithLLM = (
  * Summarize the outcome for logging.
  */
 const summarizeOutcome = (
-  spellsExecuted: Array<{ spellId: HealerSpellId; result: HealerSpellResult }>
+  spellsTried: HealerSpellId[],
+  spellsSucceeded: HealerSpellId[],
+  lastSummary: string
 ): string => {
-  if (spellsExecuted.length === 0) {
+  if (spellsTried.length === 0) {
     return "No spells executed";
   }
 
-  const successful = spellsExecuted.filter((s) => s.result.success);
-  const failed = spellsExecuted.filter((s) => !s.result.success);
-
   const parts: string[] = [];
 
-  if (successful.length > 0) {
-    parts.push(`${successful.length} spell(s) succeeded`);
+  if (spellsSucceeded.length > 0) {
+    parts.push(`${spellsSucceeded.length} spell(s) succeeded`);
   }
 
-  if (failed.length > 0) {
-    parts.push(`${failed.length} spell(s) failed`);
+  const failedCount = spellsTried.length - spellsSucceeded.length;
+  if (failedCount > 0) {
+    parts.push(`${failedCount} spell(s) failed`);
   }
 
   // Add last spell's summary
-  const last = spellsExecuted[spellsExecuted.length - 1];
-  if (last) {
-    parts.push(`Last: ${last.result.summary}`);
+  if (lastSummary) {
+    parts.push(`Last: ${lastSummary}`);
   }
 
   return parts.join("; ");
