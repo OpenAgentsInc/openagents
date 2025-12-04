@@ -59,7 +59,9 @@
     "e2e:report": "bunx playwright show-report",
     "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots",
     "health": "bun src/health/cli.ts",
-    "deps:audit": "bun src/deps/audit-cli.ts"
+    "deps:audit": "bun src/deps/audit-cli.ts",
+    "desktop": "bun src/desktop/main.ts",
+    "desktop:debug": "bun --inspect src/desktop/main.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
@@ -71,6 +73,7 @@
     "effect": "3.19.8",
     "electrobun": "0.1.12",
     "smol-toml": "1.5.2",
+    "webview-bun": "2.4.0",
     "zod": "3.24.4"
   },
   "devDependencies": {
