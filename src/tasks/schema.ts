@@ -27,6 +27,15 @@ export const TaskSource = S.Struct({
 });
 export type TaskSource = S.Schema.Type<typeof TaskSource>;
 
+// Comment represents a note attached to a task
+export const Comment = S.Struct({
+  id: S.String,
+  text: S.String,
+  author: S.String,
+  createdAt: S.String, // ISO 8601 timestamp
+});
+export type Comment = S.Schema.Type<typeof Comment>;
+
 // Task represents a trackable work item (matches beads Issue schema)
 export const Task = S.Struct({
   id: S.String,
@@ -39,6 +48,7 @@ export const Task = S.Struct({
   labels: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   deps: S.optionalWith(S.Array(Dependency), { default: () => [] as Dependency[] }),
   commits: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
+  comments: S.optionalWith(S.Array(Comment), { default: () => [] as Comment[] }),
   createdAt: S.String, // ISO 8601 timestamp
   updatedAt: S.String, // ISO 8601 timestamp
   closedAt: S.optional(S.NullOr(S.String)),
@@ -64,6 +74,7 @@ export const TaskCreate = S.Struct({
   assignee: S.optional(S.String),
   labels: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   deps: S.optionalWith(S.Array(Dependency), { default: () => [] as Dependency[] }),
+  comments: S.optionalWith(S.Array(Comment), { default: () => [] as Comment[] }),
   source: S.optional(TaskSource),
   design: S.optional(S.String),
   acceptanceCriteria: S.optional(S.String),
@@ -83,6 +94,7 @@ export const TaskUpdate = S.Struct({
   labels: S.optional(S.Array(S.String)),
   deps: S.optional(S.Array(Dependency)),
   commits: S.optional(S.Array(S.String)),
+  comments: S.optional(S.Array(Comment)),
   closeReason: S.optional(S.String),
   design: S.optional(S.String),
   acceptanceCriteria: S.optional(S.String),

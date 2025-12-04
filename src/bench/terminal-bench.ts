@@ -174,6 +174,7 @@ export const terminalBenchToTask = (tbTask: TerminalBenchTask): TaskCreate => {
     priority: difficultyToPriority(tbTask.difficulty),
     labels,
     deps: [],
+    comments: [],
     ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
   };
 };
