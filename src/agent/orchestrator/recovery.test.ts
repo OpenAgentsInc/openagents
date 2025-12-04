@@ -10,21 +10,34 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
-import { BunContext } from "@aspect/platform-bun";
+import { BunContext } from "@effect/platform-bun";
 import {
   recoverPendingCommits,
   hasPendingRecovery,
-  type RecoveryResult,
   type RecoveryEvent,
 } from "./recovery.js";
-import { createTask, updateTask, readTasks, writeTasks } from "../../tasks/service.js";
-import type { Task, PendingCommit } from "../../tasks/schema.js";
+import { createTask, updateTask, readTasks } from "../../tasks/service.js";
+import type { PendingCommit, TaskCreate } from "../../tasks/schema.js";
 
 const runWithBun = <A, E>(
-  effect: Effect.Effect<A, E, any>,
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
 ): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
+
+const makeTask = (task: Partial<TaskCreate>): TaskCreate => ({
+  title: "Test task",
+  description: "",
+  status: "open",
+  priority: 2,
+  type: "task",
+  labels: [],
+  deps: [],
+  comments: [],
+  ...task,
+});
 
 describe("Two-Phase Commit Recovery", () => {
   let tempDir: string;
@@ -61,7 +74,7 @@ describe("Two-Phase Commit Recovery", () => {
       await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Normal task", status: "in_progress" },
+          task: makeTask({ title: "Normal task", status: "in_progress" }),
         }),
       );
 
@@ -74,7 +87,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Pending task", status: "open" },
+          task: makeTask({ title: "Pending task", status: "open" }),
         }),
       );
 
@@ -104,7 +117,7 @@ describe("Two-Phase Commit Recovery", () => {
       await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Normal task", status: "in_progress" },
+          task: makeTask({ title: "Normal task", status: "in_progress" }),
         }),
       );
 
@@ -133,7 +146,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task with commit", status: "open" },
+          task: makeTask({ title: "Task with commit", status: "open" }),
         }),
       );
 
@@ -179,7 +192,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task with missing commit", status: "open" },
+          task: makeTask({ title: "Task with missing commit", status: "open" }),
         }),
       );
 
@@ -224,7 +237,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task before commit", status: "open" },
+          task: makeTask({ title: "Task before commit", status: "open" }),
         }),
       );
 
@@ -269,7 +282,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task1 = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task 1 - has commit", status: "open" },
+          task: makeTask({ title: "Task 1 - has commit", status: "open" }),
         }),
       );
       await runWithBun(
@@ -291,7 +304,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task2 = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task 2 - missing commit", status: "open" },
+          task: makeTask({ title: "Task 2 - missing commit", status: "open" }),
         }),
       );
       await runWithBun(
@@ -326,7 +339,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Pending task", status: "open" },
+          task: makeTask({ title: "Pending task", status: "open" }),
         }),
       );
 
@@ -368,7 +381,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Pending task", status: "open", priority: 0 },
+          task: makeTask({ title: "Pending task", status: "open", priority: 0 }),
         }),
       );
 
@@ -409,7 +422,7 @@ describe("Two-Phase Commit Recovery", () => {
       const task = await runWithBun(
         createTask({
           tasksPath,
-          task: { title: "Task to recover", status: "open" },
+          task: makeTask({ title: "Task to recover", status: "open" }),
         }),
       );
 
@@ -467,7 +480,7 @@ describe("PendingCommit schema", () => {
     const task = await runWithBun(
       createTask({
         tasksPath,
-        task: { title: "Test task", status: "open" },
+        task: makeTask({ title: "Test task", status: "open" }),
       }),
     );
 
@@ -504,7 +517,7 @@ describe("PendingCommit schema", () => {
     const task = await runWithBun(
       createTask({
         tasksPath,
-        task: { title: "Test task", status: "open" },
+        task: makeTask({ title: "Test task", status: "open" }),
       }),
     );
 

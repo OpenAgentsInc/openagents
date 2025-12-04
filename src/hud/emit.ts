@@ -215,6 +215,8 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
     case "lock_failed":
     case "lock_released":
       return null;
+    default:
+      return null;
   }
 };
 

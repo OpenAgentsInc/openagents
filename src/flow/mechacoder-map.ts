@@ -1,7 +1,7 @@
 import type { FlowNode, NodeId, NodeSize, Status } from "./model.js"
 
 // Task status from .openagents/tasks.jsonl
-export type TaskStatus = "open" | "in_progress" | "blocked" | "closed"
+export type TaskStatus = "open" | "in_progress" | "blocked" | "closed" | "commit_pending"
 
 // Simplified task representation for the flow tree
 export interface TaskDependencyInfo {
@@ -39,6 +39,7 @@ export const buildTaskRollup = (tasks: readonly TaskInfo[]): TaskRollup => {
           acc.open += 1
           break
         case "in_progress":
+        case "commit_pending":
           acc.inProgress += 1
           break
         case "blocked":
@@ -88,6 +89,7 @@ function mapTaskStatus(status: TaskStatus): Status {
   switch (status) {
     case "open": return "idle"
     case "in_progress": return "busy"
+    case "commit_pending": return "busy"
     case "blocked": return "blocked"
     case "closed": return "completed"
   }
@@ -127,6 +129,7 @@ function buildRepoNode(repo: RepoState): FlowNode {
   const sortedTasks = [...repo.tasks].sort((a, b) => {
     const statusOrder: Record<TaskStatus, number> = {
       in_progress: 0,
+      commit_pending: 0,
       open: 1,
       blocked: 2,
       closed: 3,

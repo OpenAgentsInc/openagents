@@ -26,7 +26,7 @@ const sanitizeScenarioKey = (scenario: string): string =>
 const buildSectionWithMarkers = (scenario: HealerScenario, summary: string) => {
   const scenarioKey = sanitizeScenarioKey(scenario);
   const startMarker = `<!-- HEALER:${scenarioKey}:START -->`;
-  const endMarker = `<!-- HEALER:${scenarioKey}:END -->`;
+  const endMarker = `<!-- /HEALER:${scenarioKey}:END -->`;
 
   return {
     section: `${startMarker}\n${summary}\n${endMarker}\n`,
@@ -41,12 +41,39 @@ const buildSectionWithMarkers = (scenario: HealerScenario, summary: string) => {
  * - If a legacy block (no markers) exists for the scenario, replace it.
  * - Otherwise, append a new block.
  */
+const removeScenarioSection = (content: string, scenario: HealerScenario): string => {
+  const { startMarker, endMarker } = buildSectionWithMarkers(scenario, "");
+
+  // Remove marker-wrapped section if present
+  const markerPattern = new RegExp(
+    `${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\s*`,
+    "m",
+  );
+  if (markerPattern.test(content)) {
+    return content.replace(markerPattern, "");
+  }
+
+  // Remove legacy section (no markers) that matches the scenario line
+  const scenarioLine = `**Scenario:** ${scenario}`;
+  const scenarioIndex = content.indexOf(scenarioLine);
+  if (scenarioIndex === -1) return content;
+
+  const headingIndex = content.lastIndexOf("## Healer Summary", scenarioIndex);
+  if (headingIndex === -1) return content;
+
+  const nextHeadingIndex = content.indexOf("## Healer Summary", scenarioIndex + scenarioLine.length);
+  const before = content.slice(0, headingIndex);
+  const after = nextHeadingIndex === -1 ? "" : content.slice(nextHeadingIndex);
+  return `${before}${after}`;
+};
+
 export const upsertHealerSummarySection = (params: {
   existingContent: string;
   scenario: HealerScenario;
   summary: string;
 }): { content: string; changesApplied: boolean } => {
-  const existingContent = params.existingContent ?? "";
+  const baseContent = params.existingContent ?? "";
+  const cleanedContent = removeScenarioSection(baseContent, params.scenario);
   const { section, startMarker, endMarker } = buildSectionWithMarkers(
     params.scenario,
     params.summary
@@ -57,36 +84,14 @@ export const upsertHealerSummarySection = (params: {
     "m"
   );
 
-  if (markerPattern.test(existingContent)) {
-    const content = existingContent.replace(markerPattern, section);
-    return { content, changesApplied: content !== existingContent };
+  if (markerPattern.test(cleanedContent)) {
+    const content = cleanedContent.replace(markerPattern, section);
+    return { content, changesApplied: content !== baseContent };
   }
 
-  const scenarioLine = `**Scenario:** ${params.scenario}`;
-  const scenarioIndex = existingContent.indexOf(scenarioLine);
-  if (scenarioIndex !== -1) {
-    const headingIndex = existingContent.lastIndexOf(
-      "## Healer Summary",
-      scenarioIndex
-    );
-    if (headingIndex !== -1) {
-      const nextHeadingIndex = existingContent.indexOf(
-        "## Healer Summary",
-        scenarioIndex + scenarioLine.length
-      );
-      const before = existingContent.slice(0, headingIndex);
-      const after =
-        nextHeadingIndex === -1
-          ? existingContent.slice(existingContent.length)
-          : existingContent.slice(nextHeadingIndex);
-      const content = `${before}${section}${after}`;
-      return { content, changesApplied: content !== existingContent };
-    }
-  }
-
-  const needsNewline = existingContent.length > 0 && !existingContent.endsWith("\n");
-  const content = `${existingContent}${needsNewline ? "\n" : ""}${section}`;
-  return { content, changesApplied: content !== existingContent };
+  const needsNewline = cleanedContent.length > 0 && !cleanedContent.endsWith("\n");
+  const content = `${cleanedContent}${needsNewline ? "\n" : ""}${section}`;
+  return { content, changesApplied: content !== baseContent };
 };
 
 /**
@@ -120,6 +125,10 @@ export const generateHealerSummary = (
 
   if (ctx.heuristics.failureCount > 0) {
     lines.push(`- **Failure count:** ${ctx.heuristics.failureCount}`);
+  }
+
+  if (ctx.heuristics.previousAttempts > 0) {
+    lines.push(`- **Previous attempts:** ${ctx.heuristics.previousAttempts}`);
   }
 
   if (ctx.heuristics.errorPatterns.length > 0) {
@@ -306,4 +315,4 @@ export const updateProgressWithGuidance: HealerSpell = {
 };
 
 // Export helper for use by HealerService and tests
-export { generateRecommendations, upsertHealerSummarySection };
+export { generateRecommendations };
