@@ -3,7 +3,7 @@
  * Terminal-Bench CLI Wrapper
  *
  * Entry point for Harbor to invoke MechaCoder for Terminal-Bench evaluation.
- * Executes a task using Claude Code subagent and outputs:
+ * Executes a task using Claude Code CLI in headless mode and outputs:
  * - events.jsonl: Streaming events during execution
  * - trajectory.json: ATIF v1.4 format trajectory
  * - metrics.json: Token usage, cost, timing, tool stats
@@ -11,7 +11,6 @@
  * Usage:
  *   bun src/cli/tbench.ts \
  *     --instruction "Task description" \
- *     --model "anthropic/claude-sonnet-4-5" \
  *     --output-dir /logs/agent \
  *     --timeout 3600
  */
@@ -19,16 +18,14 @@
 import { parseArgs } from "util";
 import { join } from "path";
 import { appendFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagent.js";
-import type { Subtask, OrchestratorEvent } from "../agent/orchestrator/types.js";
 import {
   createClaudeCodeAgent,
   createEmptyTrajectory,
   type Trajectory,
   type Step,
-  type Metrics,
   timestamp,
 } from "../atif/index.js";
+import { spawn } from "child_process";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -36,7 +33,6 @@ import {
 
 interface TBenchArgs {
   instruction: string;
-  model: string | undefined;
   outputDir: string;
   timeout: number | undefined;
   cwd: string | undefined;
@@ -48,7 +44,6 @@ const parseCliArgs = (): TBenchArgs => {
     args: process.argv.slice(2),
     options: {
       instruction: { type: "string", short: "i" },
-      model: { type: "string", short: "m" },
       "output-dir": { type: "string", short: "o" },
       timeout: { type: "string", short: "t" },
       cwd: { type: "string", short: "c" },
@@ -68,7 +63,6 @@ Required:
   -o, --output-dir    Directory to write output files
 
 Options:
-  -m, --model         Model to use (default: anthropic/claude-sonnet-4-5)
   -t, --timeout       Timeout in seconds (default: 3600)
   -c, --cwd           Working directory (default: current directory)
   -h, --help          Show this help message
@@ -93,7 +87,6 @@ Output Files:
 
   return {
     instruction: values.instruction,
-    model: values.model,
     outputDir: values["output-dir"],
     timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
     cwd: values.cwd,
@@ -117,7 +110,6 @@ class EventRecorder {
 
   constructor(outputDir: string) {
     this.eventsPath = join(outputDir, "events.jsonl");
-    // Clear/create the file
     writeFileSync(this.eventsPath, "");
   }
 
@@ -130,10 +122,6 @@ class EventRecorder {
     this.events.push(event);
     appendFileSync(this.eventsPath, JSON.stringify(event) + "\n");
   }
-
-  getEvents(): TBenchEvent[] {
-    return this.events;
-  }
 }
 
 // ============================================================================
@@ -144,9 +132,6 @@ class TrajectoryBuilder {
   private steps: Step[] = [];
   private stepId = 1;
   private startTime: string;
-  private totalInputTokens = 0;
-  private totalOutputTokens = 0;
-  private totalCost = 0;
 
   constructor(
     private sessionId: string,
@@ -154,59 +139,30 @@ class TrajectoryBuilder {
     private instruction: string
   ) {
     this.startTime = timestamp();
-
-    // Record the initial user instruction as first step
     this.addStep("user", this.instruction);
   }
 
-  addStep(
-    source: "user" | "agent" | "system",
-    message: string,
-    extra?: {
-      toolCalls?: Array<{ tool_call_id: string; function_name: string; arguments: unknown }>;
-      metrics?: Metrics;
-      observation?: { results: Array<{ source_call_id?: string; content: unknown }> };
-    }
-  ): void {
+  addStep(source: "user" | "agent" | "system", message: string): void {
     const step: Step = {
       step_id: this.stepId++,
       timestamp: timestamp(),
       source,
       message,
-      ...(extra?.toolCalls && { tool_calls: extra.toolCalls }),
-      ...(extra?.metrics && { metrics: extra.metrics }),
-      ...(extra?.observation && { observation: extra.observation }),
     };
     this.steps.push(step);
-
-    // Accumulate metrics
-    if (extra?.metrics) {
-      this.totalInputTokens += extra.metrics.prompt_tokens ?? 0;
-      this.totalOutputTokens += extra.metrics.completion_tokens ?? 0;
-      this.totalCost += extra.metrics.cost_usd ?? 0;
-    }
   }
 
-  addToolResult(toolCallId: string, content: unknown, isError = false): void {
-    this.addStep("system", isError ? "Tool execution failed" : "Tool execution result", {
-      observation: {
-        results: [{ source_call_id: toolCallId, content }],
-      },
-    });
-  }
-
-  build(success: boolean): Trajectory {
+  build(success: boolean, metrics?: { inputTokens: number; outputTokens: number; costUsd?: number }): Trajectory {
     const endTime = timestamp();
     const base = createEmptyTrajectory(this.sessionId, this.agent);
 
-    // Build new trajectory with all fields (avoiding readonly mutation)
-    const trajectory: Trajectory = {
+    return {
       ...base,
       steps: this.steps,
       final_metrics: {
-        total_prompt_tokens: this.totalInputTokens,
-        total_completion_tokens: this.totalOutputTokens,
-        total_cost_usd: this.totalCost > 0 ? this.totalCost : undefined,
+        total_prompt_tokens: metrics?.inputTokens ?? 0,
+        total_completion_tokens: metrics?.outputTokens ?? 0,
+        total_cost_usd: metrics?.costUsd,
         total_steps: this.steps.length,
       },
       extra: {
@@ -216,9 +172,144 @@ class TrajectoryBuilder {
         success,
       },
     };
-
-    return trajectory;
   }
+}
+
+// ============================================================================
+// Claude CLI Runner
+// ============================================================================
+
+interface ClaudeResult {
+  success: boolean;
+  output: string;
+  sessionId: string | undefined;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  costUsd: number | undefined;
+  error: string | undefined;
+}
+
+async function runClaudeCli(
+  instruction: string,
+  options: {
+    cwd: string;
+    timeout: number;
+    onOutput?: (text: string) => void;
+  }
+): Promise<ClaudeResult> {
+  return new Promise((resolve) => {
+    const args = [
+      "--print",
+      "--dangerously-skip-permissions",
+      "--output-format", "json",
+      "--max-turns", "300",
+      "-p", instruction,
+    ];
+
+    console.log(`Running: claude ${args.join(" ").slice(0, 100)}...`);
+
+    const proc = spawn("claude", args, {
+      cwd: options.cwd,
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      const text = data.toString();
+      stdout += text;
+      options.onOutput?.(text);
+    });
+
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    const timeoutId = setTimeout(() => {
+      proc.kill("SIGTERM");
+      resolve({
+        success: false,
+        output: stdout,
+        sessionId: undefined,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: undefined,
+        error: `Timeout after ${options.timeout}s`,
+      });
+    }, options.timeout * 1000);
+
+    proc.on("close", (code) => {
+      clearTimeout(timeoutId);
+
+      // Try to parse JSON result
+      let result: ClaudeResult = {
+        success: code === 0,
+        output: stdout,
+        sessionId: undefined,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: undefined,
+        error: code !== 0 ? `Claude CLI exited with code ${code}: ${stderr}` : undefined,
+      };
+
+      // Parse JSON output if available
+      try {
+        const jsonResult = JSON.parse(stdout);
+        result.sessionId = jsonResult.session_id;
+        result.turns = jsonResult.num_turns ?? 0;
+        result.costUsd = jsonResult.total_cost_usd;
+
+        if (jsonResult.usage) {
+          result.inputTokens = jsonResult.usage.input_tokens ?? 0;
+          result.outputTokens = jsonResult.usage.output_tokens ?? 0;
+          result.cacheReadTokens = jsonResult.usage.cache_read_input_tokens ?? 0;
+          result.cacheCreationTokens = jsonResult.usage.cache_creation_input_tokens ?? 0;
+        }
+
+        // Check result type
+        if (jsonResult.type === "result") {
+          result.success = jsonResult.subtype === "success";
+          if (!result.success && jsonResult.subtype) {
+            result.error = `Claude finished with: ${jsonResult.subtype}`;
+          }
+        }
+      } catch {
+        // Not JSON, use raw output
+        if (code === 0) {
+          result.success = true;
+        }
+      }
+
+      resolve(result);
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timeoutId);
+      resolve({
+        success: false,
+        output: stdout,
+        sessionId: undefined,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: undefined,
+        error: `Failed to spawn claude: ${err.message}`,
+      });
+    });
+  });
 }
 
 // ============================================================================
@@ -226,7 +317,6 @@ class TrajectoryBuilder {
 // ============================================================================
 
 interface TBenchMetrics {
-  model: string;
   instruction: string;
   success: boolean;
   startTime: string;
@@ -241,8 +331,6 @@ interface TBenchMetrics {
     total: number;
   };
   cost: number | undefined;
-  filesModified: string[];
-  toolsUsed: Record<string, number>;
   error: string | undefined;
 }
 
@@ -263,168 +351,47 @@ const main = async (): Promise<void> => {
   const eventRecorder = new EventRecorder(args.outputDir);
   eventRecorder.record("run_start", {
     instruction: args.instruction,
-    model: args.model,
     cwd: args.cwd || process.cwd(),
     timeout: args.timeout,
   });
 
-  // Parse model name (provider/model format for Harbor compatibility)
-  const modelName = args.model || "anthropic/claude-sonnet-4-5";
-  // Model format: "provider/model" - used by Harbor for routing
-  void modelName.split("/"); // Validate format but don't need separate parts
-
   // Create trajectory builder
   const sessionId = `tbench-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const agent = createClaudeCodeAgent(modelName, "1.0.0");
+  const agent = createClaudeCodeAgent("claude-code", "2.0.58");
   const trajectoryBuilder = new TrajectoryBuilder(sessionId, agent, args.instruction);
-
-  // Create subtask for Claude Code
-  const subtask: Subtask = {
-    id: sessionId,
-    description: args.instruction,
-    status: "in_progress",
-    startedAt: startTimeIso,
-  };
-
-  // Track tools used
-  const toolsUsed: Record<string, number> = {};
-
-  // Event handler for orchestrator events
-  const onEvent = (event: OrchestratorEvent): void => {
-    eventRecorder.record(event.type, event as unknown as Record<string, unknown>);
-
-    // Track tool usage from events (subtask_tool_use is emitted as custom event)
-    const eventAny = event as Record<string, unknown>;
-    if (eventAny.type === "subtask_tool_use" && typeof eventAny.toolName === "string") {
-      const toolName = eventAny.toolName;
-      toolsUsed[toolName] = (toolsUsed[toolName] || 0) + 1;
-    }
-  };
-
-  // Output handler for streaming
-  const onOutput = (text: string): void => {
-    process.stdout.write(text);
-
-    // Parse tool use/result events for trajectory
-    if (text.startsWith("[TOOL_USE]")) {
-      try {
-        const json = JSON.parse(text.replace("[TOOL_USE] ", "").trim());
-        trajectoryBuilder.addStep("agent", `Using tool: ${json.tool}`, {
-          toolCalls: [
-            {
-              tool_call_id: json.id || `tool-${Date.now()}`,
-              function_name: json.tool,
-              arguments: json.input,
-            },
-          ],
-        });
-      } catch {
-        // Ignore parse errors
-      }
-    } else if (text.startsWith("[TOOL_RESULT]")) {
-      try {
-        const json = JSON.parse(text.replace("[TOOL_RESULT] ", "").trim());
-        trajectoryBuilder.addToolResult(
-          json.tool_result,
-          json.content,
-          json.is_error
-        );
-      } catch {
-        // Ignore parse errors
-      }
-    } else if (text.startsWith("[RESULT]")) {
-      try {
-        const json = JSON.parse(text.replace("[RESULT] ", "").trim());
-        if (json.usage) {
-          trajectoryBuilder.addStep("system", "Session result", {
-            metrics: {
-              prompt_tokens: json.usage.input_tokens,
-              completion_tokens: json.usage.output_tokens,
-              cost_usd: json.cost_usd,
-            },
-          });
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    }
-  };
 
   console.log(`\n=== Terminal-Bench Run ===`);
   console.log(`Instruction: ${args.instruction.slice(0, 100)}...`);
-  console.log(`Model: ${modelName}`);
   console.log(`Output: ${args.outputDir}`);
   console.log(`CWD: ${args.cwd || process.cwd()}`);
+  console.log(`Timeout: ${args.timeout || 3600}s`);
   console.log(`ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "set" : "not set"}`);
   console.log(`ANTHROPIC_OAUTH_TOKEN: ${process.env.ANTHROPIC_OAUTH_TOKEN ? "set (" + process.env.ANTHROPIC_OAUTH_TOKEN.slice(0, 20) + "...)" : "not set"}`);
-
-  // Test claude CLI availability
-  try {
-    const whichClaude = Bun.spawnSync(["which", "claude"]);
-    console.log(`Claude CLI: ${whichClaude.stdout.toString().trim() || "not found"}`);
-    const claudeVersion = Bun.spawnSync(["claude", "--version"], { stderr: "pipe" });
-    console.log(`Claude version: ${claudeVersion.stdout.toString().trim() || claudeVersion.stderr.toString().trim()}`);
-    // Test direct claude CLI call
-    console.log(`Testing direct claude call...`);
-    const testProc = Bun.spawnSync(["claude", "--print", "-p", "Say hello"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env },
-    });
-    console.log(`Claude test stdout: ${testProc.stdout.toString().slice(0, 500)}`);
-    console.log(`Claude test stderr: ${testProc.stderr.toString().slice(0, 500)}`);
-    console.log(`Claude test exit: ${testProc.exitCode}`);
-  } catch (e) {
-    console.log(`Claude CLI check failed: ${e}`);
-  }
   console.log(`===========================\n`);
 
-  let result;
-  try {
-    result = await runClaudeCodeSubagent(subtask, {
-      cwd: args.cwd || process.cwd(),
-      maxTurns: 300,
-      permissionMode: "bypassPermissions",
-      timeoutMs: (args.timeout || 3600) * 1000,
-      onEvent,
-      onOutput,
-    });
+  // Output handler
+  const onOutput = (text: string): void => {
+    process.stdout.write(text);
+  };
 
-    eventRecorder.record("run_complete", {
-      success: result.success,
-      turns: result.turns,
-      filesModified: result.filesModified,
-      error: result.error,
-    });
+  // Run Claude CLI
+  const result = await runClaudeCli(args.instruction, {
+    cwd: args.cwd || process.cwd(),
+    timeout: args.timeout || 3600,
+    onOutput,
+  });
 
-    // Add final agent response to trajectory
-    if (result.success) {
-      trajectoryBuilder.addStep(
-        "agent",
-        `Task completed successfully. Modified ${result.filesModified.length} files.`
-      );
-    } else {
-      trajectoryBuilder.addStep("system", `Task failed: ${result.error || "Unknown error"}`);
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : "";
-    console.error(`\n=== ERROR ===`);
-    console.error(`Message: ${errorMessage}`);
-    console.error(`Stack: ${errorStack}`);
-    console.error(`Full error: ${JSON.stringify(error, null, 2)}`);
-    console.error(`=============\n`);
-    eventRecorder.record("run_error", { error: errorMessage, stack: errorStack });
-    trajectoryBuilder.addStep("system", `Execution error: ${errorMessage}`);
+  eventRecorder.record("run_complete", {
+    success: result.success,
+    turns: result.turns,
+    error: result.error,
+  });
 
-    result = {
-      success: false,
-      subtaskId: sessionId,
-      filesModified: [],
-      error: errorMessage,
-      turns: 0,
-      agent: "claude-code" as const,
-    };
+  // Add final response to trajectory
+  if (result.success) {
+    trajectoryBuilder.addStep("agent", "Task completed successfully.");
+  } else {
+    trajectoryBuilder.addStep("system", `Task failed: ${result.error || "Unknown error"}`);
   }
 
   const endTime = Date.now();
@@ -432,18 +399,14 @@ const main = async (): Promise<void> => {
   const durationMs = endTime - startTime;
 
   // Build trajectory
-  const trajectory = trajectoryBuilder.build(result.success);
-
-  // Extract token usage from Claude Code session metadata
-  const usage = result.sessionMetadata?.usage;
-  const inputTokens = usage?.inputTokens || 0;
-  const outputTokens = usage?.outputTokens || 0;
-  const cacheReadTokens = usage?.cacheReadInputTokens || 0;
-  const cacheCreationTokens = usage?.cacheCreationInputTokens || 0;
+  const trajectory = trajectoryBuilder.build(result.success, {
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    costUsd: result.costUsd,
+  });
 
   // Build metrics
   const metrics: TBenchMetrics = {
-    model: modelName,
     instruction: args.instruction,
     success: result.success,
     startTime: startTimeIso,
@@ -451,36 +414,28 @@ const main = async (): Promise<void> => {
     durationMs,
     turns: result.turns,
     tokens: {
-      input: inputTokens,
-      output: outputTokens,
-      cacheRead: cacheReadTokens,
-      cacheCreation: cacheCreationTokens,
-      total: inputTokens + outputTokens,
+      input: result.inputTokens,
+      output: result.outputTokens,
+      cacheRead: result.cacheReadTokens,
+      cacheCreation: result.cacheCreationTokens,
+      total: result.inputTokens + result.outputTokens,
     },
-    cost: result.sessionMetadata?.totalCostUsd,
-    filesModified: result.filesModified,
-    toolsUsed: result.sessionMetadata?.toolsUsed || toolsUsed,
+    cost: result.costUsd,
     error: result.error,
   };
 
   // Write output files
-  writeFileSync(
-    join(args.outputDir, "trajectory.json"),
-    JSON.stringify(trajectory, null, 2)
-  );
-  writeFileSync(
-    join(args.outputDir, "metrics.json"),
-    JSON.stringify(metrics, null, 2)
-  );
+  writeFileSync(join(args.outputDir, "trajectory.json"), JSON.stringify(trajectory, null, 2));
+  writeFileSync(join(args.outputDir, "metrics.json"), JSON.stringify(metrics, null, 2));
 
   console.log(`\n=== Run Complete ===`);
   console.log(`Success: ${result.success}`);
   console.log(`Turns: ${result.turns}`);
   console.log(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
-  console.log(`Tokens: ${inputTokens} in / ${outputTokens} out${cacheReadTokens ? ` (${cacheReadTokens} cache read)` : ""}`);
+  console.log(`Tokens: ${result.inputTokens} in / ${result.outputTokens} out`);
   if (metrics.cost) console.log(`Cost: $${metrics.cost.toFixed(4)}`);
-  console.log(`Files Modified: ${result.filesModified.length}`);
   console.log(`Output: ${args.outputDir}`);
+  if (result.error) console.log(`Error: ${result.error}`);
   console.log(`====================\n`);
 
   // Exit with appropriate code
