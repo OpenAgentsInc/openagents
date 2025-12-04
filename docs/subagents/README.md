@@ -11,6 +11,9 @@ Orchestrator (MechaCoder)
     │   ├── Claude Code (complex, multi-file changes)
     │   └── Minimal Subagent (simple, focused edits)
     │
+    ├── Knowledge Subagents (acquire & organize information)
+    │   └── Researcher (paper discovery & summarization)
+    │
     └── System Subagents (maintain agent ecosystem)
         ├── Healer (recovery & self-repair)
         ├── Archivist (learning & memory)
@@ -22,6 +25,21 @@ Orchestrator (MechaCoder)
 All subagent trajectories are captured via ATIF and can be linked via `subagent_trajectory_ref` for full traceability.
 
 ## Detailed Specs
+
+### [Researcher](./researcher.md)
+
+A knowledge acquisition subagent that automates academic paper discovery, retrieval, and summarization to feed the project's research-driven development process.
+
+**Key features:**
+- Parse analysis docs for paper requests (tables, prose sections)
+- Search and retrieve papers via Claude Code's WebSearch/WebFetch
+- Generate structured summaries following project conventions
+- Track paper status in `papers.jsonl` registry
+- Integrate with task system for traceability
+
+**Triggers:** CLI commands (`researcher:search`, `researcher:auto`, etc.)
+
+---
 
 ### [Healer](./healer.md)
 
@@ -93,6 +111,7 @@ A comprehensive catalog of 21 additional subagent ideas organized by function:
 
 | Category | Subagents |
 |----------|-----------|
+| **Knowledge Acquisition** | [Researcher](./researcher.md) (full spec) |
 | **Discovery & Understanding** | Scout, Cartographer, Librarian |
 | **Planning & Strategy** | Strategist, Tactician |
 | **Quality & Tests** | Testsmith, Refactorer, Stylist |
