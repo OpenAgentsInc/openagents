@@ -606,6 +606,24 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   const projectConfig = loadedConfig ?? defaultProjectConfig;
   log(`Project: ${projectConfig.projectId}`);
 
+  // Pre-flight typecheck on main repo before spawning worktrees
+  const preflightTypecheck = projectConfig.typecheckCommands ?? [];
+  if (preflightTypecheck.length > 0) {
+    log("[Preflight] Running typecheck before creating worktrees...");
+    const tcResult = await runTypecheck(config.workDir, preflightTypecheck);
+    if (!tcResult.success) {
+      log("[Preflight] ❌ Typecheck failed; aborting parallel run to avoid duplicate failures");
+      if (tcResult.error) {
+        tcResult.error
+          .split("\n")
+          .slice(0, 10)
+          .forEach((line) => log(`[Preflight]   ${line}`));
+      }
+      return { tasksCompleted: 0, sessionId };
+    }
+    log("[Preflight] ✅ Typecheck passed");
+  }
+
   // Load ready tasks
   const tasksPath = path.join(openagentsDir, "tasks.jsonl");
   const allTasks = await Effect.runPromise(
