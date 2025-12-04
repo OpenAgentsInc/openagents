@@ -36,6 +36,23 @@ const generateTestTaskId = () =>
 const runEffect = <A>(effect: Effect.Effect<A, any, never>): Promise<A> =>
   Effect.runPromise(effect);
 
+/**
+ * Detect if we're running inside a git worktree.
+ * When running in a worktree, the .git is a file (not directory) pointing to the main repo.
+ * IMPORTANT: Prune tests must be skipped when in a worktree because they would delete
+ * OTHER parallel agents' worktrees (since git worktree list shows all worktrees from main repo).
+ */
+const isInsideWorktree = (): boolean => {
+  const gitPath = path.join(TEST_REPO, ".git");
+  try {
+    const stat = fs.statSync(gitPath);
+    // In a worktree, .git is a file. In main repo, .git is a directory.
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -256,6 +273,13 @@ describe("Worktree List and Prune", () => {
   });
 
   test("prune removes stale worktrees", async () => {
+    // SKIP when running inside a worktree - pruneStaleWorktrees would delete
+    // OTHER parallel agents' worktrees since git shows all worktrees from main repo
+    if (isInsideWorktree()) {
+      console.log("Skipping prune test - running inside worktree");
+      return;
+    }
+
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -274,6 +298,13 @@ describe("Worktree List and Prune", () => {
   });
 
   test("prune removes orphan directories not registered as worktrees", async () => {
+    // SKIP when running inside a worktree - pruneStaleWorktrees would interfere
+    // with other parallel agents' worktrees
+    if (isInsideWorktree()) {
+      console.log("Skipping orphan prune test - running inside worktree");
+      return;
+    }
+
     const activeConfig: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
