@@ -186,6 +186,8 @@ function startTBRunProcess(options: TBRunOptions): { runId: string } {
 
   console.log(`[TB] Starting run ${runId}:`, args.join(" "));
   console.log(`[TB] Project root: ${PROJECT_ROOT}`);
+  console.log(`[TB] HOME: ${process.env.HOME ?? Bun.env.HOME ?? "NOT SET"}`);
+  console.log(`[TB] PATH exists: ${!!(process.env.PATH ?? Bun.env.PATH)}`);
 
   // Spawn subprocess from project root
   // Explicitly pass environment so Claude CLI auth is available
