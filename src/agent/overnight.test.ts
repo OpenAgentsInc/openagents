@@ -264,7 +264,7 @@ describe("overnight.ts cleanup guardrails", () => {
     });
 
     test("aggressive cleanup removes untracked when deleteUntrackedFiles=true", () => {
-      const { dir, openagentsDir } = createTestRepo("aggressive-cleanup");
+      const { dir } = createTestRepo("aggressive-cleanup");
 
       // Simulate a failed subtask leaving broken files
       fs.writeFileSync(path.join(dir, "README.md"), "# Broken!\n");
