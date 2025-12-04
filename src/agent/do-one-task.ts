@@ -40,11 +40,12 @@ import {
   writeSessionEnd,
   getSessionPath,
 } from "./session.js";
-import { runOrchestrator, type OrchestratorEvent, type OrchestratorState } from "./orchestrator/index.js";
+import { runOrchestrator, type OrchestratorEvent, runClaudeCodeSubagent } from "./orchestrator/index.js";
 import { createHudCallbacks } from "../hud/index.js";
-import { createBasicHealerService } from "../healer/service.js";
+import type { Subtask } from "./orchestrator/types.js";
+import { createHealerService } from "../healer/service.js";
 import { createHealerCounters } from "../healer/types.js";
-import type { HealerOutcome } from "../healer/types.js";
+import type { ProjectConfig } from "../tasks/schema.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
 
@@ -735,35 +736,75 @@ const doOneTaskOrchestrator = (config: Config) =>
   Effect.gen(function* () {
     const openagentsDir = nodePath.join(config.workDir, ".openagents");
 
-    // Load project config with defaults
-    const defaultConfig = {
+    // Load project config with defaults using Schema decoders
+    const defaultConfig: ProjectConfig = {
+      version: 1,
       projectId: "unknown",
       defaultBranch: "main",
-      testCommands: ["bun test"],
+      defaultModel: "x-ai/grok-4.1-fast:free",
+      rootDir: ".",
       typecheckCommands: ["bun run typecheck"],
+      testCommands: ["bun test"],
+      e2eCommands: [],
       allowPush: true,
+      allowForcePush: false,
+      maxTasksPerRun: 3,
+      maxRuntimeMinutes: 240,
+      idPrefix: "oa",
+      sessionDir: ".openagents/sessions",
+      runLogDir: ".openagents/run-logs",
       claudeCode: {
         enabled: true,
         preferForComplexTasks: true,
+        maxTurnsPerSubtask: 50,
+        permissionMode: "bypassPermissions",
         fallbackToMinimal: true,
+      },
+      sandbox: {
+        enabled: false,
+        backend: "auto",
+        timeoutMs: 300_000,
+      },
+      parallelExecution: {
+        enabled: false,
+        maxAgents: 2,
+        worktreeTimeout: 30 * 60 * 1000,
+        useContainers: false,
+        mergeStrategy: "auto",
+        mergeThreshold: 4,
+        prThreshold: 50,
+      },
+      trajectory: {
+        enabled: false,
+        retentionDays: 30,
+        maxSizeGB: 5,
+        includeToolArgs: true,
+        includeToolResults: true,
+        directory: "trajectories",
+      },
+      healer: {
+        enabled: false,
+        maxInvocationsPerSession: 2,
+        maxInvocationsPerSubtask: 1,
+        scenarios: {
+          onInitFailure: true,
+          onVerificationFailure: true,
+          onSubtaskFailure: true,
+          onRuntimeError: true,
+          onStuckSubtask: false,
+        },
+        spells: {
+          allowed: [],
+          forbidden: [],
+        },
+        mode: "conservative",
+        stuckThresholdHours: 2,
       },
     };
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
-      Effect.catchAll((error) => {
-        console.log("[DEBUG] loadProjectConfig error type:", typeof error);
-        console.log("[DEBUG] loadProjectConfig error:", JSON.stringify(error, null, 2));
-        console.log("[DEBUG] loadProjectConfig error message:", error?.message);
-        console.log("[DEBUG] loadProjectConfig error reason:", error?.reason);
-        return Effect.succeed(null);
-      })
+      Effect.catchAll(() => Effect.succeed(null))
     );
-    console.log("[DEBUG] loadedConfig:", loadedConfig ? "loaded successfully" : "NULL (using defaults)");
     const projectConfig = loadedConfig ?? defaultConfig;
-
-    // DEBUG: Log what's in projectConfig
-    console.log("[DEBUG] projectConfig keys:", Object.keys(projectConfig));
-    console.log("[DEBUG] projectConfig.healer:", projectConfig.healer);
-    console.log("[DEBUG] 'healer' in projectConfig:", "healer" in projectConfig);
 
     console.log("=".repeat(60));
     console.log("DO ONE TASK - Orchestrator Mode (Claude Code primary)");
@@ -778,17 +819,45 @@ const doOneTaskOrchestrator = (config: Config) =>
     // These silently fail if the HUD isn't running
     const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
-    // Initialize Healer subagent for self-healing
+    // Initialize Healer service with LLM capabilities
     const healerCounters = createHealerCounters();
-    const healerEvents: Array<{ type: string; data: unknown }> = [];
-    const healerService = createBasicHealerService((event) => {
-      healerEvents.push({ type: event.type, data: event });
-      const ts = new Date().toISOString();
-      console.log(`[${ts}] [HEALER] ${event.type}`, event);
-    });
 
-    // Track the orchestrator state so Healer can access it
-    let currentState: OrchestratorState | null = null;
+    // Adapter: Wrap runClaudeCodeSubagent for Healer
+    const claudeCodeInvoker = async (subtask: Subtask, options: any) => {
+      return await runClaudeCodeSubagent(subtask, {
+        cwd: config.workDir,
+        openagentsDir,
+        maxTurns: options.maxTurns ?? 50,
+        permissionMode: options.permissionMode ?? "bypassPermissions",
+        onOutput: options.onOutput ?? ((text: string) => process.stdout.write(text)),
+        signal: options.signal,
+      });
+    };
+
+    // Adapter: Run typecheck commands for verification
+    const verificationRunner = async (cwd: string) => {
+      const typecheckCommands = projectConfig.typecheckCommands ?? ["bun run typecheck"];
+      try {
+        const result = await Bun.spawn(typecheckCommands[0]!.split(" "), {
+          cwd,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const output = await new Response(result.stdout).text();
+        const success = result.exitCode === 0;
+        return { success, output };
+      } catch (error: any) {
+        return { success: false, output: error.message };
+      }
+    };
+
+    // Create full Healer service
+    const healerService = createHealerService({
+      claudeCodeInvoker,
+      verificationRunner,
+      onOutput: (text: string) => process.stdout.write(text),
+      openagentsDir,
+    });
 
     // Event handler for logging (also forwards to HUD)
     const logOrchestratorEvent = (event: OrchestratorEvent) => {
@@ -830,56 +899,10 @@ const doOneTaskOrchestrator = (config: Config) =>
       }
     };
 
-    // Wrap emit to send orchestrator events to both log, HUD, and Healer
+    // Wrap emit to send orchestrator events to both log and HUD
     const emit = (event: OrchestratorEvent) => {
       logOrchestratorEvent(event);
       hudEmit(event);
-
-      // DEBUG: Log all events
-      const ts = new Date().toISOString();
-      console.log(`[${ts}] [DEBUG] Event received: ${event.type}`);
-      if (event.type === "init_script_complete") {
-        console.log(`[${ts}] [DEBUG] init_script_complete event:`, JSON.stringify(event, null, 2));
-      }
-
-      // Update tracked state from events
-      if (event.type === "session_start") {
-        currentState = {
-          sessionId: event.sessionId,
-          phase: "orienting",
-          task: null,
-          subtasks: null,
-          progress: null,
-        };
-        console.log(`[${ts}] [DEBUG] Current state initialized:`, currentState);
-      }
-
-      // DEBUG: Log Healer condition checks
-      console.log(`[${ts}] [DEBUG] Healer checks - currentState: ${!!currentState}, healer in config: ${"healer" in projectConfig}, enabled: ${projectConfig.healer?.enabled !== false}`);
-
-      // Invoke Healer for self-healing on errors
-      if (currentState && "healer" in projectConfig && projectConfig.healer?.enabled !== false) {
-        console.log(`[${ts}] [DEBUG] Calling healer.maybeRun for event: ${event.type}`);
-        Effect.runPromise(
-          healerService.maybeRun(event, currentState, projectConfig as any, healerCounters).pipe(
-            Effect.provide(BunContext.layer)
-          )
-        ).then((outcome: HealerOutcome | null) => {
-          const ts2 = new Date().toISOString();
-          console.log(`[${ts2}] [DEBUG] Healer outcome:`, outcome);
-          if (outcome) {
-            console.log(`[${ts2}] [HEALER] Invoked for ${outcome.scenario}: ${outcome.status}`);
-            console.log(`[${ts2}] [HEALER] Spells tried: ${outcome.spellsTried.join(", ")}`);
-            console.log(`[${ts2}] [HEALER] Spells succeeded: ${outcome.spellsSucceeded.join(", ")}`);
-            console.log(`[${ts2}] [HEALER] Summary: ${outcome.summary}`);
-          }
-        }).catch((err) => {
-          const ts2 = new Date().toISOString();
-          console.error(`[${ts2}] [HEALER] Error:`, err);
-        });
-      } else {
-        console.log(`[${ts}] [DEBUG] Healer conditions not met`);
-      }
     };
 
     // Build claudeCode config, applying --cc-only override if specified
@@ -904,6 +927,10 @@ const doOneTaskOrchestrator = (config: Config) =>
         process.stdout.write(text);
         hudOnOutput(text);
       },
+      // Healer integration
+      healerService,
+      healerCounters,
+      projectConfig,
     };
     const state = yield* runOrchestrator(orchestratorConfig, emit);
 

@@ -5,8 +5,10 @@
  * - Orchestrator: Manages task selection, decomposition, verification, session coordination
  * - Subagent: Minimal coding agent that implements one subtask at a time
  */
-import type { Task, SandboxConfig } from "../../tasks/index.js";
+import type { Task, SandboxConfig, ProjectConfig } from "../../tasks/index.js";
 import type { Tool } from "../../tools/schema.js";
+import type { HealerOutcome, HealerCounters } from "../../healer/index.js";
+import type { Effect } from "effect";
 
 // ============================================================================
 // Subtask Types
@@ -206,6 +208,21 @@ export interface OrchestratorConfig {
   task?: Task;
   /** Force creating new subtasks instead of reading existing ones - used by parallel runner */
   forceNewSubtasks?: boolean;
+
+  // Healer integration (NEW)
+  /** Healer service for self-healing on failures */
+  healerService?: {
+    maybeRun: (
+      event: OrchestratorEvent,
+      state: OrchestratorState,
+      config: ProjectConfig,
+      counters: HealerCounters
+    ) => Effect.Effect<HealerOutcome | null, Error, never>;
+  };
+  /** Healer invocation counters (per-session, per-subtask limits) */
+  healerCounters?: HealerCounters;
+  /** Full project config (needed for Healer's policy decisions) */
+  projectConfig?: ProjectConfig;
 }
 
 export interface OrchestratorState {
