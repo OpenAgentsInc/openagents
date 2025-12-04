@@ -224,11 +224,9 @@ function stopTBRunProcess(): { stopped: boolean } {
  */
 async function loadRecentTBRunsFromDisk(count: number): Promise<TBRunHistoryItem[]> {
   const runsDir = join(PROJECT_ROOT, DEFAULT_TB_RUNS_DIR);
-  console.log(`[TB] Loading recent runs from: ${runsDir}`);
 
   try {
     const runs = await loadRecentRuns(count, runsDir);
-    console.log(`[TB] Loaded ${runs.length} run(s)`);
 
     return runs.map((run) => ({
       runId: run.runId,
@@ -323,11 +321,9 @@ const rpc = BrowserView.defineRPC<HudRpcSchema>({
         return stopTBRunProcess();
       },
       loadRecentTBRuns: async (count?: number) => {
-        console.log(`[TB] Loading recent runs (count: ${count ?? 20})`);
         return loadRecentTBRunsFromDisk(count ?? 20);
       },
       loadTBRunDetails: async (runId: string) => {
-        console.log(`[TB] Loading run details: ${runId}`);
         return loadTBRunDetailsFromDisk(runId);
       },
     },
