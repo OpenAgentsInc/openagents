@@ -134,6 +134,12 @@ export const ParallelExecutionConfig = S.Struct({
   maxAgents: S.optionalWith(S.Number, { default: () => 4 }),
   /** Timeout for each worktree in milliseconds */
   worktreeTimeout: S.optionalWith(S.Number, { default: () => 30 * 60 * 1000 }),
+  /** Timeout for dependency installation in milliseconds (default: 15 minutes) */
+  installTimeoutMs: S.optionalWith(S.Number, { default: () => 15 * 60 * 1000 }),
+  /** Extra args to pass to bun install (e.g., --frozen-lockfile) */
+  installArgs: S.optionalWith(S.Array(S.String), {
+    default: () => ["--frozen-lockfile"] as string[],
+  }),
   /** Run agents in containers for additional isolation */
   useContainers: S.optionalWith(S.Boolean, { default: () => false }),
   /** Merge strategy: auto (select based on count), direct, queue, or pr */
