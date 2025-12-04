@@ -76,3 +76,5 @@ test-results/
 results
 
 docs/local/
+
+.osgrep
