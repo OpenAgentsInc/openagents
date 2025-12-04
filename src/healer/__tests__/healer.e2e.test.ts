@@ -8,80 +8,55 @@
  * 4. Healer respects invocation limits
  * 5. Healer never commits if tests still failing
  */
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
 import {
-  createHealerService,
   createBasicHealerService,
   createFullHealerService,
 } from "../service.js";
-import type { HealerEvent, HealerServiceOptions } from "../service.js";
+import type { HealerEvent } from "../service.js";
 import { createHealerCounters } from "../types.js";
-import type { HealerCounters, HealerScenario } from "../types.js";
 import type { OrchestratorEvent, OrchestratorState, Subtask } from "../../agent/orchestrator/types.js";
 import type { ProjectConfig, HealerConfig } from "../../tasks/schema.js";
 import type { ClaudeCodeInvoker, VerificationRunner } from "../spells/typecheck.js";
+import {
+  createMockProjectConfig,
+  createMockOrchestratorState,
+  createMockSubtask as createTestSubtask,
+} from "./test-helpers.js";
 
 // ============================================================================
 // Test Fixtures
 // ============================================================================
 
-const createMockState = (overrides: Partial<OrchestratorState> = {}): OrchestratorState => ({
-  sessionId: `session-${Date.now()}`,
-  phase: "executing",
-  subtasks: {
-    taskId: "task-123",
-    taskTitle: "Test Task",
-    subtasks: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  ...overrides,
-});
+const createMockState = (overrides: Partial<OrchestratorState> = {}): OrchestratorState =>
+  createMockOrchestratorState(overrides);
 
-const createMockConfig = (healerOverrides: Partial<HealerConfig> = {}): ProjectConfig => ({
-  version: 1,
-  projectId: "test-project",
-  defaultBranch: "main",
-  defaultModel: "grok-4.1-fast",
-  rootDir: "/tmp/test-project",
-  typecheckCommands: ["bun run tsc --noEmit"],
-  testCommands: ["bun test"],
-  e2eCommands: [],
-  buildCommands: [],
-  initScript: "",
-  allowPush: false,
-  allowForcePush: false,
-  maxTasksPerRun: 5,
-  maxRuntimeMinutes: 60,
-  maxTurnsPerSubtask: 100,
-  healer: {
-    enabled: true,
-    maxInvocationsPerSession: 5,
-    maxInvocationsPerSubtask: 3,
-    scenarios: {
-      onInitFailure: true,
-      onVerificationFailure: true,
-      onSubtaskFailure: true,
-      onRuntimeError: true,
-      onStuckSubtask: false,
+const createMockConfig = (healerOverrides: Partial<HealerConfig> = {}): ProjectConfig =>
+  createMockProjectConfig({
+    healer: {
+      enabled: true,
+      maxInvocationsPerSession: 5,
+      maxInvocationsPerSubtask: 3,
+      mode: "conservative",
+      stuckThresholdHours: 2,
+      scenarios: {
+        onInitFailure: true,
+        onVerificationFailure: true,
+        onSubtaskFailure: true,
+        onRuntimeError: true,
+        onStuckSubtask: false,
+      },
+      spells: {
+        allowed: [],
+        forbidden: [],
+      },
+      ...healerOverrides,
     },
-    spells: {
-      allowed: [],
-      forbidden: [],
-    },
-    ...healerOverrides,
-  },
-});
+  });
 
-const createMockSubtask = (overrides: Partial<Subtask> = {}): Subtask => ({
-  id: `subtask-${Date.now()}`,
-  description: "Test subtask",
-  status: "in_progress",
-  startedAt: new Date().toISOString(),
-  failureCount: 0,
-  ...overrides,
-});
+const createMockSubtask = (overrides: Partial<Subtask> = {}): Subtask =>
+  createTestSubtask(overrides);
 
 // ============================================================================
 // Scenario 1: Init Typecheck Failure -> Healer Fixes -> Continue
@@ -474,11 +449,9 @@ describe("Scenario 5: No commit if tests still failing", () => {
       expect(typecheckSpellComplete.result.changesApplied).toBe(true);
     }
 
-    // The outcome spellsExecuted should show the fix spell failed
-    const fixSpellResult = outcome?.spellsExecuted.find(
-      s => s.spellId === "fix_typecheck_errors"
-    );
-    expect(fixSpellResult?.result.success).toBe(false);
+    // Verify that the spell was tried but did not succeed
+    expect(outcome?.spellsTried).toContain("fix_typecheck_errors");
+    expect(outcome?.spellsSucceeded).not.toContain("fix_typecheck_errors");
   });
 });
 
@@ -516,7 +489,7 @@ describe("Additional scenarios", () => {
 
     const event: OrchestratorEvent = {
       type: "subtask_complete",
-      subtask: createMockSubtask({ status: "completed" }),
+      subtask: createMockSubtask({ status: "done" }),
       result: {
         success: true,
         subtaskId: "test",
