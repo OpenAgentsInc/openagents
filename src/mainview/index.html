@@ -16,6 +16,31 @@
     <button id="reset-btn" title="Reset View">Reset</button>
     <span id="zoom-level">100%</span>
   </div>
+
+  <!-- TB Run Controls -->
+  <div id="tb-controls">
+    <div class="tb-controls-header">
+      <span class="tb-label">Terminal-Bench</span>
+      <span id="tb-status" class="tb-status">Ready</span>
+    </div>
+    <div class="tb-controls-body">
+      <input type="text" id="tb-suite-path" placeholder="Suite path..." value="./tasks/terminal-bench.json">
+      <div class="tb-buttons">
+        <button id="tb-load-btn" title="Load Suite (Ctrl+L)">Load</button>
+        <button id="tb-start-btn" title="Start Run (Ctrl+T)" class="primary">Start</button>
+        <button id="tb-stop-btn" title="Stop Run (Ctrl+X)" class="danger" disabled>Stop</button>
+      </div>
+    </div>
+    <div id="tb-task-selector" class="tb-task-selector hidden">
+      <div class="tb-task-header">
+        <span id="tb-suite-name">No suite loaded</span>
+        <button id="tb-select-all" class="small">All</button>
+        <button id="tb-select-none" class="small">None</button>
+      </div>
+      <div id="tb-task-list" class="tb-task-list"></div>
+    </div>
+  </div>
+
   <script type="module" src="index.js"></script>
 </body>
 

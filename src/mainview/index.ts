@@ -376,6 +376,11 @@ function handleHudMessage(message: HudMessage): void {
       totalDurationMs: 0,
     }
     render()
+    // Sync UI controls (elements set later, safe at runtime)
+    document.getElementById("tb-status")!.textContent = "Running..."
+    document.getElementById("tb-status")!.className = "tb-status running"
+    ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = true
+    ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = false
     return
   }
 
@@ -431,6 +436,11 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentTaskId = null
     tbState.currentPhase = null
     render()
+    // Sync UI controls
+    document.getElementById("tb-status")!.textContent = `Done ${(message.passRate * 100).toFixed(0)}%`
+    document.getElementById("tb-status")!.className = "tb-status"
+    ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = false
+    ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = true
     return
   }
 
@@ -502,6 +512,22 @@ const container = document.getElementById("flow-container")!
 const svg = document.getElementById("flow-svg")!
 const resetBtn = document.getElementById("reset-btn")!
 const zoomLevel = document.getElementById("zoom-level")!
+
+// TB Control DOM elements
+const tbSuitePathInput = document.getElementById("tb-suite-path") as HTMLInputElement
+const tbLoadBtn = document.getElementById("tb-load-btn")!
+const tbStartBtn = document.getElementById("tb-start-btn")!
+const tbStopBtn = document.getElementById("tb-stop-btn")!
+const tbStatus = document.getElementById("tb-status")!
+const tbTaskSelector = document.getElementById("tb-task-selector")!
+const tbSuiteName = document.getElementById("tb-suite-name")!
+const tbTaskList = document.getElementById("tb-task-list")!
+const tbSelectAll = document.getElementById("tb-select-all")!
+const tbSelectNone = document.getElementById("tb-select-none")!
+
+// TB UI State
+let loadedSuite: TBSuiteInfo | null = null
+let selectedTaskIds: Set<string> = new Set()
 
 // Initialize canvas state with viewport size
 let canvasState = initialCanvasState(window.innerWidth, window.innerHeight)
@@ -662,7 +688,7 @@ void electrobunInstance // Keep reference to avoid GC
 // ============================================================================
 
 /** Load a TB suite and populate the task list */
-async function loadTBSuite(suitePath: string): Promise<TBSuiteInfo> {
+async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
   console.log("[TB] Loading suite:", suitePath)
   const suiteInfo = await rpc.request.loadTBSuite(suitePath)
   console.log("[TB] Suite loaded:", suiteInfo.name, `(${suiteInfo.tasks.length} tasks)`)
@@ -670,7 +696,7 @@ async function loadTBSuite(suitePath: string): Promise<TBSuiteInfo> {
 }
 
 /** Start a TB run with the given options */
-async function startTBRun(options: TBRunOptions): Promise<string> {
+async function startTBRunRpc(options: TBRunOptions): Promise<string> {
   console.log("[TB] Starting run:", options)
   const { runId } = await rpc.request.startTBRun(options)
   console.log("[TB] Run started:", runId)
@@ -678,29 +704,218 @@ async function startTBRun(options: TBRunOptions): Promise<string> {
 }
 
 /** Stop the current TB run */
-async function stopTBRun(): Promise<boolean> {
+async function stopTBRunRpc(): Promise<boolean> {
   console.log("[TB] Stopping run")
   const { stopped } = await rpc.request.stopTBRun()
   console.log("[TB] Stopped:", stopped)
   return stopped
 }
 
+// ============================================================================
+// TB UI Control Handlers
+// ============================================================================
+
+function updateTBStatus(status: string, className?: string): void {
+  tbStatus.textContent = status
+  tbStatus.className = "tb-status" + (className ? ` ${className}` : "")
+}
+
+function updateTBButtons(isRunning: boolean): void {
+  tbStartBtn.disabled = isRunning
+  tbStopBtn.disabled = !isRunning
+  tbLoadBtn.disabled = isRunning
+  tbSuitePathInput.disabled = isRunning
+}
+
+function renderTaskList(suite: TBSuiteInfo): void {
+  tbTaskList.innerHTML = ""
+  selectedTaskIds.clear()
+
+  for (const task of suite.tasks) {
+    selectedTaskIds.add(task.id) // Select all by default
+
+    const item = document.createElement("label")
+    item.className = "tb-task-item"
+    item.innerHTML = `
+      <input type="checkbox" data-task-id="${task.id}" checked>
+      <span class="task-name" title="${task.name}">${task.name}</span>
+      <span class="task-difficulty ${task.difficulty}">${task.difficulty}</span>
+    `
+
+    const checkbox = item.querySelector("input")!
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        selectedTaskIds.add(task.id)
+      } else {
+        selectedTaskIds.delete(task.id)
+      }
+    })
+
+    tbTaskList.appendChild(item)
+  }
+
+  tbSuiteName.textContent = `${suite.name} (${suite.tasks.length} tasks)`
+  tbTaskSelector.classList.remove("hidden")
+}
+
+async function handleLoadSuite(): Promise<void> {
+  const suitePath = tbSuitePathInput.value.trim()
+  if (!suitePath) {
+    updateTBStatus("No path", "error")
+    return
+  }
+
+  try {
+    updateTBStatus("Loading...")
+    const suite = await loadTBSuiteRpc(suitePath)
+    loadedSuite = suite
+    renderTaskList(suite)
+    updateTBStatus("Ready")
+  } catch (err) {
+    console.error("[TB] Load failed:", err)
+    updateTBStatus("Load failed", "error")
+    loadedSuite = null
+    tbTaskSelector.classList.add("hidden")
+  }
+}
+
+async function handleStartRun(): Promise<void> {
+  const suitePath = tbSuitePathInput.value.trim()
+  if (!suitePath) {
+    updateTBStatus("No path", "error")
+    return
+  }
+
+  // Get selected task IDs (or all if none selected)
+  const taskIds = selectedTaskIds.size > 0 ? Array.from(selectedTaskIds) : undefined
+
+  try {
+    updateTBStatus("Starting...", "running")
+    updateTBButtons(true)
+
+    await startTBRunRpc({
+      suitePath,
+      taskIds,
+    })
+
+    updateTBStatus("Running...", "running")
+  } catch (err) {
+    console.error("[TB] Start failed:", err)
+    updateTBStatus("Start failed", "error")
+    updateTBButtons(false)
+  }
+}
+
+async function handleStopRun(): Promise<void> {
+  try {
+    updateTBStatus("Stopping...")
+    const stopped = await stopTBRunRpc()
+
+    if (stopped) {
+      updateTBStatus("Stopped")
+    } else {
+      updateTBStatus("No active run")
+    }
+    updateTBButtons(false)
+  } catch (err) {
+    console.error("[TB] Stop failed:", err)
+    updateTBStatus("Stop failed", "error")
+    updateTBButtons(false)
+  }
+}
+
+function handleSelectAll(): void {
+  const checkboxes = tbTaskList.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
+  checkboxes.forEach(cb => {
+    cb.checked = true
+    const taskId = cb.dataset.taskId
+    if (taskId) selectedTaskIds.add(taskId)
+  })
+}
+
+function handleSelectNone(): void {
+  const checkboxes = tbTaskList.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
+  checkboxes.forEach(cb => {
+    cb.checked = false
+    const taskId = cb.dataset.taskId
+    if (taskId) selectedTaskIds.delete(taskId)
+  })
+}
+
+// Wire up button event handlers
+tbLoadBtn.addEventListener("click", handleLoadSuite)
+tbStartBtn.addEventListener("click", handleStartRun)
+tbStopBtn.addEventListener("click", handleStopRun)
+tbSelectAll.addEventListener("click", handleSelectAll)
+tbSelectNone.addEventListener("click", handleSelectNone)
+
+// Update UI when TB state changes (from HUD messages)
+function syncTBUIWithState(): void {
+  if (tbState.isRunning) {
+    updateTBStatus("Running...", "running")
+    updateTBButtons(true)
+  } else if (tbState.passRate > 0) {
+    updateTBStatus(`Done ${(tbState.passRate * 100).toFixed(0)}%`)
+    updateTBButtons(false)
+  }
+}
+
+// ============================================================================
+// Keyboard Shortcuts
+// ============================================================================
+
+document.addEventListener("keydown", (e) => {
+  // Ignore if typing in input
+  if (e.target instanceof HTMLInputElement) return
+
+  // Ctrl+L: Load suite
+  if (e.ctrlKey && e.key === "l") {
+    e.preventDefault()
+    handleLoadSuite()
+    return
+  }
+
+  // Ctrl+T: Start run
+  if (e.ctrlKey && e.key === "t") {
+    e.preventDefault()
+    if (!tbState.isRunning) {
+      handleStartRun()
+    }
+    return
+  }
+
+  // Ctrl+X: Stop run (when not in input)
+  if (e.ctrlKey && e.key === "x") {
+    e.preventDefault()
+    if (tbState.isRunning) {
+      handleStopRun()
+    }
+    return
+  }
+})
+
 // Expose for console access during development
 declare global {
   interface Window {
     TB: {
-      loadSuite: typeof loadTBSuite
-      startRun: typeof startTBRun
-      stopRun: typeof stopTBRun
+      loadSuite: typeof loadTBSuiteRpc
+      startRun: typeof startTBRunRpc
+      stopRun: typeof stopTBRunRpc
+      handleLoad: typeof handleLoadSuite
+      handleStart: typeof handleStartRun
+      handleStop: typeof handleStopRun
     }
   }
 }
 
 window.TB = {
-  loadSuite: loadTBSuite,
-  startRun: startTBRun,
-  stopRun: stopTBRun,
+  loadSuite: loadTBSuiteRpc,
+  startRun: startTBRunRpc,
+  stopRun: stopTBRunRpc,
+  handleLoad: handleLoadSuite,
+  handleStart: handleStartRun,
+  handleStop: handleStopRun,
 }
 
 console.log("Flow HUD loaded with WebSocket support")
-console.log("TB controls available: window.TB.loadSuite(), window.TB.startRun(), window.TB.stopRun()")
+console.log("TB controls: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
