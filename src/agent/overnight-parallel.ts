@@ -247,18 +247,25 @@ const mergeToMain = async (
     // Check for uncommitted changes and stash them
     let result = await runGit(repoPath, ["status", "--porcelain"]);
     const hasChanges = result.stdout.trim().length > 0;
+    let stashSuccess = false;
     if (hasChanges) {
       // Stash any uncommitted changes (likely log files from parallel runs)
-      result = await runGit(repoPath, ["stash", "push", "-m", "parallel-merge-stash"]);
+      // Include untracked files to avoid stash failures on new log files
+      result = await runGit(repoPath, ["stash", "push", "--include-untracked", "-m", "parallel-merge-stash"]);
       if (result.exitCode !== 0) {
-        return { success: false, error: `Stash failed: ${result.stderr}` };
+        // Don't fail merge if stash fails - log and continue
+        // This prevents losing agent work due to stray log files
+        log(`⚠️  Warning: Could not stash uncommitted changes: ${result.stderr}`);
+        log(`⚠️  Continuing with merge anyway. Manual cleanup may be needed.`);
+      } else {
+        stashSuccess = true;
       }
     }
 
     // Checkout main
     result = await runGit(repoPath, ["checkout", "main"]);
     if (result.exitCode !== 0) {
-      if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
+      if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
       return { success: false, error: `Checkout main failed: ${result.stderr}` };
     }
 
@@ -267,7 +274,7 @@ const mergeToMain = async (
     if (result.exitCode !== 0) {
       result = await runGit(repoPath, ["pull", "--rebase", "origin", "main"]);
       if (result.exitCode !== 0) {
-        if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
+        if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Pull failed: ${result.stderr}` };
       }
     }
@@ -282,7 +289,7 @@ const mergeToMain = async (
 
       result = await runGit(repoPath, ["merge", "-m", mergeMessage, branch]);
       if (result.exitCode !== 0) {
-        if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
+        if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Merge failed: ${result.stderr}` };
       }
     }
@@ -294,12 +301,12 @@ const mergeToMain = async (
     // Push
     result = await runGit(repoPath, ["push", "origin", "main"]);
     if (result.exitCode !== 0) {
-      if (hasChanges) await runGit(repoPath, ["stash", "pop"]);
+      if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
       return { success: false, error: `Push failed: ${result.stderr}` };
     }
 
-    // Pop stash if we had changes
-    if (hasChanges) {
+    // Pop stash if we successfully stashed
+    if (stashSuccess) {
       await runGit(repoPath, ["stash", "pop"]);
     }
 
