@@ -10,6 +10,11 @@ import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import * as S from "effect/Schema";
 import type { BenchmarkResults, TaskMetrics } from "./metrics.js";
+import type {
+  TerminalBenchResult,
+  TerminalBenchResults,
+  TerminalBenchSuite,
+} from "./terminal-bench.js";
 
 // --- Comparison Schema ---
 
@@ -431,6 +436,129 @@ export const formatRunSummary = (results: BenchmarkResults): string => {
     );
   }
   lines.push("");
+
+  return lines.join("\n");
+};
+
+// --- Terminal-Bench Reporting ---
+
+export const TerminalBenchCategorySummary = S.Struct({
+  category: S.String,
+  total: S.Number,
+  passed: S.Number,
+  failed: S.Number,
+  timeout: S.Number,
+  error: S.Number,
+  skipped: S.Number,
+  passRate: S.Number,
+  avgDurationMs: S.Number,
+  avgTurns: S.Number,
+  totalTokens: S.Number,
+});
+export type TerminalBenchCategorySummary = S.Schema.Type<typeof TerminalBenchCategorySummary>;
+
+export const TerminalBenchReport = S.Struct({
+  suiteName: S.String,
+  suiteVersion: S.String,
+  model: S.String,
+  timestamp: S.String,
+  overall: TerminalBenchCategorySummary,
+  categories: S.Array(TerminalBenchCategorySummary),
+});
+export type TerminalBenchReport = S.Schema.Type<typeof TerminalBenchReport>;
+
+const computeTbSummary = (
+  category: string,
+  results: ReadonlyArray<TerminalBenchResult>,
+): TerminalBenchCategorySummary => {
+  const total = results.length;
+  const passed = results.filter((r) => r.status === "pass").length;
+  const failed = results.filter((r) => r.status === "fail").length;
+  const timeout = results.filter((r) => r.status === "timeout").length;
+  const error = results.filter((r) => r.status === "error").length;
+  const skipped = results.filter((r) => r.status === "skip").length;
+
+  const totalDuration = results.reduce((sum, r) => sum + r.duration_ms, 0);
+  const totalTurns = results.reduce((sum, r) => sum + r.turns, 0);
+  const totalTokens = results.reduce((sum, r) => sum + r.tokens_used, 0);
+
+  return {
+    category,
+    total,
+    passed,
+    failed,
+    timeout,
+    error,
+    skipped,
+    passRate: total > 0 ? passed / total : 0,
+    avgDurationMs: total > 0 ? totalDuration / total : 0,
+    avgTurns: total > 0 ? totalTurns / total : 0,
+    totalTokens,
+  };
+};
+
+export const buildTerminalBenchReport = (
+  suite: TerminalBenchSuite,
+  results: TerminalBenchResults,
+): TerminalBenchReport => {
+  const categoryMap = new Map<string, string>();
+  for (const task of suite.tasks) {
+    categoryMap.set(task.id, task.category ?? "uncategorized");
+  }
+
+  const bucket = new Map<string, TerminalBenchResult[]>();
+  for (const result of results.results) {
+    const category = categoryMap.get(result.task_id) ?? "uncategorized";
+    if (!bucket.has(category)) bucket.set(category, []);
+    bucket.get(category)!.push(result);
+  }
+
+  const categories = Array.from(bucket.entries())
+    .map(([category, res]) => computeTbSummary(category, res))
+    .sort((a, b) => a.category.localeCompare(b.category));
+
+  return {
+    suiteName: results.suite_name,
+    suiteVersion: results.suite_version,
+    model: results.model,
+    timestamp: results.timestamp,
+    overall: computeTbSummary("overall", results.results),
+    categories,
+  };
+};
+
+export const formatTerminalBenchMarkdown = (report: TerminalBenchReport): string => {
+  const lines: string[] = [];
+
+  lines.push("# Terminal-Bench Report");
+  lines.push("");
+  lines.push(`- **Suite:** ${report.suiteName} (v${report.suiteVersion})`);
+  lines.push(`- **Model:** ${report.model}`);
+  lines.push(`- **Timestamp:** ${report.timestamp}`);
+  lines.push("");
+
+  const overall = report.overall;
+  lines.push("## Overall Summary");
+  lines.push("");
+  lines.push("| Total | Passed | Failed | Timeout | Error | Skipped | Pass Rate | Avg Duration (ms) | Avg Turns | Total Tokens |");
+  lines.push("|-------|--------|--------|---------|-------|---------|-----------|-------------------|-----------|--------------|");
+  lines.push(
+    `| ${overall.total} | ${overall.passed} | ${overall.failed} | ${overall.timeout} | ${overall.error} | ${overall.skipped} | ${(overall.passRate * 100).toFixed(1)}% | ${overall.avgDurationMs.toFixed(1)} | ${overall.avgTurns.toFixed(1)} | ${overall.totalTokens} |`,
+  );
+  lines.push("");
+
+  if (report.categories.length > 0) {
+    lines.push("## By Category");
+    lines.push("");
+    lines.push("| Category | Total | Passed | Failed | Timeout | Error | Skipped | Pass Rate | Avg Duration (ms) | Avg Turns | Total Tokens |");
+    lines.push("|----------|-------|--------|--------|---------|-------|---------|-----------|-------------------|-----------|--------------|");
+    for (const category of report.categories) {
+      lines.push(
+        `| ${category.category} | ${category.total} | ${category.passed} | ${category.failed} | ${category.timeout} | ${category.error} | ${category.skipped} | ${(category.passRate * 100).toFixed(1)}% | ${category.avgDurationMs.toFixed(1)} | ${category.avgTurns.toFixed(1)} | ${category.totalTokens} |`,
+      );
+    }
+    lines.push("");
+  }
 
   return lines.join("\n");
 };

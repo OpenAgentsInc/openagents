@@ -1,11 +1,14 @@
 import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
 import {
+  buildTerminalBenchReport,
   compareRuns,
   formatMarkdownReport,
   formatRunSummary,
+  formatTerminalBenchMarkdown,
 } from "./reporter.js";
 import type { BenchmarkResults, TaskMetrics } from "./metrics.js";
+import type { TerminalBenchResults, TerminalBenchSuite } from "./terminal-bench.js";
 
 const createMockTaskMetrics = (
   id: string,
@@ -262,5 +265,104 @@ describe("reporter", () => {
       expect(markdown).toContain("**Branch:** main");
       expect(markdown).toContain("**Commit:** abc123");
     });
+  });
+});
+
+describe("terminal-bench reporting", () => {
+  const suite: TerminalBenchSuite = {
+    name: "TB Suite",
+    version: "1.0",
+    description: "Sample suite",
+    tasks: [
+      {
+        id: "task-1",
+        name: "Algo One",
+        description: "Algo task",
+        difficulty: "easy",
+        category: "algorithms",
+        verification: { type: "test" },
+      },
+      {
+        id: "task-2",
+        name: "Algo Two",
+        description: "Algo task 2",
+        difficulty: "medium",
+        category: "algorithms",
+        verification: { type: "test" },
+      },
+      {
+        id: "task-3",
+        name: "Web Task",
+        description: "Web task",
+        difficulty: "medium",
+        category: "web",
+        verification: { type: "test" },
+      },
+    ],
+  };
+
+  const tbResults: TerminalBenchResults = {
+    suite_name: "TB Suite",
+    suite_version: "1.0",
+    model: "gpt-x",
+    timestamp: "2025-01-01T00:00:00Z",
+    results: [
+      { task_id: "task-1", status: "pass", duration_ms: 1000, turns: 2, tokens_used: 300 },
+      { task_id: "task-2", status: "timeout", duration_ms: 2000, turns: 1, tokens_used: 200 },
+      { task_id: "task-3", status: "fail", duration_ms: 1500, turns: 3, tokens_used: 400 },
+      { task_id: "unknown-task", status: "skip", duration_ms: 0, turns: 0, tokens_used: 0 },
+    ],
+    summary: {
+      total: 4,
+      passed: 1,
+      failed: 1,
+      timeout: 1,
+      error: 0,
+      skipped: 1,
+      pass_rate: 0.25,
+      avg_duration_ms: 1125,
+      avg_turns: 1.5,
+      total_tokens: 900,
+    },
+  };
+
+  test("buildTerminalBenchReport aggregates per category", () => {
+    const report = buildTerminalBenchReport(suite, tbResults);
+    expect(report.overall.total).toBe(4);
+    expect(report.overall.passed).toBe(1);
+    expect(report.overall.failed).toBe(1);
+    expect(report.overall.timeout).toBe(1);
+    expect(report.overall.skipped).toBe(1);
+    expect(report.overall.totalTokens).toBe(900);
+
+    const algorithms = report.categories.find((c) => c.category === "algorithms");
+    expect(algorithms?.total).toBe(2);
+    expect(algorithms?.passed).toBe(1);
+    expect(algorithms?.timeout).toBe(1);
+    expect(algorithms?.passRate).toBeCloseTo(0.5);
+    expect(algorithms?.avgDurationMs).toBeCloseTo(1500);
+    expect(algorithms?.totalTokens).toBe(500);
+
+    const web = report.categories.find((c) => c.category === "web");
+    expect(web?.total).toBe(1);
+    expect(web?.failed).toBe(1);
+    expect(web?.passRate).toBe(0);
+    expect(web?.avgTurns).toBe(3);
+
+    const uncategorized = report.categories.find((c) => c.category === "uncategorized");
+    expect(uncategorized?.total).toBe(1);
+    expect(uncategorized?.skipped).toBe(1);
+  });
+
+  test("formatTerminalBenchMarkdown renders summary and categories", () => {
+    const report = buildTerminalBenchReport(suite, tbResults);
+    const markdown = formatTerminalBenchMarkdown(report);
+    expect(markdown).toContain("# Terminal-Bench Report");
+    expect(markdown).toContain("TB Suite");
+    expect(markdown).toContain("Model");
+    expect(markdown).toContain("Overall Summary");
+    expect(markdown).toContain("By Category");
+    expect(markdown).toContain("algorithms");
+    expect(markdown).toContain("uncategorized");
   });
 });
