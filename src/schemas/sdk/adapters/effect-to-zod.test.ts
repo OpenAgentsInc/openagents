@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import * as S from "effect/Schema";
-import { z } from "zod";
 import { effectSchemaToZod } from "./effect-to-zod.js";
 
 describe("effect-to-zod", () => {
