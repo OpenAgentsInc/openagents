@@ -5,12 +5,12 @@ import * as Path from "@effect/platform/Path";
 import { Effect, Layer } from "effect";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
-import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { runOrchestrator } from "./orchestrator.js";
 import { runBestAvailableSubagent } from "./subagent-router.js";
 import type { OrchestratorEvent, SubagentResult } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
+import { createGoldenLoopFixture } from "./golden-loop-fixture.js";
 
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),
@@ -24,54 +24,12 @@ const runWithBun = <A, E>(
     program.pipe(Effect.provide(testLayer))
   );
 
-const createTestRepo = (name: string) => {
-  const dir = fs.mkdtempSync(path.join(tmpdir(), `claude-e2e-${name}-`));
-
-  execSync("git init", { cwd: dir, stdio: "ignore" });
-  execSync("git checkout -b main", { cwd: dir, stdio: "ignore" });
-  execSync('git config user.email "mechacoder@example.com"', { cwd: dir, stdio: "ignore" });
-  execSync('git config user.name "MechaCoder"', { cwd: dir, stdio: "ignore" });
-
-  fs.writeFileSync(path.join(dir, "README.md"), "# Test Repo\n");
-
-  const now = new Date().toISOString();
-  const task = {
-    id: `oa-${name}`,
-    title: `Claude E2E ${name}`,
-    description: "Exercise Golden Loop with Claude Code path",
-    status: "open",
-    priority: 1,
-    type: "task",
-    labels: ["claude-code"],
-    deps: [],
-    commits: [],
-    createdAt: now,
-    updatedAt: now,
-    closedAt: null,
-  };
-
-  const oaDir = path.join(dir, ".openagents");
-  fs.mkdirSync(oaDir, { recursive: true });
-  fs.writeFileSync(path.join(oaDir, "project.json"), JSON.stringify({
-    projectId: `proj-${name}`,
-    defaultBranch: "main",
-    testCommands: ["echo tests"],
-    allowPush: false,
-  }, null, 2));
-  fs.writeFileSync(path.join(oaDir, "tasks.jsonl"), `${JSON.stringify(task)}\n`);
-
-  execSync("git add -A", { cwd: dir, stdio: "ignore" });
-  execSync('git commit -m "init"', { cwd: dir, stdio: "ignore" });
-
-  return { dir, taskId: task.id, openagentsDir: oaDir };
-};
-
 const readTasks = (tasksPath: string) =>
   fs.readFileSync(tasksPath, "utf-8").trim().split("\n").map((line) => JSON.parse(line));
 
 describe("Golden Loop with Claude Code", () => {
   test("completes a task using Claude Code subagent", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("success");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "success", task: { labels: ["claude-code"] } });
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
 
@@ -123,7 +81,7 @@ describe("Golden Loop with Claude Code", () => {
   });
 
   test("falls back to minimal subagent when Claude Code fails", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("fallback");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "fallback", task: { labels: ["claude-code"] } });
     const events: OrchestratorEvent[] = [];
     const fallbackFile = path.join(dir, "fallback.txt");
 
@@ -186,7 +144,7 @@ describe("Golden Loop with Claude Code", () => {
 
 describe("Typecheck failure handling", () => {
   test("injects fix-typecheck subtask when typecheck fails at start", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("typecheck-fail");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "typecheck-fail" });
     const events: OrchestratorEvent[] = [];
 
     // Mock subagent that "fixes" the typecheck by creating a file
@@ -230,7 +188,7 @@ describe("Typecheck failure handling", () => {
   });
 
   test("tracks consecutive failures and blocks task after max failures", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("max-fail");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "max-fail" });
     const events: OrchestratorEvent[] = [];
     let failCount = 0;
 
@@ -274,7 +232,7 @@ describe("Typecheck failure handling", () => {
   });
 
   test("includes failure context in prompt when retrying", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("retry-context");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "retry-context" });
     const events: OrchestratorEvent[] = [];
 
     // Mock subagent that captures the prompt and fails first time, succeeds second
@@ -329,7 +287,7 @@ describe("Typecheck failure handling", () => {
   });
 
   test("clears session resumption for other subtasks when injecting fix-typecheck", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("clear-sessions");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "clear-sessions" });
 
     // Pre-create a subtask file with an existing session ID
     const subtasksDir = path.join(openagentsDir, "subtasks");
@@ -397,7 +355,7 @@ describe("Typecheck failure handling", () => {
 
 describe("Golden Loop negative path: failing tests leave task in-progress", () => {
   test("no commit when tests fail after subagent changes", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("test-fail-no-commit");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "test-fail-no-commit" });
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
 
@@ -453,7 +411,7 @@ describe("Golden Loop negative path: failing tests leave task in-progress", () =
   });
 
   test("task remains in_progress when subagent fails", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("subagent-fail");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "subagent-fail" });
     const events: OrchestratorEvent[] = [];
 
     // Mock subagent that fails
@@ -498,7 +456,7 @@ describe("Golden Loop negative path: failing tests leave task in-progress", () =
   });
 
   test("logs capture verification failure details", async () => {
-    const { dir, openagentsDir } = createTestRepo("log-verify-fail");
+    const { dir, openagentsDir } = createGoldenLoopFixture({ name: "log-verify-fail" });
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
 
@@ -551,7 +509,7 @@ describe("Golden Loop negative path: failing tests leave task in-progress", () =
   });
 
   test("no push occurs when tests fail (even if allowPush is true)", async () => {
-    const { dir, openagentsDir } = createTestRepo("no-push-on-fail");
+    const { dir, openagentsDir } = createGoldenLoopFixture({ name: "no-push-on-fail" });
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
 
@@ -592,7 +550,7 @@ describe("Golden Loop negative path: failing tests leave task in-progress", () =
   });
 
   test("subtask marked as failed with error details", async () => {
-    const { dir, taskId, openagentsDir } = createTestRepo("subtask-fail-details");
+    const { dir, taskId, openagentsDir } = createGoldenLoopFixture({ name: "subtask-fail-details" });
     const events: OrchestratorEvent[] = [];
 
     const subagentRunner: typeof runBestAvailableSubagent = (options) =>
@@ -642,7 +600,7 @@ describe("Golden Loop negative path: failing tests leave task in-progress", () =
   });
 
   test("working tree changes preserved when tests fail (no git reset)", async () => {
-    const { dir, openagentsDir } = createTestRepo("preserve-changes");
+    const { dir, openagentsDir } = createGoldenLoopFixture({ name: "preserve-changes" });
     const events: OrchestratorEvent[] = [];
     const createdFile = path.join(dir, "feature.txt");
     const fileContent = "important work that should not be lost";
