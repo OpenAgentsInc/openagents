@@ -5,6 +5,7 @@
  * When sandbox is enabled, commands run inside a container with the workspace mounted.
  * Falls back to host execution when sandbox is disabled or unavailable.
  */
+import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect } from "effect";
 import type { SandboxConfig } from "../../tasks/schema.js";
 import {
@@ -13,6 +14,11 @@ import {
   autoDetectLayer,
   type ContainerConfig,
 } from "../../sandbox/index.js";
+import {
+  createCredentialMount,
+  cleanupCredentialMount,
+  type CredentialMount,
+} from "../../sandbox/credentials.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -106,7 +112,10 @@ export const checkSandboxAvailable = (
 export const buildContainerConfig = (
   sandboxConfig: SandboxConfig,
   cwd: string,
-  env?: Record<string, string>
+  options?: {
+    env?: Record<string, string>;
+    volumeMounts?: string[];
+  },
 ): ContainerConfig => ({
   image: sandboxConfig.image ?? DEFAULT_SANDBOX_IMAGE,
   workspaceDir: cwd,
@@ -114,7 +123,8 @@ export const buildContainerConfig = (
   ...(sandboxConfig.memoryLimit ? { memoryLimit: sandboxConfig.memoryLimit } : {}),
   ...(sandboxConfig.cpuLimit ? { cpuLimit: sandboxConfig.cpuLimit } : {}),
   ...(sandboxConfig.timeoutMs ? { timeoutMs: sandboxConfig.timeoutMs } : {}),
-  ...(env ? { env } : {}),
+  ...(options?.env ? { env: options.env } : {}),
+  ...(options?.volumeMounts ? { volumeMounts: options.volumeMounts } : {}),
   autoRemove: true,
 });
 
@@ -200,7 +210,7 @@ const runInSandboxContainer = (
  *
  * This function:
  * 1. Checks if sandbox is available
- * 2. If available, runs command in container with workspace mounted
+ * 2. If available, injects Claude Code credentials and runs command in container
  * 3. If unavailable, falls back to host execution
  *
  * @param command - Command as array of strings (e.g., ["bun", "test"])
@@ -210,26 +220,58 @@ const runInSandboxContainer = (
 export const runCommand = (
   command: string[],
   config: SandboxRunnerConfig,
-  env?: Record<string, string>
+  env?: Record<string, string>,
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.gen(function* () {
     const startTime = Date.now();
-    const sandboxAvailable = yield* checkSandboxAvailable(config.sandboxConfig, config.emit);
+    const sandboxAvailable = yield* checkSandboxAvailable(
+      config.sandboxConfig,
+      config.emit,
+    );
 
-    config.emit?.({ type: "sandbox_command_start", command, inContainer: sandboxAvailable });
+    config.emit?.({
+      type: "sandbox_command_start",
+      command,
+      inContainer: sandboxAvailable,
+    });
 
     let result: CommandResult;
 
     if (sandboxAvailable) {
-      const containerConfig = buildContainerConfig(config.sandboxConfig, config.cwd, env);
+      // Try to create credential mount for Claude Code auth
+      const credentialMount: CredentialMount | null = yield* createCredentialMount()
+        .pipe(
+          Effect.provide(BunContext.layer),
+          Effect.catchAll((err) => {
+            // Log warning but continue without credentials
+            console.warn(`[sandbox] Credential injection skipped: ${err.message}`);
+            return Effect.succeed(null);
+          }),
+        );
+
+      const volumeMounts = credentialMount ? [credentialMount.volumeMount] : [];
+      const containerConfig = buildContainerConfig(config.sandboxConfig, config.cwd, {
+        env,
+        volumeMounts,
+      });
 
       // Try running in container, fall back to host on error
-      const containerResult = yield* runInSandboxContainer(command, containerConfig).pipe(
-        Effect.catchAll((error) => {
-          config.emit?.({ type: "sandbox_fallback", reason: error.message });
-          return runOnHost(command, config.cwd, config.sandboxConfig.timeoutMs);
-        })
-      );
+      const containerResult = yield* runInSandboxContainer(command, containerConfig)
+        .pipe(
+          Effect.catchAll((error) => {
+            config.emit?.({ type: "sandbox_fallback", reason: error.message });
+            return runOnHost(command, config.cwd, config.sandboxConfig.timeoutMs);
+          }),
+          // Always cleanup credential mount after execution
+          Effect.ensuring(
+            credentialMount
+              ? cleanupCredentialMount(credentialMount).pipe(
+                  Effect.provide(BunContext.layer),
+                  Effect.catchAll(() => Effect.void),
+                )
+              : Effect.void,
+          ),
+        );
 
       result = containerResult;
     } else {

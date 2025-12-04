@@ -87,6 +87,13 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
         // Volume mount: host:container
         args.push("-v", `${config.workspaceDir}:/workspace`);
 
+        // Additional volume mounts (for credentials, etc.)
+        if (config.volumeMounts) {
+          for (const mount of config.volumeMounts) {
+            args.push("-v", mount);
+          }
+        }
+
         // Working directory
         args.push("-w", config.workdir ?? "/workspace");
 
