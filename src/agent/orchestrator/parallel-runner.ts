@@ -126,6 +126,7 @@ export class ParallelRunnerError extends Error {
       | "setup_failed"
       | "agent_failed"
       | "merge_failed"
+      | "dirty_worktree"
       | "cleanup_failed"
       | "timeout",
     message: string,
@@ -197,6 +198,29 @@ const mergeAgentBranch = (
   branch: string,
 ): Effect.Effect<string | null, ParallelRunnerError> =>
   Effect.gen(function* () {
+    const status = yield* runGit(repoPath, ["status", "--porcelain"]);
+    if (status.stdout.trim().length > 0) {
+      return yield* Effect.fail(
+        new ParallelRunnerError(
+          "merge_failed",
+          "Main working tree is dirty before merge; aborting to avoid conflicts.",
+        ),
+      );
+    }
+
+    const initialHead = yield* runGit(repoPath, ["rev-parse", "HEAD"]);
+
+    const cleanupMergeState = (message: string) =>
+      Effect.gen(function* () {
+        // Best-effort cleanup to avoid leaving conflict markers
+        yield* runGit(repoPath, ["merge", "--abort"]).pipe(Effect.catchAll(() => Effect.void));
+        yield* runGit(repoPath, ["rebase", "--abort"]).pipe(Effect.catchAll(() => Effect.void));
+        yield* runGit(repoPath, ["reset", "--hard", initialHead.stdout]).pipe(
+          Effect.catchAll(() => Effect.void),
+        );
+        return yield* Effect.fail(new ParallelRunnerError("merge_failed", message));
+      });
+
     // Fetch latest main
     yield* runGit(repoPath, ["fetch", "origin", "main"]);
 
@@ -213,20 +237,15 @@ const mergeAgentBranch = (
       // Try rebase if ff-only fails
       const rebaseResult = yield* runGit(repoPath, ["rebase", "main", branch]);
       if (rebaseResult.exitCode !== 0) {
-        return yield* Effect.fail(
-          new ParallelRunnerError(
-            "merge_failed",
-            `Could not merge ${branch}: ${rebaseResult.stderr}`,
-          ),
-        );
+        return yield* cleanupMergeState(`Could not merge ${branch}: ${rebaseResult.stderr}`);
       }
 
       // Retry merge after rebase
       yield* runGit(repoPath, ["checkout", "main"]);
       const retryResult = yield* runGit(repoPath, ["merge", "--ff-only", branch]);
       if (retryResult.exitCode !== 0) {
-        return yield* Effect.fail(
-          new ParallelRunnerError("merge_failed", `Merge failed after rebase: ${retryResult.stderr}`),
+        return yield* cleanupMergeState(
+          `Merge failed after rebase: ${retryResult.stderr}`,
         );
       }
     }
@@ -235,6 +254,9 @@ const mergeAgentBranch = (
     const headResult = yield* runGit(repoPath, ["rev-parse", "HEAD"]);
     return headResult.stdout || null;
   });
+
+// Exported for testing
+export const mergeAgentBranchForTests = mergeAgentBranch;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent Execution
