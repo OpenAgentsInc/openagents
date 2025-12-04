@@ -40,8 +40,11 @@ import {
   writeSessionEnd,
   getSessionPath,
 } from "./session.js";
-import { runOrchestrator, type OrchestratorEvent } from "./orchestrator/index.js";
+import { runOrchestrator, type OrchestratorEvent, type OrchestratorState } from "./orchestrator/index.js";
 import { createHudCallbacks } from "../hud/index.js";
+import { createBasicHealerService } from "../healer/service.js";
+import { createHealerCounters } from "../healer/types.js";
+import type { HealerOutcome } from "../healer/types.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
 
@@ -763,6 +766,18 @@ const doOneTaskOrchestrator = (config: Config) =>
     // These silently fail if the HUD isn't running
     const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
+    // Initialize Healer subagent for self-healing
+    const healerCounters = createHealerCounters();
+    const healerEvents: Array<{ type: string; data: unknown }> = [];
+    const healerService = createBasicHealerService((event) => {
+      healerEvents.push({ type: event.type, data: event });
+      const ts = new Date().toISOString();
+      console.log(`[${ts}] [HEALER] ${event.type}`, event);
+    });
+
+    // Track the orchestrator state so Healer can access it
+    let currentState: OrchestratorState | null = null;
+
     // Event handler for logging (also forwards to HUD)
     const logOrchestratorEvent = (event: OrchestratorEvent) => {
       const ts = new Date().toISOString();
@@ -803,10 +818,39 @@ const doOneTaskOrchestrator = (config: Config) =>
       }
     };
 
-    // Wrap emit to send orchestrator events to both log and HUD
+    // Wrap emit to send orchestrator events to both log, HUD, and Healer
     const emit = (event: OrchestratorEvent) => {
       logOrchestratorEvent(event);
       hudEmit(event);
+
+      // Update tracked state from events
+      if (event.type === "session_start") {
+        currentState = {
+          sessionId: event.sessionId,
+          phase: "orienting",
+          task: null,
+          subtasks: null,
+          progress: null,
+        };
+      }
+
+      // Invoke Healer for self-healing on errors
+      if (currentState && "healer" in projectConfig && projectConfig.healer?.enabled !== false) {
+        Effect.runPromise(
+          healerService.maybeRun(event, currentState, projectConfig as any, healerCounters)
+        ).then((outcome: HealerOutcome | null) => {
+          if (outcome) {
+            const ts = new Date().toISOString();
+            console.log(`[${ts}] [HEALER] Invoked for ${outcome.scenario}: ${outcome.status}`);
+            console.log(`[${ts}] [HEALER] Spells tried: ${outcome.spellsTried.join(", ")}`);
+            console.log(`[${ts}] [HEALER] Spells succeeded: ${outcome.spellsSucceeded.join(", ")}`);
+            console.log(`[${ts}] [HEALER] Summary: ${outcome.summary}`);
+          }
+        }).catch((err) => {
+          const ts = new Date().toISOString();
+          console.error(`[${ts}] [HEALER] Error:`, err);
+        });
+      }
     };
 
     // Build claudeCode config, applying --cc-only override if specified
