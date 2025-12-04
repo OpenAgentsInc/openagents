@@ -15,6 +15,7 @@ import type {
   FailureContextType,
   ReflexionConfigType,
 } from "./reflection/index.js";
+import type { HudMessage } from "../../hud/protocol.js";
 
 // ============================================================================
 // Subtask Types
@@ -206,6 +207,8 @@ export interface OrchestratorConfig {
   signal?: AbortSignal;
   /** Callback for streaming text output from Claude Code */
   onOutput?: (text: string) => void;
+  /** Callback for emitting HUD messages directly (container events, etc.) */
+  emitHud?: (message: HudMessage) => void;
   /** Enable self-healing for init script failures (typecheck, etc.) */
   safeMode?: boolean;
   /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
