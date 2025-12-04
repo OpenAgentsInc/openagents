@@ -42,6 +42,8 @@ import {
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
+  type Task,
+  type DependencyT,
 } from "./index.js";
 
 const OPENAGENTS_DIR = ".openagents";
@@ -661,6 +663,17 @@ const cmdSearch = (options: CliOptions) =>
     return summary;
   });
 
+const findOrphanDependencies = (
+  tasks: Task[],
+): { taskId: string; missingId: string; type: DependencyT["type"] }[] => {
+  const ids = new Set(tasks.map((t) => t.id));
+  return tasks.flatMap((task) =>
+    (task.deps ?? [])
+      .filter((dep) => !ids.has(dep.id))
+      .map((dep) => ({ taskId: task.id, missingId: dep.id, type: dep.type })),
+  );
+};
+
 const cmdValidate = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -673,14 +686,29 @@ const cmdValidate = (options: CliOptions) =>
     }
 
     const content = yield* fs.readFileString(tasksPath);
-    if (options.checkConflicts && hasConflictMarkers(content)) {
-      throw new Error(
-        "Merge conflict markers detected in .openagents/tasks.jsonl. Resolve conflicts before running agents.",
-      );
+    if (hasConflictMarkers(content)) {
+      const result = {
+        ok: false,
+        error: "conflict_markers_detected",
+        message:
+          "Merge conflict markers detected in .openagents/tasks.jsonl. Resolve conflicts before running agents.",
+      };
+      output(result, options.json);
+      return result;
     }
 
-    // Full validation (readTasks also checks conflicts)
-    yield* readTasks(tasksPath);
+    const tasks = yield* readTasks(tasksPath);
+    const orphanDeps = findOrphanDependencies(tasks);
+    if (orphanDeps.length > 0) {
+      const result = {
+        ok: false,
+        error: "orphan_dependencies",
+        orphanDeps,
+      };
+      output(result, options.json);
+      return result;
+    }
+
     const result = { ok: true, message: "tasks.jsonl is valid" };
     output(result, options.json);
     return result;
@@ -1131,7 +1159,12 @@ const main = async () => {
       break;
     case "validate":
       try {
-        await Effect.runPromise(cmdValidate(options).pipe(Effect.provide(BunContext.layer)));
+        const result = await Effect.runPromise(
+          cmdValidate(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        if (result && result.ok === false) {
+          process.exitCode = 1;
+        }
       } catch (err) {
         const payload = { ok: false, error: String(err) };
         if (options.json) {
