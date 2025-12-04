@@ -10,6 +10,9 @@
   "testCommands": [
     "bun test"
   ],
+  "sandboxTestCommands": [
+    "bun run test:container"
+  ],
   "e2eCommands": ["bun run e2e:test"],
   "allowPush": true,
   "allowForcePush": false,

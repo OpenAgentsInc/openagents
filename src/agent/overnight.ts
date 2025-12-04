@@ -484,6 +484,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
       defaultModel: "x-ai/grok-4.1-fast:free",
       rootDir: ".",
       testCommands: ["bun test"],
+      sandboxTestCommands: [],
       typecheckCommands: ["bun run typecheck"],
       e2eCommands: [],
       allowPush: true,
@@ -793,6 +794,9 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         cwd: config.workDir,
         openagentsDir,
         testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
+        ...(projectConfig.sandboxTestCommands?.length && {
+          sandboxTestCommands: [...projectConfig.sandboxTestCommands],
+        }),
         allowPush: projectConfig.allowPush ?? true,
         claudeCode: claudeCodeConfig,
         sandbox: seqSandboxConfig,

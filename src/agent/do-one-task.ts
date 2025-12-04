@@ -745,6 +745,7 @@ const doOneTaskOrchestrator = (config: Config) =>
       rootDir: ".",
       typecheckCommands: ["bun run typecheck"],
       testCommands: ["bun test"],
+      sandboxTestCommands: [],
       e2eCommands: [],
       allowPush: true,
       allowForcePush: false,
@@ -926,9 +927,13 @@ const doOneTaskOrchestrator = (config: Config) =>
       cwd: config.workDir,
       openagentsDir,
       testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
+      ...(projectConfig.sandboxTestCommands?.length && {
+        sandboxTestCommands: [...projectConfig.sandboxTestCommands],
+      }),
       allowPush: projectConfig.allowPush ?? true,
       claudeCode: claudeCodeConfig,
       ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
+      ...(projectConfig.sandbox && { sandbox: projectConfig.sandbox }),
       // Stream Claude Code output to console AND HUD
       onOutput: (text: string) => {
         process.stdout.write(text);

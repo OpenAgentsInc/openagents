@@ -463,6 +463,9 @@ const runAgentInWorktree = async (
     cwd: slot.worktree.path,
     openagentsDir: worktreeOpenagentsDir,
     testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
+    ...(projectConfig.sandboxTestCommands?.length && {
+      sandboxTestCommands: [...projectConfig.sandboxTestCommands],
+    }),
     typecheckCommands: [...(projectConfig.typecheckCommands ?? [])],
     e2eCommands: [...(projectConfig.e2eCommands ?? [])],
     allowPush: false, // Don't push from worktree
