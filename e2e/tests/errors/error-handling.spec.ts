@@ -128,7 +128,8 @@ test.describe("Error Handling Tests", () => {
   test("D3: empty state displays placeholder content", async ({ mainviewPage }) => {
     // Without sending any HUD messages, the app should show default state
     await expect(mainviewPage.flowSvg).toBeVisible();
-    await expect(mainviewPage.flowCanvas).toBeVisible();
+    // flowCanvas is an empty <g> element - check it exists (not visible, as empty groups have no dimensions)
+    await expect(mainviewPage.flowCanvas).toHaveCount(1);
 
     // Controls should still work
     await expect(mainviewPage.resetButton).toBeVisible();
