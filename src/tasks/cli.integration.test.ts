@@ -181,6 +181,57 @@ describe("tasks CLI integration", () => {
     expect(String(payload.error)).toContain("conflict");
   });
 
+  test("validate command detects orphan dependencies", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-validate-orphans-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+    const tasksPath = path.join(tmp, ".openagents", "tasks.jsonl");
+
+    const now = "2024-01-01T00:00:00.000Z";
+    const tasks = [
+      {
+        id: "oa-1",
+        title: "Task with missing dep",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-missing", type: "blocks" }],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-2",
+        title: "Independent task",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+    ];
+
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+
+    const validate = runCli(["validate", "--dir", tmp, "--json"], tmp);
+    expect(validate.code).toBe(1);
+    const payload = JSON.parse(validate.stdout);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toBe("orphan_dependencies");
+    expect(payload.orphanDeps).toEqual([
+      { taskId: "oa-1", missingId: "oa-missing", type: "blocks" },
+    ]);
+  });
+
   test("close command requires --id", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-close-noid-"));
 
