@@ -15,3 +15,32 @@ export {
   type TBTaskResult,
   type TBRunSummary,
 } from "./emit.js";
+
+export {
+  saveTBRun,
+  loadTBRun,
+  loadTBRunMeta,
+  listTBRuns,
+  loadRecentRuns,
+  deleteTBRun,
+  getTBRunById,
+  buildTBRunFile,
+  buildTBRunMeta,
+  DEFAULT_TB_RUNS_DIR,
+  type TBRunMeta,
+  type TBTaskResult as TBPersistedTaskResult,
+  type TBRunFile,
+  type TBRunWithPath,
+} from "./persistence.js";
+
+export {
+  createBuffer,
+  getOrCreateBuffer,
+  appendAndFlush,
+  forceFlush,
+  flushAllBuffers,
+  clearAllBuffers,
+  getBufferContent,
+  type TBOutputBuffer,
+  type BufferFlushOptions,
+} from "./output-buffer.js";

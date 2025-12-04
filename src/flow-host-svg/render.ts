@@ -155,6 +155,55 @@ const NODE_THEMES: Record<string, NodeTheme> = {
     mutedText: "rgba(229, 231, 235, 0.65)",
     glow: "rgba(255, 255, 255, 0.12)",
   },
+  // Terminal-Bench node themes
+  "tb-root": {
+    fill: "#0f1a12",
+    stroke: "rgba(34, 197, 94, 0.35)",
+    header: "rgba(34, 197, 94, 0.18)",
+    accent: "rgba(74, 222, 128, 0.9)",
+    mutedText: "rgba(187, 247, 208, 0.8)",
+    glow: "rgba(34, 197, 94, 0.25)",
+  },
+  "tb-controls": {
+    fill: "#111019",
+    stroke: "rgba(34, 197, 94, 0.25)",
+    header: "rgba(34, 197, 94, 0.12)",
+    accent: "rgba(34, 197, 94, 0.9)",
+    mutedText: "rgba(187, 247, 208, 0.75)",
+    glow: "rgba(34, 197, 94, 0.2)",
+  },
+  "tb-timeline": {
+    fill: "#0d0f16",
+    stroke: "rgba(255, 255, 255, 0.12)",
+    header: "rgba(255, 255, 255, 0.06)",
+    accent: "rgba(255, 255, 255, 0.3)",
+    mutedText: "rgba(229, 231, 235, 0.6)",
+    glow: "rgba(255, 255, 255, 0.1)",
+  },
+  "tb-run-summary": {
+    fill: "#0f1620",
+    stroke: "rgba(34, 197, 94, 0.3)",
+    header: "rgba(34, 197, 94, 0.15)",
+    accent: "rgba(74, 222, 128, 0.9)",
+    mutedText: "rgba(187, 247, 208, 0.8)",
+    glow: "rgba(34, 197, 94, 0.2)",
+  },
+  "tb-run-expanded": {
+    fill: "#0a1520",
+    stroke: "rgba(59, 130, 246, 0.3)",
+    header: "rgba(59, 130, 246, 0.15)",
+    accent: "rgba(96, 165, 250, 0.9)",
+    mutedText: "rgba(191, 219, 254, 0.8)",
+    glow: "rgba(59, 130, 246, 0.2)",
+  },
+  "tb-task": {
+    fill: "#0a0f15",
+    stroke: "rgba(255, 255, 255, 0.1)",
+    header: "rgba(255, 255, 255, 0.05)",
+    accent: "rgba(255, 255, 255, 0.3)",
+    mutedText: "rgba(229, 231, 235, 0.6)",
+    glow: "rgba(255, 255, 255, 0.08)",
+  },
 }
 
 function getNodeTheme(node: PositionedNode): NodeTheme {
@@ -204,6 +253,46 @@ function getSubtitle(node: PositionedNode): string {
   }
   if (node.type === "root") {
     return "OpenAgents"
+  }
+  // Terminal-Bench node types
+  if (node.type === "tb-root") {
+    const totalRuns = node.metadata?.totalRuns as number | undefined
+    return totalRuns ? `${totalRuns} runs` : "Terminal-Bench"
+  }
+  if (node.type === "tb-controls") {
+    return "Controls"
+  }
+  if (node.type === "tb-timeline") {
+    return "Run history"
+  }
+  if (node.type === "tb-run-summary") {
+    const suiteName = node.metadata?.suiteName as string | undefined
+    const taskCount = node.metadata?.taskCount as number | undefined
+    const parts = []
+    if (suiteName) parts.push(suiteName)
+    if (taskCount) parts.push(`${taskCount} tasks`)
+    return parts.join(" • ") || "Run"
+  }
+  if (node.type === "tb-run-expanded") {
+    const timestamp = node.metadata?.timestamp as string | undefined
+    if (timestamp) {
+      const date = new Date(timestamp)
+      return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    }
+    return "Expanded run"
+  }
+  if (node.type === "tb-task") {
+    const difficulty = node.metadata?.difficulty as string | undefined
+    const durationMs = node.metadata?.durationMs as number | undefined
+    const parts = []
+    if (difficulty) parts.push(difficulty)
+    if (durationMs) parts.push(`${(durationMs / 1000).toFixed(1)}s`)
+    return parts.join(" • ") || "Task"
   }
   return node.metadata?.path as string ?? ""
 }

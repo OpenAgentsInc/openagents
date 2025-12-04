@@ -66,6 +66,9 @@ tasks-cli-*/
 .openagents/agent.lock
 .openagents/locks/
 
+# Terminal-Bench run history (local only)
+.openagents/tb-runs/
+
 # Playwright test artifacts
 playwright-report/
 test-results/
