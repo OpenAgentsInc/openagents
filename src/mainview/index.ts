@@ -523,6 +523,8 @@ function handleHudMessage(message: HudMessage): void {
       outputBuffer: [],
       maxOutputLines: 500,
     }
+    // Sync flow state with updated tbState
+    syncTBFlowWithState()
     render()
     // Sync UI controls (elements set later, safe at runtime)
     document.getElementById("tb-status")!.textContent = "Running..."
@@ -546,6 +548,8 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentTaskId = message.taskId
     tbState.currentPhase = "setup"
     tbState.currentTurn = 0
+    // Sync flow state with updated current task
+    syncTBFlowWithState()
     render()
     requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
     return
@@ -619,6 +623,8 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentTaskId = null
     tbState.currentPhase = null
     tbState.currentTurn = 0
+    // Sync flow state (task no longer running)
+    syncTBFlowWithState()
     render()
     requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
     return
@@ -630,12 +636,16 @@ function handleHudMessage(message: HudMessage): void {
     tbState.totalDurationMs = message.totalDurationMs
     tbState.currentTaskId = null
     tbState.currentPhase = null
+    // Sync flow state (run no longer active)
+    syncTBFlowWithState()
     render()
     // Sync UI controls
     document.getElementById("tb-status")!.textContent = `Done ${(message.passRate * 100).toFixed(0)}%`
     document.getElementById("tb-status")!.className = "tb-status"
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = false
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = true
+    // Reload run history to include the completed run
+    void refreshTBLayout()
     return
   }
 
@@ -739,6 +749,27 @@ async function handleRunNodeClick(runId: string): Promise<void> {
   })
 
   render()
+}
+
+/**
+ * Sync TB flow state with current tbState and rebuild layout.
+ * Call this whenever TB events update tbState.
+ */
+function syncTBFlowWithState(): void {
+  tbFlowState = {
+    ...tbFlowState,
+    currentRunId: tbState.isRunning ? tbState.runId : null,
+    currentTaskId: tbState.currentTaskId,
+  }
+
+  // Rebuild the flow tree with updated state
+  const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
+  const nodeSizes = generateTBNodeSizes(tree)
+  tbLayout = calculateLayout({
+    root: tree,
+    nodeSizes,
+    config: TB_LAYOUT_CONFIG,
+  })
 }
 
 function getLayoutBounds() {
