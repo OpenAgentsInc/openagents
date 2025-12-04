@@ -143,6 +143,8 @@ describe("terminal-bench", () => {
           durationMs: 1000,
           turns: 2,
           tokens: 100,
+          verificationOutput: undefined,
+          errorMessage: undefined,
         },
         {
           taskId: "t2",
@@ -150,6 +152,7 @@ describe("terminal-bench", () => {
           durationMs: 2000,
           turns: 5,
           tokens: 250,
+          verificationOutput: undefined,
           errorMessage: "Tests failed",
         },
       ];
@@ -186,10 +189,10 @@ describe("terminal-bench", () => {
       };
 
       const taskResults = [
-        { taskId: "t1", outcome: "success" as const, durationMs: 100, turns: 1, tokens: 10 },
-        { taskId: "t2", outcome: "failure" as const, durationMs: 100, turns: 1, tokens: 10 },
-        { taskId: "t3", outcome: "timeout" as const, durationMs: 100, turns: 1, tokens: 10 },
-        { taskId: "t4", outcome: "error" as const, durationMs: 100, turns: 1, tokens: 10 },
+        { taskId: "t1", outcome: "success" as const, durationMs: 100, turns: 1, tokens: 10, verificationOutput: undefined, errorMessage: undefined },
+        { taskId: "t2", outcome: "failure" as const, durationMs: 100, turns: 1, tokens: 10, verificationOutput: undefined, errorMessage: undefined },
+        { taskId: "t3", outcome: "timeout" as const, durationMs: 100, turns: 1, tokens: 10, verificationOutput: undefined, errorMessage: undefined },
+        { taskId: "t4", outcome: "error" as const, durationMs: 100, turns: 1, tokens: 10, verificationOutput: undefined, errorMessage: undefined },
       ];
 
       const results = toBenchmarkResults(suite, "test-model", taskResults);
