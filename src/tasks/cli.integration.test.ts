@@ -398,4 +398,105 @@ describe("tasks CLI integration", () => {
     const nestedPayload = JSON.parse(getNested.stdout);
     expect(nestedPayload.value).toBe(false);
   });
+
+  test("cleanup command deletes old closed tasks with optional cascade", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-cleanup-"));
+    const dir = path.join(tmp, ".openagents");
+    fs.mkdirSync(dir, { recursive: true });
+    const tasksPath = path.join(dir, "tasks.jsonl");
+
+    const oldDate = "2024-01-01T00:00:00.000Z";
+    const recentDate = "2025-11-01T00:00:00.000Z";
+
+    const tasks = [
+      {
+        id: "oa-old-1",
+        title: "Old closed referenced",
+        description: "",
+        status: "closed",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: oldDate,
+        updatedAt: oldDate,
+        closedAt: oldDate,
+      },
+      {
+        id: "oa-old-2",
+        title: "Old closed orphan",
+        description: "",
+        status: "closed",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: oldDate,
+        updatedAt: oldDate,
+        closedAt: oldDate,
+      },
+      {
+        id: "oa-open-1",
+        title: "Open referencing old",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-old-1", type: "blocks" }],
+        commits: [],
+        createdAt: recentDate,
+        updatedAt: recentDate,
+        closedAt: null,
+      },
+      {
+        id: "oa-closed-recent",
+        title: "Recent closed keep",
+        description: "",
+        status: "closed",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: recentDate,
+        updatedAt: recentDate,
+        closedAt: recentDate,
+      },
+    ];
+
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+
+    const cleanupNoCascade = runCli(
+      ["cleanup", "--dir", tmp, "--older-than", "300", "--json"],
+      tmp,
+    );
+    expect(cleanupNoCascade.code).toBe(0);
+    const afterNoCascade = fs
+      .readFileSync(tasksPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const idsAfterNoCascade = afterNoCascade.map((t: any) => t.id);
+    expect(idsAfterNoCascade).toContain("oa-old-1");
+    expect(idsAfterNoCascade).not.toContain("oa-old-2");
+
+    const cleanupCascade = runCli(
+      ["cleanup", "--dir", tmp, "--older-than", "300", "--cascade", "--json"],
+      tmp,
+    );
+    expect(cleanupCascade.code).toBe(0);
+
+    const afterCascade = fs
+      .readFileSync(tasksPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const idsAfterCascade = afterCascade.map((t: any) => t.id);
+    expect(idsAfterCascade).not.toContain("oa-old-1");
+    const openTask = afterCascade.find((t: any) => t.id === "oa-open-1");
+    expect(openTask?.deps ?? []).toHaveLength(0);
+  });
 });

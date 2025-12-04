@@ -4,6 +4,16 @@ import { calculateLayout } from "../flow/layout.js"
 import { buildMechaCoderFlowTree, generateNodeSizes } from "../flow/mechacoder-map.js"
 import { loadMechaCoderState } from "../flow/mechacoder-state.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
+// TB flow tree imports
+import {
+  buildTBFlowTree,
+  generateTBNodeSizes,
+  createEmptyTBFlowState,
+  toggleRunExpanded,
+  type TBFlowState,
+  type TBRunDetails,
+} from "../flow/tb-map.js"
+import { loadRecentRuns, loadTBRun } from "../tbench-hud/persistence.js"
 import {
   initialCanvasState,
   reduceCanvasState,
@@ -181,7 +191,8 @@ let tbState: TBState = {
 // ============================================================================
 
 type ViewMode = "flow" | "tbench"
-let viewMode: ViewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "flow"
+// Default to TB mode (previously "flow")
+let viewMode: ViewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "tbench"
 
 function setViewMode(mode: ViewMode): void {
   viewMode = mode
@@ -550,12 +561,38 @@ function handleHudMessage(message: HudMessage): void {
   }
 
   if (isTBTaskOutput(message)) {
-    // Add to output buffer
-    tbState.outputBuffer.push({
-      text: message.text,
-      source: message.source,
-      timestamp: Date.now(),
-    })
+    // Aggregate tokens into lines - only create new line on newline char
+    const text = message.text
+    const source = message.source
+    const now = Date.now()
+
+    // Split on newlines to handle multi-line output
+    const parts = text.split("\n")
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+
+      // Get last line in buffer (if same source and recent)
+      const lastLine = tbState.outputBuffer[tbState.outputBuffer.length - 1]
+      const canAppend = lastLine &&
+        lastLine.source === source &&
+        now - lastLine.timestamp < 5000 && // Same logical line if within 5s
+        i === 0 // Only append to last line for the first part
+
+      if (canAppend && part.length > 0) {
+        // Append to existing line
+        lastLine.text += part
+        lastLine.timestamp = now
+      } else if (part.length > 0 || i > 0) {
+        // Create new line (either has content or is after a newline)
+        tbState.outputBuffer.push({
+          text: part,
+          source,
+          timestamp: now,
+        })
+      }
+    }
+
     // Trim buffer if too large
     if (tbState.outputBuffer.length > tbState.maxOutputLines) {
       tbState.outputBuffer = tbState.outputBuffer.slice(-tbState.maxOutputLines)
@@ -610,6 +647,7 @@ function handleHudMessage(message: HudMessage): void {
 
 // Larger padding/spacing to keep stacked agent->repo->task columns readable
 const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
+const TB_LAYOUT_CONFIG = { padding: 12, spacing: 180 }
 const REFRESH_INTERVAL_MS = 5000
 
 // Calculate layout once from sample data as a placeholder until live data loads
@@ -621,11 +659,95 @@ let layout = calculateLayout({
 let hasLiveLayout = false
 let isRefreshing = false
 
+// ============================================================================
+// TB Flow State
+// ============================================================================
+
+let tbFlowState: TBFlowState = createEmptyTBFlowState()
+let tbRunDetails: Map<string, TBRunDetails> = new Map()
+let tbLayout = calculateLayout({
+  root: buildTBFlowTree(tbFlowState),
+  nodeSizes: generateTBNodeSizes(buildTBFlowTree(tbFlowState)),
+  config: TB_LAYOUT_CONFIG,
+})
+
+/**
+ * Refresh TB flow layout from run history
+ */
+async function refreshTBLayout(): Promise<void> {
+  try {
+    // Load recent runs (metadata only)
+    const runs = await loadRecentRuns(10)
+
+    // Update TB flow state with runs
+    tbFlowState = {
+      ...tbFlowState,
+      runs,
+      currentRunId: tbState.isRunning ? tbState.runId : null,
+      currentTaskId: tbState.currentTaskId,
+    }
+
+    // Build the flow tree
+    const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
+    const nodeSizes = generateTBNodeSizes(tree)
+    tbLayout = calculateLayout({
+      root: tree,
+      nodeSizes,
+      config: TB_LAYOUT_CONFIG,
+    })
+
+    if (viewMode === "tbench") {
+      render()
+    }
+  } catch (error) {
+    console.error("[TB] Failed to refresh layout:", error)
+  }
+}
+
+/**
+ * Toggle expansion of a run node
+ */
+async function handleRunNodeClick(runId: string): Promise<void> {
+  const isExpanding = !tbFlowState.expandedRunIds.has(runId)
+
+  // Toggle expansion
+  tbFlowState = toggleRunExpanded(tbFlowState, runId)
+
+  // If expanding, load the run details if not already cached
+  if (isExpanding && !tbRunDetails.has(runId)) {
+    try {
+      const run = tbFlowState.runs.find(r => r.runId === runId)
+      if (run) {
+        const fullRun = await loadTBRun(run.filepath)
+        tbRunDetails.set(runId, {
+          meta: fullRun.meta,
+          tasks: fullRun.tasks,
+        })
+      }
+    } catch (error) {
+      console.error(`[TB] Failed to load run ${runId}:`, error)
+    }
+  }
+
+  // Rebuild the tree
+  const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
+  const nodeSizes = generateTBNodeSizes(tree)
+  tbLayout = calculateLayout({
+    root: tree,
+    nodeSizes,
+    config: TB_LAYOUT_CONFIG,
+  })
+
+  render()
+}
+
 function getLayoutBounds() {
-  const minX = Math.min(...layout.nodes.map(n => n.x))
-  const minY = Math.min(...layout.nodes.map(n => n.y))
-  const maxX = Math.max(...layout.nodes.map(n => n.x + n.size.width))
-  const maxY = Math.max(...layout.nodes.map(n => n.y + n.size.height))
+  // Use appropriate layout based on view mode
+  const currentLayout = viewMode === "tbench" ? tbLayout : layout
+  const minX = Math.min(...currentLayout.nodes.map(n => n.x))
+  const minY = Math.min(...currentLayout.nodes.map(n => n.y))
+  const maxX = Math.max(...currentLayout.nodes.map(n => n.x + n.size.width))
+  const maxY = Math.max(...currentLayout.nodes.map(n => n.y + n.size.height))
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
 
@@ -700,9 +822,10 @@ function render(): void {
     const tbOverlay = renderTBWidget()
     svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
   } else {
-    // TB view: Full-screen Terminal-Bench dashboard
-    const tbDashboard = renderTBDashboard()
-    svg.innerHTML = tbDashboard
+    // TB view: TB flow tree (run history nodes) on grid canvas + TB widget
+    const tbFlowGroup = renderFlowSVG(tbLayout, canvasState, DEFAULT_RENDER_CONFIG)
+    const tbOverlay = renderTBWidget()
+    svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay
   }
 
   // Update zoom display
@@ -762,6 +885,26 @@ container.addEventListener("wheel", (e) => {
     delta: e.deltaY,
   })
 }, { passive: false })
+
+// Click handler for node interactions (TB run expand/collapse)
+svg.addEventListener("click", (e) => {
+  // Only handle clicks when not dragging
+  if (canvasState.isDragging) return
+
+  // Find clicked node by checking data-node-id on rect elements
+  const target = e.target as SVGElement
+  const nodeRect = target.closest("[data-node-id]") as SVGElement | null
+  if (!nodeRect) return
+
+  const nodeId = nodeRect.getAttribute("data-node-id")
+  if (!nodeId) return
+
+  // Handle TB run node clicks (expand/collapse)
+  if (nodeId.startsWith("tb-run-")) {
+    const runId = nodeId.replace("tb-run-", "")
+    void handleRunNodeClick(runId)
+  }
+})
 
 // Reset button
 resetBtn.addEventListener("click", () => {
@@ -823,7 +966,9 @@ render()
 
 // Load live data and refresh periodically (fallback polling)
 void refreshLayoutFromState()
+void refreshTBLayout()
 setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
+setInterval(refreshTBLayout, REFRESH_INTERVAL_MS)
 
 // ============================================================================
 // Electrobun RPC Setup for Real-time HUD Events
@@ -1312,3 +1457,5 @@ treeCloseBtn?.addEventListener("click", hideCategoryTree)
 // Expose tree functions for triggering from handleHudMessage
 ;(window as unknown as Record<string, unknown>).__showCategoryTree = showCategoryTree
 ;(window as unknown as Record<string, unknown>).__renderCategoryTree = renderCategoryTree
+
+export { renderTBDashboard }
