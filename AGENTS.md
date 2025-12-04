@@ -481,7 +481,12 @@ The Effect Solutions CLI provides curated best practices and patterns for Effect
 
 **NEVER change the model from `x-ai/grok-4.1-fast:free`** - it is the only free model available on OpenRouter. Do not switch to Claude, GPT, or any other paid model.
 
+### LLM provider precedence (coding agents)
 
+- Claude Code is the **primary** provider for coding subagents and TB runs.
+- Minimal subagent is the fallback when Claude Code is unavailable or explicitly disabled (`--legacy`).
+- Grok/OpenRouter is legacy-only: use it only when you pass `--legacy` (or similar) to the agent CLIs; use `--cc-only` to force Claude Code.
+- Keep docs/prompts/config consistent with this order; do not default to OpenRouter for coding subagents.
 
 ### MechaCoder Autonomous Agent
 

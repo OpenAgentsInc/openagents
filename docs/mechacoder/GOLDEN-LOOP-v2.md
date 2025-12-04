@@ -100,6 +100,11 @@ Following Anthropic's ["Effective Harnesses for Long-Running Agents"](https://ww
 | **Orchestrator** | Once per session | Orient, select task, decompose into subtasks, coordinate verification, commit/push, update task, write progress for next session |
 | **Coding Subagent** | Per subtask | Implement one subtask with minimal prompt (~50 tokens), 4 tools (read/write/edit/bash) |
 
+**Provider precedence (coding subagent):**
+- Claude Code is the **primary** provider. When `claudeCode.enabled` is true, the orchestrator prefers Claude Code for coding subtasks.
+- Minimal subagent is the fallback when Claude Code is unavailable or when running in legacy mode (`--legacy`); use `--cc-only` to force Claude Code.
+- OpenRouter/Grok is legacy-only and should be used only when explicitly requested; do not default to it for coding.
+
 **Why this split?**
 
 1. **Coding prompts stay minimal** - Models are RL-trained for coding; they don't need 10K tokens of instructions
