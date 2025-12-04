@@ -468,6 +468,82 @@ export interface TBRunRequestMessage {
 }
 
 // ============================================================================
+// Container Execution Events
+// ============================================================================
+
+/** Output stream type from container execution */
+export type ContainerStreamType = "stdout" | "stderr";
+
+/** Context in which container execution is happening */
+export type ExecutionContext = "verification" | "init" | "subagent" | "custom";
+
+/**
+ * Container execution started
+ */
+export interface ContainerStartMessage {
+  type: "container_start";
+  /** Unique execution ID for correlation */
+  executionId: string;
+  /** Container image or "host" for non-sandboxed execution */
+  image: string;
+  /** Command being executed */
+  command: string[];
+  /** Execution context for UI grouping */
+  context: ExecutionContext;
+  /** Whether execution is sandboxed (container) or on host */
+  sandboxed: boolean;
+  /** Working directory */
+  workdir: string;
+  /** ISO timestamp */
+  timestamp: string;
+}
+
+/**
+ * Streaming output from container (emitted as chunks arrive)
+ */
+export interface ContainerOutputMessage {
+  type: "container_output";
+  /** Correlates to container_start executionId */
+  executionId: string;
+  /** Output chunk text */
+  text: string;
+  /** Which stream this came from */
+  stream: ContainerStreamType;
+  /** Sequence number for ordering (monotonic per executionId+stream) */
+  sequence: number;
+  /** Whether execution is sandboxed */
+  sandboxed: boolean;
+}
+
+/**
+ * Container execution completed
+ */
+export interface ContainerCompleteMessage {
+  type: "container_complete";
+  /** Correlates to container_start executionId */
+  executionId: string;
+  /** Exit code from command */
+  exitCode: number;
+  /** Total duration in milliseconds */
+  durationMs: number;
+  /** Whether execution was sandboxed */
+  sandboxed: boolean;
+}
+
+/**
+ * Container execution error (non-exit-code failure like timeout)
+ */
+export interface ContainerErrorMessage {
+  type: "container_error";
+  /** Correlates to container_start executionId */
+  executionId: string;
+  /** Error type */
+  reason: "timeout" | "start_failed" | "aborted";
+  /** Error message */
+  error: string;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -506,7 +582,11 @@ export type HudMessage =
   | TBTaskOutputMessage
   | TBTaskCompleteMessage
   | TBSuiteInfoMessage
-  | TBRunRequestMessage;
+  | TBRunRequestMessage
+  | ContainerStartMessage
+  | ContainerOutputMessage
+  | ContainerCompleteMessage
+  | ContainerErrorMessage;
 
 /**
  * Status stream payloads (headless RPC-compatible)
@@ -577,3 +657,23 @@ export const isTBRunRequest = (msg: HudMessage): msg is TBRunRequestMessage =>
 /** Check if message is any TB-related message */
 export const isTBMessage = (msg: HudMessage): boolean =>
   msg.type.startsWith("tb_");
+
+// ============================================================================
+// Container Event Type Guards
+// ============================================================================
+
+export const isContainerStart = (msg: HudMessage): msg is ContainerStartMessage =>
+  msg.type === "container_start";
+
+export const isContainerOutput = (msg: HudMessage): msg is ContainerOutputMessage =>
+  msg.type === "container_output";
+
+export const isContainerComplete = (msg: HudMessage): msg is ContainerCompleteMessage =>
+  msg.type === "container_complete";
+
+export const isContainerError = (msg: HudMessage): msg is ContainerErrorMessage =>
+  msg.type === "container_error";
+
+/** Check if message is any container-related message */
+export const isContainerMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("container_");

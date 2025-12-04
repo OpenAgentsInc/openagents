@@ -13,12 +13,17 @@ import {
   isContainerAvailable,
   autoDetectLayer,
   type ContainerConfig,
+  type ContainerRunOptions,
 } from "../../sandbox/index.js";
 import {
   createCredentialMount,
   cleanupCredentialMount,
   type CredentialMount,
 } from "../../sandbox/credentials.js";
+import type {
+  HudMessage,
+  ExecutionContext,
+} from "../../hud/protocol.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -31,6 +36,10 @@ export interface SandboxRunnerConfig {
   cwd: string;
   /** Emit events for logging/debugging */
   emit?: (event: SandboxRunnerEvent) => void;
+  /** Emit HUD messages for streaming output to UI */
+  emitHud?: (message: HudMessage) => void;
+  /** Execution context for UI grouping (default: "verification") */
+  context?: ExecutionContext;
 }
 
 export type SandboxRunnerEvent =
@@ -54,6 +63,14 @@ export interface CommandResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SANDBOX_IMAGE = "oven/bun:latest";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Generate a unique execution ID for correlating container events */
+const generateExecutionId = (): string =>
+  `exec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sandbox Availability Check
@@ -133,46 +150,94 @@ export const buildContainerConfig = (
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Run a command on the host (no sandbox) with optional streaming callbacks.
+ */
+const runOnHostWithCallbacks = (
+  command: string[],
+  cwd: string,
+  options?: {
+    timeoutMs?: number | undefined;
+    onStdout?: (chunk: string) => void;
+    onStderr?: (chunk: string) => void;
+  }
+): Effect.Effect<CommandResult, Error, never> =>
+  Effect.async((resume) => {
+    const { spawn } = require("node:child_process") as typeof import("node:child_process");
+
+    // Join command array into shell command string
+    const cmdString = command.join(" ");
+    const proc = spawn(cmdString, {
+      cwd,
+      shell: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let finished = false;
+
+    // Set timeout
+    const timeoutMs = options?.timeoutMs ?? 120000;
+    const timeoutHandle = setTimeout(() => {
+      if (!finished) {
+        proc.kill("SIGKILL");
+        finished = true;
+        resume(Effect.fail(new Error(`Host command timed out after ${timeoutMs}ms`)));
+      }
+    }, timeoutMs);
+
+    proc.stdout?.on("data", (data: Buffer) => {
+      const chunk = data.toString("utf-8");
+      stdout += chunk;
+      options?.onStdout?.(chunk);
+    });
+
+    proc.stderr?.on("data", (data: Buffer) => {
+      const chunk = data.toString("utf-8");
+      stderr += chunk;
+      options?.onStderr?.(chunk);
+    });
+
+    proc.on("error", (err: Error) => {
+      if (!finished) {
+        clearTimeout(timeoutHandle);
+        finished = true;
+        resume(Effect.fail(new Error(`Host command failed: ${err.message}`)));
+      }
+    });
+
+    proc.on("close", (code: number | null) => {
+      if (!finished) {
+        clearTimeout(timeoutHandle);
+        finished = true;
+        resume(Effect.succeed({
+          exitCode: code ?? 1,
+          stdout,
+          stderr,
+          sandboxed: false,
+        }));
+      }
+    });
+
+    // Cleanup on abort
+    return Effect.sync(() => {
+      if (!finished) {
+        clearTimeout(timeoutHandle);
+        proc.kill("SIGKILL");
+      }
+    });
+  });
+
+/**
  * Run a command on the host (no sandbox).
+ * @deprecated Use runOnHostWithCallbacks for streaming support
  */
 const runOnHost = (
   command: string[],
   cwd: string,
   timeoutMs?: number
 ): Effect.Effect<CommandResult, Error, never> =>
-  Effect.try({
-    try: () => {
-      const { execSync } = require("node:child_process") as typeof import("node:child_process");
-
-      // Join command array into shell command string
-      const cmdString = command.join(" ");
-
-      try {
-        const output = execSync(cmdString, {
-          cwd,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-          timeout: timeoutMs ?? 120000,
-        });
-
-        return {
-          exitCode: 0,
-          stdout: String(output),
-          stderr: "",
-          sandboxed: false,
-        };
-      } catch (error: any) {
-        // execSync throws on non-zero exit
-        return {
-          exitCode: error?.status ?? 1,
-          stdout: String(error?.stdout ?? ""),
-          stderr: String(error?.stderr ?? error?.message ?? ""),
-          sandboxed: false,
-        };
-      }
-    },
-    catch: (error: any) => new Error(`Host command failed: ${error.message}`),
-  });
+  runOnHostWithCallbacks(command, cwd, { timeoutMs });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sandboxed Execution
@@ -183,11 +248,12 @@ const runOnHost = (
  */
 const runInSandboxContainer = (
   command: string[],
-  containerConfig: ContainerConfig
+  containerConfig: ContainerConfig,
+  streamingOptions?: ContainerRunOptions
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.gen(function* () {
     const result = yield* Effect.provide(
-      runInContainer(command, containerConfig),
+      runInContainer(command, containerConfig, streamingOptions),
       autoDetectLayer
     ).pipe(
       Effect.mapError((e) => new Error(`Container execution failed: ${e.message}`))
@@ -212,6 +278,7 @@ const runInSandboxContainer = (
  * 1. Checks if sandbox is available
  * 2. If available, injects Claude Code credentials and runs command in container
  * 3. If unavailable, falls back to host execution
+ * 4. Emits HUD events for real-time streaming to UI
  *
  * @param command - Command as array of strings (e.g., ["bun", "test"])
  * @param config - Sandbox runner configuration
@@ -224,6 +291,10 @@ export const runCommand = (
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.gen(function* () {
     const startTime = Date.now();
+    const executionId = generateExecutionId();
+    let stdoutSeq = 0;
+    let stderrSeq = 0;
+
     const sandboxAvailable = yield* checkSandboxAvailable(
       config.sandboxConfig,
       config.emit,
@@ -234,6 +305,42 @@ export const runCommand = (
       command,
       inContainer: sandboxAvailable,
     });
+
+    // Emit container_start HUD event
+    config.emitHud?.({
+      type: "container_start",
+      executionId,
+      image: sandboxAvailable ? (config.sandboxConfig.image ?? DEFAULT_SANDBOX_IMAGE) : "host",
+      command,
+      context: config.context ?? "verification",
+      sandboxed: sandboxAvailable,
+      workdir: config.cwd,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Create streaming callbacks for HUD
+    const streamingCallbacks = {
+      onStdout: (chunk: string) => {
+        config.emitHud?.({
+          type: "container_output",
+          executionId,
+          text: chunk,
+          stream: "stdout",
+          sequence: ++stdoutSeq,
+          sandboxed: sandboxAvailable,
+        });
+      },
+      onStderr: (chunk: string) => {
+        config.emitHud?.({
+          type: "container_output",
+          executionId,
+          text: chunk,
+          stream: "stderr",
+          sequence: ++stderrSeq,
+          sandboxed: sandboxAvailable,
+        });
+      },
+    };
 
     let result: CommandResult;
 
@@ -255,12 +362,15 @@ export const runCommand = (
         ...(volumeMounts.length > 0 ? { volumeMounts } : {}),
       });
 
-      // Try running in container, fall back to host on error
-      const containerResult = yield* runInSandboxContainer(command, containerConfig)
+      // Try running in container with streaming, fall back to host on error
+      const containerResult = yield* runInSandboxContainer(command, containerConfig, streamingCallbacks)
         .pipe(
           Effect.catchAll((error) => {
             config.emit?.({ type: "sandbox_fallback", reason: error.message });
-            return runOnHost(command, config.cwd, config.sandboxConfig.timeoutMs);
+            return runOnHostWithCallbacks(command, config.cwd, {
+              timeoutMs: config.sandboxConfig.timeoutMs,
+              ...streamingCallbacks,
+            });
           }),
           // Always cleanup credential mount after execution
           Effect.ensuring(
@@ -275,14 +385,28 @@ export const runCommand = (
 
       result = containerResult;
     } else {
-      result = yield* runOnHost(command, config.cwd, config.sandboxConfig.timeoutMs);
+      result = yield* runOnHostWithCallbacks(command, config.cwd, {
+        timeoutMs: config.sandboxConfig.timeoutMs,
+        ...streamingCallbacks,
+      });
     }
+
+    const durationMs = Date.now() - startTime;
 
     config.emit?.({
       type: "sandbox_command_complete",
       command,
       exitCode: result.exitCode,
-      durationMs: Date.now() - startTime,
+      durationMs,
+    });
+
+    // Emit container_complete HUD event
+    config.emitHud?.({
+      type: "container_complete",
+      executionId,
+      exitCode: result.exitCode,
+      durationMs,
+      sandboxed: result.sandboxed,
     });
 
     return result;

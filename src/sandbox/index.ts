@@ -6,7 +6,11 @@ export {
   type ContainerRunResult,
   type ContainerErrorReason,
 } from "./schema.js";
-export { ContainerBackendTag, type ContainerBackend } from "./backend.js";
+export {
+  ContainerBackendTag,
+  type ContainerBackend,
+  type ContainerRunOptions,
+} from "./backend.js";
 
 // Re-export credential utilities
 export {
@@ -42,24 +46,32 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Effect } from "effect";
-import { ContainerBackendTag } from "./backend.js";
+import { ContainerBackendTag, type ContainerRunOptions } from "./backend.js";
 import type { ContainerConfig } from "./schema.js";
 
 /**
  * Run a command in a sandboxed container.
  *
+ * When `onStdout`/`onStderr` callbacks are provided, output chunks are
+ * streamed as they arrive. The final result still contains the accumulated
+ * stdout/stderr (up to size limit).
+ *
  * @example
  * ```typescript
  * const result = yield* runInContainer(
  *   ["bun", "test"],
- *   { image: "mechacoder:latest", workspaceDir: "/path/to/project" }
+ *   { image: "mechacoder:latest", workspaceDir: "/path/to/project" },
+ *   {
+ *     onStdout: (chunk) => console.log(chunk),
+ *     onStderr: (chunk) => console.error(chunk),
+ *   }
  * );
  * ```
  */
 export const runInContainer = (
   command: string[],
   config: ContainerConfig,
-  options?: { signal?: AbortSignal },
+  options?: ContainerRunOptions,
 ) =>
   Effect.gen(function* () {
     const backend = yield* ContainerBackendTag;
