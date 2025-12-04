@@ -544,6 +544,10 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         generationTimeoutMs: 30000,
         retentionDays: 30,
       },
+      failureCleanup: {
+        revertTrackedFiles: true,
+        deleteUntrackedFiles: false,
+      },
     };
     // Note: loadProjectConfig expects the root dir, not the .openagents dir
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
@@ -836,23 +840,34 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         const currentError = state.error || "Unknown error";
         log(`\n✗ Task failed: ${currentError}`);
 
-        // GUARDRAIL: Revert uncommitted changes on failure to prevent broken code
-        // from being committed in cleanup. This ensures failed work doesn't persist.
+        // GUARDRAIL: Optionally revert uncommitted changes on failure
+        // Behavior is controlled by projectConfig.failureCleanup:
+        //   - revertTrackedFiles: runs `git checkout -- .` (safe, default: true)
+        //   - deleteUntrackedFiles: runs `git clean -fd` (DESTRUCTIVE, default: false)
         // See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 "Failed Subtask Cleanup Guardrails"
+        const cleanup = projectConfig.failureCleanup ?? { revertTrackedFiles: true, deleteUntrackedFiles: false };
         try {
           const { execSync } = require("node:child_process") as typeof import("node:child_process");
           const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
           if (status.trim()) {
-            log("[Guardrail] Reverting uncommitted changes from failed subtask...");
-            // Only revert tracked files - leave untracked files alone
-            execSync("git checkout -- .", { cwd: config.workDir, encoding: "utf-8" });
-            // Also clean up any new untracked files that were created
-            // Use -f (force) and -d (directories) but NOT -x (keep .gitignore'd files)
-            execSync("git clean -fd", { cwd: config.workDir, encoding: "utf-8" });
-            log("[Guardrail] Uncommitted changes reverted.");
+            if (cleanup.revertTrackedFiles) {
+              log("[Guardrail] Reverting modifications to tracked files (git checkout -- .)...");
+              execSync("git checkout -- .", { cwd: config.workDir, encoding: "utf-8" });
+              log("[Guardrail] Tracked file modifications reverted.");
+            } else {
+              log("[Guardrail] Skipping revert of tracked files (failureCleanup.revertTrackedFiles=false)");
+            }
+            if (cleanup.deleteUntrackedFiles) {
+              log("[Guardrail] Deleting untracked files (git clean -fd)...");
+              // Use -f (force) and -d (directories) but NOT -x (keep .gitignore'd files)
+              execSync("git clean -fd", { cwd: config.workDir, encoding: "utf-8" });
+              log("[Guardrail] Untracked files deleted.");
+            } else {
+              log("[Guardrail] Preserving untracked files (failureCleanup.deleteUntrackedFiles=false)");
+            }
           }
         } catch (e) {
-          log(`[Guardrail] Warning: Failed to revert changes: ${e}`);
+          log(`[Guardrail] Warning: Failed to run cleanup: ${e}`);
         }
 
         // Check if this is a pre-task failure (init script, no tasks, etc.)

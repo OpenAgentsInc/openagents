@@ -85,24 +85,25 @@ const hasCommitsAhead = async (
 };
 
 /**
- * Merge worktree branch to main
+ * Merge worktree branch to the configured target branch
  */
 const mergeToMain = async (
   repoPath: string,
   branch: string,
+  targetBranch: string,
 ): Promise<{ success: boolean; commitSha?: string; error?: string }> => {
   try {
-    // Checkout main
-    let result = await runGit(repoPath, ["checkout", "main"]);
+    // Checkout target branch
+    let result = await runGit(repoPath, ["checkout", targetBranch]);
     if (result.exitCode !== 0) {
-      return { success: false, error: `Checkout main failed: ${result.stderr}` };
+      return { success: false, error: `Checkout ${targetBranch} failed: ${result.stderr}` };
     }
 
     // Pull latest
-    result = await runGit(repoPath, ["pull", "--ff-only", "origin", "main"]);
+    result = await runGit(repoPath, ["pull", "--ff-only", "origin", targetBranch]);
     if (result.exitCode !== 0) {
       // Try without ff-only
-      result = await runGit(repoPath, ["pull", "origin", "main"]);
+      result = await runGit(repoPath, ["pull", "origin", targetBranch]);
       if (result.exitCode !== 0) {
         return { success: false, error: `Pull failed: ${result.stderr}` };
       }
@@ -123,7 +124,7 @@ const mergeToMain = async (
     const commitSha = result.stdout;
 
     // Push
-    result = await runGit(repoPath, ["push", "origin", "main"]);
+    result = await runGit(repoPath, ["push", "origin", targetBranch]);
     if (result.exitCode !== 0) {
       return { success: false, error: `Push failed: ${result.stderr}` };
     }
@@ -171,12 +172,14 @@ export const runInWorktree = async (
   const taskId = options.taskId || `task-${Date.now().toString(36)}`;
   console.log(`  Task ID:   ${taskId}`);
 
+  const targetBranch = projectConfig.workBranch ?? projectConfig.defaultBranch ?? "main";
+
   // Create/validate worktree (self-healing)
   console.log("\n📁 Ensuring valid worktree...");
   const worktreeConfig: WorktreeConfig = {
     taskId,
     sessionId,
-    baseBranch: projectConfig.defaultBranch,
+    baseBranch: targetBranch,
     timeoutMs: (projectConfig.maxRuntimeMinutes ?? 240) * 60 * 1000,
   };
 
@@ -306,11 +309,11 @@ export const runInWorktree = async (
 
     // Check if worktree has commits to merge
     if (result.success && !dryRun) {
-      const hasCommits = await hasCommitsAhead(worktreeInfo.path, projectConfig.defaultBranch);
+      const hasCommits = await hasCommitsAhead(worktreeInfo.path, targetBranch);
 
       if (hasCommits) {
-        console.log("\n🔀 Merging changes to main...");
-        const mergeResult = await mergeToMain(repoPath, worktreeInfo.branch);
+        console.log(`\n🔀 Merging changes to ${targetBranch}...`);
+        const mergeResult = await mergeToMain(repoPath, worktreeInfo.branch, targetBranch);
 
         if (mergeResult.success) {
           result.merged = true;
