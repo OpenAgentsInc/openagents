@@ -1,0 +1,10 @@
+# VCS and tool worktrees
+.git/**
+.worktrees/**
+
+# Virtual environments and dependencies
+**/.venv/**
+**/node_modules/**
+
+# Vendored swagger assets
+src/harbor/**
