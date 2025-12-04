@@ -14,6 +14,7 @@ import type {
 import { rewindUncommittedChanges } from "./rewind.js";
 import { markTaskBlockedWithFollowup } from "./blocked.js";
 import { updateProgressWithGuidance } from "./progress.js";
+import { fixTypecheckErrors, fixTestErrors } from "./typecheck.js";
 
 // ============================================================================
 // Spell Registry
@@ -26,9 +27,9 @@ export const spellRegistry: Map<HealerSpellId, HealerSpell> = new Map([
   ["rewind_uncommitted_changes", rewindUncommittedChanges],
   ["mark_task_blocked_with_followup", markTaskBlockedWithFollowup],
   ["update_progress_with_guidance", updateProgressWithGuidance],
-  // Phase 2 spells (to be implemented):
-  // ["fix_typecheck_errors", fixTypecheckErrors],
-  // ["fix_test_errors", fixTestErrors],
+  ["fix_typecheck_errors", fixTypecheckErrors],
+  ["fix_test_errors", fixTestErrors],
+  // Future spells:
   // ["rewind_to_last_green_commit", rewindToLastGreenCommit],
   // ["retry_with_minimal_subagent", retryWithMinimalSubagent],
   // ["retry_with_claude_code_resume", retryWithClaudeCodeResume],
@@ -153,3 +154,17 @@ export const filterAllowedSpells = (
 export { rewindUncommittedChanges } from "./rewind.js";
 export { markTaskBlockedWithFollowup } from "./blocked.js";
 export { updateProgressWithGuidance } from "./progress.js";
+export {
+  fixTypecheckErrors,
+  fixTestErrors,
+  generateTypecheckFixDescription,
+  generateTestFixDescription,
+  createEmergencySubtask,
+  executeTypecheckFix,
+  executeTestFix,
+} from "./typecheck.js";
+export type {
+  TypecheckFixOptions,
+  ClaudeCodeInvoker,
+  VerificationRunner,
+} from "./typecheck.js";

@@ -93,10 +93,12 @@ const createMockContext = (overrides: Partial<HealerContext> = {}): HealerContex
 
 describe("Spell Registry", () => {
   test("spellRegistry contains all core spells", () => {
-    expect(spellRegistry.size).toBe(3);
+    expect(spellRegistry.size).toBe(5);
     expect(spellRegistry.has("rewind_uncommitted_changes")).toBe(true);
     expect(spellRegistry.has("mark_task_blocked_with_followup")).toBe(true);
     expect(spellRegistry.has("update_progress_with_guidance")).toBe(true);
+    expect(spellRegistry.has("fix_typecheck_errors")).toBe(true);
+    expect(spellRegistry.has("fix_test_errors")).toBe(true);
   });
 
   test("getSpell returns spell by ID", () => {
@@ -120,7 +122,9 @@ describe("Spell Registry", () => {
     expect(ids).toContain("rewind_uncommitted_changes");
     expect(ids).toContain("mark_task_blocked_with_followup");
     expect(ids).toContain("update_progress_with_guidance");
-    expect(ids.length).toBe(3);
+    expect(ids).toContain("fix_typecheck_errors");
+    expect(ids).toContain("fix_test_errors");
+    expect(ids.length).toBe(5);
   });
 });
 
@@ -297,6 +301,220 @@ describe("updateProgressWithGuidance spell", () => {
   test("spell has correct properties", () => {
     expect(updateProgressWithGuidance.id).toBe("update_progress_with_guidance");
     expect(updateProgressWithGuidance.requiresLLM).toBe(false);
+  });
+});
+
+describe("fixTypecheckErrors spell", () => {
+  const { fixTypecheckErrors } = require("../spells/typecheck.js");
+
+  test("spell has correct properties", () => {
+    expect(fixTypecheckErrors.id).toBe("fix_typecheck_errors");
+    expect(fixTypecheckErrors.requiresLLM).toBe(true);
+  });
+
+  test("fails without error output", async () => {
+    const ctx = createMockContext({
+      errorOutput: undefined,
+      heuristics: {
+        scenario: "InitScriptTypecheckFailure",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: true,
+        hasTestAssertions: false,
+        errorPatterns: ["TypeScript compilation error"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing error output");
+  });
+
+  test("fails for wrong scenario", async () => {
+    const ctx = createMockContext({
+      errorOutput: "error TS2345: Type mismatch",
+      heuristics: {
+        scenario: "SubtaskFailed",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: true,
+        hasTestAssertions: false,
+        errorPatterns: ["TypeScript compilation error"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Wrong scenario");
+  });
+
+  test("prepares subtask for correct scenario", async () => {
+    const ctx = createMockContext({
+      errorOutput: "error TS2345: Type mismatch",
+      heuristics: {
+        scenario: "InitScriptTypecheckFailure",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: true,
+        hasTestAssertions: false,
+        errorPatterns: ["TypeScript compilation error"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    expect(result.success).toBe(true);
+    expect(result.summary).toContain("Prepared emergency typecheck fix subtask");
+  });
+});
+
+describe("fixTestErrors spell", () => {
+  const { fixTestErrors } = require("../spells/typecheck.js");
+
+  test("spell has correct properties", () => {
+    expect(fixTestErrors.id).toBe("fix_test_errors");
+    expect(fixTestErrors.requiresLLM).toBe(true);
+  });
+
+  test("fails without error output", async () => {
+    const ctx = createMockContext({
+      errorOutput: undefined,
+      heuristics: {
+        scenario: "InitScriptTestFailure",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: false,
+        hasTestAssertions: true,
+        errorPatterns: ["Test failures"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing error output");
+  });
+
+  test("fails for wrong scenario", async () => {
+    const ctx = createMockContext({
+      errorOutput: "3 tests failed",
+      heuristics: {
+        scenario: "SubtaskFailed",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: false,
+        hasTestAssertions: true,
+        errorPatterns: ["Test failures"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Wrong scenario");
+  });
+
+  test("prepares subtask for correct scenario", async () => {
+    const ctx = createMockContext({
+      errorOutput: "3 tests failed",
+      heuristics: {
+        scenario: "InitScriptTestFailure",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: false,
+        hasTestAssertions: true,
+        errorPatterns: ["Test failures"],
+        previousAttempts: 0,
+      },
+    });
+
+    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    expect(result.success).toBe(true);
+    expect(result.summary).toContain("Prepared emergency test fix subtask");
+  });
+});
+
+describe("generateTypecheckFixDescription", () => {
+  const { generateTypecheckFixDescription, generateTestFixDescription } = require("../spells/typecheck.js");
+
+  test("generates typecheck fix description", () => {
+    const description = generateTypecheckFixDescription("error TS2345: Type mismatch", 0);
+
+    expect(description).toContain("## EMERGENCY: Fix All TypeScript Errors");
+    expect(description).toContain("error TS2345: Type mismatch");
+    expect(description).toContain("bun run typecheck");
+  });
+
+  test("includes retry note when failure count > 0", () => {
+    const description = generateTypecheckFixDescription("error TS2345", 2);
+
+    expect(description).toContain("retry #3");
+    expect(description).toContain("Previous fix attempts failed");
+  });
+
+  test("generates test fix description", () => {
+    const description = generateTestFixDescription("3 tests failed", 0);
+
+    expect(description).toContain("## EMERGENCY: Fix Failing Tests");
+    expect(description).toContain("3 tests failed");
+    expect(description).toContain("bun test");
+  });
+});
+
+describe("createEmergencySubtask", () => {
+  const { createEmergencySubtask } = require("../spells/typecheck.js");
+
+  test("creates typecheck emergency subtask", () => {
+    const ctx = createMockContext({
+      errorOutput: "error TS2345",
+      heuristics: {
+        scenario: "InitScriptTypecheckFailure",
+        failureCount: 1,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: true,
+        hasTestAssertions: false,
+        errorPatterns: [],
+        previousAttempts: 0,
+      },
+    });
+
+    const subtask = createEmergencySubtask(ctx, "typecheck");
+
+    expect(subtask.id).toContain("emergency-typecheck-fix");
+    expect(subtask.description).toContain("EMERGENCY: Fix All TypeScript Errors");
+    expect(subtask.status).toBe("in_progress");
+    expect(subtask.retryable).toBe(true);
+  });
+
+  test("creates test emergency subtask", () => {
+    const ctx = createMockContext({
+      errorOutput: "3 tests failed",
+      heuristics: {
+        scenario: "InitScriptTestFailure",
+        failureCount: 0,
+        isFlaky: false,
+        hasMissingImports: false,
+        hasTypeErrors: false,
+        hasTestAssertions: true,
+        errorPatterns: [],
+        previousAttempts: 0,
+      },
+    });
+
+    const subtask = createEmergencySubtask(ctx, "test");
+
+    expect(subtask.id).toContain("emergency-test-fix");
+    expect(subtask.description).toContain("EMERGENCY: Fix Failing Tests");
+    expect(subtask.status).toBe("in_progress");
   });
 });
 

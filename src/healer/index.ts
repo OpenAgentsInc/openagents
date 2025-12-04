@@ -69,6 +69,19 @@ export {
   rewindUncommittedChanges,
   markTaskBlockedWithFollowup,
   updateProgressWithGuidance,
+  fixTypecheckErrors,
+  fixTestErrors,
+  generateTypecheckFixDescription,
+  generateTestFixDescription,
+  createEmergencySubtask,
+  executeTypecheckFix,
+  executeTestFix,
+} from "./spells/index.js";
+
+export type {
+  TypecheckFixOptions,
+  ClaudeCodeInvoker,
+  VerificationRunner,
 } from "./spells/index.js";
 
 // Planner (to be implemented in oa-healer-06)
