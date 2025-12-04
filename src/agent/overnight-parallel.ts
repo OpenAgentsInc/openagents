@@ -197,6 +197,47 @@ const hasCommitsAhead = async (
   return parseInt(result.stdout, 10) > 0;
 };
 
+/**
+ * Run typecheck in a directory. Returns success status and any error output.
+ */
+const runTypecheck = async (
+  cwd: string,
+  commands: string[],
+): Promise<{ success: boolean; error?: string }> => {
+  if (commands.length === 0) {
+    return { success: true }; // No typecheck configured
+  }
+
+  for (const cmd of commands) {
+    const parts = cmd.split(" ");
+    const proc = Bun.spawn(parts, {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+      // Extract just the error lines (not the full output)
+      const errorLines = (stdout + stderr)
+        .split("\n")
+        .filter((l) => l.includes("error") || l.includes("Error"))
+        .slice(0, 10)
+        .join("\n");
+      return {
+        success: false,
+        error: errorLines || `Typecheck failed with exit code ${exitCode}`,
+      };
+    }
+  }
+
+  return { success: true };
+};
+
 const mergeToMain = async (
   repoPath: string,
   branch: string,
@@ -656,17 +697,40 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
         );
 
         if (hasCommits) {
-          log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to main...`);
-          const taskInfo = slot.task ? { id: slot.task.id, title: slot.task.title } : undefined;
-          const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch, taskInfo);
-          if (mergeResult.success) {
-            if (mergeResult.commitSha) {
-              slot.commitSha = mergeResult.commitSha;
+          // Run typecheck before merging to prevent broken code from entering main
+          const typecheckCommands = projectConfig.typecheckCommands ?? [];
+          let typecheckPassed = true;
+          if (typecheckCommands.length > 0) {
+            log(`[Agent ${slot.id}] Running typecheck before merge...`);
+            const typecheckResult = await runTypecheck(slot.worktree.path, typecheckCommands);
+            if (!typecheckResult.success) {
+              log(`[Agent ${slot.id}] ❌ Typecheck failed - skipping merge`);
+              if (typecheckResult.error) {
+                // Log first few error lines
+                const errorLines = typecheckResult.error.split("\n").slice(0, 5);
+                for (const line of errorLines) {
+                  log(`[Agent ${slot.id}]   ${line}`);
+                }
+              }
+              typecheckPassed = false;
+            } else {
+              log(`[Agent ${slot.id}] ✅ Typecheck passed`);
             }
-            log(`[Agent ${slot.id}] ✅ Merged: ${mergeResult.commitSha?.slice(0, 8)}`);
-            tasksCompleted++;
-          } else {
-            log(`[Agent ${slot.id}] ❌ Merge failed: ${mergeResult.error}`);
+          }
+
+          if (typecheckPassed) {
+            log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to main...`);
+            const taskInfo = slot.task ? { id: slot.task.id, title: slot.task.title } : undefined;
+            const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch, taskInfo);
+            if (mergeResult.success) {
+              if (mergeResult.commitSha) {
+                slot.commitSha = mergeResult.commitSha;
+              }
+              log(`[Agent ${slot.id}] ✅ Merged: ${mergeResult.commitSha?.slice(0, 8)}`);
+              tasksCompleted++;
+            } else {
+              log(`[Agent ${slot.id}] ❌ Merge failed: ${mergeResult.error}`);
+            }
           }
         } else {
           log(`[Agent ${slot.id}] No commits to merge`);
