@@ -489,6 +489,11 @@ export type HudMessage =
   | TBSuiteInfoMessage
   | TBRunRequestMessage;
 
+/**
+ * Status stream payloads (headless RPC-compatible)
+ */
+export type StatusStreamMessage = HudMessage | { type: "status_heartbeat"; ts: string };
+
 // ============================================================================
 // Protocol Constants
 // ============================================================================
