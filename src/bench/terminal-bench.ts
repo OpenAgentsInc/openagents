@@ -359,8 +359,8 @@ export const toBenchmarkResults = (
     durationMs: number;
     turns: number;
     tokens: number;
-    verificationOutput?: string;
-    errorMessage?: string;
+    verificationOutput: string | undefined;
+    errorMessage: string | undefined;
   }>,
 ): TerminalBenchResults => {
   const timestamp = new Date().toISOString();
