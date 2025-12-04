@@ -4,8 +4,8 @@ Your agent command center. (wip)
 
 ## Tech stack
 
-- [Electrobun](https://blackboard.sh/electrobun/docs/)
 - [Effect](https://effect.website/)
+- [webview-bun](https://github.com/nichochar/webview-bun)
 
 ## Getting Started
 
