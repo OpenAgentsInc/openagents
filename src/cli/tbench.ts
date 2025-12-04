@@ -97,6 +97,7 @@ Output Files:
     outputDir: values["output-dir"],
     timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
     cwd: values.cwd,
+    help: values.help,
   };
 };
 
@@ -196,20 +197,24 @@ class TrajectoryBuilder {
 
   build(success: boolean): Trajectory {
     const endTime = timestamp();
-    const trajectory = createEmptyTrajectory(this.sessionId, this.agent);
+    const base = createEmptyTrajectory(this.sessionId, this.agent);
 
-    trajectory.steps = this.steps;
-    trajectory.final_metrics = {
-      total_prompt_tokens: this.totalInputTokens,
-      total_completion_tokens: this.totalOutputTokens,
-      total_cost_usd: this.totalCost > 0 ? this.totalCost : undefined,
-      total_steps: this.steps.length,
-    };
-    trajectory.extra = {
-      instruction: this.instruction,
-      start_time: this.startTime,
-      end_time: endTime,
-      success,
+    // Build new trajectory with all fields (avoiding readonly mutation)
+    const trajectory: Trajectory = {
+      ...base,
+      steps: this.steps,
+      final_metrics: {
+        total_prompt_tokens: this.totalInputTokens,
+        total_completion_tokens: this.totalOutputTokens,
+        total_cost_usd: this.totalCost > 0 ? this.totalCost : undefined,
+        total_steps: this.steps.length,
+      },
+      extra: {
+        instruction: this.instruction,
+        start_time: this.startTime,
+        end_time: endTime,
+        success,
+      },
     };
 
     return trajectory;
