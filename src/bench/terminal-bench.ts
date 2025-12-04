@@ -348,7 +348,7 @@ export const runTaskVerification = (
 export const toBenchmarkResults = (
   suite: TerminalBenchSuite,
   model: string,
-  taskResults: Array<{
+  taskResults: ReadonlyArray<{
     taskId: string;
     outcome: "success" | "failure" | "timeout" | "error";
     durationMs: number;
@@ -360,7 +360,23 @@ export const toBenchmarkResults = (
 ): TerminalBenchResults => {
   const timestamp = new Date().toISOString();
 
-  const results: TerminalBenchResult[] = taskResults.map((r) => {
+  const byTaskId = new Map<string, typeof taskResults[number]>();
+  for (const result of taskResults) {
+    byTaskId.set(result.taskId, result);
+  }
+
+  const results: TerminalBenchResult[] = suite.tasks.map((task) => {
+    const r = byTaskId.get(task.id);
+    if (!r) {
+      return {
+        task_id: task.id,
+        status: "skip",
+        duration_ms: 0,
+        turns: 0,
+        tokens_used: 0,
+      };
+    }
+
     let status: TerminalBenchResult["status"];
     switch (r.outcome) {
       case "success":
@@ -387,6 +403,36 @@ export const toBenchmarkResults = (
       ...(r.errorMessage ? { error_message: r.errorMessage } : {}),
     };
   });
+
+  // Include any extra results not present in suite (defensive)
+  for (const r of taskResults) {
+    if (!byTaskId.has(r.taskId)) continue;
+    if (suite.tasks.find((t) => t.id === r.taskId)) continue;
+    let status: TerminalBenchResult["status"];
+    switch (r.outcome) {
+      case "success":
+        status = "pass";
+        break;
+      case "failure":
+        status = "fail";
+        break;
+      case "timeout":
+        status = "timeout";
+        break;
+      case "error":
+        status = "error";
+        break;
+    }
+    results.push({
+      task_id: r.taskId,
+      status,
+      duration_ms: r.durationMs,
+      turns: r.turns,
+      tokens_used: r.tokens,
+      ...(r.verificationOutput ? { verification_output: r.verificationOutput } : {}),
+      ...(r.errorMessage ? { error_message: r.errorMessage } : {}),
+    });
+  }
 
   const total = results.length;
   const passed = results.filter((r) => r.status === "pass").length;

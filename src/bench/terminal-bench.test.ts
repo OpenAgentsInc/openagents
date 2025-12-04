@@ -208,6 +208,37 @@ describe("terminal-bench", () => {
       expect(results.summary.error).toBe(1);
     });
 
+    test("includes skipped entries for tasks without results", () => {
+      const suite: TerminalBenchSuite = {
+        name: "Test Suite",
+        version: "1.0.0",
+        tasks: [
+          createMockTBTask({ id: "t1" }),
+          createMockTBTask({ id: "t2" }),
+        ],
+      };
+
+      const taskResults = [
+        {
+          taskId: "t1",
+          outcome: "success" as const,
+          durationMs: 500,
+          turns: 1,
+          tokens: 50,
+          verificationOutput: undefined,
+          errorMessage: undefined,
+        },
+      ];
+
+      const results = toBenchmarkResults(suite, "test-model", taskResults);
+
+      expect(results.results.find((r) => r.task_id === "t2")?.status).toBe("skip");
+      expect(results.summary.total).toBe(2);
+      expect(results.summary.skipped).toBe(1);
+      expect(results.summary.passed).toBe(1);
+      expect(results.summary.total_tokens).toBe(50);
+    });
+
     test("handles empty results", () => {
       const suite: TerminalBenchSuite = {
         name: "Empty Suite",
