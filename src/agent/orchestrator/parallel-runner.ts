@@ -83,6 +83,10 @@ export interface ParallelRunnerConfig {
   verbose?: boolean;
   /** Allow push after merge */
   allowPush?: boolean;
+  /** Timeout for bun install in milliseconds */
+  installTimeoutMs?: number;
+  /** Extra arguments for bun install (e.g., --frozen-lockfile) */
+  installArgs?: string[];
 }
 
 export type AgentStatus = "pending" | "running" | "completed" | "failed";
@@ -284,15 +288,34 @@ const runAgentInWorktree = (
       fs.copyFileSync(srcProjectPath, dstProjectPath);
     }
 
+    const installArgs =
+      config.installArgs && config.installArgs.length > 0
+        ? config.installArgs
+        : ["--frozen-lockfile"];
+    const installTimeoutMs = config.installTimeoutMs ?? 15 * 60 * 1000;
+
     // Install dependencies in worktree
     yield* Effect.tryPromise({
       try: async () => {
-        const proc = Bun.spawn(["bun", "install"], {
+        let timedOut = false;
+        const proc = Bun.spawn(["bun", "install", ...installArgs], {
           cwd: worktree.path,
           stdout: "pipe",
           stderr: "pipe",
         });
+        const timer = setTimeout(() => {
+          timedOut = true;
+          proc.kill();
+        }, installTimeoutMs);
         await proc.exited;
+        clearTimeout(timer);
+
+        if (timedOut) {
+          throw new Error(
+            `bun install timed out after ${Math.floor(installTimeoutMs / 1000)}s`,
+          );
+        }
+
         if (proc.exitCode !== 0) {
           const stderr = await new Response(proc.stderr).text();
           throw new Error(`bun install failed: ${stderr}`);
@@ -701,6 +724,8 @@ export const runParallelFromConfig = (
     mergeThreshold: options.parallelConfig.mergeThreshold ?? 4,
     prThreshold: options.parallelConfig.prThreshold ?? 50,
     timeoutMs: options.parallelConfig.worktreeTimeout ?? 30 * 60 * 1000,
+    installTimeoutMs: options.parallelConfig.installTimeoutMs ?? 15 * 60 * 1000,
+    installArgs: [...(options.parallelConfig.installArgs ?? ["--frozen-lockfile"])],
   };
 
   // Only set optional properties if they have values

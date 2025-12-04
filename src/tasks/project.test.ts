@@ -53,6 +53,8 @@ describe("ProjectService", () => {
     expect(result.loaded?.defaultBranch).toBe("main");
     expect(result.loaded?.typecheckCommands).toEqual([]);
     expect(result.loaded?.allowPush).toBe(true);
+    expect(result.loaded?.parallelExecution?.installTimeoutMs).toBe(15 * 60 * 1000);
+    expect(result.loaded?.parallelExecution?.installArgs).toEqual(["--frozen-lockfile"]);
     expect(result.raw).toContain("\"projectId\": \"openagents\"");
   });
 

@@ -769,6 +769,8 @@ const doOneTaskOrchestrator = (config: Config) =>
         enabled: false,
         maxAgents: 2,
         worktreeTimeout: 30 * 60 * 1000,
+        installTimeoutMs: 15 * 60 * 1000,
+        installArgs: ["--frozen-lockfile"],
         useContainers: false,
         mergeStrategy: "auto",
         mergeThreshold: 4,
