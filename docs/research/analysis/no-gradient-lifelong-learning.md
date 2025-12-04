@@ -1141,3 +1141,258 @@ Based on the research and MechaCoder's current state, I recommend this implement
 ---
 
 *This analysis was written on December 4, 2025, synthesizing research from Voyager (May 2023), Nested Learning (NeurIPS 2025), and Generative Agents (UIST 2023) with the current MechaCoder architecture.*
+
+---
+
+## Research Updates (2025-12-04)
+
+### Papers Integrated
+
+This update incorporates four additional papers that provide complementary insights to the original analysis:
+
+#### 1. **A-MEM: Agentic Memory for LLM Agents** (NeurIPS 2025)
+
+- **Key finding**: Memory should be an *agentic process*, not passive storage. Using Zettelkasten principles, memories autonomously generate contextual descriptions, form semantic connections, and evolve as new experiences emerge.
+- **Implementation impact**: Enhance Archivist with **memory evolution**—when a new pattern is learned, automatically update related memories. For example, learning a new Effect pattern should refine memories about Effect.gen, Layer composition, etc.
+- **Quantitative results**: 35% improvement over prior SOTA with 85-93% token reduction. Multi-hop reasoning shows 2x performance on complex tasks.
+
+**Concrete additions for MechaCoder:**
+```typescript
+// A-MEM style memory note structure for Archivist
+interface AgenticMemory {
+  content: string;           // Original observation
+  timestamp: string;         // When observed
+  keywords: string[];        // LLM-generated key concepts
+  tags: string[];           // LLM-generated categories
+  context: string;          // Rich semantic description (LLM-generated)
+  embedding: number[];      // Dense vector of all text
+  links: string[];          // Connected memory IDs (discovered via LLM analysis)
+}
+
+// Memory evolution: when adding new memory, update related ones
+async function addMemoryWithEvolution(newMemory: AgenticMemory) {
+  // 1. Find semantically similar memories
+  const candidates = await findSimilar(newMemory.embedding, topK=10);
+
+  // 2. LLM analyzes relationships (beyond embedding similarity)
+  const connections = await analyzeConnections(newMemory, candidates);
+
+  // 3. Update context/keywords/tags of related memories
+  for (const conn of connections) {
+    await evolveMemory(conn.memoryId, newMemory);
+  }
+
+  // 4. Store with discovered links
+  newMemory.links = connections.map(c => c.memoryId);
+  await store(newMemory);
+}
+```
+
+#### 2. **ODYSSEY: Empowering Minecraft Agents with Open-World Skills** (IJCAI 2025)
+
+- **Key finding**: Agents shouldn't learn basic mechanics from scratch—bootstrap with a **pre-built skill library** (40 primitive + 183 compositional skills) and **domain-specific fine-tuning** (MineMA trained on 390k Wiki Q&A pairs).
+- **Implementation impact**: Two actionable changes:
+  1. Bootstrap MechaCoder with a curated library of verified code patterns (git operations, test patterns, refactoring recipes, API templates)
+  2. Consider domain-specific fine-tuning on coding Q&A for routine decisions (reduces reliance on expensive models)
+
+**Multi-agent specialization mapping:**
+| Odyssey Agent | MechaCoder Equivalent | Current Status |
+|---------------|----------------------|----------------|
+| Action Agent (executor) | Coding subagent | Implemented |
+| Curriculum Agent (planner) | Task Picker | Partial |
+| Critic Agent (evaluator) | Test suite + type checker | Implemented |
+| Comment Agent (feedback) | Healer | Implemented |
+
+**Key insight**: Odyssey's MineMA approach suggests we could fine-tune a smaller model on codebase-specific patterns for routine operations, reserving Claude/GPT-4 for complex planning.
+
+#### 3. **PLAP: Parameterized Skills for Adversarial Long-Horizon Planning** (IJCNN 2025)
+
+- **Key finding**: Separate **skill planning** (LLM outputs skill name + parameters) from **skill execution** (deterministic code converts to action sequences). This reduces hallucination and improves reliability.
+- **Implementation impact**: Define higher-level "parameterized skills" for MechaCoder:
+
+```typescript
+// Instead of LLM generating raw tool calls:
+// ❌ "Edit file src/auth.ts, change line 42 to..."
+
+// LLM outputs parameterized skill:
+// ✅ { skill: "RefactorFunction", params: { file: "src/auth.ts", fn: "login", pattern: "extract-method" } }
+
+interface ParameterizedSkill {
+  name: string;
+  params: Record<string, unknown>;
+  executor: (params: Record<string, unknown>, context: Context) => Effect.Effect<Result>;
+  terminationCondition: (state: State) => boolean;
+}
+
+// Example skills for coding:
+const CODING_SKILLS: ParameterizedSkill[] = [
+  { name: "RefactorFunction", params: { file, fn, pattern }, ... },
+  { name: "AddTest", params: { component, testType }, ... },
+  { name: "FixBug", params: { file, issueDescription }, ... },
+  { name: "UpdateImports", params: { file, modulesToAdd }, ... },
+];
+```
+
+**Key insight**: The **regenerate-each-step** approach (executor regenerates action sequences from current state, not pre-computed) maps well to coding where file state can change between steps.
+
+#### 4. **Reflexion: Language Agents with Verbal Reinforcement Learning** (NeurIPS 2023)
+
+- **Key finding**: Agents improve through **verbal self-reflection** on failures rather than gradient updates. Store reflections in an episodic memory buffer for subsequent attempts.
+- **Implementation impact**: Add a **reflection phase to Golden Loop v2** after test failures:
+
+```
+Current: Understand → Implement → Test → [FAIL] → Retry
+Proposed: Understand → Implement → Test → [FAIL] → Reflect → Retry with reflection
+```
+
+**Reflexion prompt template for MechaCoder:**
+```
+You attempted: {action}
+Result: {error_or_failure}
+Test output: {test_results}
+
+Analyze what went wrong and provide a specific, actionable reflection
+for how to fix this on the next attempt. Consider:
+1. What was the root cause of the failure?
+2. What assumption was wrong?
+3. What should be done differently?
+```
+
+**Memory management**: Keep last 2-3 reflections in sliding window (paper shows diminishing returns beyond this). The combination of `LAST_ATTEMPT_AND_REFLEXION` performed best.
+
+**Quantitative results**: 91% pass@1 on HumanEval (vs GPT-4's 80% baseline)—directly applicable to MechaCoder's coding tasks.
+
+---
+
+### Cross-Paper Patterns
+
+Several patterns emerge across multiple papers, strengthening the case for their implementation:
+
+#### Pattern 1: Episodic Memory for Learning from Failures
+
+| Paper | Implementation |
+|-------|----------------|
+| **A-MEM** | Memory notes with evolving connections |
+| **Reflexion** | Episodic buffer of failure reflections |
+| **Generative Agents** | Memory stream with importance scoring |
+
+**Synthesis**: MechaCoder should maintain an episodic memory of *failed attempts* with explicit reflections, not just successful patterns. This prevents repeating the same mistakes.
+
+#### Pattern 2: Hierarchical Skill Composition
+
+| Paper | Implementation |
+|-------|----------------|
+| **Voyager** | Skills call simpler skills (JavaScript functions) |
+| **Odyssey** | 40 primitive + 183 compositional skills |
+| **PLAP** | Parameterized skills with executors |
+
+**Synthesis**: Skills should be composable. A "Implement Feature" skill might compose "AddTest", "WriteCode", "RefactorImports", "UpdateDocs". This matches the tech tree analogy.
+
+#### Pattern 3: Separation of Planning and Execution
+
+| Paper | Implementation |
+|-------|----------------|
+| **PLAP** | Skill Planner (LLM) + Skill Executor (deterministic) |
+| **Odyssey** | Curriculum Agent (planner) + Action Agent (executor) |
+| **Generative Agents** | Plan (day/hour/minute) + React to changes |
+
+**Synthesis**: Keep planning abstract (skill-level) and let deterministic executors handle the "how". This reduces hallucination and improves reliability.
+
+#### Pattern 4: Memory Evolution and Consolidation
+
+| Paper | Implementation |
+|-------|----------------|
+| **A-MEM** | Memories update related memories when new info arrives |
+| **Nested Learning** | Multi-timescale CMS with consolidation between levels |
+| **Generative Agents** | Reflections build on reflections hierarchically |
+
+**Synthesis**: Memory isn't static. New experiences should update old memories, and important patterns should consolidate from fast to slow memory over time.
+
+---
+
+### Updated Implementation Priorities
+
+Based on the new research, I recommend adjusting the implementation order:
+
+| Priority | Component | Rationale | New Evidence |
+|----------|-----------|-----------|--------------|
+| **1** | Skill Library | Still highest value | Odyssey confirms pre-built skills reduce learning curve |
+| **2** | Reflection on Failures | NEW: Previously not prioritized | Reflexion shows +11% on coding benchmarks |
+| **3** | Memory Evolution | NEW: Previously not specific | A-MEM shows 35% improvement with evolving connections |
+| **4** | Parameterized Skills | NEW: Not in original plan | PLAP shows skill/executor separation reduces errors |
+| **5** | Multi-Timescale Memory | Still important | Nested Learning still foundational |
+| **6** | Automatic Curriculum | Still valuable | Odyssey validates multi-agent approach |
+
+**Key addition**: The **Reflexion pattern** should be implemented early—it's low-cost (add a reflection prompt after failures) with high impact (+11% on HumanEval).
+
+---
+
+### New Questions Raised
+
+1. **Memory Connection Discovery**: A-MEM uses LLM to discover non-obvious connections between memories. Should MechaCoder do this for code patterns? (e.g., "this auth error pattern relates to that permission fix")
+
+2. **Bootstrap vs Learn**: Odyssey pre-builds 223 skills vs Voyager learns from scratch. What's the right balance for MechaCoder? Should we curate an initial skill library manually?
+
+3. **Reflection Quality**: Reflexion notes that reflection quality varies. How do we ensure MechaCoder generates *useful* reflections, not generic ones?
+
+4. **Skill Executor Scope**: PLAP regenerates action sequences each step. For coding, should we re-plan after each file change, or only after major state changes (test results, errors)?
+
+5. **Domain Fine-Tuning**: Odyssey's MineMA approach suggests domain-specific fine-tuning. Is it worth fine-tuning a smaller model on codebase patterns for routine operations?
+
+---
+
+### Concrete Next Steps
+
+Based on this synthesis, the immediate actionable items are:
+
+1. **Add Reflexion to Golden Loop v2** (Low effort, high impact)
+   - Add reflection prompt after test failures
+   - Store last 2-3 reflections in context
+   - Track whether reflections improve retry success rate
+
+2. **Extend Archivist with A-MEM patterns** (Medium effort)
+   - Add `links` field to AgentMemory schema
+   - Implement connection discovery via LLM analysis
+   - Add memory evolution on new memory insertion
+
+3. **Define Parameterized Skill Interface** (Medium effort)
+   - Create skill schema with params + executor
+   - Start with 5-10 common skills (RefactorFunction, AddTest, FixTypeError, etc.)
+   - Build executor that converts skill calls to tool sequences
+
+4. **Bootstrap Initial Skill Library** (Medium effort)
+   - Curate 40-50 verified code patterns from past successful tasks
+   - Add embeddings for retrieval
+   - Measure impact on task success rate
+
+---
+
+### Appendix: New Paper References
+
+#### A-MEM
+- **Paper**: "A-MEM: Agentic Memory for LLM Agents"
+- **Authors**: Xu et al. (Rutgers University)
+- **Published**: NeurIPS 2025
+- **Key insight**: Memory as an agentic process with Zettelkasten-style connections
+- **Local summary**: `docs/research/paper-summaries/a-mem-summary.md`
+
+#### ODYSSEY
+- **Paper**: "Odyssey: Empowering Minecraft Agents with Open-World Skills"
+- **Authors**: Liu et al. (Zhejiang University)
+- **Published**: IJCAI 2025
+- **Key insight**: Bootstrap with pre-built skills + domain-specific fine-tuning
+- **Local summary**: `docs/research/paper-summaries/odyssey-summary.md`
+
+#### PLAP
+- **Paper**: "Empowering LLMs with Parameterized Skills for Adversarial Long-Horizon Planning"
+- **Authors**: Cui et al.
+- **Published**: IJCNN 2025
+- **Key insight**: Separate skill planning from skill execution
+- **Local summary**: `docs/research/paper-summaries/plap-summary.md`
+
+#### Reflexion
+- **Paper**: "Reflexion: Language Agents with Verbal Reinforcement Learning"
+- **Authors**: Shinn et al. (Northeastern, MIT, Princeton)
+- **Published**: NeurIPS 2023
+- **Key insight**: Verbal self-reflection on failures improves subsequent attempts
+- **Local summary**: `docs/research/paper-summaries/reflexion-summary.md`

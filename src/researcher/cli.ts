@@ -9,11 +9,12 @@
  *   bun run researcher:url <url>                - Fetch and summarize a specific URL
  *   bun run researcher:from-reflection <path>   - Parse reflection doc for papers
  *   bun run researcher:auto [options]           - Auto-process pending papers
+ *   bun run researcher:synthesize               - Synthesize summaries into analysis doc
  *   bun run researcher:status                   - Show registry status
  *   bun run researcher:list                     - List all papers in registry
  */
 import { parseArgs } from "util";
-import { runResearcher, type ResearchRequest, type PaperPriority } from "./index.js";
+import { runResearcher, runSynthesizer, type ResearchRequest, type PaperPriority } from "./index.js";
 import {
   loadRegistry,
   addPaper,
@@ -40,6 +41,8 @@ const { values, positionals } = parseArgs({
     priority: { type: "string", default: "HIGH" },
     "output-dir": { type: "string" },
     "registry-path": { type: "string", default: "docs/research/papers.jsonl" },
+    "summaries-dir": { type: "string", default: "docs/research/paper-summaries" },
+    "analysis-path": { type: "string", default: "docs/research/analysis/no-gradient-lifelong-learning.md" },
     "no-task": { type: "boolean" },
   },
   allowPositionals: true,
@@ -61,6 +64,7 @@ USAGE:
   bun run researcher:url <url>                Fetch and summarize a specific URL
   bun run researcher:from-reflection <path>   Parse reflection doc for papers
   bun run researcher:auto [options]           Auto-process pending papers
+  bun run researcher:synthesize               Synthesize summaries into analysis doc
   bun run researcher:status                   Show registry status
   bun run researcher:list                     List all papers in registry
 
@@ -69,6 +73,8 @@ OPTIONS:
   --priority <P>        Priority filter: HIGH, MEDIUM, LOW (default: HIGH)
   --output-dir <dir>    Output directory for summaries
   --registry-path <p>   Path to papers.jsonl (default: docs/research/papers.jsonl)
+  --summaries-dir <d>   Directory containing summaries (default: docs/research/paper-summaries)
+  --analysis-path <p>   Analysis doc to update (default: docs/research/analysis/no-gradient-lifelong-learning.md)
   --no-task             Don't create tasks for paper requests
   --json, -j            Output as JSON
   --verbose, -v         Show detailed output
@@ -79,6 +85,7 @@ EXAMPLES:
   bun run researcher:url "https://arxiv.org/abs/2502.12110"
   bun run researcher:from-reflection docs/research/analysis/related-work-reflection.md
   bun run researcher:auto --max-papers 3 --priority HIGH
+  bun run researcher:synthesize
   bun run researcher:status
 `);
 };
@@ -408,6 +415,57 @@ const runList = async () => {
 };
 
 // ============================================================================
+// Synthesize Command
+// ============================================================================
+
+const runSynthesize = async () => {
+  const summariesDir = values["summaries-dir"] ?? "docs/research/paper-summaries";
+  const analysisPath = values["analysis-path"] ?? "docs/research/analysis/no-gradient-lifelong-learning.md";
+
+  log(`Synthesizing summaries from ${summariesDir}`);
+  log(`Updating analysis at ${analysisPath}`);
+
+  // Get all summary files
+  const glob = new Bun.Glob("*-summary.md");
+  const summaryFiles: string[] = [];
+  for await (const file of glob.scan({ cwd: summariesDir })) {
+    summaryFiles.push(`${summariesDir}/${file}`);
+  }
+
+  if (summaryFiles.length === 0) {
+    log("No summary files found");
+    if (values.json) {
+      outputJson({ success: false, error: "No summary files found" });
+    }
+    return;
+  }
+
+  log(`Found ${summaryFiles.length} summaries to synthesize`);
+
+  const synthesizerOptions: Parameters<typeof runSynthesizer>[1] = {
+    cwd: process.cwd(),
+  };
+  if (values.verbose) synthesizerOptions.onOutput = (text) => process.stdout.write(text);
+
+  const result = await runSynthesizer(
+    { summaryPaths: summaryFiles, analysisPath },
+    synthesizerOptions
+  );
+
+  if (values.json) {
+    outputJson(result);
+  } else if (result.success) {
+    log(`Synthesis complete! Updated: ${result.analysisPath ?? analysisPath}`);
+    if (result.changesSummary) {
+      log(`Changes: ${result.changesSummary}`);
+    }
+  } else {
+    log(`Synthesis failed: ${result.error ?? "Unknown error"}`);
+    process.exit(1);
+  }
+};
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -432,6 +490,10 @@ const main = async () => {
 
     case "auto":
       await runAuto();
+      break;
+
+    case "synthesize":
+      await runSynthesize();
       break;
 
     case "status":
