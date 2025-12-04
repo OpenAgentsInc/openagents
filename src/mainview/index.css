@@ -181,3 +181,239 @@ body {
   text-align: right;
   font-size: 11px;
 }
+
+/* TB Controls Panel */
+#tb-controls {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 280px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.tb-controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.tb-label {
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tb-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.tb-status.running {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.tb-status.error {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.tb-controls-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#tb-suite-path {
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+#tb-suite-path:focus {
+  outline: none;
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.05);
+}
+
+#tb-suite-path::placeholder {
+  color: var(--text-muted);
+}
+
+.tb-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.tb-buttons button {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: all 0.15s ease;
+}
+
+.tb-buttons button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.tb-buttons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tb-buttons button.primary {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.tb-buttons button.primary:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: #22c55e;
+}
+
+.tb-buttons button.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.tb-buttons button.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+}
+
+/* Task Selector */
+.tb-task-selector {
+  border-top: 1px solid var(--border-subtle);
+  max-height: 300px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-task-selector.hidden {
+  display: none;
+}
+
+.tb-task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tb-task-header span {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.tb-task-header button.small {
+  padding: 4px 8px;
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.tb-task-header button.small:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.tb-task-list {
+  overflow-y: auto;
+  max-height: 220px;
+  padding: 8px 0;
+}
+
+.tb-task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.tb-task-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tb-task-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #22c55e;
+}
+
+.tb-task-item .task-name {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-task-item .task-difficulty {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.tb-task-item .task-difficulty.easy {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.tb-task-item .task-difficulty.medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.tb-task-item .task-difficulty.hard {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.tb-task-item .task-difficulty.expert {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
