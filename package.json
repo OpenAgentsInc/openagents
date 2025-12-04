@@ -38,9 +38,9 @@
     "session:by-task": "bun src/sessions/cli.ts by-task",
     "e2e:server": "bun run e2e/test-server.ts",
     "e2e:test": "bunx playwright test --config e2e/playwright.config.ts",
-    "e2e:test:headed": "HEADED=1 bunx playwright test --config e2e/playwright.config.ts",
-    "e2e:test:slow": "HEADED=1 SLOWMO=500 bunx playwright test --config e2e/playwright.config.ts",
-    "e2e:test:debug": "bunx playwright test --config e2e/playwright.config.ts --debug",
+    "e2e:test:headed": "HEADED=1 bunx playwright test --config e2e/playwright.config.ts --headed",
+    "e2e:test:slow": "HEADED=1 SLOWMO=500 bunx playwright test --config e2e/playwright.config.ts --headed",
+    "e2e:test:debug": "PWDEBUG=1 HEADED=1 SLOWMO=500 bunx playwright test --config e2e/playwright.config.ts --debug",
     "e2e:ui": "bunx playwright test --config e2e/playwright.config.ts --ui",
     "e2e:report": "bunx playwright show-report",
     "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots"
