@@ -364,6 +364,16 @@ const main = async (): Promise<void> => {
     console.log(`Claude CLI: ${whichClaude.stdout.toString().trim() || "not found"}`);
     const claudeVersion = Bun.spawnSync(["claude", "--version"], { stderr: "pipe" });
     console.log(`Claude version: ${claudeVersion.stdout.toString().trim() || claudeVersion.stderr.toString().trim()}`);
+    // Test direct claude CLI call
+    console.log(`Testing direct claude call...`);
+    const testProc = Bun.spawnSync(["claude", "--print", "-p", "Say hello"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+    });
+    console.log(`Claude test stdout: ${testProc.stdout.toString().slice(0, 500)}`);
+    console.log(`Claude test stderr: ${testProc.stderr.toString().slice(0, 500)}`);
+    console.log(`Claude test exit: ${testProc.exitCode}`);
   } catch (e) {
     console.log(`Claude CLI check failed: ${e}`);
   }
