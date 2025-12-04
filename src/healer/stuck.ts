@@ -6,7 +6,6 @@
  * - Repeated failure patterns in ATIF trajectories
  * - No progress indicators (no commits, no file changes)
  */
-import { Effect } from "effect";
 import type { Task } from "../tasks/schema.js";
 import type { Subtask } from "../agent/orchestrator/types.js";
 import type { Trajectory } from "../atif/schema.js";
@@ -210,8 +209,9 @@ export const extractFailurePatterns = (
       }
 
       // Check step message for error indicators
-      if (step.message && /error|failed|exception/i.test(step.message)) {
-        const pattern = normalizeErrorPattern(step.message);
+      const stepMessage = typeof step.message === "string" ? step.message : null;
+      if (stepMessage && /error|failed|exception/i.test(stepMessage)) {
+        const pattern = normalizeErrorPattern(stepMessage);
         const existing = patternMap.get(pattern) ?? { count: 0, sessionIds: [] };
         existing.count++;
         if (!existing.sessionIds.includes(traj.session_id)) {
