@@ -499,4 +499,67 @@ describe("tasks CLI integration", () => {
     const openTask = afterCascade.find((t: any) => t.id === "oa-open-1");
     expect(openTask?.deps ?? []).toHaveLength(0);
   });
+
+  test("delete command removes task with optional cascade", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-delete-"));
+    const dir = path.join(tmp, ".openagents");
+    fs.mkdirSync(dir, { recursive: true });
+    const tasksPath = path.join(dir, "tasks.jsonl");
+    const now = "2024-01-01T00:00:00.000Z";
+
+    const tasks = [
+      {
+        id: "oa-root",
+        title: "Root",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-child",
+        title: "Child",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [{ id: "oa-root", type: "blocks" }],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+    ];
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+
+    const dryRun = runCli(
+      ["delete", "--dir", tmp, "--id", "oa-root", "--dry-run", "--json"],
+      tmp,
+    );
+    expect(dryRun.code).toBe(0);
+    const dryPayload = JSON.parse(dryRun.stdout);
+    expect(dryPayload.deletedIds).toContain("oa-root");
+    expect(dryPayload.deletedIds).not.toContain("oa-child");
+
+    const deleteCmd = runCli(
+      ["delete", "--dir", tmp, "--id", "oa-root", "--cascade", "--json"],
+      tmp,
+    );
+    expect(deleteCmd.code).toBe(0);
+
+    const remainingContent = fs.readFileSync(tasksPath, "utf8");
+    const remaining = remainingContent
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line));
+    expect(remaining).toHaveLength(0);
+  });
 });
