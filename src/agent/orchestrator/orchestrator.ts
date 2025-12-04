@@ -22,7 +22,6 @@ import { bashTool } from "../../tools/bash.js";
 import { writeTool } from "../../tools/write.js";
 import { runBestAvailableSubagent } from "./subagent-router.js";
 import { runInitScript } from "./init-script.js";
-import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 import {
   readSubtasks,
   writeSubtasks,
@@ -42,6 +41,7 @@ import {
   type InitScriptResult,
   getProgressPath,
 } from "./types.js";
+import { createHealerCounters } from "../../healer/types.js";
 import {
   runVerificationWithSandbox,
   type SandboxRunnerConfig,
@@ -277,95 +277,32 @@ export const runOrchestrator = (
       }
       progress.orientation.initScript = initScriptResult;
 
-      // Safe mode: Attempt self-healing for recoverable failures
-      if (initScriptResult.ran && !initScriptResult.success && config.safeMode && initScriptResult.canSelfHeal) {
-        emit({ type: "error", phase: "orienting", error: `Init script failed with ${initScriptResult.failureType}, attempting self-heal...` });
-
-        // Create emergency subtask for self-healing
-        const healingSubtask: Subtask = {
-          id: `emergency-${initScriptResult.failureType}-fix`,
-          description: initScriptResult.failureType === "typecheck_failed"
-            ? `## EMERGENCY: Fix All TypeScript Errors
-
-The init script failed due to typecheck errors. You MUST fix ALL typecheck errors immediately.
-
-Init script output:
-\`\`\`
-${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
-\`\`\`
-
-Steps:
-1. Run \`bun run typecheck\` to see all errors
-2. Fix each error - do NOT just suppress them
-3. Verify fix with \`bun run typecheck\`
-4. All errors must be resolved before continuing`
-            : initScriptResult.failureType === "test_failed"
-            ? `## EMERGENCY: Fix Failing Tests
-
-The init script failed due to test failures. You MUST fix ALL failing tests.
-
-Init script output:
-\`\`\`
-${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
-\`\`\`
-
-Steps:
-1. Run \`bun test\` to see all failing tests
-2. Fix the root cause of each failure
-3. Verify fix with \`bun test\`
-4. All tests must pass before continuing`
-            : `## EMERGENCY: Fix Init Script Error
-
-The init script failed. Fix the issue.
-
-Init script output:
-\`\`\`
-${initScriptResult.output?.slice(0, 2000) ?? "No output available"}
-\`\`\``,
-          status: "in_progress",
-          startedAt: new Date().toISOString(),
-        };
-
-        emit({ type: "subtask_start", subtask: healingSubtask });
-
-        // Run Claude Code to fix the issue
-        const healResult = yield* Effect.tryPromise({
-          try: () => runClaudeCodeSubagent(healingSubtask, {
-            cwd: config.cwd,
-            openagentsDir,
-            maxTurns: 50,
-            permissionMode: config.claudeCode?.permissionMode ?? "bypassPermissions",
-            ...(config.onOutput ? { onOutput: config.onOutput } : {}),
-            ...(config.signal ? { signal: config.signal } : {}),
-          }),
-          catch: (e: any) => new Error(`Self-healing failed: ${e.message}`),
-        }).pipe(
-          Effect.catchAll((error) => Effect.succeed({
-            success: false,
-            subtaskId: healingSubtask.id,
-            filesModified: [],
-            turns: 0,
-            error: error.message,
-          }))
+      // Healer: Attempt self-healing for init script failures
+      if (initScriptResult.ran && !initScriptResult.success && config.healerService && config.projectConfig) {
+        // Invoke Healer synchronously using yield*
+        const healerOutcome = yield* config.healerService.maybeRun(
+          { type: "init_script_complete", result: initScriptResult },
+          state,
+          config.projectConfig,
+          config.healerCounters ?? createHealerCounters()
         );
 
-        if (healResult.success) {
-          emit({ type: "subtask_complete", subtask: healingSubtask, result: healResult });
+        if (healerOutcome) {
+          // Healer was invoked, log the outcome
+          if (healerOutcome.status === "resolved") {
+            // Healer resolved the issue, re-run init script to verify
+            const retryResult = yield* runInitScript(openagentsDir, config.cwd, emit);
 
-          // Re-run init script to verify the fix
-          const retryResult = yield* runInitScript(openagentsDir, config.cwd, emit);
-
-          if (retryResult.success) {
-            // Self-healing succeeded! Update the init script result and continue
-            initScriptResult = retryResult;
-            progress.orientation.initScript = retryResult;
-            emit({ type: "error", phase: "orienting", error: `Self-healing succeeded for ${healingSubtask.id}` });
-          } else {
-            // Self-healing fixed something but init still fails
-            emit({ type: "subtask_failed", subtask: healingSubtask, error: "Self-healing completed but init script still fails" });
+            if (retryResult.success) {
+              // Self-healing succeeded! Update init script result and continue
+              initScriptResult = retryResult;
+              progress.orientation.initScript = retryResult;
+            }
+          } else if (healerOutcome.status === "contained") {
+            // Healer contained the issue (e.g., marked task blocked)
+            // Continue with failure, but note that it was handled
           }
-        } else {
-          emit({ type: "subtask_failed", subtask: healingSubtask, error: healResult.error || "Self-healing failed" });
+          // For "unresolved" or "skipped", continue with failure
         }
       }
 
