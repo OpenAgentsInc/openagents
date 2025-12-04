@@ -1,7 +1,10 @@
 import * as S from "effect/Schema";
 
 // Status represents the current state of a task
-export const Status = S.Literal("open", "in_progress", "blocked", "closed");
+// Note: "commit_pending" is a transient status used during the two-phase commit pattern
+// to handle crash recovery. If a crash occurs between commit and task update,
+// the system can detect and recover on restart.
+export const Status = S.Literal("open", "in_progress", "blocked", "closed", "commit_pending");
 export type Status = S.Schema.Type<typeof Status>;
 
 // IssueType categorizes the kind of work
@@ -36,6 +39,21 @@ export const Comment = S.Struct({
 });
 export type Comment = S.Schema.Type<typeof Comment>;
 
+// PendingCommit tracks commit intent for two-phase commit pattern
+// Used for crash recovery: if a crash occurs after git commit but before task update,
+// this field allows the system to detect and complete the transition on restart.
+export const PendingCommit = S.Struct({
+  /** Commit message that was/will be used */
+  message: S.String,
+  /** Timestamp when commit was initiated */
+  timestamp: S.String, // ISO 8601 timestamp
+  /** Git branch the commit was made on */
+  branch: S.optional(S.String),
+  /** SHA of the commit (filled after successful git commit) */
+  sha: S.optional(S.String),
+});
+export type PendingCommit = S.Schema.Type<typeof PendingCommit>;
+
 // Task represents a trackable work item (matches beads Issue schema)
 export const Task = S.Struct({
   id: S.String,
@@ -59,6 +77,8 @@ export const Task = S.Struct({
   acceptanceCriteria: S.optional(S.String),
   notes: S.optional(S.String),
   estimatedMinutes: S.optional(S.NullOr(S.Number)),
+  // Two-phase commit field: tracks pending commit for crash recovery
+  pendingCommit: S.optional(S.NullOr(PendingCommit)),
 });
 export type Task = S.Schema.Type<typeof Task>;
 
@@ -100,6 +120,7 @@ export const TaskUpdate = S.Struct({
   acceptanceCriteria: S.optional(S.String),
   notes: S.optional(S.String),
   estimatedMinutes: S.optional(S.NullOr(S.Number)),
+  pendingCommit: S.optional(S.NullOr(PendingCommit)),
 });
 export type TaskUpdate = S.Schema.Type<typeof TaskUpdate>;
 
@@ -292,7 +313,8 @@ export type TaskFilter = S.Schema.Type<typeof TaskFilter>;
 
 // Helper to check if a task is ready (open, no blocking deps)
 export const isTaskReady = (task: Task, allTasks: Task[]): boolean => {
-  if (task.status === "closed" || task.status === "blocked") return false;
+  // Tasks that are closed, blocked, or in commit_pending state are not ready
+  if (task.status === "closed" || task.status === "blocked" || task.status === "commit_pending") return false;
 
   const blockingDeps = task.deps?.filter((d) => d.type === "blocks" || d.type === "parent-child");
   if (!blockingDeps || blockingDeps.length === 0) return true;
@@ -308,3 +330,4 @@ export const decodeTask = S.decodeUnknownSync(Task);
 export const decodeTaskCreate = S.decodeUnknownSync(TaskCreate);
 export const decodeTaskUpdate = S.decodeUnknownSync(TaskUpdate);
 export const decodeProjectConfig = S.decodeUnknownSync(ProjectConfig);
+export const decodePendingCommit = S.decodeUnknownSync(PendingCommit);
