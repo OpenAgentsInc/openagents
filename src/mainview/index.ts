@@ -191,10 +191,10 @@ function updateViewModeUI(): void {
     tbBtn.classList.toggle("active", viewMode === "tbench")
   }
 
-  // Show/hide TB controls based on mode
+  // TB controls always visible (user can trigger runs from any view)
   const tbControls = document.getElementById("tb-controls")
   if (tbControls) {
-    tbControls.style.display = viewMode === "tbench" ? "block" : "none"
+    tbControls.style.display = "block"
   }
 }
 
