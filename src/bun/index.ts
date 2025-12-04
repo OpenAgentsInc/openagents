@@ -4,8 +4,26 @@ import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import { spawn } from "bun";
 import { resolve, dirname, join } from "node:path";
 
-// Get the project root (src/bun/index.ts -> go up 2 levels)
-const PROJECT_ROOT = resolve(dirname(import.meta.path), "../..");
+// Get the project root - handle both dev (from app bundle) and direct execution
+function getProjectRoot(): string {
+  const metaPath = dirname(import.meta.path);
+
+  // If running from app bundle, the path contains .app/Contents
+  // e.g., /path/to/openagents/build/dev-macos-arm64/OpenAgents-dev.app/Contents/Resources
+  // We need to go up to the actual project root
+  if (metaPath.includes(".app/Contents")) {
+    // Find the build/ directory and go one level up
+    const buildIndex = metaPath.indexOf("/build/");
+    if (buildIndex !== -1) {
+      return metaPath.slice(0, buildIndex);
+    }
+  }
+
+  // Fallback: go up 2 levels from src/bun/
+  return resolve(metaPath, "../..");
+}
+
+const PROJECT_ROOT = getProjectRoot();
 
 // ============================================================================
 // TB Run Types
