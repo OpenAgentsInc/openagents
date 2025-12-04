@@ -240,6 +240,22 @@ export const ReflexionConfig = S.Struct({
 });
 export type ReflexionConfig = S.Schema.Type<typeof ReflexionConfig>;
 
+/** Configuration for failure cleanup behavior */
+export const FailureCleanupConfig = S.Struct({
+  /**
+   * Revert modifications to tracked files on failure (git checkout -- .)
+   * Default: true - safe operation, only affects files already in git
+   */
+  revertTrackedFiles: S.optionalWith(S.Boolean, { default: () => true }),
+  /**
+   * Delete untracked files on failure (git clean -fd)
+   * Default: false - DESTRUCTIVE operation, deletes files not in git
+   * Only enable if you understand the risk of losing untracked work
+   */
+  deleteUntrackedFiles: S.optionalWith(S.Boolean, { default: () => false }),
+});
+export type FailureCleanupConfig = S.Schema.Type<typeof FailureCleanupConfig>;
+
 /** Configuration for Healer self-healing subagent */
 export const HealerConfig = S.Struct({
   /** Enable Healer (default: true, replaces safeMode) */
@@ -268,6 +284,7 @@ export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
   projectId: S.String,
   defaultBranch: S.optionalWith(S.String, { default: () => "main" }),
+  workBranch: S.optional(S.String),
   defaultModel: S.optionalWith(S.String, { default: () => "x-ai/grok-4.1-fast:free" }),
   rootDir: S.optionalWith(S.String, { default: () => "." }),
   typecheckCommands: S.optionalWith(S.Array(S.String), {
@@ -302,6 +319,9 @@ export const ProjectConfig = S.Struct({
   }),
   reflexion: S.optionalWith(ReflexionConfig, {
     default: () => S.decodeUnknownSync(ReflexionConfig)({}),
+  }),
+  failureCleanup: S.optionalWith(FailureCleanupConfig, {
+    default: () => S.decodeUnknownSync(FailureCleanupConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({

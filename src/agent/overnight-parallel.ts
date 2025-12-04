@@ -258,6 +258,7 @@ const runTypecheck = async (
 const mergeToMain = async (
   repoPath: string,
   branch: string,
+  targetBranch: string,
   taskInfo?: { id: string; title: string },
 ): Promise<{ success: boolean; commitSha?: string; error?: string }> => {
   try {
@@ -279,17 +280,17 @@ const mergeToMain = async (
       }
     }
 
-    // Checkout main
-    result = await runGit(repoPath, ["checkout", "main"]);
+    // Checkout target branch
+    result = await runGit(repoPath, ["checkout", targetBranch]);
     if (result.exitCode !== 0) {
       if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
-      return { success: false, error: `Checkout main failed: ${result.stderr}` };
+      return { success: false, error: `Checkout ${targetBranch} failed: ${result.stderr}` };
     }
 
     // Pull latest
-    result = await runGit(repoPath, ["pull", "--ff-only", "origin", "main"]);
+    result = await runGit(repoPath, ["pull", "--ff-only", "origin", targetBranch]);
     if (result.exitCode !== 0) {
-      result = await runGit(repoPath, ["pull", "--rebase", "origin", "main"]);
+      result = await runGit(repoPath, ["pull", "--rebase", "origin", targetBranch]);
       if (result.exitCode !== 0) {
         if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
         return { success: false, error: `Pull failed: ${result.stderr}` };
@@ -316,7 +317,7 @@ const mergeToMain = async (
     const commitSha = result.stdout;
 
     // Push
-    result = await runGit(repoPath, ["push", "origin", "main"]);
+    result = await runGit(repoPath, ["push", "origin", targetBranch]);
     if (result.exitCode !== 0) {
       if (stashSuccess) await runGit(repoPath, ["stash", "pop"]);
       return { success: false, error: `Push failed: ${result.stderr}` };
@@ -689,6 +690,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   const defaultProjectConfig = {
     projectId: "unknown",
     defaultBranch: "main",
+    workBranch: undefined as string | undefined,
     testCommands: ["bun test"],
     typecheckCommands: [],
     e2eCommands: [],
@@ -704,6 +706,8 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   );
   const projectConfig = loadedConfig ?? defaultProjectConfig;
   log(`Project: ${projectConfig.projectId}`);
+  const mergeTargetBranch = projectConfig.workBranch ?? projectConfig.defaultBranch ?? "main";
+  log(`Target branch: ${mergeTargetBranch}`);
 
   // Pre-flight typecheck on main repo before spawning worktrees
   const preflightTypecheck = projectConfig.typecheckCommands ?? [];
@@ -789,7 +793,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
       const worktreeConfig: WorktreeConfig = {
         taskId: task.id,
         sessionId,
-        baseBranch: projectConfig.defaultBranch ?? "main",
+        baseBranch: mergeTargetBranch,
         timeoutMs: 30 * 60 * 1000, // 30 minutes
       };
 
@@ -839,7 +843,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
       if (slot.status === "completed" && slot.worktree) {
         const hasCommits = await hasCommitsAhead(
           slot.worktree.path,
-          projectConfig.defaultBranch ?? "main",
+          mergeTargetBranch,
         );
 
         if (hasCommits) {
@@ -865,9 +869,14 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
           }
 
           if (typecheckPassed) {
-            log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to main...`);
+            log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to ${mergeTargetBranch}...`);
             const taskInfo = slot.task ? { id: slot.task.id, title: slot.task.title } : undefined;
-            const mergeResult = await mergeToMain(config.workDir, slot.worktree.branch, taskInfo);
+            const mergeResult = await mergeToMain(
+              config.workDir,
+              slot.worktree.branch,
+              mergeTargetBranch,
+              taskInfo,
+            );
             if (mergeResult.success) {
               if (mergeResult.commitSha) {
                 slot.commitSha = mergeResult.commitSha;
