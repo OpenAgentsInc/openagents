@@ -68,6 +68,24 @@ export interface ResearcherOptions {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Get list of existing files in output directory.
+ */
+const getExistingFiles = async (cwd: string, outputDir: string): Promise<string[]> => {
+  const fullPath = outputDir.startsWith("/") ? outputDir : `${cwd}/${outputDir}`;
+  try {
+    const entries = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: fullPath }));
+    return entries.map((f) => `${outputDir}/${f}`);
+  } catch {
+    // Directory doesn't exist or can't be scanned
+    return [];
+  }
+};
+
+// ============================================================================
 // Core Function
 // ============================================================================
 
@@ -98,6 +116,9 @@ export const runResearcher = async (
   };
 
   try {
+    // Get files before running to detect new ones
+    const filesBefore = new Set(await getExistingFiles(cwd, outputDir));
+
     // Build options for Claude Code subagent
     const subagentOptions: Parameters<typeof runClaudeCodeSubagent>[1] = {
       cwd,
@@ -123,8 +144,18 @@ export const runResearcher = async (
     const result = await runClaudeCodeSubagent(subtask, subagentOptions);
 
     // Extract created files from the result
-    const filesCreated = result.filesModified || [];
-    const summaryPath = filesCreated.find((f) => f.endsWith("-summary.md"));
+    let filesCreated = result.filesModified || [];
+    let summaryPath = filesCreated.find((f) => f.endsWith("-summary.md"));
+
+    // If no files tracked but operation succeeded, scan for new files
+    if (result.success && filesCreated.length === 0) {
+      const filesAfter = await getExistingFiles(cwd, outputDir);
+      const newFiles = filesAfter.filter((f) => !filesBefore.has(f));
+      if (newFiles.length > 0) {
+        filesCreated = newFiles;
+        summaryPath = newFiles.find((f) => f.endsWith("-summary.md"));
+      }
+    }
 
     // Build result with only defined properties
     const researchResult: ResearchResult = {
@@ -146,7 +177,95 @@ export const runResearcher = async (
 };
 
 // ============================================================================
+// Synthesis Types
+// ============================================================================
+
+/**
+ * Request to synthesize summaries into analysis doc.
+ */
+export interface SynthesisRequest {
+  /** Paths to paper summary files */
+  summaryPaths: string[];
+  /** Path to the analysis document to update */
+  analysisPath: string;
+}
+
+/**
+ * Result of a synthesis operation.
+ */
+export interface SynthesisResult {
+  /** Whether the synthesis was successful */
+  success: boolean;
+  /** Path to the updated analysis document */
+  analysisPath?: string;
+  /** Summary of changes made */
+  changesSummary?: string;
+  /** Error message if failed */
+  error?: string;
+  /** Claude Code session ID for debugging */
+  sessionId?: string;
+}
+
+// ============================================================================
+// Synthesis Function
+// ============================================================================
+
+import { buildSynthesisPrompt } from "./prompts.js";
+
+/**
+ * Run the synthesizer to update analysis doc with paper summaries.
+ */
+export const runSynthesizer = async (
+  request: SynthesisRequest,
+  options: ResearcherOptions = {}
+): Promise<SynthesisResult> => {
+  const cwd = options.cwd ?? process.cwd();
+
+  // Build the synthesis prompt
+  const prompt = buildSynthesisPrompt(request.summaryPaths, request.analysisPath);
+
+  // Create a subtask for Claude Code
+  const subtask: Subtask = {
+    id: `synthesis-${Date.now()}`,
+    description: prompt,
+    status: "in_progress",
+    startedAt: new Date().toISOString(),
+    failureCount: 0,
+  };
+
+  try {
+    // Build options for Claude Code subagent
+    const subagentOptions: Parameters<typeof runClaudeCodeSubagent>[1] = {
+      cwd,
+      maxTurns: options.maxTurns ?? 100,
+      permissionMode: "bypassPermissions",
+      allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
+    };
+    if (options.onOutput) subagentOptions.onOutput = options.onOutput;
+    if (options.signal) subagentOptions.signal = options.signal;
+
+    // Run Claude Code with synthesis task
+    const result = await runClaudeCodeSubagent(subtask, subagentOptions);
+
+    // Build result
+    const synthesisResult: SynthesisResult = {
+      success: result.success,
+      analysisPath: request.analysisPath,
+    };
+    if (result.error) synthesisResult.error = result.error;
+    if (result.claudeCodeSessionId) synthesisResult.sessionId = result.claudeCodeSessionId;
+
+    return synthesisResult;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
+// ============================================================================
 // Exports
 // ============================================================================
 
-export { buildResearchPrompt } from "./prompts.js";
+export { buildResearchPrompt, buildSynthesisPrompt } from "./prompts.js";

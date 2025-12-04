@@ -34,6 +34,7 @@
     "researcher:auto": "bun src/researcher/cli.ts auto",
     "researcher:status": "bun src/researcher/cli.ts status",
     "researcher:list": "bun src/researcher/cli.ts list",
+    "researcher:synthesize": "bun src/researcher/cli.ts synthesize",
     "mechacoder": "bun src/agent/do-one-task.ts",
     "mechacoder:cc-only": "bun src/agent/do-one-task.ts --cc-only",
     "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy",

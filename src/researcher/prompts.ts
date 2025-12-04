@@ -181,3 +181,84 @@ After each paper, report:
 At the end, summarize: X of Y papers processed successfully.
 `;
 };
+
+/**
+ * Build the synthesis prompt to update the analysis document.
+ */
+export const buildSynthesisPrompt = (
+  summaryPaths: string[],
+  analysisPath: string
+): string => {
+  return `## Research Synthesis Task
+
+You are synthesizing insights from recently summarized research papers to update the main analysis document.
+
+### Paper Summaries to Synthesize
+${summaryPaths.map((p) => `- ${p}`).join("\n")}
+
+### Analysis Document to Update
+${analysisPath}
+
+### Your Task
+
+1. **Read all paper summaries** - Focus on the "Relevance to MechaCoder" sections
+
+2. **Read the current analysis document** - Understand the existing structure and content
+
+3. **Identify new insights** that should be integrated:
+   - New patterns or techniques not covered
+   - Updates to implementation priorities
+   - New concrete code examples from papers
+   - New questions or gaps identified
+   - Cross-paper patterns (e.g., "both A-Mem and Reflexion use episodic memory")
+
+4. **Update the analysis document** with:
+   - A new "## Recent Research Updates" section (or append to existing)
+   - Date-stamped entries for each synthesized paper
+   - Concrete implementation recommendations
+   - Updated priorities if the new research changes them
+
+### Update Format
+
+Add a section like this to the analysis document:
+
+\`\`\`markdown
+---
+
+## Research Updates (YYYY-MM-DD)
+
+### Papers Integrated
+
+1. **Paper Title** (Year)
+   - Key finding: [1 sentence]
+   - Implementation impact: [What we should build/change]
+
+### Cross-Paper Patterns
+
+[Patterns observed across multiple papers]
+
+### Updated Implementation Priorities
+
+[If priorities changed based on new evidence]
+
+### New Questions
+
+[Questions raised by the new research]
+\`\`\`
+
+### Important Notes
+
+- Preserve all existing content in the analysis document
+- Add updates at the end or in a clearly marked section
+- Be specific about actionable changes
+- Link findings to MechaCoder's architecture (Golden Loop, Healer, Archivist, etc.)
+- Note any contradictions between papers
+
+### Output
+
+After completing the synthesis:
+1. Report the path of the updated analysis document
+2. Summarize the key changes made
+3. List any follow-up research suggested by the papers
+`;
+};
