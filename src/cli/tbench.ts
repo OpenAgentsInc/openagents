@@ -357,6 +357,16 @@ const main = async (): Promise<void> => {
   console.log(`CWD: ${args.cwd || process.cwd()}`);
   console.log(`ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "set" : "not set"}`);
   console.log(`ANTHROPIC_OAUTH_TOKEN: ${process.env.ANTHROPIC_OAUTH_TOKEN ? "set (" + process.env.ANTHROPIC_OAUTH_TOKEN.slice(0, 20) + "...)" : "not set"}`);
+
+  // Test claude CLI availability
+  try {
+    const whichClaude = Bun.spawnSync(["which", "claude"]);
+    console.log(`Claude CLI: ${whichClaude.stdout.toString().trim() || "not found"}`);
+    const claudeVersion = Bun.spawnSync(["claude", "--version"], { stderr: "pipe" });
+    console.log(`Claude version: ${claudeVersion.stdout.toString().trim() || claudeVersion.stderr.toString().trim()}`);
+  } catch (e) {
+    console.log(`Claude CLI check failed: ${e}`);
+  }
   console.log(`===========================\n`);
 
   let result;
