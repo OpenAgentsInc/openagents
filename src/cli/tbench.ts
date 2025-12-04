@@ -236,6 +236,8 @@ interface TBenchMetrics {
   tokens: {
     input: number;
     output: number;
+    cacheRead: number;
+    cacheCreation: number;
     total: number;
   };
   cost: number | undefined;
@@ -403,6 +405,13 @@ const main = async (): Promise<void> => {
   // Build trajectory
   const trajectory = trajectoryBuilder.build(result.success);
 
+  // Extract token usage from Claude Code session metadata
+  const usage = result.sessionMetadata?.usage;
+  const inputTokens = usage?.inputTokens || 0;
+  const outputTokens = usage?.outputTokens || 0;
+  const cacheReadTokens = usage?.cacheReadInputTokens || 0;
+  const cacheCreationTokens = usage?.cacheCreationInputTokens || 0;
+
   // Build metrics
   const metrics: TBenchMetrics = {
     model: modelName,
@@ -413,11 +422,11 @@ const main = async (): Promise<void> => {
     durationMs,
     turns: result.turns,
     tokens: {
-      input: result.sessionMetadata?.usage?.inputTokens || 0,
-      output: result.sessionMetadata?.usage?.outputTokens || 0,
-      total:
-        (result.sessionMetadata?.usage?.inputTokens || 0) +
-        (result.sessionMetadata?.usage?.outputTokens || 0),
+      input: inputTokens,
+      output: outputTokens,
+      cacheRead: cacheReadTokens,
+      cacheCreation: cacheCreationTokens,
+      total: inputTokens + outputTokens,
     },
     cost: result.sessionMetadata?.totalCostUsd,
     filesModified: result.filesModified,
@@ -439,6 +448,8 @@ const main = async (): Promise<void> => {
   console.log(`Success: ${result.success}`);
   console.log(`Turns: ${result.turns}`);
   console.log(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
+  console.log(`Tokens: ${inputTokens} in / ${outputTokens} out${cacheReadTokens ? ` (${cacheReadTokens} cache read)` : ""}`);
+  if (metrics.cost) console.log(`Cost: $${metrics.cost.toFixed(4)}`);
   console.log(`Files Modified: ${result.filesModified.length}`);
   console.log(`Output: ${args.outputDir}`);
   console.log(`====================\n`);
