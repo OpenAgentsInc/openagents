@@ -1,0 +1,2 @@
+- Added stuck-task reference to MECHACODER-OPS guidance (tasks:stale, stuck-tasks doc).
+- Ran bun run typecheck and bun test: both passing.
