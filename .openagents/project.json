@@ -24,8 +24,8 @@
     "fallbackToMinimal": false
   },
   "sandbox": {
-    "enabled": false,
-    "backend": "auto",
+    "enabled": true,
+    "backend": "macos-container",
     "memoryLimit": "8G",
     "timeoutMs": 300000
   },

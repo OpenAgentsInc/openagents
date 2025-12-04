@@ -10,6 +10,8 @@
  *   --max-tasks     Maximum total tasks to complete (default: 10)
  *   --dry-run       Print what would happen without executing
  *   --cc-only       Use Claude Code only (no Grok fallback)
+ *   --sandbox       Force sandbox enabled (override project config)
+ *   --no-sandbox    Force sandbox disabled (override project config)
  *
  * Each agent runs in an isolated git worktree, enabling true parallel execution
  * without conflicts. Changes are merged back to main sequentially after completion.
@@ -54,6 +56,8 @@ interface ParallelConfig {
   dryRun: boolean;
   ccOnly: boolean;
   verbose: boolean;
+  /** Override sandbox enabled state (undefined = use project config) */
+  sandboxEnabled?: boolean;
 }
 
 // Agent colors for terminal output
@@ -139,6 +143,7 @@ const parseArgs = (): ParallelConfig => {
   let dryRun = false;
   let ccOnly = false;
   let verbose = false;
+  let sandboxEnabled: boolean | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--dir" || args[i] === "--cwd") && args[i + 1]) {
@@ -158,10 +163,22 @@ const parseArgs = (): ParallelConfig => {
       ccOnly = true;
     } else if (args[i] === "--verbose" || args[i] === "-v") {
       verbose = true;
+    } else if (args[i] === "--sandbox") {
+      sandboxEnabled = true;
+    } else if (args[i] === "--no-sandbox") {
+      sandboxEnabled = false;
     }
   }
 
-  return { workDir, maxAgents, maxTasks, dryRun, ccOnly, verbose };
+  return {
+    workDir,
+    maxAgents,
+    maxTasks,
+    dryRun,
+    ccOnly,
+    verbose,
+    ...(sandboxEnabled !== undefined ? { sandboxEnabled } : {}),
+  };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,6 +347,7 @@ const runAgentInWorktree = async (
   projectConfig: any,
   ccOnly: boolean,
   verbose: boolean,
+  sandboxEnabled?: boolean,
 ): Promise<void> => {
   if (!slot.worktree || !slot.task) return;
 
@@ -435,8 +453,11 @@ const runAgentInWorktree = async (
     ? { enabled: true, preferForComplexTasks: false, fallbackToMinimal: false }
     : projectConfig.claudeCode;
 
-  // Build sandbox config (pass through from project config)
-  const sandboxConfig = projectConfig.sandbox;
+  // Build sandbox config with CLI override
+  const sandboxConfig =
+    sandboxEnabled !== undefined
+      ? { ...projectConfig.sandbox, enabled: sandboxEnabled }
+      : projectConfig.sandbox;
 
   const orchestratorConfig: Parameters<typeof runOrchestrator>[0] = {
     cwd: slot.worktree.path,
@@ -581,6 +602,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   log(`Claude Code only: ${config.ccOnly}`);
   log(`Verbose: ${config.verbose}`);
   log(`Dry run: ${config.dryRun}`);
+  log(`Sandbox override: ${config.sandboxEnabled === undefined ? "use project config" : config.sandboxEnabled ? "enabled" : "disabled"}`);
   log(`${"#".repeat(60)}\n`);
 
   // Change to work directory
@@ -728,7 +750,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     log(`\nRunning ${batchSlots.length} agents in parallel...`);
     await Promise.all(
       batchSlots.map((slot) =>
-        runAgentInWorktree(slot, config.workDir, openagentsDir, projectConfig, config.ccOnly, config.verbose),
+        runAgentInWorktree(slot, config.workDir, openagentsDir, projectConfig, config.ccOnly, config.verbose, config.sandboxEnabled),
       ),
     );
 

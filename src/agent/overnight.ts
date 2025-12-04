@@ -284,7 +284,7 @@ const parseArgs = (): OvernightConfig => {
     ccOnly,
     safeMode,
     loadContext,
-    sandboxEnabled,
+    ...(sandboxEnabled !== undefined ? { sandboxEnabled } : {}),
   };
 };
 
@@ -614,6 +614,12 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
       log(`[Parallel] Ready tasks: ${ready.length}, will launch up to ${maxPerRun} agents`);
 
+      // Apply CLI sandbox override if provided
+      const sandboxConfig =
+        config.sandboxEnabled !== undefined
+          ? { ...projectConfig.sandbox, enabled: config.sandboxEnabled }
+          : projectConfig.sandbox;
+
       const parallelOptions: Parameters<typeof runParallelFromConfig>[0] = {
         repoPath: config.workDir,
         openagentsDir,
@@ -621,7 +627,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         tasks: ready,
         parallelConfig: projectConfig.parallelExecution,
         claudeCode: projectConfig.claudeCode,
-        sandbox: projectConfig.sandbox,
+        sandbox: sandboxConfig,
         allowPush: projectConfig.allowPush,
       };
 
@@ -777,12 +783,19 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
           }
         : projectConfig.claudeCode;
 
+      // Apply CLI sandbox override if provided (sequential mode)
+      const seqSandboxConfig =
+        config.sandboxEnabled !== undefined
+          ? { ...projectConfig.sandbox, enabled: config.sandboxEnabled }
+          : projectConfig.sandbox;
+
       const orchestratorConfig = {
         cwd: config.workDir,
         openagentsDir,
         testCommands: [...(projectConfig.testCommands ?? ["bun test"])],
         allowPush: projectConfig.allowPush ?? true,
         claudeCode: claudeCodeConfig,
+        sandbox: seqSandboxConfig,
         safeMode: config.safeMode,
         ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
         // Stream Claude Code output to console AND HUD
