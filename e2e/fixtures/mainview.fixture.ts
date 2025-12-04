@@ -128,15 +128,20 @@ export class MainviewPage {
 
 export class HudInjector {
   private baseUrl: string;
+  private clientId: string | undefined;
 
-  constructor(port: number = TEST_HTTP_PORT) {
+  constructor(clientId: string | undefined = undefined, port: number = TEST_HTTP_PORT) {
     this.baseUrl = `http://localhost:${port}`;
+    this.clientId = clientId;
   }
 
   async inject(message: HudMessage): Promise<void> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.clientId) headers["X-Client-ID"] = this.clientId;
+
     const response = await fetch(`${this.baseUrl}/api/inject-hud`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(message),
     });
 
@@ -160,8 +165,12 @@ export class HudInjector {
    * Inject raw/malformed data directly to WebSocket clients
    */
   async injectRaw(rawData: string): Promise<void> {
+    const headers: Record<string, string> = {};
+    if (this.clientId) headers["X-Client-ID"] = this.clientId;
+
     const response = await fetch(`${this.baseUrl}/api/inject-raw`, {
       method: "POST",
+      headers,
       body: rawData,
     });
 
@@ -261,8 +270,14 @@ export const test = base.extend<MainviewFixtures>({
     await use(mainview);
   },
 
-  hudInjector: async ({}, use) => {
-    await use(new HudInjector());
+  hudInjector: async ({ page, mainviewPage }, use) => {
+    // Ensure mainview is loaded so __clientId is available
+    await mainviewPage.waitForRender(0);
+    const clientId = await page.evaluate(() => (window as unknown as { __clientId?: string }).__clientId);
+    if (!clientId) {
+      throw new Error("Failed to resolve clientId for HUD injector");
+    }
+    await use(new HudInjector(clientId));
   },
 
   svgAssertions: async ({ page }, use) => {

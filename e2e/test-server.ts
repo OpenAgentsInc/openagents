@@ -11,27 +11,45 @@ import type { HudMessage } from "../src/hud/protocol.js";
 import { serializeHudMessage } from "../src/hud/protocol.js";
 import { TEST_HTTP_PORT, TEST_WS_PORT } from "./constants.js";
 
-// Store WebSocket clients for test message injection
-const wsClients = new Set<WebSocket>();
+// Store WebSocket clients for test message injection (keyed by clientId)
+const wsClients = new Map<string, WebSocket>();
 
-// Message queue for messages sent before clients connect
+// Message queues for messages sent before target clients connect
 const messageQueue: HudMessage[] = [];
+const targetedMessageQueues = new Map<string, HudMessage[]>();
 
 // Start WebSocket server for HUD message injection
-const wsServer = Bun.serve({
+const wsServer = Bun.serve<{ clientId: string }>({
   port: TEST_WS_PORT,
   fetch(req, server) {
-    if (server.upgrade(req)) {
+    const url = new URL(req.url);
+    const clientId =
+      url.searchParams.get("clientId") ??
+      (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+
+    if (server.upgrade(req, { data: { clientId } })) {
       return; // WebSocket upgrade handled
     }
     return new Response("HUD Test WebSocket", { status: 200 });
   },
   websocket: {
     open(ws) {
-      wsClients.add(ws as unknown as WebSocket);
-      console.log(`[WS] Client connected (total: ${wsClients.size})`);
+      const clientId =
+        ws.data?.clientId ??
+        (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+      wsClients.set(clientId, ws as unknown as WebSocket);
+      console.log(`[WS] Client connected (${clientId}) (total: ${wsClients.size})`);
 
-      // Send any queued messages
+      // Send any queued messages for this client
+      const queuedForClient = targetedMessageQueues.get(clientId);
+      if (queuedForClient?.length) {
+        for (const msg of queuedForClient) {
+          ws.send(serializeHudMessage(msg));
+        }
+        targetedMessageQueues.delete(clientId);
+      }
+
+      // Send any queued broadcast messages
       for (const msg of messageQueue) {
         ws.send(serializeHudMessage(msg));
       }
@@ -43,36 +61,66 @@ const wsServer = Bun.serve({
       console.log(`[WS] Received: ${data.slice(0, 100)}...`);
     },
     close(ws) {
-      wsClients.delete(ws as unknown as WebSocket);
-      console.log(`[WS] Client disconnected (total: ${wsClients.size})`);
+      const clientId = ws.data?.clientId;
+      if (clientId) {
+        wsClients.delete(clientId);
+        targetedMessageQueues.delete(clientId);
+      }
+      console.log(`[WS] Client disconnected${clientId ? ` (${clientId})` : ""} (total: ${wsClients.size})`);
     },
   },
 });
 
 console.log(`[WS] WebSocket server listening on ws://localhost:${TEST_WS_PORT}`);
 
-// Broadcast HUD message to all connected clients
-function broadcastHudMessage(message: HudMessage): void {
+// Broadcast HUD message to all connected clients or a specific client
+function broadcastHudMessage(message: HudMessage, targetClientId?: string): void {
   const serialized = serializeHudMessage(message);
+
+  if (targetClientId) {
+    const client = wsClients.get(targetClientId);
+    if (!client) {
+      const queue = targetedMessageQueues.get(targetClientId) ?? [];
+      queue.push(message);
+      targetedMessageQueues.set(targetClientId, queue);
+      console.log(`[WS] No client ${targetClientId}, queued message: ${message.type}`);
+      return;
+    }
+    (client as unknown as { send: (data: string) => void }).send(serialized);
+    console.log(`[WS] Sent ${message.type} to client ${targetClientId}`);
+    return;
+  }
+
   if (wsClients.size === 0) {
     // Queue message if no clients connected
     messageQueue.push(message);
     console.log(`[WS] No clients, queued message: ${message.type}`);
     return;
   }
-  for (const client of wsClients) {
+  for (const [, client] of wsClients) {
     (client as unknown as { send: (data: string) => void }).send(serialized);
   }
   console.log(`[WS] Broadcast ${message.type} to ${wsClients.size} clients`);
 }
 
 // Broadcast raw data (for malformed message testing)
-function broadcastRawMessage(data: string): void {
+function broadcastRawMessage(data: string, targetClientId?: string): void {
+  if (targetClientId) {
+    const client = wsClients.get(targetClientId);
+    if (!client) {
+      console.log(`[WS] No client ${targetClientId}, cannot send raw message`);
+      return;
+    }
+    (client as unknown as { send: (data: string) => void }).send(data);
+    console.log(`[WS] Sent raw data to client ${targetClientId}`);
+    return;
+  }
+
   if (wsClients.size === 0) {
     console.log(`[WS] No clients, cannot send raw message`);
     return;
   }
-  for (const client of wsClients) {
+  for (const [, client] of wsClients) {
     (client as unknown as { send: (data: string) => void }).send(data);
   }
   console.log(`[WS] Broadcast raw data to ${wsClients.size} clients`);
@@ -207,8 +255,13 @@ const testMainviewHtml = `<!doctype html>
       let ws = null;
       let reconnectTimer = null;
 
+      const clientId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+      window.__clientId = clientId;
+
       function connectWs() {
-        ws = new WebSocket(\`ws://localhost:\${TEST_WS_PORT}\`);
+        const wsUrl = new URL(\`ws://localhost:\${TEST_WS_PORT}\`);
+        wsUrl.searchParams.set('clientId', clientId);
+        ws = new WebSocket(wsUrl.toString());
 
         ws.onopen = () => {
           console.log('[Test WS] Connected');
@@ -273,7 +326,8 @@ const httpServer = Bun.serve({
     if (url.pathname === "/api/inject-hud" && req.method === "POST") {
       try {
         const message = (await req.json()) as HudMessage;
-        broadcastHudMessage(message);
+        const targetClientId = req.headers.get("x-client-id") ?? url.searchParams.get("clientId") ?? undefined;
+        broadcastHudMessage(message, targetClientId ?? undefined);
         return new Response(JSON.stringify({ ok: true, type: message.type }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -289,7 +343,8 @@ const httpServer = Bun.serve({
     if (url.pathname === "/api/inject-raw" && req.method === "POST") {
       try {
         const rawData = await req.text();
-        broadcastRawMessage(rawData);
+        const targetClientId = req.headers.get("x-client-id") ?? url.searchParams.get("clientId") ?? undefined;
+        broadcastRawMessage(rawData, targetClientId ?? undefined);
         return new Response(JSON.stringify({ ok: true, raw: true }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -304,7 +359,7 @@ const httpServer = Bun.serve({
     // API endpoint to disconnect all WebSocket clients (for testing)
     if (url.pathname === "/api/disconnect-ws" && req.method === "POST") {
       const clientCount = wsClients.size;
-      for (const client of wsClients) {
+      for (const [, client] of wsClients) {
         try {
           (client as unknown as { close: () => void }).close();
         } catch {
@@ -312,6 +367,7 @@ const httpServer = Bun.serve({
         }
       }
       wsClients.clear();
+      targetedMessageQueues.clear();
       return new Response(JSON.stringify({ ok: true, disconnected: clientCount }), {
         headers: { "Content-Type": "application/json" },
       });

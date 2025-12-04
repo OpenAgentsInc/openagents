@@ -288,6 +288,16 @@ test.describe("Real-Time Updates (C1-C10)", () => {
       await mainviewPage.waitForRender(100);
     }
 
+    // Wait until all phase messages are received
+    await page.waitForFunction(
+      (expected) => {
+        const messages = (window as unknown as { __hudMessages?: unknown[] }).__hudMessages || [];
+        return messages.filter((m: unknown) => (m as { type?: string }).type === "phase_change").length >= expected;
+      },
+      phases.length,
+      { timeout: 2000 }
+    );
+
     // Verify phase messages were received
     const messages = await page.evaluate(() => {
       return (window as unknown as { __hudMessages: unknown[] }).__hudMessages || [];
