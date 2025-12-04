@@ -330,6 +330,126 @@ export interface HealerInvocationCompleteMessage {
 }
 
 // ============================================================================
+// Terminal-Bench Events
+// ============================================================================
+
+/** TB task difficulty levels */
+export type TBDifficulty = "easy" | "medium" | "hard" | "expert";
+
+/** TB task outcome */
+export type TBTaskOutcome = "success" | "failure" | "timeout" | "error";
+
+/** TB task phase during execution */
+export type TBTaskPhase = "setup" | "agent" | "verification";
+
+/** TB output source */
+export type TBOutputSource = "agent" | "verification" | "system";
+
+/**
+ * TB run started
+ */
+export interface TBRunStartMessage {
+  type: "tb_run_start";
+  runId: string;
+  suiteName: string;
+  suiteVersion: string;
+  totalTasks: number;
+  taskIds: string[];
+  timestamp: string;
+}
+
+/**
+ * TB run completed
+ */
+export interface TBRunCompleteMessage {
+  type: "tb_run_complete";
+  runId: string;
+  passRate: number;
+  passed: number;
+  failed: number;
+  timeout: number;
+  error: number;
+  totalDurationMs: number;
+}
+
+/**
+ * TB task started
+ */
+export interface TBTaskStartMessage {
+  type: "tb_task_start";
+  runId: string;
+  taskId: string;
+  taskName: string;
+  category: string;
+  difficulty: TBDifficulty;
+  taskIndex: number;
+  totalTasks: number;
+}
+
+/**
+ * TB task progress update
+ */
+export interface TBTaskProgressMessage {
+  type: "tb_task_progress";
+  runId: string;
+  taskId: string;
+  phase: TBTaskPhase;
+  currentTurn?: number;
+  elapsedMs: number;
+}
+
+/**
+ * TB task output (streaming)
+ */
+export interface TBTaskOutputMessage {
+  type: "tb_task_output";
+  runId: string;
+  taskId: string;
+  text: string;
+  source: TBOutputSource;
+}
+
+/**
+ * TB task completed
+ */
+export interface TBTaskCompleteMessage {
+  type: "tb_task_complete";
+  runId: string;
+  taskId: string;
+  outcome: TBTaskOutcome;
+  durationMs: number;
+  turns: number;
+  tokens: number;
+  verificationOutput?: string;
+}
+
+/**
+ * TB suite info (for UI)
+ */
+export interface TBSuiteInfoMessage {
+  type: "tb_suite_info";
+  name: string;
+  version: string;
+  tasks: Array<{
+    id: string;
+    name: string;
+    category: string;
+    difficulty: TBDifficulty;
+  }>;
+}
+
+/**
+ * TB run request (from UI to trigger run)
+ */
+export interface TBRunRequestMessage {
+  type: "tb_run_request";
+  suitePath: string;
+  taskIds?: string[];
+  timeout?: number;
+  maxTurns?: number;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -359,7 +479,15 @@ export type HudMessage =
   | APMToolUsageMessage
   | HealerInvocationStartMessage
   | HealerSpellAppliedMessage
-  | HealerInvocationCompleteMessage;
+  | HealerInvocationCompleteMessage
+  | TBRunStartMessage
+  | TBRunCompleteMessage
+  | TBTaskStartMessage
+  | TBTaskProgressMessage
+  | TBTaskOutputMessage
+  | TBTaskCompleteMessage
+  | TBSuiteInfoMessage
+  | TBRunRequestMessage;
 
 // ============================================================================
 // Protocol Constants
@@ -393,3 +521,35 @@ export const parseHudMessage = (data: string): HudMessage | null => {
     return null;
   }
 };
+
+// ============================================================================
+// Terminal-Bench Type Guards
+// ============================================================================
+
+export const isTBRunStart = (msg: HudMessage): msg is TBRunStartMessage =>
+  msg.type === "tb_run_start";
+
+export const isTBRunComplete = (msg: HudMessage): msg is TBRunCompleteMessage =>
+  msg.type === "tb_run_complete";
+
+export const isTBTaskStart = (msg: HudMessage): msg is TBTaskStartMessage =>
+  msg.type === "tb_task_start";
+
+export const isTBTaskProgress = (msg: HudMessage): msg is TBTaskProgressMessage =>
+  msg.type === "tb_task_progress";
+
+export const isTBTaskOutput = (msg: HudMessage): msg is TBTaskOutputMessage =>
+  msg.type === "tb_task_output";
+
+export const isTBTaskComplete = (msg: HudMessage): msg is TBTaskCompleteMessage =>
+  msg.type === "tb_task_complete";
+
+export const isTBSuiteInfo = (msg: HudMessage): msg is TBSuiteInfoMessage =>
+  msg.type === "tb_suite_info";
+
+export const isTBRunRequest = (msg: HudMessage): msg is TBRunRequestMessage =>
+  msg.type === "tb_run_request";
+
+/** Check if message is any TB-related message */
+export const isTBMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("tb_");
