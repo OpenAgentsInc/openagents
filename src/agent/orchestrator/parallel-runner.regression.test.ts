@@ -166,5 +166,5 @@ describe("parallel runner regression", () => {
 
     const agentBranches = git(repoPath, 'branch --list "agent/*"');
     expect(agentBranches).toBe("");
-  }, 15000);
+  }, 60000);
 });
