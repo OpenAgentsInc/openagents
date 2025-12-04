@@ -33,6 +33,9 @@ The **operations guide** for running MechaCoder locally. Covers:
 - Troubleshooting (uncommitted changes, stuck tasks, API errors)
 - Quick reference table of common commands
 
+### [golden-loop-regression.md](./golden-loop-regression.md)
+Regression fixture + test matrix spanning CLI do-one-task, overnight loop, and Electrobun/Playwright desktop harnesses. Recommends using `createGoldenLoopFixture` for consistent stub repos.
+
 ### [TASK-SPEC.md](./TASK-SPEC.md)
 The **task system specification**. Defines:
 
