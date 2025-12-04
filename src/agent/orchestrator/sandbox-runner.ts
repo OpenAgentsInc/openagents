@@ -24,6 +24,7 @@ import type {
   HudMessage,
   ExecutionContext,
 } from "../../hud/protocol.js";
+import * as nodeFs from "node:fs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -294,6 +295,18 @@ export const runCommand = (
     const executionId = generateExecutionId();
     let stdoutSeq = 0;
     let stderrSeq = 0;
+
+    // Validate working directory exists before attempting to run
+    // This prevents cryptic container errors when worktrees are corrupted/removed
+    if (!nodeFs.existsSync(config.cwd)) {
+      config.emit?.({
+        type: "sandbox_fallback",
+        reason: `Working directory does not exist: ${config.cwd}`,
+      });
+      return yield* Effect.fail(
+        new Error(`Working directory does not exist: ${config.cwd}. The worktree may have been corrupted or removed during execution.`),
+      );
+    }
 
     const sandboxAvailable = yield* checkSandboxAvailable(
       config.sandboxConfig,

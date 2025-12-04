@@ -218,4 +218,43 @@ describe("sandbox-runner", () => {
       expect(result.passed).toBe(false);
     });
   });
+
+  describe("cwd validation", () => {
+    test("fails with clear error when cwd does not exist", async () => {
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
+      const config: SandboxRunnerConfig = {
+        sandboxConfig,
+        cwd: "/nonexistent/worktree/path/that/does/not/exist",
+      };
+
+      const result = await Effect.runPromise(
+        Effect.either(runCommand(["echo", "test"], config))
+      );
+
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") {
+        expect(result.left.message).toContain("Working directory does not exist");
+        expect(result.left.message).toContain("/nonexistent/worktree/path");
+      }
+    });
+
+    test("emits sandbox_fallback event when cwd does not exist", async () => {
+      const sandboxConfig: SandboxConfig = { enabled: true, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
+      const events: SandboxRunnerEvent[] = [];
+      const config: SandboxRunnerConfig = {
+        sandboxConfig,
+        cwd: "/nonexistent/worktree/path",
+        emit: (e) => events.push(e),
+      };
+
+      await Effect.runPromise(
+        Effect.either(runCommand(["echo", "test"], config))
+      );
+
+      expect(events).toContainEqual({
+        type: "sandbox_fallback",
+        reason: "Working directory does not exist: /nonexistent/worktree/path",
+      });
+    });
+  });
 });
