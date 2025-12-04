@@ -1,4 +1,5 @@
 import * as FileSystem from "@effect/platform/FileSystem";
+import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import * as S from "effect/Schema";
 import { UsageRecordSchema, createEmptyTotals, type UsageRecord, type UsageSummary, type UsageTotals } from "./types.js";
@@ -11,6 +12,28 @@ const parseRecord = (line: string): UsageRecord | null => {
   } catch {
     return null;
   }
+};
+
+export const computeUsageIdempotencyKey = (record: UsageRecord): string => {
+  if (record.idempotencyKey) return record.idempotencyKey;
+  const serialized = JSON.stringify({ ...record, idempotencyKey: undefined });
+  const digest = createHash("sha256").update(serialized).digest("hex").slice(0, 16);
+  return `auto:${digest}`;
+};
+
+const readRecentRecords = (
+  content: string,
+  limit = 200,
+): UsageRecord[] => {
+  const lines = content.split("\n");
+  const recent = lines.slice(Math.max(0, lines.length - limit));
+  const records: UsageRecord[] = [];
+  for (const line of recent) {
+    if (line.trim().length === 0) continue;
+    const parsed = parseRecord(line);
+    if (parsed) records.push(parsed);
+  }
+  return records;
 };
 
 export interface AppendUsageOptions {
@@ -26,7 +49,26 @@ export const appendUsageRecord = ({ rootDir, record }: AppendUsageOptions): Effe
     yield* fs.makeDirectory(dir, { recursive: true }).pipe(
       Effect.mapError((e) => new Error(`Failed to create usage dir: ${e.message}`)),
     );
-    const payload = JSON.stringify(record);
+
+    const usageWithKey: UsageRecord = {
+      ...record,
+      idempotencyKey: computeUsageIdempotencyKey(record),
+    };
+
+    const exists = yield* fs.exists(filePath).pipe(
+      Effect.mapError((e) => new Error(`Failed to check usage file: ${e.message}`)),
+    );
+
+    if (exists) {
+      const content = yield* fs.readFileString(filePath).pipe(
+        Effect.mapError((e) => new Error(`Failed to read usage file: ${e.message}`)),
+      );
+      const recent = readRecentRecords(content);
+      const isDuplicate = recent.some((r) => computeUsageIdempotencyKey(r) === usageWithKey.idempotencyKey);
+      if (isDuplicate) return;
+    }
+
+    const payload = JSON.stringify(usageWithKey);
     yield* fs.writeFile(filePath, new TextEncoder().encode(`${payload}\n`), { flag: "a" }).pipe(
       Effect.mapError((e) => new Error(`Failed to write usage record: ${e.message}`)),
     );

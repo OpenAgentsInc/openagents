@@ -47,7 +47,7 @@ import {
   runVerificationWithSandbox,
   type SandboxRunnerConfig,
 } from "./sandbox-runner.js";
-import { appendUsageRecord } from "../../usage/store.js";
+import { appendUsageRecord, computeUsageIdempotencyKey } from "../../usage/store.js";
 import type { UsageRecord } from "../../usage/types.js";
 
 // Minimal tools for subagent (pi-mono pattern)
@@ -261,8 +261,13 @@ export const runOrchestrator = (
         return Effect.void;
       }
 
-      emit({ type: "usage_recorded", usage: record });
-      return appendUsageRecord({ rootDir: config.cwd, record }).pipe(Effect.catchAll(() => Effect.void));
+      const usageRecord: UsageRecord = {
+        ...record,
+        idempotencyKey: computeUsageIdempotencyKey(record as UsageRecord),
+      };
+
+      emit({ type: "usage_recorded", usage: usageRecord });
+      return appendUsageRecord({ rootDir: config.cwd, record: usageRecord }).pipe(Effect.catchAll(() => Effect.void));
     };
     const verificationCommands = buildVerificationCommands(
       config.typecheckCommands,
