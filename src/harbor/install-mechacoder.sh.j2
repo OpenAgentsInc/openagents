@@ -1,0 +1,37 @@
+#!/bin/bash
+# Install MechaCoder for Harbor/Terminal-Bench evaluation
+set -e
+
+echo "=== Installing MechaCoder ==="
+
+# Update package lists
+apt-get update
+apt-get install -y curl git
+
+# Install Bun runtime
+echo "Installing Bun..."
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Verify Bun installation
+bun --version
+
+# Clone MechaCoder (OpenAgents)
+echo "Cloning MechaCoder..."
+{% if version %}
+git clone --branch {{ version }} --depth 1 https://github.com/OpenAgentsInc/openagents.git /opt/mechacoder
+{% else %}
+git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git /opt/mechacoder
+{% endif %}
+
+# Install dependencies
+echo "Installing dependencies..."
+cd /opt/mechacoder
+bun install
+
+# Verify installation
+echo "Verifying installation..."
+bun src/cli/tbench.ts --help
+
+echo "=== MechaCoder installation complete ==="
