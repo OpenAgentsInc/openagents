@@ -6,6 +6,22 @@ import type {
 } from "./schema.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Run Options
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Options for running a command in a container.
+ */
+export interface ContainerRunOptions {
+  /** Abort signal for cancellation */
+  signal?: AbortSignal;
+  /** Callback for streaming stdout chunks as they arrive */
+  onStdout?: (chunk: string) => void;
+  /** Callback for streaming stderr chunks as they arrive */
+  onStderr?: (chunk: string) => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Backend Interface
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19,14 +35,18 @@ export interface ContainerBackend {
   /**
    * Run a command inside a container.
    *
+   * When `onStdout`/`onStderr` callbacks are provided, output chunks are
+   * streamed as they arrive. The final result still contains the accumulated
+   * stdout/stderr (up to size limit).
+   *
    * @param command - Command and arguments to run
    * @param config - Container configuration
-   * @param options - Optional abort signal
+   * @param options - Optional abort signal and streaming callbacks
    */
   run: (
     command: string[],
     config: ContainerConfig,
-    options?: { signal?: AbortSignal },
+    options?: ContainerRunOptions,
   ) => Effect.Effect<ContainerRunResult, ContainerError, never>;
 
   /**

@@ -17,20 +17,40 @@ const MAX_OUTPUT_SIZE = 10 * 1024 * 1024; // 10 MB (same as bash tool)
 const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: Collect stream with size limit (from bash.ts pattern)
+// Helper: Collect stream with size limit and optional callback (from bash.ts pattern)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const collectLimited = <E, R>(
+/**
+ * Collect a stream into a string with size limit, optionally streaming chunks
+ * to a callback as they arrive.
+ *
+ * @param stream - The byte stream to collect
+ * @param onChunk - Optional callback to receive each chunk as it arrives
+ */
+const collectWithCallback = <E, R>(
   stream: Stream.Stream<Uint8Array, E, R>,
+  onChunk?: (text: string) => void,
 ): Effect.Effect<string, E, R> =>
   Stream.runFold(stream, "", (acc, chunk) => {
+    const text = Buffer.from(chunk).toString("utf-8");
+
+    // Stream to callback if provided
+    if (onChunk && text.length > 0) {
+      onChunk(text);
+    }
+
+    // Accumulate with size limit
     if (acc.length >= MAX_OUTPUT_SIZE) {
       return acc;
     }
     const remaining = MAX_OUTPUT_SIZE - acc.length;
-    const text = Buffer.from(chunk.subarray(0, remaining)).toString("utf-8");
-    return acc + text;
+    return acc + text.slice(0, remaining);
   });
+
+/** @deprecated Use collectWithCallback instead */
+const collectLimited = <E, R>(
+  stream: Stream.Stream<Uint8Array, E, R>,
+): Effect.Effect<string, E, R> => collectWithCallback(stream);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Implementation
@@ -73,7 +93,7 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
       return statusResult._tag === "Right" && statusResult.right === 0;
     });
 
-  const run: ContainerBackend["run"] = (command, config, _options) =>
+  const run: ContainerBackend["run"] = (command, config, options) =>
     Effect.scoped(
       Effect.gen(function* () {
         // Build argument list
@@ -133,15 +153,15 @@ const makeMacOSContainerBackend = Effect.gen(function* () {
           ),
         );
 
-        // Collect output (cast streams to proper type)
+        // Collect output with streaming callbacks (cast streams to proper type)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const stdoutStream = process.stdout as Stream.Stream<Uint8Array, never, never>;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const stderrStream = process.stderr as Stream.Stream<Uint8Array, never, never>;
 
         const baseCollect = Effect.all([
-          collectLimited(stdoutStream),
-          collectLimited(stderrStream),
+          collectWithCallback(stdoutStream, options?.onStdout),
+          collectWithCallback(stderrStream, options?.onStderr),
           process.exitCode,
         ] as const).pipe(
           Effect.mapError(
