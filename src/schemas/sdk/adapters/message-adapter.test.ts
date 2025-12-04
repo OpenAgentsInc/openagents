@@ -176,6 +176,24 @@ describe("message-adapter", () => {
       expect(internal.name).toBe("user1");
       expect(internal.tool_call_id).toBe("tc1");
     });
+
+    test("roundtrips multi-block content arrays", () => {
+      const internal = {
+        role: "user" as const,
+        content: [
+          { type: "text", text: "hi" },
+          { type: "image", data: "img", mimeType: "image/png" },
+        ] satisfies InternalContentBlock[],
+      };
+
+      const sdk = internalMessageToSdkChat(internal);
+      expect(Array.isArray(sdk.content)).toBe(true);
+      const roundtrip = sdkChatToInternalMessage(sdk);
+      expect(roundtrip.content).toEqual([
+        { type: "text", text: "hi" },
+        { type: "image", data: "img", mimeType: "image/png" },
+      ]);
+    });
   });
 
   describe("tool result helpers", () => {
