@@ -519,8 +519,8 @@ function handleHudMessage(message: HudMessage): void {
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = true
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = false
     // Show category tree (functions defined later in file)
-    ;(window as Record<string, () => void>).__showCategoryTree?.()
-    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
+    ;(window as unknown as Record<string, () => void>).__showCategoryTree?.()
+    requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -536,7 +536,7 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentPhase = "setup"
     tbState.currentTurn = 0
     render()
-    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
+    requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -583,7 +583,7 @@ function handleHudMessage(message: HudMessage): void {
     tbState.currentPhase = null
     tbState.currentTurn = 0
     render()
-    requestAnimationFrame(() => (window as Record<string, () => void>).__renderCategoryTree?.())
+    requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
     return
   }
 
@@ -1310,5 +1310,5 @@ treeCollapseBtn?.addEventListener("click", collapseAllCategories)
 treeCloseBtn?.addEventListener("click", hideCategoryTree)
 
 // Expose tree functions for triggering from handleHudMessage
-;(window as Record<string, unknown>).__showCategoryTree = showCategoryTree
-;(window as Record<string, unknown>).__renderCategoryTree = renderCategoryTree
+;(window as unknown as Record<string, unknown>).__showCategoryTree = showCategoryTree
+;(window as unknown as Record<string, unknown>).__renderCategoryTree = renderCategoryTree
