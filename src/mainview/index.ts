@@ -27,7 +27,7 @@ import {
   svgElementToString,
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
-import Electrobun, { Electroview } from "electrobun/view"
+import { SocketClient, getSocketClient } from "./socket-client.js"
 import type {
   HudMessage,
   APMUpdateMessage,
@@ -315,7 +315,7 @@ function getTBStatusColor(status: TBTaskStatus): string {
  */
 async function computeComparison(baselineRunId: string): Promise<TBComparison | null> {
   try {
-    const details = await rpcRequest.request.loadTBRunDetails(baselineRunId)
+    const details = await socketClient.loadTBRunDetails(baselineRunId)
     if (!details) {
       console.error(`[TB] Baseline run not found: ${baselineRunId}`)
       return null
@@ -686,26 +686,7 @@ interface TBRunDetailsResponse {
   }>
 }
 
-interface HudRpcSchema {
-  bun: {
-    requests: {
-      loadTBSuite: (suitePath: string) => Promise<TBSuiteInfo>
-      startTBRun: (options: TBRunOptions) => Promise<{ runId: string }>
-      stopTBRun: () => Promise<{ stopped: boolean }>
-      /** Load recent TB run metadata (for run history nodes) */
-      loadRecentTBRuns: (count?: number) => Promise<TBRunHistoryItem[]>
-      /** Load full run details including tasks (for expanded view) */
-      loadTBRunDetails: (runId: string) => Promise<TBRunDetailsResponse | null>
-    };
-    messages: {
-      hudMessage: HudMessage;
-    };
-  };
-  webview: {
-    requests: {};
-    messages: {};
-  };
-}
+// Note: HudRpcSchema was removed - now using SocketClient from socket-client.ts
 
 // ============================================================================
 // HUD Event State
@@ -1029,7 +1010,7 @@ let tbLayout = calculateLayout({
 async function refreshTBLayout(): Promise<void> {
   try {
     // Load recent runs via RPC
-    const runs = await rpcRequest.request.loadRecentTBRuns(20)
+    const runs = await socketClient.loadRecentTBRuns(20)
     console.log(`[TB] Loaded ${runs.length} runs via RPC`)
 
     // Update tbFlowState with loaded runs (maps to TBRunWithPath format)
@@ -1077,7 +1058,7 @@ async function handleRunNodeClick(runId: string): Promise<void> {
   if (!wasExpanded && !tbRunDetails.has(runId)) {
     try {
       console.log(`[TB] Loading details for run: ${runId}`)
-      const details = await rpcRequest.request.loadTBRunDetails(runId)
+      const details = await socketClient.loadTBRunDetails(runId)
 
       if (details) {
         // Convert to TBRunDetails format expected by tb-map.ts
@@ -1392,39 +1373,32 @@ setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
 setInterval(refreshTBLayout, REFRESH_INTERVAL_MS)
 
 // ============================================================================
-// Electrobun RPC Setup for Real-time HUD Events
+// Socket Client Setup for Real-time HUD Events
 // ============================================================================
 
-// Set up RPC to receive hudMessage events from the Bun process
-const rpc = Electroview.defineRPC<HudRpcSchema>({
-  maxRequestTime: 10000,
-  handlers: {
-    requests: {},
-    messages: {
-      hudMessage: (message: HudMessage) => {
-        handleHudMessage(message)
-      },
-    },
-  },
+// Get the shared socket client and connect
+const socketClient = getSocketClient({ verbose: true })
+
+// Connect and set up HUD message handler
+socketClient.connect().then(() => {
+  console.log("[Socket] Connected to desktop server")
+}).catch((err) => {
+  console.error("[Socket] Failed to connect:", err)
 })
 
-// Initialize Electrobun with RPC
-const electrobunInstance = new Electrobun.Electroview({ rpc })
-void electrobunInstance // Keep reference to avoid GC
+// Handle HUD messages from agents
+socketClient.onMessage((message: HudMessage) => {
+  handleHudMessage(message)
+})
 
 // ============================================================================
 // TB Run Controls (exposed for UI interaction)
 // ============================================================================
 
-// Type assertion for Electrobun RPC request interface
-const rpcRequest = rpc as unknown as {
-  request: HudRpcSchema["bun"]["requests"]
-}
-
 /** Load a TB suite and populate the task list */
 async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
   console.log("[TB] Loading suite:", suitePath)
-  const suiteInfo = await rpcRequest.request.loadTBSuite(suitePath)
+  const suiteInfo = await socketClient.loadTBSuite(suitePath)
   console.log("[TB] Suite loaded:", suiteInfo.name, `(${suiteInfo.tasks.length} tasks)`)
   return suiteInfo
 }
@@ -1432,7 +1406,7 @@ async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
 /** Start a TB run with the given options */
 async function startTBRunRpc(options: TBRunOptions): Promise<string> {
   console.log("[TB] Starting run:", options)
-  const { runId } = await rpcRequest.request.startTBRun(options)
+  const { runId } = await socketClient.startTBRun(options)
   console.log("[TB] Run started:", runId)
   return runId
 }
@@ -1440,7 +1414,7 @@ async function startTBRunRpc(options: TBRunOptions): Promise<string> {
 /** Stop the current TB run */
 async function stopTBRunRpc(): Promise<boolean> {
   console.log("[TB] Stopping run")
-  const { stopped } = await rpcRequest.request.stopTBRun()
+  const { stopped } = await socketClient.stopTBRun()
   console.log("[TB] Stopped:", stopped)
   return stopped
 }
