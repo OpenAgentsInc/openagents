@@ -16,6 +16,9 @@ import {
   getWorktreePath,
   getBranchName,
   getWorktreesDir,
+  validateWorktree,
+  repairWorktree,
+  ensureValidWorktree,
   type WorktreeConfig,
 } from "./worktree.js";
 
@@ -249,5 +252,177 @@ describe("Worktree List and Prune", () => {
     // Should have pruned the worktree we just created
     expect(pruned).toBeGreaterThanOrEqual(1);
     expect(worktreeExists(TEST_REPO, testTaskId)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Validation and Repair Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Worktree Validation", () => {
+  beforeEach(() => {
+    testTaskId = generateTestTaskId();
+  });
+
+  afterEach(async () => {
+    // Cleanup test worktrees
+    const worktreesDir = getWorktreesDir(TEST_REPO);
+    if (fs.existsSync(worktreesDir)) {
+      const entries = fs.readdirSync(worktreesDir);
+      for (const entry of entries) {
+        if (entry.startsWith(TEST_TASK_PREFIX)) {
+          await runEffect(removeWorktree(TEST_REPO, entry)).catch(() => {});
+        }
+      }
+    }
+  });
+
+  test("validates healthy worktree as valid", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    await runEffect(createWorktree(TEST_REPO, config));
+
+    const result = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  test("detects missing directory", async () => {
+    // Don't create the worktree - just validate non-existent task
+    const result = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].type).toBe("missing_directory");
+  });
+
+  test("detects missing .git file", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    // Create worktree
+    const info = await runEffect(createWorktree(TEST_REPO, config));
+
+    // Corrupt it by removing .git file
+    const gitPath = path.join(info.path, ".git");
+    fs.unlinkSync(gitPath);
+
+    const result = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.some((i) => i.type === "missing_git")).toBe(true);
+  });
+});
+
+describe("Worktree Repair", () => {
+  beforeEach(() => {
+    testTaskId = generateTestTaskId();
+  });
+
+  afterEach(async () => {
+    // Cleanup test worktrees
+    const worktreesDir = getWorktreesDir(TEST_REPO);
+    if (fs.existsSync(worktreesDir)) {
+      const entries = fs.readdirSync(worktreesDir);
+      for (const entry of entries) {
+        if (entry.startsWith(TEST_TASK_PREFIX)) {
+          await runEffect(removeWorktree(TEST_REPO, entry)).catch(() => {});
+        }
+      }
+    }
+  });
+
+  test("repairs corrupted worktree", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    // Create and corrupt worktree
+    const info = await runEffect(createWorktree(TEST_REPO, config));
+    const gitPath = path.join(info.path, ".git");
+    fs.unlinkSync(gitPath);
+
+    // Verify it's corrupted
+    const beforeRepair = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+    expect(beforeRepair.valid).toBe(false);
+
+    // Repair it
+    const repairedInfo = await runEffect(repairWorktree(TEST_REPO, config));
+
+    // Verify repair worked
+    const afterRepair = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+    expect(afterRepair.valid).toBe(true);
+    expect(fs.existsSync(repairedInfo.path)).toBe(true);
+  });
+
+  test("ensureValidWorktree creates missing worktree", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    // Worktree doesn't exist yet
+    expect(worktreeExists(TEST_REPO, testTaskId)).toBe(false);
+
+    // ensureValidWorktree should create it
+    const info = await runEffect(ensureValidWorktree(TEST_REPO, config));
+
+    expect(info.taskId).toBe(testTaskId);
+    expect(fs.existsSync(info.path)).toBe(true);
+    expect(worktreeExists(TEST_REPO, testTaskId)).toBe(true);
+  });
+
+  test("ensureValidWorktree returns existing valid worktree", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    // Create worktree first
+    const originalInfo = await runEffect(createWorktree(TEST_REPO, config));
+
+    // ensureValidWorktree should return existing
+    const info = await runEffect(ensureValidWorktree(TEST_REPO, config));
+
+    expect(info.taskId).toBe(testTaskId);
+    expect(info.path).toBe(originalInfo.path);
+  });
+
+  test("ensureValidWorktree repairs corrupted worktree", async () => {
+    const config: WorktreeConfig = {
+      taskId: testTaskId,
+      sessionId: "test-session",
+      baseBranch: "main",
+      timeoutMs: 30000,
+    };
+
+    // Create and corrupt worktree
+    const originalInfo = await runEffect(createWorktree(TEST_REPO, config));
+    fs.unlinkSync(path.join(originalInfo.path, ".git"));
+
+    // ensureValidWorktree should repair it
+    const info = await runEffect(ensureValidWorktree(TEST_REPO, config));
+
+    // Verify worktree is now valid
+    const validation = await runEffect(validateWorktree(TEST_REPO, testTaskId));
+    expect(validation.valid).toBe(true);
+    expect(fs.existsSync(info.path)).toBe(true);
   });
 });
