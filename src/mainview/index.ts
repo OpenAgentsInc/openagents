@@ -726,35 +726,20 @@ function handleRunNodeClick(runId: string): void {
  * Call this whenever TB events update tbState.
  */
 function syncTBFlowWithState(): void {
-  const prevRunId = tbFlowState.currentRunId
-  const prevTaskId = tbFlowState.currentTaskId
-
   tbFlowState = {
     ...tbFlowState,
     currentRunId: tbState.isRunning ? tbState.runId : null,
     currentTaskId: tbState.currentTaskId,
   }
 
-  console.log("[TB Flow] syncTBFlowWithState:", {
-    prevRunId,
-    prevTaskId,
-    newRunId: tbFlowState.currentRunId,
-    newTaskId: tbFlowState.currentTaskId,
-    isRunning: tbState.isRunning,
-  })
-
   // Rebuild the flow tree with updated state
   const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
-  console.log("[TB Flow] Built tree:", tree.id, "isRunning:", tree.metadata?.isRunning)
-
   const nodeSizes = generateTBNodeSizes(tree)
   tbLayout = calculateLayout({
     root: tree,
     nodeSizes,
     config: TB_LAYOUT_CONFIG,
   })
-
-  console.log("[TB Flow] Layout rebuilt, nodes:", tbLayout.nodes.length)
 }
 
 function getLayoutBounds() {
@@ -831,8 +816,6 @@ canvasState = { ...canvasState, ...initialPan }
 
 // Render SVG content
 function render(): void {
-  console.log("[Render] viewMode:", viewMode, "tbLayout nodes:", tbLayout.nodes.length)
-
   if (viewMode === "flow") {
     // Flow view: MechaCoder graph with overlays
     const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
@@ -841,7 +824,6 @@ function render(): void {
     svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
   } else {
     // TB view: TB flow tree (run history nodes) on grid canvas + TB widget
-    console.log("[Render] TB mode - root isRunning:", tbLayout.nodes.find(n => n.id === "tb-root")?.metadata?.isRunning)
     const tbFlowGroup = renderFlowSVG(tbLayout, canvasState, DEFAULT_RENDER_CONFIG)
     const tbOverlay = renderTBWidget()
     svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay
