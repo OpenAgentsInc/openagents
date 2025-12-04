@@ -8,6 +8,7 @@
     "start": "bun run dev",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
+    "test:container": "bun test src/bench/ src/llm/ src/hud/ src/tbench-hud/ src/schemas/ src/tasks/schema.test.ts src/agent/orchestrator/claude-code-subagent.test.ts src/agent/orchestrator/subagent-router.test.ts",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format .",

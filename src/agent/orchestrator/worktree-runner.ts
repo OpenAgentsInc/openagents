@@ -258,11 +258,15 @@ export const runInWorktree = async (
         cwd: worktreeInfo.path,
         openagentsDir: worktreeOpenagentsDir,
         testCommands: [...projectConfig.testCommands],
+        ...(projectConfig.sandboxTestCommands?.length && {
+          sandboxTestCommands: [...projectConfig.sandboxTestCommands],
+        }),
         typecheckCommands: [...projectConfig.typecheckCommands],
         e2eCommands: [...projectConfig.e2eCommands],
         allowPush: false, // Don't push from worktree - we'll merge and push from main
         claudeCode: projectConfig.claudeCode,
         subagentModel: projectConfig.defaultModel,
+        ...(projectConfig.sandbox && { sandbox: projectConfig.sandbox }),
       };
 
       // Merge layers to avoid chained Effect.provide

@@ -274,6 +274,8 @@ export const ProjectConfig = S.Struct({
     default: () => [] as string[],
   }),
   testCommands: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
+  /** Test commands for sandbox execution (subset of tests that work in containers) */
+  sandboxTestCommands: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   e2eCommands: S.optionalWith(S.Array(S.String), { default: () => [] as string[] }),
   allowPush: S.optionalWith(S.Boolean, { default: () => true }),
   allowForcePush: S.optionalWith(S.Boolean, { default: () => false }),

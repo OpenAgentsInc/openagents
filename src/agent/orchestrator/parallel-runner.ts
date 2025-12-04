@@ -76,6 +76,8 @@ export interface ParallelRunnerConfig {
   claudeCode?: ClaudeCodeSettings;
   /** Sandbox configuration for sandboxed verification */
   sandbox?: SandboxConfig;
+  /** Test commands for sandbox execution (container-safe subset) */
+  sandboxTestCommands?: string[];
   /** Model to use for subagents */
   subagentModel?: string;
   /** Use Claude Code only mode (no OpenRouter fallback) */
@@ -474,6 +476,9 @@ const runAgentInWorktree = (
     }
     if (config.sandbox) {
       orchestratorConfig.sandbox = config.sandbox;
+    }
+    if (config.sandboxTestCommands?.length) {
+      orchestratorConfig.sandboxTestCommands = config.sandboxTestCommands;
     }
 
     const orchestratorRunner = config.runOrchestratorFn ?? runOrchestrator;

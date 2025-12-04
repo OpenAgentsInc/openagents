@@ -190,6 +190,8 @@ export interface OrchestratorConfig {
   typecheckCommands?: string[];
   /** Test commands from project.json */
   testCommands: string[];
+  /** Test commands for sandbox execution (container-safe subset) */
+  sandboxTestCommands?: string[];
   /** E2E commands from project.json */
   e2eCommands?: string[];
   /** Whether to push after commit */

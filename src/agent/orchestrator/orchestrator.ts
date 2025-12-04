@@ -73,8 +73,17 @@ const summarizeOutput = (output?: string, maxLength = 400): string | undefined =
 
 const buildVerificationCommands = (
   typecheckCommands: string[] | undefined,
-  testCommands: string[]
-): string[] => [...(typecheckCommands ?? []), ...testCommands];
+  testCommands: string[],
+  sandboxTestCommands?: string[],
+  useSandbox?: boolean
+): string[] => {
+  // Use sandbox test commands when sandbox is enabled and they are defined
+  const effectiveTestCommands =
+    useSandbox && sandboxTestCommands && sandboxTestCommands.length > 0
+      ? sandboxTestCommands
+      : testCommands;
+  return [...(typecheckCommands ?? []), ...effectiveTestCommands];
+};
 
 /**
  * Run verification commands (typecheck, tests) on the host.
@@ -272,7 +281,9 @@ export const runOrchestrator = (
     };
     const verificationCommands = buildVerificationCommands(
       config.typecheckCommands,
-      config.testCommands
+      config.testCommands,
+      config.sandboxTestCommands,
+      config.sandbox?.enabled
     );
 
     // Build sandbox runner config if sandbox is enabled
