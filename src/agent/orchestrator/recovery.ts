@@ -170,13 +170,13 @@ export const recoverPendingCommits = (
         ),
       );
 
-      if (result.action === "closed") {
-        closed.push(result.task);
-      } else if (result.action === "reset") {
-        reset.push(result.task);
-      } else {
+      if (result.action === "failed") {
         emit?.({ type: "recovery_failed", taskId: task.id, error: result.error });
         failed.push({ task, error: result.error });
+      } else if (result.action === "closed") {
+        closed.push(result.task);
+      } else {
+        reset.push(result.task);
       }
     }
 
