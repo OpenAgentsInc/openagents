@@ -15,7 +15,7 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import {
-  createWorktree,
+  ensureValidWorktree,
   removeWorktree,
   type WorktreeConfig,
 } from "./worktree.js";
@@ -171,8 +171,8 @@ export const runInWorktree = async (
   const taskId = options.taskId || `task-${Date.now().toString(36)}`;
   console.log(`  Task ID:   ${taskId}`);
 
-  // Create worktree
-  console.log("\n📁 Creating worktree...");
+  // Create/validate worktree (self-healing)
+  console.log("\n📁 Ensuring valid worktree...");
   const worktreeConfig: WorktreeConfig = {
     taskId,
     sessionId,
@@ -182,15 +182,16 @@ export const runInWorktree = async (
 
   let worktreeInfo;
   try {
-    worktreeInfo = await Effect.runPromise(createWorktree(repoPath, worktreeConfig));
+    // ensureValidWorktree will create if missing, validate if exists, and repair if corrupted
+    worktreeInfo = await Effect.runPromise(ensureValidWorktree(repoPath, worktreeConfig));
     console.log(`  Path:      ${worktreeInfo.path}`);
     console.log(`  Branch:    ${worktreeInfo.branch}`);
   } catch (error: any) {
-    console.error(`  ❌ Failed to create worktree: ${error.message}`);
+    console.error(`  ❌ Failed to ensure valid worktree: ${error.message}`);
     return {
       success: false,
       taskId,
-      error: `Failed to create worktree: ${error.message}`,
+      error: `Failed to ensure valid worktree: ${error.message}`,
       merged: false,
     };
   }

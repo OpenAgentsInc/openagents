@@ -57,7 +57,9 @@ export class WorktreeError extends Error {
       | "prune_failed"
       | "not_found"
       | "already_exists"
-      | "git_error",
+      | "git_error"
+      | "validation_failed"
+      | "repair_failed",
     message: string,
     override readonly cause?: unknown,
   ) {
@@ -65,6 +67,17 @@ export class WorktreeError extends Error {
     this.name = "WorktreeError";
   }
 }
+
+export interface WorktreeValidationResult {
+  valid: boolean;
+  issues: WorktreeIssue[];
+}
+
+export type WorktreeIssue =
+  | { type: "missing_git"; message: string }
+  | { type: "branch_mismatch"; expected: string; actual: string }
+  | { type: "detached_head"; message: string }
+  | { type: "missing_directory"; message: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -385,6 +398,186 @@ export const getWorktreeInfo = (
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Validation and Repair
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Validate a worktree for corruption issues.
+ *
+ * Checks for:
+ * - Missing .git file (indicates worktree was partially deleted)
+ * - Branch mismatch (worktree on wrong branch)
+ * - Detached HEAD state
+ * - Missing worktree directory
+ */
+export const validateWorktree = (
+  repoPath: string,
+  taskId: string,
+): Effect.Effect<WorktreeValidationResult, WorktreeError> =>
+  Effect.gen(function* () {
+    const worktreePath = getWorktreePath(repoPath, taskId);
+    const expectedBranch = getBranchName(taskId);
+    const issues: WorktreeIssue[] = [];
+
+    // Check if worktree directory exists
+    if (!fs.existsSync(worktreePath)) {
+      issues.push({
+        type: "missing_directory",
+        message: `Worktree directory not found at ${worktreePath}`,
+      });
+      return { valid: false, issues };
+    }
+
+    // Check for .git file (worktrees have a .git file, not directory)
+    const gitPath = path.join(worktreePath, ".git");
+    if (!fs.existsSync(gitPath)) {
+      issues.push({
+        type: "missing_git",
+        message: `Missing .git file in worktree at ${worktreePath}`,
+      });
+      return { valid: false, issues };
+    }
+
+    // Check if .git is a file (valid worktree) not a directory
+    const gitStat = fs.statSync(gitPath);
+    if (!gitStat.isFile()) {
+      issues.push({
+        type: "missing_git",
+        message: `.git is a directory instead of file at ${worktreePath} - not a valid worktree`,
+      });
+      return { valid: false, issues };
+    }
+
+    // Check current branch
+    const branchResult = yield* runGit(worktreePath, [
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]);
+
+    if (branchResult.exitCode !== 0) {
+      issues.push({
+        type: "missing_git",
+        message: `Git error in worktree: ${branchResult.stderr}`,
+      });
+      return { valid: false, issues };
+    }
+
+    const currentBranch = branchResult.stdout;
+
+    // Check for detached HEAD
+    if (currentBranch === "HEAD") {
+      issues.push({
+        type: "detached_head",
+        message: `Worktree is in detached HEAD state`,
+      });
+    }
+
+    // Check for branch mismatch
+    if (currentBranch !== expectedBranch && currentBranch !== "HEAD") {
+      issues.push({
+        type: "branch_mismatch",
+        expected: expectedBranch,
+        actual: currentBranch,
+      });
+    }
+
+    return { valid: issues.length === 0, issues };
+  });
+
+/**
+ * Repair a corrupted worktree by removing and recreating it.
+ *
+ * This is a destructive operation - any uncommitted changes in the
+ * worktree will be lost.
+ */
+export const repairWorktree = (
+  repoPath: string,
+  config: WorktreeConfig,
+): Effect.Effect<WorktreeInfo, WorktreeError> =>
+  Effect.gen(function* () {
+    const worktreePath = getWorktreePath(repoPath, config.taskId);
+    const branchName = getBranchName(config.taskId);
+
+    console.log(`[worktree] Repairing worktree for task ${config.taskId}...`);
+
+    // Step 1: Try to cleanly remove existing worktree
+    const removeResult = yield* runGit(repoPath, [
+      "worktree",
+      "remove",
+      "--force",
+      worktreePath,
+    ]).pipe(Effect.catchAll(() => Effect.succeed({ exitCode: 1, stdout: "", stderr: "" })));
+
+    // If git worktree remove failed, manually clean up
+    if (removeResult.exitCode !== 0 && fs.existsSync(worktreePath)) {
+      try {
+        fs.rmSync(worktreePath, { recursive: true, force: true });
+      } catch (e) {
+        console.warn(`[worktree] Warning: Could not remove directory ${worktreePath}`);
+      }
+    }
+
+    // Step 2: Prune stale worktree entries
+    yield* runGit(repoPath, ["worktree", "prune"]);
+
+    // Step 3: Try to delete the branch (may not exist or may be current elsewhere)
+    yield* runGit(repoPath, ["branch", "-D", branchName]).pipe(
+      Effect.catchAll(() => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" })),
+    );
+
+    // Step 4: Recreate the worktree
+    const newWorktree = yield* createWorktree(repoPath, config).pipe(
+      Effect.mapError(
+        (e) =>
+          new WorktreeError(
+            "repair_failed",
+            `Failed to recreate worktree after repair: ${e.message}`,
+            e,
+          ),
+      ),
+    );
+
+    console.log(`[worktree] Worktree repaired successfully at ${newWorktree.path}`);
+    return newWorktree;
+  });
+
+/**
+ * Validate worktree and repair if necessary.
+ *
+ * Returns the validated (and possibly repaired) worktree info.
+ * Use this before running the orchestrator to ensure worktree health.
+ */
+export const ensureValidWorktree = (
+  repoPath: string,
+  config: WorktreeConfig,
+): Effect.Effect<WorktreeInfo, WorktreeError> =>
+  Effect.gen(function* () {
+    const worktreePath = getWorktreePath(repoPath, config.taskId);
+
+    // If worktree doesn't exist, create it
+    if (!fs.existsSync(worktreePath)) {
+      return yield* createWorktree(repoPath, config);
+    }
+
+    // Validate existing worktree
+    const validation = yield* validateWorktree(repoPath, config.taskId);
+
+    if (validation.valid) {
+      // Worktree is healthy, return its info
+      return yield* getWorktreeInfo(repoPath, config.taskId);
+    }
+
+    // Log issues and repair
+    console.log(`[worktree] Validation issues for ${config.taskId}:`);
+    for (const issue of validation.issues) {
+      console.log(`  - ${issue.type}: ${JSON.stringify(issue)}`);
+    }
+
+    return yield* repairWorktree(repoPath, config);
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Effect-free versions for compatibility
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -417,3 +610,28 @@ export const pruneStaleWorktreesAsync = (
   repoPath: string,
   maxAgeMs: number,
 ): Promise<number> => Effect.runPromise(pruneStaleWorktrees(repoPath, maxAgeMs));
+
+/**
+ * Run validateWorktree and return a Promise
+ */
+export const validateWorktreeAsync = (
+  repoPath: string,
+  taskId: string,
+): Promise<WorktreeValidationResult> =>
+  Effect.runPromise(validateWorktree(repoPath, taskId));
+
+/**
+ * Run repairWorktree and return a Promise
+ */
+export const repairWorktreeAsync = (
+  repoPath: string,
+  config: WorktreeConfig,
+): Promise<WorktreeInfo> => Effect.runPromise(repairWorktree(repoPath, config));
+
+/**
+ * Run ensureValidWorktree and return a Promise
+ */
+export const ensureValidWorktreeAsync = (
+  repoPath: string,
+  config: WorktreeConfig,
+): Promise<WorktreeInfo> => Effect.runPromise(ensureValidWorktree(repoPath, config));

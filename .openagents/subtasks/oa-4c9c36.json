@@ -1,0 +1,18 @@
+{
+  "taskId": "oa-4c9c36",
+  "taskTitle": "Add self-healing validation to worktree manager",
+  "subtasks": [
+    {
+      "id": "oa-4c9c36-sub-001",
+      "description": "Add self-healing validation to worktree manager\n\nAdd validateWorktree() to detect corrupted worktrees (missing .git, branch mismatch). Add repairWorktree() to auto-recreate. Integrate into worktree-runner.ts before orchestrator runs.",
+      "status": "done",
+      "startedAt": "2025-12-04T09:38:05.386Z",
+      "claudeCode": {
+        "sessionId": "a9086790-10bd-4af7-a56c-fe534f1afa73"
+      },
+      "completedAt": "2025-12-04T09:41:44.951Z"
+    }
+  ],
+  "createdAt": "2025-12-04T09:38:05.385Z",
+  "updatedAt": "2025-12-04T09:38:05.385Z"
+}
