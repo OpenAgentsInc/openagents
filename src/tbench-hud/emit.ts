@@ -213,7 +213,7 @@ export const createTBEmitter = (clientOptions?: HudClientOptions): TBEmitter => 
       runId,
       taskId,
       phase,
-      currentTurn,
+      ...(currentTurn !== undefined ? { currentTurn } : {}),
       elapsedMs,
     };
     client.send(message);
@@ -241,7 +241,7 @@ export const createTBEmitter = (clientOptions?: HudClientOptions): TBEmitter => 
       durationMs: result.durationMs,
       turns: result.turns,
       tokens: result.tokens,
-      verificationOutput: result.verificationOutput,
+      ...(result.verificationOutput !== undefined ? { verificationOutput: result.verificationOutput } : {}),
     };
     client.send(message);
   };

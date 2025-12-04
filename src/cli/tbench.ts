@@ -402,7 +402,7 @@ const main = async (): Promise<void> => {
   const trajectory = trajectoryBuilder.build(result.success, {
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    costUsd: result.costUsd,
+    ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
   });
 
   // Build metrics
