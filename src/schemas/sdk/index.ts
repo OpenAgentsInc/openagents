@@ -197,6 +197,18 @@ export type {
 } from "./permissions.js";
 
 // =============================================================================
+// Usage Schemas
+// =============================================================================
+
+export { TokenUsage, CostBreakdown, NonNullableUsage } from "./usage.js";
+
+export type {
+  TokenUsage as TokenUsageType,
+  CostBreakdown as CostBreakdownType,
+  NonNullableUsage as NonNullableUsageType,
+} from "./usage.js";
+
+// =============================================================================
 // Message Schemas
 // =============================================================================
 
