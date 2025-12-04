@@ -6,9 +6,6 @@ import { resolve, dirname, join } from "node:path";
 import {
   loadRecentRuns,
   loadTBRun,
-  type TBRunWithPath,
-  type TBRunFile,
-  type TBTaskResult,
   DEFAULT_TB_RUNS_DIR,
 } from "../tbench-hud/persistence.js";
 
@@ -307,7 +304,7 @@ async function loadTBRunDetailsFromDisk(runId: string): Promise<TBRunDetailsResp
         durationMs: t.durationMs,
         turns: t.turns,
         tokens: t.tokens,
-        outputLines: t.outputLines,
+        ...(t.outputLines !== undefined ? { outputLines: t.outputLines } : {}),
       })),
     };
   } catch (err) {

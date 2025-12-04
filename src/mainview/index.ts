@@ -1001,7 +1001,7 @@ async function handleRunNodeClick(runId: string): Promise<void> {
             durationMs: t.durationMs,
             turns: t.turns,
             tokens: t.tokens,
-            outputLines: t.outputLines,
+            ...(t.outputLines !== undefined ? { outputLines: t.outputLines } : {}),
           })),
         })
         console.log(`[TB] Loaded ${details.tasks.length} tasks for run ${runId}`)
