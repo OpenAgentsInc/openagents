@@ -118,3 +118,23 @@ export {
   createHealerInvocationStep,
   HealerEventCollector,
 } from "./atif.js";
+
+// Stuck detection
+export {
+  isTaskStuckByTime,
+  isSubtaskStuck,
+  extractFailurePatterns,
+  scanTasksForStuck,
+  scanSubtasksForStuck,
+  detectStuck,
+  summarizeStuckDetection,
+} from "./stuck.js";
+
+export type {
+  StuckDetectionConfig,
+  StuckDetectionResult,
+  StuckTaskInfo,
+  StuckSubtaskInfo,
+  StuckReason,
+  FailurePattern,
+} from "./stuck.js";

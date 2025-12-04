@@ -57,8 +57,8 @@ const SCENARIO_SPELLS: Record<HealerScenario, HealerSpellId[]> = {
     "mark_task_blocked_with_followup", // Block and investigate
   ],
 
-  // Stuck detection (future) - escalate
-  StuckSubtask: [
+  // Stuck detection - escalate
+  SubtaskStuck: [
     "update_progress_with_guidance",   // Document stuck state
     "mark_task_blocked_with_followup", // Create investigation task
   ],

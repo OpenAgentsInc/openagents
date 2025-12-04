@@ -22,6 +22,7 @@
     "tasks:close": "bun src/tasks/cli.ts close",
     "tasks:archive": "bun src/tasks/cli.ts archive",
     "tasks:search": "bun src/tasks/cli.ts search",
+    "healer:scan": "bun src/healer/cli.ts scan",
     "mechacoder": "bun src/agent/do-one-task.ts",
     "mechacoder:cc-only": "bun src/agent/do-one-task.ts --cc-only",
     "mechacoder:legacy": "bun src/agent/do-one-task.ts --legacy",
