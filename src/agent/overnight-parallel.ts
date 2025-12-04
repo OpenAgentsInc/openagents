@@ -36,7 +36,7 @@ import {
 } from "./orchestrator/agent-lock.js";
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import { loadProjectConfig } from "../tasks/project.js";
-import { readTasks } from "../tasks/service.js";
+import { readTasks, updateTask } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../llm/openrouter.js";
 
@@ -328,6 +328,80 @@ const mergeToMain = async (
     }
 
     return { success: true, commitSha };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Close a task in the main repo's tasks.jsonl after worktree merge.
+ *
+ * The worktree's orchestrator sets the task to commit_pending before its commit,
+ * but the close happens AFTER the commit - so it's not included in the merge.
+ * This function closes the task in the main repo after a successful merge.
+ */
+const closeTaskAfterMerge = async (
+  tasksPath: string,
+  taskId: string,
+  commitSha: string,
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    await Effect.runPromise(
+      updateTask({
+        tasksPath,
+        id: taskId,
+        update: {
+          status: "closed",
+          closeReason: "Completed by MechaCoder parallel agent",
+          pendingCommit: null,
+        },
+        appendCommits: [commitSha],
+      }).pipe(Effect.provide(BunContext.layer)),
+    );
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Commit the tasks.jsonl update after closing tasks.
+ */
+const commitTasksUpdate = async (
+  repoPath: string,
+  closedTaskIds: string[],
+): Promise<{ success: boolean; error?: string }> => {
+  if (closedTaskIds.length === 0) return { success: true };
+
+  try {
+    // Stage tasks.jsonl
+    let result = await runGit(repoPath, ["add", ".openagents/tasks.jsonl"]);
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to stage tasks.jsonl: ${result.stderr}` };
+    }
+
+    // Check if there are changes to commit
+    result = await runGit(repoPath, ["diff", "--cached", "--quiet"]);
+    if (result.exitCode === 0) {
+      // No changes to commit
+      return { success: true };
+    }
+
+    // Commit
+    const taskList = closedTaskIds.join(", ");
+    const message = `tasks: close ${taskList}`;
+    result = await runGit(repoPath, ["commit", "-m", message]);
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to commit: ${result.stderr}` };
+    }
+
+    // Push
+    result = await runGit(repoPath, ["push", "origin", "main"]);
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to push: ${result.stderr}` };
+    }
+
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -759,6 +833,8 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
 
     // Merge completed worktrees sequentially
     log("\nMerging completed worktrees...");
+    const closedTaskIds: string[] = [];
+
     for (const slot of batchSlots) {
       if (slot.status === "completed" && slot.worktree) {
         const hasCommits = await hasCommitsAhead(
@@ -798,6 +874,18 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
               }
               log(`[Agent ${slot.id}] ✅ Merged: ${mergeResult.commitSha?.slice(0, 8)}`);
               tasksCompleted++;
+
+              // Close the task in the main repo's tasks.jsonl
+              // The worktree commit only has commit_pending status; the close happens after
+              if (slot.taskId && slot.commitSha) {
+                const closeResult = await closeTaskAfterMerge(tasksPath, slot.taskId, slot.commitSha);
+                if (closeResult.success) {
+                  closedTaskIds.push(slot.taskId);
+                  log(`[Agent ${slot.id}] ✅ Task closed: ${slot.taskId}`);
+                } else {
+                  log(`[Agent ${slot.id}] ⚠️ Failed to close task: ${closeResult.error}`);
+                }
+              }
             } else {
               log(`[Agent ${slot.id}] ❌ Merge failed: ${mergeResult.error}`);
             }
@@ -815,6 +903,17 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
           removeWorktree(config.workDir, slot.taskId!).pipe(Effect.catchAll(() => Effect.void)),
         );
         log(`[Agent ${slot.id}] Worktree cleaned up`);
+      }
+    }
+
+    // Commit task closures for this batch
+    if (closedTaskIds.length > 0) {
+      log(`\nCommitting task closures: ${closedTaskIds.join(", ")}...`);
+      const commitResult = await commitTasksUpdate(config.workDir, closedTaskIds);
+      if (commitResult.success) {
+        log(`✅ Task closures committed and pushed`);
+      } else {
+        log(`⚠️ Failed to commit task closures: ${commitResult.error}`);
       }
     }
 

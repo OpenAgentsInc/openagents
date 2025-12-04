@@ -825,7 +825,7 @@ const doOneTaskOrchestrator = (config: Config) =>
 
     // Create HUD callbacks for real-time updates to the desktop HUD
     // These silently fail if the HUD isn't running
-    const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
+    const { emit: hudEmit, emitHud, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
     // Initialize Healer service with LLM capabilities
     const healerCounters = createHealerCounters();
@@ -939,6 +939,8 @@ const doOneTaskOrchestrator = (config: Config) =>
         process.stdout.write(text);
         hudOnOutput(text);
       },
+      // Stream container events to HUD for multi-pane UI
+      emitHud,
       // Healer integration
       healerService,
       healerCounters,
