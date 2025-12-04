@@ -30,7 +30,12 @@ import {
   createGoldenLoopSequence,
 } from "../../fixtures/hud-messages.js";
 
+const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
+
 test.describe("Desktop Screenshots", () => {
+  test.describe.configure({ mode: "serial" });
+  test.use({ viewport: DEFAULT_VIEWPORT });
+
   test.describe("Idle States", () => {
     test("captures empty state on initial load", async ({ page, mainviewPage }) => {
       // Wait for UI to stabilize
