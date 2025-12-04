@@ -84,11 +84,27 @@ export type {
   VerificationRunner,
 } from "./spells/index.js";
 
-// Planner (to be implemented in oa-healer-06)
-// export { planSpells } from "./planner.js";
+// Planner
+export {
+  planSpells,
+  getScenarioSpells,
+  hasScenarioSpells,
+  getScenariosUsingSpell,
+} from "./planner.js";
 
-// Service (to be implemented in oa-healer-06)
-// export { HealerService } from "./service.js";
+export type { PlanSpellsOptions } from "./planner.js";
+
+// Service
+export {
+  createHealerService,
+  createBasicHealerService,
+  createFullHealerService,
+} from "./service.js";
+
+export type {
+  HealerServiceOptions,
+  HealerEvent,
+} from "./service.js";
 
 // ATIF integration (to be implemented in oa-healer-07)
 // export { createHealerAgent, createHealerTrajectory } from "./atif.js";
