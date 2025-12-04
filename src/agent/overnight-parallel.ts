@@ -293,6 +293,31 @@ const runAgentInWorktree = async (
     if (verbose) log(`${prefix} ${DIM}${msg}${RESET}`);
   };
 
+  // Line buffer for streaming output - accumulates tokens until newline
+  let lineBuffer = "";
+  const flushLine = (line: string) => {
+    if (line.trim()) {
+      process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
+    }
+  };
+  const bufferOutput = (text: string) => {
+    lineBuffer += text;
+    // Split on newlines and output complete lines
+    const parts = lineBuffer.split("\n");
+    // All but the last part are complete lines
+    for (let i = 0; i < parts.length - 1; i++) {
+      flushLine(parts[i]);
+    }
+    // Keep the last part (incomplete line) in the buffer
+    lineBuffer = parts[parts.length - 1];
+  };
+  const flushBuffer = () => {
+    if (lineBuffer.trim()) {
+      flushLine(lineBuffer);
+      lineBuffer = "";
+    }
+  };
+
   agentLog(`Starting task: ${slot.task.id} - ${slot.task.title}`);
 
   const worktreeOpenagentsDir = path.join(slot.worktree.path, ".openagents");
@@ -363,15 +388,12 @@ const runAgentInWorktree = async (
     task: slot.task,
     // Force new subtasks - worktrees may have stale subtask files from previous runs
     forceNewSubtasks: true,
-    // Stream Claude Code output when verbose
+    // Stream Claude Code output when verbose (line-buffered)
     ...(verbose
       ? {
           onOutput: (text: string) => {
-            // Stream CC output line by line with agent prefix
-            const lines = text.split("\n").filter((l) => l.trim());
-            for (const line of lines) {
-              process.stdout.write(`${prefix} ${DIM}${line}${RESET}\n`);
-            }
+            // Buffer tokens until newlines for readable output
+            bufferOutput(text);
           },
         }
       : {}),
@@ -450,6 +472,9 @@ const runAgentInWorktree = async (
       }).pipe(Effect.provide(combinedLayer)),
     );
 
+    // Flush any remaining buffered output
+    flushBuffer();
+
     if (state.phase === "done") {
       slot.status = "completed";
       agentLog(`✅ Task completed`);
@@ -459,6 +484,8 @@ const runAgentInWorktree = async (
       agentLog(`❌ Task failed: ${slot.error}`);
     }
   } catch (error: any) {
+    // Flush any remaining buffered output on error
+    flushBuffer();
     slot.status = "failed";
     slot.error = error.message;
     agentLog(`❌ Exception: ${error.message}`);
