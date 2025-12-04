@@ -13,7 +13,9 @@ import {
   type TBFlowState,
   type TBRunDetails,
 } from "../flow/tb-map.js"
-import { loadRecentRuns, loadTBRun } from "../tbench-hud/persistence.js"
+// NOTE: persistence.js uses Node.js fs APIs which don't work in browser webview.
+// Run history loading must happen via RPC from the main process.
+// import { loadRecentRuns, loadTBRun } from "../tbench-hud/persistence.js"
 import {
   initialCanvasState,
   reduceCanvasState,
@@ -682,62 +684,30 @@ let tbLayout = calculateLayout({
 })
 
 /**
- * Refresh TB flow layout from run history
+ * Refresh TB flow layout from current state.
+ * NOTE: Run history loading must happen via RPC, not filesystem access.
+ * The browser webview cannot use Node.js fs APIs.
  */
-async function refreshTBLayout(): Promise<void> {
-  try {
-    // Load recent runs (metadata only)
-    const runs = await loadRecentRuns(10)
-
-    // Update TB flow state with runs
-    tbFlowState = {
-      ...tbFlowState,
-      runs,
-      currentRunId: tbState.isRunning ? tbState.runId : null,
-      currentTaskId: tbState.currentTaskId,
-    }
-
-    // Build the flow tree
-    const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
-    const nodeSizes = generateTBNodeSizes(tree)
-    tbLayout = calculateLayout({
-      root: tree,
-      nodeSizes,
-      config: TB_LAYOUT_CONFIG,
-    })
-
-    if (viewMode === "tbench") {
-      render()
-    }
-  } catch (error) {
-    console.error("[TB] Failed to refresh layout:", error)
+function refreshTBLayout(): void {
+  // Just sync state and rebuild - no filesystem access
+  syncTBFlowWithState()
+  if (viewMode === "tbench") {
+    render()
   }
 }
 
 /**
  * Toggle expansion of a run node
+ * NOTE: Loading run details requires RPC to main process (filesystem access).
+ * For now, expansion just toggles the state without loading details.
  */
-async function handleRunNodeClick(runId: string): Promise<void> {
-  const isExpanding = !tbFlowState.expandedRunIds.has(runId)
-
+function handleRunNodeClick(runId: string): void {
   // Toggle expansion
   tbFlowState = toggleRunExpanded(tbFlowState, runId)
 
-  // If expanding, load the run details if not already cached
-  if (isExpanding && !tbRunDetails.has(runId)) {
-    try {
-      const run = tbFlowState.runs.find(r => r.runId === runId)
-      if (run) {
-        const fullRun = await loadTBRun(run.filepath)
-        tbRunDetails.set(runId, {
-          meta: fullRun.meta,
-          tasks: fullRun.tasks,
-        })
-      }
-    } catch (error) {
-      console.error(`[TB] Failed to load run ${runId}:`, error)
-    }
-  }
+  // TODO: Load run details via RPC when expanding
+  // The browser webview cannot use Node.js fs APIs directly.
+  // For now, expanded runs won't show task details until RPC is implemented.
 
   // Rebuild the tree
   const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
