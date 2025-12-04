@@ -20,6 +20,10 @@ bun --version
 # Install Claude Code CLI (required by Claude Agent SDK)
 echo "Installing Claude Code CLI..."
 npm install -g @anthropic-ai/claude-code
+# Add npm global bin to PATH
+export PATH="$(npm bin -g):$PATH"
+echo "PATH=$PATH" >> /etc/environment
+echo 'export PATH="$(npm bin -g):$PATH"' >> /root/.bashrc
 claude --version || echo "Claude Code installed"
 
 # Clone MechaCoder (OpenAgents)
