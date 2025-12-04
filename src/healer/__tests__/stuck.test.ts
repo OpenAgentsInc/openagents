@@ -108,7 +108,7 @@ describe("isTaskStuckByTime", () => {
 
 describe("isSubtaskStuck", () => {
   test("returns not stuck for completed subtask", () => {
-    const subtask = createMockSubtask({ status: "completed" });
+    const subtask = createMockSubtask({ status: "done" });
     const result = isSubtaskStuck(subtask);
     expect(result.stuck).toBe(false);
   });
@@ -283,7 +283,7 @@ describe("scanTasksForStuck", () => {
 describe("scanSubtasksForStuck", () => {
   test("returns empty array for no stuck subtasks", () => {
     const subtasks = [
-      { subtask: createMockSubtask({ status: "completed" }), taskId: "task-1" },
+      { subtask: createMockSubtask({ status: "done" }), taskId: "task-1" },
     ];
     const result = scanSubtasksForStuck(subtasks);
     expect(result).toHaveLength(0);
