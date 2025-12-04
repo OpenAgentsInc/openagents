@@ -808,6 +808,10 @@ const doOneTaskOrchestrator = (config: Config) =>
         generationTimeoutMs: 30000,
         retentionDays: 30,
       },
+      failureCleanup: {
+        revertTrackedFiles: true,
+        deleteUntrackedFiles: false,
+      },
     };
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
       Effect.catchAll(() => Effect.succeed(null))
