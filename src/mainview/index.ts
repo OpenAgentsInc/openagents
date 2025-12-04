@@ -424,12 +424,53 @@ interface TBSuiteInfo {
   }>
 }
 
+/**
+ * TB run history item from RPC
+ */
+interface TBRunHistoryItem {
+  runId: string
+  suiteName: string
+  suiteVersion: string
+  timestamp: string
+  passRate: number
+  passed: number
+  failed: number
+  timeout: number
+  error: number
+  totalDurationMs: number
+  totalTokens: number
+  taskCount: number
+  filepath: string
+}
+
+/**
+ * TB run details from RPC (includes task results)
+ */
+interface TBRunDetailsResponse {
+  meta: TBRunHistoryItem
+  tasks: Array<{
+    id: string
+    name: string
+    category: string
+    difficulty: string
+    outcome: string
+    durationMs: number
+    turns: number
+    tokens: number
+    outputLines?: number
+  }>
+}
+
 interface HudRpcSchema {
   bun: {
     requests: {
       loadTBSuite: (suitePath: string) => Promise<TBSuiteInfo>
       startTBRun: (options: TBRunOptions) => Promise<{ runId: string }>
       stopTBRun: () => Promise<{ stopped: boolean }>
+      /** Load recent TB run metadata (for run history nodes) */
+      loadRecentTBRuns: (count?: number) => Promise<TBRunHistoryItem[]>
+      /** Load full run details including tasks (for expanded view) */
+      loadTBRunDetails: (runId: string) => Promise<TBRunDetailsResponse | null>
     };
     messages: {
       hudMessage: HudMessage;
@@ -684,12 +725,40 @@ let tbLayout = calculateLayout({
 })
 
 /**
- * Refresh TB flow layout from current state.
- * NOTE: Run history loading must happen via RPC, not filesystem access.
- * The browser webview cannot use Node.js fs APIs.
+ * Refresh TB flow layout from current state and load run history via RPC.
+ * Uses RPC to load run history since browser webview cannot use Node.js fs APIs.
  */
-function refreshTBLayout(): void {
-  // Just sync state and rebuild - no filesystem access
+async function refreshTBLayout(): Promise<void> {
+  try {
+    // Load recent runs via RPC
+    const runs = await rpcRequest.request.loadRecentTBRuns(20)
+    console.log(`[TB] Loaded ${runs.length} runs via RPC`)
+
+    // Update tbFlowState with loaded runs (maps to TBRunWithPath format)
+    tbFlowState = {
+      ...tbFlowState,
+      runs: runs.map((r) => ({
+        runId: r.runId,
+        suiteName: r.suiteName,
+        suiteVersion: r.suiteVersion,
+        timestamp: r.timestamp,
+        passRate: r.passRate,
+        passed: r.passed,
+        failed: r.failed,
+        timeout: r.timeout,
+        error: r.error,
+        totalDurationMs: r.totalDurationMs,
+        totalTokens: r.totalTokens,
+        taskCount: r.taskCount,
+        filepath: r.filepath,
+      })),
+    }
+  } catch (err) {
+    console.error("[TB] Failed to load runs via RPC:", err)
+    // Continue with empty/existing runs - don't block the UI
+  }
+
+  // Sync state and rebuild
   syncTBFlowWithState()
   if (viewMode === "tbench") {
     render()
@@ -697,17 +766,57 @@ function refreshTBLayout(): void {
 }
 
 /**
- * Toggle expansion of a run node
- * NOTE: Loading run details requires RPC to main process (filesystem access).
- * For now, expansion just toggles the state without loading details.
+ * Toggle expansion of a run node.
+ * Loads run details via RPC when expanding.
  */
-function handleRunNodeClick(runId: string): void {
+async function handleRunNodeClick(runId: string): Promise<void> {
+  const wasExpanded = tbFlowState.expandedRunIds.has(runId)
+
   // Toggle expansion
   tbFlowState = toggleRunExpanded(tbFlowState, runId)
 
-  // TODO: Load run details via RPC when expanding
-  // The browser webview cannot use Node.js fs APIs directly.
-  // For now, expanded runs won't show task details until RPC is implemented.
+  // Load run details via RPC when expanding (if not already loaded)
+  if (!wasExpanded && !tbRunDetails.has(runId)) {
+    try {
+      console.log(`[TB] Loading details for run: ${runId}`)
+      const details = await rpcRequest.request.loadTBRunDetails(runId)
+
+      if (details) {
+        // Convert to TBRunDetails format expected by tb-map.ts
+        // TBRunDetails = { meta: TBRunMeta, tasks: TBTaskResult[] }
+        tbRunDetails.set(runId, {
+          meta: {
+            runId: details.meta.runId,
+            suiteName: details.meta.suiteName,
+            suiteVersion: details.meta.suiteVersion,
+            timestamp: details.meta.timestamp,
+            passRate: details.meta.passRate,
+            passed: details.meta.passed,
+            failed: details.meta.failed,
+            timeout: details.meta.timeout,
+            error: details.meta.error,
+            totalDurationMs: details.meta.totalDurationMs,
+            totalTokens: details.meta.totalTokens,
+            taskCount: details.meta.taskCount,
+          },
+          tasks: details.tasks.map((t) => ({
+            id: t.id,
+            name: t.name,
+            category: t.category,
+            difficulty: t.difficulty as "easy" | "medium" | "hard" | "expert",
+            outcome: t.outcome as "success" | "failure" | "timeout" | "error",
+            durationMs: t.durationMs,
+            turns: t.turns,
+            tokens: t.tokens,
+            outputLines: t.outputLines,
+          })),
+        })
+        console.log(`[TB] Loaded ${details.tasks.length} tasks for run ${runId}`)
+      }
+    } catch (err) {
+      console.error(`[TB] Failed to load run details for ${runId}:`, err)
+    }
+  }
 
   // Rebuild the tree
   const tree = buildTBFlowTree(tbFlowState, tbRunDetails)
