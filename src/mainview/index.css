@@ -755,3 +755,157 @@ body {
   background: rgba(139, 92, 246, 0.15);
   color: #8b5cf6;
 }
+
+/* ============================================================================
+   ATIF Output Formatting
+   ============================================================================ */
+
+/* Base output line styling */
+.tb-output-line {
+  margin: 0;
+  padding: 2px 0;
+  line-height: 1.5;
+  font-family: "Berkeley Mono", monospace;
+  font-size: 11px;
+}
+
+/* Agent reasoning/text output */
+.tb-output-line.agent {
+  color: #e5e5e5;
+}
+
+/* Verification output */
+.tb-output-line.verification {
+  color: #22c55e;
+  padding-left: 8px;
+  border-left: 2px solid rgba(34, 197, 94, 0.3);
+  margin-left: 4px;
+}
+
+/* System messages */
+.tb-output-line.system {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* ATIF-specific line types (parsed from content) */
+.atif-line {
+  padding: 2px 0;
+  line-height: 1.5;
+}
+
+.atif-line.thinking {
+  color: #9ca3af;
+  font-style: italic;
+  padding-left: 8px;
+  border-left: 2px solid rgba(156, 163, 175, 0.2);
+}
+
+.atif-line.tool-call {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.atif-line.tool-call::before {
+  content: "▸ ";
+  color: #60a5fa;
+}
+
+.atif-line.tool-name {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.atif-line.tool-args {
+  color: #6b7280;
+  font-size: 10px;
+  padding-left: 16px;
+}
+
+.atif-line.observation {
+  color: #22c55e;
+  padding-left: 8px;
+  border-left: 2px solid rgba(34, 197, 94, 0.3);
+}
+
+.atif-line.observation.success {
+  color: #22c55e;
+}
+
+.atif-line.observation.error {
+  color: #ef4444;
+  border-left-color: rgba(239, 68, 68, 0.3);
+}
+
+.atif-line.error {
+  color: #ef4444;
+}
+
+.atif-line.error::before {
+  content: "✗ ";
+}
+
+.atif-line.warning {
+  color: #f59e0b;
+}
+
+.atif-line.warning::before {
+  content: "⚠ ";
+}
+
+/* Tool call result status indicators */
+.atif-result-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.atif-result-indicator.success {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+
+.atif-result-indicator.error {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
+/* Collapsible tool output sections */
+.atif-tool-output {
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.atif-tool-output.collapsed {
+  max-height: 24px;
+  overflow: hidden;
+}
+
+.atif-tool-output.collapsed::after {
+  content: "...";
+  color: var(--text-muted);
+}
+
+/* Step separator */
+.atif-step-separator {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 8px 0;
+}
+
+/* Timestamp badge */
+.atif-timestamp {
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 2px;
+  margin-left: 8px;
+}
