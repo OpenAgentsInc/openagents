@@ -100,4 +100,28 @@ describe("session", () => {
     expect(error).toBeInstanceOf(SessionError);
     expect((error as SessionError).reason).toBe("not_found");
   });
+
+  it("ignores log_trimmed markers when loading", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "session-trim" });
+        const sessionPath = path.join(dir, "trimmed.jsonl");
+
+        const content = [
+          JSON.stringify({ type: "session_start", timestamp: "t0", sessionId: "s-trim", config: {} }),
+          JSON.stringify({ type: "log_trimmed", timestamp: "t1", dropped: 10, kept: 3, reason: "test" }),
+          JSON.stringify({ type: "user_message", timestamp: "t2", content: "keep me" }),
+          JSON.stringify({ type: "session_end", timestamp: "t3", totalTurns: 0, finalMessage: null }),
+        ].join("\n");
+
+        yield* fs.writeFile(sessionPath, new TextEncoder().encode(`${content}\n`));
+        return yield* loadSession(sessionPath);
+      }),
+    );
+
+    expect(result.id).toBe("s-trim");
+    expect(result.userMessage).toBe("keep me");
+  });
 });

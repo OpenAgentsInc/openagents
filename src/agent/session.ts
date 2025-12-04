@@ -3,6 +3,7 @@ import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import * as S from "effect/Schema";
 import type { AgentConfig, AgentTurn } from "./loop.js";
+import { SESSION_TRIM_CONFIG, trimJsonlLines } from "./log-trim.js";
 
 const ToolCallSchema = S.Struct({
   id: S.String,
@@ -69,6 +70,13 @@ export const SessionEventSchema = S.Union(
     totalTurns: S.Number,
     finalMessage: S.NullOr(S.String),
   }),
+  S.Struct({
+    type: S.Literal("log_trimmed"),
+    timestamp: S.String,
+    dropped: S.Number,
+    kept: S.Number,
+    reason: S.String,
+  }),
 );
 
 export type SessionEvent = S.Schema.Type<typeof SessionEventSchema>;
@@ -102,6 +110,33 @@ const generateSessionId = () => {
 
 const timestamp = () => new Date().toISOString();
 
+const maybeTrimSessionLog = (
+  sessionPath: string,
+): Effect.Effect<void, SessionError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const stat = yield* fs.stat(sessionPath).pipe(
+      Effect.mapError((e) => new SessionError("write_error", `Failed to stat session log: ${e.message}`)),
+    );
+
+    const shouldTrim =
+      stat.size >= SESSION_TRIM_CONFIG.maxBytes || stat.size >= SESSION_TRIM_CONFIG.maxLines * 1024;
+    if (!shouldTrim) return;
+
+    const content = yield* fs.readFileString(sessionPath).pipe(
+      Effect.mapError((e) => new SessionError("parse_error", `Failed to read session log: ${e.message}`)),
+    );
+
+    const lines = content.split("\n").filter((l) => l.trim().length > 0);
+    const result = trimJsonlLines(lines, SESSION_TRIM_CONFIG);
+    if (!result.trimmed) return;
+
+    const nextContent = result.lines.join("\n") + "\n";
+    yield* fs.writeFile(sessionPath, new TextEncoder().encode(nextContent)).pipe(
+      Effect.mapError((e) => new SessionError("write_error", `Failed to trim session log: ${e.message}`)),
+    );
+  }).pipe(Effect.catchAll(() => Effect.void));
+
 export const createSession = (
   config: AgentConfig,
   userMessage: string,
@@ -124,6 +159,7 @@ export const appendEvent = (
     yield* fs.writeFile(sessionPath, new TextEncoder().encode(line), { flag: "a" }).pipe(
       Effect.mapError((e) => new SessionError("write_error", `Failed to append event: ${e.message}`)),
     );
+    yield* maybeTrimSessionLog(sessionPath);
   });
 
 export const writeSessionStart = (
@@ -251,6 +287,9 @@ export const loadSession = (
           if (session) {
             session.turns.push(event.turn as AgentTurn);
           }
+          break;
+
+        case "log_trimmed":
           break;
 
         case "session_end":
