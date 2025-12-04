@@ -33,8 +33,19 @@ export {
   mapInitFailureToScenario,
 } from "./types.js";
 
-// Policy (to be implemented in oa-healer-03)
-// export { shouldRunHealer, mapEventToScenario } from "./policy.js";
+// Policy
+export {
+  shouldRunHealer,
+  mapEventToScenario,
+  getInitScriptResult,
+  getErrorOutput,
+  isScenarioEnabled,
+  hasExceededSessionLimit,
+  hasExceededSubtaskLimit,
+  incrementCounters,
+  explainDecision,
+  isHealableInitFailure,
+} from "./policy.js";
 
 // Context builder (to be implemented in oa-healer-04)
 // export { buildHealerContext } from "./context.js";
