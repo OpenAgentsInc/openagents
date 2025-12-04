@@ -5,7 +5,6 @@ import {
   createTBFlowState,
   toggleRunExpanded,
   generateTBNodeSizes,
-  type TBFlowState,
   type TBRunDetails,
 } from "./tb-map.js"
 import type { TBRunWithPath, TBTaskResult } from "../tbench-hud/persistence.js"
