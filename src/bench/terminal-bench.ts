@@ -21,16 +21,8 @@ import { createTask } from "../tasks/service.js";
 export const TerminalBenchDifficulty = S.Literal("easy", "medium", "hard", "expert");
 export type TerminalBenchDifficulty = S.Schema.Type<typeof TerminalBenchDifficulty>;
 
-// Terminal-Bench task categories
-export const TerminalBenchCategory = S.Literal(
-  "debugging",
-  "implementation",
-  "refactoring",
-  "testing",
-  "documentation",
-  "configuration",
-  "optimization",
-);
+// Terminal-Bench task categories (accept any string for flexibility)
+export const TerminalBenchCategory = S.String;
 export type TerminalBenchCategory = S.Schema.Type<typeof TerminalBenchCategory>;
 
 // Terminal-Bench verification method
@@ -59,6 +51,8 @@ export const TerminalBenchTask = S.Struct({
   // Additional context for the agent
   files_to_modify: S.optional(S.Array(S.String)),
   hints: S.optional(S.Array(S.String)),
+  // Source path for importing from external repos
+  source_path: S.optional(S.String),
 });
 export type TerminalBenchTask = S.Schema.Type<typeof TerminalBenchTask>;
 
@@ -67,6 +61,7 @@ export const TerminalBenchSuite = S.Struct({
   name: S.String,
   version: S.String,
   description: S.optional(S.String),
+  source_repo: S.optional(S.String),
   tasks: S.Array(TerminalBenchTask),
 });
 export type TerminalBenchSuite = S.Schema.Type<typeof TerminalBenchSuite>;

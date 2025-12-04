@@ -22,7 +22,6 @@ import type { Subtask } from "../agent/orchestrator/types.js";
 import {
   loadTerminalBenchSuite,
   runTaskSetup,
-  runTaskVerification,
   toBenchmarkResults,
   type TerminalBenchTask,
   type TerminalBenchSuite,
@@ -30,6 +29,7 @@ import {
 } from "../bench/terminal-bench.js";
 import { BunContext } from "@effect/platform-bun";
 import { Effect } from "effect";
+import { cpSync, readdirSync, statSync } from "fs";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -131,6 +131,104 @@ interface TaskResult {
   errorMessage: string | undefined;
 }
 
+/**
+ * Set up task workspace with environment files and tests
+ */
+const setupTaskWorkspace = (
+  tbTask: TerminalBenchTask,
+  workspaceDir: string,
+  sourceRepo?: string
+): void => {
+  mkdirSync(workspaceDir, { recursive: true });
+
+  // If source_path is available, copy environment and test files
+  const sourcePath = tbTask.source_path ?? (sourceRepo ? join(sourceRepo, tbTask.id) : null);
+  if (sourcePath && existsSync(sourcePath)) {
+    // Copy environment files if they exist (excluding Dockerfile)
+    const envDir = join(sourcePath, "environment");
+    if (existsSync(envDir)) {
+      const entries = readdirSync(envDir);
+      for (const entry of entries) {
+        if (entry === "Dockerfile") continue;
+        const srcPath = join(envDir, entry);
+        const destPath = join(workspaceDir, entry);
+        if (statSync(srcPath).isDirectory()) {
+          cpSync(srcPath, destPath, { recursive: true });
+        } else {
+          cpSync(srcPath, destPath);
+        }
+      }
+    }
+
+    // Copy test files, modifying /app/ paths to workspace
+    const testsDir = join(sourcePath, "tests");
+    const destTestsDir = join(workspaceDir, "tests");
+    if (existsSync(testsDir)) {
+      mkdirSync(destTestsDir, { recursive: true });
+      const testFiles = readdirSync(testsDir);
+      for (const file of testFiles) {
+        const srcFile = join(testsDir, file);
+        const destFile = join(destTestsDir, file);
+        if (statSync(srcFile).isFile()) {
+          let content = readFileSync(srcFile, "utf-8");
+          // Replace /app/ with workspace path for local execution
+          content = content.replace(/\/app\//g, `${workspaceDir}/`);
+          content = content.replace(/\/app(?=["'])/g, workspaceDir);
+          writeFileSync(destFile, content);
+        }
+      }
+    }
+  }
+};
+
+/**
+ * Run verification for a task in its workspace
+ */
+const runLocalVerification = async (
+  workspaceDir: string,
+  tbTask: TerminalBenchTask
+): Promise<{ passed: boolean; output: string }> => {
+  const testsDir = join(workspaceDir, "tests");
+
+  // Check if tests directory exists
+  if (!existsSync(testsDir)) {
+    // Fall back to simple verification if defined
+    if (tbTask.verification.type === "output" && tbTask.verification.command) {
+      const proc = Bun.spawn(["sh", "-c", tbTask.verification.command], {
+        cwd: workspaceDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const expected = tbTask.verification.expected ?? "";
+      const passed = stdout.trim() === expected.trim();
+      return {
+        passed,
+        output: `Expected: ${expected}\nActual: ${stdout}`,
+      };
+    }
+    return { passed: false, output: "No tests directory found" };
+  }
+
+  // Run pytest on the tests
+  const proc = Bun.spawn(["python3", "-m", "pytest", "tests/", "-v", "--tb=short"], {
+    cwd: workspaceDir,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+  });
+
+  const exitCode = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+
+  return {
+    passed: exitCode === 0,
+    output: stdout + (stderr ? `\nSTDERR:\n${stderr}` : ""),
+  };
+};
+
 const runTask = async (
   tbTask: TerminalBenchTask,
   options: {
@@ -138,24 +236,40 @@ const runTask = async (
     timeout: number;
     maxTurns: number;
     outputDir: string;
+    sourceRepo?: string;
   }
 ): Promise<TaskResult> => {
   const startTime = Date.now();
   const taskOutputDir = join(options.outputDir, tbTask.id);
   mkdirSync(taskOutputDir, { recursive: true });
 
+  // Create workspace for the task
+  const workspaceDir = join(taskOutputDir, "workspace");
+
   console.log(`\n=== Running Task: ${tbTask.id} ===`);
   console.log(`Name: ${tbTask.name}`);
   console.log(`Difficulty: ${tbTask.difficulty}`);
   console.log(`Category: ${tbTask.category}`);
+  console.log(`Workspace: ${workspaceDir}`);
+
+  // Set up workspace with environment and test files
+  setupTaskWorkspace(tbTask, workspaceDir, options.sourceRepo);
 
   // Run setup if specified
   if (tbTask.setup?.length) {
     console.log("Running setup commands...");
     try {
-      await Effect.runPromise(
-        runTaskSetup(tbTask)
-      );
+      for (const cmd of tbTask.setup) {
+        const proc = Bun.spawn(["sh", "-c", cmd], {
+          cwd: workspaceDir,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const exitCode = await proc.exited;
+        if (exitCode !== 0) {
+          throw new Error(`Setup command failed: ${cmd}`);
+        }
+      }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       console.error(`Setup failed: ${errorMsg}`);
@@ -189,7 +303,7 @@ const runTask = async (
   let result;
   try {
     result = await runClaudeCodeSubagent(subtask, {
-      cwd: options.cwd,
+      cwd: workspaceDir,
       maxTurns: tbTask.max_turns ?? options.maxTurns,
       permissionMode: "bypassPermissions",
       timeoutMs: (tbTask.timeout_seconds ?? options.timeout) * 1000,
@@ -220,9 +334,7 @@ const runTask = async (
   console.log("\nRunning verification...");
   let verificationResult;
   try {
-    verificationResult = await Effect.runPromise(
-      runTaskVerification(tbTask)
-    );
+    verificationResult = await runLocalVerification(workspaceDir, tbTask);
     writeFileSync(join(taskOutputDir, "verification.txt"), verificationResult.output);
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
@@ -440,6 +552,9 @@ const main = async (): Promise<void> => {
 
   const startTime = Date.now();
 
+  // Get source repo path from suite if available
+  const sourceRepo = suite.source_repo;
+
   // Run tasks sequentially (parallel support can be added later)
   for (const task of tasksToRun) {
     const result = await runTask(task, {
@@ -447,6 +562,7 @@ const main = async (): Promise<void> => {
       timeout,
       maxTurns,
       outputDir: args.output,
+      sourceRepo,
     });
     results.push(result);
 
