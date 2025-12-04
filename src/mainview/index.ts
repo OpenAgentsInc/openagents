@@ -16,7 +16,23 @@ import {
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
 import Electrobun, { Electroview } from "electrobun/view"
-import type { HudMessage, APMUpdateMessage, APMSnapshotMessage } from "../hud/protocol.js"
+import type {
+  HudMessage,
+  APMUpdateMessage,
+  APMSnapshotMessage,
+  TBRunStartMessage,
+  TBRunCompleteMessage,
+  TBTaskStartMessage,
+  TBTaskProgressMessage,
+  TBTaskCompleteMessage,
+} from "../hud/protocol.js"
+import {
+  isTBRunStart,
+  isTBRunComplete,
+  isTBTaskStart,
+  isTBTaskProgress,
+  isTBTaskComplete,
+} from "../hud/protocol.js"
 
 // ============================================================================
 // APM Widget State
@@ -102,6 +118,142 @@ function renderAPMWidget(): string {
 }
 
 // ============================================================================
+// Terminal-Bench Widget State
+// ============================================================================
+
+type TBTaskStatus = "pending" | "running" | "passed" | "failed" | "timeout" | "error"
+
+interface TBTaskState {
+  id: string
+  name: string
+  difficulty: string
+  category: string
+  status: TBTaskStatus
+  durationMs?: number
+  turns?: number
+}
+
+interface TBState {
+  isRunning: boolean
+  runId: string | null
+  suiteName: string
+  suiteVersion: string
+  totalTasks: number
+  tasks: Map<string, TBTaskState>
+  currentTaskId: string | null
+  currentPhase: string | null
+  currentTurn: number
+  passed: number
+  failed: number
+  timeout: number
+  error: number
+  passRate: number
+  totalDurationMs: number
+}
+
+let tbState: TBState = {
+  isRunning: false,
+  runId: null,
+  suiteName: "",
+  suiteVersion: "",
+  totalTasks: 0,
+  tasks: new Map(),
+  currentTaskId: null,
+  currentPhase: null,
+  currentTurn: 0,
+  passed: 0,
+  failed: 0,
+  timeout: 0,
+  error: 0,
+  passRate: 0,
+  totalDurationMs: 0,
+}
+
+function getTBStatusColor(status: TBTaskStatus): string {
+  switch (status) {
+    case "passed": return "#22c55e" // Green
+    case "failed": return "#ef4444" // Red
+    case "timeout": return "#f59e0b" // Amber
+    case "error": return "#ef4444" // Red
+    case "running": return "#3b82f6" // Blue
+    default: return "#6b7280" // Gray
+  }
+}
+
+function renderTBWidget(): string {
+  // Don't render if no run has ever started
+  if (!tbState.isRunning && tbState.tasks.size === 0) return ""
+
+  const completed = tbState.passed + tbState.failed + tbState.timeout + tbState.error
+  const progressPct = tbState.totalTasks > 0
+    ? (completed / tbState.totalTasks) * 100
+    : 0
+  const progressWidth = (228 * progressPct) / 100
+
+  // Status text
+  let statusText = "Idle"
+  if (tbState.isRunning && tbState.currentTaskId) {
+    const task = tbState.tasks.get(tbState.currentTaskId)
+    statusText = task ? `${task.name} (${tbState.currentPhase || "running"})` : tbState.currentTaskId
+    if (tbState.currentTurn > 0) {
+      statusText += ` | Turn ${tbState.currentTurn}`
+    }
+  } else if (!tbState.isRunning && completed > 0) {
+    statusText = `Complete | ${(tbState.passRate * 100).toFixed(0)}% pass`
+  }
+
+  // Truncate status text if too long
+  if (statusText.length > 35) {
+    statusText = statusText.slice(0, 32) + "..."
+  }
+
+  const passColor = tbState.passed > 0 ? "#22c55e" : "#6b7280"
+  const failColor = (tbState.failed + tbState.timeout + tbState.error) > 0 ? "#ef4444" : "#6b7280"
+
+  return `
+    <g transform="translate(20, 140)" class="tb-widget">
+      <!-- Background -->
+      <rect x="0" y="0" width="260" height="95" rx="8" ry="8"
+            fill="#141017" stroke="rgba(34, 197, 94, 0.25)" stroke-width="1"/>
+
+      <!-- Header: TB suite name -->
+      <text x="16" y="24" fill="#22c55e" font-size="14" font-weight="bold" font-family="Berkeley Mono, monospace">
+        TB: ${tbState.suiteName || "Terminal-Bench"}
+      </text>
+      <text x="200" y="24" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
+        ${completed}/${tbState.totalTasks}
+      </text>
+
+      <!-- Progress bar background -->
+      <rect x="16" y="36" width="228" height="10" rx="5" fill="#1e1e2e"/>
+      <!-- Progress bar fill -->
+      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="#22c55e"/>
+      ${tbState.isRunning ? `
+      <!-- Animated pulse for running state -->
+      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="#22c55e" opacity="0.5">
+        <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1.5s" repeatCount="indefinite"/>
+      </rect>` : ""}
+
+      <!-- Stats row -->
+      <text x="16" y="64" fill="${passColor}" font-size="11" font-family="Berkeley Mono, monospace">
+        ✓ ${tbState.passed}
+      </text>
+      <text x="60" y="64" fill="${failColor}" font-size="11" font-family="Berkeley Mono, monospace">
+        ✗ ${tbState.failed + tbState.timeout + tbState.error}
+      </text>
+      <text x="100" y="64" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
+        ${tbState.isRunning ? "Running..." : tbState.passRate > 0 ? `${(tbState.passRate * 100).toFixed(1)}%` : ""}
+      </text>
+
+      <!-- Current task / status -->
+      <text x="16" y="82" fill="#9ca3af" font-size="10" font-family="Berkeley Mono, monospace">
+        ${statusText}
+      </text>
+    </g>
+  `
+}
+
+// ============================================================================
 // RPC Schema for HUD Messages (must match src/bun/index.ts)
 // ============================================================================
 
@@ -172,6 +324,90 @@ function handleHudMessage(message: HudMessage): void {
       efficiencyRatio: snapMsg.comparison.efficiencyRatio,
     }
     render() // Update APM widget
+    return
+  }
+
+  // Handle Terminal-Bench messages
+  if (isTBRunStart(message)) {
+    tbState = {
+      isRunning: true,
+      runId: message.runId,
+      suiteName: message.suiteName,
+      suiteVersion: message.suiteVersion,
+      totalTasks: message.totalTasks,
+      tasks: new Map(message.taskIds.map(id => [id, {
+        id,
+        name: id,
+        difficulty: "",
+        category: "",
+        status: "pending" as TBTaskStatus,
+      }])),
+      currentTaskId: null,
+      currentPhase: null,
+      currentTurn: 0,
+      passed: 0,
+      failed: 0,
+      timeout: 0,
+      error: 0,
+      passRate: 0,
+      totalDurationMs: 0,
+    }
+    render()
+    return
+  }
+
+  if (isTBTaskStart(message)) {
+    const task = tbState.tasks.get(message.taskId)
+    if (task) {
+      task.name = message.taskName
+      task.difficulty = message.difficulty
+      task.category = message.category
+      task.status = "running"
+    }
+    tbState.currentTaskId = message.taskId
+    tbState.currentPhase = "setup"
+    tbState.currentTurn = 0
+    render()
+    return
+  }
+
+  if (isTBTaskProgress(message)) {
+    tbState.currentPhase = message.phase
+    if (message.currentTurn !== undefined) {
+      tbState.currentTurn = message.currentTurn
+    }
+    render()
+    return
+  }
+
+  if (isTBTaskComplete(message)) {
+    const task = tbState.tasks.get(message.taskId)
+    if (task) {
+      task.status = message.outcome === "success" ? "passed" : message.outcome as TBTaskStatus
+      task.durationMs = message.durationMs
+      task.turns = message.turns
+    }
+    // Update counters
+    switch (message.outcome) {
+      case "success": tbState.passed++; break
+      case "failure": tbState.failed++; break
+      case "timeout": tbState.timeout++; break
+      case "error": tbState.error++; break
+    }
+    tbState.currentTaskId = null
+    tbState.currentPhase = null
+    tbState.currentTurn = 0
+    render()
+    return
+  }
+
+  if (isTBRunComplete(message)) {
+    tbState.isRunning = false
+    tbState.passRate = message.passRate
+    tbState.totalDurationMs = message.totalDurationMs
+    tbState.currentTaskId = null
+    tbState.currentPhase = null
+    render()
     return
   }
 
@@ -252,9 +488,10 @@ canvasState = { ...canvasState, ...initialPan }
 // Render SVG content
 function render(): void {
   const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
-  // Add APM widget as fixed overlay (not affected by pan/zoom)
+  // Add APM and TB widgets as fixed overlays (not affected by pan/zoom)
   const apmOverlay = renderAPMWidget()
-  svg.innerHTML = svgElementToString(flowGroup) + apmOverlay
+  const tbOverlay = renderTBWidget()
+  svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
 
   // Update zoom display
   zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`
