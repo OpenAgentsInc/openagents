@@ -286,6 +286,9 @@ export const createHudCallbacks = (options?: HudCallbackOptions) => {
   };
   const statusStream = streamEnabled ? new StatusStreamServer(statusOpts) : null;
 
+  /**
+   * Emit orchestrator events to the HUD (transforms to HudMessage).
+   */
   const emit = (event: OrchestratorEvent) => {
     const hudMessage = orchestratorEventToHudMessage(event);
     if (hudMessage) {
@@ -294,6 +297,18 @@ export const createHudCallbacks = (options?: HudCallbackOptions) => {
     }
   };
 
+  /**
+   * Emit HUD messages directly (for container events and other non-orchestrator events).
+   * Use this for container_start, container_output, container_complete, container_error.
+   */
+  const emitHud = (message: HudMessage) => {
+    client.send(message);
+    statusStream?.broadcast(message);
+  };
+
+  /**
+   * Emit streaming text output from Claude Code.
+   */
   const onOutput = (text: string) => {
     const msg: HudMessage = {
       type: "text_output",
@@ -304,7 +319,7 @@ export const createHudCallbacks = (options?: HudCallbackOptions) => {
     statusStream?.broadcast(msg);
   };
 
-  return { emit, onOutput, client, statusStream };
+  return { emit, emitHud, onOutput, client, statusStream };
 };
 
 // ============================================================================

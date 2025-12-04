@@ -301,6 +301,9 @@ export const runOrchestrator = (
               emit({ type: "sandbox_fallback", reason: event.reason } as any);
             }
           },
+          // Forward HUD messages for container streaming
+          emitHud: config.emitHud,
+          context: "verification",
         }
       : undefined;
 

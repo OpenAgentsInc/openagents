@@ -35,11 +35,11 @@ export interface SandboxRunnerConfig {
   /** Working directory (repo root) to mount as /workspace */
   cwd: string;
   /** Emit events for logging/debugging */
-  emit?: (event: SandboxRunnerEvent) => void;
+  emit?: ((event: SandboxRunnerEvent) => void) | undefined;
   /** Emit HUD messages for streaming output to UI */
-  emitHud?: (message: HudMessage) => void;
+  emitHud?: ((message: HudMessage) => void) | undefined;
   /** Execution context for UI grouping (default: "verification") */
-  context?: ExecutionContext;
+  context?: ExecutionContext | undefined;
 }
 
 export type SandboxRunnerEvent =
