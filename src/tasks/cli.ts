@@ -98,6 +98,7 @@ interface CliOptions {
   // cleanup options
   olderThan?: string;
   cascade?: boolean;
+  deleteCascade?: boolean;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -279,6 +280,9 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
         break;
       case "--cascade":
         options.cascade = true;
+        break;
+      case "--delete-cascade":
+        options.deleteCascade = true;
         break;
     }
   }
@@ -1097,6 +1101,71 @@ const cmdCleanup = (options: CliOptions) =>
     return result;
   });
 
+const cmdDelete = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    if (!options.id) {
+      const result = { ok: false, error: "Missing required --id <task-id>" };
+      output(result, options.json);
+      return result;
+    }
+
+    const tasks = yield* readTasks(tasksPath);
+    const target = tasks.find((t) => t.id === options.id);
+    if (!target) {
+      const result = { ok: false, error: "not_found", message: `Task ${options.id} not found` };
+      output(result, options.json);
+      return result;
+    }
+
+    const removedIds = new Set<string>();
+    const deleteCascade = options.deleteCascade ?? options.cascade ?? false;
+    const cascadeQueue = [target.id];
+
+    if (deleteCascade) {
+      while (cascadeQueue.length > 0) {
+        const currentId = cascadeQueue.pop()!;
+        if (removedIds.has(currentId)) continue;
+        removedIds.add(currentId);
+
+        for (const t of tasks) {
+          if ((t.deps ?? []).some((d) => d.id === currentId)) {
+            cascadeQueue.push(t.id);
+          }
+        }
+      }
+    } else {
+      removedIds.add(target.id);
+    }
+
+    const remaining = tasks.filter((t) => !removedIds.has(t.id));
+    const pruned = remaining.map((t) => ({
+      ...t,
+      deps: (t.deps ?? []).filter((d) => !removedIds.has(d.id)),
+    }));
+
+    if (options.dryRun) {
+      const result = {
+        ok: true,
+        dryRun: true,
+        deletedIds: [...removedIds],
+        remaining: pruned.length,
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    yield* writeTasks(tasksPath, pruned);
+
+    const result = {
+      ok: true,
+      deletedIds: [...removedIds],
+      remaining: pruned.length,
+    };
+    output(result, options.json);
+    return result;
+  });
+
 const cmdMerge = (options: CliOptions) =>
   Effect.gen(function* () {
     if (!options.base || !options.current || !options.incoming) {
@@ -1299,6 +1368,7 @@ Commands:
   search    Search tasks across active and archived
   validate  Validate tasks.jsonl (schema + conflict markers)
   cleanup   Delete closed tasks older than N days (with optional cascade)
+  delete    Delete a task (with optional cascade to dependents)
   config:list  Show project config (project.json)
   config:get   Get a project config value by key (dot notation supported)
   config:set   Set a project config value by key (value parsed as JSON when possible)
@@ -1360,6 +1430,11 @@ cleanup Options:
   --dry-run               Preview what would be deleted without making changes
   --cascade               Remove deleted task IDs from dependencies of remaining tasks
 
+delete Options:
+  --id <task-id>          Task ID to delete (required)
+  --dry-run               Preview deletions without writing
+  --delete-cascade        Also delete tasks that depend on this task (recursively) (alias: --cascade)
+
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
 
@@ -1401,6 +1476,7 @@ Examples:
   bun src/tasks/cli.ts config:get --key defaultModel --json  # read a config value
   bun src/tasks/cli.ts config:set --key claudeCode.enabled --value false --json  # update a config value
   bun src/tasks/cli.ts cleanup --older-than 90 --json  # delete closed tasks older than 90 days
+  bun src/tasks/cli.ts delete --id oa-123 --json  # delete a task by ID
   bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
 `);
 };
@@ -1640,6 +1716,18 @@ const main = async () => {
     case "cleanup":
       try {
         await Effect.runPromise(cmdCleanup(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ ok: false, error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "delete":
+      try {
+        await Effect.runPromise(cmdDelete(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
