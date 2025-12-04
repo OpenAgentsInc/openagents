@@ -33,6 +33,7 @@ import {
   reopenTask,
   listTasks,
   archiveTasks,
+  writeTasks,
   searchAllTasks,
   getTaskStats,
   getStaleTasks,
@@ -94,6 +95,9 @@ interface CliOptions {
   // config options
   key?: string;
   value?: string;
+  // cleanup options
+  olderThan?: string;
+  cascade?: boolean;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -216,6 +220,12 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
           i++;
         }
         break;
+      case "--older-than":
+        if (nextArg) {
+          options.olderThan = nextArg;
+          i++;
+        }
+        break;
       case "--dry-run":
         options.dryRun = true;
         break;
@@ -266,6 +276,9 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
           options.value = nextArg;
           i++;
         }
+        break;
+      case "--cascade":
+        options.cascade = true;
         break;
     }
   }
@@ -783,6 +796,18 @@ const setValueAtPath = (
   return obj;
 };
 
+const parseOlderThanDays = (options: CliOptions): number => {
+  if (options.days && options.days > 0) return options.days;
+  if (options.olderThan) {
+    const text = options.olderThan.endsWith("d")
+      ? options.olderThan.slice(0, -1)
+      : options.olderThan;
+    const num = parseInt(text, 10);
+    if (!Number.isNaN(num) && num > 0) return num;
+  }
+  return 30;
+};
+
 const cmdValidate = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -981,6 +1006,93 @@ const cmdConfigSet = (options: CliOptions) =>
     );
 
     const result = { ok: true, config: validated };
+    output(result, options.json);
+    return result;
+  });
+
+const cmdCleanup = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const fs = yield* FileSystem.FileSystem;
+    const exists = yield* fs.exists(tasksPath);
+    if (!exists) {
+      const result = { ok: false, error: `${TASKS_FILE} is missing` };
+      output(result, options.json);
+      return result;
+    }
+
+    const days = parseOlderThanDays(options);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const tasks = yield* readTasks(tasksPath);
+
+    const candidates = tasks.filter(
+      (t) => t.status === "closed" && t.closedAt && new Date(t.closedAt).getTime() < cutoff,
+    );
+    const candidateIds = new Set(candidates.map((t) => t.id));
+
+    const references = new Map<string, string[]>();
+    for (const task of tasks) {
+      for (const dep of task.deps ?? []) {
+        if (candidateIds.has(dep.id)) {
+          const arr = references.get(dep.id) ?? [];
+          arr.push(task.id);
+          references.set(dep.id, arr);
+        }
+      }
+    }
+
+    const referenced = new Set<string>();
+    for (const [id, referrers] of references.entries()) {
+      if (referrers.length > 0) referenced.add(id);
+    }
+
+    const deletable = options.cascade
+      ? candidates
+      : candidates.filter((c) => !referenced.has(c.id));
+    const skipped = candidates.filter((c) => referenced.has(c.id));
+
+    if (options.dryRun) {
+      const result = {
+        ok: true,
+        dryRun: true,
+        days,
+        deletedCount: deletable.length,
+        deletedIds: deletable.map((t) => t.id),
+        skippedReferenced: skipped.map((t) => ({ id: t.id, referencedBy: references.get(t.id) })),
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    if (deletable.length === 0) {
+      const result = {
+        ok: true,
+        deletedCount: 0,
+        skippedReferenced: skipped.map((t) => ({ id: t.id, referencedBy: references.get(t.id) })),
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    const deletedIds = new Set(deletable.map((t) => t.id));
+    const remaining = tasks.filter((t) => !deletedIds.has(t.id));
+
+    const cleanedRemaining = options.cascade
+      ? remaining.map((task) => ({
+          ...task,
+          deps: (task.deps ?? []).filter((dep) => !deletedIds.has(dep.id)),
+        }))
+      : remaining;
+
+    yield* writeTasks(tasksPath, cleanedRemaining);
+
+    const result = {
+      ok: true,
+      deletedCount: deletable.length,
+      deletedIds: [...deletedIds],
+      skippedReferenced: skipped.map((t) => ({ id: t.id, referencedBy: references.get(t.id) })),
+      depsPruned: options.cascade,
+    };
     output(result, options.json);
     return result;
   });
@@ -1186,6 +1298,7 @@ Commands:
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
   validate  Validate tasks.jsonl (schema + conflict markers)
+  cleanup   Delete closed tasks older than N days (with optional cascade)
   config:list  Show project config (project.json)
   config:get   Get a project config value by key (dot notation supported)
   config:set   Set a project config value by key (value parsed as JSON when possible)
@@ -1242,6 +1355,11 @@ search Options:
   --include-archived      Include archived tasks (default: true)
   (Also supports list/ready filter options)
 
+cleanup Options:
+  --older-than <n>        Delete closed tasks older than N days (default: 30)
+  --dry-run               Preview what would be deleted without making changes
+  --cascade               Remove deleted task IDs from dependencies of remaining tasks
+
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
 
@@ -1282,6 +1400,7 @@ Examples:
   bun src/tasks/cli.ts config:list --json  # show project config
   bun src/tasks/cli.ts config:get --key defaultModel --json  # read a config value
   bun src/tasks/cli.ts config:set --key claudeCode.enabled --value false --json  # update a config value
+  bun src/tasks/cli.ts cleanup --older-than 90 --json  # delete closed tasks older than 90 days
   bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
 `);
 };
@@ -1509,6 +1628,18 @@ const main = async () => {
     case "config:set":
       try {
         await Effect.runPromise(cmdConfigSet(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ ok: false, error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "cleanup":
+      try {
+        await Effect.runPromise(cmdCleanup(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
