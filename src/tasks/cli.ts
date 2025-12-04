@@ -15,8 +15,10 @@
  *   next     Pick the next ready task and mark it in_progress
  *   create   Create a new task
  *   update   Update an existing task
+ *   validate Validate tasks.jsonl (schema + conflict markers)
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
+import * as FileSystem from "@effect/platform/FileSystem";
 import { Effect } from "effect";
 import * as nodePath from "node:path";
 import {
@@ -33,6 +35,8 @@ import {
   getTaskStats,
   getStaleTasks,
   getTaskWithDeps,
+  readTasks,
+  hasConflictMarkers,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -69,6 +73,8 @@ interface CliOptions {
   // search command options
   query?: string;
   includeArchived?: boolean;
+  // validate options
+  checkConflicts?: boolean;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -202,6 +208,9 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
         break;
       case "--include-archived":
         options.includeArchived = true;
+        break;
+      case "--check-conflicts":
+        options.checkConflicts = true;
         break;
     }
   }
@@ -621,6 +630,31 @@ const cmdSearch = (options: CliOptions) =>
     return summary;
   });
 
+const cmdValidate = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const fs = yield* FileSystem.FileSystem;
+    const exists = yield* fs.exists(tasksPath);
+    if (!exists) {
+      const result = { ok: false, error: `${TASKS_FILE} is missing` };
+      output(result, options.json);
+      return result;
+    }
+
+    const content = yield* fs.readFileString(tasksPath);
+    if (options.checkConflicts && hasConflictMarkers(content)) {
+      throw new Error(
+        "Merge conflict markers detected in .openagents/tasks.jsonl. Resolve conflicts before running agents.",
+      );
+    }
+
+    // Full validation (readTasks also checks conflicts)
+    yield* readTasks(tasksPath);
+    const result = { ok: true, message: "tasks.jsonl is valid" };
+    output(result, options.json);
+    return result;
+  });
+
 const cmdStats = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -796,6 +830,7 @@ Commands:
   stale     Find tasks not updated in N days
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
+  validate  Validate tasks.jsonl (schema + conflict markers)
 
 Global Options:
   --json          Output as JSON
@@ -847,6 +882,9 @@ search Options:
   --include-archived      Include archived tasks (default: true)
   (Also supports list/ready filter options)
 
+validate Options:
+  --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
+
 Examples:
   bun src/tasks/cli.ts init --json
   bun src/tasks/cli.ts list --status open --json
@@ -864,6 +902,7 @@ Examples:
   bun src/tasks/cli.ts archive --days 7 --json  # archive tasks closed >7 days ago
   bun src/tasks/cli.ts search --query "auth" --json  # search all tasks
   bun src/tasks/cli.ts search --query "login" --status closed --json  # search closed tasks only
+  bun src/tasks/cli.ts validate --json  # validate tasks.jsonl and detect conflicts
 `);
 };
 
@@ -1021,6 +1060,19 @@ const main = async () => {
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "validate":
+      try {
+        await Effect.runPromise(cmdValidate(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        const payload = { ok: false, error: String(err) };
+        if (options.json) {
+          console.log(JSON.stringify(payload));
         } else {
           console.error("Error:", err);
         }

@@ -46,6 +46,9 @@ const parseJsonLine = (
       new TaskServiceError("parse_error", `Invalid JSON: ${error}`),
   });
 
+export const hasConflictMarkers = (content: string): boolean =>
+  /^(<{7}|={7}|>{7})/m.test(content);
+
 const ensureDir = (
   filePath: string,
 ): Effect.Effect<void, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
@@ -207,6 +210,13 @@ export const readTasks = (
           ),
       ),
     );
+
+    if (hasConflictMarkers(content)) {
+      throw new TaskServiceError(
+        "conflict",
+        "Merge conflict markers detected in .openagents/tasks.jsonl. Resolve conflicts (git checkout --theirs/--ours or manual edit) before continuing.",
+      );
+    }
 
     const lines = content
       .split("\n")

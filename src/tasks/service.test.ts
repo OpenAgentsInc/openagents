@@ -578,4 +578,23 @@ describe("Archive functionality", () => {
     expect(result.success).toBe(false);
     expect(result.error?.reason).toBe("conflict");
   });
+
+  test("readTasks fails when conflict markers are present", async () => {
+    await expect(
+      runWithBun(
+        Effect.gen(function* () {
+          const { tasksPath } = yield* setup();
+          const fs = yield* FileSystem.FileSystem;
+          const content = `<<<<<<< ours
+{"id":"oa-1","title":"A","description":"","status":"open","priority":2,"type":"task","labels":[],"deps":[],"commits":[],"createdAt":"2024-01-01T00:00:00.000Z","updatedAt":"2024-01-01T00:00:00.000Z","closedAt":null}
+=======
+{"id":"oa-1","title":"B","description":"","status":"open","priority":2,"type":"task","labels":[],"deps":[],"commits":[],"createdAt":"2024-01-01T00:00:00.000Z","updatedAt":"2024-01-01T00:00:00.000Z","closedAt":null}
+>>>>>>> theirs
+`;
+          yield* fs.writeFile(tasksPath, new TextEncoder().encode(content));
+          yield* readTasks(tasksPath);
+        }),
+      ),
+    ).rejects.toThrow("Merge conflict markers detected");
+  });
 });
