@@ -106,5 +106,15 @@ export type {
   HealerEvent,
 } from "./service.js";
 
-// ATIF integration (to be implemented in oa-healer-07)
-// export { createHealerAgent, createHealerTrajectory } from "./atif.js";
+// ATIF integration
+export {
+  createHealerAgent,
+  healerEventToStep,
+  healerEventsToSteps,
+  createHealerTrajectory,
+  createMinimalHealerTrajectory,
+  createHealerTrajectoryRef,
+  createHealerObservation,
+  createHealerInvocationStep,
+  HealerEventCollector,
+} from "./atif.js";
