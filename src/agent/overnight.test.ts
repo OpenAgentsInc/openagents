@@ -1,19 +1,17 @@
 /**
  * Tests for overnight.ts cleanup guardrails
  *
- * These tests verify the fix for oa-2f3ed6:
- * "Orchestrator cleanup commit should not include failed work"
+ * These tests verify the cleanup behavior after subtask failures.
  *
  * Background:
- * The orchestrator's final cleanup commit was doing `git add -A` which committed
- * ALL files, including broken code from failed subtasks. This bypassed the
- * per-task commit guardrail that correctly skipped commits when tests failed.
+ * The orchestrator can optionally clean up uncommitted changes after failures.
+ * This is controlled by projectConfig.failureCleanup:
+ *   - revertTrackedFiles: runs `git checkout -- .` (default: true)
+ *   - deleteUntrackedFiles: runs `git clean -fd` (default: false - DESTRUCTIVE)
  *
- * Solution (two-layer guardrail):
- * 1. Revert on failure: When a subtask fails, revert uncommitted changes with
- *    `git checkout -- .` and `git clean -fd` (preserves .gitignore'd files)
- * 2. Selective add: Final cleanup commit only adds specific paths:
- *    `.openagents/progress.md`, `.openagents/subtasks/`, `docs/logs/`
+ * Default behavior (non-destructive):
+ * - Tracked file modifications are reverted
+ * - Untracked files are PRESERVED (git clean -fd is NOT run by default)
  *
  * See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 for full documentation.
  */
@@ -79,7 +77,31 @@ describe("overnight.ts cleanup guardrails", () => {
       expect(content).toBe("# Test Repo\n");
     });
 
-    test("git clean -fd removes untracked files and directories", () => {
+    test("default behavior preserves untracked files", () => {
+      const { dir } = createTestRepo("preserve-untracked");
+
+      // Create new untracked files
+      fs.writeFileSync(path.join(dir, "new-feature.ts"), "const x = 1;");
+      fs.mkdirSync(path.join(dir, "new-dir"));
+      fs.writeFileSync(path.join(dir, "new-dir", "file.ts"), "new code");
+
+      // Modify a tracked file
+      fs.writeFileSync(path.join(dir, "README.md"), "# Modified!\n");
+
+      // DEFAULT behavior: only revert tracked files, preserve untracked
+      execSync("git checkout -- .", { cwd: dir, encoding: "utf-8" });
+      // NOTE: git clean -fd is NOT run by default (deleteUntrackedFiles=false)
+
+      // Tracked file should be reverted
+      const readme = fs.readFileSync(path.join(dir, "README.md"), "utf-8");
+      expect(readme).toBe("# Test Repo\n");
+
+      // Untracked files should still exist
+      expect(fs.existsSync(path.join(dir, "new-feature.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(dir, "new-dir", "file.ts"))).toBe(true);
+    });
+
+    test("git clean -fd removes untracked files when deleteUntrackedFiles=true", () => {
       const { dir } = createTestRepo("clean-untracked");
 
       // Create new untracked files
@@ -91,7 +113,7 @@ describe("overnight.ts cleanup guardrails", () => {
       expect(fs.existsSync(path.join(dir, "broken.ts"))).toBe(true);
       expect(fs.existsSync(path.join(dir, "new-dir", "file.ts"))).toBe(true);
 
-      // Clean using the same commands as overnight.ts
+      // OPT-IN behavior when deleteUntrackedFiles=true
       execSync("git checkout -- .", { cwd: dir, encoding: "utf-8" });
       execSync("git clean -fd", { cwd: dir, encoding: "utf-8" });
 
@@ -215,42 +237,50 @@ describe("overnight.ts cleanup guardrails", () => {
   });
 
   describe("combined revert + selective add workflow", () => {
-    test("failed subtask cleanup leaves repo clean", () => {
-      const { dir, openagentsDir } = createTestRepo("full-cleanup");
+    test("default cleanup reverts tracked files but preserves untracked", () => {
+      const { dir, openagentsDir } = createTestRepo("default-cleanup");
 
       // Simulate a failed subtask leaving broken files
       fs.writeFileSync(path.join(dir, "README.md"), "# Broken!\n");
       fs.writeFileSync(path.join(dir, "new-feature.ts"), "broken code");
 
-      // Create progress files (these should be preserved for commit)
+      // Create progress files (these should be preserved)
       fs.writeFileSync(
         path.join(openagentsDir, "progress.md"),
         "# Session Progress\n"
       );
 
-      // Step 1: Revert (as overnight.ts does on failure)
+      // DEFAULT behavior: only revert tracked files
       execSync("git checkout -- .", { cwd: dir, encoding: "utf-8" });
-      execSync("git clean -fd", { cwd: dir, encoding: "utf-8" });
+      // git clean -fd is NOT run by default
 
-      // Step 2: Selective add for cleanup commit
-      execSync(
-        "git add .openagents/progress.md .openagents/subtasks/ docs/logs/ 2>/dev/null || true",
-        {
-          cwd: dir,
-          encoding: "utf-8",
-          shell: "/bin/bash",
-        }
-      );
-
-      // Verify broken files are gone
-      expect(fs.existsSync(path.join(dir, "new-feature.ts"))).toBe(false);
+      // Tracked file should be reverted
       const readme = fs.readFileSync(path.join(dir, "README.md"), "utf-8");
       expect(readme).toBe("# Test Repo\n");
 
-      // Verify progress file was staged (it was created in .openagents, not git clean'd)
-      // Note: git clean -fd doesn't remove .openagents because it's already in the repo
-      // Actually, we need to check - .openagents was created AFTER the initial commit
-      // So git clean -fd WILL remove it. Let's verify the actual behavior.
+      // Untracked files should still exist (preserved by default)
+      expect(fs.existsSync(path.join(dir, "new-feature.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(openagentsDir, "progress.md"))).toBe(true);
+    });
+
+    test("aggressive cleanup removes untracked when deleteUntrackedFiles=true", () => {
+      const { dir, openagentsDir } = createTestRepo("aggressive-cleanup");
+
+      // Simulate a failed subtask leaving broken files
+      fs.writeFileSync(path.join(dir, "README.md"), "# Broken!\n");
+      fs.writeFileSync(path.join(dir, "new-feature.ts"), "broken code");
+
+      // OPT-IN aggressive cleanup (deleteUntrackedFiles=true)
+      execSync("git checkout -- .", { cwd: dir, encoding: "utf-8" });
+      execSync("git clean -fd", { cwd: dir, encoding: "utf-8" });
+
+      // Tracked file should be reverted
+      const readme = fs.readFileSync(path.join(dir, "README.md"), "utf-8");
+      expect(readme).toBe("# Test Repo\n");
+
+      // Untracked files should be deleted
+      expect(fs.existsSync(path.join(dir, "new-feature.ts"))).toBe(false);
+      // Note: .openagents was untracked so it would also be deleted
     });
 
     test("progress files in .openagents survive revert if tracked", () => {
@@ -271,9 +301,8 @@ describe("overnight.ts cleanup guardrails", () => {
       );
       fs.writeFileSync(path.join(dir, "broken.ts"), "broken");
 
-      // Revert only the tracked file modifications, then clean untracked
+      // DEFAULT behavior: only revert tracked files
       execSync("git checkout -- .", { cwd: dir, encoding: "utf-8" });
-      execSync("git clean -fd", { cwd: dir, encoding: "utf-8" });
 
       // Progress file should be reverted to committed version
       const progress = fs.readFileSync(
@@ -282,8 +311,8 @@ describe("overnight.ts cleanup guardrails", () => {
       );
       expect(progress).toBe("# Initial\n");
 
-      // Broken code should be gone
-      expect(fs.existsSync(path.join(dir, "broken.ts"))).toBe(false);
+      // Broken code should still exist (untracked files preserved by default)
+      expect(fs.existsSync(path.join(dir, "broken.ts"))).toBe(true);
     });
   });
 });
