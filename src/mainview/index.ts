@@ -27,7 +27,7 @@ import {
   svgElementToString,
   DEFAULT_RENDER_CONFIG,
 } from "../flow-host-svg/render.js"
-import { SocketClient, getSocketClient } from "./socket-client.js"
+import { getSocketClient } from "./socket-client.js"
 import type {
   HudMessage,
   APMUpdateMessage,
@@ -649,44 +649,7 @@ interface TBSuiteInfo {
   }>
 }
 
-/**
- * TB run history item from RPC
- */
-interface TBRunHistoryItem {
-  runId: string
-  suiteName: string
-  suiteVersion: string
-  timestamp: string
-  passRate: number
-  passed: number
-  failed: number
-  timeout: number
-  error: number
-  totalDurationMs: number
-  totalTokens: number
-  taskCount: number
-  filepath: string
-}
-
-/**
- * TB run details from RPC (includes task results)
- */
-interface TBRunDetailsResponse {
-  meta: TBRunHistoryItem
-  tasks: Array<{
-    id: string
-    name: string
-    category: string
-    difficulty: string
-    outcome: string
-    durationMs: number
-    turns: number
-    tokens: number
-    outputLines?: number
-  }>
-}
-
-// Note: HudRpcSchema was removed - now using SocketClient from socket-client.ts
+// Note: HudRpcSchema and local types were removed - now using SocketClient and types from protocol.ts
 
 // ============================================================================
 // HUD Event State
