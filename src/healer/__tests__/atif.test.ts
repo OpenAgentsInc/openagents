@@ -241,7 +241,8 @@ describe("createHealerObservation", () => {
 
     expect(observation.source_call_id).toContain("healer");
     expect((observation.content as any).status).toBe("resolved");
-    expect((observation.content as any).spells_executed).toContain("rewind_uncommitted_changes");
+    expect((observation.content as any).spells_tried).toContain("rewind_uncommitted_changes");
+    expect((observation.content as any).spells_succeeded).toContain("rewind_uncommitted_changes");
   });
 
   test("includes trajectory ref when provided", () => {
