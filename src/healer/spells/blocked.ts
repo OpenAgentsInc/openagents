@@ -116,6 +116,9 @@ export const markTaskBlockedWithFollowup: HealerSpell = {
   apply: (ctx: HealerContext): Effect.Effect<HealerSpellResult, Error, never> =>
     Effect.gen(function* () {
       const tasksAffected: string[] = [];
+      const followupKey = ctx.task ? `${ctx.task.id}:${ctx.heuristics.scenario}` : "unknown";
+      const followupSet = ctx.counters.followupKeys;
+      const alreadyCreated = followupSet.has(followupKey);
 
       // We can't actually modify tasks without TaskService access
       // This spell prepares the data; the orchestrator/service layer applies it
@@ -130,10 +133,16 @@ export const markTaskBlockedWithFollowup: HealerSpell = {
         tasksAffected.push(ctx.task.id);
       }
 
+      if (!alreadyCreated) {
+        followupSet.add(followupKey);
+      }
+
       return {
         success: true,
-        changesApplied: false, // Changes are prepared but not yet applied
-        summary: `Prepared block reason and follow-up task for ${ctx.task?.id ?? "unknown task"}`,
+        changesApplied: !alreadyCreated, // first call per task/scenario counts as applied
+        summary: alreadyCreated
+          ? `Follow-up already prepared for ${ctx.task?.id ?? "unknown task"}; no duplicate created`
+          : `Prepared block reason and follow-up task for ${ctx.task?.id ?? "unknown task"}`,
         tasksAffected,
         // Store prepared data in a way the service can use
         // (This will be picked up by HealerService.maybeRun)

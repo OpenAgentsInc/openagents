@@ -212,6 +212,8 @@ export interface HealerCounters {
   subtaskInvocations: Map<string, number>;
   /** Spells attempted this session (keyed by spell ID) */
   spellsAttempted: Map<HealerSpellId, number>;
+  /** Follow-up containment tasks created (keyed by taskId:scenario) */
+  followupKeys: Set<string>;
 }
 
 /**
@@ -221,6 +223,7 @@ export const createHealerCounters = (): HealerCounters => ({
   sessionInvocations: 0,
   subtaskInvocations: new Map(),
   spellsAttempted: new Map(),
+  followupKeys: new Set(),
 });
 
 // ============================================================================
