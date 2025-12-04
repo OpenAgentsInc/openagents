@@ -360,4 +360,42 @@ describe("tasks CLI integration", () => {
     const output = JSON.parse(close.stdout);
     expect(output.error).toContain("Missing required --id");
   });
+
+  test("config list/get/set commands", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-config-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    const list = runCli(["config:list", "--dir", tmp, "--json"], tmp);
+    expect(list.code).toBe(0);
+    const listPayload = JSON.parse(list.stdout);
+    expect(listPayload.projectId).toBeTruthy();
+
+    const setModel = runCli(
+      ["config:set", "--dir", tmp, "--key", "defaultModel", "--value", "my-model", "--json"],
+      tmp,
+    );
+    expect(setModel.code).toBe(0);
+
+    const getModel = runCli(
+      ["config:get", "--dir", tmp, "--key", "defaultModel", "--json"],
+      tmp,
+    );
+    const modelPayload = JSON.parse(getModel.stdout);
+    expect(modelPayload.value).toBe("my-model");
+
+    const setNested = runCli(
+      ["config:set", "--dir", tmp, "--key", "claudeCode.enabled", "--value", "false", "--json"],
+      tmp,
+    );
+    expect(setNested.code).toBe(0);
+
+    const getNested = runCli(
+      ["config:get", "--dir", tmp, "--key", "claudeCode.enabled", "--json"],
+      tmp,
+    );
+    const nestedPayload = JSON.parse(getNested.stdout);
+    expect(nestedPayload.value).toBe(false);
+  });
 });

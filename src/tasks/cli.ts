@@ -16,6 +16,7 @@
  *   create   Create a new task
  *   update   Update an existing task
  *   validate Validate tasks.jsonl (schema + conflict markers)
+ *   config   Manage project config (list/get/set)
  *   doctor   Diagnose common issues in tasks.jsonl
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
@@ -41,6 +42,10 @@ import {
   mergeTaskFiles,
   TaskMergeError,
   TaskServiceError,
+  loadProjectConfig,
+  saveProjectConfig,
+  defaultProjectConfig,
+  decodeProjectConfig,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -86,6 +91,9 @@ interface CliOptions {
   current?: string;
   incoming?: string;
   output?: string;
+  // config options
+  key?: string;
+  value?: string;
 }
 
 const parseArgs = (args: string[]): { command: string; options: CliOptions } => {
@@ -244,6 +252,18 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
       case "--output":
         if (nextArg) {
           options.output = nextArg;
+          i++;
+        }
+        break;
+      case "--key":
+        if (nextArg) {
+          options.key = nextArg;
+          i++;
+        }
+        break;
+      case "--value":
+        if (nextArg) {
+          options.value = nextArg;
           i++;
         }
         break;
@@ -736,6 +756,33 @@ const findDependencyCycles = (tasks: Task[]): string[][] => {
   return cycles;
 };
 
+const getValueAtPath = (obj: unknown, path: string): unknown => {
+  if (typeof obj !== "object" || obj === null) return undefined;
+  return path.split(".").reduce<unknown>((acc, key) => {
+    if (typeof acc !== "object" || acc === null) return undefined;
+    return (acc as Record<string, unknown>)[key];
+  }, obj);
+};
+
+const setValueAtPath = (
+  obj: Record<string, unknown>,
+  path: string,
+  value: unknown,
+): Record<string, unknown> => {
+  const parts = path.split(".");
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i]!;
+    const next = current[key];
+    if (typeof next !== "object" || next === null) {
+      current[key] = {};
+    }
+    current = current[key] as Record<string, unknown>;
+  }
+  current[parts[parts.length - 1]!] = value;
+  return obj;
+};
+
 const cmdValidate = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -842,6 +889,98 @@ const cmdDoctor = (options: CliOptions) =>
     }
 
     const result = { ok: issues.length === 0, issues };
+    output(result, options.json);
+    return result;
+  });
+
+const cmdConfigList = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const config = yield* loadProjectConfig(options.rootDir).pipe(
+      Effect.catchAll((e) => {
+        output({ ok: false, error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+    if (!config) {
+      const result = { ok: false, error: "project_config_missing" };
+      output(result, options.json);
+      return result;
+    }
+    output(config, options.json);
+    return config;
+  });
+
+const cmdConfigGet = (options: CliOptions) =>
+  Effect.gen(function* () {
+    if (!options.key) {
+      const result = { ok: false, error: "Missing required --key" };
+      output(result, options.json);
+      return result;
+    }
+
+    const config = yield* loadProjectConfig(options.rootDir).pipe(
+      Effect.catchAll((e) => {
+        output({ ok: false, error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!config) {
+      const result = { ok: false, error: "project_config_missing" };
+      output(result, options.json);
+      return result;
+    }
+
+    const value = getValueAtPath(config, options.key);
+    const result = { ok: true, key: options.key, value: value ?? null };
+    output(result, options.json);
+    return result;
+  });
+
+const cmdConfigSet = (options: CliOptions) =>
+  Effect.gen(function* () {
+    if (!options.key) {
+      const result = { ok: false, error: "Missing required --key" };
+      output(result, options.json);
+      return result;
+    }
+    if (options.value === undefined) {
+      const result = { ok: false, error: "Missing required --value" };
+      output(result, options.json);
+      return result;
+    }
+
+    let parsedValue: unknown = options.value;
+    try {
+      parsedValue = JSON.parse(options.value);
+    } catch {
+      parsedValue = options.value;
+    }
+
+    let config =
+      (yield* loadProjectConfig(options.rootDir).pipe(
+        Effect.catchAll((e) => {
+          output({ ok: false, error: e.message }, options.json);
+          return Effect.succeed(null);
+        }),
+      )) ?? defaultProjectConfig(nodePath.basename(options.rootDir));
+
+    const updated = setValueAtPath(
+      JSON.parse(JSON.stringify(config)) as Record<string, unknown>,
+      options.key,
+      parsedValue,
+    );
+
+    const validated = decodeProjectConfig(updated as unknown);
+
+    yield* saveProjectConfig(options.rootDir, validated).pipe(
+      Effect.catchAll((e) => {
+        output({ ok: false, error: e.message }, options.json);
+        return Effect.succeed(undefined);
+      }),
+    );
+
+    const result = { ok: true, config: validated };
     output(result, options.json);
     return result;
   });
@@ -1047,6 +1186,9 @@ Commands:
   archive   Archive old closed tasks to tasks-archive.jsonl
   search    Search tasks across active and archived
   validate  Validate tasks.jsonl (schema + conflict markers)
+  config:list  Show project config (project.json)
+  config:get   Get a project config value by key (dot notation supported)
+  config:set   Set a project config value by key (value parsed as JSON when possible)
   doctor    Diagnose common tasks.jsonl issues (orphan deps, duplicates, cycles, stale tasks)
   merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
 
@@ -1103,6 +1245,13 @@ search Options:
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
 
+config:get Options:
+  --key <path>            Config key (dot notation supported)
+
+config:set Options:
+  --key <path>            Config key (dot notation supported)
+  --value <value>         Value to set (parsed as JSON when possible, otherwise treated as string)
+
 doctor Options:
   --days <n>              Stale threshold (default: 14, in-progress tasks only)
 
@@ -1130,6 +1279,9 @@ Examples:
   bun src/tasks/cli.ts search --query "auth" --json  # search all tasks
   bun src/tasks/cli.ts search --query "login" --status closed --json  # search closed tasks only
   bun src/tasks/cli.ts validate --json  # validate tasks.jsonl and detect conflicts
+  bun src/tasks/cli.ts config:list --json  # show project config
+  bun src/tasks/cli.ts config:get --key defaultModel --json  # read a config value
+  bun src/tasks/cli.ts config:set --key claudeCode.enabled --value false --json  # update a config value
   bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
 `);
 };
@@ -1324,6 +1476,42 @@ const main = async () => {
         const payload = { ok: false, error: String(err) };
         if (options.json) {
           console.log(JSON.stringify(payload));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "config:list":
+      try {
+        await Effect.runPromise(cmdConfigList(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ ok: false, error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "config:get":
+      try {
+        await Effect.runPromise(cmdConfigGet(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ ok: false, error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "config:set":
+      try {
+        await Effect.runPromise(cmdConfigSet(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ ok: false, error: String(err) }));
         } else {
           console.error("Error:", err);
         }
