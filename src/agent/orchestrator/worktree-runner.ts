@@ -24,6 +24,7 @@ import {
   releaseWorktreeLock,
 } from "./agent-lock.js";
 import { runOrchestrator } from "./orchestrator.js";
+import { makeReflectionService } from "./reflection/index.js";
 import { loadProjectConfig } from "../../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer } from "../../llm/openrouter.js";
 import { Layer } from "effect";
@@ -257,6 +258,12 @@ export const runInWorktree = async (
       }
       console.log("  Dependencies installed.");
 
+      const reflectionService = makeReflectionService({
+        openagentsDir: worktreeOpenagentsDir,
+        cwd: worktreeInfo.path,
+        config: projectConfig.reflexion,
+      });
+
       const orchestratorConfig = {
         cwd: worktreeInfo.path,
         openagentsDir: worktreeOpenagentsDir,
@@ -270,6 +277,8 @@ export const runInWorktree = async (
         claudeCode: projectConfig.claudeCode,
         subagentModel: projectConfig.defaultModel,
         ...(projectConfig.sandbox && { sandbox: projectConfig.sandbox }),
+        reflectionService,
+        reflexionConfig: projectConfig.reflexion,
       };
 
       // Merge layers to avoid chained Effect.provide

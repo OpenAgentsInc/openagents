@@ -92,6 +92,8 @@ export interface SessionProgress {
     filesModified: string[];
     testsRun: boolean;
     testsPassingAfterWork: boolean;
+    e2eRun: boolean;
+    e2ePassingAfterWork: boolean;
     /** Claude Code session metadata for context bridging */
     claudeCodeSession?: {
       sessionId?: string;
@@ -300,6 +302,9 @@ export type OrchestratorEvent =
   | { type: "subtask_failed"; subtask: Subtask; error: string }
   | { type: "verification_start"; command: string }
   | { type: "verification_complete"; command: string; passed: boolean; output: string }
+  | { type: "e2e_start"; command: string }
+  | { type: "e2e_complete"; command: string; passed: boolean; output: string }
+  | { type: "e2e_skipped"; reason: string }
   | { type: "commit_created"; sha: string; message: string }
   | { type: "push_complete"; branch: string }
   | { type: "task_updated"; task: Task; status: string }

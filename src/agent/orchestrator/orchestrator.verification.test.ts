@@ -843,4 +843,81 @@ describe("Golden Loop v2 Verification Phase Gating", () => {
       expect(sessionCompleteEvents[0].summary).toContain("Completed task");
     });
   });
+
+  describe("Reflexion integration", () => {
+    test("records reflections and marks subtask when verification fails", async () => {
+      const { dir, taskId, openagentsDir } = createTestRepo("reflexion-verification");
+      const progressPath = path.join(openagentsDir, "progress.md");
+      const claudeResult: SubagentResult = {
+        success: true,
+        subtaskId: `${taskId}-sub-001`,
+        filesModified: [],
+        turns: 1,
+      };
+
+      const previousReflection = {
+        id: "ref-prev",
+        sessionId: "sess-prev",
+        taskId,
+        subtaskId: `${taskId}-sub-001`,
+        attemptNumber: 1,
+        category: "verification" as const,
+        analysis: "Previous attempt failed at verification",
+        suggestion: "Rerun tests locally and adjust fixtures",
+        actionItems: ["Rerun tests", "Review fixtures"],
+        confidence: 0.6,
+        createdAt: new Date().toISOString(),
+      };
+
+      const generatedContexts: any[] = [];
+      const savedReflections: any[] = [];
+      const reflectionService = {
+        generate: (ctx: any) => {
+          generatedContexts.push(ctx);
+          return Effect.succeed({
+            ...previousReflection,
+            id: "ref-new",
+            createdAt: new Date().toISOString(),
+            attemptNumber: ctx.attemptNumber,
+          });
+        },
+        getRecent: () => Effect.succeed([previousReflection]),
+        save: (reflection: any) => {
+          savedReflections.push(reflection);
+          return Effect.void;
+        },
+        formatForPrompt: () => Effect.succeed(""),
+      };
+
+      await runWithBun(
+        runOrchestrator(
+          {
+            cwd: dir,
+            openagentsDir,
+            allowPush: false,
+            testCommands: ['node -e "process.exit(1)"'],
+            typecheckCommands: [],
+            claudeCode: { enabled: false },
+            reflectionService,
+            reflexionConfig: { enabled: true, maxReflectionsPerRetry: 3, generationTimeoutMs: 1000 },
+            skipInitScript: true,
+          },
+          () => {},
+          {
+            runSubagent: () => Effect.succeed(claudeResult),
+          }
+        )
+      );
+
+      const subtasksPath = path.join(openagentsDir, "subtasks", `${taskId}.json`);
+      const subtasks = JSON.parse(fs.readFileSync(subtasksPath, "utf-8"));
+      const failedSubtask = subtasks.subtasks.find((s: any) => s.status === "failed");
+      expect(failedSubtask).toBeTruthy();
+      expect(failedSubtask?.failureCount).toBe(1);
+      expect(savedReflections).toHaveLength(1);
+      expect(generatedContexts[0].previousReflections[0]).toContain("Previous attempt failed at verification");
+      const progress = fs.readFileSync(progressPath, "utf-8");
+      expect(progress).toContain("Tests Passing After Work: No");
+    });
+  });
 });

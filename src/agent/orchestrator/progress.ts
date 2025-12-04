@@ -63,8 +63,10 @@ export const formatProgressMarkdown = (progress: SessionProgress): string => {
     `- **Subtasks Completed**: ${progress.work.subtasksCompleted.length > 0 ? progress.work.subtasksCompleted.join(", ") : "None"}`,
     `- **Subtasks In Progress**: ${progress.work.subtasksInProgress.length > 0 ? progress.work.subtasksInProgress.join(", ") : "None"}`,
     `- **Files Modified**: ${progress.work.filesModified.length > 0 ? progress.work.filesModified.join(", ") : "None"}`,
-    `- **Tests Run**: ${progress.work.testsRun ? "Yes" : "No"}`,
-    `- **Tests Passing After Work**: ${progress.work.testsPassingAfterWork ? "Yes" : "No"}`,
+    `- Tests Run: ${progress.work.testsRun ? "Yes" : "No"}`,
+    `- Tests Passing After Work: ${progress.work.testsPassingAfterWork ? "Yes" : "No"}`,
+    `- E2E Run: ${progress.work.e2eRun ? "Yes" : "No"}`,
+    `- E2E Passing After Work: ${progress.work.e2ePassingAfterWork ? "Yes" : "No"}`,
   );
 
   // Add Claude Code session metadata if present
@@ -156,6 +158,8 @@ export const parseProgressMarkdown = (markdown: string): Partial<SessionProgress
       filesModified: [],
       testsRun: false,
       testsPassingAfterWork: false,
+      e2eRun: false,
+      e2ePassingAfterWork: false,
       claudeCodeSession: {},
     },
     nextSession: {
@@ -179,9 +183,12 @@ export const parseProgressMarkdown = (markdown: string): Partial<SessionProgress
       continue;
     }
 
-    // Parse key-value pairs
-    if (trimmed.startsWith("- **")) {
-      const match = trimmed.match(/^- \*\*(.+?)\*\*:\s*(.*)$/);
+    // Parse key-value pairs (supports bold and non-bold labels)
+    if (
+      trimmed.startsWith("- **") ||
+      (trimmed.startsWith("- ") && trimmed.includes(":"))
+    ) {
+      const match = trimmed.match(/^- (?:\*\*)?(.+?)(?:\*\*)?:\s*(.*)$/);
       if (match) {
         const [, key, value] = match;
         parseKeyValue(result, currentSection, key.toLowerCase(), value);
@@ -425,6 +432,8 @@ export const createEmptyProgress = (sessionId: string, taskId: string, taskTitle
     filesModified: [],
     testsRun: false,
     testsPassingAfterWork: false,
+    e2eRun: false,
+    e2ePassingAfterWork: false,
   },
   nextSession: {
     suggestedNextSteps: [],
