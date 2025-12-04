@@ -126,8 +126,9 @@ export const healerEventToStep = (
         extra: {
           event_type: "healer_complete",
           status: event.outcome.status,
-          reason: event.outcome.reason,
-          spells_executed: event.outcome.spellsExecuted.length,
+          summary: event.outcome.summary,
+          spells_tried: event.outcome.spellsTried.length,
+          spells_succeeded: event.outcome.spellsSucceeded.length,
         },
       };
   }
@@ -156,19 +157,6 @@ export const createHealerTrajectory = (
   const steps = healerEventsToSteps(events);
   const agent = createHealerAgent();
 
-  // Calculate metrics from spell results
-  let totalSteps = steps.length;
-  let successfulSpells = 0;
-  let failedSpells = 0;
-
-  for (const executed of outcome.spellsExecuted) {
-    if (executed.result.success) {
-      successfulSpells++;
-    } else {
-      failedSpells++;
-    }
-  }
-
   const trajectory: Trajectory = {
     schema_version: ATIF_SCHEMA_VERSION,
     session_id: sessionId,
@@ -177,15 +165,14 @@ export const createHealerTrajectory = (
     final_metrics: {
       total_prompt_tokens: 0, // Healer doesn't use tokens directly
       total_completion_tokens: 0,
-      total_steps: totalSteps,
+      total_steps: steps.length,
     },
     extra: {
-      scenario: outcome.context.heuristics.scenario,
+      scenario: outcome.scenario,
       status: outcome.status,
-      reason: outcome.reason,
-      spells_executed: outcome.spellsExecuted.length,
-      successful_spells: successfulSpells,
-      failed_spells: failedSpells,
+      summary: outcome.summary,
+      spells_tried: outcome.spellsTried.length,
+      spells_succeeded: outcome.spellsSucceeded.length,
       ...(parentSessionId ? { parent_session_id: parentSessionId } : {}),
     },
   };
@@ -213,39 +200,26 @@ export const createMinimalHealerTrajectory = (
     step_id: stepId++,
     timestamp: ts,
     source: "system",
-    message: `Healer invoked for scenario: ${outcome.context.heuristics.scenario}`,
+    message: `Healer invoked for scenario: ${outcome.scenario}`,
     extra: {
       event_type: "healer_start",
-      scenario: outcome.context.heuristics.scenario,
+      scenario: outcome.scenario,
     },
   });
 
-  // Spell execution steps
-  for (const executed of outcome.spellsExecuted) {
+  // Spell execution summary (without detailed results)
+  for (const spellId of outcome.spellsTried) {
+    const succeeded = outcome.spellsSucceeded.includes(spellId);
     steps.push({
       step_id: stepId++,
       timestamp: ts,
       source: "agent",
-      message: executed.result.success
-        ? `Spell ${executed.spellId} succeeded: ${executed.result.summary}`
-        : `Spell ${executed.spellId} failed: ${executed.result.summary}`,
-      observation: {
-        results: [
-          {
-            source_call_id: executed.spellId,
-            content: {
-              success: executed.result.success,
-              changes_applied: executed.result.changesApplied,
-              summary: executed.result.summary,
-              files_modified: executed.result.filesModified,
-              error: executed.result.error,
-            },
-          },
-        ],
-      },
+      message: succeeded
+        ? `Spell ${spellId} succeeded`
+        : `Spell ${spellId} failed`,
       extra: {
-        spell_id: executed.spellId,
-        success: executed.result.success,
+        spell_id: spellId,
+        success: succeeded,
       },
     });
   }
@@ -258,7 +232,7 @@ export const createMinimalHealerTrajectory = (
     message: `Healer completed with status: ${outcome.status}`,
     extra: {
       status: outcome.status,
-      reason: outcome.reason,
+      summary: outcome.summary,
     },
   });
 
@@ -273,7 +247,7 @@ export const createMinimalHealerTrajectory = (
       total_steps: steps.length,
     },
     extra: {
-      scenario: outcome.context.heuristics.scenario,
+      scenario: outcome.scenario,
       status: outcome.status,
       ...(parentSessionId ? { parent_session_id: parentSessionId } : {}),
     },
@@ -308,13 +282,12 @@ export const createHealerObservation = (
   outcome: HealerOutcome,
   trajectoryRef?: SubagentTrajectoryRef
 ): ObservationResult => ({
-  source_call_id: `healer-${outcome.context.heuristics.scenario}`,
+  source_call_id: `healer-${outcome.scenario}`,
   content: {
     status: outcome.status,
-    reason: outcome.reason,
-    spells_executed: outcome.spellsExecuted.map((s) => s.spellId),
-    successful_spells: outcome.spellsExecuted.filter((s) => s.result.success).length,
-    failed_spells: outcome.spellsExecuted.filter((s) => !s.result.success).length,
+    summary: outcome.summary,
+    spells_tried: outcome.spellsTried,
+    spells_succeeded: outcome.spellsSucceeded,
   },
   subagent_trajectory_ref: trajectoryRef ? [trajectoryRef] : undefined,
 });
@@ -337,15 +310,15 @@ export const createHealerInvocationStep = (
     step_id: stepId,
     timestamp: ts,
     source: "agent",
-    message: `Healer invoked for ${outcome.context.heuristics.scenario}: ${outcome.status}`,
+    message: `Healer invoked for ${outcome.scenario}: ${outcome.status}`,
     observation: {
       results: [createHealerObservation(outcome, trajectoryRef)],
     },
     extra: {
       event_type: "healer_invocation",
-      scenario: outcome.context.heuristics.scenario,
+      scenario: outcome.scenario,
       status: outcome.status,
-      spells_executed: outcome.spellsExecuted.length,
+      spells_tried: outcome.spellsTried.length,
     },
   };
 };
