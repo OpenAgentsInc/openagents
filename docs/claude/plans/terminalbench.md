@@ -9,6 +9,28 @@ Add Terminal-Bench 2.0 support to MechaCoder, enabling both internal evaluation 
 - Packaging: Integrated into openagents repo (Python adapter + TypeScript core)
 - Execution: Claude Code only (recommended mode for best results)
 
+## Already Implemented
+
+The following infrastructure is already complete:
+
+### ATIF Module (`src/atif/`)
+- **schema.ts** - Full ATIF v1.4 schema with Effect/Schema
+- **validation.ts** - Trajectory validation service
+- **collector.ts** - TrajectoryCollector for capturing interactions
+- **service.ts** - TrajectoryService for storage/retrieval
+- **adapter.ts** - Event-to-ATIF converters:
+  - `orchestratorEventsToSteps()` - Convert orchestrator events to ATIF steps
+  - `sessionEntriesToTrajectory()` - Convert session entries to full trajectory
+  - `subagentResultToObservation()` - Handle subagent results with refs
+  - Agent factories: `createMechaCoderAgent()`, `createClaudeCodeAgent()`, `createMinimalSubagent()`
+- **integration.ts** - Integration helpers for agent loops
+
+### Benchmarking Infrastructure (`src/bench/`)
+- **metrics.ts** - Token usage, timing, tool call tracking
+- **terminal-bench.ts** - Terminal-Bench task format adapter
+- **harness.ts** - Benchmark execution harness
+- **reporter.ts** - Comparison reporting
+
 ## Architecture
 
 ```
@@ -76,41 +98,17 @@ bun src/cli/tbench.ts \
 - Extract token usage from Claude Code responses
 - Exit with status 0 on success, non-zero on failure
 
-### Phase 2: ATIF Trajectory Generation (P1)
+### Phase 2: ATIF Trajectory Generation (P1) ✅ DONE
 
-Convert MechaCoder's internal events to ATIF format for Harbor/leaderboard compatibility.
+**Already implemented in `src/atif/`:**
+- Full ATIF v1.4 schema with Effect/Schema
+- `orchestratorEventsToSteps()` - Converts all orchestrator events to ATIF steps
+- `sessionEntriesToTrajectory()` - Full trajectory generation with metrics
+- `subagentResultToObservation()` - Handles Claude Code subagent trajectories
+- Agent factories for MechaCoder, Claude Code, and minimal subagent
+- Validation, storage, and retrieval services
 
-**Files to create/modify:**
-- `src/atif/generator.ts` - Convert TaskRunEvent[] → ATIFDocument
-- `src/atif/schema.ts` - Extend if needed for Harbor compatibility
-
-**ATIF structure (per Harbor expectations):**
-```typescript
-interface ATIFDocument {
-  version: "1.4";
-  agent: { name: "mechacoder"; version: string };
-  model: { provider: string; name: string };
-  task: { id: string; instruction: string };
-  steps: ATIFStep[];
-  summary: {
-    totalTokens: { input: number; output: number };
-    totalCost: number;
-    duration: number;
-    outcome: "success" | "failure" | "timeout";
-  };
-}
-
-interface ATIFStep {
-  type: "thought" | "tool_call" | "tool_result" | "observation";
-  content: string;
-  timestamp: string;
-  metadata?: {
-    tool?: string;
-    args?: Record<string, unknown>;
-    tokens?: { input: number; output: number };
-  };
-}
-```
+No additional work needed for ATIF generation.
 
 ### Phase 3: Harbor Python Adapter (P1)
 
@@ -213,47 +211,47 @@ Enhance reporting for Terminal-Bench specific metrics.
 ### Phase 1 Tasks (P1 - Core Infrastructure)
 
 ```
-oa-tbench-01: Create tbench CLI wrapper entry point
-oa-tbench-02: Implement ATIF trajectory generator from agent events
-oa-tbench-03: Create Harbor Python adapter (MechaCoderAgent class)
-oa-tbench-04: Create install-mechacoder.sh.j2 template
-oa-tbench-05: Add token extraction from Claude Code output
-oa-tbench-06: Create pyproject.toml for Harbor package
+oa-c8b48c: Create tbench CLI wrapper entry point
+oa-d0d651: Implement ATIF trajectory generator ✅ CLOSED (already in src/atif/)
+oa-a1dd75: Create Harbor Python adapter (MechaCoderAgent class)
+oa-349e6d: Create install-mechacoder.sh.j2 template
+oa-070738: Add token extraction from Claude Code output
+oa-75fa2c: Create pyproject.toml for Harbor package
 ```
 
 ### Phase 2 Tasks (P2 - Local Evaluation)
 
 ```
-oa-tbench-07: Implement tbench-local CLI for internal runs
-oa-tbench-08: Add TB-specific reporting to reporter.ts
-oa-tbench-09: Complete Terminal-Bench result conversion
-oa-tbench-10: Add e2e test for Harbor adapter
+oa-8dcda0: Implement tbench-local CLI for internal runs
+oa-12486d: Add TB-specific reporting to reporter.ts
+oa-143507: Complete Terminal-Bench result conversion
+oa-570dd6: Add e2e test for Harbor adapter
 ```
 
 ### Phase 3 Tasks (P3 - Polish)
 
 ```
-oa-tbench-11: Document Terminal-Bench integration in docs/
-oa-tbench-12: Add CI workflow for TB smoke tests
-oa-tbench-13: Create results visualization dashboard
+oa-61fff4: Document Terminal-Bench integration in docs/
+oa-cdbf40: Add CI workflow for TB smoke tests
+oa-01061b: Create results visualization dashboard
 ```
 
 ## Critical Files to Modify
 
-| File | Purpose |
-|------|---------|
-| `src/cli/tbench.ts` | **NEW** - Harbor invocation entry point |
-| `src/atif/generator.ts` | **NEW** - Convert events to ATIF |
-| `src/harbor/mechacoder_agent.py` | **NEW** - Harbor adapter |
-| `src/harbor/install-mechacoder.sh.j2` | **NEW** - Container setup |
-| `pyproject.toml` | **NEW** - Python package for Harbor |
-| `src/agent/claude-code.ts` | Modify - Add token extraction |
-| `src/bench/terminal-bench.ts` | Modify - Complete result conversion |
-| `src/bench/reporter.ts` | Modify - Add TB report format |
+| File | Purpose | Status |
+|------|---------|--------|
+| `src/cli/tbench.ts` | **NEW** - Harbor invocation entry point | TODO |
+| `src/atif/adapter.ts` | Event-to-ATIF conversion | ✅ DONE |
+| `src/harbor/mechacoder_agent.py` | **NEW** - Harbor adapter | TODO |
+| `src/harbor/install-mechacoder.sh.j2` | **NEW** - Container setup | TODO |
+| `pyproject.toml` | **NEW** - Python package for Harbor | TODO |
+| `src/agent/claude-code.ts` | Modify - Add token extraction | TODO |
+| `src/bench/terminal-bench.ts` | Modify - Complete result conversion | TODO |
+| `src/bench/reporter.ts` | Modify - Add TB report format | TODO |
 
 ## Testing Strategy
 
-1. **Unit tests** for ATIF generator
+1. **Unit tests** for ATIF ✅ DONE (`src/atif/__tests__/`)
 2. **Integration test** running tbench CLI with mock task
 3. **Harbor smoke test** with `oracle` agent first, then MechaCoder
 4. **Local TB suite** run with sample tasks

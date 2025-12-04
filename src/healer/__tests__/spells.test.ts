@@ -16,76 +16,22 @@ import {
 import { rewindUncommittedChanges } from "../spells/rewind.js";
 import { markTaskBlockedWithFollowup } from "../spells/blocked.js";
 import { updateProgressWithGuidance, generateHealerSummary } from "../spells/progress.js";
-import type { HealerContext, HealerSpellId } from "../types.js";
-import { createHealerCounters } from "../types.js";
+import type { HealerContext, HealerSpellId, HealerSpellResult } from "../types.js";
+import {
+  createMockProjectConfig,
+  createMockHealerContext,
+} from "./test-helpers.js";
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-const createMockContext = (overrides: Partial<HealerContext> = {}): HealerContext => ({
-  projectRoot: "/tmp/test-project",
-  projectConfig: {
-    defaultBranch: "main",
-    testCommands: ["bun test"],
-    healer: {
-      mode: "auto",
-      scenarios: {},
-      spells: {},
-      maxPerSession: 5,
-      maxPerSubtask: 3,
-    },
-  },
-  task: {
-    id: "oa-test123",
-    title: "Test Task",
-    description: "A test task",
-    status: "in_progress",
-    priority: 2,
-    type: "task",
-    labels: [],
-    deps: [],
-    commits: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  subtask: {
-    id: "sub-1",
-    description: "Test subtask",
-    status: "failed",
-    retryable: true,
-    failureCount: 1,
-  },
-  sessionId: "session-123",
-  runId: undefined,
-  trajectory: undefined,
-  relatedTrajectories: [],
-  progressMd: null,
-  gitStatus: {
-    isDirty: false,
-    modifiedFiles: [],
-    untrackedFiles: [],
-    currentBranch: "main",
-    lastCommitSha: "abc123",
-    lastCommitMessage: "Initial commit",
-  },
-  heuristics: {
-    scenario: "SubtaskFailed",
-    failureCount: 1,
-    isFlaky: false,
-    hasMissingImports: false,
-    hasTypeErrors: false,
-    hasTestAssertions: false,
-    errorPatterns: [],
-    previousAttempts: 0,
-  },
-  triggerEvent: { type: "subtask-failed" } as any,
-  orchestratorState: {} as any,
-  initFailureType: undefined,
-  errorOutput: "Test error output",
-  counters: createHealerCounters(),
-  ...overrides,
-});
+const createMockContext = (overrides: Partial<HealerContext> = {}): HealerContext =>
+  createMockHealerContext("SubtaskFailed", {
+    projectConfig: createMockProjectConfig(),
+    errorOutput: "Test error output",
+    ...overrides,
+  });
 
 // ============================================================================
 // Spell Registry Tests
@@ -185,16 +131,26 @@ describe("Spell Allowlist", () => {
 
   test("isSpellAllowed respects forbidden list", () => {
     const ctx = createMockContext({
-      projectConfig: {
-        defaultBranch: "main",
-        testCommands: ["bun test"],
+      projectConfig: createMockProjectConfig({
         healer: {
-          mode: "auto",
+          enabled: true,
+          maxInvocationsPerSession: 5,
+          maxInvocationsPerSubtask: 3,
+          mode: "conservative",
+          stuckThresholdHours: 2,
+          scenarios: {
+            onInitFailure: true,
+            onVerificationFailure: true,
+            onSubtaskFailure: true,
+            onRuntimeError: true,
+            onStuckSubtask: false,
+          },
           spells: {
+            allowed: [],
             forbidden: ["rewind_uncommitted_changes"],
           },
         },
-      },
+      }),
     });
 
     expect(isSpellAllowed("rewind_uncommitted_changes", ctx)).toBe(false);
@@ -203,16 +159,26 @@ describe("Spell Allowlist", () => {
 
   test("isSpellAllowed respects allowed list", () => {
     const ctx = createMockContext({
-      projectConfig: {
-        defaultBranch: "main",
-        testCommands: ["bun test"],
+      projectConfig: createMockProjectConfig({
         healer: {
-          mode: "auto",
+          enabled: true,
+          maxInvocationsPerSession: 5,
+          maxInvocationsPerSubtask: 3,
+          mode: "conservative",
+          stuckThresholdHours: 2,
+          scenarios: {
+            onInitFailure: true,
+            onVerificationFailure: true,
+            onSubtaskFailure: true,
+            onRuntimeError: true,
+            onStuckSubtask: false,
+          },
           spells: {
             allowed: ["mark_task_blocked_with_followup"],
+            forbidden: [],
           },
         },
-      },
+      }),
     });
 
     expect(isSpellAllowed("rewind_uncommitted_changes", ctx)).toBe(false);
@@ -221,16 +187,26 @@ describe("Spell Allowlist", () => {
 
   test("filterAllowedSpells filters by config", () => {
     const ctx = createMockContext({
-      projectConfig: {
-        defaultBranch: "main",
-        testCommands: ["bun test"],
+      projectConfig: createMockProjectConfig({
         healer: {
-          mode: "auto",
+          enabled: true,
+          maxInvocationsPerSession: 5,
+          maxInvocationsPerSubtask: 3,
+          mode: "conservative",
+          stuckThresholdHours: 2,
+          scenarios: {
+            onInitFailure: true,
+            onVerificationFailure: true,
+            onSubtaskFailure: true,
+            onRuntimeError: true,
+            onStuckSubtask: false,
+          },
           spells: {
+            allowed: [],
             forbidden: ["rewind_uncommitted_changes"],
           },
         },
-      },
+      }),
     });
 
     const filtered = filterAllowedSpells(
@@ -313,8 +289,7 @@ describe("fixTypecheckErrors spell", () => {
   });
 
   test("fails without error output", async () => {
-    const ctx = createMockContext({
-      errorOutput: undefined,
+    const ctx = createMockHealerContext("InitScriptTypecheckFailure", {
       heuristics: {
         scenario: "InitScriptTypecheckFailure",
         failureCount: 1,
@@ -327,7 +302,7 @@ describe("fixTypecheckErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
     expect(result.success).toBe(false);
     expect(result.error).toContain("Missing error output");
   });
@@ -347,7 +322,7 @@ describe("fixTypecheckErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
     expect(result.success).toBe(false);
     expect(result.error).toContain("Wrong scenario");
   });
@@ -367,7 +342,7 @@ describe("fixTypecheckErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTypecheckErrors.apply(ctx));
     expect(result.success).toBe(true);
     expect(result.summary).toContain("Prepared emergency typecheck fix subtask");
   });
@@ -382,8 +357,7 @@ describe("fixTestErrors spell", () => {
   });
 
   test("fails without error output", async () => {
-    const ctx = createMockContext({
-      errorOutput: undefined,
+    const ctx = createMockHealerContext("InitScriptTestFailure", {
       heuristics: {
         scenario: "InitScriptTestFailure",
         failureCount: 1,
@@ -396,7 +370,7 @@ describe("fixTestErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTestErrors.apply(ctx));
     expect(result.success).toBe(false);
     expect(result.error).toContain("Missing error output");
   });
@@ -416,7 +390,7 @@ describe("fixTestErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTestErrors.apply(ctx));
     expect(result.success).toBe(false);
     expect(result.error).toContain("Wrong scenario");
   });
@@ -436,7 +410,7 @@ describe("fixTestErrors spell", () => {
       },
     });
 
-    const result = await Effect.runPromise(fixTestErrors.apply(ctx));
+    const result: HealerSpellResult = await Effect.runPromise(fixTestErrors.apply(ctx));
     expect(result.success).toBe(true);
     expect(result.summary).toContain("Prepared emergency test fix subtask");
   });
