@@ -88,11 +88,15 @@ describe("Task", () => {
       deps: [{ id: "oa-parent", type: "parent-child" }],
       commits: ["abc123"],
       closedAt: null,
+      comments: [
+        { id: "c1", text: "note", author: "mechacoder", createdAt: "2025-12-02T12:00:00Z" },
+      ],
     });
     expect(task.assignee).toBe("mechacoder");
     expect(task.labels).toEqual(["testing", "p1"]);
     expect(task.deps).toHaveLength(1);
     expect(task.commits).toEqual(["abc123"]);
+    expect(task.comments?.[0]?.text).toBe("note");
   });
 
   test("applies defaults for missing optional fields", () => {
@@ -110,6 +114,7 @@ describe("Task", () => {
     expect(task.labels).toEqual([]);
     expect(task.deps).toEqual([]);
     expect(task.commits).toEqual([]);
+    expect(task.comments).toEqual([]);
   });
 
   test("rejects invalid priority", () => {
@@ -133,6 +138,7 @@ describe("TaskCreate", () => {
     expect(task.status).toBe("open");
     expect(task.priority).toBe(2);
     expect(task.type).toBe("task");
+    expect(task.comments).toEqual([]);
   });
 
   test("decodes with all fields", () => {
@@ -144,10 +150,12 @@ describe("TaskCreate", () => {
       type: "bug",
       assignee: "user",
       labels: ["urgent"],
+      comments: [{ id: "c1", text: "note", author: "user", createdAt: "2025-12-02T10:00:00Z" }],
     });
     expect(task.status).toBe("in_progress");
     expect(task.priority).toBe(0);
     expect(task.type).toBe("bug");
+    expect(task.comments?.[0]?.author).toBe("user");
   });
 });
 

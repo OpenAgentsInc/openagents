@@ -456,6 +456,7 @@ const cmdCreate = (options: CliOptions) =>
         status: "open",
         labels: options.labels || [],
         deps: [],
+        comments: [],
         assignee: options.assignee,
       };
     }

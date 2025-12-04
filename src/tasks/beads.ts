@@ -57,6 +57,7 @@ const toTask = (issue: BeadsIssue): Task => {
     labels: issue.labels ?? [],
     deps,
     commits: issue.commits ?? [],
+    comments: [],
     createdAt: issue.created_at,
     updatedAt: issue.updated_at ?? issue.created_at,
     closedAt: issue.closed_at ?? null,

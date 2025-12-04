@@ -32,6 +32,7 @@ const makeTask = (title: string, overrides: Partial<TaskCreate> = {}): TaskCreat
   type: "task",
   labels: [],
   deps: [],
+  comments: [],
   ...overrides,
 });
 

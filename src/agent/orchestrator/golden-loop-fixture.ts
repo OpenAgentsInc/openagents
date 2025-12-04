@@ -50,6 +50,7 @@ export const createGoldenLoopFixture = (options: GoldenLoopFixtureOptions = {}):
     labels: options.task?.labels ?? ["golden-loop"],
     deps: options.task?.deps ?? [],
     commits: options.task?.commits ?? [],
+    comments: options.task?.comments ?? [],
     createdAt: options.task?.createdAt ?? now,
     updatedAt: options.task?.updatedAt ?? now,
     closedAt: options.task?.closedAt ?? null,
