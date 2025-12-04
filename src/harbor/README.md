@@ -5,14 +5,14 @@ Harbor agent adapter for running MechaCoder in Terminal-Bench evaluations.
 ## Installation
 
 ```bash
-pip install openagents-harbor
+uv pip install openagents-harbor
 ```
 
 Or install from source:
 
 ```bash
 cd src/harbor
-pip install -e .
+uv pip install -e .
 ```
 
 ## Usage
@@ -22,11 +22,13 @@ Run MechaCoder on Terminal-Bench tasks via Harbor:
 ```bash
 harbor run \
   --dataset terminal-bench@2.0 \
-  --agent-import-path openagents.harbor:MechaCoderAgent \
-  --model anthropic/claude-sonnet-4-5 \
+  --agent-import-path openagents_harbor:MechaCoderAgent \
   --k 5 \
   --jobs-dir ./results
 ```
+
+**Note:** MechaCoder uses Claude Code as its subagent, which handles model selection
+internally via your Anthropic subscription. The `--model` flag from Harbor is ignored.
 
 ## How It Works
 
@@ -45,6 +47,6 @@ MechaCoder produces these files in the output directory:
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - Harbor framework
 - Anthropic API key (for Claude Code)
