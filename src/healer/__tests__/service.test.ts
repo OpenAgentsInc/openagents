@@ -1,6 +1,9 @@
 /**
  * Tests for Healer Service
  */
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
 import {
@@ -9,12 +12,19 @@ import {
   createFullHealerService,
 } from "../service.js";
 import type { HealerEvent } from "../service.js";
-import { createHealerCounters } from "../types.js";
+import {
+  createHealerCounters,
+  type HealerContext,
+  type HealerScenario,
+  type HealerSpellId,
+  type HealerOutcomeStatus,
+} from "../types.js";
 import type { OrchestratorEvent, OrchestratorState } from "../../agent/orchestrator/types.js";
 import type { ProjectConfig } from "../../tasks/schema.js";
 import {
   createMockProjectConfig,
   createMockOrchestratorState,
+  createMockSubtask,
 } from "./test-helpers.js";
 
 // ============================================================================
@@ -23,7 +33,8 @@ import {
 
 const createMockState = (): OrchestratorState => createMockOrchestratorState();
 
-const createMockConfig = (): ProjectConfig => createMockProjectConfig();
+const createMockConfig = (overrides: Partial<ProjectConfig> = {}): ProjectConfig =>
+  createMockProjectConfig(overrides);
 
 // ============================================================================
 // createHealerService Tests
@@ -135,5 +146,121 @@ describe("createFullHealerService", () => {
 
     expect(service.maybeRun).toBeDefined();
     expect(service.run).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Deduplication
+// ============================================================================
+
+describe("healer invocation deduplication", () => {
+  const buildStateWithFailure = (): OrchestratorState => {
+    const state = createMockState();
+    const subtask = createMockSubtask({
+      id: "subtask-1",
+      status: "failed",
+      lastFailureReason: "boom",
+      failureCount: 1,
+    });
+    state.subtasks = {
+      taskId: "task-123",
+      taskTitle: "Test task",
+      subtasks: [subtask],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return state;
+  };
+
+  const event: OrchestratorEvent = {
+    type: "verification_complete",
+    command: "bun test",
+    passed: false,
+    output: "boom",
+  };
+
+  const makeRunner = (statuses: HealerOutcomeStatus[]) => {
+    let calls = 0;
+    const runner = (
+      _ctx: HealerContext,
+      scenario: HealerScenario,
+      spells: HealerSpellId[]
+    ) => {
+      const status = statuses[Math.min(calls, statuses.length - 1)];
+      calls += 1;
+      return Effect.succeed({
+        scenario,
+        status,
+        spellsTried: spells,
+        spellsSucceeded:
+          status === "resolved" || status === "contained" ? spells : [],
+        summary: status,
+      });
+    };
+    return { runner, getCalls: () => calls };
+  };
+
+  test("skips when the same failure was already resolved", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "healer-state-"));
+    const openagentsDir = path.join(tempDir, ".openagents");
+    const { runner, getCalls } = makeRunner(["resolved"]);
+
+    const service = createHealerService({
+      openagentsDir,
+      skipLLMSpells: true,
+      spellRunner: runner,
+    });
+    const config = createMockConfig({ rootDir: tempDir });
+    const state = buildStateWithFailure();
+    const counters = createHealerCounters();
+
+    const first = await Effect.runPromise(
+      service.maybeRun(event, state, config, counters)
+    );
+
+    expect(first?.status).toBe("resolved");
+    expect(getCalls()).toBe(1);
+
+    // Simulate restart with fresh counters and service but reuse persisted state.
+    const newCounters = createHealerCounters();
+    const freshService = createHealerService({
+      openagentsDir,
+      skipLLMSpells: true,
+      spellRunner: runner,
+    });
+    const second = await Effect.runPromise(
+      freshService.maybeRun(event, state, config, newCounters)
+    );
+
+    expect(second?.status).toBe("skipped");
+    expect(getCalls()).toBe(1);
+  });
+
+  test("retries when previous attempt was unresolved", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "healer-state-"));
+    const openagentsDir = path.join(tempDir, ".openagents");
+    const { runner, getCalls } = makeRunner(["unresolved", "resolved"]);
+
+    const service = createHealerService({
+      openagentsDir,
+      skipLLMSpells: true,
+      spellRunner: runner,
+    });
+    const config = createMockConfig({ rootDir: tempDir });
+    const state = buildStateWithFailure();
+
+    const first = await Effect.runPromise(
+      service.maybeRun(event, state, config, createHealerCounters())
+    );
+
+    expect(first?.status).toBe("unresolved");
+    expect(getCalls()).toBe(1);
+
+    const second = await Effect.runPromise(
+      service.maybeRun(event, state, config, createHealerCounters())
+    );
+
+    expect(second?.status).toBe("resolved");
+    expect(getCalls()).toBe(2);
   });
 });

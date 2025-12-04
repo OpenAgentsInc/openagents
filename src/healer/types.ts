@@ -116,6 +116,32 @@ export interface HealerOutcome {
   trajectorySessionId?: string;
 }
 
+/**
+ * A persisted record of a healing attempt for deduplication.
+ */
+export interface HealingAttempt {
+  /** Unique deduplication key for this failure */
+  key: string;
+  /** Scenario that triggered the attempt */
+  scenario: HealerScenario;
+  /** Task identifier the attempt belonged to */
+  taskId: string;
+  /** Subtask identifier if available */
+  subtaskId?: string;
+  /** Hash of the error output used in the dedup key */
+  errorHash: string;
+  /** When the attempt finished */
+  timestamp: string;
+  /** Outcome status recorded for this attempt */
+  outcome: HealerOutcomeStatus;
+  /** Spells tried for this attempt */
+  spellsTried: HealerSpellId[];
+  /** Spells that succeeded during this attempt */
+  spellsSucceeded: HealerSpellId[];
+  /** Summary of the attempt result */
+  summary: string;
+}
+
 // ============================================================================
 // Healer Context
 // ============================================================================
@@ -214,6 +240,8 @@ export interface HealerCounters {
   spellsAttempted: Map<HealerSpellId, number>;
   /** Follow-up containment tasks created (keyed by taskId:scenario) */
   followupKeys: Set<string>;
+  /** Healing attempts keyed by deduplication key */
+  healingAttempts: Map<string, HealingAttempt>;
 }
 
 /**
@@ -224,6 +252,7 @@ export const createHealerCounters = (): HealerCounters => ({
   subtaskInvocations: new Map(),
   spellsAttempted: new Map(),
   followupKeys: new Set(),
+  healingAttempts: new Map(),
 });
 
 // ============================================================================

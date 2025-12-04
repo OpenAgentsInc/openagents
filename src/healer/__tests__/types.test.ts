@@ -19,6 +19,7 @@ describe("Healer Types", () => {
       expect(counters.sessionInvocations).toBe(0);
       expect(counters.subtaskInvocations.size).toBe(0);
       expect(counters.spellsAttempted.size).toBe(0);
+      expect(counters.healingAttempts.size).toBe(0);
     });
 
     test("counters are mutable", () => {
@@ -26,10 +27,23 @@ describe("Healer Types", () => {
       counters.sessionInvocations = 5;
       counters.subtaskInvocations.set("subtask-1", 2);
       counters.spellsAttempted.set("fix_typecheck_errors", 1);
+      counters.healingAttempts.set("task:subtask:scenario:hash", {
+        key: "task:subtask:scenario:hash",
+        scenario: "SubtaskFailed",
+        taskId: "task",
+        subtaskId: "subtask",
+        errorHash: "hash",
+        timestamp: "2024-01-01T00:00:00Z",
+        outcome: "resolved",
+        spellsTried: [],
+        spellsSucceeded: [],
+        summary: "resolved",
+      });
 
       expect(counters.sessionInvocations).toBe(5);
       expect(counters.subtaskInvocations.get("subtask-1")).toBe(2);
       expect(counters.spellsAttempted.get("fix_typecheck_errors")).toBe(1);
+      expect(counters.healingAttempts.get("task:subtask:scenario:hash")).toBeDefined();
     });
   });
 
