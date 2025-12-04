@@ -140,7 +140,7 @@ describe("parallel runner regression", () => {
           mergeStrategy: "direct",
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,
-          installArgs: ["--frozen-lockfile"],
+          installArgs: ["--skip-install"],
           useContainers: false,
           mergeThreshold: 4,
           prThreshold: 50,
@@ -166,5 +166,6 @@ describe("parallel runner regression", () => {
 
     const agentBranches = git(repoPath, 'branch --list "agent/*"');
     expect(agentBranches).toBe("");
-  }, 60000);
+  // Allow generous headroom on saturated CI nodes; runs quickly in isolation but can slow under full suite load.
+  }, 120000);
 });

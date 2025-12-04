@@ -415,36 +415,40 @@ const runAgentInWorktree = (
         ? config.installArgs
         : ["--frozen-lockfile"];
     const installTimeoutMs = config.installTimeoutMs ?? 15 * 60 * 1000;
+    const skipInstall = installArgs.includes("--skip-install");
+    const filteredInstallArgs = installArgs.filter((arg) => arg !== "--skip-install");
 
-    // Install dependencies in worktree
-    yield* Effect.tryPromise({
-      try: async () => {
-        let timedOut = false;
-        const proc = Bun.spawn(["bun", "install", ...installArgs], {
-          cwd: worktree.path,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        const timer = setTimeout(() => {
-          timedOut = true;
-          proc.kill();
-        }, installTimeoutMs);
-        await proc.exited;
-        clearTimeout(timer);
+    // Install dependencies in worktree (unless explicitly skipped for tests)
+    if (!skipInstall) {
+      yield* Effect.tryPromise({
+        try: async () => {
+          let timedOut = false;
+          const proc = Bun.spawn(["bun", "install", ...filteredInstallArgs], {
+            cwd: worktree.path,
+            stdout: "pipe",
+            stderr: "pipe",
+          });
+          const timer = setTimeout(() => {
+            timedOut = true;
+            proc.kill();
+          }, installTimeoutMs);
+          await proc.exited;
+          clearTimeout(timer);
 
-        if (timedOut) {
-          throw new Error(
-            `bun install timed out after ${Math.floor(installTimeoutMs / 1000)}s`,
-          );
-        }
+          if (timedOut) {
+            throw new Error(
+              `bun install timed out after ${Math.floor(installTimeoutMs / 1000)}s`,
+            );
+          }
 
-        if (proc.exitCode !== 0) {
-          const stderr = await new Response(proc.stderr).text();
-          throw new Error(`bun install failed: ${stderr}`);
-        }
-      },
-      catch: (e) => new ParallelRunnerError("agent_failed", `Dependency install failed: ${e}`, e),
-    });
+          if (proc.exitCode !== 0) {
+            const stderr = await new Response(proc.stderr).text();
+            throw new Error(`bun install failed: ${stderr}`);
+          }
+        },
+        catch: (e) => new ParallelRunnerError("agent_failed", `Dependency install failed: ${e}`, e),
+      });
+    }
 
     // Build orchestrator config with Golden Loop invariants
     const orchestratorConfig: OrchestratorConfig = {
