@@ -4,6 +4,12 @@ import {
   getAllowedClaudeCodeTools,
 } from "./claude-code-mcp.js";
 import {
+  appendToolChunk,
+  buildToolPayload,
+  ensureToolBuffer,
+  type ToolLogBufferMap,
+} from "./tool-log-buffer.js";
+import {
   AbortError,
   type PermissionMode,
   type McpServerConfig,
@@ -289,6 +295,7 @@ export const runClaudeCodeSubagent = async (
 
   // Create hooks for observability and event emission
   const hooks = createClaudeCodeHooks(options.onEvent);
+  const toolBuffers: ToolLogBufferMap = new Map();
 
   // Retry loop for rate limits and server errors
   while (retryAttempt <= retryConfig.maxRetries) {
@@ -320,11 +327,10 @@ export const runClaudeCodeSubagent = async (
           if (event?.type === "content_block_delta" && event?.delta?.type === "text_delta") {
             options.onOutput(event.delta.text);
           }
-          // Log tool_use when content block starts
+          // Track tool_use when content block starts (full log emitted on stop)
           if (event?.type === "content_block_start" && event?.content_block?.type === "tool_use") {
             const block = event.content_block;
-            const toolJson = JSON.stringify({ tool: block.name, id: block.id }, null, 0);
-            options.onOutput(`\n[TOOL_USE] ${toolJson}\n`);
+            ensureToolBuffer(toolBuffers, block.id, block.name);
             // Track tool usage
             if (block.name) {
               toolsUsed.set(block.name, (toolsUsed.get(block.name) || 0) + 1);
@@ -332,11 +338,26 @@ export const runClaudeCodeSubagent = async (
           }
           // Log tool input when we get the full input delta
           if (event?.type === "content_block_delta" && event?.delta?.type === "input_json_delta") {
-            // Input comes in chunks, we'll log the final result in content_block_stop
+            const chunk =
+              event?.delta?.partial_json ??
+              event?.delta?.partial ??
+              event?.delta?.text ??
+              (typeof event?.delta === "string"
+                ? event.delta
+                : event?.delta
+                  ? JSON.stringify(event.delta)
+                  : undefined);
+            appendToolChunk(toolBuffers, event?.content_block?.id ?? "", chunk);
           }
           // Add newline at end of text blocks
           if (event?.type === "content_block_stop") {
-            options.onOutput("\n");
+            const block = event?.content_block;
+            if (block?.type === "tool_use") {
+              const payload = buildToolPayload(toolBuffers, block.id, block.input);
+              options.onOutput(`\n[TOOL_USE] ${JSON.stringify(payload)}\n`);
+            } else {
+              options.onOutput("\n");
+            }
           }
         }
 
