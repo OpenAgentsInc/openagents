@@ -36,7 +36,7 @@ const ChatMessageSchema = S.Struct({
   name: S.optional(S.String),
 });
 
-const SessionEventSchema = S.Union(
+export const SessionEventSchema = S.Union(
   S.Struct({
     type: S.Literal("session_start"),
     timestamp: S.String,
@@ -71,7 +71,7 @@ const SessionEventSchema = S.Union(
   }),
 );
 
-type SessionEvent = S.Schema.Type<typeof SessionEventSchema>;
+export type SessionEvent = S.Schema.Type<typeof SessionEventSchema>;
 
 export interface Session {
   id: string;
