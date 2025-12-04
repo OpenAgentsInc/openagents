@@ -14,23 +14,63 @@ Terminal-Bench 2.0 is a benchmark for evaluating AI coding agents on real-world 
 ## Quick Start (Local Mode)
 
 ```bash
-# 1. Clone Terminal-Bench 2.0 tasks
+# 1. Clone Terminal-Bench 2.0 tasks (if not already done)
 git clone https://github.com/laude-institute/terminal-bench-2.git ~/code/terminal-bench-2
 
-# 2. Import tasks into our suite format
+# 2. Import tasks into our suite format (already done - tasks/terminal-bench-2.json exists)
 bun src/cli/import-tasks.ts --source ~/code/terminal-bench-2 --output tasks/terminal-bench-2.json
 
 # 3. Install pytest (needed for verification)
 pip3 install pytest
+```
 
-# 4. Run a single task
-bun src/cli/tbench-local.ts --suite tasks/terminal-bench-2.json --output results/ --tasks regex-log
+## Running a Single Task
 
-# 5. Run multiple tasks
-bun src/cli/tbench-local.ts --suite tasks/terminal-bench-2.json --output results/ --tasks "regex-log,large-scale-text-editing"
+**This is the most common usage** - run one task and inspect the output:
 
-# 6. Run all 89 tasks (takes many hours)
-bun src/cli/tbench-local.ts --suite tasks/terminal-bench-2.json --output results/
+```bash
+# Run a single task
+bun src/cli/tbench-local.ts \
+  --suite tasks/terminal-bench-2.json \
+  --output /tmp/tbench-test \
+  --tasks regex-log
+
+# View the results
+cat /tmp/tbench-test/report.md
+
+# See what files the agent created
+ls -la /tmp/tbench-test/regex-log/workspace/
+
+# View agent conversation
+cat /tmp/tbench-test/regex-log/output.txt
+
+# View test results
+cat /tmp/tbench-test/regex-log/verification.txt
+```
+
+## Running Multiple Tasks
+
+```bash
+# Run specific tasks (comma-separated)
+bun src/cli/tbench-local.ts \
+  --suite tasks/terminal-bench-2.json \
+  --output results/ \
+  --tasks "regex-log,large-scale-text-editing,chess-best-move"
+
+# Run all 89 tasks (takes many hours, ~5min per task average)
+bun src/cli/tbench-local.ts \
+  --suite tasks/terminal-bench-2.json \
+  --output results/
+```
+
+## List Available Tasks
+
+```bash
+# See all task IDs
+cat tasks/terminal-bench-2.json | jq -r '.tasks[].id'
+
+# See tasks by difficulty
+cat tasks/terminal-bench-2.json | jq -r '.tasks[] | "\(.difficulty): \(.id)"' | sort
 ```
 
 ## Architecture
