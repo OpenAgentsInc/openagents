@@ -349,6 +349,8 @@ export const runOrchestrator = (
         filesModified: [],
         testsRun: false,
         testsPassingAfterWork: false,
+        e2eRun: false,
+        e2ePassingAfterWork: false,
       },
       nextSession: {
         suggestedNextSteps: [],
