@@ -357,6 +357,23 @@ If tests fail in sandbox but pass locally, check:
 2. Are all environment variables available in the container?
 3. Try disabling sandbox: set `"enabled": false` in project.json
 
+**Claude Code authentication in containers:**
+
+Claude Code OAuth credentials are automatically injected from Mac Keychain into sandbox containers. The credential injection:
+- Extracts credentials from Mac Keychain ("Claude Code-credentials")
+- Creates a temp directory with `.credentials.json`
+- Mounts at `/root/.claude:ro` in the container
+- Cleans up temp files after container exits
+
+If Claude Code fails to authenticate in sandbox:
+```bash
+# Verify credentials are in Keychain
+security find-generic-password -s "Claude Code-credentials" -g 2>&1 | head -5
+
+# If missing, authenticate with Claude Code first
+claude login
+```
+
 ### 4.5. API / model issues
 
 * Check `OPENROUTER_API_KEY` is configured for the environment where the agent runs (launchd vs CLI).
