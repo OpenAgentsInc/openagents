@@ -302,7 +302,13 @@ describe("markTaskBlockedWithFollowup spell", () => {
 
     const result = await Effect.runPromise(markTaskBlockedWithFollowup.apply(ctx));
     expect(result.success).toBe(true);
+    expect(result.changesApplied).toBe(true);
     expect(result.summary).toContain("oa-test123");
+
+    const second = await Effect.runPromise(markTaskBlockedWithFollowup.apply(ctx));
+    expect(second.success).toBe(true);
+    expect(second.changesApplied).toBe(false);
+    expect(second.summary).toContain("already prepared");
   });
 });
 
