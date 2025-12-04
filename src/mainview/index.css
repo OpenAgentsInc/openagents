@@ -155,6 +155,39 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
+/* View Mode Switcher */
+#view-mode-switcher {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+#view-mode-switcher button {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.15s ease;
+}
+
+#view-mode-switcher button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+#view-mode-switcher button.active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
 #reset-btn {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
