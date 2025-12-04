@@ -47,11 +47,29 @@ export {
   isHealableInitFailure,
 } from "./policy.js";
 
-// Context builder (to be implemented in oa-healer-04)
-// export { buildHealerContext } from "./context.js";
+// Context builder
+export {
+  buildHealerContext,
+  getGitStatus,
+  readProgressFile,
+  buildHeuristics,
+  detectErrorPatterns,
+} from "./context.js";
 
-// Spells (to be implemented in oa-healer-04, oa-healer-05)
-// export { spellRegistry, executeSpell } from "./spells/index.js";
+// Spells
+export {
+  spellRegistry,
+  getSpell,
+  hasSpell,
+  getRegisteredSpellIds,
+  executeSpell,
+  executeSpells,
+  isSpellAllowed,
+  filterAllowedSpells,
+  rewindUncommittedChanges,
+  markTaskBlockedWithFollowup,
+  updateProgressWithGuidance,
+} from "./spells/index.js";
 
 // Planner (to be implemented in oa-healer-06)
 // export { planSpells } from "./planner.js";
