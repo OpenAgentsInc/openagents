@@ -52,11 +52,13 @@ import {
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import type { OrchestratorEvent, OrchestratorState } from "./orchestrator/types.js";
 import { loadProjectConfig } from "../tasks/project.js";
+import { readyTasks, type Task } from "../tasks/index.js";
 import { createHudCallbacks, sendAPMSnapshot, createAPMEmitter } from "../hud/index.js";
 import { acquireLock, releaseLock } from "./orchestrator/agent-lock.js";
 import { loadContextFiles } from "../cli/context-loader.js";
 import { APMCollector } from "./apm.js";
 import { parseProjectConversations } from "./apm-parser.js";
+import { runParallelFromConfig } from "./orchestrator/parallel-runner.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -519,6 +521,58 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     } else if (lockResult.reason === "stale_removed") {
       log(`WARNING: Removed stale lock from PID ${lockResult.removedLock.pid}`);
       log(`New lock acquired (PID ${lockResult.newLock.pid})`);
+    }
+
+    // If parallel execution is enabled in project config, delegate to the parallel runner
+    if (projectConfig.parallelExecution?.enabled) {
+      log("[Parallel] parallelExecution.enabled detected in project config - using parallel runner");
+
+      const tasksPath = path.join(openagentsDir, "tasks.jsonl");
+      const maxAgents = projectConfig.parallelExecution.maxAgents ?? 4;
+      const maxPerRun = Math.min(
+        config.maxTasks ?? projectConfig.maxTasksPerRun ?? maxAgents,
+        maxAgents,
+      );
+
+      const ready = yield* readyTasks(tasksPath, { limit: maxPerRun }).pipe(
+        Effect.provide(BunContext.layer),
+        Effect.catchAll((e) => {
+          log(`[Parallel] Failed to load ready tasks: ${e.message}`);
+          return Effect.succeed([] as Task[]);
+        }),
+      );
+
+      if (ready.length === 0) {
+        log("[Parallel] No ready tasks available for parallel execution");
+        releaseLock(openagentsDir);
+        return { tasksCompleted: 0, sessionId };
+      }
+
+      log(`[Parallel] Ready tasks: ${ready.length}, will launch up to ${maxPerRun} agents`);
+
+      const agentSlots = yield* runParallelFromConfig({
+        repoPath: config.workDir,
+        openagentsDir,
+        baseBranch: projectConfig.defaultBranch ?? "main",
+        tasks: ready,
+        parallelConfig: projectConfig.parallelExecution,
+        testCommands: projectConfig.testCommands,
+        typecheckCommands: projectConfig.typecheckCommands,
+        e2eCommands: projectConfig.e2eCommands,
+        claudeCode: projectConfig.claudeCode,
+        allowPush: projectConfig.allowPush,
+      }).pipe(
+        Effect.provide(BunContext.layer),
+        Effect.catchAll((e) => {
+          log(`[Parallel] Runner failed: ${e.message}`);
+          return Effect.succeed([]);
+        }),
+      );
+
+      const successes = agentSlots.filter((slot) => slot.status === "completed" && slot.result?.success).length;
+      log(`[Parallel] Completed ${successes}/${agentSlots.length} tasks in parallel mode`);
+      releaseLock(openagentsDir);
+      return { tasksCompleted: successes, sessionId };
     }
 
     let tasksCompleted = 0;
