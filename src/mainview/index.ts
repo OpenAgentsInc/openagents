@@ -169,6 +169,38 @@ let tbState: TBState = {
   totalDurationMs: 0,
 }
 
+// ============================================================================
+// View Mode State
+// ============================================================================
+
+type ViewMode = "flow" | "tbench"
+let viewMode: ViewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "flow"
+
+function setViewMode(mode: ViewMode): void {
+  viewMode = mode
+  localStorage.setItem("hud-view-mode", mode)
+  updateViewModeUI()
+  render()
+}
+
+function updateViewModeUI(): void {
+  const flowBtn = document.getElementById("view-flow-btn")
+  const tbBtn = document.getElementById("view-tb-btn")
+  if (flowBtn && tbBtn) {
+    flowBtn.classList.toggle("active", viewMode === "flow")
+    tbBtn.classList.toggle("active", viewMode === "tbench")
+  }
+
+  // Show/hide TB controls based on mode
+  const tbControls = document.getElementById("tb-controls")
+  if (tbControls) {
+    tbControls.style.display = viewMode === "tbench" ? "block" : "none"
+  }
+}
+
+// Initialize view mode on load
+setTimeout(updateViewModeUI, 0)
+
 function getTBStatusColor(status: TBTaskStatus): string {
   switch (status) {
     case "passed": return "#22c55e" // Green
@@ -250,6 +282,102 @@ function renderTBWidget(): string {
         ${statusText}
       </text>
     </g>
+  `
+}
+
+// ============================================================================
+// TB Dashboard View (Full-screen Terminal-Bench mode)
+// ============================================================================
+
+function renderTBDashboard(): string {
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const completed = tbState.passed + tbState.failed + tbState.timeout + tbState.error
+  const progressPct = tbState.totalTasks > 0 ? (completed / tbState.totalTasks) * 100 : 0
+
+  // Current task info
+  let currentTaskName = "No task running"
+  let currentTaskPhase = ""
+  if (tbState.isRunning && tbState.currentTaskId) {
+    const task = tbState.tasks.get(tbState.currentTaskId)
+    currentTaskName = task?.name || tbState.currentTaskId
+    currentTaskPhase = tbState.currentPhase || "running"
+    if (tbState.currentTurn > 0) {
+      currentTaskPhase += ` · Turn ${tbState.currentTurn}`
+    }
+  }
+
+  // Build task list rows
+  const taskRows = Array.from(tbState.tasks.values()).map((task, i) => {
+    const y = 280 + i * 28
+    const statusColor = getTBStatusColor(task.status)
+    const statusIcon = task.status === "passed" ? "✓" : task.status === "failed" ? "✗" : task.status === "running" ? "▶" : "○"
+    return `
+      <text x="60" y="${y}" fill="${statusColor}" font-size="14" font-family="Berkeley Mono, monospace">${statusIcon}</text>
+      <text x="90" y="${y}" fill="#e5e5e5" font-size="13" font-family="Berkeley Mono, monospace">${task.name}</text>
+      <text x="${vw - 120}" y="${y}" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">${task.difficulty}</text>
+      ${task.durationMs ? `<text x="${vw - 60}" y="${y}" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">${(task.durationMs / 1000).toFixed(1)}s</text>` : ""}
+    `
+  }).join("")
+
+  return `
+    <!-- TB Dashboard Background -->
+    <rect x="0" y="0" width="${vw}" height="${vh}" fill="#0a0a0f"/>
+
+    <!-- Header -->
+    <text x="40" y="50" fill="#22c55e" font-size="28" font-weight="bold" font-family="Berkeley Mono, monospace">
+      Terminal-Bench
+    </text>
+    <text x="40" y="80" fill="#6b7280" font-size="14" font-family="Berkeley Mono, monospace">
+      ${tbState.suiteName || "No suite loaded"} ${tbState.suiteVersion ? `v${tbState.suiteVersion}` : ""}
+    </text>
+
+    <!-- Progress Section -->
+    <rect x="40" y="110" width="${vw - 80}" height="100" rx="8" fill="#141017" stroke="rgba(34, 197, 94, 0.2)" stroke-width="1"/>
+
+    <!-- Progress bar -->
+    <rect x="60" y="130" width="${vw - 120}" height="20" rx="10" fill="#1e1e2e"/>
+    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="#22c55e"/>
+    ${tbState.isRunning ? `
+    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="#22c55e" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1.5s" repeatCount="indefinite"/>
+    </rect>` : ""}
+
+    <!-- Stats -->
+    <text x="60" y="175" fill="#22c55e" font-size="18" font-family="Berkeley Mono, monospace">
+      ✓ ${tbState.passed}
+    </text>
+    <text x="140" y="175" fill="#ef4444" font-size="18" font-family="Berkeley Mono, monospace">
+      ✗ ${tbState.failed}
+    </text>
+    <text x="220" y="175" fill="#f59e0b" font-size="18" font-family="Berkeley Mono, monospace">
+      ⏱ ${tbState.timeout}
+    </text>
+    <text x="300" y="175" fill="#8b5cf6" font-size="18" font-family="Berkeley Mono, monospace">
+      ⚠ ${tbState.error}
+    </text>
+    <text x="${vw - 200}" y="175" fill="#e5e5e5" font-size="18" font-family="Berkeley Mono, monospace">
+      ${completed} / ${tbState.totalTasks} (${progressPct.toFixed(1)}%)
+    </text>
+
+    <!-- Current Task -->
+    <text x="60" y="195" fill="#9ca3af" font-size="12" font-family="Berkeley Mono, monospace">
+      ${tbState.isRunning ? `Current: ${currentTaskName} · ${currentTaskPhase}` : tbState.passRate > 0 ? `Completed · ${(tbState.passRate * 100).toFixed(1)}% pass rate` : "Ready to run"}
+    </text>
+
+    <!-- Task List Header -->
+    <text x="40" y="250" fill="#6b7280" font-size="12" font-family="Berkeley Mono, monospace" text-transform="uppercase" letter-spacing="1">
+      TASKS
+    </text>
+    <line x1="40" y1="260" x2="${vw - 40}" y2="260" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+
+    <!-- Task List -->
+    ${taskRows}
+
+    <!-- Footer hint -->
+    <text x="40" y="${vh - 30}" fill="#4b5563" font-size="11" font-family="Berkeley Mono, monospace">
+      Press Ctrl+1 for Flow view · Ctrl+2 for TB view · Ctrl+T to start · Ctrl+X to stop
+    </text>
   `
 }
 
@@ -536,11 +664,17 @@ canvasState = { ...canvasState, ...initialPan }
 
 // Render SVG content
 function render(): void {
-  const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
-  // Add APM and TB widgets as fixed overlays (not affected by pan/zoom)
-  const apmOverlay = renderAPMWidget()
-  const tbOverlay = renderTBWidget()
-  svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
+  if (viewMode === "flow") {
+    // Flow view: MechaCoder graph with overlays
+    const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
+    const apmOverlay = renderAPMWidget()
+    const tbOverlay = renderTBWidget()
+    svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
+  } else {
+    // TB view: Full-screen Terminal-Bench dashboard
+    const tbDashboard = renderTBDashboard()
+    svg.innerHTML = tbDashboard
+  }
 
   // Update zoom display
   zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`
@@ -849,6 +983,10 @@ tbStopBtn.addEventListener("click", handleStopRun)
 tbSelectAll.addEventListener("click", handleSelectAll)
 tbSelectNone.addEventListener("click", handleSelectNone)
 
+// View mode button handlers
+document.getElementById("view-flow-btn")?.addEventListener("click", () => setViewMode("flow"))
+document.getElementById("view-tb-btn")?.addEventListener("click", () => setViewMode("tbench"))
+
 // Update UI when TB state changes (from HUD messages)
 function syncTBUIWithState(): void {
   if (tbState.isRunning) {
@@ -867,6 +1005,20 @@ function syncTBUIWithState(): void {
 document.addEventListener("keydown", (e) => {
   // Ignore if typing in input
   if (e.target instanceof HTMLInputElement) return
+
+  // Ctrl+1: Flow view
+  if (e.ctrlKey && e.key === "1") {
+    e.preventDefault()
+    setViewMode("flow")
+    return
+  }
+
+  // Ctrl+2: TB view
+  if (e.ctrlKey && e.key === "2") {
+    e.preventDefault()
+    setViewMode("tbench")
+    return
+  }
 
   // Ctrl+L: Load suite
   if (e.ctrlKey && e.key === "l") {
@@ -918,4 +1070,4 @@ window.TB = {
 }
 
 console.log("Flow HUD loaded with WebSocket support")
-console.log("TB controls: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
+console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
