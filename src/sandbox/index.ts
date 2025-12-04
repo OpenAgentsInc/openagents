@@ -8,6 +8,16 @@ export {
 } from "./schema.js";
 export { ContainerBackendTag, type ContainerBackend } from "./backend.js";
 
+// Re-export credential utilities
+export {
+  extractCredentialsFromKeychain,
+  createCredentialMount,
+  cleanupCredentialMount,
+  CredentialError,
+  type CredentialMount,
+  type CredentialErrorReason,
+} from "./credentials.js";
+
 // Re-export implementations
 export { macOSContainerLayer, macOSContainerLive } from "./macos-container.js";
 export { detectBackend, autoDetectLayer } from "./detect.js";

@@ -105,9 +105,19 @@ describe("sandbox-runner", () => {
       const cwd = "/test/project";
       const env = { TEST_VAR: "test_value" };
 
-      const config = buildContainerConfig(sandboxConfig, cwd, env);
+      const config = buildContainerConfig(sandboxConfig, cwd, { env });
 
       expect(config.env).toEqual({ TEST_VAR: "test_value" });
+    });
+
+    test("passes volume mounts", () => {
+      const sandboxConfig: SandboxConfig = { enabled: true, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
+      const cwd = "/test/project";
+      const volumeMounts = ["/tmp/creds:/root/.claude:ro"];
+
+      const config = buildContainerConfig(sandboxConfig, cwd, { volumeMounts });
+
+      expect(config.volumeMounts).toEqual(["/tmp/creds:/root/.claude:ro"]);
     });
   });
 

@@ -51,6 +51,9 @@ export const ContainerConfigSchema = S.Struct({
 
   /** Remove container after it exits (default: true) */
   autoRemove: S.optional(S.Boolean),
+
+  /** Additional volume mounts (e.g., ["/tmp/creds:/root/.claude:ro"]) */
+  volumeMounts: S.optional(S.Array(S.String)),
 });
 
 export type ContainerConfig = S.Schema.Type<typeof ContainerConfigSchema>;
