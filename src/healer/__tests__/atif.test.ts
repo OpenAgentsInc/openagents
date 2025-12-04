@@ -14,46 +14,11 @@ import {
   HealerEventCollector,
 } from "../atif.js";
 import type { HealerEvent } from "../service.js";
-import type { HealerOutcome, HealerContext } from "../types.js";
-import { createHealerCounters } from "../types.js";
-import { createMockProjectConfig } from "./test-helpers.js";
+import type { HealerOutcome } from "../types.js";
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
-
-const createMockContext = (): HealerContext => ({
-  projectRoot: "/tmp/test",
-  projectConfig: createMockProjectConfig({
-    defaultBranch: "main",
-    testCommands: ["bun test"],
-  }),
-  sessionId: "session-123",
-  relatedTrajectories: [],
-  progressMd: null,
-  gitStatus: {
-    isDirty: false,
-    modifiedFiles: [],
-    untrackedFiles: [],
-    currentBranch: "main",
-    lastCommitSha: "abc123",
-    lastCommitMessage: "Initial",
-  },
-  heuristics: {
-    scenario: "SubtaskFailed",
-    failureCount: 1,
-    isFlaky: false,
-    hasMissingImports: false,
-    hasTypeErrors: false,
-    hasTestAssertions: false,
-    errorPatterns: [],
-    previousAttempts: 0,
-  },
-  triggerEvent: { type: "subtask_failed" } as any,
-  orchestratorState: {} as any,
-  errorOutput: "Error",
-  counters: createHealerCounters(),
-});
 
 const createMockOutcome = (status: "resolved" | "contained" | "unresolved"): HealerOutcome => ({
   scenario: "SubtaskFailed",
