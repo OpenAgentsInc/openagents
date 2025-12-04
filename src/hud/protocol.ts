@@ -174,6 +174,60 @@ export interface ToolResultMessage {
 }
 
 // ============================================================================
+// ATIF (Agent Trajectory) Events
+// ============================================================================
+
+/**
+ * ATIF trajectory started
+ */
+export interface ATIFTrajectoryStartMessage {
+  type: "atif_trajectory_start";
+  sessionId: string;
+  agentName: string;
+  agentType: "orchestrator" | "claude-code" | "minimal";
+  parentSessionId?: string;
+}
+
+/**
+ * ATIF step recorded
+ */
+export interface ATIFStepRecordedMessage {
+  type: "atif_step_recorded";
+  sessionId: string;
+  stepId: number;
+  source: "user" | "agent" | "system";
+  hasToolCalls: boolean;
+  hasObservation: boolean;
+}
+
+/**
+ * Subagent spawned (for hierarchy tracking)
+ */
+export interface ATIFSubagentSpawnedMessage {
+  type: "atif_subagent_spawned";
+  parentSessionId: string;
+  childSessionId: string;
+  subtaskId: string;
+  agentType: "claude-code" | "minimal";
+}
+
+/**
+ * ATIF trajectory complete
+ */
+export interface ATIFTrajectoryCompleteMessage {
+  type: "atif_trajectory_complete";
+  sessionId: string;
+  totalSteps: number;
+  totalTokens?: {
+    prompt: number;
+    completion: number;
+    cached?: number;
+  };
+  totalCostUsd?: number;
+  trajectoryPath: string;
+}
+
+// ============================================================================
 // APM (Actions Per Minute) Events
 // ============================================================================
 
@@ -252,6 +306,10 @@ export type HudMessage =
   | TextOutputMessage
   | ToolCallMessage
   | ToolResultMessage
+  | ATIFTrajectoryStartMessage
+  | ATIFStepRecordedMessage
+  | ATIFSubagentSpawnedMessage
+  | ATIFTrajectoryCompleteMessage
   | APMUpdateMessage
   | APMSnapshotMessage
   | APMToolUsageMessage;

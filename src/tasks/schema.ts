@@ -145,6 +145,23 @@ export const ParallelExecutionConfig = S.Struct({
 });
 export type ParallelExecutionConfig = S.Schema.Type<typeof ParallelExecutionConfig>;
 
+/** Configuration for ATIF trajectory capture and storage */
+export const TrajectoryConfig = S.Struct({
+  /** Enable trajectory capture (default: true) */
+  enabled: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Number of days to retain trajectories (default: 30) */
+  retentionDays: S.optionalWith(S.Number, { default: () => 30 }),
+  /** Maximum storage size in GB before pruning old trajectories (default: 5) */
+  maxSizeGB: S.optionalWith(S.Number, { default: () => 5 }),
+  /** Include full tool arguments in trajectories (default: true) */
+  includeToolArgs: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Include tool result content in trajectories (default: true) */
+  includeToolResults: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Custom trajectories directory (relative to .openagents/) */
+  directory: S.optionalWith(S.String, { default: () => "trajectories" }),
+});
+export type TrajectoryConfig = S.Schema.Type<typeof TrajectoryConfig>;
+
 // ProjectConfig matches .openagents/project.json
 export const ProjectConfig = S.Struct({
   version: S.optionalWith(S.Number, { default: () => 1 }),
@@ -173,6 +190,9 @@ export const ProjectConfig = S.Struct({
   }),
   parallelExecution: S.optionalWith(ParallelExecutionConfig, {
     default: () => S.decodeUnknownSync(ParallelExecutionConfig)({}),
+  }),
+  trajectory: S.optionalWith(TrajectoryConfig, {
+    default: () => S.decodeUnknownSync(TrajectoryConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({
