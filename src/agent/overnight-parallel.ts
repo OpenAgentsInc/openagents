@@ -202,7 +202,7 @@ const hasCommitsAhead = async (
  */
 const runTypecheck = async (
   cwd: string,
-  commands: string[],
+  commands: readonly string[],
 ): Promise<{ success: boolean; error?: string }> => {
   if (commands.length === 0) {
     return { success: true }; // No typecheck configured
@@ -386,14 +386,30 @@ const runAgentInWorktree = async (
     fs.writeFileSync(progressPath, "");
   }
 
-  // Install dependencies
+  // Install dependencies with timeout to prevent indefinite hangs
   agentLog(`Installing dependencies...`);
-  const bunInstall = Bun.spawn(["bun", "install"], {
+  const bunInstall = Bun.spawn(["bun", "install", "--frozen-lockfile"], {
     cwd: slot.worktree.path,
     stdout: "pipe",
     stderr: "pipe",
   });
-  await bunInstall.exited;
+
+  // 5 minute timeout for bun install
+  const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
+  const installTimeout = new Promise<"timeout">((resolve) =>
+    setTimeout(() => resolve("timeout"), INSTALL_TIMEOUT_MS)
+  );
+
+  const installResult = await Promise.race([bunInstall.exited, installTimeout]);
+
+  if (installResult === "timeout") {
+    bunInstall.kill();
+    slot.status = "failed";
+    slot.error = `bun install timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
+    agentLog(`❌ ${slot.error}`);
+    return;
+  }
+
   if (bunInstall.exitCode !== 0) {
     const stderr = await new Response(bunInstall.stderr).text();
     slot.status = "failed";
