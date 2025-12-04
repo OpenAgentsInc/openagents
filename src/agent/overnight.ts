@@ -675,7 +675,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
     // Create HUD callbacks for real-time updates to the desktop HUD
     // These silently fail if the HUD isn't running
-    const { emit: hudEmit, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
+    const { emit: hudEmit, emitHud, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
     // Create APM collector for tracking actions per minute
     const projectName = path.basename(config.workDir);
@@ -807,6 +807,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
           process.stdout.write(text);
           hudOnOutput(text);
         },
+        // Stream container events to HUD for multi-pane UI
+        emitHud,
         // Pass additional context if --load-context was specified
         ...(additionalContext ? { additionalContext } : {}),
       };
