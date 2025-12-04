@@ -26,6 +26,18 @@ echo "PATH=$PATH" >> /etc/environment
 echo 'export PATH="$(npm bin -g):$PATH"' >> /root/.bashrc
 claude --version || echo "Claude Code installed"
 
+# Configure API key helper for non-interactive mode
+# This is a workaround for Claude Code's authentication in headless mode
+# See: https://github.com/anthropics/claude-code/issues/551
+echo "Configuring Claude Code API key helper..."
+mkdir -p /root/.claude
+cat > /root/.claude/api_key_helper.sh << 'KEYHELPER'
+#!/bin/bash
+echo "${ANTHROPIC_API_KEY}"
+KEYHELPER
+chmod +x /root/.claude/api_key_helper.sh
+claude config set --global apiKeyHelper /root/.claude/api_key_helper.sh || echo "API key helper configured"
+
 # Clone MechaCoder (OpenAgents)
 echo "Cloning MechaCoder..."
 {% if version %}
