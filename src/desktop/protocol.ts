@@ -1,0 +1,356 @@
+/**
+ * Desktop Socket Protocol
+ *
+ * Extends the HUD protocol with bidirectional request/response support.
+ * This replaces Electrobun RPC with a unified WebSocket protocol.
+ *
+ * Architecture:
+ * - All messages flow over a single WebSocket connection
+ * - Events (HudMessage) flow server -> client (one-way)
+ * - Requests flow client -> server with correlation IDs
+ * - Responses flow server -> client with matching correlation IDs
+ */
+
+import type { HudMessage, TBDifficulty } from "../hud/protocol.js";
+
+// ============================================================================
+// Correlation ID Support
+// ============================================================================
+
+/**
+ * Generate a unique correlation ID for request/response matching
+ */
+export function generateCorrelationId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ============================================================================
+// Request Types (Client -> Server)
+// ============================================================================
+
+/**
+ * Base interface for all requests
+ */
+interface BaseRequest {
+  /** Unique ID for correlating response */
+  correlationId: string;
+}
+
+/**
+ * Load TB suite information
+ */
+export interface LoadTBSuiteRequest extends BaseRequest {
+  type: "request:loadTBSuite";
+  suitePath: string;
+}
+
+/**
+ * Start a TB run
+ */
+export interface StartTBRunRequest extends BaseRequest {
+  type: "request:startTBRun";
+  suitePath: string;
+  taskIds?: string[];
+  timeout?: number;
+  maxTurns?: number;
+  outputDir?: string;
+}
+
+/**
+ * Stop the active TB run
+ */
+export interface StopTBRunRequest extends BaseRequest {
+  type: "request:stopTBRun";
+}
+
+/**
+ * Load recent TB run history
+ */
+export interface LoadRecentTBRunsRequest extends BaseRequest {
+  type: "request:loadRecentTBRuns";
+  count?: number;
+}
+
+/**
+ * Load full TB run details
+ */
+export interface LoadTBRunDetailsRequest extends BaseRequest {
+  type: "request:loadTBRunDetails";
+  runId: string;
+}
+
+/**
+ * Union of all request types
+ */
+export type SocketRequest =
+  | LoadTBSuiteRequest
+  | StartTBRunRequest
+  | StopTBRunRequest
+  | LoadRecentTBRunsRequest
+  | LoadTBRunDetailsRequest;
+
+// ============================================================================
+// Response Types (Server -> Client)
+// ============================================================================
+
+/**
+ * Base interface for all responses
+ */
+interface BaseResponse {
+  /** Correlation ID matching the request */
+  correlationId: string;
+  /** Whether the request succeeded */
+  success: boolean;
+  /** Error message if success is false */
+  error?: string;
+}
+
+/**
+ * TB suite information
+ */
+export interface TBSuiteInfo {
+  name: string;
+  version: string;
+  tasks: Array<{
+    id: string;
+    name: string;
+    category: string;
+    difficulty: TBDifficulty | string;
+  }>;
+}
+
+/**
+ * Response to LoadTBSuiteRequest
+ */
+export interface LoadTBSuiteResponse extends BaseResponse {
+  type: "response:loadTBSuite";
+  data?: TBSuiteInfo;
+}
+
+/**
+ * Response to StartTBRunRequest
+ */
+export interface StartTBRunResponse extends BaseResponse {
+  type: "response:startTBRun";
+  data?: {
+    runId: string;
+  };
+}
+
+/**
+ * Response to StopTBRunRequest
+ */
+export interface StopTBRunResponse extends BaseResponse {
+  type: "response:stopTBRun";
+  data?: {
+    stopped: boolean;
+  };
+}
+
+/**
+ * TB run history item
+ */
+export interface TBRunHistoryItem {
+  runId: string;
+  suiteName: string;
+  suiteVersion: string;
+  timestamp: string;
+  passRate: number;
+  passed: number;
+  failed: number;
+  timeout: number;
+  error: number;
+  totalDurationMs: number;
+  totalTokens: number;
+  taskCount: number;
+  filepath: string;
+}
+
+/**
+ * Response to LoadRecentTBRunsRequest
+ */
+export interface LoadRecentTBRunsResponse extends BaseResponse {
+  type: "response:loadRecentTBRuns";
+  data?: TBRunHistoryItem[];
+}
+
+/**
+ * TB run details with task results
+ */
+export interface TBRunDetails {
+  meta: TBRunHistoryItem;
+  tasks: Array<{
+    id: string;
+    name: string;
+    category: string;
+    difficulty: string;
+    outcome: string;
+    durationMs: number;
+    turns: number;
+    tokens: number;
+    outputLines?: number;
+  }>;
+}
+
+/**
+ * Response to LoadTBRunDetailsRequest
+ */
+export interface LoadTBRunDetailsResponse extends BaseResponse {
+  type: "response:loadTBRunDetails";
+  data?: TBRunDetails | null;
+}
+
+/**
+ * Union of all response types
+ */
+export type SocketResponse =
+  | LoadTBSuiteResponse
+  | StartTBRunResponse
+  | StopTBRunResponse
+  | LoadRecentTBRunsResponse
+  | LoadTBRunDetailsResponse;
+
+// ============================================================================
+// Unified Socket Message Type
+// ============================================================================
+
+/**
+ * All messages that can flow over the socket
+ *
+ * - HudMessage: Events from server (agents) to client (UI)
+ * - SocketRequest: Requests from client (UI) to server
+ * - SocketResponse: Responses from server to client
+ */
+export type SocketMessage = HudMessage | SocketRequest | SocketResponse;
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Check if a message is a request
+ */
+export const isSocketRequest = (msg: unknown): msg is SocketRequest => {
+  if (typeof msg !== "object" || msg === null) return false;
+  const obj = msg as Record<string, unknown>;
+  return typeof obj.type === "string" && obj.type.startsWith("request:");
+};
+
+/**
+ * Check if a message is a response
+ */
+export const isSocketResponse = (msg: unknown): msg is SocketResponse => {
+  if (typeof msg !== "object" || msg === null) return false;
+  const obj = msg as Record<string, unknown>;
+  return typeof obj.type === "string" && obj.type.startsWith("response:");
+};
+
+/**
+ * Check if a message is a HUD event (not request/response)
+ */
+export const isHudEvent = (msg: unknown): msg is HudMessage => {
+  if (typeof msg !== "object" || msg === null) return false;
+  const obj = msg as Record<string, unknown>;
+  if (typeof obj.type !== "string") return false;
+  return !obj.type.startsWith("request:") && !obj.type.startsWith("response:");
+};
+
+// ============================================================================
+// Request Type Guards
+// ============================================================================
+
+export const isLoadTBSuiteRequest = (msg: SocketRequest): msg is LoadTBSuiteRequest =>
+  msg.type === "request:loadTBSuite";
+
+export const isStartTBRunRequest = (msg: SocketRequest): msg is StartTBRunRequest =>
+  msg.type === "request:startTBRun";
+
+export const isStopTBRunRequest = (msg: SocketRequest): msg is StopTBRunRequest =>
+  msg.type === "request:stopTBRun";
+
+export const isLoadRecentTBRunsRequest = (msg: SocketRequest): msg is LoadRecentTBRunsRequest =>
+  msg.type === "request:loadRecentTBRuns";
+
+export const isLoadTBRunDetailsRequest = (msg: SocketRequest): msg is LoadTBRunDetailsRequest =>
+  msg.type === "request:loadTBRunDetails";
+
+// ============================================================================
+// Serialization Helpers
+// ============================================================================
+
+export const serializeSocketMessage = (msg: SocketMessage): string =>
+  JSON.stringify(msg);
+
+export const parseSocketMessage = (data: string): SocketMessage | null => {
+  try {
+    const parsed = JSON.parse(data);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    if (typeof parsed.type !== "string") return null;
+    return parsed as SocketMessage;
+  } catch {
+    return null;
+  }
+};
+
+// ============================================================================
+// Request/Response Helpers
+// ============================================================================
+
+/**
+ * Create a request message with auto-generated correlation ID
+ */
+export function createRequest<T extends SocketRequest["type"]>(
+  type: T,
+  params: Omit<Extract<SocketRequest, { type: T }>, "type" | "correlationId">
+): Extract<SocketRequest, { type: T }> {
+  return {
+    type,
+    correlationId: generateCorrelationId(),
+    ...params,
+  } as Extract<SocketRequest, { type: T }>;
+}
+
+/**
+ * Create a success response
+ */
+export function createSuccessResponse<T extends SocketResponse["type"]>(
+  type: T,
+  correlationId: string,
+  data: Extract<SocketResponse, { type: T }>["data"]
+): Extract<SocketResponse, { type: T }> {
+  return {
+    type,
+    correlationId,
+    success: true,
+    data,
+  } as Extract<SocketResponse, { type: T }>;
+}
+
+/**
+ * Create an error response
+ */
+export function createErrorResponse<T extends SocketResponse["type"]>(
+  type: T,
+  correlationId: string,
+  error: string
+): Extract<SocketResponse, { type: T }> {
+  return {
+    type,
+    correlationId,
+    success: false,
+    error,
+  } as Extract<SocketResponse, { type: T }>;
+}
+
+// ============================================================================
+// Protocol Constants
+// ============================================================================
+
+/** HTTP port for static file serving */
+export const DESKTOP_HTTP_PORT = 8080;
+
+/** WebSocket path on the HTTP server */
+export const DESKTOP_WS_PATH = "/ws";
+
+/** Full WebSocket URL for desktop */
+export const DESKTOP_WS_URL = `ws://localhost:${DESKTOP_HTTP_PORT}${DESKTOP_WS_PATH}`;
