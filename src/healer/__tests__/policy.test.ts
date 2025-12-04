@@ -5,7 +5,7 @@ import { describe, test, expect } from "bun:test";
 import * as S from "effect/Schema";
 import type { OrchestratorEvent } from "../../agent/orchestrator/types.js";
 import { HealerConfig } from "../../tasks/schema.js";
-import { createHealerCounters, type HealerCounters } from "../types.js";
+import { createHealerCounters } from "../types.js";
 import {
   mapEventToScenario,
   shouldRunHealer,
