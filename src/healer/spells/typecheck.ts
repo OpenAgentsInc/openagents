@@ -143,7 +143,6 @@ export const createEmergencySubtask = (
     description,
     status: "in_progress",
     startedAt: new Date().toISOString(),
-    retryable: true,
     failureCount: 0,
   };
 };
@@ -280,22 +279,25 @@ export const executeTypecheckFix = async (
   const subtask = createEmergencySubtask(ctx, "typecheck");
 
   try {
-    // Invoke Claude Code to fix the errors
-    const healResult = await invoker(subtask, {
+    // Build invoker options, omitting undefined values
+    const invokerOptions: TypecheckFixOptions & { cwd: string } = {
       cwd: ctx.projectRoot,
       maxTurns: options.maxTurns ?? 50,
       permissionMode: options.permissionMode ?? "bypassPermissions",
-      onOutput: options.onOutput,
-      signal: options.signal,
-      openagentsDir: options.openagentsDir,
-    });
+    };
+    if (options.onOutput) invokerOptions.onOutput = options.onOutput;
+    if (options.signal) invokerOptions.signal = options.signal;
+    if (options.openagentsDir) invokerOptions.openagentsDir = options.openagentsDir;
+
+    // Invoke Claude Code to fix the errors
+    const healResult = await invoker(subtask, invokerOptions);
 
     if (!healResult.success) {
       return {
         success: false,
         changesApplied: healResult.filesModified.length > 0,
         summary: `Claude Code failed to fix typecheck errors: ${healResult.error || "Unknown error"}`,
-        error: healResult.error,
+        error: healResult.error ?? "Unknown error",
         filesModified: healResult.filesModified,
       };
     }
@@ -341,22 +343,25 @@ export const executeTestFix = async (
   const subtask = createEmergencySubtask(ctx, "test");
 
   try {
-    // Invoke Claude Code to fix the tests
-    const healResult = await invoker(subtask, {
+    // Build invoker options, omitting undefined values
+    const invokerOptions: TypecheckFixOptions & { cwd: string } = {
       cwd: ctx.projectRoot,
       maxTurns: options.maxTurns ?? 50,
       permissionMode: options.permissionMode ?? "bypassPermissions",
-      onOutput: options.onOutput,
-      signal: options.signal,
-      openagentsDir: options.openagentsDir,
-    });
+    };
+    if (options.onOutput) invokerOptions.onOutput = options.onOutput;
+    if (options.signal) invokerOptions.signal = options.signal;
+    if (options.openagentsDir) invokerOptions.openagentsDir = options.openagentsDir;
+
+    // Invoke Claude Code to fix the tests
+    const healResult = await invoker(subtask, invokerOptions);
 
     if (!healResult.success) {
       return {
         success: false,
         changesApplied: healResult.filesModified.length > 0,
         summary: `Claude Code failed to fix test errors: ${healResult.error || "Unknown error"}`,
-        error: healResult.error,
+        error: healResult.error ?? "Unknown error",
         filesModified: healResult.filesModified,
       };
     }

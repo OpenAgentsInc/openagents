@@ -119,8 +119,8 @@ export const markTaskBlockedWithFollowup: HealerSpell = {
 
       // We can't actually modify tasks without TaskService access
       // This spell prepares the data; the orchestrator/service layer applies it
-      const blockReason = generateBlockReason(ctx);
-      const followupDescription = generateFollowupDescription(ctx);
+      const _blockReason = generateBlockReason(ctx);
+      const _followupDescription = generateFollowupDescription(ctx);
 
       // For now, return the prepared data
       // The actual task modification will be done by HealerService

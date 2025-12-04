@@ -16,6 +16,7 @@
 // ============================================================================
 
 import type { OrchestratorPhase, SubtaskStatus } from "../agent/orchestrator/types.js";
+import type { HealerScenario, HealerSpellId, HealerOutcomeStatus } from "../healer/types.js";
 
 export interface HudTaskInfo {
   id: string;
@@ -286,6 +287,49 @@ export interface APMToolUsageMessage {
 }
 
 // ============================================================================
+// Healer (Self-Healing Subagent) Events
+// ============================================================================
+
+/**
+ * Healer invocation started
+ */
+export interface HealerInvocationStartMessage {
+  type: "healer_invocation_start";
+  sessionId: string;
+  scenario: HealerScenario;
+  plannedSpells: HealerSpellId[];
+  /** Parent orchestrator session for linking */
+  parentSessionId?: string;
+}
+
+/**
+ * Healer spell applied (one per spell execution)
+ */
+export interface HealerSpellAppliedMessage {
+  type: "healer_spell_applied";
+  sessionId: string;
+  spellId: HealerSpellId;
+  success: boolean;
+  changesApplied: boolean;
+  summary: string;
+  filesModified?: string[];
+  error?: string;
+}
+
+/**
+ * Healer invocation complete
+ */
+export interface HealerInvocationCompleteMessage {
+  type: "healer_invocation_complete";
+  sessionId: string;
+  status: HealerOutcomeStatus;
+  reason: string;
+  spellsExecuted: number;
+  successfulSpells: number;
+  failedSpells: number;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -312,7 +356,10 @@ export type HudMessage =
   | ATIFTrajectoryCompleteMessage
   | APMUpdateMessage
   | APMSnapshotMessage
-  | APMToolUsageMessage;
+  | APMToolUsageMessage
+  | HealerInvocationStartMessage
+  | HealerSpellAppliedMessage
+  | HealerInvocationCompleteMessage;
 
 // ============================================================================
 // Protocol Constants
