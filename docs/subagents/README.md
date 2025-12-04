@@ -15,6 +15,7 @@ Orchestrator (MechaCoder)
         ├── Healer (recovery & self-repair)
         ├── Archivist (learning & memory)
         ├── Trainer (evaluation & improvement)
+        ├── Advocate (preference & negotiation)
         └── ... (see others.md for more)
 ```
 
@@ -64,6 +65,28 @@ A training subagent that can pull any agent into a safe Gym environment, run ben
 
 ---
 
+### [Advocate](./advocate.md)
+
+A fiduciary subagent that represents user and project preferences in negotiations—within the MechaCoder ecosystem today, and eventually with external AI agents and systems at scale. Inspired by the vision of ["Coasean Bargaining at Scale"](../research/coasean-bargaining-at-scale.md).
+
+**Key features:**
+- Maintains structured preference profiles with conditional rules
+- Negotiates resource allocation and tradeoffs internally
+- Forms coalitions with other agents for collective bargaining (v2+)
+- Enables externality pricing in multi-stakeholder environments (v3)
+- Supports both economic (willingness-to-pay) and democratic (equal-weight) negotiation modes
+
+**Triggers:** Model selection decisions, resource conflicts, budget allocation, external service negotiation.
+
+**Horizons:**
+| Version | Focus | Scope |
+|---------|-------|-------|
+| v1 | Internal preference management | Within MechaCoder |
+| v2 | Multi-agent negotiation | External AI systems |
+| v3 | Full Coasean advocacy | Ecosystem-wide coordination |
+
+---
+
 ### [Others](./others.md)
 
 A comprehensive catalog of 21 additional subagent ideas organized by function:
@@ -78,6 +101,7 @@ A comprehensive catalog of 21 additional subagent ideas organized by function:
 | **Knowledge & Communication** | Scribe, Teacher |
 | **Housekeeping** | Janitor, Steward |
 | **Monitoring & Meta** | Watcher, Analyst, Alchemist |
+| **Representation & Negotiation** | [Advocate](./advocate.md) (full spec) |
 
 Each subagent has clear triggers, scopes, and integration points. See the document for detailed descriptions of each.
 
