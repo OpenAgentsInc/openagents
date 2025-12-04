@@ -32,6 +32,48 @@ function collectNodeIds(node: FlowNode, ids: Set<NodeId>): void {
   }
 }
 
+/**
+ * Measure the full subtree dimensions (including all descendants).
+ * Returns the bounding box needed to render this node and all its children.
+ */
+function measureSubtree(
+  node: FlowNode,
+  nodeSizes: Readonly<Record<NodeId, NodeSize>>,
+  spacing: number
+): { width: number; height: number } {
+  const size = nodeSizes[node.id]!
+  const children = node.children ?? []
+
+  if (children.length === 0) {
+    return { width: size.width, height: size.height }
+  }
+
+  const dir = node.direction ?? 'vertical'
+  const childMeasures = children.map(child => measureSubtree(child, nodeSizes, spacing))
+
+  if (dir === 'horizontal') {
+    // Children laid out horizontally below this node
+    const childrenWidth = childMeasures.reduce((sum, m, i) => sum + m.width + (i > 0 ? spacing : 0), 0)
+    const childrenHeight = Math.max(...childMeasures.map(m => m.height))
+    return {
+      width: Math.max(size.width, childrenWidth),
+      height: size.height + spacing + childrenHeight,
+    }
+  } else {
+    // Children laid out vertically below this node
+    const childrenWidth = Math.max(...childMeasures.map(m => m.width))
+    const childrenHeight = childMeasures.reduce((sum, m, i) => sum + m.height + (i > 0 ? spacing : 0), 0)
+    return {
+      width: Math.max(size.width, childrenWidth),
+      height: size.height + spacing + childrenHeight,
+    }
+  }
+}
+
+/**
+ * Layout a subtree with children positioned BELOW/BESIDE the parent (flow graph style),
+ * not contained inside the parent bounds.
+ */
 function layoutSubtree(
   node: FlowNode,
   x: number,
@@ -51,36 +93,37 @@ function layoutSubtree(
   }
 
   const dir = node.direction ?? 'vertical'
-  const padding = config.padding
-  const contentX = x + padding
-  const contentY = y + padding
-  const contentWidth = size.width - 2 * padding
-  const contentHeight = size.height - 2 * padding
+  const spacing = config.spacing
 
-  if (contentWidth < 0 || contentHeight < 0) {
-    throw new Error(`Padding too large for node ${node.id}: content ${contentWidth}x${contentHeight}`)
-  }
-
-  const childSizes = children.map(child => nodeSizes[child.id]!)
-  const maxChildWidth = Math.max(...childSizes.map(s => s.width), 0)
-  const maxChildHeight = Math.max(...childSizes.map(s => s.height), 0)
+  // Children start below this node
+  const childStartY = y + size.height + spacing
 
   if (dir === 'horizontal') {
-    const childY = contentY + Math.max(0, (contentHeight - maxChildHeight) / 2)
-    const totalRowWidth = childSizes.reduce((sum, s, i) => sum + s.width + (i > 0 ? config.spacing : 0), 0)
-    const rowStartX = contentX + Math.max(0, (contentWidth - totalRowWidth) / 2)
-    let curX = rowStartX
-    for (const child of children) {
-      layoutSubtree(child, curX, childY, nodeSizes, config, allNodes, node.id)
-      curX += nodeSizes[child.id]!.width + config.spacing
+    // Lay out children horizontally, centered under this node
+    const childMeasures = children.map(child => measureSubtree(child, nodeSizes, spacing))
+    const totalWidth = childMeasures.reduce((sum, m, i) => sum + m.width + (i > 0 ? spacing : 0), 0)
+    const startX = x + size.width / 2 - totalWidth / 2
+
+    let curX = startX
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      const childMeasure = childMeasures[i]
+      // Center child within its measured subtree width
+      const childSize = nodeSizes[child.id]!
+      const childX = curX + (childMeasure.width - childSize.width) / 2
+      layoutSubtree(child, childX, childStartY, nodeSizes, config, allNodes, node.id)
+      curX += childMeasure.width + spacing
     }
   } else {
-    // vertical
-    const childX = contentX + Math.max(0, (contentWidth - maxChildWidth) / 2)
-    let curY = contentY
+    // Lay out children vertically, centered under this node
+    let curY = childStartY
     for (const child of children) {
+      const childSize = nodeSizes[child.id]!
+      // Center child horizontally relative to parent
+      const childX = x + (size.width - childSize.width) / 2
       layoutSubtree(child, childX, curY, nodeSizes, config, allNodes, node.id)
-      curY += nodeSizes[child.id]!.height + config.spacing
+      const childMeasure = measureSubtree(child, nodeSizes, spacing)
+      curY += childMeasure.height + spacing
     }
   }
 
@@ -90,42 +133,34 @@ function layoutSubtree(
 function computeConnections(
   node: FlowNode,
   positionedNodes: Map<NodeId, PositionedNode>,
-  conns: Connection[],
-  config: LayoutConfig
+  conns: Connection[]
 ): void {
   for (const child of node.children ?? []) {
     const parentPos = positionedNodes.get(node.id)!
     const childPos = positionedNodes.get(child.id)!
-    const dir = node.direction ?? 'vertical'
 
-    // Parent exit point
-    let exitX: number, exitY: number
-    if (dir === 'horizontal') {
-      exitX = parentPos.x + parentPos.size.width - config.padding / 2
-      exitY = parentPos.y + parentPos.size.height / 2
-    } else {
-      exitX = parentPos.x + parentPos.size.width / 2
-      exitY = parentPos.y + parentPos.size.height - config.padding / 2
-    }
+    // For external flow layout:
+    // Parent exit: bottom center
+    // Child entry: top center
+    const exitX = parentPos.x + parentPos.size.width / 2
+    const exitY = parentPos.y + parentPos.size.height
+    const entryX = childPos.x + childPos.size.width / 2
+    const entryY = childPos.y
 
-    // Child entry point
-    const childDir = child.direction ?? 'vertical'
-    let entryX: number, entryY: number
-    if (childDir === 'horizontal') {
-      entryX = childPos.x + config.padding / 2
-      entryY = childPos.y + childPos.size.height / 2
-    } else {
-      entryX = childPos.x + childPos.size.width / 2
-      entryY = childPos.y + config.padding / 2
-    }
-
+    // Create an elbow connection with a midpoint
+    const midY = (exitY + entryY) / 2
     conns.push({
       parentId: node.id,
       childId: child.id,
-      waypoints: [{ x: exitX, y: exitY }, { x: entryX, y: entryY }]
+      waypoints: [
+        { x: exitX, y: exitY },
+        { x: exitX, y: midY },
+        { x: entryX, y: midY },
+        { x: entryX, y: entryY }
+      ]
     })
 
-    computeConnections(child, positionedNodes, conns, config)
+    computeConnections(child, positionedNodes, conns)
   }
 }
 
@@ -152,7 +187,7 @@ export function calculateLayout(input: LayoutInput): LayoutOutput {
   layoutSubtree(root, 0, 0, nodeSizes, config, allNodes)
 
   const connections: Connection[] = []
-  computeConnections(root, allNodes, connections, config)
+  computeConnections(root, allNodes, connections)
 
   return {
     nodes: Array.from(allNodes.values()),

@@ -22,7 +22,7 @@ describe('calculateLayout', () => {
     expect(output.connections).toHaveLength(0)
   })
 
-  it('layouts vertical parent-child', () => {
+  it('layouts vertical parent-child (children below parent)', () => {
     const tree: FlowNode = {
       id: 'parent',
       type: 'container',
@@ -45,18 +45,22 @@ describe('calculateLayout', () => {
     expect(parent.x).toBe(0)
     expect(parent.y).toBe(0)
 
+    // Child is positioned BELOW parent (external flow layout)
     const child = output.nodes.find(n => n.id === 'child')!
-    expect(child.x).toBeCloseTo(8 + (200 - 16 - 100) / 2, 1) // 8 + (184-100)/2 = 8+42=50
-    expect(child.y).toBeCloseTo(8, 1)
+    // Child x: centered under parent = (200 - 100) / 2 = 50
+    expect(child.x).toBeCloseTo(50, 1)
+    // Child y: parent height + spacing = 120 + 8 = 128
+    expect(child.y).toBeCloseTo(128, 1)
 
     expect(output.connections).toHaveLength(1)
     const conn = output.connections[0]!
     expect(conn.parentId).toBe('parent')
     expect(conn.childId).toBe('child')
-    expect(conn.waypoints).toHaveLength(2)
+    // External flow uses 4-point elbow connections
+    expect(conn.waypoints).toHaveLength(4)
   })
 
-  it('layouts horizontal siblings', () => {
+  it('layouts horizontal siblings (children horizontally below parent)', () => {
     const tree: FlowNode = {
       id: 'parent',
       type: 'container',
@@ -77,11 +81,15 @@ describe('calculateLayout', () => {
 
     const child1 = output.nodes.find(n => n.id === 'child1')!
     const child2 = output.nodes.find(n => n.id === 'child2')!
-    // totalRowW = 100+100 +10 =210
-    // rowStartX =10 + (280-210)/2 =10+35=45
+
+    // Children are positioned horizontally BELOW parent (external flow layout)
+    // totalWidth = 100 + 10 + 100 = 210
+    // startX = parentCenterX - totalWidth/2 = 150 - 105 = 45
     expect(child1.x).toBeCloseTo(45, 1)
-    expect(child1.y).toBeCloseTo(10 + (60-50)/2, 1) //15
-    expect(child2.x).toBeCloseTo(45 +100 +10, 1) //155
+    // childY = parentHeight + spacing = 80 + 10 = 90
+    expect(child1.y).toBeCloseTo(90, 1)
+    // child2 x = child1.x + child1.width + spacing = 45 + 100 + 10 = 155
+    expect(child2.x).toBeCloseTo(155, 1)
     expect(child2.y).toBeCloseTo(child1.y, 1)
 
     expect(output.connections).toHaveLength(2)
@@ -148,7 +156,9 @@ describe('calculateLayout', () => {
     expect(() => calculateLayout({ root: tree, nodeSizes: { root: {width:100,height:50} }, config: defaultConfig })).toThrow(/Duplicate/)
   })
 
-  it('fails on excessive padding', () => {
+  it('handles small spacing without errors', () => {
+    // External flow layout doesn't have padding constraints since
+    // children are positioned outside parent bounds
     const tree: FlowNode = {
       id: 'parent',
       type: 'container',
@@ -156,7 +166,11 @@ describe('calculateLayout', () => {
       children: [{ id: 'child', type: 'task', label: 'Child' }]
     }
     const sizes = { parent: { width: 10, height: 10 }, child: { width: 10, height: 10 } }
-    const config = { padding: 10, spacing: 0 } // content 10-20=-10
-    expect(() => calculateLayout({ root: tree, nodeSizes: sizes, config })).toThrow(/Padding too large/)
+    const config = { padding: 10, spacing: 0 }
+    const output = calculateLayout({ root: tree, nodeSizes: sizes, config })
+    expect(output.nodes).toHaveLength(2)
+    // Child is below parent with 0 spacing
+    const child = output.nodes.find(n => n.id === 'child')!
+    expect(child.y).toBe(10) // parent height + 0 spacing
   })
 })
