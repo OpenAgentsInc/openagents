@@ -287,6 +287,12 @@ export type OrchestratorEvent =
   | { type: "recovery_task_closed"; taskId: string; sha: string }
   | { type: "recovery_task_reset"; taskId: string }
   | { type: "recovery_complete"; closedCount: number; resetCount: number; failedCount: number }
+  // Checkpoint events (phase checkpoint crash recovery)
+  | { type: "checkpoint_found"; sessionId: string; phase: OrchestratorPhase; taskId: string }
+  | { type: "checkpoint_resuming"; phase: OrchestratorPhase; taskId: string }
+  | { type: "checkpoint_invalid"; reason: string }
+  | { type: "checkpoint_written"; phase: OrchestratorPhase }
+  | { type: "checkpoint_cleared" }
   | { type: "task_selected"; task: Task }
   | { type: "task_decomposed"; subtasks: Subtask[] }
   | { type: "subtask_start"; subtask: Subtask }

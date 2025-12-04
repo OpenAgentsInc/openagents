@@ -13,9 +13,18 @@
  */
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
 import { recoverPendingCommits, type RecoveryEvent } from "./recovery.js";
+import {
+  writeCheckpoint,
+  clearCheckpoint,
+  maybeResumeCheckpoint,
+  captureGitState,
+  createCheckpoint,
+  updateCheckpointPhase,
+  type OrchestratorCheckpoint,
+} from "./checkpoint.js";
 import type { OpenRouterClient } from "../../llm/openrouter.js";
 import { readTool } from "../../tools/read.js";
 import { editTool } from "../../tools/edit.js";
@@ -201,6 +210,23 @@ const pushToRemote = (
   });
 
 /**
+ * Write checkpoint at phase transition.
+ * Captures current state for crash recovery.
+ */
+const saveCheckpoint = (
+  openagentsDir: string,
+  checkpoint: OrchestratorCheckpoint,
+  emit: (event: OrchestratorEvent) => void
+): Effect.Effect<void, never, FileSystem.FileSystem> =>
+  writeCheckpoint(openagentsDir, checkpoint).pipe(
+    Effect.tap(() => {
+      emit({ type: "checkpoint_written", phase: checkpoint.phase });
+      return Effect.void;
+    }),
+    Effect.catchAll(() => Effect.void) // Checkpoint failures are non-fatal
+  );
+
+/**
  * Main orchestrator loop.
  * 
  * Coordinates the entire task execution flow:
@@ -328,6 +354,34 @@ export const runOrchestrator = (
         suggestedNextSteps: [],
       },
     };
+
+    // Track checkpoint for crash recovery
+    let currentCheckpoint: OrchestratorCheckpoint | null = null;
+
+    // Check for existing checkpoint from previous crash
+    const maybeExistingCheckpoint = yield* maybeResumeCheckpoint(openagentsDir, config.cwd).pipe(
+      Effect.catchAll(() => Effect.succeed(Option.none()))
+    );
+
+    if (Option.isSome(maybeExistingCheckpoint)) {
+      const existingCheckpoint = maybeExistingCheckpoint.value;
+      emit({
+        type: "checkpoint_found",
+        sessionId: existingCheckpoint.sessionId,
+        phase: existingCheckpoint.phase,
+        taskId: existingCheckpoint.taskId,
+      });
+
+      // For now, we emit that we found a checkpoint but proceed normally
+      // The subtask file already tracks completed subtasks, and the two-phase
+      // commit recovery handles commit_pending states
+      // Future enhancement: could skip orientation phase if checkpoint is recent
+      emit({
+        type: "checkpoint_resuming",
+        phase: existingCheckpoint.phase,
+        taskId: existingCheckpoint.taskId,
+      });
+    }
 
     try {
       // Phase 1: Orient
@@ -481,6 +535,27 @@ export const runOrchestrator = (
       progress.taskTitle = taskResult.title;
       emit({ type: "task_selected", task: taskResult });
 
+      // Write checkpoint after task selection
+      const gitState = yield* captureGitState(config.cwd).pipe(
+        Effect.catchAll(() => Effect.succeed({
+          branch: "unknown",
+          headCommit: "unknown",
+          isDirty: false,
+          stagedFiles: [] as string[],
+        }))
+      );
+
+      currentCheckpoint = createCheckpoint({
+        sessionId,
+        phase: "selecting_task",
+        taskId: taskResult.id,
+        taskTitle: taskResult.title,
+        completedSubtaskIds: [],
+        currentSubtaskId: null,
+        git: gitState,
+      });
+      yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+
       // Phase 3: Decompose
       state.phase = "decomposing";
 
@@ -535,6 +610,12 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       state.subtasks = subtaskList;
       writeSubtasks(openagentsDir, subtaskList);
       emit({ type: "task_decomposed", subtasks: subtaskList.subtasks });
+
+      // Update checkpoint after decomposition
+      if (currentCheckpoint) {
+        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, "decomposing");
+        yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+      }
 
       // Phase 4: Execute Subtasks
       state.phase = "executing_subtask";
@@ -684,6 +765,15 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             (id) => id !== subtask.id
           );
           emit({ type: "subtask_complete", subtask, result });
+
+          // Update checkpoint with completed subtask
+          if (currentCheckpoint) {
+            currentCheckpoint = updateCheckpointPhase(currentCheckpoint, "executing_subtask", {
+              completedSubtaskIds: [...currentCheckpoint.completedSubtaskIds, subtask.id],
+              currentSubtaskId: null,
+            });
+            yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+          }
         } else {
           // Track consecutive failures
           const MAX_CONSECUTIVE_FAILURES = 3;
@@ -779,6 +869,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             writeProgress(openagentsDir, progress);
             writeSubtasks(openagentsDir, subtaskList);
             yield* recordUsage();
+            yield* clearCheckpoint(openagentsDir);
             emit({ type: "session_complete", success: false, summary: `Task blocked after ${MAX_CONSECUTIVE_FAILURES} failures` });
             return state;
           }
@@ -805,6 +896,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           writeProgress(openagentsDir, progress);
           writeSubtasks(openagentsDir, subtaskList);
           yield* recordUsage();
+          yield* clearCheckpoint(openagentsDir);
           return state;
         }
 
@@ -864,6 +956,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
               progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
               writeProgress(openagentsDir, progress);
               yield* recordUsage();
+              yield* clearCheckpoint(openagentsDir);
               emit({ type: "session_complete", success: false, summary: "Verification failed after healing" });
               return state;
             }
@@ -878,6 +971,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
             writeProgress(openagentsDir, progress);
             yield* recordUsage();
+            yield* clearCheckpoint(openagentsDir);
             emit({ type: "session_complete", success: false, summary: "Verification failed" });
             return state;
           }
@@ -892,9 +986,22 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
           writeProgress(openagentsDir, progress);
           yield* recordUsage();
+          yield* clearCheckpoint(openagentsDir);
           emit({ type: "session_complete", success: false, summary: "Verification failed" });
           return state;
         }
+      }
+
+      // Update checkpoint after verification passes
+      if (currentCheckpoint) {
+        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, "verifying", {
+          verification: {
+            typecheckPassed: true,
+            testsPassed: true,
+            verifiedAt: new Date().toISOString(),
+          },
+        });
+        yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
       }
 
       // Phase 6: Two-Phase Commit
@@ -974,6 +1081,11 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       state.phase = "done";
       yield* recordUsage();
+
+      // Clear checkpoint on successful completion
+      yield* clearCheckpoint(openagentsDir);
+      emit({ type: "checkpoint_cleared" });
+
       emit({
         type: "session_complete",
         success: true,
@@ -985,11 +1097,14 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       state.phase = "failed";
       state.error = error.message;
       emit({ type: "error", phase: state.phase, error: error.message });
-      
+
       progress.nextSession.blockers = [error.message];
       writeProgress(openagentsDir, progress);
       yield* recordUsage();
-      
+
+      // Clear checkpoint on failed completion (checkpoint is for crash recovery, not failed runs)
+      yield* clearCheckpoint(openagentsDir);
+
       return state;
     }
   });

@@ -104,3 +104,26 @@ export type {
   CommandResult,
   VerificationResult,
 } from "./sandbox-runner.js";
+
+// Checkpoint (crash recovery)
+export {
+  writeCheckpoint,
+  readCheckpoint,
+  clearCheckpoint,
+  validateCheckpoint,
+  maybeResumeCheckpoint,
+  captureGitState,
+  createCheckpoint,
+  updateCheckpointPhase,
+  addHealerInvocation,
+  getCheckpointPath,
+  CHECKPOINT_FILENAME,
+  CHECKPOINT_MAX_AGE_MS,
+} from "./checkpoint.js";
+export type {
+  OrchestratorCheckpoint,
+  CheckpointGitState,
+  CheckpointVerification,
+  CheckpointHealerInvocation,
+  CheckpointValidation,
+} from "./checkpoint.js";
