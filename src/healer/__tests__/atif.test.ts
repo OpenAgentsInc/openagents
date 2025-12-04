@@ -16,6 +16,7 @@ import {
 import type { HealerEvent } from "../service.js";
 import type { HealerOutcome, HealerContext } from "../types.js";
 import { createHealerCounters } from "../types.js";
+import { createMockProjectConfig } from "./test-helpers.js";
 
 // ============================================================================
 // Test Helpers
@@ -23,12 +24,11 @@ import { createHealerCounters } from "../types.js";
 
 const createMockContext = (): HealerContext => ({
   projectRoot: "/tmp/test",
-  projectConfig: { defaultBranch: "main", testCommands: ["bun test"] },
-  task: undefined,
-  subtask: undefined,
+  projectConfig: createMockProjectConfig({
+    defaultBranch: "main",
+    testCommands: ["bun test"],
+  }),
   sessionId: "session-123",
-  runId: undefined,
-  trajectory: undefined,
   relatedTrajectories: [],
   progressMd: null,
   gitStatus: {
@@ -49,27 +49,18 @@ const createMockContext = (): HealerContext => ({
     errorPatterns: [],
     previousAttempts: 0,
   },
-  triggerEvent: { type: "subtask-failed" } as any,
+  triggerEvent: { type: "subtask_failed" } as any,
   orchestratorState: {} as any,
-  initFailureType: undefined,
   errorOutput: "Error",
   counters: createHealerCounters(),
 });
 
-const createMockOutcome = (status: "resolved" | "contained" | "failed"): HealerOutcome => ({
+const createMockOutcome = (status: "resolved" | "contained" | "unresolved"): HealerOutcome => ({
+  scenario: "SubtaskFailed",
   status,
-  reason: "Test outcome",
-  spellsExecuted: [
-    {
-      spellId: "rewind_uncommitted_changes",
-      result: {
-        success: status !== "failed",
-        changesApplied: status === "resolved",
-        summary: "Reverted changes",
-      },
-    },
-  ],
-  context: createMockContext(),
+  spellsTried: ["rewind_uncommitted_changes"],
+  spellsSucceeded: status !== "unresolved" ? ["rewind_uncommitted_changes"] : [],
+  summary: "Test outcome",
 });
 
 // ============================================================================
