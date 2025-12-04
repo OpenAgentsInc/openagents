@@ -22,7 +22,6 @@ import {
   createError,
   createGoldenLoopSequence,
   createSubtaskInfo,
-  createSubagentResult,
 } from "../../fixtures/hud-messages.js";
 
 test.describe("Integration Tests - Golden Loop (E1-E5)", () => {

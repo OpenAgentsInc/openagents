@@ -17,13 +17,11 @@
 import { test, expect } from "../../fixtures/mainview.fixture.js";
 import {
   createSessionStart,
-  createSessionComplete,
   createTaskSelected,
   createTaskDecomposed,
   createSubtaskInfo,
   createSubtaskStart,
   createSubtaskComplete,
-  createSubtaskFailed,
   createVerificationStart,
   createVerificationComplete,
   createCommitCreated,
@@ -43,6 +41,14 @@ import type {
 test.describe.configure({ mode: "serial" });
 
 test.describe("Real-Time Updates (C1-C10)", () => {
+  // Clear message state before each test to prevent cross-test pollution
+  test.beforeEach(async ({ page }) => {
+    await page.evaluate(() => {
+      (window as unknown as { __hudMessages: unknown[] }).__hudMessages = [];
+      (window as unknown as { __errorCount: number }).__errorCount = 0;
+    });
+  });
+
   test("C1/HUD-030: session_start triggers UI refresh", async ({
     mainviewPage,
     hudInjector,
@@ -117,8 +123,6 @@ test.describe("Real-Time Updates (C1-C10)", () => {
       title: "Parent Task",
     }));
     await mainviewPage.waitForRender(200);
-
-    const nodeCountBefore = await mainviewPage.getNodeCount();
 
     // Send task_decomposed with subtasks
     const subtasks = [
@@ -272,7 +276,7 @@ test.describe("Real-Time Updates (C1-C10)", () => {
       "executing_subtask",
       "verifying",
       "committing",
-      "complete",
+      "done",
     ] as const;
 
     for (const phase of phases) {
