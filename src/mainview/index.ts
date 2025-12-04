@@ -1100,6 +1100,7 @@ const zoomLevel = document.getElementById("zoom-level")!
 const tbSuitePathInput = document.getElementById("tb-suite-path") as HTMLInputElement
 const tbLoadBtn = document.getElementById("tb-load-btn")!
 const tbStartBtn = document.getElementById("tb-start-btn")!
+const tbRandomBtn = document.getElementById("tb-random-btn")!
 const tbStopBtn = document.getElementById("tb-stop-btn")!
 const tbStatus = document.getElementById("tb-status")!
 const tbTaskSelector = document.getElementById("tb-task-selector")!
@@ -1110,6 +1111,7 @@ const tbSelectNone = document.getElementById("tb-select-none")!
 
 // TB UI State
 let selectedTaskIds: Set<string> = new Set()
+let loadedSuite: TBSuiteInfo | null = null
 
 // Initialize canvas state with viewport size
 let canvasState = initialCanvasState(window.innerWidth, window.innerHeight)
@@ -1349,6 +1351,7 @@ function updateTBStatus(status: string, className?: string): void {
 
 function updateTBButtons(isRunning: boolean): void {
   (tbStartBtn as HTMLButtonElement).disabled = isRunning
+  ;(tbRandomBtn as HTMLButtonElement).disabled = isRunning
   ;(tbStopBtn as HTMLButtonElement).disabled = !isRunning
   ;(tbLoadBtn as HTMLButtonElement).disabled = isRunning
   tbSuitePathInput.disabled = isRunning
@@ -1395,12 +1398,17 @@ async function handleLoadSuite(): Promise<void> {
   try {
     updateTBStatus("Loading...")
     const suite = await loadTBSuiteRpc(suitePath)
+    loadedSuite = suite  // Store for random task selection
     renderTaskList(suite)
     updateTBStatus("Ready")
+    // Enable random button when suite is loaded
+    ;(tbRandomBtn as HTMLButtonElement).disabled = false
   } catch (err) {
     console.error("[TB] Load failed:", err)
     updateTBStatus("Load failed", "error")
+    loadedSuite = null
     tbTaskSelector.classList.add("hidden")
+    ;(tbRandomBtn as HTMLButtonElement).disabled = true
   }
 }
 
@@ -1449,6 +1457,52 @@ async function handleStopRun(): Promise<void> {
   }
 }
 
+async function handleStartRandomTask(): Promise<void> {
+  const suitePath = tbSuitePathInput.value.trim()
+  if (!suitePath) {
+    updateTBStatus("No path", "error")
+    return
+  }
+
+  // Load suite if not already loaded
+  if (!loadedSuite) {
+    try {
+      updateTBStatus("Loading...")
+      loadedSuite = await loadTBSuiteRpc(suitePath)
+    } catch (err) {
+      console.error("[TB] Load failed:", err)
+      updateTBStatus("Load failed", "error")
+      return
+    }
+  }
+
+  if (loadedSuite.tasks.length === 0) {
+    updateTBStatus("No tasks", "error")
+    return
+  }
+
+  // Pick a random task
+  const randomIndex = Math.floor(Math.random() * loadedSuite.tasks.length)
+  const randomTask = loadedSuite.tasks[randomIndex]
+  console.log(`[TB] Starting random task: ${randomTask.name} (${randomTask.id})`)
+
+  try {
+    updateTBStatus(`Random: ${randomTask.name}`, "running")
+    updateTBButtons(true)
+
+    await startTBRunRpc({
+      suitePath,
+      taskIds: [randomTask.id],
+    })
+
+    updateTBStatus("Running...", "running")
+  } catch (err) {
+    console.error("[TB] Start random failed:", err)
+    updateTBStatus("Start failed", "error")
+    updateTBButtons(false)
+  }
+}
+
 function handleSelectAll(): void {
   const checkboxes = tbTaskList.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
   checkboxes.forEach(cb => {
@@ -1470,6 +1524,7 @@ function handleSelectNone(): void {
 // Wire up button event handlers
 tbLoadBtn.addEventListener("click", handleLoadSuite)
 tbStartBtn.addEventListener("click", handleStartRun)
+tbRandomBtn.addEventListener("click", handleStartRandomTask)
 tbStopBtn.addEventListener("click", handleStopRun)
 tbSelectAll.addEventListener("click", handleSelectAll)
 tbSelectNone.addEventListener("click", handleSelectNone)
@@ -1516,6 +1571,15 @@ document.addEventListener("keydown", (e) => {
     return
   }
 
+  // Ctrl+R: Start random task
+  if (e.ctrlKey && e.key === "r") {
+    e.preventDefault()
+    if (!tbState.isRunning) {
+      handleStartRandomTask()
+    }
+    return
+  }
+
   // Ctrl+X: Stop run (when not in input)
   if (e.ctrlKey && e.key === "x") {
     e.preventDefault()
@@ -1542,6 +1606,7 @@ declare global {
       stopRun: typeof stopTBRunRpc
       handleLoad: typeof handleLoadSuite
       handleStart: typeof handleStartRun
+      handleRandom: typeof handleStartRandomTask
       handleStop: typeof handleStopRun
       setBaseline: typeof setBaseline
       clearBaseline: typeof clearBaseline
@@ -1555,13 +1620,14 @@ window.TB = {
   stopRun: stopTBRunRpc,
   handleLoad: handleLoadSuite,
   handleStart: handleStartRun,
+  handleRandom: handleStartRandomTask,
   handleStop: handleStopRun,
   setBaseline,
   clearBaseline,
 }
 
 console.log("Flow HUD loaded with WebSocket support")
-console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
+console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+R (random), Ctrl+X (stop)")
 console.log("Comparison: Shift+click run to set baseline, Ctrl+B to clear")
 
 // ============================================================================

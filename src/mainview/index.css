@@ -436,6 +436,17 @@ body {
   border-color: #ef4444;
 }
 
+.tb-buttons button.secondary {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
+
+.tb-buttons button.secondary:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: #3b82f6;
+}
+
 /* Task Selector */
 .tb-task-selector {
   border-top: 1px solid var(--border-subtle);
