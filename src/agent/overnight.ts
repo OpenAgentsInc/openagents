@@ -60,6 +60,7 @@ import { loadContextFiles } from "../cli/context-loader.js";
 import { APMCollector } from "./apm.js";
 import { parseProjectConversations } from "./apm-parser.js";
 import { runParallelFromConfig } from "./orchestrator/parallel-runner.js";
+import { makeReflectionService } from "./orchestrator/reflection/index.js";
 
 /**
  * Generate a descriptive commit message based on orchestrator state
@@ -767,6 +768,12 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
       }
     };
 
+    const reflectionService = makeReflectionService({
+      openagentsDir,
+      cwd: config.workDir,
+      config: projectConfig.reflexion,
+    });
+
     // Run orchestrator loop for multiple tasks
     for (let taskNum = 0; taskNum < config.maxTasks; taskNum++) {
       log(`\n${"=".repeat(60)}`);
@@ -815,6 +822,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         emitHud,
         // Pass additional context if --load-context was specified
         ...(additionalContext ? { additionalContext } : {}),
+        reflectionService,
+        reflexionConfig: projectConfig.reflexion,
       };
 
       const state: PartialOrchestratorState = yield* runOrchestrator(orchestratorConfig, emit).pipe(
