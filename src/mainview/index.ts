@@ -40,6 +40,11 @@ import {
   isTBTaskProgress,
   isTBTaskOutput,
   isTBTaskComplete,
+  isContainerStart,
+  isContainerOutput,
+  isContainerComplete,
+  isContainerError,
+  type ContainerStreamType,
 } from "../hud/protocol.js"
 
 // ============================================================================
@@ -247,6 +252,47 @@ function updateViewModeUI(): void {
 
 // Initialize view mode on load
 setTimeout(updateViewModeUI, 0)
+
+// ============================================================================
+// Container Pane State
+// ============================================================================
+
+interface ContainerOutputLine {
+  text: string
+  stream: ContainerStreamType
+  sequence: number
+}
+
+interface ContainerPane {
+  executionId: string
+  image: string
+  command: string[]
+  context: string
+  sandboxed: boolean
+  workdir: string
+  status: "running" | "completed" | "error"
+  exitCode?: number
+  durationMs?: number
+  outputLines: ContainerOutputLine[]
+  startedAt: string
+}
+
+const containerPanes = new Map<string, ContainerPane>()
+const MAX_LINES_PER_PANE = 500
+const MAX_VISIBLE_PANES = 10
+
+/**
+ * Throttled container pane render (avoid excessive DOM updates)
+ */
+let containerRenderPending = false
+function throttledContainerRender(): void {
+  if (containerRenderPending) return
+  containerRenderPending = true
+  requestAnimationFrame(() => {
+    renderContainerPanes()
+    containerRenderPending = false
+  })
+}
 
 function getTBStatusColor(status: TBTaskStatus): string {
   switch (status) {
@@ -881,6 +927,65 @@ function handleHudMessage(message: HudMessage): void {
         tbState.comparison = comp
         render()
       })
+    }
+    return
+  }
+
+  // Handle Container execution messages
+  if (isContainerStart(message)) {
+    containerPanes.set(message.executionId, {
+      executionId: message.executionId,
+      image: message.image,
+      command: message.command,
+      context: message.context,
+      sandboxed: message.sandboxed,
+      workdir: message.workdir,
+      status: "running",
+      outputLines: [],
+      startedAt: message.timestamp,
+    })
+    renderContainerPanes()
+    return
+  }
+
+  if (isContainerOutput(message)) {
+    const pane = containerPanes.get(message.executionId)
+    if (pane) {
+      pane.outputLines.push({
+        text: message.text,
+        stream: message.stream,
+        sequence: message.sequence,
+      })
+      // Trim if too large
+      if (pane.outputLines.length > MAX_LINES_PER_PANE) {
+        pane.outputLines = pane.outputLines.slice(-MAX_LINES_PER_PANE)
+      }
+      throttledContainerRender()
+    }
+    return
+  }
+
+  if (isContainerComplete(message)) {
+    const pane = containerPanes.get(message.executionId)
+    if (pane) {
+      pane.status = "completed"
+      pane.exitCode = message.exitCode
+      pane.durationMs = message.durationMs
+      renderContainerPanes()
+    }
+    return
+  }
+
+  if (isContainerError(message)) {
+    const pane = containerPanes.get(message.executionId)
+    if (pane) {
+      pane.status = "error"
+      pane.outputLines.push({
+        text: `[ERROR] ${message.reason}: ${message.error}`,
+        stream: "stderr",
+        sequence: pane.outputLines.length,
+      })
+      renderContainerPanes()
     }
     return
   }
@@ -1629,6 +1734,84 @@ window.TB = {
 console.log("Flow HUD loaded with WebSocket support")
 console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+R (random), Ctrl+X (stop)")
 console.log("Comparison: Shift+click run to set baseline, Ctrl+B to clear")
+
+// ============================================================================
+// Container Panes Rendering
+// ============================================================================
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}
+
+function renderContainerPanes(): void {
+  const container = document.getElementById("container-panes")
+  if (!container) return
+
+  // Get panes sorted by start time (most recent first)
+  const panes = Array.from(containerPanes.values())
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .slice(0, MAX_VISIBLE_PANES)
+
+  if (panes.length === 0) {
+    container.classList.add("hidden")
+    return
+  }
+
+  container.classList.remove("hidden")
+
+  container.innerHTML = panes.map(pane => {
+    const statusClass = pane.status
+    const statusIcon = pane.status === "running" ? "▶"
+      : pane.status === "completed" && pane.exitCode === 0 ? "✓"
+      : "✗"
+    const statusColor = pane.status === "running" ? "#3b82f6"
+      : pane.exitCode === 0 ? "#22c55e" : "#ef4444"
+
+    const badge = pane.sandboxed
+      ? '<span class="container-badge sandboxed">sandbox</span>'
+      : '<span class="container-badge host">host</span>'
+
+    const duration = pane.durationMs
+      ? `<span class="container-duration">${(pane.durationMs / 1000).toFixed(1)}s</span>`
+      : ""
+
+    const exitCode = pane.exitCode !== undefined
+      ? `<span class="container-exit-code ${pane.exitCode === 0 ? 'success' : 'failure'}">${pane.exitCode}</span>`
+      : ""
+
+    // Render output lines (last 100)
+    const outputHtml = pane.outputLines.slice(-100).map(line => {
+      const escaped = escapeHtml(line.text)
+      const streamClass = line.stream === "stderr" ? "stderr" : "stdout"
+      return `<div class="container-output-line ${streamClass}">${escaped}</div>`
+    }).join("")
+
+    // Truncate command display
+    const cmdDisplay = pane.command.join(" ").slice(0, 60) + (pane.command.join(" ").length > 60 ? "..." : "")
+
+    return `
+      <div class="container-pane ${statusClass}" data-execution-id="${pane.executionId}">
+        <div class="container-pane-header">
+          <span class="container-status" style="color: ${statusColor}">${statusIcon}</span>
+          <span class="container-image">${pane.image}</span>
+          ${badge}
+          ${duration}
+          ${exitCode}
+        </div>
+        <div class="container-pane-command" title="${escapeHtml(pane.command.join(" "))}">${escapeHtml(cmdDisplay)}</div>
+        <div class="container-pane-output">${outputHtml}</div>
+      </div>
+    `
+  }).join("")
+
+  // Auto-scroll each pane's output
+  container.querySelectorAll(".container-pane-output").forEach(el => {
+    (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight
+  })
+}
 
 // ============================================================================
 // TB Output Viewer

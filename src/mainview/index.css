@@ -920,3 +920,243 @@ body {
   border-radius: 2px;
   margin-left: 8px;
 }
+
+/* ============================================================================
+   Container Panes - Multi-pane output streaming for parallel containers
+   ============================================================================ */
+
+.container-panes-grid {
+  position: fixed;
+  bottom: 70px;
+  left: 20px;
+  right: 300px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  z-index: 90;
+  padding: 8px;
+}
+
+.container-panes-grid.hidden {
+  display: none;
+}
+
+.container-pane {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 300px;
+}
+
+.container-pane.sandboxed {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.container-pane.host {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.container-pane.completed {
+  opacity: 0.7;
+}
+
+.container-pane.error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.container-pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.container-pane.sandboxed .container-pane-header {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.container-pane.host .container-pane-header {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.container-pane-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.container-pane.sandboxed .container-pane-title {
+  color: #22c55e;
+}
+
+.container-pane.host .container-pane-title {
+  color: #f59e0b;
+}
+
+.container-pane-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.container-pane-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.container-pane-badge.sandboxed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.container-pane-badge.host {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.container-pane-status {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.container-pane-status.running {
+  color: #3b82f6;
+}
+
+.container-pane-status.completed {
+  color: #22c55e;
+}
+
+.container-pane-status.error {
+  color: #ef4444;
+}
+
+.container-pane-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: "Berkeley Mono", monospace;
+  line-height: 1.4;
+}
+
+/* Output lines with stream type differentiation */
+.container-output-line {
+  margin: 0;
+  padding: 1px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.container-output-line.stdout {
+  color: #e5e5e5;
+}
+
+.container-output-line.stderr {
+  color: #f87171;
+}
+
+/* Container pane header elements */
+.container-status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.container-image {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.container-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.container-badge.sandboxed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.container-badge.host {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.container-duration {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.container-exit-code {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.container-exit-code.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.container-exit-code.failure {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.container-pane-command {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Close button for completed panes */
+.container-pane-close {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.container-pane:hover .container-pane-close {
+  opacity: 1;
+}
+
+.container-pane-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
