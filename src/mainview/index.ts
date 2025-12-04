@@ -257,9 +257,32 @@ function renderTBWidget(): string {
 // RPC Schema for HUD Messages (must match src/bun/index.ts)
 // ============================================================================
 
+interface TBRunOptions {
+  suitePath: string
+  taskIds?: string[]
+  timeout?: number
+  maxTurns?: number
+  outputDir?: string
+}
+
+interface TBSuiteInfo {
+  name: string
+  version: string
+  tasks: Array<{
+    id: string
+    name: string
+    category: string
+    difficulty: string
+  }>
+}
+
 interface HudRpcSchema {
   bun: {
-    requests: {};
+    requests: {
+      loadTBSuite: (suitePath: string) => Promise<TBSuiteInfo>
+      startTBRun: (options: TBRunOptions) => Promise<{ runId: string }>
+      stopTBRun: () => Promise<{ stopped: boolean }>
+    };
     messages: {
       hudMessage: HudMessage;
     };
@@ -634,4 +657,50 @@ const rpc = Electroview.defineRPC<HudRpcSchema>({
 const electrobunInstance = new Electrobun.Electroview({ rpc })
 void electrobunInstance // Keep reference to avoid GC
 
+// ============================================================================
+// TB Run Controls (exposed for UI interaction)
+// ============================================================================
+
+/** Load a TB suite and populate the task list */
+async function loadTBSuite(suitePath: string): Promise<TBSuiteInfo> {
+  console.log("[TB] Loading suite:", suitePath)
+  const suiteInfo = await rpc.request.loadTBSuite(suitePath)
+  console.log("[TB] Suite loaded:", suiteInfo.name, `(${suiteInfo.tasks.length} tasks)`)
+  return suiteInfo
+}
+
+/** Start a TB run with the given options */
+async function startTBRun(options: TBRunOptions): Promise<string> {
+  console.log("[TB] Starting run:", options)
+  const { runId } = await rpc.request.startTBRun(options)
+  console.log("[TB] Run started:", runId)
+  return runId
+}
+
+/** Stop the current TB run */
+async function stopTBRun(): Promise<boolean> {
+  console.log("[TB] Stopping run")
+  const { stopped } = await rpc.request.stopTBRun()
+  console.log("[TB] Stopped:", stopped)
+  return stopped
+}
+
+// Expose for console access during development
+declare global {
+  interface Window {
+    TB: {
+      loadSuite: typeof loadTBSuite
+      startRun: typeof startTBRun
+      stopRun: typeof stopTBRun
+    }
+  }
+}
+
+window.TB = {
+  loadSuite: loadTBSuite,
+  startRun: startTBRun,
+  stopRun: stopTBRun,
+}
+
 console.log("Flow HUD loaded with WebSocket support")
+console.log("TB controls available: window.TB.loadSuite(), window.TB.startRun(), window.TB.stopRun()")
