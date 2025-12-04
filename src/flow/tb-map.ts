@@ -203,6 +203,7 @@ function buildRunTimelineNode(
     }
   }
 
+  const isRunning = state.currentRunId !== null;
   return {
     id: "tb-run-timeline" as NodeId,
     type: "tb-timeline",
@@ -210,6 +211,7 @@ function buildRunTimelineNode(
     direction: "horizontal",
     children: runNodes,
     metadata: {
+      status: isRunning ? "busy" : "idle" as Status,
       runCount: state.runs.length,
     },
   };
@@ -218,13 +220,13 @@ function buildRunTimelineNode(
 /**
  * Build a controls placeholder node
  */
-function buildTBControlsNode(): FlowNode {
+function buildTBControlsNode(isRunning: boolean): FlowNode {
   return {
     id: "tb-controls-node" as NodeId,
     type: "tb-controls",
     label: "Terminal-Bench",
     metadata: {
-      status: "idle" as Status,
+      status: isRunning ? "busy" : "idle" as Status,
     },
   };
 }
@@ -254,7 +256,8 @@ export function buildTBFlowTree(
   state: TBFlowState,
   runDetails: ReadonlyMap<string, TBRunDetails> = new Map()
 ): FlowNode {
-  const controlsNode = buildTBControlsNode();
+  const isRunning = state.currentRunId !== null;
+  const controlsNode = buildTBControlsNode(isRunning);
   const timelineNode = buildRunTimelineNode(state, runDetails);
 
   return {
@@ -264,7 +267,8 @@ export function buildTBFlowTree(
     direction: "vertical",
     children: [controlsNode, timelineNode],
     metadata: {
-      isRunning: state.currentRunId !== null,
+      status: isRunning ? "busy" : "idle" as Status,
+      isRunning,
       currentRunId: state.currentRunId,
       totalRuns: state.runs.length,
     },
