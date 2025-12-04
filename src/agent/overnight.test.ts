@@ -436,6 +436,44 @@ Started: ${ts}
       expect(content).toContain("✓ Task 1 completed");
     });
 
+    test("run log lands in date folder with task/tests/commit info", () => {
+      const { dir } = createTestRepo("log-task-tests-commit");
+      const sessionId = "orchestrator-5555";
+      const taskId = "oa-task123";
+      const logsDir = path.join(dir, "docs", "logs", getDateFolder());
+      fs.mkdirSync(logsDir, { recursive: true });
+
+      const ts = new Date().toISOString();
+      const timePrefix = getTimePrefix();
+      const logPath = path.join(logsDir, `${timePrefix}-overnight-${sessionId}.md`);
+
+      const logContent = `# Overnight Agent Log
+Session: ${sessionId}
+Started: ${ts}
+
+[${ts}] TASK CYCLE 1/1
+[${ts}] [${ts}] Task selected: ${taskId} - Sample task
+[${ts}] [${ts}] Running: bun run typecheck
+[${ts}] [${ts}] PASS: bun run typecheck
+[${ts}] [${ts}] Running: bun test
+[${ts}] [${ts}] PASS: bun test
+[${ts}] [${ts}] Commit: deadbeef - Sample task
+[${ts}] [${ts}] Session SUCCESS: Completed task ${taskId}: Sample task
+`;
+
+      fs.writeFileSync(logPath, logContent);
+
+      expect(fs.existsSync(logPath)).toBe(true);
+      expect(logPath).toContain(getDateFolder());
+
+      const content = fs.readFileSync(logPath, "utf-8");
+      expect(content).toContain(`Task selected: ${taskId}`);
+      expect(content).toContain("PASS: bun run typecheck");
+      expect(content).toContain("PASS: bun test");
+      expect(content).toContain("Commit:");
+      expect(content).toContain("Session SUCCESS:");
+    });
+
     test("run log records test failures correctly", () => {
       const { dir } = createTestRepo("log-test-failure");
 
