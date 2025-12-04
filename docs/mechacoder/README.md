@@ -44,6 +44,10 @@ The **task system specification**. Defines:
 - Dependency types (`blocks`, `related`, `parent-child`, `discovered-from`)
 - CLI interface for external agents (`bun run tasks:*`)
 
+### Research & Architecture
+
+- [Durable Execution Lessons](../research/articles/durable-execution-lessons.md) - Analysis of durable execution patterns (Temporal, Restate, DBOS) and how they apply to MechaCoder. Covers idempotency, checkpointing, crash recovery, and saga patterns. (Epic: `oa-850dd5`)
+
 ### Maintenance
 
 - `bun run health` runs the configured typecheck/test/e2e commands from `.openagents/project.json`. Use `--json` for machine-readable output; non-zero exit when any command fails.

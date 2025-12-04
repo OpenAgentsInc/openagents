@@ -1,0 +1,28 @@
+{
+  "taskId": "oa-850dd5",
+  "taskTitle": "Create epic: Durable execution patterns for MechaCoder",
+  "subtasks": [
+    {
+      "id": "oa-850dd5-sub-001",
+      "description": "Implement: Create epic: Durable execution patterns for MechaCoder\n\n## Overview\n\nThis epic tracks the implementation of durable execution patterns across MechaCoder, inspired by systems like Temporal, Restate, and DBOS.\n\nThe goal is to make MechaCoder more resilient to crashes and restarts by:\n1. Making operations idempotent\n2. Adding checkpoints for recovery\n3. Persisting step results for replay\n4. Using the saga pattern for automatic rollback\n\n## Background\n\nAnalysis of durable execution systems revealed several patterns applicable to MechaCoder:\n\n1. **Idempotency**: Side effects must be safe to retry\n2. **Checkpointing**: Save state at key points for recovery\n3. **Memoization**: Store step results to replay on recovery\n4. **Sagas**: Automatic compensation when steps fail\n5. **Durable promises**: Write-once containers that persist\n\n## Child Tasks\n\n### P0 - Critical\n- `oa-5b3d83` - Fix commit/task-update race condition with two-phase commit\n\n### P1 - High Priority\n- `oa-c3d1a1` - Make mark_task_blocked_with_followup spell idempotent\n- `oa-ebfdaa` - Make update_progress_with_guidance spell idempotent\n- `oa-254afa` - Add orchestrator phase checkpoints for crash recovery\n- `oa-59c504` - Add idempotency keys to usage record storage\n\n### P2 - Medium Priority\n- `oa-23428c` - Add Healer invocation deduplication in HealerService\n- `oa-5df6be` - Add step result memoization for non-deterministic operations\n- `oa-a1d5b1` - Extend ATIF trajectories to support recovery replay\n- `oa-013645` - Add durable coordination for parallel runner worktree merges\n\n### P3 - Lower Priority\n- `oa-4cce8f` - Add orchestrator checkpoints for crash recovery (Healer-specific)\n- `oa-c83546` - Add ATIF trajectory persistence for Healer replay\n- Saga pattern for orchestrator (this task)\n\n### P4 - Documentation\n- `oa-26fa00` - Document local vs remote context for subagent operations\n- Comprehensive durable execution lessons document (docs/research/)\n\n## Success Criteria\n\n- [ ] Orchestrator can recover from crash at any phase\n- [ ] No duplicate commits, tasks, or usage records after crash recovery\n- [ ] Healer spells are idempotent\n- [ ] Parallel runner can resume after coordinator crash\n- [ ] ATIF trajectories serve both observability and recovery\n- [ ] Architecture documented for future development\n\n## References\n\n- Jack Vanlightly's \"Demystifying Determinism in Durable Execution\"\n- Jack Vanlightly's \"The Durable Function Tree\"\n- Anthropic's \"Effective Harnesses for Long-Running Agents\"\n- docs/research/durable-execution-lessons.md (to be created)",
+      "status": "done",
+      "startedAt": "2025-12-04T22:01:56.117Z",
+      "claudeCode": {
+        "sessionId": "9dd8fa33-5d90-4581-a70b-1aec49d98876"
+      },
+      "completedAt": "2025-12-04T22:05:21.440Z"
+    },
+    {
+      "id": "oa-850dd5-sub-002",
+      "description": "Document: Create epic: Durable execution patterns for MechaCoder\n\nAdd appropriate documentation/comments.",
+      "status": "done",
+      "startedAt": "2025-12-04T22:05:21.441Z",
+      "claudeCode": {
+        "sessionId": "e9b0ce6e-b5fa-46f7-b820-9030fa6b89fb"
+      },
+      "completedAt": "2025-12-04T22:07:12.374Z"
+    }
+  ],
+  "createdAt": "2025-12-04T22:01:56.116Z",
+  "updatedAt": "2025-12-04T22:01:56.116Z"
+}
