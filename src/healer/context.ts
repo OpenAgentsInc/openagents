@@ -209,8 +209,8 @@ export const buildHealerContext = (
     // Read progress file
     const progressMd = yield* Effect.tryPromise({
       try: () => readProgressFile(projectRoot),
-      catch: () => null as string | null,
-    });
+      catch: () => new Error("Failed to read progress file"),
+    }).pipe(Effect.orElseSucceed(() => null));
 
     // Extract error output
     const errorOutput = getErrorOutput(trigger.event);
@@ -230,20 +230,18 @@ export const buildHealerContext = (
     const context: HealerContext = {
       projectRoot,
       projectConfig: config,
-      task: state.task ?? undefined,
-      subtask,
       sessionId: state.sessionId,
-      runId: undefined, // TODO: Get from orchestrator
-      trajectory: undefined, // TODO: Load from ATIF service
       relatedTrajectories: [],
       progressMd,
       gitStatus,
       heuristics,
       triggerEvent: trigger.event,
       orchestratorState: state,
-      initFailureType: initResult?.failureType,
-      errorOutput: errorOutput ?? undefined,
       counters,
+      ...(state.task && { task: state.task }),
+      ...(subtask && { subtask }),
+      ...(initResult?.failureType && { initFailureType: initResult.failureType }),
+      ...(errorOutput && { errorOutput }),
     };
 
     return context;
