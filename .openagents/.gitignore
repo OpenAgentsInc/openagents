@@ -1,3 +1,4 @@
 # MechaCoder session and run logs (local only)
 sessions/
 run-logs/
+usage.jsonl

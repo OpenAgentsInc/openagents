@@ -9,6 +9,7 @@ import type { Task, SandboxConfig, ProjectConfig } from "../../tasks/index.js";
 import type { Tool } from "../../tools/schema.js";
 import type { HealerOutcome, HealerCounters } from "../../healer/index.js";
 import type { Effect } from "effect";
+import type { UsageRecord } from "../../usage/types.js";
 
 // ============================================================================
 // Subtask Types
@@ -271,6 +272,7 @@ export type OrchestratorEvent =
   | { type: "push_complete"; branch: string }
   | { type: "task_updated"; task: Task; status: string }
   | { type: "progress_written"; path: string }
+  | { type: "usage_recorded"; usage: UsageRecord }
   | { type: "session_complete"; success: boolean; summary: string }
   | { type: "error"; phase: OrchestratorPhase; error: string };
 

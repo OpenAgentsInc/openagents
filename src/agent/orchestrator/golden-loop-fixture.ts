@@ -71,6 +71,7 @@ export const createGoldenLoopFixture = (options: GoldenLoopFixtureOptions = {}):
     ),
   );
   fs.writeFileSync(path.join(oaDir, "tasks.jsonl"), `${JSON.stringify(task)}\n`);
+  fs.writeFileSync(path.join(oaDir, ".gitignore"), "sessions/\nrun-logs/\nusage.jsonl\n");
 
   if (options.setup) {
     options.setup(dir, oaDir);

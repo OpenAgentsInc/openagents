@@ -181,6 +181,22 @@ export const SAMPLE_GOLDEN_LOOP_EVENTS: OrchestratorEvent[] = [
   { type: "progress_written", path: ".openagents/progress.md" },
 
   // Session end
+  {
+    type: "usage_recorded",
+    usage: {
+      sessionId: "session-123",
+      projectId: "openagents",
+      timestamp: "2025-12-03T10:10:00Z",
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 10,
+      cacheCreationTokens: 5,
+      totalCostUsd: 0.12,
+      subtasks: 2,
+      durationMs: 5000,
+      agent: "claude-code",
+    },
+  },
   { type: "session_complete", success: true, summary: "Completed task oa-test123" },
 ];
 
@@ -209,6 +225,7 @@ export const FORWARDED_EVENT_TYPES = [
   "verification_complete",
   "commit_created",
   "push_complete",
+  "usage_recorded",
   "error",
 ] as const;
 
@@ -342,6 +359,28 @@ describe("orchestratorEventToHudMessage", () => {
       expect(msg).not.toBeNull();
       expect(msg?.type).toBe("verification_complete");
       expect((msg as any).passed).toBe(true);
+    });
+
+    test("usage_recorded produces HudMessage", () => {
+      const event: OrchestratorEvent = {
+        type: "usage_recorded",
+        usage: {
+          sessionId: "session-1",
+          projectId: "proj",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 1,
+          cacheCreationTokens: 2,
+          totalCostUsd: 0.05,
+          subtasks: 2,
+          durationMs: 1000,
+          agent: "claude-code",
+        },
+      };
+      const msg = orchestratorEventToHudMessage(event);
+      expect(msg?.type).toBe("usage_update");
+      expect((msg as any).usage.totalCostUsd).toBeCloseTo(0.05);
     });
 
     test("commit_created produces HudMessage", () => {

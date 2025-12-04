@@ -158,6 +158,24 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
       return { type: "subtask_failed", subtask, error: event.error };
     }
 
+    case "usage_recorded":
+      return {
+        type: "usage_update",
+        usage: {
+          sessionId: event.usage.sessionId,
+          projectId: event.usage.projectId,
+          timestamp: event.usage.timestamp,
+          inputTokens: event.usage.inputTokens,
+          outputTokens: event.usage.outputTokens,
+          cacheReadTokens: event.usage.cacheReadTokens,
+          cacheCreationTokens: event.usage.cacheCreationTokens,
+          totalCostUsd: event.usage.totalCostUsd,
+          subtasks: event.usage.subtasks,
+          durationMs: event.usage.durationMs,
+          agent: event.usage.agent,
+        },
+      };
+
     case "verification_start":
       return { type: "verification_start", command: event.command };
 

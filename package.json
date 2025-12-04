@@ -41,6 +41,7 @@
     "session:show": "bun src/sessions/cli.ts show",
     "session:search": "bun src/sessions/cli.ts search",
     "session:by-task": "bun src/sessions/cli.ts by-task",
+    "usage:summary": "bun src/usage/cli.ts",
     "e2e:server": "bun run e2e/test-server.ts",
     "e2e:test": "bunx playwright test --config e2e/playwright.config.ts",
     "e2e:test:headed": "HEADED=1 bunx playwright test --config e2e/playwright.config.ts --headed",
