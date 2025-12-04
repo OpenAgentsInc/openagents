@@ -3,9 +3,9 @@
   "version": "0.1.1-golden-loop-v2-demo",
   "description": "Your agent command center",
   "scripts": {
-    "dev": "electrobun build && electrobun dev",
-    "build": "electrobun build",
-    "start": "bun run dev",
+    "dev": "bun run desktop",
+    "build": "bun build --compile src/desktop/main.ts --outfile openagents",
+    "start": "bun run desktop",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
     "test:container": "bun test src/bench/ src/llm/ src/hud/ src/tbench-hud/ src/schemas/ src/tasks/schema.test.ts src/agent/orchestrator/claude-code-subagent.test.ts src/agent/orchestrator/subagent-router.test.ts",
@@ -71,7 +71,6 @@
     "@openrouter/sdk": "0.1.27",
     "diff": "8.0.2",
     "effect": "3.19.8",
-    "electrobun": "0.1.12",
     "smol-toml": "1.5.2",
     "webview-bun": "2.4.0",
     "zod": "3.24.4"
