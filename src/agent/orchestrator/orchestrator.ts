@@ -565,6 +565,26 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           }
           emit({ type: "subtask_failed", subtask, error: result.error || "Unknown error" });
 
+          // Healer: Attempt to fix subtask failures
+          if (config.healerService && config.projectConfig) {
+            const healerOutcome = yield* config.healerService.maybeRun(
+              { type: "subtask_failed", subtask, error: result.error || "Unknown error" },
+              state,
+              config.projectConfig,
+              config.healerCounters ?? createHealerCounters()
+            );
+
+            if (healerOutcome?.status === "resolved") {
+              // Healer fixed the issue! Reset failure count and retry
+              subtask.failureCount = 0;
+              subtask.status = "pending";
+              delete subtask.error;
+              delete subtask.lastFailureReason;
+              // Continue to next iteration to retry this subtask
+              continue;
+            }
+          }
+
           // Check if we've exceeded max consecutive failures
           if (subtask.failureCount >= MAX_CONSECUTIVE_FAILURES) {
             // Mark the parent task as blocked to prevent infinite loops
@@ -639,16 +659,72 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       progress.work.testsPassingAfterWork = verifyResult.passed;
 
       if (!verifyResult.passed) {
-        state.phase = "failed";
-        state.error = "Verification failed";
-        progress.nextSession.blockers = [
-          "Tests or typecheck failed after changes",
-          ...(verifyResult.outputs[0] ? [summarizeOutput(verifyResult.outputs[0]) ?? ""] : []),
-        ].filter(Boolean) as string[];
-        progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
-        writeProgress(openagentsDir, progress);
-        emit({ type: "session_complete", success: false, summary: "Verification failed" });
-        return state;
+        // Healer: Attempt to fix verification failures
+        if (config.healerService && config.projectConfig) {
+          const healerOutcome = yield* config.healerService.maybeRun(
+            {
+              type: "verification_complete",
+              command: verificationCommands.join(" && "),
+              passed: false,
+              output: verifyResult.outputs[0] ?? "",
+            },
+            state,
+            config.projectConfig,
+            config.healerCounters ?? createHealerCounters()
+          );
+
+          if (healerOutcome?.status === "resolved") {
+            // Healer fixed the issue! Re-run verification
+            const retryResult = yield* runVerification(
+              verificationCommands,
+              config.cwd,
+              emit,
+              sandboxRunnerConfig
+            ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
+
+            if (retryResult.passed) {
+              // Verification now passes! Update progress and continue
+              progress.work.testsPassingAfterWork = true;
+              // Continue to commit phase
+            } else {
+              // Still failing after heal - proceed with failure
+              state.phase = "failed";
+              state.error = "Verification failed (after healing attempt)";
+              progress.nextSession.blockers = [
+                "Tests or typecheck failed after changes (healing attempted)",
+                ...(retryResult.outputs[0] ? [summarizeOutput(retryResult.outputs[0]) ?? ""] : []),
+              ].filter(Boolean) as string[];
+              progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
+              writeProgress(openagentsDir, progress);
+              emit({ type: "session_complete", success: false, summary: "Verification failed after healing" });
+              return state;
+            }
+          } else {
+            // Healer didn't resolve or wasn't triggered - proceed with failure
+            state.phase = "failed";
+            state.error = "Verification failed";
+            progress.nextSession.blockers = [
+              "Tests or typecheck failed after changes",
+              ...(verifyResult.outputs[0] ? [summarizeOutput(verifyResult.outputs[0]) ?? ""] : []),
+            ].filter(Boolean) as string[];
+            progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
+            writeProgress(openagentsDir, progress);
+            emit({ type: "session_complete", success: false, summary: "Verification failed" });
+            return state;
+          }
+        } else {
+          // No Healer configured - proceed with failure
+          state.phase = "failed";
+          state.error = "Verification failed";
+          progress.nextSession.blockers = [
+            "Tests or typecheck failed after changes",
+            ...(verifyResult.outputs[0] ? [summarizeOutput(verifyResult.outputs[0]) ?? ""] : []),
+          ].filter(Boolean) as string[];
+          progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
+          writeProgress(openagentsDir, progress);
+          emit({ type: "session_complete", success: false, summary: "Verification failed" });
+          return state;
+        }
       }
 
       // Phase 6: Commit
