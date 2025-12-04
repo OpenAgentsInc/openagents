@@ -147,6 +147,28 @@ interface TBOutputLine {
   timestamp: number
 }
 
+/**
+ * Comparison data between current run and a baseline
+ */
+interface TBComparison {
+  baselineRunId: string
+  baselineSuiteName: string
+  baselineTimestamp: string
+  baselinePassRate: number
+  baselinePassed: number
+  baselineFailed: number
+  baselineTotalDurationMs: number
+  // Deltas (positive = improvement for pass rate, negative = faster for duration)
+  passRateDelta: number
+  passedDelta: number
+  failedDelta: number
+  durationDelta: number
+  // Task-level changes
+  improved: string[]    // task IDs that went from fail->pass
+  regressed: string[]   // task IDs that went from pass->fail
+  unchanged: string[]   // task IDs with same outcome
+}
+
 interface TBState {
   isRunning: boolean
   runId: string | null
@@ -166,6 +188,9 @@ interface TBState {
   // Output streaming
   outputBuffer: TBOutputLine[]
   maxOutputLines: number
+  // Comparison with baseline
+  comparison: TBComparison | null
+  baselineRunId: string | null
 }
 
 let tbState: TBState = {
@@ -186,6 +211,8 @@ let tbState: TBState = {
   totalDurationMs: 0,
   outputBuffer: [],
   maxOutputLines: 500,
+  comparison: null,
+  baselineRunId: null,
 }
 
 // ============================================================================
@@ -230,6 +257,158 @@ function getTBStatusColor(status: TBTaskStatus): string {
     case "running": return "#3b82f6" // Blue
     default: return "#6b7280" // Gray
   }
+}
+
+// ============================================================================
+// TB Comparison Functions
+// ============================================================================
+
+/**
+ * Compute comparison between current run and a baseline run.
+ * Returns comparison data with deltas and task-level changes.
+ */
+async function computeComparison(baselineRunId: string): Promise<TBComparison | null> {
+  try {
+    const details = await rpcRequest.request.loadTBRunDetails(baselineRunId)
+    if (!details) {
+      console.error(`[TB] Baseline run not found: ${baselineRunId}`)
+      return null
+    }
+
+    const baseline = details.meta
+    const baselineTasks = new Map(details.tasks.map(t => [t.id, t.outcome]))
+
+    // Compute task-level changes
+    const improved: string[] = []
+    const regressed: string[] = []
+    const unchanged: string[] = []
+
+    for (const [taskId, task] of tbState.tasks) {
+      const baselineOutcome = baselineTasks.get(taskId)
+      if (!baselineOutcome) continue // New task, skip
+
+      const currentPassed = task.status === "passed"
+      const baselinePassed = baselineOutcome === "success"
+
+      if (currentPassed && !baselinePassed) {
+        improved.push(taskId)
+      } else if (!currentPassed && baselinePassed) {
+        regressed.push(taskId)
+      } else {
+        unchanged.push(taskId)
+      }
+    }
+
+    return {
+      baselineRunId: baseline.runId,
+      baselineSuiteName: baseline.suiteName,
+      baselineTimestamp: baseline.timestamp,
+      baselinePassRate: baseline.passRate,
+      baselinePassed: baseline.passed,
+      baselineFailed: baseline.failed,
+      baselineTotalDurationMs: baseline.totalDurationMs,
+      passRateDelta: tbState.passRate - baseline.passRate,
+      passedDelta: tbState.passed - baseline.passed,
+      failedDelta: tbState.failed - baseline.failed,
+      durationDelta: tbState.totalDurationMs - baseline.totalDurationMs,
+      improved,
+      regressed,
+      unchanged,
+    }
+  } catch (err) {
+    console.error(`[TB] Failed to compute comparison:`, err)
+    return null
+  }
+}
+
+/**
+ * Set baseline for comparison and compute comparison data.
+ */
+async function setBaseline(runId: string): Promise<void> {
+  tbState.baselineRunId = runId
+  tbState.comparison = await computeComparison(runId)
+  render()
+}
+
+/**
+ * Clear comparison baseline.
+ */
+function clearBaseline(): void {
+  tbState.baselineRunId = null
+  tbState.comparison = null
+  render()
+}
+
+/**
+ * Format a delta value with sign and color indicator.
+ */
+function formatDelta(value: number, invert = false): { text: string; color: string } {
+  const improved = invert ? value < 0 : value > 0
+  const sign = value > 0 ? "+" : ""
+  return {
+    text: `${sign}${value.toFixed(1)}`,
+    color: improved ? "#22c55e" : value < 0 ? "#ef4444" : "#6b7280",
+  }
+}
+
+/**
+ * Render comparison widget showing delta from baseline.
+ */
+function renderComparisonWidget(): string {
+  if (!tbState.comparison) return ""
+
+  const comp = tbState.comparison
+  const passRateDelta = formatDelta(comp.passRateDelta * 100) // Convert to percentage
+  const durationDelta = formatDelta(comp.durationDelta / 1000, true) // Convert to seconds, invert (negative is better)
+
+  // Format baseline timestamp
+  const baselineDate = new Date(comp.baselineTimestamp)
+  const baselineStr = baselineDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+
+  return `
+    <g transform="translate(20, 245)" class="tb-comparison-widget">
+      <!-- Background -->
+      <rect x="0" y="0" width="260" height="85" rx="8" ry="8"
+            fill="#141017" stroke="rgba(59, 130, 246, 0.25)" stroke-width="1"/>
+
+      <!-- Header -->
+      <text x="16" y="20" fill="#3b82f6" font-size="12" font-weight="bold" font-family="Berkeley Mono, monospace">
+        vs ${comp.baselineSuiteName} (${baselineStr})
+      </text>
+
+      <!-- Pass rate delta -->
+      <text x="16" y="42" fill="#9ca3af" font-size="11" font-family="Berkeley Mono, monospace">
+        Pass Rate:
+      </text>
+      <text x="90" y="42" fill="${passRateDelta.color}" font-size="11" font-weight="bold" font-family="Berkeley Mono, monospace">
+        ${passRateDelta.text}%
+      </text>
+
+      <!-- Duration delta -->
+      <text x="140" y="42" fill="#9ca3af" font-size="11" font-family="Berkeley Mono, monospace">
+        Time:
+      </text>
+      <text x="180" y="42" fill="${durationDelta.color}" font-size="11" font-weight="bold" font-family="Berkeley Mono, monospace">
+        ${durationDelta.text}s
+      </text>
+
+      <!-- Task changes -->
+      <text x="16" y="62" fill="#22c55e" font-size="10" font-family="Berkeley Mono, monospace">
+        ▲ ${comp.improved.length} improved
+      </text>
+      <text x="100" y="62" fill="#ef4444" font-size="10" font-family="Berkeley Mono, monospace">
+        ▼ ${comp.regressed.length} regressed
+      </text>
+      <text x="195" y="62" fill="#6b7280" font-size="10" font-family="Berkeley Mono, monospace">
+        = ${comp.unchanged.length}
+      </text>
+
+      <!-- Click hint -->
+      <text x="16" y="78" fill="#4b5563" font-size="9" font-family="Berkeley Mono, monospace">
+        Click for details • Ctrl+B to clear
+      </text>
+    </g>
+  `
 }
 
 function renderTBWidget(): string {
@@ -541,6 +720,10 @@ function handleHudMessage(message: HudMessage): void {
 
   // Handle Terminal-Bench messages
   if (isTBRunStart(message)) {
+    // Preserve baseline for comparison across runs
+    const preservedBaseline = tbState.baselineRunId
+    const preservedComparison = tbState.comparison
+
     tbState = {
       isRunning: true,
       runId: message.runId,
@@ -565,6 +748,9 @@ function handleHudMessage(message: HudMessage): void {
       totalDurationMs: 0,
       outputBuffer: [],
       maxOutputLines: 500,
+      // Preserve baseline so user can compare current run against it
+      baselineRunId: preservedBaseline,
+      comparison: preservedComparison,
     }
     // Sync flow state with updated tbState
     syncTBFlowWithState()
@@ -689,6 +875,13 @@ function handleHudMessage(message: HudMessage): void {
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = true
     // Reload run history to include the completed run
     void refreshTBLayout()
+    // Recompute comparison if baseline is set
+    if (tbState.baselineRunId) {
+      void computeComparison(tbState.baselineRunId).then(comp => {
+        tbState.comparison = comp
+        render()
+      })
+    }
     return
   }
 
@@ -930,12 +1123,14 @@ function render(): void {
     const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG)
     const apmOverlay = renderAPMWidget()
     const tbOverlay = renderTBWidget()
-    svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay
+    const comparisonOverlay = renderComparisonWidget()
+    svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay + comparisonOverlay
   } else {
-    // TB view: TB flow tree (run history nodes) on grid canvas + TB widget
+    // TB view: TB flow tree (run history nodes) on grid canvas + TB widget + comparison
     const tbFlowGroup = renderFlowSVG(tbLayout, canvasState, DEFAULT_RENDER_CONFIG)
     const tbOverlay = renderTBWidget()
-    svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay
+    const comparisonOverlay = renderComparisonWidget()
+    svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay + comparisonOverlay
   }
 
   // Update zoom display
@@ -996,7 +1191,7 @@ container.addEventListener("wheel", (e) => {
   })
 }, { passive: false })
 
-// Click handler for node interactions (TB run expand/collapse)
+// Click handler for node interactions (TB run expand/collapse, baseline selection)
 svg.addEventListener("click", (e) => {
   // Only handle clicks when not dragging
   if (canvasState.isDragging) return
@@ -1009,9 +1204,18 @@ svg.addEventListener("click", (e) => {
   const nodeId = nodeRect.getAttribute("data-node-id")
   if (!nodeId) return
 
-  // Handle TB run node clicks (expand/collapse)
+  // Handle TB run node clicks
   if (nodeId.startsWith("tb-run-")) {
-    const runId = nodeId.replace("tb-run-", "")
+    const runId = nodeId.replace("tb-run-", "").replace("expanded-", "")
+
+    // Shift+click: Set as baseline for comparison
+    if (e.shiftKey) {
+      console.log(`[TB] Setting baseline: ${runId}`)
+      void setBaseline(runId)
+      return
+    }
+
+    // Regular click: Expand/collapse
     void handleRunNodeClick(runId)
   }
 })
@@ -1320,6 +1524,13 @@ document.addEventListener("keydown", (e) => {
     }
     return
   }
+
+  // Ctrl+B: Clear baseline comparison
+  if (e.ctrlKey && e.key === "b") {
+    e.preventDefault()
+    clearBaseline()
+    return
+  }
 })
 
 // Expose for console access during development
@@ -1332,6 +1543,8 @@ declare global {
       handleLoad: typeof handleLoadSuite
       handleStart: typeof handleStartRun
       handleStop: typeof handleStopRun
+      setBaseline: typeof setBaseline
+      clearBaseline: typeof clearBaseline
     }
   }
 }
@@ -1343,10 +1556,13 @@ window.TB = {
   handleLoad: handleLoadSuite,
   handleStart: handleStartRun,
   handleStop: handleStopRun,
+  setBaseline,
+  clearBaseline,
 }
 
 console.log("Flow HUD loaded with WebSocket support")
 console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+X (stop)")
+console.log("Comparison: Shift+click run to set baseline, Ctrl+B to clear")
 
 // ============================================================================
 // TB Output Viewer
