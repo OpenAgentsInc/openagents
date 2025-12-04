@@ -251,8 +251,8 @@ export const runCommand = (
 
       const volumeMounts = credentialMount ? [credentialMount.volumeMount] : [];
       const containerConfig = buildContainerConfig(config.sandboxConfig, config.cwd, {
-        env,
-        volumeMounts,
+        ...(env ? { env } : {}),
+        ...(volumeMounts.length > 0 ? { volumeMounts } : {}),
       });
 
       // Try running in container, fall back to host on error

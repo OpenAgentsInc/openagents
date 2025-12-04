@@ -4,7 +4,6 @@
  */
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import * as BunContext from "@effect/platform-bun/BunContext";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
