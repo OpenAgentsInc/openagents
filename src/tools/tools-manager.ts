@@ -9,13 +9,10 @@ import * as Path from "@effect/platform/Path";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { Effect, Option } from "effect";
-import * as Stream from "effect/Stream";
+import * as nodeFs from "node:fs";
+import * as nodePath from "node:path";
 import { homedir, platform, arch } from "os";
 import { join } from "path";
-
-/** Helper to collect stream output into a string */
-const collectOutput = (stream: Stream.Stream<Uint8Array, never, never>) =>
-  Stream.runFold(stream, "", (acc, chunk) => acc + Buffer.from(chunk).toString("utf-8"));
 
 /** Supported tool names */
 export type ToolName = "rg" | "fd";
@@ -109,48 +106,28 @@ export const findInPath = (
 ): Effect.Effect<
   Option.Option<string>,
   never,
-  CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
-    const executor = yield* CommandExecutor.CommandExecutor;
     const info = detectPlatform();
     const binaryName = TOOL_METADATA[tool].getBinaryName(info);
+    const pathService = yield* Path.Path;
+    const envPath = process.env.PATH ?? "";
+    const segments = envPath.split(nodePath.delimiter).filter(Boolean);
 
-    // Use 'which' on Unix, 'where' on Windows
-    const whichCmd =
-      info.os === "windows"
-        ? Command.make("where", binaryName)
-        : Command.make("which", binaryName);
-
-    const result = yield* Effect.scoped(
-      Effect.gen(function* () {
-        const proc = yield* Effect.acquireRelease(
-          executor.start(whichCmd),
-          (p) =>
-            p.isRunning.pipe(
-              Effect.flatMap((running) =>
-                running ? p.kill("SIGKILL") : Effect.void,
-              ),
-              Effect.orElse(() => Effect.void),
-            ),
-        );
-
-        const [exitCode, stdout] = yield* Effect.all([
-          proc.exitCode,
-          collectOutput(proc.stdout as Stream.Stream<Uint8Array, never, never>),
-        ]);
-
-        if (Number(exitCode) !== 0) {
-          return Option.none<string>();
+    for (const segment of segments) {
+      const candidate = pathService.join(segment, binaryName);
+      try {
+        const stat = nodeFs.statSync(candidate);
+        if (stat.isFile()) {
+          return Option.some(candidate);
         }
+      } catch {
+        // ignore and continue
+      }
+    }
 
-        // Take the first line in case of multiple results
-        const firstPath = stdout.trim().split("\n")[0]?.trim();
-        return firstPath ? Option.some(firstPath) : Option.none<string>();
-      }),
-    ).pipe(Effect.orElse(() => Effect.succeed(Option.none<string>())));
-
-    return result;
+    return Option.none<string>();
   });
 
 /**
@@ -389,7 +366,7 @@ export const getToolPath = (
 ): Effect.Effect<
   string | null,
   never,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
     // First check cache
