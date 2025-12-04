@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Post-merge: validate tasks file to catch conflicts immediately.
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+TASKS_FILE=".openagents/tasks.jsonl"
+
+if [[ ! -f "$TASKS_FILE" ]]; then
+  exit 0
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "[git-hooks] bun not found; skipping tasks validation" >&2
+  exit 0
+fi
+
+echo "[git-hooks] Validating tasks after merge..."
+if ! bun run tasks:validate --check-conflicts --json >/dev/null; then
+  echo "[git-hooks] Merge left ${TASKS_FILE} invalid. Resolve conflicts and re-run validation." >&2
+  exit 1
+fi
+
+exit 0

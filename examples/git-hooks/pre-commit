@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit: fail fast if .openagents/tasks.jsonl has merge conflicts or schema issues.
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+TASKS_FILE=".openagents/tasks.jsonl"
+
+# Skip if tasks file missing
+if [[ ! -f "$TASKS_FILE" ]]; then
+  exit 0
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "[git-hooks] bun not found; skipping tasks validation" >&2
+  exit 0
+fi
+
+echo "[git-hooks] Validating tasks file before commit..."
+if ! bun run tasks:validate --check-conflicts --json >/dev/null; then
+  echo "[git-hooks] Validation failed. Resolve conflicts or schema errors in ${TASKS_FILE}." >&2
+  exit 1
+fi
+
+exit 0
