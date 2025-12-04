@@ -3,6 +3,7 @@ import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
+import { RUN_LOG_TRIM_CONFIG, maybeTrimFileSync } from "./log-trim.js";
 
 // Run event types for streaming JSONL
 export type TaskRunEvent =
@@ -21,7 +22,8 @@ export type TaskRunEvent =
   | { type: "commit_pushed"; ts: string; commit: string }
   | { type: "task_closed"; ts: string; taskId: string }
   | { type: "run_end"; ts: string; status: string; finalMessage: string; error: string | null }
-  | { type: "timeout"; ts: string; reason: string };
+  | { type: "timeout"; ts: string; reason: string }
+  | { type: "log_trimmed"; ts: string; dropped: number; kept: number; reason: string };
 
 export interface TaskRunMetadata {
   id: string;
@@ -174,6 +176,13 @@ export function appendRunEventSync(
   // Append event as JSON line - synchronous write for immediate flush
   const line = JSON.stringify(sanitizeEvent(event)) + "\n";
   fs.appendFileSync(filePath, line, "utf8");
+
+  const stat = fs.statSync(filePath);
+  const shouldTrim =
+    stat.size >= RUN_LOG_TRIM_CONFIG.maxBytes || stat.size >= RUN_LOG_TRIM_CONFIG.maxLines * 1024;
+  if (shouldTrim) {
+    maybeTrimFileSync(filePath, RUN_LOG_TRIM_CONFIG);
+  }
 }
 
 // Helper to generate run ID

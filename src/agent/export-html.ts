@@ -508,6 +508,16 @@ function renderEvent(event: TaskRunEvent): string {
       body = `<p>Reason: ${escapeHtml((event as any).reason)}</p>`;
       break;
 
+    case "log_trimmed":
+      typeClass = "event-start";
+      icon = ICONS.clock;
+      typeLabel = "Log Trimmed";
+      body = `<p>Dropped ${(event as any).dropped} lines, kept ${(event as any).kept}.</p>`;
+      if ((event as any).reason) {
+        body += `<p>Reason: ${escapeHtml((event as any).reason)}</p>`;
+      }
+      break;
+
     default:
       body = `<pre><code>${escapeHtml(JSON.stringify(event, null, 2))}</code></pre>`;
   }
