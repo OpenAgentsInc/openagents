@@ -63,6 +63,11 @@ const createSandboxConfigFixture = () => {
       memoryLimit: "4G",
       timeoutMs: 300000,
     },
+    reflexion: {
+      enabled: true,
+      maxReflectionsPerRetry: 2,
+      generationTimeoutMs: 5000,
+    },
   };
   fs.writeFileSync(path.join(oaDir, "project.json"), JSON.stringify(projectConfig, null, 2));
 
@@ -219,5 +224,92 @@ describe("sandbox config flow", () => {
     expect(receivedConfig!.sandbox).toBeDefined();
     expect(receivedConfig!.sandbox?.enabled).toBe(false); // CLI override
     expect(receivedConfig!.sandbox?.backend).toBe("macos-container"); // Rest unchanged
+  }, 60000);
+
+  test("reflexion config and service are passed to orchestrator", async () => {
+    const { repoPath, openagentsDir, projectConfig } = createSandboxConfigFixture();
+    const tasks = readTasksFile(path.join(openagentsDir, "tasks.jsonl"));
+
+    let receivedConfig: OrchestratorConfig | null = null;
+    let reflectionSaved = false;
+
+    const captureReflexion = (config: OrchestratorConfig): Effect.Effect<OrchestratorState> =>
+      Effect.gen(function* () {
+        receivedConfig = config;
+        const oaDir = config.openagentsDir ?? path.join(config.cwd, ".openagents");
+        const tasksPath = path.join(oaDir, "tasks.jsonl");
+        const currentTasks = readTasksFile(tasksPath);
+        const updatedTasks = currentTasks.map((t) =>
+          t.id === config.task?.id ? { ...t, status: "closed", updatedAt: new Date().toISOString() } : t,
+        ) as Task[];
+
+        yield* Effect.sync(() => {
+          writeTasksFile(tasksPath, updatedTasks);
+          fs.writeFileSync(path.join(config.cwd, "marker.txt"), "done");
+          execSync("git add -A", { cwd: config.cwd, stdio: "ignore" });
+          execSync('git commit -m "task complete"', { cwd: config.cwd, stdio: "ignore" });
+        });
+
+        if (config.reflectionService) {
+          const reflection = {
+            id: "reflexion-test",
+            sessionId: "test-session",
+            taskId: config.task?.id ?? "unknown",
+            subtaskId: `${config.task?.id ?? "task"}-sub-1`,
+            attemptNumber: 1,
+            category: "verification" as const,
+            analysis: "verification failed",
+            suggestion: "rerun tests locally",
+            actionItems: ["rerun tests"],
+            confidence: 0.7,
+            createdAt: new Date().toISOString(),
+          };
+          yield* config.reflectionService.save(reflection).pipe(
+            Effect.catchAll(() => Effect.void),
+          );
+          const loaded = yield* config.reflectionService.getRecent(reflection.subtaskId).pipe(
+            Effect.catchAll(() => Effect.succeed([])),
+          );
+          reflectionSaved = loaded.length > 0;
+        }
+
+        return {
+          sessionId: "test-session",
+          task: config.task ?? null,
+          subtasks: null,
+          progress: null,
+          phase: "done" as const,
+        } satisfies OrchestratorState;
+      });
+
+    await Effect.runPromise(
+      runParallelFromConfig({
+        repoPath,
+        openagentsDir,
+        baseBranch: "main",
+        tasks,
+        parallelConfig: {
+          enabled: true,
+          maxAgents: 1,
+          mergeStrategy: "direct",
+          worktreeTimeout: 30 * 60 * 1000,
+          installTimeoutMs: 15 * 60 * 1000,
+          installArgs: ["--skip-install"],
+          mergeThreshold: 4,
+          prThreshold: 50,
+        },
+        sandbox: projectConfig.sandbox,
+        reflexionConfig: projectConfig.reflexion,
+        testCommands: ["echo tests"],
+        ccOnly: true,
+        runOrchestratorFn: captureReflexion,
+      }),
+    );
+
+    expect(receivedConfig).not.toBeNull();
+    expect(receivedConfig!.reflexionConfig?.enabled).toBe(true);
+    expect(receivedConfig!.reflexionConfig?.maxReflectionsPerRetry).toBe(2);
+    expect(receivedConfig!.reflectionService).toBeDefined();
+    expect(reflectionSaved).toBe(true);
   }, 60000);
 });

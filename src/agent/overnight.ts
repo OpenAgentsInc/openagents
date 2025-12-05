@@ -635,6 +635,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         claudeCode: projectConfig.claudeCode,
         sandbox: sandboxConfig,
         allowPush: projectConfig.allowPush,
+        reflexionConfig: projectConfig.reflexion,
       };
 
       if (projectConfig.testCommands) {
