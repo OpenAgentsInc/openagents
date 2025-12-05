@@ -4,6 +4,11 @@ import { homedir } from "os";
 
 const CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md"];
 
+export interface ContextSource {
+  path: string;
+  content: string;
+}
+
 const readIfExists = (path: string): string | null => {
   if (!existsSync(path)) return null;
   try {
@@ -13,16 +18,21 @@ const readIfExists = (path: string): string | null => {
   }
 };
 
-const findContextInDir = (dir: string): string | null => {
+const findContextInDir = (dir: string): ContextSource | null => {
   for (const filename of CONTEXT_FILES) {
-    const content = readIfExists(join(dir, filename));
-    if (content) return content;
+    const fullPath = join(dir, filename);
+    const content = readIfExists(fullPath);
+    if (content) return { path: fullPath, content };
   }
   return null;
 };
 
 export const loadContextFiles = (cwd: string = process.cwd()): string[] => {
-  const contexts: string[] = [];
+  return loadContextSources(cwd).map((ctx) => ctx.content);
+};
+
+export const loadContextSources = (cwd: string = process.cwd()): ContextSource[] => {
+  const contexts: ContextSource[] = [];
 
   // Global
   const home = homedir();
@@ -43,7 +53,7 @@ export const loadContextFiles = (cwd: string = process.cwd()): string[] => {
     current = parent;
   }
 
-  return contexts;
+  return contexts.map((ctx) => ({ ...ctx, path: resolve(ctx.path) }));
 };
 
 export const buildSystemPromptWithContext = (basePrompt: string, cwd: string = process.cwd()): string => {

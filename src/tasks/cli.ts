@@ -30,13 +30,7 @@ import { Effect } from "effect";
 import * as nodePath from "node:path";
 import { createHash } from "node:crypto";
 import {
-  TaskRepository,
   initOpenAgentsProject,
-  createTask,
-  updateTask,
-  closeTask,
-  reopenTask,
-  listTasks,
   archiveTasks,
   writeTasks,
   searchAllTasks,
@@ -48,7 +42,6 @@ import {
   mergeTaskFiles,
   TaskMergeError,
   TaskServiceError,
-  addComment,
   listComments,
   renameTaskPrefix,
   mergeTasksById,
@@ -56,6 +49,7 @@ import {
   saveProjectConfig,
   defaultProjectConfig,
   decodeProjectConfig,
+  createTaskRepository,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -351,10 +345,11 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
   return { command, options };
 };
 
-const getTaskRepository = (rootDir: string): TaskRepository =>
-  TaskRepository.fromRoot({ rootDir, tasksFile: TASKS_FILE });
+const getTasksPath = (rootDir: string): string =>
+  nodePath.join(rootDir, OPENAGENTS_DIR, TASKS_FILE);
 
-const getTasksPath = (rootDir: string): string => getTaskRepository(rootDir).tasksPath;
+const getTaskRepository = (rootDir: string) =>
+  createTaskRepository(getTasksPath(rootDir));
 
 const output = (data: unknown, json: boolean): void => {
   if (json) {
@@ -429,7 +424,7 @@ const cmdInit = (options: CliOptions) =>
 
 const cmdList = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
     const filter: TaskFilter = {
       status: options.status as TaskFilter["status"],
       priority: options.priority,
@@ -440,7 +435,7 @@ const cmdList = (options: CliOptions) =>
       limit: options.limit,
     };
 
-    const tasks = yield* listTasks(tasksPath, filter).pipe(
+    const tasks = yield* repo.list(filter).pipe(
       Effect.catchAll(() => Effect.succeed([])),
     );
 
@@ -460,7 +455,7 @@ const cmdReady = (options: CliOptions) =>
       limit: options.limit,
     };
 
-    const tasks = yield* repo.readyTasks(filter).pipe(
+    const tasks = yield* repo.ready(filter).pipe(
       Effect.catchAll(() => Effect.succeed([])),
     );
 
@@ -476,7 +471,7 @@ const cmdNext = (options: CliOptions) =>
       assignee: options.assignee,
     };
 
-    const task = yield* repo.pickNextTask(filter).pipe(
+    const task = yield* repo.pickNext(filter).pipe(
       Effect.catchAll(() => Effect.succeed(null)),
     );
 
@@ -485,12 +480,9 @@ const cmdNext = (options: CliOptions) =>
       return null;
     }
 
-    const updated = yield* repo
-      .updateTask({
-        id: task.id,
-        update: { status: "in_progress" },
-      })
-      .pipe(Effect.catchAll(() => Effect.succeed(task)));
+    const updated = yield* repo.update(
+      { id: task.id, status: "in_progress" },
+    ).pipe(Effect.catchAll(() => Effect.succeed(task)));
 
     output(updated, options.json);
     return updated;
@@ -498,7 +490,7 @@ const cmdNext = (options: CliOptions) =>
 
 const cmdCreate = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
     let taskData: TaskCreate;
 
     if (options.jsonInput) {
@@ -525,11 +517,7 @@ const cmdCreate = (options: CliOptions) =>
       };
     }
 
-    const task = yield* createTask({
-      tasksPath,
-      task: taskData,
-      idPrefix: "oa",
-    }).pipe(
+    const task = yield* repo.create(taskData, { idPrefix: "oa" }).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
         return Effect.succeed(null);
@@ -544,7 +532,7 @@ const cmdCreate = (options: CliOptions) =>
 
 const cmdUpdate = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
 
     if (!options.jsonInput) {
       output({ error: "update requires --json-input with JSON on stdin" }, options.json);
@@ -569,8 +557,7 @@ const cmdUpdate = (options: CliOptions) =>
     const { id, commits, reason, ...updateFields } = data;
 
     if (updateFields.status === "closed" && reason) {
-      const task = yield* closeTask({
-        tasksPath,
+      const task = yield* repo.close({
         id,
         reason,
         commits: commits || [],
@@ -586,12 +573,10 @@ const cmdUpdate = (options: CliOptions) =>
       return task;
     }
 
-    const task = yield* updateTask({
-      tasksPath,
-      id,
-      update: updateFields,
-      appendCommits: commits || [],
-    }).pipe(
+    const task = yield* repo.update(
+      { id, ...updateFields },
+      { appendCommits: commits || [] },
+    ).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
         return Effect.succeed(null);
@@ -606,7 +591,7 @@ const cmdUpdate = (options: CliOptions) =>
 
 const cmdClose = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
 
     if (!options.id) {
       output({ error: "Missing required --id <task-id>" }, options.json);
@@ -626,8 +611,7 @@ const cmdClose = (options: CliOptions) =>
     const commits = commitSha ? [commitSha] : [];
     const reason = options.reason || "Completed";
 
-    const task = yield* closeTask({
-      tasksPath,
+    const task = yield* repo.close({
       id: options.id,
       reason,
       commits,
@@ -659,17 +643,14 @@ const cmdClose = (options: CliOptions) =>
 
 const cmdReopen = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
 
     if (!options.id) {
       output({ error: "Missing required --id <task-id>" }, options.json);
       return null;
     }
 
-    const task = yield* reopenTask({
-      tasksPath,
-      id: options.id,
-    }).pipe(
+    const task = yield* repo.reopen(options.id).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
         return Effect.succeed(null);
@@ -1576,7 +1557,7 @@ const cmdShow = (options: CliOptions) =>
 
 const cmdCommentAdd = (options: CliOptions) =>
   Effect.gen(function* () {
-    const tasksPath = getTasksPath(options.rootDir);
+    const repo = getTaskRepository(options.rootDir);
 
     if (!options.id) {
       output({ error: "Missing required --id <task-id>" }, options.json);
@@ -1590,14 +1571,13 @@ const cmdCommentAdd = (options: CliOptions) =>
     const author = options.author ?? process.env.USER ?? "unknown";
 
     const addOptions = {
-      tasksPath,
       taskId: options.id,
       text: options.text,
       author,
       ...(options.commentId ? { commentId: options.commentId } : {}),
     };
 
-    const result = yield* addComment(addOptions).pipe(
+    const result = yield* repo.addComment(addOptions).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
         return Effect.succeed(null);
