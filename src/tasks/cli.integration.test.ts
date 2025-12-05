@@ -835,4 +835,60 @@ describe("tasks CLI integration", () => {
     const renamedB = tasks.find((t) => t.title === "Task B");
     expect(renamedB?.deps?.[0]?.id.startsWith("zz-")).toBe(true);
   });
+
+  test("merge command merges duplicate tasks into target and rewrites deps", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-merge-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    const createA = runCli(["create", "--dir", tmp, "--title", "Task A", "--json"], tmp);
+    const createB = runCli(["create", "--dir", tmp, "--title", "Task B", "--json"], tmp);
+    const createC = runCli(
+      ["create", "--dir", tmp, "--title", "Task C", "--json"],
+      tmp,
+    );
+    const taskA = JSON.parse(createA.stdout);
+    const taskB = JSON.parse(createB.stdout);
+    const taskC = JSON.parse(createC.stdout);
+
+    const updateBDdeps = JSON.stringify({
+      id: taskB.id,
+      deps: [{ id: taskA.id, type: "blocks" }],
+    });
+    const updateB = Bun.spawnSync(
+      ["bun", "src/tasks/cli.ts", "update", "--dir", tmp, "--json-input"],
+      { cwd: process.cwd(), stdin: new TextEncoder().encode(updateBDdeps) },
+    );
+    expect(updateB.exitCode).toBe(0);
+
+    const updateCDeps = JSON.stringify({
+      id: taskC.id,
+      deps: [{ id: taskB.id, type: "related" }],
+    });
+    const updateC = Bun.spawnSync(
+      ["bun", "src/tasks/cli.ts", "update", "--dir", tmp, "--json-input"],
+      { cwd: process.cwd(), stdin: new TextEncoder().encode(updateCDeps) },
+    );
+    expect(updateC.exitCode).toBe(0);
+
+    const merge = runCli(
+      ["merge", "--dir", tmp, "--ids", taskB.id, "--into", taskA.id, "--json"],
+      tmp,
+    );
+    expect(merge.code).toBe(0);
+    const mergeResult = JSON.parse(merge.stdout);
+    expect(mergeResult.mergedIds).toHaveLength(1);
+
+    const tasksPath = path.join(tmp, ".openagents", "tasks.jsonl");
+    const tasks = fs
+      .readFileSync(tasksPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const removed = tasks.find((t: any) => t.id === taskB.id);
+    expect(removed).toBeUndefined();
+    const dependent = tasks.find((t: any) => t.id === taskC.id);
+    expect(dependent?.deps?.[0]?.id).toBe(taskA.id);
+  });
 });

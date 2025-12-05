@@ -6,6 +6,7 @@ import {
   decodeTaskCreate,
   decodeTaskUpdate,
   isTaskReady,
+  type Dependency,
   type Comment,
   type Task,
   type TaskCreate,
@@ -709,6 +710,157 @@ export const renameTaskPrefix = ({
       toPrefix,
       dryRun,
       mapping,
+    };
+  });
+
+export interface MergeTasksOptions {
+  tasksPath: string;
+  ids: string[];
+  targetId: string;
+  dryRun?: boolean;
+  timestamp?: Date;
+}
+
+export interface MergeTasksResult {
+  ok: true;
+  mergedIds: string[];
+  targetId: string;
+  depsUpdated: number;
+  tasksUpdated: number;
+  dryRun: boolean;
+}
+
+const dedupeDeps = (deps: Dependency[] | undefined): Dependency[] => {
+  if (!deps) return [];
+  const seen = new Set<string>();
+  const result: Dependency[] = [];
+  for (const dep of deps) {
+    const key = `${dep.id}:${dep.type}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(dep);
+    }
+  }
+  return result;
+};
+
+export const mergeTasksById = ({
+  tasksPath,
+  ids,
+  targetId,
+  dryRun = false,
+  timestamp,
+}: MergeTasksOptions): Effect.Effect<MergeTasksResult, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    if (!ids || ids.length === 0) {
+      return yield* Effect.fail(
+        new TaskServiceError("validation_error", "No source ids provided for merge"),
+      );
+    }
+    if (!targetId) {
+      return yield* Effect.fail(
+        new TaskServiceError("validation_error", "targetId is required"),
+      );
+    }
+
+    const mergeIds = Array.from(new Set(ids.filter((id) => id !== targetId)));
+    if (mergeIds.length === 0) {
+      return yield* Effect.fail(
+        new TaskServiceError("validation_error", "No valid source ids to merge"),
+      );
+    }
+
+    const now = timestamp ?? new Date();
+    const tasks = yield* readTasks(tasksPath);
+
+    const tasksById = new Map(tasks.map((t) => [t.id, t]));
+    const target = tasksById.get(targetId);
+    if (!target) {
+      return yield* Effect.fail(
+        new TaskServiceError("not_found", `Target task not found: ${targetId}`),
+      );
+    }
+
+    const missing = mergeIds.filter((id) => !tasksById.has(id));
+    if (missing.length > 0) {
+      return yield* Effect.fail(
+        new TaskServiceError(
+          "not_found",
+          `Source task(s) not found: ${missing.join(", ")}`,
+        ),
+      );
+    }
+
+    let depsUpdated = 0;
+    let tasksUpdated = 0;
+
+    const mergedTasks = mergeIds.map((id) => tasksById.get(id)!);
+
+    const mergedLabels = new Set<string>(target.labels ?? []);
+    const mergedCommits = new Set<string>(target.commits ?? []);
+    mergedTasks.forEach((t) => {
+      (t.labels ?? []).forEach((l) => mergedLabels.add(l));
+      (t.commits ?? []).forEach((c) => mergedCommits.add(c));
+    });
+
+    const mapping = new Map<string, string>();
+    mergeIds.forEach((id) => mapping.set(id, targetId));
+
+    const updatedTasks = tasks
+      .filter((t) => !mergeIds.includes(t.id))
+      .map((task) => {
+        let changed = false;
+        let deps = task.deps ?? [];
+        const nextDeps = deps.map((dep) => {
+          const mapped = mapping.get(dep.id);
+          if (mapped) {
+            depsUpdated += 1;
+            changed = true;
+            return { ...dep, id: mapped };
+          }
+          return dep;
+        });
+
+        const prunedDeps = dedupeDeps(nextDeps);
+
+        let source = task.source;
+        if (task.source?.discoveredFrom && mapping.has(task.source.discoveredFrom)) {
+          source = { ...task.source, discoveredFrom: targetId };
+          changed = true;
+        }
+
+        if (task.id === targetId) {
+          changed = true;
+          tasksUpdated += 1;
+          return {
+            ...task,
+            labels: Array.from(mergedLabels),
+            commits: Array.from(mergedCommits),
+            deps: prunedDeps,
+            source,
+            updatedAt: nowIso(now),
+          };
+        }
+
+        if (changed) {
+          tasksUpdated += 1;
+          return { ...task, deps: prunedDeps, source, updatedAt: nowIso(now) };
+        }
+
+        return task;
+      });
+
+    if (!dryRun) {
+      yield* writeTasks(tasksPath, updatedTasks);
+    }
+
+    return {
+      ok: true,
+      mergedIds: mergeIds,
+      targetId,
+      depsUpdated,
+      tasksUpdated,
+      dryRun,
     };
   });
 

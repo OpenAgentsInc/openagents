@@ -52,6 +52,7 @@ import {
   addComment,
   listComments,
   renameTaskPrefix,
+  mergeTasksById,
   loadProjectConfig,
   saveProjectConfig,
   defaultProjectConfig,
@@ -88,6 +89,8 @@ interface CliOptions {
   title?: string;
   description?: string;
   projectId?: string;
+  ids?: string[];
+  into?: string;
   // close command options
   id?: string;
   reason?: string;
@@ -237,6 +240,19 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
       case "--project-id":
         if (nextArg) {
           options.projectId = nextArg;
+          i++;
+        }
+        break;
+      case "--ids":
+        if (nextArg) {
+          options.ids = nextArg.split(",").map((id) => id.trim()).filter(Boolean);
+          i++;
+        }
+        break;
+      case "--into":
+      case "--target":
+        if (nextArg) {
+          options.into = nextArg;
           i++;
         }
         break;
@@ -1349,6 +1365,35 @@ const cmdDelete = (options: CliOptions) =>
 
 const cmdMerge = (options: CliOptions) =>
   Effect.gen(function* () {
+    if (options.ids && options.into) {
+      const tasksPath = getTasksPath(options.rootDir);
+      const result = yield* mergeTasksById({
+        tasksPath,
+        ids: options.ids,
+        targetId: options.into,
+        dryRun: options.dryRun ?? false,
+      }).pipe(
+        Effect.catchAll((e) => {
+          output({ ok: false, error: e.message }, options.json);
+          return Effect.succeed(null);
+        }),
+      );
+
+      if (!result) {
+        return null;
+      }
+
+      if (!options.json) {
+        console.log(
+          `${result.dryRun ? "[dry-run] " : ""}Merged ${result.mergedIds.length} task(s) into ${result.targetId}; deps updated: ${result.depsUpdated}`,
+        );
+      } else {
+        output(result, true);
+      }
+
+      return result;
+    }
+
     if (!options.base || !options.current || !options.incoming) {
       return yield* Effect.fail(
         new TaskMergeError("merge requires --base, --current, and --incoming paths"),
@@ -1685,6 +1730,7 @@ Commands:
   repair-deps Fix orphan dependencies by removing references to missing tasks
   duplicates Find duplicate tasks by title+description hash (grouped by status)
   merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
+  merge --ids <a,b> --into <target>   Merge duplicate tasks into target ID (updates deps; supports --dry-run)
 
 Global Options:
   --json          Output as JSON
@@ -1781,6 +1827,8 @@ merge Options:
   --current <path>        Current branch version (usually %A)
   --incoming <path>       Incoming branch version (usually %B)
   --output <path>         Output path (default: overwrite current)
+  --ids <a,b,c>           Task IDs to merge (with --into)
+  --into <target>         Target task ID for merge (with --ids)
 
 Examples:
   bun src/tasks/cli.ts init --json
@@ -1809,6 +1857,7 @@ Examples:
   bun src/tasks/cli.ts comment:add --id oa-123 --text "Noted" --author alice --json  # add a comment
   bun src/tasks/cli.ts comment:list --id oa-123 --json  # list comments
   bun src/tasks/cli.ts rename-prefix --from oa --to zz --dry-run --json  # preview ID prefix rename
+  bun src/tasks/cli.ts merge --ids oa-1,oa-2 --into oa-1 --dry-run --json  # preview merge of duplicate tasks
 `);
 };
 
