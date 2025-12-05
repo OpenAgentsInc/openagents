@@ -17,6 +17,7 @@ import { mkdir, rename, writeFile, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { Step, Agent, FinalMetrics } from "./schema.js";
 import { timestamp } from "./schema.js";
+import { emitTrajectoryStart, emitStepRecorded, emitTrajectoryComplete } from "./hud-streaming.js";
 
 // ============================================================================
 // Types
@@ -31,6 +32,10 @@ export interface StreamingWriterOptions {
   baseDir?: string;
   /** Parent session ID for subagent linking */
   parentSessionId?: string;
+  /** Agent type for HUD display */
+  agentType?: "orchestrator" | "claude-code" | "minimal";
+  /** Enable HUD event emission (default: true) */
+  emitHudEvents?: boolean;
 }
 
 export interface IndexData {
@@ -63,6 +68,8 @@ export class StreamingWriter {
   private readonly baseDir: string;
   private readonly paths: StreamingWriterPaths;
   private readonly parentSessionId?: string;
+  private readonly agentType: "orchestrator" | "claude-code" | "minimal";
+  private readonly emitHudEvents: boolean;
   private readonly createdAt: string;
 
   private stepCount = 0;
@@ -72,6 +79,8 @@ export class StreamingWriter {
     this.sessionId = options.sessionId;
     this.agent = options.agent;
     this.baseDir = options.baseDir ?? ".openagents/trajectories";
+    this.agentType = options.agentType ?? "orchestrator";
+    this.emitHudEvents = options.emitHudEvents ?? true;
     if (options.parentSessionId !== undefined) {
       this.parentSessionId = options.parentSessionId;
     }
@@ -121,6 +130,19 @@ export class StreamingWriter {
       status: "in_progress",
       final_metrics: null,
     });
+
+    // Emit HUD event for trajectory start
+    if (this.emitHudEvents) {
+      const startOpts: Parameters<typeof emitTrajectoryStart>[0] = {
+        sessionId: this.sessionId,
+        agent: this.agent,
+        agentType: this.agentType,
+      };
+      if (this.parentSessionId !== undefined) {
+        startOpts.parentSessionId = this.parentSessionId;
+      }
+      emitTrajectoryStart(startOpts);
+    }
   }
 
   /**
@@ -141,6 +163,11 @@ export class StreamingWriter {
       status: "in_progress",
       final_metrics: null,
     });
+
+    // Emit HUD event for step recorded
+    if (this.emitHudEvents) {
+      emitStepRecorded(this.sessionId, step);
+    }
   }
 
   /**
@@ -158,6 +185,16 @@ export class StreamingWriter {
       status,
       final_metrics: finalMetrics,
     });
+
+    // Emit HUD event for trajectory complete
+    if (this.emitHudEvents && status === "complete") {
+      emitTrajectoryComplete({
+        sessionId: this.sessionId,
+        trajectoryPath: this.paths.jsonl,
+        totalSteps: this.stepCount,
+        finalMetrics,
+      });
+    }
 
     return this.paths;
   }
