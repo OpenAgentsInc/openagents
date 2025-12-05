@@ -231,27 +231,17 @@ const runContainerVerification = async (
     return { passed: false, output: "No tests directory found" };
   }
 
-  // Install pytest if not available (makes it work with any Python image)
-  console.log("Installing pytest in container if needed...");
-  try {
-    await Effect.runPromise(
-      Effect.provide(
-        runInContainer(
-          ["/bin/sh", "-c", "python3 -m pip install --quiet pytest || pip install --quiet pytest"],
-          containerConfig
-        ),
-        autoDetectLayer
-      )
-    );
-  } catch (e) {
-    console.warn("Failed to install pytest, will try to run anyway:", e instanceof Error ? e.message : String(e));
-  }
-
-  // Run pytest in container
+  // Install pytest and run tests in a single container invocation
+  // (combining install + test ensures pytest persists for the test run)
+  console.log("Installing pytest and running verification in container...");
   const result = await Effect.runPromise(
     Effect.provide(
       runInContainer(
-        ["python3", "-m", "pytest", "/workspace/tests/", "-v", "--tb=short"],
+        [
+          "/bin/sh",
+          "-c",
+          "python3 -m pip install --quiet pytest 2>/dev/null || pip install --quiet pytest 2>/dev/null && python3 -m pytest /workspace/tests/ -v --tb=short"
+        ],
         {
           ...containerConfig,
           env: {
