@@ -11,6 +11,7 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { execSync } from "node:child_process";
 import { updateTask, readTasks } from "../tasks/service.js";
 import type { Task } from "../tasks/schema.js";
 
@@ -27,7 +28,6 @@ const cleanupTempDir = (dir: string): void => {
 
 // Helper to initialize git repo
 const initGitRepo = (dir: string): void => {
-  const { execSync } = require("node:child_process");
   execSync("git init", { cwd: dir, stdio: "pipe" });
   execSync('git config user.email "test@test.com"', { cwd: dir, stdio: "pipe" });
   execSync('git config user.name "Test"', { cwd: dir, stdio: "pipe" });

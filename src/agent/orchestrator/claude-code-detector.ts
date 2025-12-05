@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 
 export interface ClaudeCodeAvailability {
@@ -20,9 +19,12 @@ export interface DetectClaudeCodeOptions {
 }
 
 const defaultSdkResolver = async (): Promise<{ version?: string }> => {
-  const require = createRequire(import.meta.url);
-  const pkg = require("@anthropic-ai/claude-agent-sdk/package.json") as { version?: string };
-  return pkg.version ? { version: pkg.version } : {};
+  const pkg = (await import("@anthropic-ai/claude-agent-sdk/package.json")) as {
+    default?: { version?: string };
+    version?: string;
+  };
+  const version = pkg.default?.version ?? pkg.version;
+  return version ? { version } : {};
 };
 
 const defaultHealthCheck = async (): Promise<void> => {

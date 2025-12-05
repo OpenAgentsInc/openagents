@@ -7,6 +7,7 @@
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect } from "effect";
+import { spawn } from "node:child_process";
 import type { SandboxConfig } from "../../tasks/schema.js";
 import {
   runInContainer,
@@ -163,8 +164,6 @@ const runOnHostWithCallbacks = (
   }
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.async((resume) => {
-    const { spawn } = require("node:child_process") as typeof import("node:child_process");
-
     // Join command array into shell command string
     const cmdString = command.join(" ");
     const proc = spawn(cmdString, {
