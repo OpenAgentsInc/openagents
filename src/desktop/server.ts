@@ -130,8 +130,33 @@ export class DesktopServer {
         }
 
         const file = Bun.file(fullPath);
+        const ext = filePath.split(".").pop() || "";
+
+        // If .js file requested but doesn't exist, check for .ts source
+        if (ext === "js" && !(await file.exists())) {
+          const tsPath = fullPath.replace(/\.js$/, ".ts");
+          const tsFile = Bun.file(tsPath);
+          if (await tsFile.exists()) {
+            try {
+              const result = await Bun.build({
+                entrypoints: [tsPath],
+                target: "browser",
+                minify: false,
+              });
+              if (result.success && result.outputs.length > 0) {
+                const text = await result.outputs[0].text();
+                return new Response(text, {
+                  headers: { "Content-Type": "application/javascript" },
+                });
+              }
+            } catch (e) {
+              console.error("[DesktopServer] TypeScript build error:", e);
+              return new Response(`Build error: ${e}`, { status: 500 });
+            }
+          }
+        }
+
         if (await file.exists()) {
-          const ext = filePath.split(".").pop() || "";
           const contentTypes: Record<string, string> = {
             html: "text/html",
             css: "text/css",
