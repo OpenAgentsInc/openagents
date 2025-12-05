@@ -60,6 +60,8 @@ export interface ClaudeCodeSubagentOptions {
   worktreeGuardHook?: HookCallback;
   /** TB run ID for ATIF step emission to HUD */
   runId?: string;
+  /** Callback fired when sessionId is available (for ATIF disk persistence) */
+  onSessionId?: (sessionId: string) => void;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -515,7 +517,12 @@ export const runClaudeCodeSubagent = async (
         // Capture session IDs for resumption
         const messageSessionId = (message as any)?.session_id;
         if (typeof messageSessionId === "string") {
+          const isNewSessionId = sessionId !== messageSessionId;
           sessionId = messageSessionId;
+          // Notify callback when sessionId first becomes available
+          if (isNewSessionId && options.onSessionId) {
+            options.onSessionId(sessionId);
+          }
         }
 
         // Capture SDK error messages with error types

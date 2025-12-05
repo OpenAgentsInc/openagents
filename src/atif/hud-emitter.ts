@@ -19,12 +19,35 @@
 
 import type { Step } from "./schema.js";
 import type { ATIFStepMessage } from "../hud/protocol.js";
+import type { StreamingWriter } from "./streaming-writer.js";
 
 /**
  * Global HUD message sender.
  * Set this at application startup via setATIFHudSender().
  */
 let hudSender: ((message: ATIFStepMessage) => void) | null = null;
+
+/**
+ * Registry of StreamingWriter instances for disk persistence.
+ * Keyed by sessionId so each task run has its own writer.
+ */
+const diskWriters = new Map<string, StreamingWriter>();
+
+/**
+ * Register a StreamingWriter for a specific session.
+ * Steps emitted for this sessionId will be persisted to disk.
+ */
+export const registerATIFDiskWriter = (sessionId: string, writer: StreamingWriter): void => {
+  diskWriters.set(sessionId, writer);
+};
+
+/**
+ * Unregister a StreamingWriter for a specific session.
+ * Call this after closing the writer.
+ */
+export const unregisterATIFDiskWriter = (sessionId: string): void => {
+  diskWriters.delete(sessionId);
+};
 
 /**
  * Set the HUD sender function for ATIF step emission.
@@ -82,6 +105,15 @@ export const emitATIFStep = (
   sessionId: string,
   step: Step
 ): void => {
+  // Write to disk if a writer is registered for this session
+  const diskWriter = diskWriters.get(sessionId);
+  if (diskWriter) {
+    // Fire and forget - don't block HUD emission on disk I/O
+    diskWriter.writeStep(step).catch((err) => {
+      console.error(`[ATIF] Failed to write step to disk for session ${sessionId}:`, err);
+    });
+  }
+
   if (!hudSender) {
     // HUD not initialized - silently skip (not an error during tests or headless runs)
     return;
