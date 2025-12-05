@@ -374,6 +374,8 @@ const runSingleTask = async (
       runId: options.runId,
       onSessionId: async (sessionId) => {
         // Create and register ATIF disk writer when sessionId is available
+        // IMPORTANT: Register BEFORE initialize() to avoid race condition
+        // The StreamingWriter.writeStep() will wait for init to complete
         atifState.sessionId = sessionId;
         atifState.writer = new StreamingWriter({
           sessionId,
@@ -386,8 +388,10 @@ const runSingleTask = async (
           agentType: "claude-code",
           emitHudEvents: false, // We're already emitting to HUD via sdk-adapter
         });
-        await atifState.writer.initialize();
+        // Register immediately so steps can be queued during initialization
         registerATIFDiskWriter(sessionId, atifState.writer);
+        // Initialize asynchronously - writeStep will wait for this
+        await atifState.writer.initialize();
         console.log(`  [ATIF] Disk persistence enabled for session: ${sessionId}`);
       },
       onOutput: (text) => {

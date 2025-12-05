@@ -88,6 +88,13 @@ export class SDKToATIFAdapter {
    * Process an SDK message and convert to ATIF steps
    */
   processSDKMessage(message: unknown): void {
+    // Debug: log message types we're receiving
+    const msgType = (message as any)?.type;
+    const eventType = (message as any)?.event?.type;
+    if (msgType === "stream_event" && eventType?.includes("content_block")) {
+      console.log(`[ATIF-Adapter] Processing stream_event: ${eventType}`);
+    }
+
     // Handle streaming events
     if (this.isSDKStreamEvent(message)) {
       this.handleStreamEvent(message);
@@ -111,6 +118,8 @@ export class SDKToATIFAdapter {
     if (type === "content_block_start" && content_block?.type === "tool_use") {
       const toolCallId = content_block.id;
       const functionName = content_block.name ?? "unknown";
+
+      console.log(`[ATIF-Adapter] Tool start: ${functionName} (${toolCallId})`);
 
       this.pendingToolCalls.set(toolCallId, {
         tool_call_id: toolCallId,
@@ -182,6 +191,8 @@ export class SDKToATIFAdapter {
    * Emit ATIF agent step with tool_calls
    */
   private emitAgentStepWithToolCalls(toolCalls: PendingToolCall[]): void {
+    console.log(`[ATIF-Adapter] Emitting step for ${toolCalls.length} tool call(s): ${toolCalls.map(tc => tc.function_name).join(", ")}`);
+
     const step: Step = {
       step_id: this.stepCounter++,
       timestamp: new Date().toISOString(),
