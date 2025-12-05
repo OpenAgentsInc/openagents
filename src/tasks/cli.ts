@@ -22,6 +22,7 @@
  *   duplicates Find duplicate tasks by title+description hash, grouped by status
  *   comment:add Add a comment to a task
  *   comment:list List comments for a task
+ *   rename-prefix Rename task IDs to a new prefix with optional dry-run
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -50,6 +51,7 @@ import {
   TaskServiceError,
   addComment,
   listComments,
+  renameTaskPrefix,
   loadProjectConfig,
   saveProjectConfig,
   defaultProjectConfig,
@@ -77,6 +79,8 @@ interface CliOptions {
   labels?: string[];
   assignee?: string;
   unassigned?: boolean;
+  fromPrefix?: string;
+  toPrefix?: string;
   text?: string;
   author?: string;
   commentId?: string;
@@ -179,6 +183,20 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
         break;
       case "--unassigned":
         options.unassigned = true;
+        break;
+      case "--from":
+      case "--from-prefix":
+        if (nextArg) {
+          options.fromPrefix = nextArg;
+          i++;
+        }
+        break;
+      case "--to":
+      case "--to-prefix":
+        if (nextArg) {
+          options.toPrefix = nextArg;
+          i++;
+        }
         break;
       case "--limit":
         if (nextArg) {
@@ -1590,6 +1608,50 @@ const cmdCommentList = (options: CliOptions) =>
     return comments;
   });
 
+const cmdRenamePrefix = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.fromPrefix || !options.toPrefix) {
+      output({ error: "Missing required --from <prefix> and --to <prefix>" }, options.json);
+      return null;
+    }
+
+    const result = yield* renameTaskPrefix({
+      tasksPath,
+      fromPrefix: options.fromPrefix,
+      toPrefix: options.toPrefix,
+      dryRun: options.dryRun ?? false,
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    if (options.json) {
+      output(result, true);
+    } else {
+      console.log(
+        `${result.dryRun ? "[dry-run] " : ""}Renamed ${result.renamed} task(s), deps updated: ${result.depsUpdated}, descriptions updated: ${result.descriptionsUpdated}`,
+      );
+      if (Object.keys(result.mapping).length > 0) {
+        console.log("Mapping:");
+        for (const [oldId, newId] of Object.entries(result.mapping)) {
+          console.log(`  ${oldId} -> ${newId}`);
+        }
+      } else {
+        console.log("No tasks matched the provided prefix.");
+      }
+    }
+
+    return result;
+  });
+
 const showHelp = (): void => {
   console.log(`
 OpenAgents Task CLI
@@ -1606,6 +1668,7 @@ Commands:
   close     Close a task with optional commit SHA capture
   reopen    Reopen a closed task
   show      Show task details with dependency tree
+  rename-prefix Rename task IDs to a new prefix (with dry-run)
   comment:add  Add a comment to a task
   comment:list List comments for a task
   stats     Show task statistics (counts by status, type, priority)
@@ -1668,6 +1731,11 @@ comment:add Options:
 
 comment:list Options:
   --id <task-id>          Task ID to list comments for (required)
+
+rename-prefix Options:
+  --from <prefix>         Existing prefix to replace (required)
+  --to <prefix>           New prefix to apply (required)
+  --dry-run               Preview changes without writing
 
 stale Options:
   --days <n>              Find tasks not updated in N days (default: 30)
@@ -1740,6 +1808,7 @@ Examples:
   bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
   bun src/tasks/cli.ts comment:add --id oa-123 --text "Noted" --author alice --json  # add a comment
   bun src/tasks/cli.ts comment:list --id oa-123 --json  # list comments
+  bun src/tasks/cli.ts rename-prefix --from oa --to zz --dry-run --json  # preview ID prefix rename
 `);
 };
 
@@ -1870,6 +1939,18 @@ const main = async () => {
     case "comment:list":
       try {
         await Effect.runPromise(cmdCommentList(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "rename-prefix":
+      try {
+        await Effect.runPromise(cmdRenamePrefix(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));

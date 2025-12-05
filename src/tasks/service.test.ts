@@ -17,6 +17,7 @@ import {
   searchAllTasks,
   getStaleTasks,
   addComment,
+  renameTaskPrefix,
 } from "./service.js";
 import type { TaskCreate } from "./schema.js";
 
@@ -185,6 +186,62 @@ describe("TaskService", () => {
     expect(result.saved[0]?.comments?.[1]?.author).toBe("bob");
     expect(result.saved[0]?.updatedAt).toBe("2025-01-01T02:00:00.000Z");
     expect(result.second.comment.text).toBe("Follow-up");
+  });
+
+  test("renames task IDs, dependencies, and description references", async () => {
+    const renamed = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+        const first = yield* createTask({
+          tasksPath,
+          task: makeTask("Parent task", {
+            deps: [],
+          }),
+          idPrefix: "oa",
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+
+        // Add description referencing the generated ID
+        yield* updateTask({
+          tasksPath,
+          id: first.id,
+          update: { description: `See ${first.id} for context` },
+          timestamp: new Date("2025-01-01T00:01:00Z"),
+        });
+
+        yield* createTask({
+          tasksPath,
+          task: makeTask("Child task", {
+            deps: [{ id: first.id, type: "related" }],
+          }),
+          idPrefix: "oa",
+          timestamp: new Date("2025-01-01T00:05:00Z"),
+        });
+
+        const result = yield* renameTaskPrefix({
+          tasksPath,
+          fromPrefix: "oa",
+          toPrefix: "zz",
+          timestamp: new Date("2025-01-02T00:00:00Z"),
+        });
+
+        const updated = yield* readTasks(tasksPath);
+        return { result, updated, originalId: first.id };
+      }),
+    );
+
+    expect(renamed.result.renamed).toBe(2);
+    expect(renamed.result.depsUpdated).toBe(1);
+    expect(renamed.result.descriptionsUpdated).toBeGreaterThanOrEqual(1);
+    const newId = renamed.result.mapping[renamed.originalId];
+    expect(newId).toBeDefined();
+    const ids = renamed.updated.map((t) => t.id);
+    expect(ids.every((id) => id.startsWith("zz-"))).toBe(true);
+    const parent = renamed.updated.find((t) => t.id === newId);
+    expect(parent?.description).toContain(newId);
+    const child = renamed.updated.find((t) => t.title === "Child task");
+    expect(child?.deps?.[0]?.id).toEqual(expect.stringMatching(/^zz-/));
+    expect(child?.updatedAt).toBe("2025-01-02T00:00:00.000Z");
   });
 
   test("lists tasks with filters, sort policy, and picks next ready", async () => {
