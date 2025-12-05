@@ -135,6 +135,8 @@ export interface SubagentConfig {
   maxTurns?: number;
   /** Abort signal */
   signal?: AbortSignal;
+  /** Streaming output callback (HUD/logging) */
+  onOutput?: (text: string) => void;
 }
 
 export interface SubagentResult {

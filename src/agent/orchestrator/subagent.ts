@@ -82,6 +82,7 @@ export const runSubagent = (
           console.log(`[Subagent] Tool: ${event.tool}`);
         }
       },
+      ...(config.onOutput ? { onOutput: config.onOutput } : {}),
       ...(model ? { model } : {}),
     };
 
@@ -147,6 +148,7 @@ export const createSubagentConfig = (
     model?: string;
     maxTurns?: number;
     signal?: AbortSignal;
+    onOutput?: (text: string) => void;
   }
 ): SubagentConfig => ({
   subtask,
@@ -155,4 +157,5 @@ export const createSubagentConfig = (
   maxTurns: options?.maxTurns ?? 15,
   ...(options?.model ? { model: options.model } : {}),
   ...(options?.signal ? { signal: options.signal } : {}),
+  ...(options?.onOutput ? { onOutput: options.onOutput } : {}),
 });

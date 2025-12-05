@@ -113,6 +113,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
         createSubagentConfig(subtask, options.cwd, options.tools, {
           ...(options.model ? { model: options.model } : {}),
           ...(options.signal ? { signal: options.signal } : {}),
+          ...(options.onOutput ? { onOutput: options.onOutput } : {}),
           maxTurns,
         })
       );
