@@ -582,6 +582,7 @@ export const runOrchestrator = (
         writeProgress(openagentsDir, progress);
         yield* recordUsage();
         emit({ type: "session_complete", success: false, summary: state.error });
+        yield* stepResultsManager.clear();
         return state;
       }
 
@@ -999,6 +1000,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             yield* recordUsage();
             yield* clearCheckpoint(openagentsDir);
             emit({ type: "session_complete", success: false, summary: `Task blocked after ${MAX_CONSECUTIVE_FAILURES} failures` });
+            yield* stepResultsManager.clear();
             return state;
           }
 
@@ -1025,6 +1027,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           writeSubtasks(openagentsDir, subtaskList);
           yield* recordUsage();
           yield* clearCheckpoint(openagentsDir);
+          yield* stepResultsManager.clear();
           return state;
         }
 
@@ -1087,6 +1090,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
               yield* recordUsage();
               yield* clearCheckpoint(openagentsDir);
               emit({ type: "session_complete", success: false, summary: "Verification failed after healing" });
+              yield* stepResultsManager.clear();
               return state;
             }
           } else {
@@ -1103,6 +1107,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             yield* recordUsage();
             yield* clearCheckpoint(openagentsDir);
             emit({ type: "session_complete", success: false, summary: "Verification failed" });
+            yield* stepResultsManager.clear();
             return state;
           }
         } else {
@@ -1119,6 +1124,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           yield* recordUsage();
           yield* clearCheckpoint(openagentsDir);
           emit({ type: "session_complete", success: false, summary: "Verification failed" });
+          yield* stepResultsManager.clear();
           return state;
         }
       }
@@ -1148,6 +1154,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           yield* recordUsage();
           yield* clearCheckpoint(openagentsDir);
           emit({ type: "session_complete", success: false, summary: "E2E failed" });
+          yield* stepResultsManager.clear();
           return state;
         }
       } else {
