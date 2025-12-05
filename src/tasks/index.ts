@@ -126,11 +126,3 @@ export {
   type MergeResult,
   type MergeFilesOptions,
 } from "./merge.js";
-
-export {
-  createTaskRepository,
-  resolveTaskRepositoryPaths,
-  type TaskRepository,
-  type TaskRepositoryOptions,
-  type TaskRepositoryPaths,
-} from "./repository.js";
