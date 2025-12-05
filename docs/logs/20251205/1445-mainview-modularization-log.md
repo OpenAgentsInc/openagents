@@ -30,17 +30,38 @@ Used Explore agent to analyze the full 2734-line file and identify:
 
 ## Progress So Far
 
-### ✅ Completed
+### ✅ Phase 1 Completed (Simple Modules)
 1. Created `src/mainview/shared-types.ts` (195 lines)
    - All common interfaces exported
    - Type definitions for MC tasks, TB state, containers
    - Constants (ZINC colors, limits)
    - RPC schema interfaces
 
+2. Created `src/mainview/container-panes.ts` (125 lines)
+   - Container execution output rendering
+   - Throttled render using requestAnimationFrame
+   - HTML escaping for XSS prevention
+   - Export: containerPanes Map, renderContainerPanes(), initContainerPanes()
+
+3. Created `src/mainview/tb-output.ts` (120 lines)
+   - TB output viewer with clear, copy, close functionality
+   - Auto-scroll to bottom
+   - Show/hide logic
+   - Export: showOutputViewer(), updateOutputViewer(), initTBOutput()
+
+4. Created `src/mainview/trajectory-pane.ts` (130 lines)
+   - Unified trajectory list (TB runs, ATIF traces)
+   - Loading state management
+   - Click handler with event delegation
+   - Export: loadTrajectories(), renderTrajectoryPane(), initTrajectoryPane()
+
+**Total Extracted:** ~570 lines (195 + 125 + 120 + 130)
+
 ### 🔄 In Progress
-- Task requires ~4-6 hours for full completion
-- Multiple circular dependencies need refactoring
-- Shared mutable state requires careful handling
+- Task requires ~4-6 hours total for full completion
+- Phase 1 completed (~1 hour)
+- Multiple circular dependencies need refactoring (in Phase 2)
+- Shared mutable state requires careful handling (in Phase 2)
 
 ## Key Technical Challenges
 
@@ -205,10 +226,13 @@ window.TB = { ... }
 14. Update task to track remaining work
 
 ## Files Created
-- `src/mainview/shared-types.ts` (+195 lines, NEW)
+- `src/mainview/shared-types.ts` (+195 lines, NEW) ✅
+- `src/mainview/container-panes.ts` (+125 lines, NEW) ✅
+- `src/mainview/tb-output.ts` (+120 lines, NEW) ✅
+- `src/mainview/trajectory-pane.ts` (+130 lines, NEW) ✅
 
 ## Files To Modify
-- `src/mainview/index.ts` (will be reduced from 2734 to ~814 lines)
+- `src/mainview/index.ts` (will be reduced from 2734 to ~814 lines) - NOT YET MODIFIED
 
 ## Validation Required
 - TypeScript compilation: `bun run build:check`
