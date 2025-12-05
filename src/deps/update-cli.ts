@@ -85,7 +85,9 @@ const main = () => {
     console.log("Packages: all");
   }
 
-  const result = updateDependencies({ packages, dryRun, backupPath });
+  const result = updateDependencies(
+    backupPath ? { packages, dryRun, backupPath: backupPath } : { packages, dryRun },
+  );
 
   if (!result.success) {
     console.error(`❌ Update failed: ${result.error}`);

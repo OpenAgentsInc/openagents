@@ -21,12 +21,16 @@ describe("lsTool", () => {
         yield* fs.writeFileString(path.join(dir, "file.txt"), "data");
 
         const result = yield* runTool(lsTool, { path: dir });
-        return result.content.find(isTextContent)?.text ?? "";
+        return {
+          text: result.content.find(isTextContent)?.text ?? "",
+          details: result.details,
+        };
       }),
     );
 
-    expect(text).toContain("file.txt");
-    expect(text).toContain("sub/");
+    expect(text.text).toContain("file.txt");
+    expect(text.text).toContain("sub/");
+    expect(text.details?.entries).toBeGreaterThanOrEqual(2);
   });
 
   it("supports SDK-style file_path alias", async () => {

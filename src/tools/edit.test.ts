@@ -11,7 +11,7 @@ const runWithBun = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem | P
 
 describe("editTool", () => {
   it("replaces a unique match and emits a diff", async () => {
-    const { updated, diff } = await runWithBun(
+    const { updated, diff, details } = await runWithBun(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const pathService = yield* Path.Path;
@@ -21,16 +21,18 @@ describe("editTool", () => {
 
         yield* fs.writeFileString(file, original);
 
-        const result = yield* runTool(editTool, { path: file, oldText: "bravo", newText: "delta" });
+        const result = yield* runTool(editTool, { file_path: file, old_string: "bravo", new_string: "delta" });
         const updated = yield* fs.readFileString(file);
 
-        return { updated, diff: result.details?.diff ?? "" };
+        return { updated, diff: result.details?.diff ?? "", details: result.details };
       }),
     );
 
     expect(updated).toContain("delta");
     expect(diff).toContain("+");
     expect(diff).toContain("-");
+    expect(details?.linesAdded).toBeGreaterThan(0);
+    expect(details?.linesRemoved).toBeGreaterThan(0);
   });
 
   it("fails when the match is not unique", async () => {
@@ -67,5 +69,29 @@ describe("editTool", () => {
 
     expect(error).toBeInstanceOf(ToolExecutionError);
     expect((error as ToolExecutionError).reason).toBe("missing_old_text");
+  });
+
+  it("replaces all occurrences when replace_all is true", async () => {
+    const updated = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "edit-tool" });
+        const file = pathService.join(dir, "multi.txt");
+
+        yield* fs.writeFileString(file, "x y x y");
+
+        yield* runTool(editTool, {
+          path: file,
+          old_string: "x",
+          new_string: "z",
+          replace_all: true,
+        });
+
+        return yield* fs.readFileString(file);
+      }),
+    );
+
+    expect(updated).toBe("z y z y");
   });
 });

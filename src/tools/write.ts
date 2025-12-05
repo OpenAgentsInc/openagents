@@ -18,6 +18,16 @@ const WriteParametersSchema = S.Struct({
 
 type WriteParameters = S.Schema.Type<typeof WriteParametersSchema>;
 
+interface WriteDetails {
+  path: string;
+  resolvedPath: string;
+  bytesWritten: number;
+  existedBefore: boolean;
+  previousSize?: number;
+  newSize: number;
+  durationMs: number;
+}
+
 const expandUserPath = (path: string, pathService: Path.Path) => {
   const home = typeof Bun !== "undefined" ? Bun.env.HOME ?? Bun.env.USERPROFILE : undefined;
 
@@ -29,7 +39,7 @@ const expandUserPath = (path: string, pathService: Path.Path) => {
   return path;
 };
 
-export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem | Path.Path> = {
+export const writeTool: Tool<WriteParameters, WriteDetails, FileSystem.FileSystem | Path.Path> = {
   name: "write",
   label: "write",
   description:
@@ -39,6 +49,7 @@ export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem |
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
+      const startedAt = Date.now();
 
       const inputPath = params.path ?? params.file_path;
       if (!inputPath) {
@@ -56,19 +67,54 @@ export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem |
         ),
       );
 
+      const existedBefore = yield* fs.exists(absolutePath).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("command_failed", `Failed to check path: ${error.message}`),
+        ),
+      );
+
+      const previousSize = existedBefore
+        ? yield* fs.stat(absolutePath).pipe(
+            Effect.mapError(
+              (error) => new ToolExecutionError("command_failed", `Failed to stat existing file: ${error.message}`),
+            ),
+          )
+        : null;
+
       yield* fs.writeFileString(absolutePath, params.content).pipe(
         Effect.mapError(
           (error) => new ToolExecutionError("command_failed", `Failed to write file: ${error.message}`),
         ),
       );
 
+      const newStat = yield* fs.stat(absolutePath).pipe(
+        Effect.mapError(
+          (error) => new ToolExecutionError("command_failed", `Failed to stat written file: ${error.message}`),
+        ),
+      );
+
+      const bytesWritten = Buffer.byteLength(params.content);
+      const details: WriteDetails = {
+        path: inputPath,
+        resolvedPath: absolutePath,
+        bytesWritten,
+        existedBefore,
+        newSize: Number(newStat.size),
+        durationMs: Date.now() - startedAt,
+      };
+
+      if (previousSize !== null) {
+        details.previousSize = Number(previousSize.size);
+      }
+
       return {
         content: [
           {
             type: "text",
-            text: `Successfully wrote ${params.content.length} bytes to ${inputPath}`,
+            text: `Successfully wrote ${bytesWritten} bytes to ${inputPath}`,
           },
         ],
+        details,
       };
     }),
 };

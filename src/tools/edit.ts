@@ -6,18 +6,39 @@ import * as S from "effect/Schema";
 import type { Tool, ToolResult } from "./schema.js";
 import { ToolExecutionError } from "./schema.js";
 
+interface EditDetails {
+  path: string;
+  resolvedPath: string;
+  diff: string;
+  oldLength: number;
+  newLength: number;
+  delta: number;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
+const pathField = S.String.pipe(
+  S.minLength(1),
+  S.annotations({ description: "Path to the file to edit (relative or absolute)" }),
+);
+
+const textField = S.String.pipe(
+  S.minLength(1),
+  S.annotations({ description: "Exact text to find and replace (must match exactly)" }),
+);
+
+const replacementField = S.String.pipe(
+  S.annotations({ description: "New text to replace the old text with" }),
+);
+
 const EditParametersSchema = S.Struct({
-  path: S.String.pipe(
-    S.minLength(1),
-    S.annotations({ description: "Path to the file to edit (relative or absolute)" }),
-  ),
-  oldText: S.String.pipe(
-    S.minLength(1),
-    S.annotations({ description: "Exact text to find and replace (must match exactly)" }),
-  ),
-  newText: S.String.pipe(
-    S.annotations({ description: "New text to replace the old text with" }),
-  ),
+  path: S.optional(pathField),
+  file_path: S.optional(pathField),
+  oldText: S.optional(textField),
+  old_string: S.optional(textField),
+  newText: S.optional(replacementField),
+  new_string: S.optional(replacementField),
+  replace_all: S.optional(S.Boolean),
 });
 
 type EditParameters = S.Schema.Type<typeof EditParametersSchema>;
@@ -38,7 +59,12 @@ const expandUserPath = (path: string, pathService: Path.Path) => {
   return path;
 };
 
-const generateDiffString = (oldContent: string, newContent: string, contextLines = 4) => {
+const generateDiffString = (
+  oldContent: string,
+  newContent: string,
+  contextLines = 4,
+  diffChanges?: Diff.Change[],
+) => {
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
   const maxLineNum = Math.max(oldLines.length, newLines.length);
@@ -54,7 +80,7 @@ const generateDiffString = (oldContent: string, newContent: string, contextLines
     output.push(`${prefix}${String(lineNum).padStart(lineNumWidth, " ")} ${line}`);
   };
 
-  const changes = Diff.diffLines(oldContent, newContent);
+  const changes = diffChanges ?? Diff.diffLines(oldContent, newContent);
 
   for (let i = 0; i < changes.length; i++) {
     const part = changes[i]!;
@@ -122,11 +148,26 @@ const generateDiffString = (oldContent: string, newContent: string, contextLines
   return output.join("\n");
 };
 
-export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSystem | Path.Path> = {
+const summarizeChanges = (changes: Array<Diff.Change>) =>
+  changes.reduce(
+    (acc, part) => {
+      const rows = part.value.split("\n");
+      if (rows[rows.length - 1] === "") rows.pop();
+      if (part.added) {
+        acc.added += rows.length;
+      } else if (part.removed) {
+        acc.removed += rows.length;
+      }
+      return acc;
+    },
+    { added: 0, removed: 0 },
+  );
+
+export const editTool: Tool<EditParameters, EditDetails, FileSystem.FileSystem | Path.Path> = {
   name: "edit",
   label: "edit",
   description:
-    "Edit a file by replacing exact text. The oldText must match exactly (including whitespace). Use this for precise, surgical edits.",
+    "Edit a file by replacing exact text. The old text must match exactly (including whitespace). Use replace_all to update every occurrence when the match is not unique.",
   schema: EditParametersSchema,
   execute: (params, options) =>
     Effect.gen(function* () {
@@ -136,11 +177,27 @@ export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSys
 
       yield* abortIf(signal);
 
-      const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
+      const inputPath = params.path ?? params.file_path;
+      const oldText = params.oldText ?? params.old_string;
+      const newText = params.newText ?? params.new_string;
+
+      if (!inputPath) {
+        return yield* Effect.fail(
+          new ToolExecutionError("invalid_arguments", "Either path or file_path is required"),
+        );
+      }
+
+      if (!oldText || !newText) {
+        return yield* Effect.fail(
+          new ToolExecutionError("invalid_arguments", "old_text and new_text are required"),
+        );
+      }
+
+      const absolutePath = pathService.resolve(expandUserPath(inputPath, pathService));
 
       yield* fs.access(absolutePath, { readable: true, writable: true }).pipe(
         Effect.mapError(
-          () => new ToolExecutionError("not_found", `File not found or not writable: ${params.path}`),
+          () => new ToolExecutionError("not_found", `File not found or not writable: ${inputPath}`),
         ),
       );
 
@@ -148,61 +205,77 @@ export const editTool: Tool<EditParameters, { diff: string }, FileSystem.FileSys
 
       const content = yield* fs.readFileString(absolutePath).pipe(
         Effect.mapError(
-          (error) => new ToolExecutionError("not_found", `Unable to read ${params.path}: ${error.message}`),
+          (error) => new ToolExecutionError("not_found", `Unable to read ${inputPath}: ${error.message}`),
         ),
       );
 
       yield* abortIf(signal);
 
-      if (!content.includes(params.oldText)) {
+      if (!content.includes(oldText)) {
         return yield* Effect.fail(
           new ToolExecutionError(
             "missing_old_text",
-            `Could not find the exact text in ${params.path}. The old text must match exactly including all whitespace and newlines.`,
+            `Could not find the exact text in ${inputPath}. The old text must match exactly including all whitespace and newlines.`,
           ),
         );
       }
 
-      const occurrences = content.split(params.oldText).length - 1;
+      const occurrences = content.split(oldText).length - 1;
 
-      if (occurrences !== 1) {
+      if (!params.replace_all && occurrences !== 1) {
         return yield* Effect.fail(
           new ToolExecutionError(
             "not_unique",
-            `Found ${occurrences} occurrences of the text in ${params.path}. The text must be unique. Please provide more context to make it unique.`,
+            `Found ${occurrences} occurrences of the text in ${inputPath}. The text must be unique. Use replace_all to replace all occurrences.`,
           ),
         );
       }
 
-      const index = content.indexOf(params.oldText);
-      const newContent =
-        content.substring(0, index) + params.newText + content.substring(index + params.oldText.length);
+      const newContent = params.replace_all
+        ? content.split(oldText).join(newText)
+        : (() => {
+            const index = content.indexOf(oldText);
+            return content.substring(0, index) + newText + content.substring(index + oldText.length);
+          })();
 
       if (content === newContent) {
         return yield* Effect.fail(
           new ToolExecutionError(
             "unchanged",
-            `No changes made to ${params.path}. The replacement produced identical content.`,
+            `No changes made to ${inputPath}. The replacement produced identical content.`,
           ),
         );
       }
 
       yield* fs.writeFileString(absolutePath, newContent).pipe(
         Effect.mapError(
-          (error) => new ToolExecutionError("not_found", `Unable to write ${params.path}: ${error.message}`),
+          (error) => new ToolExecutionError("not_found", `Unable to write ${inputPath}: ${error.message}`),
         ),
       );
 
       yield* abortIf(signal);
 
-      const result: ToolResult<{ diff: string }> = {
+      const diffChanges = Diff.diffLines(content, newContent);
+      const changeSummary = summarizeChanges(diffChanges);
+      const diffString = generateDiffString(content, newContent, 4, diffChanges);
+
+      const result: ToolResult<EditDetails> = {
         content: [
           {
             type: "text",
-            text: `Successfully replaced text in ${params.path}. Changed ${params.oldText.length} characters to ${params.newText.length} characters.`,
+            text: `Successfully replaced text in ${inputPath}. Changed ${oldText.length} characters to ${newText.length} characters.`,
           },
         ],
-        details: { diff: generateDiffString(content, newContent) },
+        details: {
+          path: inputPath,
+          resolvedPath: absolutePath,
+          diff: diffString,
+          oldLength: content.length,
+          newLength: newContent.length,
+          delta: newContent.length - content.length,
+          linesAdded: changeSummary.added,
+          linesRemoved: changeSummary.removed,
+        },
       };
 
       return result;

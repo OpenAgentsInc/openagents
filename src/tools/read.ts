@@ -21,6 +21,21 @@ const pathField = S.String.pipe(
   S.annotations({ description: "Path to the file to read (relative or absolute)" }),
 );
 
+interface ReadDetails {
+  path: string;
+  resolvedPath: string;
+  sizeBytes: number;
+  totalLines?: number;
+  startLine?: number;
+  endLine?: number;
+  linesReturned?: number;
+  remainingLines?: number;
+  truncatedLines?: number;
+  truncated: boolean;
+  mimeType?: string;
+  notices?: string[];
+}
+
 const baseReadFields = {
   offset: S.optional(
     S.Number.pipe(
@@ -65,7 +80,7 @@ const isImage = (filePath: string): string | undefined => {
 
 export const readTool: Tool<
   ReadParameters,
-  undefined,
+  ReadDetails,
   FileSystem.FileSystem | Path.Path
 > = {
   name: "read",
@@ -94,6 +109,9 @@ export const readTool: Tool<
       if (!exists) {
         return yield* Effect.fail(new ToolExecutionError("not_found", `File not found: ${inputPath}`));
       }
+      const stat = yield* fs.stat(absolutePath).pipe(
+        Effect.mapError((e) => new ToolExecutionError("command_failed", String(e))),
+      );
 
       if (mimeType) {
         const data = yield* fs.readFile(absolutePath).pipe(
@@ -106,6 +124,13 @@ export const readTool: Tool<
             { type: "text" as const, text: `Read image file [${mimeType}]` },
             { type: "image" as const, data: base64, mimeType },
           ],
+          details: {
+            path: inputPath,
+            resolvedPath: absolutePath,
+            sizeBytes: Number(stat.size),
+            mimeType,
+            truncated: false,
+          },
         };
       }
 
@@ -115,6 +140,10 @@ export const readTool: Tool<
         ),
       );
       const lines = textContent.split("\n");
+
+      if (lines.length > 0 && lines[lines.length - 1] === "") {
+        lines.pop();
+      }
 
       const startLine = params.offset ? params.offset - 1 : 0;
       const limit = params.limit ?? MAX_LINES;
@@ -156,6 +185,21 @@ export const readTool: Tool<
 
       return {
         content: [{ type: "text" as const, text: outputText }],
+        details: {
+          path: inputPath,
+          resolvedPath: absolutePath,
+          sizeBytes: Number(stat.size),
+          totalLines: lines.length,
+          startLine: startLine + 1,
+          endLine,
+          linesReturned: selectedLines.length,
+          remainingLines: Math.max(lines.length - endLine, 0),
+          truncatedLines: hadTruncatedLines
+            ? selectedLines.filter((line) => line.length >= MAX_LINE_LENGTH).length
+            : 0,
+          truncated: hadTruncatedLines || endLine < lines.length,
+          ...(notices.length > 0 ? { notices } : {}),
+        },
       };
     }),
 };

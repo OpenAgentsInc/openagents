@@ -26,6 +26,8 @@ describe("readTool", () => {
     const textBlock = result.content.find(isTextContent);
     expect(textBlock?.text).toContain("alpha");
     expect(textBlock?.text).toContain("charlie");
+    expect(result.details?.totalLines).toBe(3);
+    expect(result.details?.truncated).toBe(false);
   });
 
   it("respects offset and limit with notice", async () => {

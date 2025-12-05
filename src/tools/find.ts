@@ -5,6 +5,19 @@ import * as S from "effect/Schema";
 import type { Tool } from "./schema.js";
 import { ToolExecutionError } from "./schema.js";
 
+interface FindDetails {
+  root: string;
+  resolvedRoot: string;
+  pattern?: string;
+  maxResults?: number;
+  includeHidden: boolean;
+  matches: number;
+  truncated: boolean;
+  entriesVisited: number;
+  directoriesVisited: number;
+  durationMs: number;
+}
+
 const FindParametersSchema = S.Struct({
   path: S.optional(S.String),
   file_path: S.optional(
@@ -32,15 +45,7 @@ const matches = (name: string, pattern?: string, includeHidden?: boolean) => {
 
 export const findTool: Tool<
   FindParameters,
-  {
-    root: string;
-    resolvedRoot: string;
-    pattern?: string;
-    maxResults?: number;
-    includeHidden: boolean;
-    matches: number;
-    truncated: boolean;
-  },
+  FindDetails,
   FileSystem.FileSystem | Path.Path
 > = {
   name: "find",
@@ -67,6 +72,9 @@ export const findTool: Tool<
       }
 
       const collected: string[] = [];
+      const startedAt = Date.now();
+      let entriesVisited = 0;
+      let directoriesVisited = 0;
       const stack = [root];
       const pattern = params.glob ?? params.pattern;
 
@@ -93,7 +101,9 @@ export const findTool: Tool<
             ),
           );
 
+          entriesVisited++;
           if (stat.type === "Directory") {
+            directoriesVisited++;
             stack.push(fullPath);
           }
 
@@ -118,6 +128,9 @@ export const findTool: Tool<
             includeHidden: params.includeHidden ?? false,
             matches: 0,
             truncated: false,
+            entriesVisited,
+            directoriesVisited,
+            durationMs: Date.now() - startedAt,
           },
         };
       }
@@ -127,12 +140,15 @@ export const findTool: Tool<
         details: {
           root: rootPath,
           resolvedRoot: root,
-          ...(pattern !== undefined ? { pattern } : {}),
-          ...(params.maxResults !== undefined ? { maxResults: params.maxResults } : {}),
-          includeHidden: params.includeHidden ?? false,
-          matches: collected.length,
-          truncated: params.maxResults ? collected.length >= params.maxResults : false,
-        },
-      };
-    }),
+        ...(pattern !== undefined ? { pattern } : {}),
+        ...(params.maxResults !== undefined ? { maxResults: params.maxResults } : {}),
+        includeHidden: params.includeHidden ?? false,
+        matches: collected.length,
+        truncated: params.maxResults ? collected.length >= params.maxResults : false,
+        entriesVisited,
+        directoriesVisited,
+        durationMs: Date.now() - startedAt,
+      },
+    };
+  }),
 };

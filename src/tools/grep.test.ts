@@ -28,6 +28,8 @@ describe("grepTool", () => {
     const text = result.content.find(isTextContent)?.text ?? "";
     expect(text).toContain("sample.txt:1");
     expect(text).toContain("sample.txt:3");
+    expect(result.details?.matches).toBe(2);
+    expect(result.details?.exitCode).toBe(0);
   });
 
   it("respects maxResults", async () => {
