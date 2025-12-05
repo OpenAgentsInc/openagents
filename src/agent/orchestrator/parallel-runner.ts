@@ -16,6 +16,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { execSync } from "node:child_process";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect, Layer } from "effect";
@@ -802,6 +803,24 @@ export const runParallelAgentsAsync = (
   config: ParallelRunnerConfig,
 ): Promise<AgentSlot[]> => Effect.runPromise(runParallelAgents(config));
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Resource Guardrails
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Calculate a safe max agent count based on host memory.
+ */
+export const calculateSafeMaxAgents = (
+  totalMemBytes: number,
+  perAgentMemoryMb: number,
+  hostReserveMb: number,
+): number => {
+  const totalMb = totalMemBytes / (1024 * 1024);
+  const available = Math.max(0, totalMb - hostReserveMb);
+  const safe = Math.floor(available / perAgentMemoryMb);
+  return Math.max(1, safe);
+};
+
 /**
  * Configuration for creating a parallel runner from ParallelExecutionConfig.
  */
@@ -870,10 +889,26 @@ export const runParallelFromConfig = (
 ): Effect.Effect<AgentSlot[], ParallelRunnerError> => {
   const sessionId = `parallel-${Date.now()}`;
 
+  const requestedMaxAgents = options.parallelConfig.maxAgents ?? 4;
+  const perAgentMemoryMb = options.parallelConfig.perAgentMemoryMb ?? 4096;
+  const hostMemoryReserveMb = options.parallelConfig.hostMemoryReserveMb ?? 6144;
+  const safeMaxAgents = calculateSafeMaxAgents(
+    os.totalmem(),
+    perAgentMemoryMb,
+    hostMemoryReserveMb,
+  );
+  const cappedMaxAgents = Math.max(1, Math.min(requestedMaxAgents, safeMaxAgents));
+
+  if (cappedMaxAgents < requestedMaxAgents) {
+    console.warn(
+      `[parallel] Reducing maxAgents from ${requestedMaxAgents} to ${cappedMaxAgents} based on host memory (${perAgentMemoryMb}MiB/agent, ${hostMemoryReserveMb}MiB reserved)`,
+    );
+  }
+
   const config: ParallelRunnerConfig = {
     repoPath: options.repoPath,
     openagentsDir: options.openagentsDir,
-    maxAgents: options.parallelConfig.maxAgents ?? 4,
+    maxAgents: cappedMaxAgents,
     tasks: options.tasks,
     baseBranch: options.baseBranch,
     sessionId,

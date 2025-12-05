@@ -139,6 +139,8 @@ describe("parallel runner regression", () => {
         parallelConfig: {
           enabled: true,
           maxAgents: 2,
+          perAgentMemoryMb: 4096,
+          hostMemoryReserveMb: 6144,
           mergeStrategy: "direct",
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,

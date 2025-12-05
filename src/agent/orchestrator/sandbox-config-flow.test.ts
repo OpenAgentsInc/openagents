@@ -141,6 +141,8 @@ describe("sandbox config flow", () => {
         parallelConfig: {
           enabled: true,
           maxAgents: 1,
+          perAgentMemoryMb: 4096,
+          hostMemoryReserveMb: 6144,
           mergeStrategy: "direct",
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,
@@ -205,6 +207,8 @@ describe("sandbox config flow", () => {
         parallelConfig: {
           enabled: true,
           maxAgents: 1,
+          perAgentMemoryMb: 4096,
+          hostMemoryReserveMb: 6144,
           mergeStrategy: "direct",
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,
@@ -291,6 +295,8 @@ describe("sandbox config flow", () => {
         parallelConfig: {
           enabled: true,
           maxAgents: 1,
+          perAgentMemoryMb: 4096,
+          hostMemoryReserveMb: 6144,
           mergeStrategy: "direct",
           worktreeTimeout: 30 * 60 * 1000,
           installTimeoutMs: 15 * 60 * 1000,

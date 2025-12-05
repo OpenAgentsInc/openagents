@@ -177,9 +177,23 @@ const runE2eOnHost = (
   });
 
 /**
- * Check if a task should run e2e tests based on its labels.
+ * Check if a task should run e2e tests.
+ *
+ * When e2eCommands are configured in project.json, they run for ALL tasks
+ * unless the task has a label explicitly opting out ("skip-e2e", "no-e2e", "unit-only").
+ *
+ * This aligns with Golden Loop v2 acceptance rule: "No commit or push is allowed if configured tests fail."
  */
-const shouldRunE2e = (taskLabels: readonly string[] = []): boolean => {
+const shouldRunE2e = (taskLabels: readonly string[] = [], e2eCommandsConfigured = false): boolean => {
+  const skipE2eLabels = ["skip-e2e", "no-e2e", "unit-only"];
+  const hasSkipLabel = taskLabels.some((label) => skipE2eLabels.includes(label.toLowerCase()));
+
+  // If e2eCommands are configured, run for all tasks unless explicitly skipped
+  if (e2eCommandsConfigured) {
+    return !hasSkipLabel;
+  }
+
+  // Fallback: legacy behavior - only run if task has e2e-related labels
   const e2eLabels = ["e2e", "golden-loop", "integration"];
   return taskLabels.some((label) => e2eLabels.includes(label.toLowerCase()));
 };
@@ -1172,9 +1186,11 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       }
 
       // Run e2e commands when configured and task requires them
+      // When e2eCommands are configured, they run for ALL tasks unless task has skip-e2e label
       const effectiveE2eCommands = buildE2eCommands(config.e2eCommands);
+      const e2eCommandsConfigured = effectiveE2eCommands.length > 0;
       const shouldRunE2eTests =
-        effectiveE2eCommands.length > 0 && state.task && shouldRunE2e(state.task.labels ?? []);
+        e2eCommandsConfigured && state.task && shouldRunE2e(state.task.labels ?? [], e2eCommandsConfigured);
 
       if (shouldRunE2eTests) {
         progress.work.e2eRun = true;
@@ -1203,9 +1219,9 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         emit({
           type: "e2e_skipped",
           reason:
-            effectiveE2eCommands.length === 0
+            !e2eCommandsConfigured
               ? "No e2eCommands configured"
-              : "Task labels do not require e2e",
+              : "Task has skip-e2e label",
         });
       }
 

@@ -64,6 +64,7 @@ interface MCTaskState {
 let mcTasks: MCTaskState[] = []
 let mcTasksLoading = false
 let mcTasksError: string | null = null
+let mcTasksCollapsed = false
 void mcTasks
 void mcTasksError
 
@@ -276,15 +277,20 @@ function renderMCTasksWidget(): void {
   }).join("")
 
   widget.innerHTML = `
-    <div class="card fixed inset-x-4 top-4 max-h-[70vh] overflow-hidden">
+    <div class="card fixed inset-x-4 top-4 ${mcTasksCollapsed ? '' : 'max-h-[70vh]'} overflow-hidden">
       <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer" data-action="toggle-mc-tasks">
         <h2 class="text-violet-400 font-bold font-mono text-lg">Ready Tasks (${mcTasks.length})</h2>
-        <span class="text-muted-foreground text-xs font-mono">Ctrl+1 to refresh</span>
+        <div class="flex items-center gap-3">
+          <span class="text-muted-foreground text-xs font-mono">Ctrl+1 to refresh</span>
+          <button class="text-muted-foreground hover:text-foreground transition-colors" title="${mcTasksCollapsed ? 'Expand' : 'Collapse'}">
+            ${mcTasksCollapsed ? '▼' : '▲'}
+          </button>
+        </div>
       </div>
 
       <!-- Table -->
-      <div class="overflow-x-auto max-h-[calc(70vh-60px)] overflow-y-auto">
+      <div class="overflow-x-auto max-h-[calc(70vh-60px)] overflow-y-auto ${mcTasksCollapsed ? 'hidden' : ''}">
         <table class="table">
           <thead>
             <tr>
@@ -302,7 +308,7 @@ function renderMCTasksWidget(): void {
         </table>
       </div>
 
-      ${mcTasks.length > 20 ? `
+      ${!mcTasksCollapsed && mcTasks.length > 20 ? `
       <div class="px-4 py-2 border-t border-border text-center">
         <span class="text-muted-foreground text-xs font-mono">+ ${mcTasks.length - 20} more tasks...</span>
       </div>
@@ -321,6 +327,15 @@ function renderMCTasksWidget(): void {
 
 async function handleMCTaskAction(e: Event): Promise<void> {
   const target = e.target as HTMLElement
+
+  // Handle toggle collapse
+  if (target.closest("[data-action='toggle-mc-tasks']")) {
+    mcTasksCollapsed = !mcTasksCollapsed
+    renderMCTasksWidget()
+    return
+  }
+
+  // Handle assign button
   if (!target.matches("[data-action='assign-mc']")) return
 
   const taskId = target.dataset.taskId
