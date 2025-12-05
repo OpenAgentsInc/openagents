@@ -283,6 +283,8 @@ interface Config {
   legacy: boolean;
   /** Force Claude Code only - no Grok fallback */
   ccOnly: boolean;
+  /** Override sandbox setting from project config */
+  sandboxOverride?: boolean;
 }
 
 const parseArgs = (): Config => {
@@ -290,6 +292,7 @@ const parseArgs = (): Config => {
   let workDir = process.cwd();
   let legacy = false;
   let ccOnly = false;
+  let sandboxOverride: boolean | undefined = undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dir" && args[i + 1]) {
@@ -301,16 +304,26 @@ const parseArgs = (): Config => {
       legacy = true;
     } else if (args[i] === "--cc-only") {
       ccOnly = true;
+    } else if (args[i] === "--sandbox") {
+      sandboxOverride = true;
+    } else if (args[i] === "--no-sandbox") {
+      sandboxOverride = false;
     }
   }
 
-  return {
+  const result: Config = {
     workDir,
     sessionsDir: `${workDir}/.openagents/sessions`,
     runLogDir: `${workDir}/.openagents/run-logs`,
     legacy,
     ccOnly,
   };
+
+  if (sandboxOverride !== undefined) {
+    result.sandboxOverride = sandboxOverride;
+  }
+
+  return result;
 };
 
 const doOneTask = (config: Config) =>
@@ -943,7 +956,15 @@ const doOneTaskOrchestrator = (config: Config) =>
       allowPush: projectConfig.allowPush ?? true,
       claudeCode: claudeCodeConfig,
       ...(projectConfig.typecheckCommands && { typecheckCommands: [...projectConfig.typecheckCommands] }),
-      ...(projectConfig.sandbox && { sandbox: projectConfig.sandbox }),
+      ...(config.sandboxOverride !== undefined || projectConfig.sandbox) && {
+        sandbox: config.sandboxOverride !== undefined
+          ? {
+              enabled: config.sandboxOverride,
+              backend: projectConfig.sandbox?.backend ?? "auto",
+              timeoutMs: projectConfig.sandbox?.timeoutMs ?? 300_000,
+            }
+          : projectConfig.sandbox,
+      },
       // Stream Claude Code output to console AND HUD
       onOutput: (text: string) => {
         process.stdout.write(text);

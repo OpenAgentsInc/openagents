@@ -67,9 +67,24 @@ const webview = new Webview();
 
 // Debug: inject error handler and HUD event listener
 webview.init(`
-  console.log('[OpenAgents] Webview initialized');
+  const originalLog = console.log;
+  const originalError = console.error;
+
+  console.log = function(...args) {
+    window.bunLog?.('[CONSOLE]', ...args);
+    originalLog.apply(console, args);
+  };
+
+  console.error = function(...args) {
+    window.bunLog?.('[ERROR]', ...args);
+    originalError.apply(console, args);
+  };
+
+  console.log('[OpenAgents] Webview initialized - console forwarding active');
+
   window.onerror = function(msg, url, line) {
     console.error('[JS ERROR]', msg, 'at', url, line);
+    return false;
   };
 `);
 
@@ -80,13 +95,16 @@ webview.bind("bunLog", (...args: unknown[]) => {
 
 webview.title = "OpenAgents";
 // Launch near-fullscreen on typical laptop resolutions
-webview.size = { width: 1920, height: 1200, hint: SizeHint.MAX };
+webview.size = { width: 1600, height: 1000, hint: SizeHint.NONE };
 
 // Navigate to localhost HTTP server - this gives the page a real origin
 // so WebSocket connections to localhost will work
 const url = `http://localhost:${DESKTOP_HTTP_PORT}/`;
 log("Desktop", `Navigating to: ${url}`);
 webview.navigate(url);
+
+log("Desktop", "DAFJUQQQQQQ...");
+
 
 log("Desktop", "Opening webview window...");
 

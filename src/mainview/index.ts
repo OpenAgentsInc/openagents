@@ -266,6 +266,11 @@ function renderMCTasksWidget(): void {
           <span class="text-violet-400 font-mono text-xs">${task.type}</span>
         </td>
         <td class="text-muted-foreground font-mono text-xs">${labelStr}</td>
+        <td>
+          <button class="btn btn-sm btn-primary" data-task-id="${task.id}" data-action="assign-mc">
+            Assign
+          </button>
+        </td>
       </tr>
     `
   }).join("")
@@ -288,6 +293,7 @@ function renderMCTasksWidget(): void {
               <th>Title</th>
               <th class="w-20">Type</th>
               <th class="w-32">Labels</th>
+              <th class="w-24">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -308,6 +314,46 @@ function renderMCTasksWidget(): void {
   const totalTime = (t2 - t0).toFixed(2)
   console.log(`[MC] Widget innerHTML set took ${innerHTMLTime}ms, total: ${totalTime}ms`)
   window.bunLog?.(`[MC] Widget innerHTML set took ${innerHTMLTime}ms, total: ${totalTime}ms`)
+
+  // Add click handlers for assign buttons (event delegation)
+  widget.addEventListener("click", handleMCTaskAction)
+}
+
+async function handleMCTaskAction(e: Event): Promise<void> {
+  const target = e.target as HTMLElement
+  if (!target.matches("[data-action='assign-mc']")) return
+
+  const taskId = target.dataset.taskId
+  if (!taskId) return
+
+  console.log(`[MC] Assigning task ${taskId} to MechaCoder with sandbox`)
+  window.bunLog?.(`[MC] Assigning task ${taskId} to MechaCoder with sandbox`)
+
+  try {
+    // Disable button
+    target.setAttribute("disabled", "true")
+    target.textContent = "Starting..."
+
+    // Call RPC to assign and start MechaCoder
+    await socketClient.assignTaskToMC(taskId, { sandbox: true })
+
+    // Update button
+    target.textContent = "Assigned"
+    target.classList.remove("btn-primary")
+    target.classList.add("btn-success")
+
+    console.log(`[MC] Task ${taskId} assigned successfully`)
+    window.bunLog?.(`[MC] Task ${taskId} assigned successfully`)
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.error(`[MC] Failed to assign task ${taskId}:`, errMsg)
+    window.bunLog?.(`[MC] Failed to assign task ${taskId}: ${errMsg}`)
+
+    // Reset button
+    target.removeAttribute("disabled")
+    target.textContent = "Assign"
+    alert(`Failed to assign task: ${errMsg}`)
+  }
 }
 
 // ============================================================================

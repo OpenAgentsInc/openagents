@@ -1,0 +1,20 @@
+{
+  "attempts": [
+    {
+      "key": "unknown-task:none:InitScriptTypecheckFailure:00fd6aa46313f676",
+      "scenario": "InitScriptTypecheckFailure",
+      "taskId": "unknown-task",
+      "errorHash": "00fd6aa46313f676",
+      "timestamp": "2025-12-05T05:21:17.473Z",
+      "outcome": "resolved",
+      "spellsTried": [
+        "fix_typecheck_errors",
+        "update_progress_with_guidance"
+      ],
+      "spellsSucceeded": [
+        "update_progress_with_guidance"
+      ],
+      "summary": "1 spell(s) succeeded; 1 spell(s) failed; Last: Updated progress.md with Healer summary"
+    }
+  ]
+}

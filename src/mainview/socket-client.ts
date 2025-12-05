@@ -353,6 +353,17 @@ export class SocketClient {
     return (response as Extract<SocketResponse, { type: "response:loadReadyTasks" }>).data ?? [];
   }
 
+  /**
+   * Assign a task to MechaCoder
+   */
+  async assignTaskToMC(taskId: string, options?: { sandbox?: boolean }): Promise<{ assigned: boolean }> {
+    const response = await this.request("request:assignTaskToMC", { taskId, options });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to assign task");
+    }
+    return (response as Extract<SocketResponse, { type: "response:assignTaskToMC" }>).data ?? { assigned: false };
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================

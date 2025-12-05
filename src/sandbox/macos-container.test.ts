@@ -106,8 +106,8 @@ describe("Auto-detect", () => {
       }),
     );
 
-    // Should return either "macos-container" or "none"
-    expect(["macos-container", "none"]).toContain(result);
+    // Should return one of supported backends
+    expect(["macos-container", "docker", "none"]).toContain(result);
   });
 
   test("autoDetectLayer provides a working backend", async () => {

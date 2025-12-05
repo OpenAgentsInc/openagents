@@ -87,6 +87,14 @@ export interface LoadReadyTasksRequest extends BaseRequest {
   limit?: number;
 }
 
+export interface AssignTaskToMCRequest extends BaseRequest {
+  type: "request:assignTaskToMC";
+  taskId: string;
+  options?: {
+    sandbox?: boolean;
+  };
+}
+
 /**
  * Union of all request types
  */
@@ -96,7 +104,8 @@ export type SocketRequest =
   | StopTBRunRequest
   | LoadRecentTBRunsRequest
   | LoadTBRunDetailsRequest
-  | LoadReadyTasksRequest;
+  | LoadReadyTasksRequest
+  | AssignTaskToMCRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -233,6 +242,14 @@ export interface LoadReadyTasksResponse extends BaseResponse {
 }
 
 /**
+ * Response to AssignTaskToMCRequest
+ */
+export interface AssignTaskToMCResponse extends BaseResponse {
+  type: "response:assignTaskToMC";
+  data?: { assigned: boolean };
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -241,7 +258,8 @@ export type SocketResponse =
   | StopTBRunResponse
   | LoadRecentTBRunsResponse
   | LoadTBRunDetailsResponse
-  | LoadReadyTasksResponse;
+  | LoadReadyTasksResponse
+  | AssignTaskToMCResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -309,6 +327,9 @@ export const isLoadTBRunDetailsRequest = (msg: SocketRequest): msg is LoadTBRunD
 
 export const isLoadReadyTasksRequest = (msg: SocketRequest): msg is LoadReadyTasksRequest =>
   msg.type === "request:loadReadyTasks";
+
+export const isAssignTaskToMCRequest = (msg: SocketRequest): msg is AssignTaskToMCRequest =>
+  msg.type === "request:assignTaskToMC";
 
 // ============================================================================
 // Serialization Helpers
