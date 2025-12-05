@@ -106,7 +106,13 @@ export type {
 } from "./sandbox-runner.js";
 
 // Verification Pipeline
-export { buildVerificationPlan, runVerificationPipeline } from "./verification-pipeline.js";
+export {
+  buildVerificationCommands,
+  runVerificationPipeline,
+  runVerificationCommands,
+  runE2eOnHost,
+  shouldRunE2e,
+} from "./verification-pipeline.js";
 
 // Checkpoint (crash recovery)
 export {

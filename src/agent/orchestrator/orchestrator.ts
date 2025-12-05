@@ -66,8 +66,9 @@ import {
   durableStep,
 } from "./step-results.js";
 import {
-  buildVerificationPlan,
+  buildVerificationCommands,
   runVerificationPipeline,
+  runVerificationCommands,
   type VerificationPipelineResult,
 } from "./verification-pipeline.js";
 
@@ -196,13 +197,12 @@ export const runOrchestrator = (
       return appendUsageRecord({ rootDir: config.cwd, record: usageRecord }).pipe(Effect.catchAll(() => Effect.void));
     };
 
-    const defaultVerificationPlan = buildVerificationPlan({
-      testCommands: config.testCommands,
-      ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
-      ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
-      useSandbox: config.sandbox?.enabled === true,
-    });
-    const verificationCommands = defaultVerificationPlan.verificationCommands;
+    const verificationCommands = buildVerificationCommands(
+      config.typecheckCommands,
+      config.testCommands,
+      config.sandboxTestCommands,
+      config.sandbox?.enabled === true,
+    );
     // Build sandbox runner config if sandbox is enabled
     const sandboxRunnerConfig: SandboxRunnerConfig | undefined = config.sandbox
       ? {
@@ -416,32 +416,25 @@ export const runOrchestrator = (
       }
 
       // Quick test check
-      const orientationPlan = defaultVerificationPlan;
-
-      if (orientationPlan.verificationCommands.length > 0) {
-        const firstCommandPlan = {
-          ...orientationPlan,
-          verificationCommands: [orientationPlan.verificationCommands[0]],
-          runE2e: false,
-          e2eCommands: [],
-        };
-
-        const testResult = yield* runVerificationPipeline(
+      if (verificationCommands.length > 0) {
+        const firstCommand = verificationCommands[0];
+        const testResult = yield* runVerificationCommands(
+          [firstCommand],
           {
-            plan: firstCommandPlan,
             cwd: config.cwd,
             emit,
-            ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+            ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
           },
         ).pipe(
           Effect.catchAll(() =>
             Effect.succeed({
-              verification: { passed: false, outputs: [], results: [] },
-              e2e: { ran: false, passed: true, outputs: [] },
-            } satisfies VerificationPipelineResult),
+              passed: false,
+              outputs: [],
+              results: [],
+            }),
           ),
         );
-        progress.orientation.testsPassingAtStart = testResult.verification.passed;
+        progress.orientation.testsPassingAtStart = testResult.passed;
       } else {
         progress.orientation.testsPassingAtStart = true;
       }
@@ -634,20 +627,14 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           verificationCommands,
           verifyFn: (commands, cwd) =>
             Effect.runPromise(
-              runVerificationPipeline(
+              runVerificationCommands(
+                commands,
                 {
-                  plan: {
-                    ...defaultVerificationPlan,
-                    verificationCommands: commands,
-                    runE2e: false,
-                    e2eCommands: [],
-                  },
                   cwd,
                   emit,
-                  ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+                  ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
                 },
               ).pipe(
-                Effect.map((result) => result.verification),
                 Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [], results: [] })),
               ),
             ),
@@ -900,23 +887,17 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       state.phase = "verifying";
       progress.work.testsRun = true;
 
-      const verificationPlan = buildVerificationPlan({
+      const verificationOutcome = yield* runVerificationPipeline({
+        cwd: config.cwd,
+        emit,
         testCommands: config.testCommands,
         ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
         ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
         ...(config.e2eCommands ? { e2eCommands: config.e2eCommands } : {}),
         ...(state.task?.labels ? { taskLabels: state.task.labels } : {}),
-        useSandbox: config.sandbox?.enabled === true,
-      });
-
-      const verificationOutcome = yield* runVerificationPipeline(
-        {
-          plan: verificationPlan,
-          cwd: config.cwd,
-          emit,
-          ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
-        },
-      ).pipe(
+        ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
+        ...(verificationCommands.length > 0 ? { verificationCommands } : {}),
+      }).pipe(
         Effect.catchAll(() =>
           Effect.succeed({
             verification: { passed: false, outputs: [], results: [] },
@@ -935,7 +916,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           const healerOutcome = yield* config.healerService.maybeRun(
             {
               type: "verification_complete",
-              command: verificationPlan.verificationCommands.join(" && "),
+              command: verificationCommands.join(" && "),
               passed: false,
               output: verifyResult.outputs[0] ?? "",
             },
@@ -946,14 +927,17 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
           if (healerOutcome?.status === "resolved") {
             // Healer fixed the issue! Re-run verification
-            const retryResult = yield* runVerificationPipeline(
-              {
-                plan: verificationPlan,
-                cwd: config.cwd,
-                emit,
-                ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
-              },
-            ).pipe(
+            const retryResult = yield* runVerificationPipeline({
+              cwd: config.cwd,
+              emit,
+              testCommands: config.testCommands,
+              ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
+              ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
+              ...(config.e2eCommands ? { e2eCommands: config.e2eCommands } : {}),
+              ...(state.task?.labels ? { taskLabels: state.task.labels } : {}),
+              ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
+              ...(verificationCommands.length > 0 ? { verificationCommands } : {}),
+            }).pipe(
               Effect.catchAll(() =>
                 Effect.succeed({
                   verification: { passed: false, outputs: [], results: [] },
@@ -1025,11 +1009,11 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       }
 
       // Run e2e commands when configured and task requires them
-      if (verificationPlan.runE2e && verificationOutcome.e2e) {
-        progress.work.e2eRun = true;
+      if (verificationOutcome.e2e) {
+        progress.work.e2eRun = verificationOutcome.e2e.ran;
         progress.work.e2ePassingAfterWork = verificationOutcome.e2e.passed;
 
-        if (!verificationOutcome.e2e.passed) {
+        if (verificationOutcome.e2e.ran && !verificationOutcome.e2e.passed) {
           yield* recordVerificationReflection(verificationOutcome.e2e.outputs[0], "test_failure");
           state.phase = "failed";
           state.error = "E2E failed";

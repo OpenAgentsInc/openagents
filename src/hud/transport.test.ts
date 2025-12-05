@@ -67,14 +67,13 @@ describe("createHudTransport", () => {
     const client = new FakeClient();
     const stream = new FakeStatusStream();
 
-    const transport = createHudTransport({
-      client,
-      statusStream: stream,
-    });
+    const transport = createHudTransport({ client, statusStream: stream });
 
-    transport.send(SESSION_START);
-    expect(client.messages).toHaveLength(1);
-    expect(stream.messages).toHaveLength(1);
+    transport.sendHudMessage(SESSION_START);
+    transport.send({ type: "text_output", text: "hi", source: "orchestrator" });
+
+    expect(client.messages.map((m) => m.type)).toEqual(["session_start", "text_output"]);
+    expect(stream.messages.map((m) => m.type)).toEqual(["session_start", "text_output"]);
 
     transport.close();
     expect(client.closed).toBe(true);
@@ -82,17 +81,13 @@ describe("createHudTransport", () => {
   });
 
   test("skips status stream when disabled", () => {
-    const transport = createHudTransport({
-      statusStream: { enabled: false, port: 0, token: "secret" },
-    });
+    const transport = createHudTransport({ statusStream: { enabled: false, port: 0, token: "secret" } });
 
     expect(transport.statusStream).toBeNull();
   });
 
   test("skips status stream when token is missing", () => {
-    const transport = createHudTransport({
-      statusStream: { enabled: true, port: 0 },
-    });
+    const transport = createHudTransport({ statusStream: { enabled: true, port: 0 } });
 
     expect(transport.statusStream).toBeNull();
   });
@@ -101,11 +96,30 @@ describe("createHudTransport", () => {
     process.env.STATUS_STREAM_ENABLED = "true";
     process.env.STATUS_STREAM_TOKEN = "secret";
 
-    const transport = createHudTransport({
-      statusStream: { port: 0 },
-    });
+    const transport = createHudTransport({ statusStream: { port: 0 } });
 
     expect(transport.statusStream).not.toBeNull();
-    transport.statusStream?.close();
+    transport.close();
+  });
+
+  test("emitEvent and sendTextOutput forward through filters", () => {
+    const client = new FakeClient();
+    const stream = new FakeStatusStream();
+
+    const transport = createHudTransport({
+      client,
+      statusStream: stream,
+      eventFilter: (event) =>
+        event.type === "session_start"
+          ? { type: "session_start", sessionId: event.sessionId, timestamp: event.timestamp }
+          : null,
+      outputSource: "orchestrator",
+    });
+
+    transport.emitEvent({ type: "session_start", sessionId: "s1", timestamp: "now" });
+    transport.sendTextOutput("hello", "orchestrator");
+
+    expect(client.messages.map((m) => m.type)).toEqual(["session_start", "text_output"]);
+    expect(stream.messages.map((m) => m.type)).toEqual(["session_start", "text_output"]);
   });
 });
