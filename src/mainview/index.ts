@@ -1619,7 +1619,7 @@ console.log("[OpenAgents] About to render...");
 render()
 console.log("[OpenAgents] Render complete!");
 
-// Load live data and refresh periodically (fallback polling)
+// Load live data (TB history updates are pushed over WebSocket)
 void refreshLayoutFromState()
 setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
 

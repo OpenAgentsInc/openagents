@@ -4,6 +4,7 @@ import {
   isTBRunComplete,
   isTBRunRequest,
   isTBRunStart,
+  isTBRunHistory,
   isTBSuiteInfo,
   isTBTaskComplete,
   isTBTaskOutput,
@@ -38,6 +39,12 @@ describe("HUD TB type guards", () => {
         timeout: 0,
         error: 0,
         totalDurationMs: 1000,
+      } as any),
+    ).toBe(true);
+    expect(
+      isTBRunHistory({
+        type: "tb_run_history",
+        runs: [],
       } as any),
     ).toBe(true);
   });
