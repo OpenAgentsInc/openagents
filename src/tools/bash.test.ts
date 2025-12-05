@@ -30,4 +30,10 @@ describe("bashTool", () => {
     expect(error).toBeInstanceOf(ToolExecutionError);
     expect((error as ToolExecutionError).reason).toBe("aborted");
   });
+
+  it("starts background command when requested", async () => {
+    const result = await runWithBun(runTool(bashTool, { command: "sleep 0.1", run_in_background: true }));
+    const text = result.content.find(isTextContent)?.text ?? "";
+    expect(text).toContain("background process");
+  });
 });
