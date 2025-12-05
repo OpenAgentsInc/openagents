@@ -9,6 +9,7 @@ import { createDesktopServer } from "./server.js";
 import { log } from "./logger.js";
 import { isTBRunComplete, type TBRunHistoryMessage } from "../hud/protocol.js";
 import { loadRecentTBRuns } from "./handlers.js";
+import { setATIFHudSender } from "../atif/hud-emitter.js";
 
 // Get config from parent thread
 const staticDir = process.env.STATIC_DIR!;
@@ -22,6 +23,12 @@ const server = createDesktopServer({
 
 log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
 log("Worker", `HUD server on ws://localhost:${server.getHudPort()}`);
+
+// Wire ATIF HUD emitter to desktop server WebSocket
+setATIFHudSender((message) => {
+  server.sendHudMessage(message);
+});
+log("Worker", "ATIF HUD emitter initialized");
 
 const broadcastRunHistory = async (): Promise<void> => {
   const runs = await loadRecentTBRuns(20);
