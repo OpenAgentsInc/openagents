@@ -143,17 +143,14 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
 
   console.log(`[TB] Starting run ${runId}:`, args.join(" "));
 
-  // Spawn subprocess from project root
+  // Spawn subprocess from project root with full environment
+  // (needed for Claude Code SDK to find OAuth credentials in ~/.claude/)
   activeTBRun = spawn({
     cmd: ["bun", ...args],
     cwd: PROJECT_ROOT,
     stdout: "inherit",
     stderr: "inherit",
-    env: {
-      ...process.env,
-      HOME: process.env.HOME ?? Bun.env.HOME,
-      PATH: process.env.PATH ?? Bun.env.PATH,
-    },
+    env: process.env, // Pass full environment for SDK subprocess
   });
 
   // Clean up when done
