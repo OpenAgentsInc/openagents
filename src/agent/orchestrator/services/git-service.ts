@@ -36,6 +36,39 @@ export const getCurrentBranch = (
     catch: (error: any) => new Error(`Failed to get current branch: ${error.message}`),
   });
 
+export const getHeadCommit = (cwd: string): Effect.Effect<string, Error, never> =>
+  Effect.tryPromise({
+    try: async () =>
+      execSync("git rev-parse HEAD", {
+        cwd,
+        encoding: "utf-8",
+      }).trim(),
+    catch: (error: any) => new Error(`Failed to get HEAD commit: ${error.message}`),
+  });
+
+export const isDirty = (cwd: string): Effect.Effect<boolean, Error, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      try {
+        execSync("git diff --quiet", { cwd, encoding: "utf-8" });
+        execSync("git diff --staged --quiet", { cwd, encoding: "utf-8" });
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    catch: (error: any) => new Error(`Failed to check git status: ${error.message}`),
+  });
+
+export const getStagedFiles = (cwd: string): Effect.Effect<readonly string[], Error, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const output = execSync("git diff --staged --name-only", { cwd, encoding: "utf-8" }).trim();
+      return output ? output.split("\n") : [];
+    },
+    catch: (error: any) => new Error(`Failed to get staged files: ${error.message}`),
+  });
+
 export const pushToRemote = (
   branch: string,
   cwd: string,

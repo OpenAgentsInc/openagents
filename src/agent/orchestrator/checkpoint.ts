@@ -16,6 +16,7 @@
 
 import * as FileSystem from "@effect/platform/FileSystem";
 import { Effect, Option } from "effect";
+import { getCurrentBranch, getHeadCommit, getStagedFiles, isDirty } from "./services/git-service.js";
 import type { OrchestratorPhase } from "./types.js";
 
 // ============================================================================
@@ -134,49 +135,20 @@ const getTempCheckpointPath = (openagentsDir: string): string =>
 export const captureGitState = (
   cwd: string,
 ): Effect.Effect<CheckpointGitState, Error, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const { execSync } = await import("node:child_process");
+  Effect.gen(function* () {
+    const [branch, headCommit, dirty, stagedFiles] = yield* Effect.all([
+      getCurrentBranch(cwd),
+      getHeadCommit(cwd),
+      isDirty(cwd),
+      getStagedFiles(cwd),
+    ]);
 
-      // Get current branch
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", {
-        cwd,
-        encoding: "utf-8",
-      }).trim();
-
-      // Get HEAD commit
-      const headCommit = execSync("git rev-parse HEAD", {
-        cwd,
-        encoding: "utf-8",
-      }).trim();
-
-      // Check for dirty state (uncommitted changes)
-      let isDirty = false;
-      try {
-        execSync("git diff --quiet", { cwd, encoding: "utf-8" });
-        execSync("git diff --staged --quiet", { cwd, encoding: "utf-8" });
-      } catch {
-        isDirty = true;
-      }
-
-      // Get staged files
-      const stagedOutput = execSync("git diff --staged --name-only", {
-        cwd,
-        encoding: "utf-8",
-      }).trim();
-      const stagedFiles = stagedOutput ? stagedOutput.split("\n") : [];
-
-      return {
-        branch,
-        headCommit,
-        isDirty,
-        stagedFiles,
-      };
-    },
-    catch: (error: unknown) =>
-      new Error(
-        `Failed to capture git state: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+    return {
+      branch,
+      headCommit,
+      isDirty: dirty,
+      stagedFiles,
+    };
   });
 
 // ============================================================================
