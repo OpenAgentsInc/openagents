@@ -408,14 +408,14 @@ export const runCommand = (
       context: config.context ?? "verification",
     });
 
-  const runWithBackend = (target: SandboxBackend) =>
-    target.run({
-      command,
-      cwd: config.cwd,
-      sandboxConfig: config.sandboxConfig,
-      ...(env ? { env } : {}),
-      hudAdapter,
-    });
+    const runWithBackend = (target: SandboxBackend) =>
+      target.run({
+        command,
+        cwd: config.cwd,
+        sandboxConfig: config.sandboxConfig,
+        ...(env ? { env } : {}),
+        hudAdapter,
+      });
 
     const startTime = Date.now();
 
