@@ -26,6 +26,7 @@ export {
 export { macOSContainerLayer, macOSContainerLive } from "./macos-container.js";
 export { dockerBackendLayer, dockerBackendLive } from "./docker.js";
 export { detectBackend, autoDetectLayer } from "./detect.js";
+export { createSandboxHudAdapter, type SandboxHudAdapter } from "./hud-adapter.js";
 
 // Re-export bootstrap utilities
 export {

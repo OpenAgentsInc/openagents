@@ -16,6 +16,7 @@ import type {
   ReflexionConfigType,
 } from "./reflection/index.js";
 import type { HudMessage } from "../../hud/protocol.js";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 
 // ============================================================================
 // Subtask Types
@@ -215,6 +216,8 @@ export interface OrchestratorConfig {
   safeMode?: boolean;
   /** Additional context (e.g., AGENTS.md content) to prepend to subagent prompts */
   additionalContext?: string;
+  /** PreToolUse hook to enforce worktree isolation for Claude Code */
+  worktreeGuardHook?: HookCallback;
   /** Skip init script (useful for worktree runs where main repo is already validated) */
   skipInitScript?: boolean;
   /** Pre-assigned task (skip pickNextTask if provided) - used by parallel runner */

@@ -111,6 +111,24 @@ describe("runClaudeCodeSubagent", () => {
     expect(inputs[0]?.options?.permissionMode).toBe("bypassPermissions");
   });
 
+  test("registers PreToolUse worktree guard hook when provided", async () => {
+    const inputs: any[] = [];
+    const guardHook = async () => ({ continue: true });
+    const queryFn = async function* (input: any) {
+      inputs.push(input);
+      yield { type: "result", subtype: "success" };
+    };
+
+    await runClaudeCodeSubagent(makeSubtask(), {
+      cwd: "/tmp",
+      worktreeGuardHook: guardHook,
+      queryFn,
+    });
+
+    const preToolHooks = inputs[0]?.options?.hooks?.PreToolUse?.[0]?.hooks;
+    expect(preToolHooks).toContain(guardHook);
+  });
+
   test("loads project settings to provide CLAUDE.md context", async () => {
     const inputs: any[] = [];
     const queryFn = async function* (input: any) {

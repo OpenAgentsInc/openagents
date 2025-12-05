@@ -29,6 +29,7 @@ import {
   type WorktreeInfo,
   type WorktreeConfig,
 } from "./worktree.js";
+import { createWorktreeGuardHook } from "./worktree-guards.js";
 import {
   acquireWorktreeLock,
   releaseWorktreeLock,
@@ -473,6 +474,7 @@ const runAgentInWorktree = (
       forceNewSubtasks: true, // Avoid stale subtask files from git
       claudeCode: config.claudeCode ?? { enabled: true },
       reflectionService,
+      worktreeGuardHook: createWorktreeGuardHook(worktree.path),
       ...(config.reflexionConfig ? { reflexionConfig: config.reflexionConfig } : {}),
     };
 
