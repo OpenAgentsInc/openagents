@@ -5,9 +5,11 @@ import {
   decodeTask,
   decodeTaskCreate,
   decodeTaskUpdate,
+  decodeDeletionEntry,
   isTaskReady,
   type Dependency,
   type Comment,
+  type DeletionEntry,
   type Task,
   type TaskCreate,
   type TaskFilter,
@@ -1349,4 +1351,131 @@ export const searchAllTasks = ({
     const archived = allArchived.filter((task) => matchesListFilter(task, filter));
 
     return { active, archived };
+  });
+
+// --- Deletion tracking functionality ---
+
+const getDeletionsPath = (tasksPath: string): string =>
+  tasksPath.replace(/tasks\.jsonl$/, "deletions.jsonl");
+
+/**
+ * Read deletion entries from deletions.jsonl
+ */
+export const readDeletions = (
+  tasksPath: string,
+): Effect.Effect<DeletionEntry[], TaskServiceError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const deletionsPath = getDeletionsPath(tasksPath);
+
+    const exists = yield* fs.exists(deletionsPath).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "read_error",
+            `Failed to check deletions file: ${e.message}`,
+          ),
+      ),
+    );
+    if (!exists) return [];
+
+    const content = yield* fs.readFileString(deletionsPath).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "read_error",
+            `Failed to read deletions file: ${e.message}`,
+          ),
+      ),
+    );
+
+    const lines = content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length === 0) return [];
+
+    const deletions: DeletionEntry[] = [];
+    for (const line of lines) {
+      const parsed = yield* parseJsonLine(line);
+      const deletion = yield* Effect.try({
+        try: () => decodeDeletionEntry(parsed),
+        catch: (error) =>
+          new TaskServiceError(
+            "validation_error",
+            `Invalid deletion entry: ${(error as Error).message}`,
+          ),
+      });
+      deletions.push(deletion);
+    }
+
+    return deletions;
+  });
+
+/**
+ * Write deletion entries to deletions.jsonl
+ */
+export const writeDeletions = (
+  tasksPath: string,
+  deletions: DeletionEntry[],
+): Effect.Effect<void, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const deletionsPath = getDeletionsPath(tasksPath);
+    yield* ensureDir(deletionsPath);
+
+    const payload = deletions.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+
+    yield* fs.writeFile(deletionsPath, new TextEncoder().encode(payload)).pipe(
+      Effect.mapError(
+        (e) =>
+          new TaskServiceError(
+            "write_error",
+            `Failed to write deletions file: ${e.message}`,
+          ),
+      ),
+    );
+  });
+
+export interface RecordDeletionOptions {
+  tasksPath: string;
+  taskId: string;
+  deletedBy?: string;
+  reason?: string;
+  timestamp?: Date;
+}
+
+/**
+ * Record a task deletion in deletions.jsonl (tombstone for restore)
+ */
+export const recordDeletion = ({
+  tasksPath,
+  taskId,
+  deletedBy,
+  reason,
+  timestamp,
+}: RecordDeletionOptions): Effect.Effect<DeletionEntry, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const existing = yield* readDeletions(tasksPath);
+
+    const entry: DeletionEntry = {
+      taskId,
+      deletedAt: nowIso(now),
+      deletedBy,
+      reason,
+    };
+
+    const validated = yield* Effect.try({
+      try: () => decodeDeletionEntry(entry),
+      catch: (error) =>
+        new TaskServiceError(
+          "validation_error",
+          `Invalid deletion entry: ${(error as Error).message}`,
+        ),
+    });
+
+    yield* writeDeletions(tasksPath, [...existing, validated]);
+    return validated;
   });

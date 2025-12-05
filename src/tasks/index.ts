@@ -6,6 +6,7 @@ export {
   Dependency,
   TaskSource,
   Comment,
+  DeletionEntry,
   Task,
   TaskCreate,
   TaskUpdate,
@@ -22,6 +23,7 @@ export {
   type Dependency as DependencyT,
   type TaskSource as TaskSourceT,
   type Comment as CommentT,
+  type DeletionEntry as DeletionEntryT,
   type Task as TaskT,
   type TaskCreate as TaskCreateT,
   type TaskUpdate as TaskUpdateT,
@@ -36,6 +38,7 @@ export {
   decodeTask,
   decodeTaskCreate,
   decodeTaskUpdate,
+  decodeDeletionEntry,
   decodeProjectConfig,
 } from "./schema.js";
 
@@ -77,6 +80,9 @@ export {
   listComments,
   renameTaskPrefix,
   mergeTasksById,
+  readDeletions,
+  writeDeletions,
+  recordDeletion,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
@@ -94,6 +100,7 @@ export {
   type RenamePrefixResult,
   type MergeTasksOptions,
   type MergeTasksResult,
+  type RecordDeletionOptions,
 } from "./service.js";
 
 export {
