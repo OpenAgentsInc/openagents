@@ -32,6 +32,7 @@ import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Layer } from "effect";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { agentLoop } from "./loop.js";
@@ -69,8 +70,6 @@ import { makeReflectionService } from "./orchestrator/reflection/index.js";
 type PartialOrchestratorState = Partial<OrchestratorState> & { phase: string; error?: string };
 
 const generateCommitMessage = (state: PartialOrchestratorState, cwd: string): string => {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
-
   // Get task info
   const taskId = state.task?.id ?? "unknown";
   const taskTitle = state.task?.title ?? "task cycle";
@@ -859,7 +858,6 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         // See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 "Failed Subtask Cleanup Guardrails"
         const cleanup = projectConfig.failureCleanup ?? { revertTrackedFiles: true, deleteUntrackedFiles: false };
         try {
-          const { execSync } = require("node:child_process") as typeof import("node:child_process");
           const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
           if (status.trim()) {
             if (cleanup.revertTrackedFiles) {
@@ -921,7 +919,6 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
 
       // Commit and push pending changes only after meaningful work
       try {
-        const { execSync } = require("node:child_process") as typeof import("node:child_process");
         const status = execSync("git status --porcelain", { cwd: config.workDir, encoding: "utf-8" });
         if (status.trim()) {
           log("[Cycle cleanup] Committing pending changes...");
@@ -959,7 +956,6 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
     // See docs/mechacoder/GOLDEN-LOOP-v2.md Section 4.3 "Failed Subtask Cleanup Guardrails"
     // Note: Use console.log not log() to avoid writing to the file we're about to commit
     try {
-      const { execSync } = require("node:child_process") as typeof import("node:child_process");
       // Only add specific paths - progress files and logs, NOT all files
       // This prevents broken code from failed subtasks from being committed
       execSync("git add .openagents/progress.md .openagents/subtasks/ docs/logs/ 2>/dev/null || true", {

@@ -14,6 +14,7 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
+import { execSync } from "node:child_process";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
 import { recoverPendingCommits, type RecoveryEvent } from "./recovery.js";
 import {
@@ -154,7 +155,6 @@ const runE2eOnHost = (
       for (const cmd of commands) {
         emit({ type: "e2e_start", command: cmd });
         try {
-          const { execSync } = require("node:child_process") as typeof import("node:child_process");
           const output = execSync(cmd, {
             cwd,
             encoding: "utf-8",
@@ -319,7 +319,6 @@ const pushToRemote = (
 ): Effect.Effect<void, Error, never> =>
   Effect.tryPromise({
     try: async () => {
-      const { execSync } = await import("node:child_process");
       execSync(`git push origin ${branch}`, { cwd, encoding: "utf-8" });
     },
     catch: (error: any) => new Error(`Failed to push: ${error.message}`),
@@ -1244,7 +1243,6 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       const commitMessage = taskResult.title;
       const commitBranch = yield* Effect.tryPromise({
         try: async () => {
-          const { execSync } = await import("node:child_process");
           return execSync("git rev-parse --abbrev-ref HEAD", {
             cwd: config.cwd,
             encoding: "utf-8",
