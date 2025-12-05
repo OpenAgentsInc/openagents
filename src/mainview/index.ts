@@ -48,6 +48,20 @@ import {
   type ContainerStreamType,
 } from "../hud/protocol.js"
 
+const ZINC = {
+  50: "#fafafa",
+  100: "#f4f4f5",
+  200: "#e4e4e7",
+  300: "#d4d4d8",
+  400: "#a1a1aa",
+  500: "#71717a",
+  600: "#52525b",
+  700: "#3f3f46",
+  800: "#27272a",
+  900: "#18181b",
+  950: "#09090b",
+}
+
 // ============================================================================
 // MC (MechaCoder) Tasks State
 // ============================================================================
@@ -224,10 +238,10 @@ let apmState: APMState = {
 
 // APM Widget commented out - not currently used
 // function getAPMColor(apm: number): string {
-//   if (apm >= 30) return "#f59e0b" // Gold - Elite
-//   if (apm >= 15) return "#22c55e" // Green - High velocity
-//   if (apm >= 5) return "#3b82f6" // Blue - Active
-//   return "#6b7280" // Gray - Baseline
+//   if (apm >= 30) return ZINC[300] // High activity
+//   if (apm >= 15) return ZINC[200] // Ready
+//   if (apm >= 5) return ZINC[400] // Active
+//   return ZINC[500] // Baseline
 // }
 //
 // function renderAPMWidget(): string {
@@ -263,12 +277,18 @@ function getPriorityLabel(priority: number): string {
 
 function getPriorityClasses(priority: number): string {
   switch (priority) {
-    case 0: return "bg-red-500/20 text-red-400 border-red-500/30" // Critical
-    case 1: return "bg-amber-500/20 text-amber-400 border-amber-500/30" // High
-    case 2: return "bg-blue-500/20 text-blue-400 border-blue-500/30" // Medium
-    case 3: return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30" // Low
-    case 4: return "bg-zinc-600/20 text-zinc-500 border-zinc-600/30" // Backlog
-    default: return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
+    case 0:
+      return "bg-zinc-950/70 text-zinc-50 border-zinc-700/60"
+    case 1:
+      return "bg-zinc-900/60 text-zinc-200 border-zinc-600/50"
+    case 2:
+      return "bg-zinc-900/40 text-zinc-200 border-zinc-500/40"
+    case 3:
+      return "bg-zinc-800/30 text-zinc-300 border-zinc-500/30"
+    case 4:
+      return "bg-zinc-800/20 text-zinc-300 border-zinc-600/30"
+    default:
+      return "bg-zinc-900/40 text-zinc-300 border-zinc-500/30"
   }
 }
 
@@ -292,8 +312,8 @@ function renderMCTasksWidget(): void {
   // Loading state
   if (mcTasksLoading) {
     widget.innerHTML = `
-      <div class="card fixed inset-x-4 top-4 p-6">
-        <div class="text-violet-400 text-center font-mono">Loading ready tasks...</div>
+      <div class="fixed inset-x-4 top-4 rounded-2xl border border-zinc-800/60 bg-zinc-950/80 px-6 py-5 shadow-2xl backdrop-blur-xl">
+        <div class="text-zinc-200 text-center font-mono text-sm">Loading ready tasks...</div>
       </div>
     `
     return
@@ -302,8 +322,10 @@ function renderMCTasksWidget(): void {
   // Error state
   if (mcTasksError) {
     widget.innerHTML = `
-      <div class="card fixed inset-x-4 top-4 p-6 border-destructive">
-        <div class="text-destructive text-center font-mono">Error: ${mcTasksError.slice(0, 50)}</div>
+      <div class="fixed inset-x-4 top-4 rounded-2xl border border-zinc-700/80 bg-zinc-950/80 px-6 py-5 shadow-2xl backdrop-blur-xl">
+        <div class="text-zinc-400 text-center font-mono text-sm">
+          Error: ${mcTasksError.slice(0, 50)}
+        </div>
       </div>
     `
     return
@@ -312,12 +334,14 @@ function renderMCTasksWidget(): void {
   // Empty state
   if (mcTasks.length === 0) {
     widget.innerHTML = `
-      <div class="card fixed inset-x-4 top-4 p-6">
-        <div class="text-muted-foreground text-center font-mono">No ready tasks found</div>
+      <div class="fixed inset-x-4 top-4 rounded-2xl border border-zinc-800/60 bg-zinc-950/70 px-6 py-5 shadow-2xl backdrop-blur-xl">
+        <div class="text-zinc-400 text-center font-mono text-sm">No ready tasks found</div>
       </div>
     `
     return
   }
+
+  const assignButtonClass = "inline-flex items-center justify-center border border-zinc-700 px-3 py-1 text-[10px] font-mono font-semibold tracking-[0.25em] uppercase rounded text-zinc-50 bg-zinc-900/80 transition-colors hover:bg-zinc-900/95"
 
   // Build task rows
   const taskRows = mcTasks.slice(0, 20).map((task) => {
@@ -326,20 +350,20 @@ function renderMCTasksWidget(): void {
     const labelStr = task.labels.slice(0, 2).join(", ")
 
     return `
-      <tr>
-        <td>
+      <tr class="border-b border-zinc-800 last:border-0">
+        <td class="py-2">
           <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border ${prioClasses}">
             ${prioLabel}
           </span>
         </td>
-        <td class="text-muted-foreground font-mono text-xs">${task.id}</td>
-        <td class="font-medium font-mono" title="${task.title}">${task.title}</td>
+        <td class="text-zinc-400 font-mono text-[10px]">${task.id}</td>
+        <td class="font-medium font-mono text-zinc-100" title="${task.title}">${task.title}</td>
         <td>
-          <span class="text-violet-400 font-mono text-xs">${task.type}</span>
+          <span class="text-zinc-200 font-mono text-xs">${task.type}</span>
         </td>
-        <td class="text-muted-foreground font-mono text-xs">${labelStr}</td>
+        <td class="text-zinc-400 font-mono text-xs">${labelStr}</td>
         <td>
-          <button class="btn btn-sm btn-primary" data-task-id="${task.id}" data-action="assign-mc">
+          <button class="${assignButtonClass}" data-task-id="${task.id}" data-action="assign-mc">
             Assign
           </button>
         </td>
@@ -347,30 +371,33 @@ function renderMCTasksWidget(): void {
     `
   }).join("")
 
+  const containerClasses = [
+    "fixed inset-x-4 top-4 overflow-hidden rounded-[26px] border border-zinc-800/60 bg-zinc-950/80 shadow-2xl backdrop-blur-xl text-zinc-200",
+    mcTasksCollapsed ? "" : "max-h-[70vh]",
+  ].filter(Boolean).join(" ")
+
   widget.innerHTML = `
-    <div class="card fixed inset-x-4 top-4 ${mcTasksCollapsed ? '' : 'max-h-[70vh]'} overflow-hidden">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer" data-action="toggle-mc-tasks">
-        <h2 class="text-violet-400 font-bold font-mono text-lg">Ready Tasks (${mcTasks.length})</h2>
+    <div class="${containerClasses}">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 cursor-pointer" data-action="toggle-mc-tasks">
+        <h2 class="text-zinc-100 font-bold font-mono text-lg">Ready Tasks (${mcTasks.length})</h2>
         <div class="flex items-center gap-3">
-          <span class="text-muted-foreground text-xs font-mono">Ctrl+1 to refresh</span>
-          <button class="text-muted-foreground hover:text-foreground transition-colors" title="${mcTasksCollapsed ? 'Expand' : 'Collapse'}">
-            ${mcTasksCollapsed ? '▼' : '▲'}
+          <span class="text-xs font-mono text-zinc-500">Ctrl+1 to refresh</span>
+          <button class="text-xs font-mono text-zinc-400 transition-colors hover:text-zinc-200" title="${mcTasksCollapsed ? "Expand" : "Collapse"}">
+            ${mcTasksCollapsed ? "▼" : "▲"}
           </button>
         </div>
       </div>
 
-      <!-- Table -->
-      <div class="overflow-x-auto max-h-[calc(70vh-60px)] overflow-y-auto ${mcTasksCollapsed ? 'hidden' : ''}">
-        <table class="table">
+      <div class="${mcTasksCollapsed ? "hidden" : "overflow-x-auto max-h-[calc(70vh-60px)] overflow-y-auto"}">
+        <table class="min-w-full table-auto text-xs font-mono text-zinc-200">
           <thead>
-            <tr>
-              <th class="w-12">Pri</th>
-              <th class="w-24">ID</th>
-              <th>Title</th>
-              <th class="w-20">Type</th>
-              <th class="w-32">Labels</th>
-              <th class="w-24">Action</th>
+            <tr class="text-zinc-500 uppercase text-[9px] tracking-[0.4em]">
+              <th class="w-12 px-3 py-2">Pri</th>
+              <th class="w-24 px-3 py-2">ID</th>
+              <th class="px-3 py-2 text-left">Title</th>
+              <th class="w-20 px-3 py-2">Type</th>
+              <th class="w-32 px-3 py-2">Labels</th>
+              <th class="w-24 px-3 py-2">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -380,8 +407,8 @@ function renderMCTasksWidget(): void {
       </div>
 
       ${!mcTasksCollapsed && mcTasks.length > 20 ? `
-      <div class="px-4 py-2 border-t border-border text-center">
-        <span class="text-muted-foreground text-xs font-mono">+ ${mcTasks.length - 20} more tasks...</span>
+      <div class="px-4 py-2 border-t border-zinc-800/60 text-center text-xs font-mono text-zinc-500">
+        + ${mcTasks.length - 20} more tasks...
       </div>
       ` : ""}
     </div>
@@ -418,6 +445,7 @@ async function handleMCTaskAction(e: Event): Promise<void> {
   try {
     // Disable button
     target.setAttribute("disabled", "true")
+    target.classList.add("cursor-not-allowed", "opacity-60")
     target.textContent = "Starting..."
 
     // Call RPC to assign and start MechaCoder
@@ -425,8 +453,6 @@ async function handleMCTaskAction(e: Event): Promise<void> {
 
     // Update button
     target.textContent = "Assigned"
-    target.classList.remove("btn-primary")
-    target.classList.add("btn-success")
 
     console.log(`[MC] Task ${taskId} assigned successfully`)
     window.bunLog?.(`[MC] Task ${taskId} assigned successfully`)
@@ -437,6 +463,7 @@ async function handleMCTaskAction(e: Event): Promise<void> {
 
     // Reset button
     target.removeAttribute("disabled")
+    target.classList.remove("cursor-not-allowed", "opacity-60")
     target.textContent = "Assign"
     alert(`Failed to assign task: ${errMsg}`)
   }
@@ -635,12 +662,12 @@ function throttledContainerRender(): void {
 
 function getTBStatusColor(status: TBTaskStatus): string {
   switch (status) {
-    case "passed": return "#22c55e" // Green
-    case "failed": return "#ef4444" // Red
-    case "timeout": return "#f59e0b" // Amber
-    case "error": return "#ef4444" // Red
-    case "running": return "#3b82f6" // Blue
-    default: return "#6b7280" // Gray
+    case "passed": return ZINC[200]
+    case "failed": return ZINC[500]
+    case "timeout": return ZINC[400]
+    case "error": return ZINC[500]
+    case "running": return ZINC[300]
+    default: return ZINC[500]
   }
 }
 
@@ -732,7 +759,7 @@ function formatDelta(value: number, invert = false): { text: string; color: stri
   const sign = value > 0 ? "+" : ""
   return {
     text: `${sign}${value.toFixed(1)}`,
-    color: improved ? "#22c55e" : value < 0 ? "#ef4444" : "#6b7280",
+    color: improved ? ZINC[200] : value < 0 ? ZINC[500] : ZINC[500],
   }
 }
 
@@ -754,15 +781,15 @@ function renderComparisonWidget(): string {
     <g transform="translate(20, 245)" class="tb-comparison-widget">
       <!-- Background -->
       <rect x="0" y="0" width="260" height="85" rx="8" ry="8"
-            fill="#141017" stroke="rgba(59, 130, 246, 0.25)" stroke-width="1"/>
+            fill="${ZINC[900]}" stroke="rgba(113, 113, 122, 0.25)" stroke-width="1"/>
 
       <!-- Header -->
-      <text x="16" y="20" fill="#3b82f6" font-size="12" font-weight="bold" font-family="Berkeley Mono, monospace">
+      <text x="16" y="20" fill="${ZINC[300]}" font-size="12" font-weight="bold" font-family="Berkeley Mono, monospace">
         vs ${comp.baselineSuiteName} (${baselineStr})
       </text>
 
       <!-- Pass rate delta -->
-      <text x="16" y="42" fill="#9ca3af" font-size="11" font-family="Berkeley Mono, monospace">
+      <text x="16" y="42" fill="${ZINC[400]}" font-size="11" font-family="Berkeley Mono, monospace">
         Pass Rate:
       </text>
       <text x="90" y="42" fill="${passRateDelta.color}" font-size="11" font-weight="bold" font-family="Berkeley Mono, monospace">
@@ -770,7 +797,7 @@ function renderComparisonWidget(): string {
       </text>
 
       <!-- Duration delta -->
-      <text x="140" y="42" fill="#9ca3af" font-size="11" font-family="Berkeley Mono, monospace">
+      <text x="140" y="42" fill="${ZINC[400]}" font-size="11" font-family="Berkeley Mono, monospace">
         Time:
       </text>
       <text x="180" y="42" fill="${durationDelta.color}" font-size="11" font-weight="bold" font-family="Berkeley Mono, monospace">
@@ -778,18 +805,18 @@ function renderComparisonWidget(): string {
       </text>
 
       <!-- Task changes -->
-      <text x="16" y="62" fill="#22c55e" font-size="10" font-family="Berkeley Mono, monospace">
+      <text x="16" y="62" fill="${ZINC[200]}" font-size="10" font-family="Berkeley Mono, monospace">
         ▲ ${comp.improved.length} improved
       </text>
-      <text x="100" y="62" fill="#ef4444" font-size="10" font-family="Berkeley Mono, monospace">
+      <text x="100" y="62" fill="${ZINC[500]}" font-size="10" font-family="Berkeley Mono, monospace">
         ▼ ${comp.regressed.length} regressed
       </text>
-      <text x="195" y="62" fill="#6b7280" font-size="10" font-family="Berkeley Mono, monospace">
+      <text x="195" y="62" fill="${ZINC[500]}" font-size="10" font-family="Berkeley Mono, monospace">
         = ${comp.unchanged.length}
       </text>
 
       <!-- Click hint -->
-      <text x="16" y="78" fill="#4b5563" font-size="9" font-family="Berkeley Mono, monospace">
+      <text x="16" y="78" fill="${ZINC[600]}" font-size="9" font-family="Berkeley Mono, monospace">
         Click for details • Ctrl+B to clear
       </text>
     </g>
@@ -926,7 +953,7 @@ function renderTBResultsDashboard(): void {
         <div class="tb-card-body">
           <div class="tb-sparkline">
             <svg viewBox="0 0 240 60" preserveAspectRatio="none">
-              <polyline points="${passPoints}" fill="none" stroke="#22c55e" stroke-width="2" />
+              <polyline points="${passPoints}" fill="none" stroke="${ZINC[200]}" stroke-width="2" />
             </svg>
             <div class="tb-spark-stats">
               <div>
@@ -964,7 +991,7 @@ function renderTBResultsDashboard(): void {
           </div>
           <div class="tb-sparkline small">
             <svg viewBox="0 0 240 50" preserveAspectRatio="none">
-              <polyline points="${costPoints}" fill="none" stroke="#3b82f6" stroke-width="2" />
+              <polyline points="${costPoints}" fill="none" stroke="${ZINC[300]}" stroke-width="2" />
             </svg>
             <div class="tb-spark-stats">
               <div>
@@ -1011,30 +1038,30 @@ function renderTBWidget(): string {
     statusText = statusText.slice(0, 32) + "..."
   }
 
-  const passColor = tbState.passed > 0 ? "#22c55e" : "#6b7280"
-  const failColor = (tbState.failed + tbState.timeout + tbState.error) > 0 ? "#ef4444" : "#6b7280"
+  const passColor = tbState.passed > 0 ? ZINC[200] : ZINC[500]
+  const failColor = (tbState.failed + tbState.timeout + tbState.error) > 0 ? ZINC[500] : ZINC[500]
 
   return `
     <g transform="translate(20, 140)" class="tb-widget">
       <!-- Background -->
       <rect x="0" y="0" width="260" height="95" rx="8" ry="8"
-            fill="#141017" stroke="rgba(34, 197, 94, 0.25)" stroke-width="1"/>
+            fill="${ZINC[900]}" stroke="rgba(113, 113, 122, 0.25)" stroke-width="1"/>
 
       <!-- Header: TB suite name -->
-      <text x="16" y="24" fill="#22c55e" font-size="14" font-weight="bold" font-family="Berkeley Mono, monospace">
+      <text x="16" y="24" fill="${ZINC[200]}" font-size="14" font-weight="bold" font-family="Berkeley Mono, monospace">
         TB: ${tbState.suiteName || "Terminal-Bench"}
       </text>
-      <text x="200" y="24" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
+      <text x="200" y="24" fill="${ZINC[500]}" font-size="11" font-family="Berkeley Mono, monospace">
         ${completed}/${tbState.totalTasks}
       </text>
 
       <!-- Progress bar background -->
-      <rect x="16" y="36" width="228" height="10" rx="5" fill="#1e1e2e"/>
+      <rect x="16" y="36" width="228" height="10" rx="5" fill="${ZINC[900]}"/>
       <!-- Progress bar fill -->
-      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="#22c55e"/>
+      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="${ZINC[200]}"/>
       ${tbState.isRunning ? `
       <!-- Animated pulse for running state -->
-      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="#22c55e" opacity="0.5">
+      <rect x="16" y="36" width="${progressWidth}" height="10" rx="5" fill="${ZINC[200]}" opacity="0.5">
         <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1.5s" repeatCount="indefinite"/>
       </rect>` : ""}
 
@@ -1045,12 +1072,12 @@ function renderTBWidget(): string {
       <text x="60" y="64" fill="${failColor}" font-size="11" font-family="Berkeley Mono, monospace">
         ✗ ${tbState.failed + tbState.timeout + tbState.error}
       </text>
-      <text x="100" y="64" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
+      <text x="100" y="64" fill="${ZINC[500]}" font-size="11" font-family="Berkeley Mono, monospace">
         ${tbState.isRunning ? "Running..." : tbState.passRate > 0 ? `${(tbState.passRate * 100).toFixed(1)}%` : ""}
       </text>
 
       <!-- Current task / status -->
-      <text x="16" y="82" fill="#9ca3af" font-size="10" font-family="Berkeley Mono, monospace">
+      <text x="16" y="82" fill="${ZINC[400]}" font-size="10" font-family="Berkeley Mono, monospace">
         ${statusText}
       </text>
     </g>
@@ -1086,68 +1113,68 @@ function renderTBDashboard(): string {
     const statusIcon = task.status === "passed" ? "✓" : task.status === "failed" ? "✗" : task.status === "running" ? "▶" : "○"
     return `
       <text x="60" y="${y}" fill="${statusColor}" font-size="14" font-family="Berkeley Mono, monospace">${statusIcon}</text>
-      <text x="90" y="${y}" fill="#e5e5e5" font-size="13" font-family="Berkeley Mono, monospace">${task.name}</text>
-      <text x="${vw - 120}" y="${y}" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">${task.difficulty}</text>
-      ${task.durationMs ? `<text x="${vw - 60}" y="${y}" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">${(task.durationMs / 1000).toFixed(1)}s</text>` : ""}
+      <text x="90" y="${y}" fill="${ZINC[200]}" font-size="13" font-family="Berkeley Mono, monospace">${task.name}</text>
+      <text x="${vw - 120}" y="${y}" fill="${ZINC[500]}" font-size="11" font-family="Berkeley Mono, monospace">${task.difficulty}</text>
+      ${task.durationMs ? `<text x="${vw - 60}" y="${y}" fill="${ZINC[500]}" font-size="11" font-family="Berkeley Mono, monospace">${(task.durationMs / 1000).toFixed(1)}s</text>` : ""}
     `
   }).join("")
 
   return `
     <!-- TB Dashboard Background -->
-    <rect x="0" y="0" width="${vw}" height="${vh}" fill="#0a0a0f"/>
+    <rect x="0" y="0" width="${vw}" height="${vh}" fill="${ZINC[950]}"/>
 
     <!-- Header -->
-    <text x="40" y="50" fill="#22c55e" font-size="28" font-weight="bold" font-family="Berkeley Mono, monospace">
+    <text x="40" y="50" fill="${ZINC[200]}" font-size="28" font-weight="bold" font-family="Berkeley Mono, monospace">
       Terminal-Bench
     </text>
-    <text x="40" y="80" fill="#6b7280" font-size="14" font-family="Berkeley Mono, monospace">
+    <text x="40" y="80" fill="${ZINC[500]}" font-size="14" font-family="Berkeley Mono, monospace">
       ${tbState.suiteName || "No suite loaded"} ${tbState.suiteVersion ? `v${tbState.suiteVersion}` : ""}
     </text>
 
     <!-- Progress Section -->
-    <rect x="40" y="110" width="${vw - 80}" height="100" rx="8" fill="#141017" stroke="rgba(34, 197, 94, 0.2)" stroke-width="1"/>
+    <rect x="40" y="110" width="${vw - 80}" height="100" rx="8" fill="${ZINC[900]}" stroke="rgba(113, 113, 122, 0.2)" stroke-width="1"/>
 
     <!-- Progress bar -->
-    <rect x="60" y="130" width="${vw - 120}" height="20" rx="10" fill="#1e1e2e"/>
-    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="#22c55e"/>
+    <rect x="60" y="130" width="${vw - 120}" height="20" rx="10" fill="${ZINC[900]}"/>
+    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="${ZINC[200]}"/>
     ${tbState.isRunning ? `
-    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="#22c55e" opacity="0.5">
+    <rect x="60" y="130" width="${(vw - 120) * progressPct / 100}" height="20" rx="10" fill="${ZINC[200]}" opacity="0.5">
       <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1.5s" repeatCount="indefinite"/>
     </rect>` : ""}
 
     <!-- Stats -->
-    <text x="60" y="175" fill="#22c55e" font-size="18" font-family="Berkeley Mono, monospace">
+    <text x="60" y="175" fill="${ZINC[200]}" font-size="18" font-family="Berkeley Mono, monospace">
       ✓ ${tbState.passed}
     </text>
-    <text x="140" y="175" fill="#ef4444" font-size="18" font-family="Berkeley Mono, monospace">
+    <text x="140" y="175" fill="${ZINC[500]}" font-size="18" font-family="Berkeley Mono, monospace">
       ✗ ${tbState.failed}
     </text>
-    <text x="220" y="175" fill="#f59e0b" font-size="18" font-family="Berkeley Mono, monospace">
+    <text x="220" y="175" fill="${ZINC[400]}" font-size="18" font-family="Berkeley Mono, monospace">
       ⏱ ${tbState.timeout}
     </text>
-    <text x="300" y="175" fill="#8b5cf6" font-size="18" font-family="Berkeley Mono, monospace">
+    <text x="300" y="175" fill="${ZINC[300]}" font-size="18" font-family="Berkeley Mono, monospace">
       ⚠ ${tbState.error}
     </text>
-    <text x="${vw - 200}" y="175" fill="#e5e5e5" font-size="18" font-family="Berkeley Mono, monospace">
+    <text x="${vw - 200}" y="175" fill="${ZINC[200]}" font-size="18" font-family="Berkeley Mono, monospace">
       ${completed} / ${tbState.totalTasks} (${progressPct.toFixed(1)}%)
     </text>
 
     <!-- Current Task -->
-    <text x="60" y="195" fill="#9ca3af" font-size="12" font-family="Berkeley Mono, monospace">
+    <text x="60" y="195" fill="${ZINC[400]}" font-size="12" font-family="Berkeley Mono, monospace">
       ${tbState.isRunning ? `Current: ${currentTaskName} · ${currentTaskPhase}` : tbState.passRate > 0 ? `Completed · ${(tbState.passRate * 100).toFixed(1)}% pass rate` : "Ready to run"}
     </text>
 
     <!-- Task List Header -->
-    <text x="40" y="250" fill="#6b7280" font-size="12" font-family="Berkeley Mono, monospace" text-transform="uppercase" letter-spacing="1">
+    <text x="40" y="250" fill="${ZINC[500]}" font-size="12" font-family="Berkeley Mono, monospace" text-transform="uppercase" letter-spacing="1">
       TASKS
     </text>
-    <line x1="40" y1="260" x2="${vw - 40}" y2="260" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    <line x1="40" y1="260" x2="${vw - 40}" y2="260" stroke="rgba(250, 250, 250, 0.1)" stroke-width="1"/>
 
     <!-- Task List -->
     ${taskRows}
 
     <!-- Footer hint -->
-    <text x="40" y="${vh - 30}" fill="#4b5563" font-size="11" font-family="Berkeley Mono, monospace">
+    <text x="40" y="${vh - 30}" fill="${ZINC[600]}" font-size="11" font-family="Berkeley Mono, monospace">
       Press Ctrl+1 for Flow view · Ctrl+2 for TB view · Ctrl+T to start · Ctrl+X to stop
     </text>
   `
@@ -2390,8 +2417,8 @@ function renderContainerPanes(): void {
     const statusIcon = pane.status === "running" ? "▶"
       : pane.status === "completed" && pane.exitCode === 0 ? "✓"
       : "✗"
-    const statusColor = pane.status === "running" ? "#3b82f6"
-      : pane.exitCode === 0 ? "#22c55e" : "#ef4444"
+  const statusColor = pane.status === "running" ? ZINC[300]
+    : pane.exitCode === 0 ? ZINC[200] : ZINC[500]
 
     const badge = pane.sandboxed
       ? '<span class="container-badge sandboxed">sandbox</span>'
@@ -2684,20 +2711,20 @@ tbStartBtnCompact?.addEventListener("click", handleStartRun)
 tbRandomBtnCompact?.addEventListener("click", handleStartRandomTask)
 tbStopBtnCompact?.addEventListener("click", handleStopRun)
 
-// TB controls toggle button
-let tbControlsExpanded = false
-const tbControlsToggle = document.getElementById("tb-controls-toggle")
-const tbControlsCollapsed = document.getElementById("tb-controls-collapsed")
+// TB controls toggle button (commented out - controls now always visible)
+// let tbControlsExpanded = false
+// const tbControlsToggle = document.getElementById("tb-controls-toggle")
+// const tbControlsCollapsed = document.getElementById("tb-controls-collapsed")
 
-tbControlsToggle?.addEventListener("click", () => {
-  tbControlsExpanded = !tbControlsExpanded
-  if (tbControlsCollapsed) {
-    tbControlsCollapsed.classList.toggle("hidden", !tbControlsExpanded)
-  }
-  if (tbControlsToggle) {
-    tbControlsToggle.innerHTML = tbControlsExpanded ? "&#x25B2;" : "&#x25BC;"
-  }
-})
+// tbControlsToggle?.addEventListener("click", () => {
+//   tbControlsExpanded = !tbControlsExpanded
+//   if (tbControlsCollapsed) {
+//     tbControlsCollapsed.classList.toggle("hidden", !tbControlsExpanded)
+//   }
+//   if (tbControlsToggle) {
+//     tbControlsToggle.innerHTML = tbControlsExpanded ? "&#x25B2;" : "&#x25BC;"
+//   }
+// })
 
 // Suppress unused function warnings - these are kept for future use
 void renderComparisonWidget
