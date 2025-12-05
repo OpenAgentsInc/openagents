@@ -16,6 +16,11 @@ import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
 import { execSync } from "node:child_process";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
+import {
+  createCommit,
+  getCurrentBranch,
+  pushToRemote,
+} from "./services/git-service.js";
 import { recoverPendingCommits, type RecoveryEvent } from "./recovery.js";
 import {
   writeCheckpoint,
@@ -68,8 +73,6 @@ import {
   runVerificationOnHost,
   type VerificationRunResult,
 } from "./verification-runner.js";
-import * as nodePath from "node:path";
-import * as fs from "node:fs";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -206,123 +209,6 @@ const mapReflectionsToNotes = (reflections: ReflectionType[], limit: number): st
     .slice(0, limit)
     .map((r) => `${r.analysis} - Next: ${r.suggestion}`)
     .map((text) => text.slice(0, 400));
-
-const normalizePathsForGit = (paths: readonly string[], cwd: string): string[] => {
-  const normalized = new Set<string>();
-
-  for (const raw of paths) {
-    if (!raw) continue;
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
-
-    const resolved = nodePath.isAbsolute(trimmed)
-      ? trimmed
-      : nodePath.resolve(cwd, trimmed);
-    const relative = nodePath.relative(cwd, resolved);
-
-    // Ignore paths outside the repo
-    if (relative.startsWith("..")) continue;
-
-    const gitPath = relative === "" ? "." : relative.split(nodePath.sep).join("/");
-    normalized.add(gitPath);
-  }
-
-  return Array.from(normalized);
-};
-
-/**
- * Create a git commit with the task ID.
- * Stages only the provided paths and passes the commit message via stdin to avoid quoting issues.
- */
-export const createCommit = (
-  taskId: string,
-  message: string,
-  cwd: string,
-  pathsToStage: readonly string[]
-): Effect.Effect<string, Error, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const { execFileSync } = await import("node:child_process");
-      const debugCommit = process.env.DEBUG_CREATE_COMMIT === "1";
-
-      const normalizedPaths = normalizePathsForGit(pathsToStage, cwd);
-      if (normalizedPaths.length === 0) {
-        throw new Error("No paths provided to stage for commit");
-      }
-
-      const statusOutput = execFileSync(
-        "git",
-        ["status", "--porcelain", "--", ...normalizedPaths],
-        { cwd, encoding: "utf-8" }
-      );
-      if (debugCommit) {
-        console.log("[createCommit] normalizedPaths:", normalizedPaths);
-        console.log("[createCommit] statusOutput:", statusOutput);
-      }
-      const stageable = Array.from(
-        new Set(
-          statusOutput
-            .split("\n")
-            .map((line) => line)
-            .filter((line) => line.trim().length > 0)
-            .map((line) => {
-              const status = line.slice(0, 2);
-              const pathPart = line.slice(3);
-              const renameParts = pathPart.split(" -> ");
-              const candidate = renameParts[renameParts.length - 1]?.trim() ?? "";
-              const absolutePath = nodePath.resolve(cwd, candidate);
-              const exists = fs.existsSync(absolutePath);
-              const isDeletion = status.includes("D");
-              return !candidate || (!exists && !isDeletion) ? "" : candidate;
-            })
-            .filter((line) => line.length > 0)
-        )
-      );
-
-      if (stageable.length === 0) {
-        throw new Error(
-          `No matching changes found for provided paths: ${normalizedPaths.join(", ")}`
-        );
-      }
-
-      if (debugCommit) {
-        console.log("[createCommit] stageable:", stageable);
-      }
-
-      execFileSync("git", ["add", "--", ...stageable], { cwd, encoding: "utf-8" });
-
-      const fullMessage = `${taskId}: ${message}
-
-🤖 Generated with [OpenAgents](https://openagents.com)
-
-Co-Authored-By: MechaCoder <noreply@openagents.com>
-`;
-
-      execFileSync("git", ["commit", "-F", "-"], {
-        cwd,
-        encoding: "utf-8",
-        input: fullMessage,
-      });
-
-      const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8" }).trim();
-      return sha;
-    },
-    catch: (error: any) => new Error(`Failed to create commit: ${error.message}`),
-  });
-
-/**
- * Push to remote
- */
-const pushToRemote = (
-  branch: string,
-  cwd: string
-): Effect.Effect<void, Error, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      execSync(`git push origin ${branch}`, { cwd, encoding: "utf-8" });
-    },
-    catch: (error: any) => new Error(`Failed to push: ${error.message}`),
-  });
 
 /**
  * Write checkpoint at phase transition.
@@ -1241,15 +1127,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       // This ensures we can recover if a crash occurs between git commit and task update
       state.phase = "committing";
       const commitMessage = taskResult.title;
-      const commitBranch = yield* Effect.tryPromise({
-        try: async () => {
-          return execSync("git rev-parse --abbrev-ref HEAD", {
-            cwd: config.cwd,
-            encoding: "utf-8",
-          }).trim();
-        },
-        catch: () => new Error("Failed to get branch"),
-      });
+      const commitBranch = yield* getCurrentBranch(config.cwd);
 
       yield* updateTask({
         tasksPath,
