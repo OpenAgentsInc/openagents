@@ -2,6 +2,9 @@
  * Worktree Management Tests
  *
  * Tests for git worktree operations used in parallel agent execution.
+ *
+ * ⚠️  CRITICAL SAFETY: These tests are DISABLED when running inside a worktree
+ * or container to prevent destroying other parallel agents' work.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { Effect } from "effect";
@@ -23,35 +26,74 @@ import {
 } from "./worktree.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test Fixtures
+// CRITICAL SAFETY CHECKS - Must run before any tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TEST_REPO = process.cwd(); // Use current repo for testing
+const TEST_REPO = process.cwd();
 const TEST_TASK_PREFIX = "test-worktree-";
 let testTaskId: string;
+
+/**
+ * Detect if we're running inside a git worktree OR a container.
+ *
+ * CRITICAL: These tests perform DESTRUCTIVE operations (prune, remove) that
+ * would delete OTHER parallel agents' worktrees. They must NEVER run in:
+ * - A git worktree (where .git is a file, not directory)
+ * - A container (where cwd is /workspace or similar)
+ * - Any non-main-repo context
+ */
+const isInsideWorktreeOrContainer = (): boolean => {
+  // Check 1: Is cwd a worktree? (.git is a file, not directory)
+  const gitPath = path.join(TEST_REPO, ".git");
+  try {
+    const stat = fs.statSync(gitPath);
+    if (stat.isFile()) {
+      console.log("[SAFETY] Detected worktree (.git is file) - skipping destructive tests");
+      return true;
+    }
+  } catch {
+    // .git doesn't exist - definitely not safe
+    console.log("[SAFETY] No .git found - skipping destructive tests");
+    return true;
+  }
+
+  // Check 2: Is cwd /workspace (container mount point)?
+  if (TEST_REPO === "/workspace" || TEST_REPO.startsWith("/workspace/")) {
+    console.log("[SAFETY] Detected container (/workspace) - skipping destructive tests");
+    return true;
+  }
+
+  // Check 3: Is cwd inside a .worktrees directory?
+  if (TEST_REPO.includes("/.worktrees/")) {
+    console.log("[SAFETY] Detected .worktrees path - skipping destructive tests");
+    return true;
+  }
+
+  // Check 4: Does the path look like a worktree? (contains .worktrees)
+  const realPath = fs.realpathSync(TEST_REPO);
+  if (realPath.includes("/.worktrees/")) {
+    console.log("[SAFETY] Resolved path is in .worktrees - skipping destructive tests");
+    return true;
+  }
+
+  return false;
+};
+
+// GLOBAL SAFETY FLAG - checked by all destructive operations
+const SKIP_DESTRUCTIVE_TESTS = isInsideWorktreeOrContainer();
+
+if (SKIP_DESTRUCTIVE_TESTS) {
+  console.log("═══════════════════════════════════════════════════════════════");
+  console.log("⚠️  WORKTREE TESTS: Running in SAFE MODE (no destructive ops)");
+  console.log(`   CWD: ${TEST_REPO}`);
+  console.log("═══════════════════════════════════════════════════════════════");
+}
 
 const generateTestTaskId = () =>
   `${TEST_TASK_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const runEffect = <A>(effect: Effect.Effect<A, any, never>): Promise<A> =>
   Effect.runPromise(effect);
-
-/**
- * Detect if we're running inside a git worktree.
- * When running in a worktree, the .git is a file (not directory) pointing to the main repo.
- * IMPORTANT: Prune tests must be skipped when in a worktree because they would delete
- * OTHER parallel agents' worktrees (since git worktree list shows all worktrees from main repo).
- */
-const isInsideWorktree = (): boolean => {
-  const gitPath = path.join(TEST_REPO, ".git");
-  try {
-    const stat = fs.statSync(gitPath);
-    // In a worktree, .git is a file. In main repo, .git is a directory.
-    return stat.isFile();
-  } catch {
-    return false;
-  }
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Tests
@@ -84,6 +126,9 @@ describe("Worktree Lifecycle", () => {
   });
 
   afterEach(async () => {
+    // SAFETY: No cleanup when running in worktree/container
+    if (SKIP_DESTRUCTIVE_TESTS) return;
+
     // Cleanup: try to remove test worktree if it exists
     if (worktreeExists(TEST_REPO, testTaskId)) {
       await runEffect(removeWorktree(TEST_REPO, testTaskId)).catch(() => {});
@@ -101,6 +146,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("creates isolated worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return; // Skip in worktree/container
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -118,6 +164,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("worktree has independent working directory", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -140,6 +187,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("multiple worktrees can exist simultaneously", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const taskId1 = generateTestTaskId();
     const taskId2 = generateTestTaskId();
 
@@ -173,6 +221,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("cleanup removes worktree and branch", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -193,6 +242,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("fails gracefully when worktree already exists", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -214,6 +264,7 @@ describe("Worktree Lifecycle", () => {
   });
 
   test("cleans up orphan directory before creating worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -243,6 +294,9 @@ describe("Worktree List and Prune", () => {
   });
 
   afterEach(async () => {
+    // SAFETY: No cleanup when running in worktree/container
+    if (SKIP_DESTRUCTIVE_TESTS) return;
+
     // Cleanup test worktrees
     const worktreesDir = getWorktreesDir(TEST_REPO);
     if (fs.existsSync(worktreesDir)) {
@@ -256,6 +310,7 @@ describe("Worktree List and Prune", () => {
   });
 
   test("listWorktrees returns created worktrees", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -273,12 +328,8 @@ describe("Worktree List and Prune", () => {
   });
 
   test("prune removes stale worktrees", async () => {
-    // SKIP when running inside a worktree - pruneStaleWorktrees would delete
-    // OTHER parallel agents' worktrees since git shows all worktrees from main repo
-    if (isInsideWorktree()) {
-      console.log("Skipping prune test - running inside worktree");
-      return;
-    }
+    // SAFETY: This is the MOST DANGEROUS test - prune can delete ALL worktrees
+    if (SKIP_DESTRUCTIVE_TESTS) return;
 
     const config: WorktreeConfig = {
       taskId: testTaskId,
@@ -298,12 +349,8 @@ describe("Worktree List and Prune", () => {
   });
 
   test("prune removes orphan directories not registered as worktrees", async () => {
-    // SKIP when running inside a worktree - pruneStaleWorktrees would interfere
-    // with other parallel agents' worktrees
-    if (isInsideWorktree()) {
-      console.log("Skipping orphan prune test - running inside worktree");
-      return;
-    }
+    // SAFETY: This is DANGEROUS - prune can delete worktrees
+    if (SKIP_DESTRUCTIVE_TESTS) return;
 
     const activeConfig: WorktreeConfig = {
       taskId: testTaskId,
@@ -338,6 +385,9 @@ describe("Worktree Validation", () => {
   });
 
   afterEach(async () => {
+    // SAFETY: No cleanup when running in worktree/container
+    if (SKIP_DESTRUCTIVE_TESTS) return;
+
     // Cleanup test worktrees
     const worktreesDir = getWorktreesDir(TEST_REPO);
     if (fs.existsSync(worktreesDir)) {
@@ -351,6 +401,7 @@ describe("Worktree Validation", () => {
   });
 
   test("validates healthy worktree as valid", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -367,6 +418,7 @@ describe("Worktree Validation", () => {
   });
 
   test("detects missing directory", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     // Don't create the worktree - just validate non-existent task
     const result = await runEffect(validateWorktree(TEST_REPO, testTaskId));
 
@@ -376,6 +428,7 @@ describe("Worktree Validation", () => {
   });
 
   test("detects missing .git file", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -403,6 +456,9 @@ describe("Worktree Repair", () => {
   });
 
   afterEach(async () => {
+    // SAFETY: No cleanup when running in worktree/container
+    if (SKIP_DESTRUCTIVE_TESTS) return;
+
     // Cleanup test worktrees
     const worktreesDir = getWorktreesDir(TEST_REPO);
     if (fs.existsSync(worktreesDir)) {
@@ -416,6 +472,7 @@ describe("Worktree Repair", () => {
   });
 
   test("repairs corrupted worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -442,6 +499,7 @@ describe("Worktree Repair", () => {
   });
 
   test("ensureValidWorktree creates missing worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -461,6 +519,7 @@ describe("Worktree Repair", () => {
   });
 
   test("ensureValidWorktree returns existing valid worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
@@ -479,6 +538,7 @@ describe("Worktree Repair", () => {
   });
 
   test("ensureValidWorktree repairs corrupted worktree", async () => {
+    if (SKIP_DESTRUCTIVE_TESTS) return;
     const config: WorktreeConfig = {
       taskId: testTaskId,
       sessionId: "test-session",
