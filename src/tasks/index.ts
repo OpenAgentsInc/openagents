@@ -74,6 +74,7 @@ export {
   hasConflictMarkers,
   addComment,
   listComments,
+  renameTaskPrefix,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
@@ -85,6 +86,8 @@ export {
   type StaleTasksOptions,
   type TaskWithDeps,
   type AddCommentOptions,
+  type RenamePrefixOptions,
+  type RenamePrefixResult,
 } from "./service.js";
 
 export {

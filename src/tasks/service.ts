@@ -38,6 +38,8 @@ export class TaskServiceError extends Error {
 }
 
 const nowIso = (timestamp?: Date) => (timestamp ?? new Date()).toISOString();
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const parseJsonLine = (
   line: string,
@@ -544,14 +546,171 @@ export const listComments = ({
   Effect.gen(function* () {
     const tasks = yield* readTasks(tasksPath);
     const task = tasks.find((t) => t.id === taskId);
-  if (!task) {
-    return yield* Effect.fail(
-      new TaskServiceError("not_found", `Task not found: ${taskId}`),
-    );
-  }
+    if (!task) {
+      return yield* Effect.fail(
+        new TaskServiceError("not_found", `Task not found: ${taskId}`),
+      );
+    }
 
-  return [...(task.comments ?? [])];
-});
+    return [...(task.comments ?? [])];
+  });
+
+export interface RenamePrefixOptions {
+  tasksPath: string;
+  fromPrefix: string;
+  toPrefix: string;
+  dryRun?: boolean;
+  timestamp?: Date;
+}
+
+export interface RenamePrefixResult {
+  ok: true;
+  renamed: number;
+  depsUpdated: number;
+  descriptionsUpdated: number;
+  fromPrefix: string;
+  toPrefix: string;
+  dryRun: boolean;
+  mapping: Record<string, string>;
+}
+
+const replaceDescriptionIds = (
+  description: string | undefined,
+  replacements: Map<string, string>,
+): { text: string; replaced: number } => {
+  if (!description) return { text: "", replaced: 0 };
+  let text = description;
+  let replaced = 0;
+  for (const [oldId, newId] of replacements.entries()) {
+    const regex = new RegExp(`\\b${escapeRegExp(oldId)}\\b`, "g");
+    const before = text;
+    text = text.replace(regex, newId);
+    if (text !== before) {
+      replaced += 1;
+    }
+  }
+  return { text, replaced };
+};
+
+export const renameTaskPrefix = ({
+  tasksPath,
+  fromPrefix,
+  toPrefix,
+  dryRun = false,
+  timestamp,
+}: RenamePrefixOptions): Effect.Effect<RenamePrefixResult, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    if (!fromPrefix || !toPrefix) {
+      return yield* Effect.fail(
+        new TaskServiceError("validation_error", "fromPrefix and toPrefix are required"),
+      );
+    }
+
+    const now = timestamp ?? new Date();
+    const tasks = yield* readTasks(tasksPath);
+    const prefix = `${fromPrefix}-`;
+
+    const replacements = new Map<string, string>();
+    for (const task of tasks) {
+      if (task.id.startsWith(prefix)) {
+        const remainder = task.id.slice(prefix.length);
+        if (remainder.length === 0) continue;
+        const newId = `${toPrefix}-${remainder}`;
+        replacements.set(task.id, newId);
+      }
+    }
+
+    const mapping = Object.fromEntries(replacements.entries());
+
+    // Detect potential collisions
+    const resultingIds = new Set<string>();
+    for (const task of tasks) {
+      const nextId = replacements.get(task.id) ?? task.id;
+      if (resultingIds.has(nextId)) {
+        return yield* Effect.fail(
+          new TaskServiceError(
+            "conflict",
+            `Renaming would cause duplicate task ID: ${nextId}`,
+          ),
+        );
+      }
+      resultingIds.add(nextId);
+    }
+
+    let renamed = 0;
+    let depsUpdated = 0;
+    let descriptionsUpdated = 0;
+
+    const updatedTasks = tasks.map((task) => {
+      let changed = false;
+      const nextId = replacements.get(task.id);
+      const updatedDeps = (task.deps ?? []).map((dep) => {
+        const mapped = replacements.get(dep.id);
+        if (mapped) {
+          depsUpdated += 1;
+          changed = true;
+          return { ...dep, id: mapped };
+        }
+        return dep;
+      });
+
+      const { text: nextDescription, replaced } = replaceDescriptionIds(
+        task.description,
+        replacements,
+      );
+      if (replaced > 0) {
+        descriptionsUpdated += replaced;
+        changed = true;
+      }
+
+      const updatedSource =
+        task.source && task.source.discoveredFrom && replacements.has(task.source.discoveredFrom)
+          ? { ...task.source, discoveredFrom: replacements.get(task.source.discoveredFrom) }
+          : task.source;
+      if (updatedSource !== task.source) {
+        changed = true;
+      }
+
+      if (nextId) {
+        renamed += 1;
+        changed = true;
+      }
+
+      const nextTask: Task = {
+        ...task,
+        id: nextId ?? task.id,
+        deps: updatedDeps,
+        description: nextDescription || task.description,
+        source: updatedSource,
+        updatedAt: changed ? nowIso(now) : task.updatedAt,
+      };
+
+      return nextTask;
+    });
+
+    if (!dryRun) {
+      const validated = yield* Effect.try({
+        try: () => updatedTasks.map((t) => decodeTask(t)),
+        catch: (error) =>
+          new TaskServiceError(
+            "validation_error",
+            `Invalid task after rename: ${(error as Error).message}`,
+          ),
+      });
+      yield* writeTasks(tasksPath, validated);
+    }
+
+    return {
+      ok: true,
+      renamed,
+      depsUpdated,
+      descriptionsUpdated,
+      fromPrefix,
+      toPrefix,
+      dryRun,
+      mapping,
+    };
+  });
 
 export interface ReopenTaskOptions {
   tasksPath: string;

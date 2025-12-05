@@ -778,4 +778,61 @@ describe("tasks CLI integration", () => {
     expect(listed.comments).toHaveLength(1);
     expect(listed.comments[0]?.text).toBe("first note");
   });
+
+  test("rename-prefix command updates IDs, deps, and descriptions", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-rename-prefix-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    const createA = runCli(["create", "--dir", tmp, "--title", "Task A", "--json"], tmp);
+    expect(createA.code).toBe(0);
+    const taskA = JSON.parse(createA.stdout);
+
+    const createB = runCli(["create", "--dir", tmp, "--title", "Task B", "--json"], tmp);
+    expect(createB.code).toBe(0);
+    const taskB = JSON.parse(createB.stdout);
+
+    const updateADesc = JSON.stringify({
+      id: taskA.id,
+      description: `ref ${taskA.id}`,
+    });
+    const updateA = Bun.spawnSync(
+      ["bun", "src/tasks/cli.ts", "update", "--dir", tmp, "--json-input"],
+      { cwd: process.cwd(), stdin: new TextEncoder().encode(updateADesc) },
+    );
+    expect(updateA.exitCode).toBe(0);
+
+    const updateBDdeps = JSON.stringify({
+      id: taskB.id,
+      deps: [{ id: taskA.id, type: "related" }],
+    });
+    const updateB = Bun.spawnSync(
+      ["bun", "src/tasks/cli.ts", "update", "--dir", tmp, "--json-input"],
+      { cwd: process.cwd(), stdin: new TextEncoder().encode(updateBDdeps) },
+    );
+    expect(updateB.exitCode).toBe(0);
+
+    const rename = runCli(
+      ["rename-prefix", "--dir", tmp, "--from", "oa", "--to", "zz", "--json"],
+      tmp,
+    );
+    expect(rename.code).toBe(0);
+    const renameResult = JSON.parse(rename.stdout);
+    expect(renameResult.renamed).toBeGreaterThanOrEqual(2);
+
+    const tasksPath = path.join(tmp, ".openagents", "tasks.jsonl");
+    const tasks = fs
+      .readFileSync(tasksPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    const newIds = tasks.map((t) => t.id);
+    expect(newIds.every((id) => id.startsWith("zz-"))).toBe(true);
+    const renamedA = tasks.find((t) => t.description && t.description.includes("zz-"));
+    expect(renamedA?.description).toContain("zz-");
+    const renamedB = tasks.find((t) => t.title === "Task B");
+    expect(renamedB?.deps?.[0]?.id.startsWith("zz-")).toBe(true);
+  });
 });
