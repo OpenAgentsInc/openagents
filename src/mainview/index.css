@@ -767,6 +767,175 @@ body {
   color: #8b5cf6;
 }
 
+/* TB Results Dashboard */
+#tb-results-dashboard {
+  position: fixed;
+  top: 220px;
+  right: 20px;
+  width: 420px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  z-index: 90;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px;
+}
+
+#tb-results-dashboard.hidden {
+  display: none;
+}
+
+.tb-dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tb-dash-title {
+  color: #22c55e;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.tb-dash-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tb-dash-pill {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tb-dash-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.tb-dash-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.tb-card-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+
+.tb-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tb-sparkline {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.tb-sparkline svg {
+  width: 100%;
+  height: 60px;
+}
+
+.tb-sparkline.small svg {
+  height: 50px;
+}
+
+.tb-spark-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.tb-stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
+.tb-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tb-stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tb-bars {
+  gap: 6px;
+}
+
+.tb-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tb-bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.tb-bar-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.tb-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tb-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  border-radius: 6px;
+}
+
+.tb-dash-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tb-footnote {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* ============================================================================
    ATIF Output Formatting
    ============================================================================ */

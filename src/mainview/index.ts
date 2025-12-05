@@ -726,6 +726,194 @@ function renderComparisonWidget(): string {
   `
 }
 
+function formatTBDate(iso: string): string {
+  if (!iso) return "unknown"
+  const date = new Date(iso)
+  const datePart = date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const timePart = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+  return `${datePart} · ${timePart}`
+}
+
+function buildSparklinePoints(values: number[], width: number, height: number): string {
+  if (values.length === 0) return ""
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = Math.max(max - min, 0.0001)
+  const step = values.length > 1 ? width / (values.length - 1) : width
+
+  return values
+    .map((value, index) => {
+      const x = index * step
+      const normalized = (value - min) / range
+      const y = height - normalized * height
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(" ")
+}
+
+function renderTBResultsDashboard(): void {
+  if (!tbResultsDashboard) return
+
+  if (viewMode !== "tbench") {
+    tbResultsDashboard.classList.add("hidden")
+    tbResultsDashboard.innerHTML = ""
+    return
+  }
+
+  tbResultsDashboard.classList.remove("hidden")
+
+  const runs = tbFlowState.runs
+  if (runs.length === 0) {
+    tbResultsDashboard.innerHTML = `
+      <div class="tb-dash-header">
+        <div>
+          <div class="tb-dash-title">Terminal-Bench Results</div>
+          <div class="tb-dash-subtitle">No run history yet</div>
+        </div>
+      </div>
+      <div class="tb-dash-empty">Start a Terminal-Bench run to see trends, categories, and cost.</div>
+    `
+    return
+  }
+
+  const latestRun = runs[0]
+  const recentRuns = runs.slice(0, 8)
+  const trendRuns = [...recentRuns].reverse()
+
+  const passRates = trendRuns.map((r) => r.passRate ?? 0)
+  const passPoints = buildSparklinePoints(passRates, 240, 60)
+  const latestPass = (latestRun.passRate * 100).toFixed(1)
+  const avgPass =
+    passRates.length > 0
+      ? ((passRates.reduce((sum, v) => sum + v, 0) / passRates.length) * 100).toFixed(1)
+      : "0.0"
+
+  const tokenSeries = trendRuns.map((r) => r.totalTokens ?? 0)
+  const costSeries = tokenSeries.map(
+    (tokens) => (tokens / 1_000_000) * ESTIMATED_COST_PER_M_TOKEN_USD
+  )
+  const costPoints = buildSparklinePoints(costSeries, 240, 50)
+  const latestCost = costSeries.at(-1) ?? 0
+  const totalTokens = runs.reduce((sum, run) => sum + (run.totalTokens ?? 0), 0)
+
+  const latestDetails = tbRunDetails.get(latestRun.runId)
+  if (!latestDetails && !pendingRunDetails.has(latestRun.runId)) {
+    void ensureRunDetailsLoaded(latestRun.runId).then((loaded) => {
+      if (loaded) {
+        renderTBResultsDashboard()
+      }
+    })
+  }
+
+  let categoryRows = `<div class="tb-dash-empty">Loading latest categories…</div>`
+  if (latestDetails) {
+    const categoryTotals = new Map<string, { total: number; passed: number }>()
+    for (const task of latestDetails.tasks) {
+      const current = categoryTotals.get(task.category) ?? { total: 0, passed: 0 }
+      categoryTotals.set(task.category, {
+        total: current.total + 1,
+        passed: current.passed + (task.outcome === "success" ? 1 : 0),
+      })
+    }
+
+    const sortedCategories = Array.from(categoryTotals.entries())
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 5)
+
+    categoryRows =
+      sortedCategories.length === 0
+        ? `<div class="tb-dash-empty">No task results in latest run.</div>`
+        : sortedCategories
+            .map(([category, stats]) => {
+              const rate = stats.total > 0 ? (stats.passed / stats.total) * 100 : 0
+              return `
+                <div class="tb-bar-row">
+                  <div class="tb-bar-label">
+                    <span>${category}</span>
+                    <span class="tb-bar-meta">${stats.passed}/${stats.total}</span>
+                  </div>
+                  <div class="tb-bar-track">
+                    <div class="tb-bar-fill" style="width:${Math.max(rate, 4).toFixed(1)}%"></div>
+                  </div>
+                </div>
+              `
+            })
+            .join("")
+  }
+
+  tbResultsDashboard.innerHTML = `
+    <div class="tb-dash-header">
+      <div>
+        <div class="tb-dash-title">Terminal-Bench Results</div>
+        <div class="tb-dash-subtitle">${latestRun.suiteName} v${latestRun.suiteVersion} · ${formatTBDate(latestRun.timestamp)}</div>
+      </div>
+      <div class="tb-dash-pill">${latestPass}% pass</div>
+    </div>
+
+    <div class="tb-dash-grid">
+      <div class="tb-dash-card">
+        <div class="tb-card-title">Success trend</div>
+        <div class="tb-card-body">
+          <div class="tb-sparkline">
+            <svg viewBox="0 0 240 60" preserveAspectRatio="none">
+              <polyline points="${passPoints}" fill="none" stroke="#22c55e" stroke-width="2" />
+            </svg>
+            <div class="tb-spark-stats">
+              <div>
+                <div class="tb-stat-label">Latest</div>
+                <div class="tb-stat-value">${latestPass}%</div>
+              </div>
+              <div>
+                <div class="tb-stat-label">Avg (last ${trendRuns.length})</div>
+                <div class="tb-stat-value">${avgPass}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tb-dash-card">
+        <div class="tb-card-title">Per-category (latest run)</div>
+        <div class="tb-card-body tb-bars">
+          ${categoryRows}
+        </div>
+      </div>
+
+      <div class="tb-dash-card">
+        <div class="tb-card-title">Cost & tokens</div>
+        <div class="tb-card-body">
+          <div class="tb-stat-row">
+            <div>
+              <div class="tb-stat-label">Latest tokens</div>
+              <div class="tb-stat-value">${latestRun.totalTokens.toLocaleString()}</div>
+            </div>
+            <div>
+              <div class="tb-stat-label">Est. cost</div>
+              <div class="tb-stat-value">$${latestCost.toFixed(2)}</div>
+            </div>
+          </div>
+          <div class="tb-sparkline small">
+            <svg viewBox="0 0 240 50" preserveAspectRatio="none">
+              <polyline points="${costPoints}" fill="none" stroke="#3b82f6" stroke-width="2" />
+            </svg>
+            <div class="tb-spark-stats">
+              <div>
+                <div class="tb-stat-label">Runs</div>
+                <div class="tb-stat-value">${trendRuns.length}</div>
+              </div>
+              <div>
+                <div class="tb-stat-label">Tokens (all)</div>
+                <div class="tb-stat-value">${totalTokens.toLocaleString()}</div>
+              </div>
+            </div>
+          </div>
+          <div class="tb-footnote">Costs assume $${ESTIMATED_COST_PER_M_TOKEN_USD}/1M tokens.</div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
 function renderTBWidget(): string {
   // Don't render if no run has ever started
   if (!tbState.isRunning && tbState.tasks.size === 0) return ""
@@ -1248,6 +1436,9 @@ const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
 const TB_LAYOUT_CONFIG = { padding: 12, spacing: 180 }
 // Polling interval for flow layout fallback refresh (60s - rely on WebSocket events for live updates)
 const REFRESH_INTERVAL_MS = 60000
+// Estimated Claude cost (USD) per million tokens for TB cost tracking visuals
+const ESTIMATED_COST_PER_M_TOKEN_USD = 15
+void ESTIMATED_COST_PER_M_TOKEN_USD
 
 // Calculate layout once from sample data as a placeholder until live data loads
 let layout = calculateLayout({
@@ -1264,6 +1455,7 @@ let isRefreshing = false
 
 let tbFlowState: TBFlowState = createEmptyTBFlowState()
 let tbRunDetails: Map<string, TBRunDetails> = new Map()
+const pendingRunDetails = new Set<string>()
 let tbLayout = calculateLayout({
   root: buildTBFlowTree(tbFlowState),
   nodeSizes: generateTBNodeSizes(buildTBFlowTree(tbFlowState)),
@@ -1285,6 +1477,60 @@ const mapHistoryItemToRun = (item: TBRunHistoryItem): TBRunWithPath => ({
   taskCount: item.taskCount,
   filepath: item.filepath ?? "",
 })
+
+async function ensureRunDetailsLoaded(runId: string): Promise<TBRunDetails | null> {
+  if (tbRunDetails.has(runId)) {
+    return tbRunDetails.get(runId)!
+  }
+
+  if (pendingRunDetails.has(runId)) {
+    return null
+  }
+
+  pendingRunDetails.add(runId)
+  try {
+    const details = await socketClient.loadTBRunDetails(runId)
+    if (!details) {
+      return null
+    }
+
+    const mapped: TBRunDetails = {
+      meta: {
+        runId: details.meta.runId,
+        suiteName: details.meta.suiteName,
+        suiteVersion: details.meta.suiteVersion,
+        timestamp: details.meta.timestamp,
+        passRate: details.meta.passRate,
+        passed: details.meta.passed,
+        failed: details.meta.failed,
+        timeout: details.meta.timeout,
+        error: details.meta.error,
+        totalDurationMs: details.meta.totalDurationMs,
+        totalTokens: details.meta.totalTokens,
+        taskCount: details.meta.taskCount,
+      },
+      tasks: details.tasks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        difficulty: t.difficulty as "easy" | "medium" | "hard" | "expert",
+        outcome: t.outcome as "success" | "failure" | "timeout" | "error",
+        durationMs: t.durationMs,
+        turns: t.turns,
+        tokens: t.tokens,
+        ...(t.outputLines !== undefined ? { outputLines: t.outputLines } : {}),
+      })),
+    }
+
+    tbRunDetails.set(runId, mapped)
+    return mapped
+  } catch (err) {
+    console.error(`[TB] Failed to load run details for ${runId}:`, err)
+    return null
+  } finally {
+    pendingRunDetails.delete(runId)
+  }
+}
 
 const applyTBRunList = (runs: TBRunWithPath[], forceRender = false): void => {
   const sortedRuns = [...runs].sort(
@@ -1366,44 +1612,9 @@ async function handleRunNodeClick(runId: string): Promise<void> {
 
   // Load run details via RPC when expanding (if not already loaded)
   if (!wasExpanded && !tbRunDetails.has(runId)) {
-    try {
-      console.log(`[TB] Loading details for run: ${runId}`)
-      const details = await socketClient.loadTBRunDetails(runId)
-
-      if (details) {
-        // Convert to TBRunDetails format expected by tb-map.ts
-        // TBRunDetails = { meta: TBRunMeta, tasks: TBTaskResult[] }
-        tbRunDetails.set(runId, {
-          meta: {
-            runId: details.meta.runId,
-            suiteName: details.meta.suiteName,
-            suiteVersion: details.meta.suiteVersion,
-            timestamp: details.meta.timestamp,
-            passRate: details.meta.passRate,
-            passed: details.meta.passed,
-            failed: details.meta.failed,
-            timeout: details.meta.timeout,
-            error: details.meta.error,
-            totalDurationMs: details.meta.totalDurationMs,
-            totalTokens: details.meta.totalTokens,
-            taskCount: details.meta.taskCount,
-          },
-          tasks: details.tasks.map((t) => ({
-            id: t.id,
-            name: t.name,
-            category: t.category,
-            difficulty: t.difficulty as "easy" | "medium" | "hard" | "expert",
-            outcome: t.outcome as "success" | "failure" | "timeout" | "error",
-            durationMs: t.durationMs,
-            turns: t.turns,
-            tokens: t.tokens,
-            ...(t.outputLines !== undefined ? { outputLines: t.outputLines } : {}),
-          })),
-        })
-        console.log(`[TB] Loaded ${details.tasks.length} tasks for run ${runId}`)
-      }
-    } catch (err) {
-      console.error(`[TB] Failed to load run details for ${runId}:`, err)
+    const details = await ensureRunDetailsLoaded(runId)
+    if (details) {
+      console.log(`[TB] Loaded ${details.tasks.length} tasks for run ${runId}`)
     }
   }
 
@@ -1495,6 +1706,8 @@ const tbSuiteName = document.getElementById("tb-suite-name")!
 const tbTaskList = document.getElementById("tb-task-list")!
 const tbSelectAll = document.getElementById("tb-select-all")!
 const tbSelectNone = document.getElementById("tb-select-none")!
+const tbResultsDashboard = document.getElementById("tb-results-dashboard") as HTMLElement | null
+void tbResultsDashboard
 
 // TB UI State
 let selectedTaskIds: Set<string> = new Set()
@@ -1535,6 +1748,8 @@ function render(): void {
     // Hide MC tasks widget in TB mode
     renderMCTasksWidget()
   }
+
+  renderTBResultsDashboard()
 
   // Update zoom display
   zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`

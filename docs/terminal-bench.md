@@ -28,6 +28,14 @@ ls -la $TB_OUT/regex-log/workspace/   # files the agent created
 cat $TB_OUT/regex-log/verification.txt
 ```
 
+Generate an HTML dashboard from multiple runs:
+```bash
+# Collect several results.json files under ./results/
+bun src/cli/tbench-dashboard.ts --results-dir ./results --output ./dashboard.html
+open ./dashboard.html
+```
+Pass `--suite` if your suite file lives elsewhere (defaults to tasks/terminal-bench-2.json for category labels).
+
 Run the full suite: drop `--tasks` (consider `--parallel 4` if your machine can handle it).
 
 Compare against a baseline from a previous run:
