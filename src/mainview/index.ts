@@ -1297,6 +1297,13 @@ function handleHudMessage(message: HudMessage): void {
     document.getElementById("tb-status")!.className = "tb-status running"
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = true
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = false
+    // Also update compact controls
+    const statusCompact = document.getElementById("tb-status-compact")
+    if (statusCompact) statusCompact.textContent = "Running..."
+    const startBtnCompact = document.getElementById("tb-start-btn-compact") as HTMLButtonElement | null
+    const stopBtnCompact = document.getElementById("tb-stop-btn-compact") as HTMLButtonElement | null
+    if (startBtnCompact) startBtnCompact.disabled = true
+    if (stopBtnCompact) stopBtnCompact.disabled = false
     // Show category tree (functions defined later in file)
     ;(window as unknown as Record<string, () => void>).__showCategoryTree?.()
     requestAnimationFrame(() => (window as unknown as Record<string, () => void>).__renderCategoryTree?.())
@@ -1426,6 +1433,13 @@ function handleHudMessage(message: HudMessage): void {
     document.getElementById("tb-status")!.className = "tb-status"
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = false
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = true
+    // Also update compact controls
+    const statusCompact = document.getElementById("tb-status-compact")
+    if (statusCompact) statusCompact.textContent = `Done ${(message.passRate * 100).toFixed(0)}%`
+    const startBtnCompact = document.getElementById("tb-start-btn-compact") as HTMLButtonElement | null
+    const stopBtnCompact = document.getElementById("tb-stop-btn-compact") as HTMLButtonElement | null
+    if (startBtnCompact) startBtnCompact.disabled = false
+    if (stopBtnCompact) stopBtnCompact.disabled = true
     // Recompute comparison if baseline is set
     if (tbState.baselineRunId) {
       void computeComparison(tbState.baselineRunId).then(comp => {
@@ -2658,6 +2672,17 @@ trajectoryList?.addEventListener("click", (e) => {
     }
   }
 })
+
+// Wire up compact TB control buttons
+const tbLoadBtnCompact = document.getElementById("tb-load-btn-compact")
+const tbStartBtnCompact = document.getElementById("tb-start-btn-compact")
+const tbRandomBtnCompact = document.getElementById("tb-random-btn-compact")
+const tbStopBtnCompact = document.getElementById("tb-stop-btn-compact")
+
+tbLoadBtnCompact?.addEventListener("click", handleLoadSuite)
+tbStartBtnCompact?.addEventListener("click", handleStartRun)
+tbRandomBtnCompact?.addEventListener("click", handleStartRandomTask)
+tbStopBtnCompact?.addEventListener("click", handleStopRun)
 
 // TB controls toggle button
 let tbControlsExpanded = false

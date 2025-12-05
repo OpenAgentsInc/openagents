@@ -1397,6 +1397,111 @@ body {
   display: none;
 }
 
+/* Compact TB controls inside trajectory pane */
+.tb-controls-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tb-controls-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tb-label-compact {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tb-status-compact {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.tb-suite-input-compact {
+  width: 100%;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: "Berkeley Mono", monospace;
+}
+
+.tb-suite-input-compact:focus {
+  outline: none;
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tb-buttons-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.tb-btn-compact {
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tb-btn-compact:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.tb-btn-compact:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tb-btn-compact.tb-btn-primary {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.tb-btn-compact.tb-btn-primary:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.tb-btn-compact.tb-btn-secondary {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
+
+.tb-btn-compact.tb-btn-secondary:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.tb-btn-compact.tb-btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.tb-btn-compact.tb-btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
 /* Trajectory list container */
 .trajectory-list {
   overflow-y: auto;
