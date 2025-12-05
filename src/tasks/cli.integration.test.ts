@@ -563,6 +563,87 @@ describe("tasks CLI integration", () => {
     expect(remaining).toHaveLength(0);
   });
 
+  test("repair-deps removes orphan dependencies with dry-run support", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-repair-deps-"));
+    const dir = path.join(tmp, ".openagents");
+    fs.mkdirSync(dir, { recursive: true });
+    const tasksPath = path.join(dir, "tasks.jsonl");
+    const now = "2024-01-01T00:00:00.000Z";
+
+    const tasks = [
+      {
+        id: "oa-root",
+        title: "Root",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-child",
+        title: "Child",
+        description: "",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [
+          { id: "oa-root", type: "blocks" },
+          { id: "oa-missing", type: "related" },
+        ],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+    ];
+
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+    const original = fs.readFileSync(tasksPath, "utf8");
+
+    const dryRun = runCli(
+      ["repair-deps", "--dir", tmp, "--dry-run", "--json"],
+      tmp,
+    );
+    expect(dryRun.code).toBe(1);
+    const dryPayload = JSON.parse(dryRun.stdout);
+    expect(dryPayload.ok).toBe(false);
+    expect(dryPayload.removedCount).toBe(1);
+    expect(dryPayload.tasksUpdated).toEqual(["oa-child"]);
+    expect(fs.readFileSync(tasksPath, "utf8")).toBe(original);
+
+    const repair = runCli(["repair-deps", "--dir", tmp, "--json"], tmp);
+    expect(repair.code).toBe(0);
+    const payload = JSON.parse(repair.stdout);
+    expect(payload.ok).toBe(true);
+    expect(payload.removedCount).toBe(1);
+    expect(payload.tasksUpdated).toEqual(["oa-child"]);
+
+    const repairedContent = fs.readFileSync(tasksPath, "utf8");
+    const repairedTasks = repairedContent
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line));
+    const child = repairedTasks.find((t) => t.id === "oa-child");
+    expect(child?.deps).toEqual([{ id: "oa-root", type: "blocks" }]);
+
+    const cleanDryRun = runCli(
+      ["repair-deps", "--dir", tmp, "--dry-run", "--json"],
+      tmp,
+    );
+    expect(cleanDryRun.code).toBe(0);
+    const cleanPayload = JSON.parse(cleanDryRun.stdout);
+    expect(cleanPayload.ok).toBe(true);
+    expect(cleanPayload.removedCount).toBe(0);
+  });
+
   test("duplicates command groups by status and content hash", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-duplicates-"));
     const dir = path.join(tmp, ".openagents");

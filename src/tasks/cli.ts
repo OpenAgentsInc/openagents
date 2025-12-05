@@ -18,6 +18,7 @@
  *   validate   Validate tasks.jsonl (schema + conflict markers)
  *   config     Manage project config (list/get/set)
  *   doctor     Diagnose common issues in tasks.jsonl
+ *   repair-deps Fix orphaned dependencies by removing references to missing tasks
  *   duplicates Find duplicate tasks by title+description hash, grouped by status
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
@@ -956,6 +957,66 @@ const cmdDoctor = (options: CliOptions) =>
     return result;
   });
 
+const cmdRepairDeps = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const fs = yield* FileSystem.FileSystem;
+
+    const exists = yield* fs.exists(tasksPath);
+    if (!exists) {
+      const result = { ok: false, error: `${TASKS_FILE} is missing` };
+      output(result, options.json);
+      return result;
+    }
+
+    const tasks = yield* readTasks(tasksPath);
+    const orphanDeps = findOrphanDependencies(tasks);
+    const removedCount = orphanDeps.length;
+    const tasksUpdated = [...new Set(orphanDeps.map((d) => d.taskId))];
+
+    if (removedCount === 0) {
+      const result = { ok: true, removedCount: 0, tasksUpdated };
+      if (options.json) {
+        output(result, true);
+      } else {
+        console.log("No orphan dependencies found.");
+      }
+      return result;
+    }
+
+    if (options.dryRun) {
+      const result = {
+        ok: false,
+        dryRun: true,
+        removedCount,
+        tasksUpdated,
+        orphanDeps,
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    const ids = new Set(tasks.map((t) => t.id));
+    const repaired = tasks.map((task) => {
+      if (!task.deps || task.deps.length === 0) return task;
+      const filteredDeps = task.deps.filter((dep) => ids.has(dep.id));
+      if (filteredDeps.length === task.deps.length) return task;
+      return { ...task, deps: filteredDeps };
+    });
+
+    yield* writeTasks(tasksPath, repaired);
+
+    const result = { ok: true, removedCount, tasksUpdated, fixedDeps: orphanDeps };
+    if (options.json) {
+      output(result, true);
+    } else {
+      console.log(
+        `Removed ${removedCount} orphan dependencies from ${tasksUpdated.length} task(s).`,
+      );
+    }
+    return result;
+  });
+
 const cmdDuplicates = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
@@ -1450,6 +1511,7 @@ Commands:
   config:get   Get a project config value by key (dot notation supported)
   config:set   Set a project config value by key (value parsed as JSON when possible)
   doctor    Diagnose common tasks.jsonl issues (orphan deps, duplicates, cycles, stale tasks)
+  repair-deps Fix orphan dependencies by removing references to missing tasks
   duplicates Find duplicate tasks by title+description hash (grouped by status)
   merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
 
@@ -1515,6 +1577,9 @@ delete Options:
 
 validate Options:
   --check-conflicts       Fail if git conflict markers are present (default: also checked during full parse)
+
+repair-deps Options:
+  --dry-run               Preview orphan dependency removals without writing changes
 
 config:get Options:
   --key <path>            Config key (dot notation supported)
@@ -1741,6 +1806,24 @@ const main = async () => {
       try {
         const result = await Effect.runPromise(
           cmdDoctor(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        if (result && result.ok === false) {
+          process.exitCode = 1;
+        }
+      } catch (err) {
+        const payload = { ok: false, error: String(err) };
+        if (options.json) {
+          console.log(JSON.stringify(payload));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "repair-deps":
+      try {
+        const result = await Effect.runPromise(
+          cmdRepairDeps(options).pipe(Effect.provide(BunContext.layer)),
         );
         if (result && result.ok === false) {
           process.exitCode = 1;
