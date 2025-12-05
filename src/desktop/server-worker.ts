@@ -6,6 +6,7 @@
  */
 
 import { createDesktopServer } from "./server.js";
+import { log } from "./logger.js";
 
 // Get config from parent thread
 const staticDir = process.env.STATIC_DIR!;
@@ -17,8 +18,8 @@ const server = createDesktopServer({
   verbose: true,
 });
 
-console.log(`[Worker] Server running on http://localhost:${server.getHttpPort()}`);
-console.log(`[Worker] HUD server on ws://localhost:${server.getHudPort()}`);
+log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
+log("Worker", `HUD server on ws://localhost:${server.getHudPort()}`);
 
 // Keep worker alive
 setInterval(() => {}, 1000);

@@ -20,6 +20,7 @@ import {
   DESKTOP_WS_PATH,
 } from "./protocol.js";
 import { handleRequest } from "./handlers.js";
+import { error as logError, log as logWithColor } from "./logger.js";
 
 // ============================================================================
 // Types
@@ -150,7 +151,7 @@ export class DesktopServer {
                 });
               }
             } catch (e) {
-              console.error("[DesktopServer] TypeScript build error:", e);
+              logError("DesktopServer", "TypeScript build error:", e);
               return new Response(`Build error: ${e}`, { status: 500 });
             }
           }
@@ -193,7 +194,7 @@ export class DesktopServer {
             try {
               handler(data.clientId);
             } catch (e) {
-              console.error("[DesktopServer] Connect handler error:", e);
+              logError("DesktopServer", "Connect handler error:", e);
             }
           }
         },
@@ -232,7 +233,7 @@ export class DesktopServer {
             try {
               handler(data.clientId);
             } catch (e) {
-              console.error("[DesktopServer] Disconnect handler error:", e);
+              logError("DesktopServer", "Disconnect handler error:", e);
             }
           }
         },
@@ -304,7 +305,7 @@ export class DesktopServer {
       try {
         handler(message);
       } catch (e) {
-        console.error("[DesktopServer] Message handler error:", e);
+        logError("DesktopServer", "Message handler error:", e);
       }
     }
 
@@ -416,7 +417,7 @@ export class DesktopServer {
 
   private log(msg: string): void {
     if (this.verbose) {
-      console.log(`[DesktopServer] ${msg}`);
+      logWithColor("DesktopServer", msg);
     }
   }
 }
