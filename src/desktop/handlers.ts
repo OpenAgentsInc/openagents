@@ -158,6 +158,42 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
     env: process.env, // Pass full environment for SDK subprocess
   });
 
+  // Stream stdout asynchronously for real-time output
+  (async () => {
+    try {
+      const reader = activeTBRun!.stdout.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        process.stdout.write(text); // Stream to desktop server console
+      }
+    } catch (err) {
+      // Reader cancelled or subprocess killed - this is normal
+    }
+  })();
+
+  // Stream stderr asynchronously for real-time output
+  (async () => {
+    try {
+      const reader = activeTBRun!.stderr.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        process.stderr.write(text); // Stream to desktop server console
+      }
+    } catch (err) {
+      // Reader cancelled or subprocess killed - this is normal
+    }
+  })();
+
   // Clean up when done
   activeTBRun.exited.then(() => {
     console.log(`[TB] Run ${runId} completed`);
