@@ -18,7 +18,7 @@
  */
 
 import { parseArgs } from "util";
-import { join } from "path";
+import { join, resolve } from "path";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, cpSync, readdirSync, statSync } from "fs";
 import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagent.js";
 import type { Subtask } from "../agent/orchestrator/types.js";
@@ -61,6 +61,7 @@ interface TBenchSandboxArgs {
 const parseCliArgs = (): TBenchSandboxArgs => {
   const { values } = parseArgs({
     args: process.argv.slice(2),
+    strict: false,
     options: {
       suite: { type: "string", short: "s" },
       output: { type: "string", short: "o" },
@@ -292,7 +293,8 @@ const runTask = async (
   const taskOutputDir = join(options.outputDir, tbTask.id);
   mkdirSync(taskOutputDir, { recursive: true });
 
-  const workspaceDir = join(taskOutputDir, "workspace");
+  // Convert to absolute path for Docker volume mounts
+  const workspaceDir = resolve(join(taskOutputDir, "workspace"));
 
   console.log(`\n=== Running Task (Sandbox Mode): ${tbTask.id} ===`);
   console.log(`Name: ${tbTask.name}`);
