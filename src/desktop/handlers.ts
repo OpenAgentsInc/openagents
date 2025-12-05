@@ -108,6 +108,9 @@ export interface TBRunOptions {
   timeout?: number;
   maxTurns?: number;
   outputDir?: string;
+  sandbox?: boolean;
+  sandboxBackend?: "docker" | "macos-container";
+  sandboxImage?: string;
 }
 
 export async function startTBRun(options: TBRunOptions): Promise<{ runId: string }> {
@@ -117,7 +120,11 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
   const runId = `tb-${timestamp}-${random}`;
 
   // Build command args with absolute paths
-  const scriptPath = join(PROJECT_ROOT, "src/cli/tbench-local.ts");
+  // Choose script based on sandbox flag
+  const scriptPath = options.sandbox
+    ? join(PROJECT_ROOT, "src/cli/tbench-sandbox.ts")
+    : join(PROJECT_ROOT, "src/cli/tbench-local.ts");
+
   const suitePath = options.suitePath.startsWith("/")
     ? options.suitePath
     : join(PROJECT_ROOT, options.suitePath);
@@ -139,6 +146,16 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
 
   if (options.maxTurns) {
     args.push("--max-turns", String(options.maxTurns));
+  }
+
+  // Add sandbox options if sandbox mode is enabled
+  if (options.sandbox) {
+    if (options.sandboxBackend) {
+      args.push("--sandbox-backend", options.sandboxBackend);
+    }
+    if (options.sandboxImage) {
+      args.push("--sandbox-image", options.sandboxImage);
+    }
   }
 
   console.log(`[TB] Starting run ${runId}:`, args.join(" "));
