@@ -350,6 +350,8 @@ export const runClaudeCodeSubagent = async (
     const { controller, getAbortReason, cleanup } = createAbortController(options.signal, timeoutMs);
 
     try {
+      console.log("[SDK] About to call query() with cwd:", options.cwd);
+      console.log("[SDK] maxTurns:", options.maxTurns ?? 300, "permissionMode:", options.permissionMode);
       for await (const message of query({
         prompt: defaultBuildPrompt(subtask, options.additionalContext, options.reflections, options.cwd),
         options: {
@@ -368,6 +370,7 @@ export const runClaudeCodeSubagent = async (
           includePartialMessages: !!options.onOutput, // Enable streaming if callback provided
         },
       })) {
+        console.log("[SDK] Received message type:", (message as any).type, "subtype:", (message as any).subtype);
         // Handle streaming partial messages
         if ((message as any).type === "stream_event" && options.onOutput) {
           const event = (message as any).event;

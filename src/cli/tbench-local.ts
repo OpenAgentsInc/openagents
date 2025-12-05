@@ -330,6 +330,9 @@ const runTask = async (
 
   let result;
   try {
+    console.log("[TB] Calling runClaudeCodeSubagent for task:", tbTask.id);
+    console.log("[TB] Workspace:", workspaceDir);
+    console.log("[TB] MaxTurns:", tbTask.max_turns ?? options.maxTurns);
     result = await runClaudeCodeSubagent(subtask, {
       cwd: workspaceDir,
       maxTurns: tbTask.max_turns ?? options.maxTurns,
