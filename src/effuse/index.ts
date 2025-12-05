@@ -114,3 +114,53 @@ export { mountWidget, mountWidgetById, mountWidgets } from "./widget/mount.js"
 // Layers
 export { EffuseLive, EffuseLiveNoSocket } from "./layers/live.js"
 export { makeTestLayer, makeCustomTestLayer, type TestLayerResult } from "./layers/test.js"
+
+// Widgets
+export { APMWidget, type APMState, type APMEvent, initialAPMState } from "./widgets/apm-widget.js"
+export {
+  TrajectoryPaneWidget,
+  type TrajectoryPaneState,
+  type TrajectoryPaneEvent,
+  initialTrajectoryPaneState,
+} from "./widgets/trajectory-pane.js"
+export {
+  ContainerPanesWidget,
+  type ContainerPanesState,
+  type ContainerPanesEvent,
+  type ContainerPane,
+  type ContainerOutputLine,
+  type ContainerStreamType,
+  initialContainerPanesState,
+} from "./widgets/container-panes.js"
+export {
+  TBOutputWidget,
+  type TBOutputState,
+  type TBOutputEvent,
+  type TBOutputLine,
+  type TBOutputSource,
+  initialTBOutputState,
+} from "./widgets/tb-output.js"
+export {
+  MCTasksWidget,
+  type MCTasksState,
+  type MCTasksEvent,
+  type MCTask,
+  initialMCTasksState,
+} from "./widgets/mc-tasks.js"
+export {
+  TBControlsWidget,
+  type TBControlsState,
+  type TBControlsEvent,
+  type TBSuiteInfo,
+  type TBTaskInfo,
+  initialTBControlsState,
+} from "./widgets/tb-controls.js"
+export {
+  CategoryTreeWidget,
+  type CategoryTreeState,
+  type CategoryTreeEvent,
+  type CategoryData,
+  type TBTaskData,
+  type TBTaskStatus,
+  initialCategoryTreeState,
+} from "./widgets/category-tree.js"
