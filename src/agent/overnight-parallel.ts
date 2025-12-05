@@ -41,6 +41,16 @@ import { loadProjectConfig } from "../tasks/project.js";
 import { readTasks, updateTask } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../llm/openrouter.js";
+import {
+  clearParallelState,
+  createInitialParallelState,
+  findAgentState,
+  type BatchState as RecordedBatchState,
+  type MergeRequest,
+  type MergeResult,
+  writeParallelState,
+} from "./parallel/state.js";
+import { recoverParallelRun } from "./parallel/recovery.js";
 
 // Noop OpenRouter layer for cc-only mode - satisfies type but throws if actually called
 const noopOpenRouterLayer = Layer.succeed(OpenRouterClient, {
@@ -220,6 +230,18 @@ const hasCommitsAhead = async (
     `origin/${baseBranch}..HEAD`,
   ]);
   return parseInt(result.stdout, 10) > 0;
+};
+
+const getHeadSha = async (cwd: string): Promise<string | null> => {
+  try {
+    const result = await runGit(cwd, ["rev-parse", "HEAD"]);
+    if (result.exitCode === 0 && result.stdout.trim().length > 0) {
+      return result.stdout.trim();
+    }
+  } catch {
+    // fallthrough
+  }
+  return null;
 };
 
 /**
@@ -725,6 +747,8 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   log(`Project: ${projectConfig.projectId}`);
   const mergeTargetBranch = projectConfig.workBranch ?? projectConfig.defaultBranch ?? "main";
   log(`Target branch: ${mergeTargetBranch}`);
+  const tasksPath = path.join(openagentsDir, "tasks.jsonl");
+  const statePath = path.join(openagentsDir, "parallel-run.json");
 
   // Pre-flight typecheck on main repo before spawning worktrees
   const preflightTypecheck = projectConfig.typecheckCommands ?? [];
@@ -747,8 +771,72 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     log("[Preflight] ✅ Typecheck passed");
   }
 
+  // Attempt recovery from previous interrupted run
+  const recoveredState = await recoverParallelRun(statePath, {
+    log,
+    checkAgentReady: async (agent) => {
+      if (!fs.existsSync(agent.worktreePath)) {
+        return { ready: false };
+      }
+      try {
+        const hasCommits = await hasCommitsAhead(agent.worktreePath, mergeTargetBranch);
+        if (!hasCommits) return { ready: false };
+        const headSha = await getHeadSha(agent.worktreePath);
+        if (headSha) {
+          return { ready: true, commitSha: headSha };
+        }
+        return { ready: true };
+      } catch {
+        return { ready: false };
+      }
+    },
+    processMerge: async (merge): Promise<{ success: boolean; mainCommitSha?: string; error?: string }> => {
+      const mergeResult = await mergeToMain(
+        config.workDir,
+        merge.branch,
+        mergeTargetBranch,
+        merge.taskId ? { id: merge.taskId, title: merge.taskId } : undefined,
+      );
+
+      if (mergeResult.success && merge.taskId && mergeResult.commitSha) {
+        await closeTaskAfterMerge(tasksPath, merge.taskId, mergeResult.commitSha);
+      }
+
+      const response: { success: boolean; mainCommitSha?: string; error?: string } = {
+        success: mergeResult.success,
+      };
+      if (mergeResult.commitSha) {
+        response.mainCommitSha = mergeResult.commitSha;
+      }
+      if (mergeResult.error) {
+        response.error = mergeResult.error;
+      }
+      return response;
+    },
+  });
+
+  if (recoveredState) {
+    if (recoveredState.pendingMerges.length > 0) {
+      log(
+        `[Recovery] Pending merges remain in ${statePath}; aborting new run to avoid state loss. Please rerun after resolving.`,
+      );
+      return { tasksCompleted: recoveredState.tasksCompleted, sessionId };
+    }
+    // Clean up old state so new run can start fresh
+    clearParallelState(statePath);
+  }
+
+  let parallelState = createInitialParallelState({
+    runId: sessionId,
+    workDir: config.workDir,
+    mergeTargetBranch,
+    maxAgents: config.maxAgents,
+    maxTasks: config.maxTasks,
+  });
+  writeParallelState(statePath, parallelState);
+  const persistState = () => writeParallelState(statePath, parallelState);
+
   // Load ready tasks
-  const tasksPath = path.join(openagentsDir, "tasks.jsonl");
   const allTasks = await Effect.runPromise(
     readTasks(tasksPath).pipe(
       Effect.provide(BunContext.layer),
@@ -775,6 +863,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
 
   if (tasksToProcess.length === 0) {
     log("No ready tasks to process");
+    clearParallelState(statePath);
     return { tasksCompleted: 0, sessionId };
   }
 
@@ -783,6 +872,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     for (const t of tasksToProcess) {
       log(`  - ${t.id}: ${t.title}`);
     }
+    clearParallelState(statePath);
     return { tasksCompleted: 0, sessionId };
   }
 
@@ -803,6 +893,15 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     log(`\n${"=".repeat(60)}`);
     log(`BATCH: Tasks ${taskIndex + 1}-${taskIndex + batchSize} of ${tasksToProcess.length}`);
     log(`${"=".repeat(60)}\n`);
+
+    const batchState: RecordedBatchState = {
+      batchIndex: parallelState.batches.length,
+      startedAt: new Date().toISOString(),
+      agents: [],
+    };
+    parallelState.batches.push(batchState);
+    parallelState.currentBatchIndex = batchState.batchIndex;
+    persistState();
 
     // Create worktrees for this batch
     const batchSlots: AgentSlot[] = [];
@@ -835,6 +934,15 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
           continue;
         }
 
+        batchState.agents.push({
+          taskId: task.id,
+          worktreePath: worktree.path,
+          branch: worktree.branch,
+          status: "pending",
+          startedAt: new Date().toISOString(),
+        });
+        persistState();
+
         batchSlots.push({
           id: slotId,
           taskId: task.id,
@@ -850,9 +958,36 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
     // Run agents in parallel
     log(`\nRunning ${batchSlots.length} agents in parallel...`);
     await Promise.all(
-      batchSlots.map((slot) =>
-        runAgentInWorktree(slot, config.workDir, openagentsDir, projectConfig, config.ccOnly, config.verbose, config.sandboxEnabled),
-      ),
+      batchSlots.map(async (slot) => {
+        const agentState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+        if (agentState) {
+          agentState.status = "running";
+          agentState.startedAt ??= new Date().toISOString();
+          persistState();
+        }
+
+        await runAgentInWorktree(
+          slot,
+          config.workDir,
+          openagentsDir,
+          projectConfig,
+          config.ccOnly,
+          config.verbose,
+          config.sandboxEnabled,
+        );
+
+        const completedState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+        if (completedState) {
+          completedState.status = slot.status === "completed" ? "completed" : "failed";
+          completedState.completedAt = new Date().toISOString();
+          if (slot.error) completedState.error = slot.error;
+          if (slot.commitSha) completedState.commitSha = slot.commitSha;
+          if (slot.status === "failed") {
+            parallelState.tasksFailed += 1;
+          }
+          persistState();
+        }
+      }),
     );
 
     // Merge completed worktrees sequentially
@@ -883,12 +1018,40 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
                 }
               }
               typecheckPassed = false;
+              const agentState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+              if (agentState) {
+                agentState.status = "failed";
+                agentState.error = typecheckResult.error ?? "typecheck_failed";
+                parallelState.tasksFailed += 1;
+                persistState();
+              }
             } else {
               log(`[Agent ${slot.id}] ✅ Typecheck passed`);
             }
           }
 
           if (typecheckPassed) {
+            const pendingMerge: MergeRequest | null = slot.taskId
+              ? {
+                  taskId: slot.taskId,
+                  worktreePath: slot.worktree.path,
+                  branch: slot.worktree.branch,
+                  queuedAt: new Date().toISOString(),
+                }
+              : null;
+
+            if (pendingMerge) {
+              const headSha = await getHeadSha(slot.worktree.path);
+              if (headSha) {
+                pendingMerge.commitSha = headSha;
+              }
+            }
+
+            if (pendingMerge) {
+              parallelState.pendingMerges.push(pendingMerge);
+              persistState();
+            }
+
             log(`[Agent ${slot.id}] Merging ${slot.worktree.branch} to ${mergeTargetBranch}...`);
             const taskInfo = slot.task ? { id: slot.task.id, title: slot.task.title } : undefined;
             const mergeResult = await mergeToMain(
@@ -903,6 +1066,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
               }
               log(`[Agent ${slot.id}] ✅ Merged: ${mergeResult.commitSha?.slice(0, 8)}`);
               tasksCompleted++;
+              parallelState.tasksCompleted += 1;
 
               // Close the task in the main repo's tasks.jsonl
               // The worktree commit only has commit_pending status; the close happens after
@@ -915,13 +1079,47 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
                   log(`[Agent ${slot.id}] ⚠️ Failed to close task: ${closeResult.error}`);
                 }
               }
+
+              if (pendingMerge) {
+                parallelState.pendingMerges = parallelState.pendingMerges.filter((m) => m !== pendingMerge);
+                const completedMerge: MergeResult = {
+                  taskId: pendingMerge.taskId,
+                  mergedAt: new Date().toISOString(),
+                  success: true,
+                };
+                if (mergeResult.commitSha) {
+                  completedMerge.mainCommitSha = mergeResult.commitSha;
+                }
+                parallelState.completedMerges.push(completedMerge);
+              }
+              const agentState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+              if (agentState) {
+                agentState.status = "merged";
+                agentState.completedAt = new Date().toISOString();
+                if (mergeResult.commitSha) agentState.commitSha = mergeResult.commitSha;
+              }
+              persistState();
             } else {
               log(`[Agent ${slot.id}] ❌ Merge failed: ${mergeResult.error}`);
+              const agentState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+              if (agentState) {
+                agentState.status = "failed";
+                agentState.error = mergeResult.error ?? "merge_failed";
+                parallelState.tasksFailed += 1;
+                persistState();
+              }
             }
           }
         } else {
           log(`[Agent ${slot.id}] No commits to merge`);
           tasksCompleted++; // Still count as completed
+          parallelState.tasksCompleted += 1;
+          const agentState = slot.taskId ? findAgentState(parallelState, slot.taskId) : undefined;
+          if (agentState) {
+            agentState.status = "merged";
+            agentState.completedAt = new Date().toISOString();
+            persistState();
+          }
         }
       }
 
@@ -948,6 +1146,15 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
 
     slots.push(...batchSlots);
     taskIndex += batchSize;
+  }
+
+  if (parallelState.pendingMerges.length === 0) {
+    clearParallelState(statePath);
+  } else {
+    persistState();
+    log(
+      `[Recovery] Pending merges remain recorded in ${statePath}; rerun mechacoder:parallel to resume merge queue.`,
+    );
   }
 
   log(`\n${"#".repeat(60)}`);
