@@ -14,7 +14,7 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
-import { createTaskRepository, readTasks, type Task } from "../../tasks/index.js";
+import { TaskRepository, readTasks, type Task } from "../../tasks/index.js";
 import {
   createCommit,
   getCurrentBranch,
@@ -151,8 +151,11 @@ export const runOrchestrator = (
     const openagentsDir = config.openagentsDir ?? `${config.cwd}/.openagents`;
     const stepResultsManager = yield* createStepResultsManager(openagentsDir, sessionId);
     sessionId = stepResultsManager.sessionId;
-    const tasksPath = `${openagentsDir}/tasks.jsonl`;
-    const taskRepository = createTaskRepository({ tasksPath });
+    const taskRepo = TaskRepository.fromRoot({
+      rootDir: config.cwd,
+      tasksFile: "tasks.jsonl",
+    });
+    const tasksPath = taskRepo.tasksPath;
     const sessionStartedAt = Date.now();
     const usageAccumulator = {
       inputTokens: 0,
@@ -540,14 +543,13 @@ export const runOrchestrator = (
             stepResultsManager,
             "select_task",
             () =>
-              taskRepository.pickNext().pipe(
+              taskRepo.pickNextTask().pipe(
                 Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
               ),
             { inputHash: tasksPath }
           );
         }
       }
-
 
       if (!taskResult) {
         state.phase = "done";
@@ -914,13 +916,15 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             ];
 
             // Mark the task as blocked in tasks.jsonl
-            yield* taskRepository.update({
-              id: taskResult.id,
-              update: {
-                status: "blocked",
-                closeReason: `Blocked after ${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${result.error}`,
-              },
-            }).pipe(Effect.catchAll(() => Effect.void));
+            yield* taskRepo
+              .updateTask({
+                id: taskResult.id,
+                update: {
+                  status: "blocked",
+                  closeReason: `Blocked after ${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${result.error}`,
+                },
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
 
             writeProgress(openagentsDir, progress);
             writeSubtasks(openagentsDir, subtaskList);
@@ -1155,17 +1159,19 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
       }
 
-      yield* taskRepository.update({
-        id: taskResult.id,
-        update: {
-          status: "commit_pending",
-          pendingCommit: {
-            message: commitMessage,
-            timestamp: new Date().toISOString(),
-            branch: commitBranch,
+      yield* taskRepo
+        .updateTask({
+          id: taskResult.id,
+          update: {
+            status: "commit_pending",
+            pendingCommit: {
+              message: commitMessage,
+              timestamp: new Date().toISOString(),
+              branch: commitBranch,
+            },
           },
-        },
-      }).pipe(Effect.catchAll(() => Effect.void));
+        })
+        .pipe(Effect.catchAll(() => Effect.void));
 
       // Phase 6b: Create git commit
       const stagePaths = Array.from(
@@ -1178,17 +1184,19 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       emit({ type: "commit_created", sha, message: commitMessage });
 
       // Update pending commit with SHA (for crash recovery verification)
-      yield* taskRepository.update({
-        id: taskResult.id,
-        update: {
-          pendingCommit: {
-            message: commitMessage,
-            timestamp: new Date().toISOString(),
-            branch: commitBranch,
-            sha,
+      yield* taskRepo
+        .updateTask({
+          id: taskResult.id,
+          update: {
+            pendingCommit: {
+              message: commitMessage,
+              timestamp: new Date().toISOString(),
+              branch: commitBranch,
+              sha,
+            },
           },
-        },
-      }).pipe(Effect.catchAll(() => Effect.void));
+        })
+        .pipe(Effect.catchAll(() => Effect.void));
 
       // Phase 7: Push (if allowed) - idempotent, safe to retry
       if (config.allowPush) {
@@ -1198,15 +1206,17 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       // Phase 8: Update Task - Complete the two-phase commit
       state.phase = "updating_task";
-      yield* taskRepository.update({
-        id: taskResult.id,
-        update: {
-          status: "closed",
-          closeReason: "Completed by MechaCoder orchestrator",
-          pendingCommit: null, // Clear the pending commit
-        },
-        appendCommits: [sha],
-      }).pipe(Effect.catchAll(() => Effect.void));
+      yield* taskRepo
+        .updateTask({
+          id: taskResult.id,
+          update: {
+            status: "closed",
+            closeReason: "Completed by MechaCoder orchestrator",
+            pendingCommit: null, // Clear the pending commit
+          },
+          appendCommits: [sha],
+        })
+        .pipe(Effect.catchAll(() => Effect.void));
 
       if (currentCheckpoint) {
         const nextPhase = advancePhase(currentCheckpoint.phase, "updating_task");

@@ -1,4 +1,7 @@
 import * as nodePath from "node:path";
+import { Effect } from "effect";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
 import {
   addComment,
   closeTask,
@@ -12,92 +15,156 @@ import {
   type AddCommentOptions,
   type CloseTaskOptions,
   type CreateTaskOptions,
-  type ReopenTaskOptions,
+  type TaskServiceError,
   type UpdateTaskOptions,
 } from "./service.js";
-import type { TaskFilter } from "./schema.js";
+import type { Comment, Task, TaskFilter, TaskUpdate } from "./schema.js";
 
-export interface TaskRepositoryPaths {
-  /** Absolute path to the repo root (or provided rootDir) */
-  rootDir: string;
-  /** Relative .openagents directory (default: .openagents) */
-  openagentsDir: string;
-  /** Absolute path to tasks.jsonl */
+export interface TaskRepositoryConfig {
   tasksPath: string;
-  /** Absolute path to project.json */
-  projectPath: string;
 }
 
-export interface TaskRepositoryOptions {
+export interface TaskRepositoryFromRootOptions {
   rootDir?: string;
   openagentsDir?: string;
-  tasksFilename?: string;
-  projectFilename?: string;
+  tasksFile?: string;
   tasksPath?: string;
-  projectPath?: string;
 }
 
-export interface TaskRepository {
-  paths: TaskRepositoryPaths;
-  list: (filter?: TaskFilter) => ReturnType<typeof listTasks>;
-  ready: (filter?: TaskFilter) => ReturnType<typeof readyTasks>;
-  pickNext: (filter?: TaskFilter) => ReturnType<typeof pickNextTask>;
-  create: (
-    options: Omit<CreateTaskOptions, "tasksPath">
-  ) => ReturnType<typeof createTask>;
-  update: (
-    options: Omit<UpdateTaskOptions, "tasksPath">
-  ) => ReturnType<typeof updateTask>;
-  close: (
-    options: Omit<CloseTaskOptions, "tasksPath">
-  ) => ReturnType<typeof closeTask>;
-  reopen: (
-    options: Omit<ReopenTaskOptions, "tasksPath">
-  ) => ReturnType<typeof reopenTask>;
-  addComment: (
-    options: Omit<AddCommentOptions, "tasksPath">
-  ) => ReturnType<typeof addComment>;
-  listComments: (taskId: string) => ReturnType<typeof listComments>;
+const DEFAULT_OPENAGENTS_DIR = ".openagents";
+const DEFAULT_TASKS_FILE = "tasks.jsonl";
+
+export class TaskRepository {
+  readonly tasksPath: string;
+
+  constructor(config: TaskRepositoryConfig) {
+    this.tasksPath = config.tasksPath;
+  }
+
+  static fromRoot(options: TaskRepositoryFromRootOptions = {}): TaskRepository {
+    if (options.tasksPath) return new TaskRepository({ tasksPath: options.tasksPath });
+
+    const rootDir = options.rootDir ?? process.cwd();
+    const openagentsDir = options.openagentsDir ?? DEFAULT_OPENAGENTS_DIR;
+    const tasksFile = options.tasksFile ?? DEFAULT_TASKS_FILE;
+
+    const openagentsPath = nodePath.isAbsolute(openagentsDir)
+      ? openagentsDir
+      : nodePath.join(rootDir, openagentsDir);
+
+    return new TaskRepository({ tasksPath: nodePath.join(openagentsPath, tasksFile) });
+  }
+
+  listTasks(
+    filter?: TaskFilter,
+  ): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return listTasks(this.tasksPath, filter);
+  }
+
+  readyTasks(
+    filter?: TaskFilter,
+  ): Effect.Effect<Task[], TaskServiceError, FileSystem.FileSystem> {
+    return readyTasks(this.tasksPath, filter);
+  }
+
+  pickNextTask(
+    filter?: TaskFilter,
+  ): Effect.Effect<Task | null, TaskServiceError, FileSystem.FileSystem> {
+    return pickNextTask(this.tasksPath, filter);
+  }
+
+  claimNext(
+    filter?: TaskFilter,
+    options: { status?: Task["status"]; timestamp?: Date } = {},
+  ): Effect.Effect<Task | null, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    const status = options.status ?? "in_progress";
+
+    return this.pickNextTask(filter).pipe(
+      Effect.flatMap((task) => {
+        if (!task) return Effect.succeed<Task | null>(null);
+
+        return this.updateTask({
+          id: task.id,
+          update: { status },
+          ...(options.timestamp ? { timestamp: options.timestamp } : {}),
+        }).pipe(Effect.catchAll(() => Effect.succeed(task)));
+      }),
+    );
+  }
+
+  createTask(
+    options: Omit<CreateTaskOptions, "tasksPath">,
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return createTask({ ...options, tasksPath: this.tasksPath });
+  }
+
+  updateTask(
+    options: Omit<UpdateTaskOptions, "tasksPath">,
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return updateTask({ ...options, tasksPath: this.tasksPath });
+  }
+
+  update(
+    id: string,
+    update: TaskUpdate,
+    options: { appendCommits?: string[]; timestamp?: Date } = {},
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return this.updateTask({
+      id,
+      update,
+      appendCommits: options.appendCommits ?? [],
+      ...(options.timestamp ? { timestamp: options.timestamp } : {}),
+    });
+  }
+
+  closeTask(
+    options: Omit<CloseTaskOptions, "tasksPath">,
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return closeTask({ ...options, tasksPath: this.tasksPath });
+  }
+
+  close(
+    id: string,
+    options: { reason?: string; commits?: string[]; timestamp?: Date } = {},
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    const reasonPatch = options.reason !== undefined ? { reason: options.reason } : {};
+    return this.closeTask({
+      id,
+      ...reasonPatch,
+      commits: options.commits ?? [],
+      ...(options.timestamp ? { timestamp: options.timestamp } : {}),
+    });
+  }
+
+  reopenTask(
+    id: string,
+    timestamp?: Date,
+  ): Effect.Effect<Task, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    const options = timestamp
+      ? { tasksPath: this.tasksPath, id, timestamp }
+      : { tasksPath: this.tasksPath, id };
+    return reopenTask(options);
+  }
+
+  addComment(
+    options: Omit<AddCommentOptions, "tasksPath">,
+  ): Effect.Effect<{ task: Task; comment: Comment }, TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return addComment({ ...options, tasksPath: this.tasksPath });
+  }
+
+  listComments(taskId: string): Effect.Effect<Comment[], TaskServiceError, FileSystem.FileSystem | Path.Path> {
+    return listComments({ tasksPath: this.tasksPath, taskId });
+  }
+
+  // Backward-compatible helpers for earlier API surface
+  ready(filter?: TaskFilter) {
+    return this.readyTasks(filter);
+  }
+
+  pickNext(filter?: TaskFilter) {
+    return this.pickNextTask(filter);
+  }
 }
 
-export const resolveTaskRepositoryPaths = (
-  options: TaskRepositoryOptions = {},
-): TaskRepositoryPaths => {
-  const rootDir = options.rootDir ? nodePath.resolve(options.rootDir) : process.cwd();
-  const openagentsDir = options.openagentsDir ?? ".openagents";
-  const tasksFilename = options.tasksFilename ?? "tasks.jsonl";
-  const projectFilename = options.projectFilename ?? "project.json";
-
-  const tasksPath =
-    options.tasksPath ??
-    nodePath.resolve(rootDir, openagentsDir, tasksFilename);
-  const projectPath =
-    options.projectPath ??
-    nodePath.resolve(rootDir, openagentsDir, projectFilename);
-
-  return {
-    rootDir,
-    openagentsDir,
-    tasksPath,
-    projectPath,
-  };
-};
-
-export const createTaskRepository = (
-  options: TaskRepositoryOptions = {},
-): TaskRepository => {
-  const paths = resolveTaskRepositoryPaths(options);
-
-  return {
-    paths,
-    list: (filter) => listTasks(paths.tasksPath, filter),
-    ready: (filter) => readyTasks(paths.tasksPath, filter),
-    pickNext: (filter) => pickNextTask(paths.tasksPath, filter),
-    create: (opts) => createTask({ ...opts, tasksPath: paths.tasksPath }),
-    update: (opts) => updateTask({ ...opts, tasksPath: paths.tasksPath }),
-    close: (opts) => closeTask({ ...opts, tasksPath: paths.tasksPath }),
-    reopen: (opts) => reopenTask({ ...opts, tasksPath: paths.tasksPath }),
-    addComment: (opts) => addComment({ ...opts, tasksPath: paths.tasksPath }),
-    listComments: (taskId) => listComments({ tasksPath: paths.tasksPath, taskId }),
-  };
-};
+export const createTaskRepository = (options: TaskRepositoryFromRootOptions = {}): TaskRepository =>
+  TaskRepository.fromRoot(options);

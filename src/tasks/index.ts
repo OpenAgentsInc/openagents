@@ -93,6 +93,12 @@ export {
   type MergeTasksResult,
 } from "./service.js";
 
+export { TaskRepository, createTaskRepository } from "./repository.js";
+export type {
+  TaskRepositoryConfig,
+  TaskRepositoryFromRootOptions,
+} from "./repository.js";
+
 export {
   ProjectServiceError,
   projectConfigPath,
