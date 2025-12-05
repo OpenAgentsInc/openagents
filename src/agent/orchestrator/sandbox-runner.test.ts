@@ -164,6 +164,43 @@ describe("sandbox-runner", () => {
       expect(result.sandboxed).toBe(false);
       expect(result.exitCode).not.toBe(0);
     });
+
+    test("streams stdout/stderr to HUD emitters", async () => {
+      const sandboxConfig: SandboxConfig = { enabled: false, backend: DEFAULT_BACKEND, timeoutMs: DEFAULT_TIMEOUT_MS };
+      const messages: any[] = [];
+      const config: SandboxRunnerConfig = {
+        sandboxConfig,
+        cwd: process.cwd(),
+        emitHud: (msg) => messages.push(msg),
+      };
+
+      const result = await Effect.runPromise(
+        runCommand(
+          ["bash", "-c", "\"echo out; echo err 1>&2\""],
+          config,
+        ),
+      );
+
+      expect(result.exitCode).toBe(0);
+
+      const start = messages.find((m) => m.type === "container_start");
+      const stdoutMsg = messages.find(
+        (m) => m.type === "container_output" && m.stream === "stdout" && m.text.includes("out"),
+      );
+      const stderrMsg = messages.find(
+        (m) => m.type === "container_output" && m.stream === "stderr" && m.text.includes("err"),
+      );
+      const complete = messages.find((m) => m.type === "container_complete");
+
+      expect(start).toBeDefined();
+      expect(stdoutMsg).toBeDefined();
+      expect(stderrMsg).toBeDefined();
+      expect(stdoutMsg?.sandboxed).toBe(false);
+      expect(stderrMsg?.sandboxed).toBe(false);
+      expect(stdoutMsg?.executionId).toBe(start?.executionId);
+      expect(stderrMsg?.executionId).toBe(start?.executionId);
+      expect(complete?.executionId).toBe(start?.executionId);
+    });
   });
 
   describe("runCommandString", () => {
