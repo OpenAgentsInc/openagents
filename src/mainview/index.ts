@@ -11,6 +11,7 @@ import {
   type TBFlowState,
   type TBRunDetails,
 } from "../flow/tb-map.js"
+import type { TBRunWithPath } from "../tbench-hud/persistence.js"
 // NOTE: persistence.js uses Node.js fs APIs which don't work in browser webview.
 // Run history loading must happen via RPC from the main process.
 // import { loadRecentRuns, loadTBRun } from "../tbench-hud/persistence.js"
@@ -31,6 +32,7 @@ import type {
   APMUpdateMessage,
   APMSnapshotMessage,
 } from "../hud/protocol.js"
+import type { TBRunHistoryItem } from "../desktop/protocol.js"
 import {
   isTBRunStart,
   isTBRunComplete,
@@ -1015,6 +1017,21 @@ function handleHudMessage(message: HudMessage): void {
       baselineRunId: preservedBaseline,
       comparison: preservedComparison,
     }
+    upsertTBRunHistoryItem({
+      runId: message.runId,
+      suiteName: message.suiteName,
+      suiteVersion: message.suiteVersion,
+      timestamp: message.timestamp,
+      passRate: 0,
+      passed: 0,
+      failed: 0,
+      timeout: 0,
+      error: 0,
+      totalDurationMs: 0,
+      totalTokens: 0,
+      taskCount: message.totalTasks,
+      filepath: "",
+    })
     // Sync flow state with updated tbState
     syncTBFlowWithState()
     render()
@@ -1128,6 +1145,22 @@ function handleHudMessage(message: HudMessage): void {
     tbState.totalDurationMs = message.totalDurationMs
     tbState.currentTaskId = null
     tbState.currentPhase = null
+    const existingRun = tbFlowState.runs.find((run) => run.runId === message.runId)
+    upsertTBRunHistoryItem({
+      runId: message.runId,
+      suiteName: existingRun?.suiteName ?? tbState.suiteName,
+      suiteVersion: existingRun?.suiteVersion ?? tbState.suiteVersion,
+      timestamp: existingRun?.timestamp ?? new Date().toISOString(),
+      passRate: message.passRate,
+      passed: message.passed,
+      failed: message.failed,
+      timeout: message.timeout,
+      error: message.error,
+      totalDurationMs: message.totalDurationMs,
+      totalTokens: existingRun?.totalTokens ?? 0,
+      taskCount: existingRun?.taskCount ?? tbState.totalTasks,
+      filepath: existingRun?.filepath ?? "",
+    })
     // Sync flow state (run no longer active)
     syncTBFlowWithState()
     render()
@@ -1238,39 +1271,64 @@ let tbLayout = calculateLayout({
   config: TB_LAYOUT_CONFIG,
 })
 
-function applyTBRunHistory(runs: TBRunHistoryItem[]): void {
-  const runIds = new Set(runs.map((run) => run.runId))
+const mapHistoryItemToRun = (item: TBRunHistoryItem): TBRunWithPath => ({
+  runId: item.runId,
+  suiteName: item.suiteName,
+  suiteVersion: item.suiteVersion,
+  timestamp: item.timestamp,
+  passRate: item.passRate,
+  passed: item.passed,
+  failed: item.failed,
+  timeout: item.timeout,
+  error: item.error,
+  totalDurationMs: item.totalDurationMs,
+  totalTokens: item.totalTokens,
+  taskCount: item.taskCount,
+  filepath: item.filepath ?? "",
+})
 
-  // Drop cached details for runs that no longer exist
-  for (const runId of Array.from(tbRunDetails.keys())) {
-    if (!runIds.has(runId)) {
-      tbRunDetails.delete(runId)
-    }
-  }
-
+const applyTBRunList = (runs: TBRunWithPath[], forceRender = false): void => {
+  const sortedRuns = [...runs].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  )
+  const nextExpanded = new Set(
+    [...tbFlowState.expandedRunIds].filter((id) =>
+      sortedRuns.some((run) => run.runId === id)
+    )
+  )
+  tbRunDetails = new Map(
+    [...tbRunDetails].filter(([runId]) =>
+      sortedRuns.some((run) => run.runId === runId)
+    )
+  )
   tbFlowState = {
     ...tbFlowState,
-    runs: runs.map((r) => ({
-      runId: r.runId,
-      suiteName: r.suiteName,
-      suiteVersion: r.suiteVersion,
-      timestamp: r.timestamp,
-      passRate: r.passRate,
-      passed: r.passed,
-      failed: r.failed,
-      timeout: r.timeout,
-      error: r.error,
-      totalDurationMs: r.totalDurationMs,
-      totalTokens: r.totalTokens,
-      taskCount: r.taskCount,
-      filepath: r.filepath,
-    })),
+    runs: sortedRuns,
+    expandedRunIds: nextExpanded,
   }
-
   syncTBFlowWithState()
-  if (viewMode === "tbench") {
+  if (viewMode === "tbench" || forceRender) {
     render()
   }
+}
+
+const upsertTBRunHistoryItem = (
+  item: TBRunHistoryItem,
+  forceRender = false
+): void => {
+  const run = mapHistoryItemToRun(item)
+  const existingIndex = tbFlowState.runs.findIndex(
+    (r) => r.runId === run.runId
+  )
+  const nextRuns =
+    existingIndex >= 0
+      ? [
+          ...tbFlowState.runs.slice(0, existingIndex),
+          run,
+          ...tbFlowState.runs.slice(existingIndex + 1),
+        ]
+      : [run, ...tbFlowState.runs]
+  applyTBRunList(nextRuns, forceRender)
 }
 
 /**
@@ -1283,10 +1341,13 @@ async function refreshTBLayout(): Promise<void> {
     const runs = await socketClient.loadRecentTBRuns(20)
     console.log(`[TB] Loaded ${runs.length} runs via RPC`)
 
-    applyTBRunHistory(runs)
+    applyTBRunList(runs.map(mapHistoryItemToRun))
   } catch (err) {
     console.error("[TB] Failed to load runs via RPC:", err)
-    // Continue with empty/existing runs - don't block the UI
+    syncTBFlowWithState()
+    if (viewMode === "tbench") {
+      render()
+    }
   }
 }
 
@@ -1619,7 +1680,7 @@ console.log("[OpenAgents] About to render...");
 render()
 console.log("[OpenAgents] Render complete!");
 
-// Load live data (TB history updates are pushed over WebSocket)
+// Load live data; TB history is refreshed from WebSocket events instead of polling
 void refreshLayoutFromState()
 setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
 
