@@ -54,6 +54,9 @@ export interface StartTBRunRequest extends BaseRequest {
   timeout?: number;
   maxTurns?: number;
   outputDir?: string;
+  sandbox?: boolean;
+  sandboxBackend?: "docker" | "macos-container";
+  sandboxImage?: string;
 }
 
 /**
