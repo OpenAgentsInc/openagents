@@ -5,7 +5,7 @@
  * Provides queries, actions, assertions, and waiting utilities.
  */
 
-import { Context, Effect, type Scope } from "effect"
+import { Context, Effect } from "effect"
 import { TestError, type WaitOptions } from "./errors.js"
 
 /**
