@@ -330,10 +330,58 @@ If you see errors about `/app/` paths, the test transformation didn't work. Chec
 cat results/<task-id>/workspace/tests/test_*.py | grep '/app/'
 ```
 
+## Overnight Iteration System
+
+For running repeated benchmark iterations overnight with learning:
+
+```bash
+# Run 10 iterations with Claude Code
+bun src/cli/tbench-iterate.ts --suite ./tasks/tb-2.0.json --iterations 10
+
+# Run with Ollama (any model)
+bun src/cli/tbench-iterate.ts --suite ./tasks/tb-2.0.json --model ollama:codellama:34b --iterations 20
+
+# Mixed: 90% Ollama, 10% Claude for validation
+bun src/cli/tbench-iterate.ts --suite ./tasks/tb-2.0.json --model ollama:codellama:34b \
+  --claude-validation-rate 0.1 --iterations 20
+
+# Resume interrupted run
+bun src/cli/tbench-iterate.ts --resume ./results/20251205/state.json
+```
+
+**Features:**
+- Support for Claude Code and local Ollama models
+- Episode tracking in `.openagents/gym/episodes.jsonl`
+- Resume capability for interrupted runs
+- Baseline comparison
+- HUD integration for real-time monitoring
+
+**Output structure:**
+```
+results/YYYYMMDD/
+├── config.json           # Run configuration
+├── state.json            # For resume capability
+├── summary.md            # Overall summary
+├── episodes.json         # All episodes
+└── iterations/
+    ├── 001/
+    │   ├── results.json
+    │   ├── report.md
+    │   └── <task-id>/workspace/
+    └── ...
+```
+
+See [overnight-runs.md](./overnight-runs.md) for detailed usage.
+See [model-configuration.md](./model-configuration.md) for Ollama setup.
+
 ## Related Files
 
-- `src/cli/tbench-local.ts` - Local runner
+- `src/cli/tbench-local.ts` - Local runner (single run)
+- `src/cli/tbench-iterate.ts` - Overnight iteration runner
 - `src/cli/import-tasks.ts` - Task importer
 - `src/bench/terminal-bench.ts` - Schemas and adapters
+- `src/bench/model-adapter.ts` - Claude Code / Ollama abstraction
+- `src/bench/episode-store.ts` - Episode storage
+- `src/llm/ollama.ts` - Ollama HTTP client
 - `tasks/terminal-bench-2.json` - Imported task suite
 - `src/harbor/` - Harbor adapter (for official leaderboard)
