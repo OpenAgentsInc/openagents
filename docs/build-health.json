@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2025-12-05T14:12:47.892Z",
+  "results": [
+    {
+      "name": "typecheck",
+      "ok": true,
+      "status": 0,
+      "durationMs": 3714
+    },
+    {
+      "name": "tests",
+      "ok": true,
+      "status": 0,
+      "durationMs": 62176
+    }
+  ],
+  "coverage": {
+    "overall": {
+      "linesFound": 28476,
+      "linesHit": 22966,
+      "branchesFound": 0,
+      "branchesHit": 0
+    },
+    "agent": {
+      "linesFound": 7378,
+      "linesHit": 5295,
+      "branchesFound": 0,
+      "branchesHit": 0
+    },
+    "tools": {
+      "linesFound": 946,
+      "linesHit": 689,
+      "branchesFound": 0,
+      "branchesHit": 0
+    },
+    "tasks": {
+      "linesFound": 1907,
+      "linesHit": 1707,
+      "branchesFound": 0,
+      "branchesHit": 0
+    }
+  }
+}

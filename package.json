@@ -64,7 +64,8 @@
     "deps:update": "bun src/deps/update-cli.ts",
     "desktop": "bun src/desktop/main.ts",
     "desktop:debug": "bun --inspect src/desktop/main.ts",
-    "session:export-html": "bun src/sessions/cli.ts export-html"
+    "session:export-html": "bun src/sessions/cli.ts export-html",
+    "build:health": "bun scripts/generate-build-health.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
