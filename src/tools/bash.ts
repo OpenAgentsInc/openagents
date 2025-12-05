@@ -38,6 +38,7 @@ export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandEx
   label: "bash",
   description:
     "Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide a timeout in seconds.",
+  // Local-context: runs inline in this process; cannot be suspended or resumed mid-command.
   schema: BashParametersSchema,
   execute: (params) =>
     Effect.scoped(

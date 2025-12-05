@@ -7,6 +7,8 @@
  * 3. Links the tasks via discovered-from dependency
  *
  * This ensures issues are surfaced clearly rather than thrashing on unfixable problems.
+ *
+ * Local-context: runs inline and should remain idempotent/safe to retry.
  */
 import { Effect } from "effect";
 import type { HealerSpell, HealerSpellResult, HealerContext } from "../types.js";

@@ -87,6 +87,8 @@ const executeGitRewind = async (
  * Executes:
  * 1. git restore . - Revert all tracked file changes
  * 2. git clean -fd - Remove untracked files and directories
+ *
+ * Local-context: runs in-process and must be safe/idempotent because it cannot be suspended mid-call.
  */
 export const rewindUncommittedChanges: HealerSpell = {
   id: "rewind_uncommitted_changes",
