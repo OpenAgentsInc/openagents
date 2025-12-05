@@ -495,18 +495,21 @@ For overnight runs with multiple agents in parallel:
 bun run mechacoder:parallel --max-agents 2 --max-tasks 10 --cc-only
 
 # Dry run to preview which tasks would be processed
-bun run mechacoder:parallel --max-agents 4 --max-tasks 20 --dry-run
+bun run mechacoder:parallel --max-agents 3 --max-tasks 12 --dry-run
 
 # Run against a different directory
 bun run mechacoder:parallel --dir ~/code/other-repo --max-agents 2 --max-tasks 5 --cc-only
 ```
 
 **Parallel runner options:**
-- `--max-agents <N>` - Maximum parallel agents (default: 2)
+- `--max-agents <N>` - Maximum parallel agents (default: 2; auto-capped by host memory)
 - `--max-tasks <N>` - Maximum total tasks to complete (default: 10)
 - `--cc-only` - Use Claude Code only (recommended for overnight runs)
 - `--dry-run` - Preview what would run without executing
 - `--dir, --cwd <path>` - Target repo directory (default: current directory)
+
+> Default sizing targets a 16GB host: 4GiB per agent with ~6GiB reserved for the OS.
+> The runner will automatically lower `maxAgents` if the requested concurrency exceeds available RAM.
 
 **How parallel execution works:**
 1. Each agent runs in an **isolated git worktree** (`.worktrees/<task-id>/`)
