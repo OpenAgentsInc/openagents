@@ -8,6 +8,7 @@ export interface Settings {
   defaultThinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
   queueMode?: "all" | "one-at-a-time";
   theme?: string;
+  lastSeenChangelogVersion?: string;
 }
 
 export class SettingsManager {
@@ -94,6 +95,15 @@ export class SettingsManager {
 
   setDefaultThinkingLevel(level: "off" | "minimal" | "low" | "medium" | "high"): void {
     this.settings.defaultThinkingLevel = level;
+    this.save();
+  }
+
+  getLastSeenChangelogVersion(): string | undefined {
+    return this.settings.lastSeenChangelogVersion;
+  }
+
+  setLastSeenChangelogVersion(version: string): void {
+    this.settings.lastSeenChangelogVersion = version;
     this.save();
   }
 }
