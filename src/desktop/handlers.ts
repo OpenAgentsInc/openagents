@@ -265,10 +265,57 @@ const TASKS_FILE = ".openagents/tasks.jsonl";
 // MechaCoder Task Assignment
 // ============================================================================
 
+/**
+ * Ensure Claude Code credentials are available.
+ * Extracts from Keychain and writes to ~/.claude/.credentials.json if missing.
+ * Reuses the existing credential extraction service from src/sandbox/credentials.ts.
+ */
+async function ensureClaudeCredentials(): Promise<void> {
+  const homeDir = process.env.HOME ?? Bun.env.HOME;
+  if (!homeDir) {
+    console.warn("[MC] HOME not set, skipping credential export");
+    return;
+  }
+
+  const claudeDir = join(homeDir, ".claude");
+  const credFile = join(claudeDir, ".credentials.json");
+
+  // Check if credentials already exist
+  const file = Bun.file(credFile);
+  if (await file.exists()) {
+    return; // Already have credentials
+  }
+
+  // Extract from Keychain using existing service
+  try {
+    const program = extractCredentialsFromKeychain();
+    const jsonStr = await Effect.runPromise(program.pipe(
+      Effect.catchAll((err) => {
+        console.warn(`[MC] Could not extract Claude Code credentials: ${err.message}`);
+        return Effect.fail(err);
+      })
+    ));
+
+    // Ensure .claude directory exists
+    await Bun.$`mkdir -p ${claudeDir}`.quiet();
+
+    // Write credentials file
+    await Bun.write(credFile, jsonStr);
+    await Bun.$`chmod 600 ${credFile}`.quiet();
+
+    console.log(`[MC] Exported Claude Code credentials to ${credFile}`);
+  } catch (e) {
+    console.warn(`[MC] Failed to export credentials: ${e}`);
+  }
+}
+
 export async function assignTaskToMC(
   taskId: string,
   options?: { sandbox?: boolean }
 ): Promise<{ assigned: boolean }> {
+  // Ensure Claude Code credentials are available before spawning
+  await ensureClaudeCredentials();
+
   const scriptPath = join(PROJECT_ROOT, "src/agent/do-one-task.ts");
   const args = ["bun", scriptPath, "--dir", PROJECT_ROOT, "--cc-only"];
 
