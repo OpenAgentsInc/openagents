@@ -105,6 +105,9 @@ export type {
   VerificationResult,
 } from "./sandbox-runner.js";
 
+// Verification Pipeline
+export { buildVerificationPlan, runVerificationPipeline } from "./verification-pipeline.js";
+
 // Checkpoint (crash recovery)
 export {
   writeCheckpoint,

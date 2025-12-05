@@ -14,7 +14,6 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
-import { execSync } from "node:child_process";
 import { pickNextTask, updateTask } from "../../tasks/index.js";
 import {
   createCommit,
@@ -59,10 +58,7 @@ import {
 } from "./types.js";
 import type { FailureContextType, ReflectionType } from "./reflection/index.js";
 import { createHealerCounters } from "../../healer/types.js";
-import {
-  runVerificationWithSandbox,
-  type SandboxRunnerConfig,
-} from "./sandbox-runner.js";
+import type { SandboxRunnerConfig } from "./sandbox-runner.js";
 import { appendUsageRecord, computeUsageIdempotencyKey } from "../../usage/store.js";
 import type { UsageRecord } from "../../usage/types.js";
 import {
@@ -70,9 +66,10 @@ import {
   durableStep,
 } from "./step-results.js";
 import {
-  runVerificationOnHost,
-  type VerificationRunResult,
-} from "./verification-runner.js";
+  buildVerificationPlan,
+  runVerificationPipeline,
+  type VerificationPipelineResult,
+} from "./verification-pipeline.js";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -93,121 +90,6 @@ const summarizeOutput = (output?: string, maxLength = 400): string | undefined =
   if (trimmed.length <= maxLength) return trimmed;
   return `${trimmed.slice(0, maxLength)}...`;
 };
-
-const buildVerificationCommands = (
-  typecheckCommands: string[] | undefined,
-  testCommands: string[],
-  sandboxTestCommands?: string[],
-  useSandbox?: boolean
-): string[] => {
-  // Use sandbox test commands when sandbox is enabled and they are defined
-  const effectiveTestCommands =
-    useSandbox && sandboxTestCommands && sandboxTestCommands.length > 0
-      ? sandboxTestCommands
-      : testCommands;
-
-  // Skip typecheck in sandbox (runs on host in init script instead)
-  // tsc uses too much memory for container limits
-  const effectiveTypecheckCommands = useSandbox ? [] : (typecheckCommands ?? []);
-
-  return [...effectiveTypecheckCommands, ...effectiveTestCommands];
-};
-
-/**
- * Run verification commands (typecheck, tests).
- * Uses sandbox when config.sandbox is enabled and available, otherwise runs on host.
- * Returns structured per-command results with aggregated pass/fail.
- */
-const runVerification = (
-  commands: string[],
-  cwd: string,
-  emit: (event: OrchestratorEvent) => void,
-  sandboxConfig?: SandboxRunnerConfig
-): Effect.Effect<VerificationRunResult, Error, never> => {
-  // If no sandbox config or sandbox explicitly disabled, run on host
-  if (!sandboxConfig || sandboxConfig.sandboxConfig.enabled === false) {
-    return runVerificationOnHost(commands, cwd, emit);
-  }
-
-  // Try sandbox execution with automatic fallback to host
-  const sandboxEmit = emit as (event: { type: string; [key: string]: any }) => void;
-  return runVerificationWithSandbox(commands, sandboxConfig, sandboxEmit).pipe(
-    Effect.map((result) => {
-      const results = result.outputs.map((output, idx) => ({
-        command: commands[idx] ?? `command-${idx + 1}`,
-        exitCode: result.passed ? 0 : 1,
-        stdout: output,
-        stderr: "",
-        durationMs: 0,
-      }));
-      return { passed: result.passed, outputs: result.outputs, results };
-    }),
-    Effect.catchAll(() => runVerificationOnHost(commands, cwd, emit))
-  );
-};
-
-/**
- * Run e2e test commands on the host.
- * Similar to runVerificationOnHost but emits e2e-specific events.
- */
-const runE2eOnHost = (
-  commands: string[],
-  cwd: string,
-  emit: (event: OrchestratorEvent) => void
-): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
-  Effect.try({
-    try: () => {
-      const outputs: string[] = [];
-      let allPassed = true;
-
-      for (const cmd of commands) {
-        emit({ type: "e2e_start", command: cmd });
-        try {
-          const output = execSync(cmd, {
-            cwd,
-            encoding: "utf-8",
-            stdio: ["pipe", "pipe", "pipe"],
-            timeout: 300000,
-          });
-          outputs.push(String(output));
-          emit({ type: "e2e_complete", command: cmd, passed: true, output: String(output) });
-        } catch (error: any) {
-          const output = String(error?.stdout || error?.stderr || error?.message || error);
-          outputs.push(output);
-          emit({ type: "e2e_complete", command: cmd, passed: false, output });
-          allPassed = false;
-        }
-      }
-
-      return { passed: allPassed, outputs };
-    },
-    catch: (error: any) => error as Error,
-  });
-
-/**
- * Check if a task should run e2e tests.
- *
- * When e2eCommands are configured in project.json, they run for ALL tasks
- * unless the task has a label explicitly opting out ("skip-e2e", "no-e2e", "unit-only").
- *
- * This aligns with Golden Loop v2 acceptance rule: "No commit or push is allowed if configured tests fail."
- */
-const shouldRunE2e = (taskLabels: readonly string[] = [], e2eCommandsConfigured = false): boolean => {
-  const skipE2eLabels = ["skip-e2e", "no-e2e", "unit-only"];
-  const hasSkipLabel = taskLabels.some((label) => skipE2eLabels.includes(label.toLowerCase()));
-
-  // If e2eCommands are configured, run for all tasks unless explicitly skipped
-  if (e2eCommandsConfigured) {
-    return !hasSkipLabel;
-  }
-
-  // Fallback: legacy behavior - only run if task has e2e-related labels
-  const e2eLabels = ["e2e", "golden-loop", "integration"];
-  return taskLabels.some((label) => e2eLabels.includes(label.toLowerCase()));
-};
-
-const buildE2eCommands = (commands: string[] | undefined): string[] =>
-  commands?.filter((cmd) => cmd.trim().length > 0) ?? [];
 
 const mapReflectionsToNotes = (reflections: ReflectionType[], limit: number): string[] =>
   reflections
@@ -313,13 +195,14 @@ export const runOrchestrator = (
       emit({ type: "usage_recorded", usage: usageRecord });
       return appendUsageRecord({ rootDir: config.cwd, record: usageRecord }).pipe(Effect.catchAll(() => Effect.void));
     };
-    const verificationCommands = buildVerificationCommands(
-      config.typecheckCommands,
-      config.testCommands,
-      config.sandboxTestCommands,
-      config.sandbox?.enabled
-    );
 
+    const defaultVerificationPlan = buildVerificationPlan({
+      testCommands: config.testCommands,
+      ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
+      ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
+      useSandbox: config.sandbox?.enabled === true,
+    });
+    const verificationCommands = defaultVerificationPlan.verificationCommands;
     // Build sandbox runner config if sandbox is enabled
     const sandboxRunnerConfig: SandboxRunnerConfig | undefined = config.sandbox
       ? {
@@ -533,14 +416,32 @@ export const runOrchestrator = (
       }
 
       // Quick test check
-      if (verificationCommands.length > 0) {
-        const testResult = yield* runVerification(
-          [verificationCommands[0]],
-          config.cwd,
-          emit,
-          sandboxRunnerConfig
-        ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
-        progress.orientation.testsPassingAtStart = testResult.passed;
+      const orientationPlan = defaultVerificationPlan;
+
+      if (orientationPlan.verificationCommands.length > 0) {
+        const firstCommandPlan = {
+          ...orientationPlan,
+          verificationCommands: [orientationPlan.verificationCommands[0]],
+          runE2e: false,
+          e2eCommands: [],
+        };
+
+        const testResult = yield* runVerificationPipeline(
+          {
+            plan: firstCommandPlan,
+            cwd: config.cwd,
+            emit,
+            ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+          },
+        ).pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({
+              verification: { passed: false, outputs: [], results: [] },
+              e2e: { ran: false, passed: true, outputs: [] },
+            } satisfies VerificationPipelineResult),
+          ),
+        );
+        progress.orientation.testsPassingAtStart = testResult.verification.passed;
       } else {
         progress.orientation.testsPassingAtStart = true;
       }
@@ -733,9 +634,22 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           verificationCommands,
           verifyFn: (commands, cwd) =>
             Effect.runPromise(
-              runVerification(commands, cwd, emit, sandboxRunnerConfig).pipe(
-                Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] }))
-              )
+              runVerificationPipeline(
+                {
+                  plan: {
+                    ...defaultVerificationPlan,
+                    verificationCommands: commands,
+                    runE2e: false,
+                    e2eCommands: [],
+                  },
+                  cwd,
+                  emit,
+                  ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+                },
+              ).pipe(
+                Effect.map((result) => result.verification),
+                Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [], results: [] })),
+              ),
             ),
           ...(config.signal ? { signal: config.signal } : {}),
           ...(config.onOutput ? { onOutput: config.onOutput } : {}),
@@ -986,12 +900,32 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       state.phase = "verifying";
       progress.work.testsRun = true;
 
-      const verifyResult = yield* runVerification(
-        verificationCommands,
-        config.cwd,
-        emit,
-        sandboxRunnerConfig
-      ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
+      const verificationPlan = buildVerificationPlan({
+        testCommands: config.testCommands,
+        ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
+        ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
+        ...(config.e2eCommands ? { e2eCommands: config.e2eCommands } : {}),
+        ...(state.task?.labels ? { taskLabels: state.task.labels } : {}),
+        useSandbox: config.sandbox?.enabled === true,
+      });
+
+      const verificationOutcome = yield* runVerificationPipeline(
+        {
+          plan: verificationPlan,
+          cwd: config.cwd,
+          emit,
+          ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+        },
+      ).pipe(
+        Effect.catchAll(() =>
+          Effect.succeed({
+            verification: { passed: false, outputs: [], results: [] },
+            e2e: { ran: false, passed: true, outputs: [] },
+          } satisfies VerificationPipelineResult),
+        ),
+      );
+
+      const verifyResult = verificationOutcome.verification;
 
       progress.work.testsPassingAfterWork = verifyResult.passed;
 
@@ -1001,7 +935,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           const healerOutcome = yield* config.healerService.maybeRun(
             {
               type: "verification_complete",
-              command: verificationCommands.join(" && "),
+              command: verificationPlan.verificationCommands.join(" && "),
               passed: false,
               output: verifyResult.outputs[0] ?? "",
             },
@@ -1012,25 +946,39 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
           if (healerOutcome?.status === "resolved") {
             // Healer fixed the issue! Re-run verification
-            const retryResult = yield* runVerification(
-              verificationCommands,
-              config.cwd,
-              emit,
-              sandboxRunnerConfig
-            ).pipe(Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] })));
+            const retryResult = yield* runVerificationPipeline(
+              {
+                plan: verificationPlan,
+                cwd: config.cwd,
+                emit,
+                ...(sandboxRunnerConfig ? { sandboxConfig: sandboxRunnerConfig } : {}),
+              },
+            ).pipe(
+              Effect.catchAll(() =>
+                Effect.succeed({
+                  verification: { passed: false, outputs: [], results: [] },
+                  e2e: { ran: false, passed: true, outputs: [] },
+                } satisfies VerificationPipelineResult),
+              ),
+            );
 
-            if (retryResult.passed) {
+            if (retryResult.verification.passed) {
               // Verification now passes! Update progress and continue
               progress.work.testsPassingAfterWork = true;
               // Continue to commit phase
             } else {
               // Still failing after heal - proceed with failure
-              yield* recordVerificationReflection(retryResult.outputs[0], "verification_failed");
+              yield* recordVerificationReflection(
+                retryResult.verification.outputs[0],
+                "verification_failed",
+              );
               state.phase = "failed";
               state.error = "Verification failed (after healing attempt)";
               progress.nextSession.blockers = [
                 "Tests or typecheck failed after changes (healing attempted)",
-                ...(retryResult.outputs[0] ? [summarizeOutput(retryResult.outputs[0]) ?? ""] : []),
+                ...(retryResult.verification.outputs[0]
+                  ? [summarizeOutput(retryResult.verification.outputs[0]) ?? ""]
+                  : []),
               ].filter(Boolean) as string[];
               progress.nextSession.suggestedNextSteps = ["Fix failing tests/typecheck", "Review changes"];
               writeProgress(openagentsDir, progress);
@@ -1077,26 +1025,19 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       }
 
       // Run e2e commands when configured and task requires them
-      // When e2eCommands are configured, they run for ALL tasks unless task has skip-e2e label
-      const effectiveE2eCommands = buildE2eCommands(config.e2eCommands);
-      const e2eCommandsConfigured = effectiveE2eCommands.length > 0;
-      const shouldRunE2eTests =
-        e2eCommandsConfigured && state.task && shouldRunE2e(state.task.labels ?? [], e2eCommandsConfigured);
-
-      if (shouldRunE2eTests) {
+      if (verificationPlan.runE2e && verificationOutcome.e2e) {
         progress.work.e2eRun = true;
-        const e2eResult = yield* runE2eOnHost(effectiveE2eCommands, config.cwd, emit).pipe(
-          Effect.catchAll(() => Effect.succeed({ passed: false, outputs: [] }))
-        );
-        progress.work.e2ePassingAfterWork = e2eResult.passed;
+        progress.work.e2ePassingAfterWork = verificationOutcome.e2e.passed;
 
-        if (!e2eResult.passed) {
-          yield* recordVerificationReflection(e2eResult.outputs[0], "test_failure");
+        if (!verificationOutcome.e2e.passed) {
+          yield* recordVerificationReflection(verificationOutcome.e2e.outputs[0], "test_failure");
           state.phase = "failed";
           state.error = "E2E failed";
           progress.nextSession.blockers = [
             "E2E tests failed after changes",
-            ...(e2eResult.outputs[0] ? [summarizeOutput(e2eResult.outputs[0]) ?? ""] : []),
+            ...(verificationOutcome.e2e.outputs[0]
+              ? [summarizeOutput(verificationOutcome.e2e.outputs[0]) ?? ""]
+              : []),
           ].filter(Boolean) as string[];
           progress.nextSession.suggestedNextSteps = ["Fix failing e2e tests", "Review changes"];
           writeProgress(openagentsDir, progress);
@@ -1106,14 +1047,6 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           yield* stepResultsManager.clear();
           return state;
         }
-      } else {
-        emit({
-          type: "e2e_skipped",
-          reason:
-            !e2eCommandsConfigured
-              ? "No e2eCommands configured"
-              : "Task has skip-e2e label",
-        });
       }
 
       // Update checkpoint after verification passes
