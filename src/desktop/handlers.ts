@@ -134,7 +134,7 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
       : join(PROJECT_ROOT, options.outputDir)
     : join(PROJECT_ROOT, "results", runId);
 
-  const args = [scriptPath, "--suite", suitePath, "--output", outputDir];
+  const args = [scriptPath, "--suite", suitePath, "--output", outputDir, "--run-id", runId];
 
   if (options.taskIds?.length) {
     args.push("--tasks", options.taskIds.join(","));

@@ -228,6 +228,33 @@ export interface ATIFTrajectoryCompleteMessage {
   trajectoryPath: string;
 }
 
+/**
+ * ATIF step with full details (Phase 1: tool calls + observations)
+ * Enables real-time trajectory display in frontend
+ */
+export interface ATIFStepMessage {
+  type: "atif_step";
+  runId: string;
+  sessionId: string;
+  step: {
+    step_id: number;
+    timestamp: string;
+    source: "user" | "agent" | "system";
+    message: unknown;
+    tool_calls?: Array<{
+      tool_call_id: string;
+      function_name: string;
+      arguments: unknown;
+    }>;
+    observation?: {
+      results: Array<{
+        source_call_id?: string;
+        content?: unknown;
+      }>;
+    };
+  };
+}
+
 // ============================================================================
 // APM (Actions Per Minute) Events
 // ============================================================================
@@ -609,6 +636,7 @@ export type HudMessage =
   | ATIFStepRecordedMessage
   | ATIFSubagentSpawnedMessage
   | ATIFTrajectoryCompleteMessage
+  | ATIFStepMessage
   | APMUpdateMessage
   | APMSnapshotMessage
   | APMToolUsageMessage
@@ -724,3 +752,10 @@ export const isContainerError = (msg: HudMessage): msg is ContainerErrorMessage 
 /** Check if message is any container-related message */
 export const isContainerMessage = (msg: HudMessage): boolean =>
   msg.type.startsWith("container_");
+
+// ============================================================================
+// ATIF Event Type Guards
+// ============================================================================
+
+export const isATIFStep = (msg: HudMessage): msg is ATIFStepMessage =>
+  msg.type === "atif_step";

@@ -20,6 +20,7 @@ import {
   generateToolCallId,
   timestamp,
 } from "./schema.js";
+import { emitATIFStep } from "./hud-emitter.js";
 
 // ============================================================================
 // Error Types
@@ -48,6 +49,7 @@ export class TrajectoryCollectorError extends Error {
 export interface ActiveTrajectory {
   sessionId: string;
   parentSessionId: string | undefined;
+  runId: string | undefined; // TB run ID for HUD emission
   agent: Agent;
   steps: Step[];
   stepCounter: number;
@@ -72,6 +74,7 @@ export interface TrajectoryCollector {
     sessionId?: string;
     agent: Agent;
     parentSessionId?: string;
+    runId?: string; // TB run ID for HUD emission
   }): Effect.Effect<string, TrajectoryCollectorError>;
 
   /**
@@ -230,6 +233,7 @@ const makeTrajectoryCollector = Effect.gen(function* () {
         const newState: ActiveTrajectory = {
           sessionId,
           parentSessionId: options.parentSessionId,
+          runId: options.runId,
           agent: options.agent,
           steps: [],
           stepCounter: 0,
@@ -260,6 +264,11 @@ const makeTrajectoryCollector = Effect.gen(function* () {
               }
             : s,
         );
+
+        // Emit to HUD if runId is available
+        if (state.runId) {
+          emitATIFStep(state.runId, state.sessionId, step);
+        }
 
         return step;
       }),
@@ -326,6 +335,11 @@ const makeTrajectoryCollector = Effect.gen(function* () {
             : s,
         );
 
+        // Emit to HUD if runId is available
+        if (state.runId) {
+          emitATIFStep(state.runId, state.sessionId, step);
+        }
+
         return step;
       }),
 
@@ -343,6 +357,11 @@ const makeTrajectoryCollector = Effect.gen(function* () {
               }
             : s,
         );
+
+        // Emit to HUD if runId is available
+        if (state.runId) {
+          emitATIFStep(state.runId, state.sessionId, step);
+        }
 
         return step;
       }),
@@ -379,6 +398,11 @@ const makeTrajectoryCollector = Effect.gen(function* () {
               }
             : s,
         );
+
+        // Emit to HUD if runId is available
+        if (state.runId) {
+          emitATIFStep(state.runId, state.sessionId, step);
+        }
 
         return step;
       }),
@@ -477,6 +501,7 @@ export class StandaloneTrajectoryCollector {
     sessionId?: string;
     agent: Agent;
     parentSessionId?: string;
+    runId?: string; // TB run ID for HUD emission
   }): string {
     if (this.state) {
       throw new TrajectoryCollectorError(
@@ -491,6 +516,7 @@ export class StandaloneTrajectoryCollector {
     this.state = {
       sessionId,
       parentSessionId: options.parentSessionId,
+      runId: options.runId,
       agent: options.agent,
       steps: [],
       stepCounter: 0,
