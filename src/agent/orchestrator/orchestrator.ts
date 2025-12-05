@@ -14,7 +14,7 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
-import { pickNextTask, readTasks, updateTask, type Task } from "../../tasks/index.js";
+import { createTaskRepository, readTasks, type Task } from "../../tasks/index.js";
 import {
   createCommit,
   getCurrentBranch,
@@ -152,6 +152,7 @@ export const runOrchestrator = (
     const stepResultsManager = yield* createStepResultsManager(openagentsDir, sessionId);
     sessionId = stepResultsManager.sessionId;
     const tasksPath = `${openagentsDir}/tasks.jsonl`;
+    const taskRepository = createTaskRepository({ tasksPath });
     const sessionStartedAt = Date.now();
     const usageAccumulator = {
       inputTokens: 0,
@@ -539,13 +540,14 @@ export const runOrchestrator = (
             stepResultsManager,
             "select_task",
             () =>
-              pickNextTask(tasksPath).pipe(
+              taskRepository.pickNext().pipe(
                 Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
               ),
             { inputHash: tasksPath }
           );
         }
       }
+
 
       if (!taskResult) {
         state.phase = "done";
@@ -912,8 +914,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
             ];
 
             // Mark the task as blocked in tasks.jsonl
-            yield* updateTask({
-              tasksPath,
+            yield* taskRepository.update({
               id: taskResult.id,
               update: {
                 status: "blocked",
@@ -1154,8 +1155,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
       }
 
-      yield* updateTask({
-        tasksPath,
+      yield* taskRepository.update({
         id: taskResult.id,
         update: {
           status: "commit_pending",
@@ -1178,8 +1178,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       emit({ type: "commit_created", sha, message: commitMessage });
 
       // Update pending commit with SHA (for crash recovery verification)
-      yield* updateTask({
-        tasksPath,
+      yield* taskRepository.update({
         id: taskResult.id,
         update: {
           pendingCommit: {
@@ -1199,8 +1198,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       // Phase 8: Update Task - Complete the two-phase commit
       state.phase = "updating_task";
-      yield* updateTask({
-        tasksPath,
+      yield* taskRepository.update({
         id: taskResult.id,
         update: {
           status: "closed",
