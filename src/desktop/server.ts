@@ -347,6 +347,14 @@ export class DesktopServer {
   }
 
   /**
+   * Broadcast a HUD message originating from the desktop server itself.
+   * Stored in history for new UI clients, just like agent-emitted events.
+   */
+  sendHudMessage(message: HudMessage): void {
+    this.handleHudMessage(message);
+  }
+
+  /**
    * Register a handler for HUD messages.
    */
   onMessage(handler: MessageHandler): () => void {

@@ -7,6 +7,8 @@
 
 import { createDesktopServer } from "./server.js";
 import { log } from "./logger.js";
+import { isTBRunComplete, type TBRunHistoryMessage } from "../hud/protocol.js";
+import { loadRecentTBRuns } from "./handlers.js";
 
 // Get config from parent thread
 const staticDir = process.env.STATIC_DIR!;
@@ -20,6 +22,25 @@ const server = createDesktopServer({
 
 log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
 log("Worker", `HUD server on ws://localhost:${server.getHudPort()}`);
+
+const broadcastRunHistory = async (): Promise<void> => {
+  const runs = await loadRecentTBRuns(20);
+  const message: TBRunHistoryMessage = {
+    type: "tb_run_history",
+    runs,
+  };
+  server.sendHudMessage(message);
+};
+
+// Push TB run history updates when runs complete (no polling)
+server.onMessage((message) => {
+  if (isTBRunComplete(message)) {
+    void broadcastRunHistory();
+  }
+});
+
+// Seed initial history for connected clients
+void broadcastRunHistory();
 
 // Keep worker alive
 setInterval(() => {}, 1000);

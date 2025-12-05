@@ -391,6 +391,28 @@ export interface TBRunCompleteMessage {
 }
 
 /**
+ * TB run history update (server-pushed)
+ */
+export interface TBRunHistoryMessage {
+  type: "tb_run_history";
+  runs: Array<{
+    runId: string;
+    suiteName: string;
+    suiteVersion: string;
+    timestamp: string;
+    passRate: number;
+    passed: number;
+    failed: number;
+    timeout: number;
+    error: number;
+    totalDurationMs: number;
+    totalTokens: number;
+    taskCount: number;
+    filepath: string;
+  }>;
+}
+
+/**
  * TB task started
  */
 export interface TBTaskStartMessage {
@@ -596,6 +618,7 @@ export type HudMessage =
   | HealerInvocationCompleteMessage
   | TBRunStartMessage
   | TBRunCompleteMessage
+  | TBRunHistoryMessage
   | TBTaskStartMessage
   | TBTaskProgressMessage
   | TBTaskOutputMessage
@@ -655,6 +678,9 @@ export const isTBRunStart = (msg: HudMessage): msg is TBRunStartMessage =>
 
 export const isTBRunComplete = (msg: HudMessage): msg is TBRunCompleteMessage =>
   msg.type === "tb_run_complete";
+
+export const isTBRunHistory = (msg: HudMessage): msg is TBRunHistoryMessage =>
+  msg.type === "tb_run_history";
 
 export const isTBTaskStart = (msg: HudMessage): msg is TBTaskStartMessage =>
   msg.type === "tb_task_start";

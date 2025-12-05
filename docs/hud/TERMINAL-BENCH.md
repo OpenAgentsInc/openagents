@@ -73,6 +73,31 @@ interface TBRunCompleteMessage {
 }
 ```
 
+#### TB Run History Update
+
+Pushed by the desktop server when run history changes (e.g., after a run completes) so the HUD can refresh without polling:
+
+```typescript
+interface TBRunHistoryMessage {
+  type: "tb_run_history";
+  runs: Array<{
+    runId: string;
+    suiteName: string;
+    suiteVersion: string;
+    timestamp: string;
+    passRate: number;
+    passed: number;
+    failed: number;
+    timeout: number;
+    error: number;
+    totalDurationMs: number;
+    totalTokens: number;
+    taskCount: number;
+    filepath: string;
+  }>;
+}
+```
+
 ### Task Lifecycle
 
 #### TB Task Start
