@@ -14,6 +14,8 @@ const normalizeExitCode = (exitCode: unknown) => {
 
 interface BashDetails {
   command: string;
+  runInBackground: boolean;
+  pid?: number;
   timeoutSeconds?: number;
   exitCode: number;
   durationMs: number;
@@ -28,6 +30,10 @@ const BashParametersSchema = S.Struct({
     S.minLength(1),
     S.annotations({ description: "Bash command to execute" }),
   ),
+  description: S.optional(
+    S.String.pipe(S.annotations({ description: "Short description of what this command does" })),
+  ),
+  run_in_background: S.optional(S.Boolean),
   timeout: S.optional(
     S.Number.pipe(
       S.greaterThan(0),
@@ -65,7 +71,7 @@ export const bashTool: Tool<BashParameters, BashDetails, CommandExecutor.Command
   name: "bash",
   label: "bash",
   description:
-    "Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide a timeout in seconds.",
+    "Execute a bash command in the current working directory. Supports optional description, background execution, and timeout in seconds. Returns stdout/stderr when run in foreground.",
   // Local-context: runs inline in this process; cannot be suspended or resumed mid-command.
   schema: BashParametersSchema,
   execute: (params) =>
@@ -75,6 +81,31 @@ export const bashTool: Tool<BashParameters, BashDetails, CommandExecutor.Command
 
         const cmd = Command.make("sh", "-c", params.command);
         const startedAt = Date.now();
+
+        if (params.run_in_background) {
+          const process = yield* executor.start(cmd).pipe(
+            Effect.mapError((e) => new ToolExecutionError("aborted", String(e))),
+          );
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Started background process${process.pid ? ` (pid ${process.pid})` : ""} for ${params.command}`,
+              },
+            ],
+            details: {
+              command: params.command,
+              runInBackground: true,
+              pid: process.pid,
+              timeoutSeconds: params.timeout,
+              exitCode: -1,
+              durationMs: Date.now() - startedAt,
+              outputBytes: 0,
+              truncatedOutput: false,
+            },
+          };
+        }
 
         const process = yield* Effect.acquireRelease(executor.start(cmd), (proc) =>
           proc.isRunning.pipe(
@@ -116,6 +147,7 @@ export const bashTool: Tool<BashParameters, BashDetails, CommandExecutor.Command
           content: [{ type: "text" as const, text: output }],
           details: {
             command: params.command,
+            runInBackground: false,
             timeoutSeconds: params.timeout,
             exitCode: exitNum,
             durationMs,
