@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { Tool } from "../../tools/schema.js";
 import type { OpenRouterClient } from "../../llm/openrouter.js";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { detectClaudeCode, type ClaudeCodeAvailability } from "./claude-code-detector.js";
 import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 import { runSubagent, createSubagentConfig } from "./subagent.js";
@@ -35,6 +36,8 @@ export interface RunBestAvailableSubagentOptions<R> {
   additionalContext?: string;
   /** Formatted reflections from previous failures (Reflexion pattern) */
   reflections?: string;
+  /** PreToolUse guard hook to enforce worktree boundaries */
+  worktreeGuardHook?: HookCallback;
 }
 
 const shouldEnableClaudeCode = (settings?: ClaudeCodeSettings): boolean =>
@@ -136,6 +139,7 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
               ...(claudeCode?.permissionMode ? { permissionMode: claudeCode.permissionMode } : {}),
               ...(resumeSessionId ? { resumeSessionId } : {}),
               ...(forkSession ? { forkSession } : {}),
+              ...(options.worktreeGuardHook ? { worktreeGuardHook: options.worktreeGuardHook } : {}),
               ...(options.onOutput ? { onOutput: options.onOutput } : {}),
               ...(options.additionalContext ? { additionalContext: options.additionalContext } : {}),
               ...(options.reflections ? { reflections: options.reflections } : {}),

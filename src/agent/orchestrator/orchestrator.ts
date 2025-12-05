@@ -741,6 +741,7 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
           ...(config.onOutput ? { onOutput: config.onOutput } : {}),
           ...(config.additionalContext ? { additionalContext: config.additionalContext } : {}),
           ...(reflectionsText ? { reflections: reflectionsText } : {}),
+          ...(config.worktreeGuardHook ? { worktreeGuardHook: config.worktreeGuardHook } : {}),
         }).pipe(
           Effect.catchAll((error) =>
             Effect.succeed({

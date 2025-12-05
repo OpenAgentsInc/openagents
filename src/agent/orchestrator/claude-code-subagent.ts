@@ -55,6 +55,8 @@ export interface ClaudeCodeSubagentOptions {
   additionalContext?: string;
   /** Formatted reflections from previous failures (Reflexion pattern) */
   reflections?: string;
+  /** PreToolUse hook to enforce worktree boundaries */
+  worktreeGuardHook?: HookCallback;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -255,7 +257,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * Tool/file tracking is done via message parsing for consistency across real SDK and test mocks.
  */
 const createClaudeCodeHooks = (
-  onEvent?: (event: OrchestratorEvent) => void
+  onEvent?: (event: OrchestratorEvent) => void,
+  worktreeGuardHook?: HookCallback
 ): Partial<Record<string, HookCallbackMatcher[]>> => {
   const postToolUseHook: HookCallback = async (input) => {
     if (input.hook_event_name === "PostToolUse") {
@@ -285,10 +288,16 @@ const createClaudeCodeHooks = (
     return { continue: true };
   };
 
-  return {
+  const hooks: Partial<Record<string, HookCallbackMatcher[]>> = {
     PostToolUse: [{ hooks: [postToolUseHook] }],
     SessionEnd: [{ hooks: [sessionEndHook] }],
   };
+
+  if (worktreeGuardHook) {
+    hooks.PreToolUse = [{ hooks: [worktreeGuardHook] }];
+  }
+
+  return hooks;
 };
 
 /**
@@ -333,7 +342,7 @@ export const runClaudeCodeSubagent = async (
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // Create hooks for observability and event emission
-  const hooks = createClaudeCodeHooks(options.onEvent);
+  const hooks = createClaudeCodeHooks(options.onEvent, options.worktreeGuardHook);
   const toolBuffers: ToolLogBufferMap = new Map();
 
   // Retry loop for rate limits and server errors

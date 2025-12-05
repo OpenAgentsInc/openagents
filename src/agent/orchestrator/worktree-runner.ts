@@ -28,6 +28,7 @@ import { makeReflectionService } from "./reflection/index.js";
 import { loadProjectConfig } from "../../tasks/index.js";
 import { openRouterClientLayer, openRouterConfigLayer } from "../../llm/openrouter.js";
 import { Layer } from "effect";
+import { createWorktreeGuardHook } from "./worktree-guards.js";
 import {
   hasCommitsAhead,
   mergeBranch,
@@ -209,6 +210,7 @@ export const runInWorktree = async (
         ...(projectConfig.sandbox && { sandbox: projectConfig.sandbox }),
         reflectionService,
         reflexionConfig: projectConfig.reflexion,
+        worktreeGuardHook: createWorktreeGuardHook(worktreeInfo.path),
       };
 
       // Merge layers to avoid chained Effect.provide

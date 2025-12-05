@@ -9,7 +9,7 @@
  */
 
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
-import { resolve, relative } from "node:path";
+import { resolve, relative, isAbsolute } from "node:path";
 
 /**
  * Create a PreToolUse hook that BLOCKS file operations outside worktree
@@ -37,9 +37,9 @@ export const createWorktreeGuardHook = (
     return { continue: true };
   }
 
-  // Resolve to absolute paths
-  const absolutePath = resolve(input.cwd, filePath);
+  // Resolve to absolute paths (for logging) and validate boundary
   const absoluteWorktree = resolve(worktreePath);
+  const absolutePath = resolve(absoluteWorktree, filePath);
 
   // Check if path is within worktree
   const relativePath = relative(absoluteWorktree, absolutePath);
@@ -47,7 +47,7 @@ export const createWorktreeGuardHook = (
     relativePath.length > 0 &&
     !relativePath.startsWith("..") &&
     !relativePath.startsWith("/") &&
-    !absolutePath.startsWith("/");  // Absolute paths outside worktree
+    !isAbsolute(relativePath);
 
   if (!isWithinWorktree) {
     // BLOCK: File operation outside worktree

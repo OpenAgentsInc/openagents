@@ -17,6 +17,10 @@ import {
   type ContainerRunOptions,
 } from "../../sandbox/index.js";
 import {
+  createSandboxHudAdapter,
+  type SandboxHudAdapter,
+} from "../../sandbox/hud-adapter.js";
+import {
   createCredentialMount,
   cleanupCredentialMount,
   type CredentialMount,
@@ -60,19 +64,27 @@ export interface CommandResult {
   sandboxed: boolean;
 }
 
+interface SandboxBackendRunOptions {
+  command: string[];
+  cwd: string;
+  sandboxConfig: SandboxConfig;
+  env?: Record<string, string>;
+  hudAdapter?: SandboxHudAdapter;
+}
+
+interface SandboxBackend {
+  name: string;
+  sandboxed: boolean;
+  run: (
+    options: SandboxBackendRunOptions,
+  ) => Effect.Effect<CommandResult, Error, never>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Default Image
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SANDBOX_IMAGE = "oven/bun:latest";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Generate a unique execution ID for correlating container events */
-const generateExecutionId = (): string =>
-  `exec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sandbox Availability Check
@@ -161,6 +173,7 @@ const runOnHostWithCallbacks = (
     timeoutMs?: number | undefined;
     onStdout?: (chunk: string) => void;
     onStderr?: (chunk: string) => void;
+    env?: Record<string, string>;
   }
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.async((resume) => {
@@ -170,6 +183,9 @@ const runOnHostWithCallbacks = (
       cwd,
       shell: true,
       stdio: ["pipe", "pipe", "pipe"],
+      env: options?.env
+        ? { ...process.env, ...options.env }
+        : process.env,
     });
 
     let stdout = "";
@@ -268,6 +284,57 @@ const runInSandboxContainer = (
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Backend Implementations
+// ─────────────────────────────────────────────────────────────────────────────
+
+const hostBackend: SandboxBackend = {
+  name: "host",
+  sandboxed: false,
+  run: ({ command, cwd, sandboxConfig, hudAdapter, env }) =>
+    runOnHostWithCallbacks(command, cwd, {
+      timeoutMs: sandboxConfig.timeoutMs,
+      ...(hudAdapter?.callbacks.onStdout ? { onStdout: hudAdapter.callbacks.onStdout } : {}),
+      ...(hudAdapter?.callbacks.onStderr ? { onStderr: hudAdapter.callbacks.onStderr } : {}),
+      ...(env ? { env } : {}),
+    }),
+};
+
+const createContainerBackend = (): SandboxBackend => ({
+  name: "container",
+  sandboxed: true,
+  run: ({ command, cwd, sandboxConfig, hudAdapter, env }) =>
+    Effect.gen(function* () {
+      const credentialMount: CredentialMount | null = yield* createCredentialMount()
+        .pipe(
+          Effect.provide(BunContext.layer),
+          Effect.catchAll((err) => {
+            console.warn(`[sandbox] Credential injection skipped: ${err.message}`);
+            return Effect.succeed(null);
+          }),
+        );
+
+      const volumeMounts = credentialMount ? [credentialMount.volumeMount] : [];
+      const containerConfig = buildContainerConfig(sandboxConfig, cwd, {
+        ...(env ? { env } : {}),
+        ...(volumeMounts.length > 0 ? { volumeMounts } : {}),
+      });
+
+      const result = yield* runInSandboxContainer(command, containerConfig, hudAdapter?.callbacks).pipe(
+        Effect.ensuring(
+          credentialMount
+            ? cleanupCredentialMount(credentialMount).pipe(
+                Effect.provide(BunContext.layer),
+                Effect.catchAll(() => Effect.void),
+              )
+            : Effect.void,
+        ),
+      );
+
+      return result;
+    }),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main Runner API
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -290,11 +357,6 @@ export const runCommand = (
   env?: Record<string, string>,
 ): Effect.Effect<CommandResult, Error, never> =>
   Effect.gen(function* () {
-    const startTime = Date.now();
-    const executionId = generateExecutionId();
-    let stdoutSeq = 0;
-    let stderrSeq = 0;
-
     // Validate working directory exists before attempting to run
     // This prevents cryptic container errors when worktrees are corrupted/removed
     if (!nodeFs.existsSync(config.cwd)) {
@@ -312,96 +374,47 @@ export const runCommand = (
       config.emit,
     );
 
+    const backend = sandboxAvailable ? createContainerBackend() : hostBackend;
+    const hudAdapter = createSandboxHudAdapter(config.emitHud);
+
     config.emit?.({
       type: "sandbox_command_start",
       command,
-      inContainer: sandboxAvailable,
+      inContainer: backend.sandboxed,
     });
 
-    // Emit container_start HUD event
-    config.emitHud?.({
-      type: "container_start",
-      executionId,
-      image: sandboxAvailable ? (config.sandboxConfig.image ?? DEFAULT_SANDBOX_IMAGE) : "host",
+    hudAdapter.emitStart({
       command,
-      context: config.context ?? "verification",
-      sandboxed: sandboxAvailable,
+      sandboxed: backend.sandboxed,
+      image: backend.sandboxed
+        ? config.sandboxConfig.image ?? DEFAULT_SANDBOX_IMAGE
+        : "host",
       workdir: config.cwd,
-      timestamp: new Date().toISOString(),
+      context: config.context ?? "verification",
     });
 
-    // Create streaming callbacks for HUD
-    const streamingCallbacks = {
-      onStdout: (chunk: string) => {
-        config.emitHud?.({
-          type: "container_output",
-          executionId,
-          text: chunk,
-          stream: "stdout",
-          sequence: ++stdoutSeq,
-          sandboxed: sandboxAvailable,
-        });
-      },
-      onStderr: (chunk: string) => {
-        config.emitHud?.({
-          type: "container_output",
-          executionId,
-          text: chunk,
-          stream: "stderr",
-          sequence: ++stderrSeq,
-          sandboxed: sandboxAvailable,
-        });
-      },
-    };
+  const runWithBackend = (target: SandboxBackend) =>
+    target.run({
+      command,
+      cwd: config.cwd,
+      sandboxConfig: config.sandboxConfig,
+      ...(env ? { env } : {}),
+      hudAdapter,
+    });
 
-    let result: CommandResult;
+    const startTime = Date.now();
 
-    if (sandboxAvailable) {
-      // Try to create credential mount for Claude Code auth
-      const credentialMount: CredentialMount | null = yield* createCredentialMount()
-        .pipe(
-          Effect.provide(BunContext.layer),
-          Effect.catchAll((err) => {
-            // Log warning but continue without credentials
-            console.warn(`[sandbox] Credential injection skipped: ${err.message}`);
-            return Effect.succeed(null);
-          }),
-        );
-
-      const volumeMounts = credentialMount ? [credentialMount.volumeMount] : [];
-      const containerConfig = buildContainerConfig(config.sandboxConfig, config.cwd, {
-        ...(env ? { env } : {}),
-        ...(volumeMounts.length > 0 ? { volumeMounts } : {}),
-      });
-
-      // Try running in container with streaming, fall back to host on error
-      const containerResult = yield* runInSandboxContainer(command, containerConfig, streamingCallbacks)
-        .pipe(
-          Effect.catchAll((error) => {
-            config.emit?.({ type: "sandbox_fallback", reason: error.message });
-            return runOnHostWithCallbacks(command, config.cwd, {
-              timeoutMs: config.sandboxConfig.timeoutMs,
-              ...streamingCallbacks,
-            });
-          }),
-          // Always cleanup credential mount after execution
-          Effect.ensuring(
-            credentialMount
-              ? cleanupCredentialMount(credentialMount).pipe(
-                  Effect.provide(BunContext.layer),
-                  Effect.catchAll(() => Effect.void),
-                )
-              : Effect.void,
-          ),
-        );
-
-      result = containerResult;
-    } else {
-      result = yield* runOnHostWithCallbacks(command, config.cwd, {
-        timeoutMs: config.sandboxConfig.timeoutMs,
-        ...streamingCallbacks,
-      });
-    }
+    const result = yield* (
+      backend.sandboxed
+        ? runWithBackend(backend).pipe(
+            Effect.catchAll((error) => {
+              config.emit?.({ type: "sandbox_fallback", reason: error.message });
+              hudAdapter.setSandboxed(false);
+              return runWithBackend(hostBackend);
+            }),
+          )
+        : runWithBackend(backend)
+    );
 
     const durationMs = Date.now() - startTime;
 
@@ -412,14 +425,7 @@ export const runCommand = (
       durationMs,
     });
 
-    // Emit container_complete HUD event
-    config.emitHud?.({
-      type: "container_complete",
-      executionId,
-      exitCode: result.exitCode,
-      durationMs,
-      sandboxed: result.sandboxed,
-    });
+    hudAdapter.emitComplete(result.exitCode, durationMs);
 
     return result;
   });
