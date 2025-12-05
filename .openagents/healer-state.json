@@ -31,6 +31,37 @@
         "rewind_uncommitted_changes"
       ],
       "summary": "1 spell(s) succeeded; Last: Reverted 2 modified and 9 untracked files"
+    },
+    {
+      "key": "oa-abafe0:oa-abafe0-sub-001:SubtaskFailed:733ef1cdbd923433",
+      "scenario": "SubtaskFailed",
+      "taskId": "oa-abafe0",
+      "subtaskId": "oa-abafe0-sub-001",
+      "errorHash": "733ef1cdbd923433",
+      "timestamp": "2025-12-05T05:58:34.354Z",
+      "outcome": "resolved",
+      "spellsTried": [
+        "rewind_uncommitted_changes"
+      ],
+      "spellsSucceeded": [
+        "rewind_uncommitted_changes"
+      ],
+      "summary": "1 spell(s) succeeded; Last: Reverted 0 modified and 1 untracked files"
+    },
+    {
+      "key": "oa-abafe0:none:VerificationFailed:f9dbdba739412eb6",
+      "scenario": "VerificationFailed",
+      "taskId": "oa-abafe0",
+      "errorHash": "f9dbdba739412eb6",
+      "timestamp": "2025-12-05T05:59:15.654Z",
+      "outcome": "resolved",
+      "spellsTried": [
+        "rewind_uncommitted_changes"
+      ],
+      "spellsSucceeded": [
+        "rewind_uncommitted_changes"
+      ],
+      "summary": "1 spell(s) succeeded; Last: Reverted 1 modified and 0 untracked files"
     }
   ]
 }
