@@ -19,6 +19,7 @@ import type {
   TBRunHistoryItem,
   TBRunDetails,
   MCTask,
+  UnifiedTrajectory,
 } from "../desktop/protocol.js";
 import {
   generateCorrelationId,
@@ -362,6 +363,17 @@ export class SocketClient {
       throw new Error(response.error ?? "Failed to assign task");
     }
     return (response as Extract<SocketResponse, { type: "response:assignTaskToMC" }>).data ?? { assigned: false };
+  }
+
+  /**
+   * Load unified trajectories (TB runs + ATIF trajectories)
+   */
+  async loadUnifiedTrajectories(limit?: number): Promise<UnifiedTrajectory[]> {
+    const response = await this.request("request:loadUnifiedTrajectories", { limit });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to load trajectories");
+    }
+    return (response as Extract<SocketResponse, { type: "response:loadUnifiedTrajectories" }>).data ?? [];
   }
 
   // ============================================================================

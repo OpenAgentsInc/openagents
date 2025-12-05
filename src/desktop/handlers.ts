@@ -29,13 +29,20 @@ import {
   isLoadTBRunDetailsRequest,
   isLoadReadyTasksRequest,
   isAssignTaskToMCRequest,
+  isLoadUnifiedTrajectoriesRequest,
   createSuccessResponse,
   createErrorResponse,
+  type UnifiedTrajectory,
 } from "./protocol.js";
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { readyTasks as getReadyTasks } from "../tasks/service.js";
 import { extractCredentialsFromKeychain } from "../sandbox/credentials.js";
+import {
+  makeTrajectoryService,
+  DEFAULT_TRAJECTORIES_DIR,
+  type TrajectoryMetadata,
+} from "../atif/service.js";
 
 // ============================================================================
 // Project Root Resolution
@@ -387,6 +394,87 @@ export async function loadReadyTasks(limit?: number): Promise<MCTask[]> {
 }
 
 // ============================================================================
+// Unified Trajectories Loading
+// ============================================================================
+
+export async function loadUnifiedTrajectories(limit: number = 50): Promise<UnifiedTrajectory[]> {
+  console.log(`[Handler] loadUnifiedTrajectories called, limit: ${limit}`);
+  const results: UnifiedTrajectory[] = [];
+
+  // 1. Load TB runs
+  try {
+    const tbRuns = await loadRecentTBRuns(limit);
+    for (const run of tbRuns) {
+      results.push({
+        id: run.runId,
+        type: "tb-run",
+        timestamp: run.timestamp,
+        label: `TB: ${Math.round(run.passRate * 100)}% (${run.passed}/${run.taskCount})`,
+        suiteName: run.suiteName,
+        passRate: run.passRate,
+        passed: run.passed,
+        failed: run.failed,
+        taskCount: run.taskCount,
+      });
+    }
+    console.log(`[Handler] Loaded ${tbRuns.length} TB runs`);
+  } catch (err) {
+    console.error("[Handler] Failed to load TB runs:", err);
+  }
+
+  // 2. Load ATIF trajectories
+  try {
+    const trajectoriesDir = join(PROJECT_ROOT, DEFAULT_TRAJECTORIES_DIR);
+    const program = Effect.gen(function* () {
+      const service = yield* makeTrajectoryService({ trajectoriesDir });
+      const sessionIds = yield* service.listTrajectories();
+      const metadataList: TrajectoryMetadata[] = [];
+
+      // Load metadata for each session (limit to recent ones)
+      const recentIds = sessionIds.slice(0, limit);
+      for (const sessionId of recentIds) {
+        try {
+          const meta = yield* service.getTrajectoryMetadata(sessionId);
+          metadataList.push(meta);
+        } catch {
+          // Skip trajectories with errors
+        }
+      }
+
+      return metadataList;
+    });
+
+    const metadataList = await Effect.runPromise(
+      program.pipe(Effect.provide(BunContext.layer))
+    );
+
+    for (const meta of metadataList) {
+      results.push({
+        id: meta.sessionId,
+        type: "atif",
+        timestamp: meta.createdAt,
+        label: `${meta.agentName}: ${meta.totalSteps} steps`,
+        agentName: meta.agentName,
+        totalSteps: meta.totalSteps,
+        modelName: meta.modelName,
+      });
+    }
+    console.log(`[Handler] Loaded ${metadataList.length} ATIF trajectories`);
+  } catch (err) {
+    console.error("[Handler] Failed to load ATIF trajectories:", err);
+  }
+
+  // 3. Sort by timestamp (newest first) and limit
+  results.sort((a, b) =>
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  const limited = results.slice(0, limit);
+  console.log(`[Handler] Returning ${limited.length} unified trajectories`);
+  return limited;
+}
+
+// ============================================================================
 // WebSocket Request Handler
 // ============================================================================
 
@@ -440,6 +528,12 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       console.log(`[Handler] Received assignTaskToMC request for task ${request.taskId}`);
       const data = await assignTaskToMC(request.taskId, request.options);
       return createSuccessResponse("response:assignTaskToMC", correlationId, data);
+    }
+
+    if (isLoadUnifiedTrajectoriesRequest(request)) {
+      console.log("[Handler] Received loadUnifiedTrajectories request");
+      const data = await loadUnifiedTrajectories(request.limit ?? 50);
+      return createSuccessResponse("response:loadUnifiedTrajectories", correlationId, data);
     }
 
     // Unknown request type

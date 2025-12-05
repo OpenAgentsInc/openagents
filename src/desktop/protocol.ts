@@ -96,6 +96,14 @@ export interface AssignTaskToMCRequest extends BaseRequest {
 }
 
 /**
+ * Load unified trajectories (TB runs + ATIF trajectories merged)
+ */
+export interface LoadUnifiedTrajectoriesRequest extends BaseRequest {
+  type: "request:loadUnifiedTrajectories";
+  limit?: number;
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -105,7 +113,8 @@ export type SocketRequest =
   | LoadRecentTBRunsRequest
   | LoadTBRunDetailsRequest
   | LoadReadyTasksRequest
-  | AssignTaskToMCRequest;
+  | AssignTaskToMCRequest
+  | LoadUnifiedTrajectoriesRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -250,6 +259,40 @@ export interface AssignTaskToMCResponse extends BaseResponse {
 }
 
 /**
+ * Unified trajectory item (TB run or ATIF trajectory)
+ */
+export interface UnifiedTrajectory {
+  /** Run ID or session ID */
+  id: string;
+  /** Source type */
+  type: "tb-run" | "atif";
+  /** ISO 8601 timestamp */
+  timestamp: string;
+  /** Display label (e.g., "TB: 85% (34/40)" or "MC: 45 steps") */
+  label: string;
+
+  // TB-specific (optional)
+  suiteName?: string;
+  passRate?: number;
+  passed?: number;
+  failed?: number;
+  taskCount?: number;
+
+  // ATIF-specific (optional)
+  agentName?: string;
+  totalSteps?: number;
+  modelName?: string;
+}
+
+/**
+ * Response to LoadUnifiedTrajectoriesRequest
+ */
+export interface LoadUnifiedTrajectoriesResponse extends BaseResponse {
+  type: "response:loadUnifiedTrajectories";
+  data?: UnifiedTrajectory[];
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -259,7 +302,8 @@ export type SocketResponse =
   | LoadRecentTBRunsResponse
   | LoadTBRunDetailsResponse
   | LoadReadyTasksResponse
-  | AssignTaskToMCResponse;
+  | AssignTaskToMCResponse
+  | LoadUnifiedTrajectoriesResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -330,6 +374,9 @@ export const isLoadReadyTasksRequest = (msg: SocketRequest): msg is LoadReadyTas
 
 export const isAssignTaskToMCRequest = (msg: SocketRequest): msg is AssignTaskToMCRequest =>
   msg.type === "request:assignTaskToMC";
+
+export const isLoadUnifiedTrajectoriesRequest = (msg: SocketRequest): msg is LoadUnifiedTrajectoriesRequest =>
+  msg.type === "request:loadUnifiedTrajectories";
 
 // ============================================================================
 // Serialization Helpers

@@ -1329,3 +1329,136 @@ body {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-secondary);
 }
+
+/* ============================================================================
+   Trajectory Pane (left sidebar)
+   ============================================================================ */
+
+.trajectory-pane {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  width: 280px;
+  max-height: calc(100vh - 40px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+
+.trajectory-pane-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trajectory-pane-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: "Berkeley Mono", monospace;
+  letter-spacing: 0.5px;
+}
+
+.trajectory-pane-header button.small {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.trajectory-pane-header button.small:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+/* Collapsed TB controls section */
+.tb-controls-collapsed {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tb-controls-collapsed.hidden {
+  display: none;
+}
+
+/* Trajectory list container */
+.trajectory-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px;
+  min-height: 100px;
+}
+
+.trajectory-loading {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 20px;
+}
+
+.trajectory-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 20px;
+}
+
+/* Trajectory card */
+.trajectory-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.trajectory-card:hover {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.trajectory-card.selected {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.trajectory-card-id {
+  font-family: "Berkeley Mono", monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.trajectory-card-timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.trajectory-card-label {
+  font-size: 11px;
+  margin-top: 6px;
+  font-family: "Berkeley Mono", monospace;
+}
+
+.trajectory-card-label.tb {
+  color: #22c55e; /* Green for TB runs */
+}
+
+.trajectory-card-label.atif {
+  color: #8b5cf6; /* Purple for MC/ATIF trajectories */
+}

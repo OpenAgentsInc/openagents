@@ -44,15 +44,16 @@
   <div id="tb-results-dashboard" class="hidden"></div>
 
   <div id="flow-controls">
-    <div id="view-mode-switcher">
-      <button id="view-flow-btn" class="active" title="MechaCoder View (Ctrl+1)">MC</button>
-      <button id="view-tb-btn" title="Terminal-Bench View (Ctrl+2)">TB</button>
+    <!-- View mode switcher hidden - TB mode only for now -->
+    <div id="view-mode-switcher" class="hidden">
+      <button id="view-flow-btn" title="MechaCoder View (Ctrl+1)">MC</button>
+      <button id="view-tb-btn" class="active" title="Terminal-Bench View (Ctrl+2)">TB</button>
     </div>
     <button id="reset-btn" title="Reset View">Reset</button>
     <span id="zoom-level">100%</span>
   </div>
 
-  <!-- TB Category Tree -->
+  <!-- TB Category Tree (hidden, replaced by trajectory pane) -->
   <div id="tb-category-tree" class="hidden">
     <div class="tb-tree-header">
       <span class="tb-tree-label">Task Categories</span>
@@ -63,6 +64,20 @@
       </div>
     </div>
     <div id="tb-tree-content" class="tb-tree-content"></div>
+  </div>
+
+  <!-- Trajectory Pane (left sidebar) -->
+  <div id="trajectory-pane" class="trajectory-pane">
+    <div class="trajectory-pane-header">
+      <h2>TB TRAJECTORIES</h2>
+      <button id="tb-controls-toggle" class="small" title="Toggle TB controls">&#x25BC;</button>
+    </div>
+    <div id="tb-controls-collapsed" class="tb-controls-collapsed hidden">
+      <!-- TB controls moved here when collapsed -->
+    </div>
+    <div id="trajectory-list" class="trajectory-list">
+      <div class="trajectory-loading">Loading trajectories...</div>
+    </div>
   </div>
 
   <!-- Container Panes -->
