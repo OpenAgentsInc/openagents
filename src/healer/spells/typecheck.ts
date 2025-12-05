@@ -166,6 +166,8 @@ export const createEmergencySubtask = (
  * Note: This spell requires external functions to be provided via
  * the spell execution context. When run through HealerService,
  * these will be injected automatically.
+ *
+ * Local-context: runs inline and must be safe to retry; cannot be suspended mid-execution.
  */
 export const fixTypecheckErrors: HealerSpell = {
   id: "fix_typecheck_errors",

@@ -85,6 +85,8 @@ const mergeFilesModified = (...fileSets: Array<string[]>): string[] => {
 /**
  * Route a subtask to the best available subagent.
  * Prefers Claude Code when enabled and available, falling back to the minimal subagent on failure.
+ *
+ * Remote-context call: Claude Code can be resumed via sessionId, unlike local-context tools.
  */
 export const runBestAvailableSubagent = <R = OpenRouterClient>(
   options: RunBestAvailableSubagentOptions<R>

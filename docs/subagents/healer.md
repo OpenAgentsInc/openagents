@@ -36,6 +36,7 @@ Below is a concrete spec you can hand to MechaCoder / Claude Code as tasks.
      * Mark/reshape tasks & subtasks
      * Update `progress.md` / logs with guidance
    * Spells are **tools**, not arbitrary shell sequences.
+   * **Local-context note:** Spells run in-process (local-context). They cannot be suspended mid-call, so they must be idempotent and safe to retry.
 
 4. **Never make things worse**
 

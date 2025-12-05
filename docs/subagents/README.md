@@ -24,6 +24,15 @@ Orchestrator (MechaCoder)
 
 All subagent trajectories are captured via ATIF and can be linked via `subagent_trajectory_ref` for full traceability.
 
+## Execution Contexts (local vs remote)
+
+OpenAgents splits subagent operations into:
+
+- **Local-context** (cannot be suspended mid-call): shell/file tools, verification runs, Healer spells. These must be retried from scratch if interrupted.
+- **Remote-context** (can resume): Claude Code subagent calls (resume/fork via `sessionId`) and any external API with idempotency keys.
+
+This distinction drives recovery logic: resume remote-context work by reusing handles; rerun local-context work with idempotent spells and clear rollback.
+
 ## Detailed Specs
 
 ### [Researcher](./researcher.md)
