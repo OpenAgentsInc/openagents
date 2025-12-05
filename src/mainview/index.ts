@@ -1810,16 +1810,18 @@ function render(): void {
     console.log(`[Render] Total render took ${(r4 - r0).toFixed(2)}ms`)
     window.bunLog?.(`[Render] Total render took ${(r4 - r0).toFixed(2)}ms`)
   } else {
-    // TB view: TB flow tree (run history nodes) on grid canvas + TB widget + comparison
-    const tbFlowGroup = renderFlowSVG(tbLayout, canvasState, DEFAULT_RENDER_CONFIG)
-    const tbOverlay = renderTBWidget()
-    const comparisonOverlay = renderComparisonWidget()
-    svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay + comparisonOverlay
+    // TB view: Just the grid background, no flow nodes or overlays
+    // The trajectory pane on the left is the main UI element
+    svg.innerHTML = "" // Empty SVG, grid background shows through
     // Hide MC tasks widget in TB mode
     renderMCTasksWidget()
   }
 
-  renderTBResultsDashboard()
+  // Hide TB results dashboard (replaced by trajectory pane)
+  const tbResultsDashboard = document.getElementById("tb-results-dashboard")
+  if (tbResultsDashboard) {
+    tbResultsDashboard.style.display = "none"
+  }
 
   // Update zoom display
   zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`
@@ -2671,5 +2673,10 @@ tbControlsToggle?.addEventListener("click", () => {
     tbControlsToggle.innerHTML = tbControlsExpanded ? "&#x25B2;" : "&#x25BC;"
   }
 })
+
+// Suppress unused function warnings - these are kept for future use
+void renderComparisonWidget
+void renderTBResultsDashboard
+void renderTBWidget
 
 export { renderTBDashboard }
