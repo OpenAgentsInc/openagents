@@ -16,11 +16,12 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-const ReadParametersSchema = S.Struct({
-  path: S.String.pipe(
-    S.minLength(1),
-    S.annotations({ description: "Path to the file to read (relative or absolute)" }),
-  ),
+const pathField = S.String.pipe(
+  S.minLength(1),
+  S.annotations({ description: "Path to the file to read (relative or absolute)" }),
+);
+
+const baseReadFields = {
   offset: S.optional(
     S.Number.pipe(
       S.int(),
@@ -35,6 +36,12 @@ const ReadParametersSchema = S.Struct({
       S.annotations({ description: "Maximum number of lines to read" }),
     ),
   ),
+};
+
+const ReadParametersSchema = S.Struct({
+  path: S.optional(pathField),
+  file_path: S.optional(pathField),
+  ...baseReadFields,
 });
 
 type ReadParameters = S.Schema.Type<typeof ReadParametersSchema>;
@@ -70,14 +77,21 @@ export const readTool: Tool<
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
 
-      const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
+      const inputPath = params.path ?? params.file_path;
+      if (!inputPath) {
+        return yield* Effect.fail(
+          new ToolExecutionError("invalid_arguments", "Either path or file_path is required"),
+        );
+      }
+
+      const absolutePath = pathService.resolve(expandUserPath(inputPath, pathService));
       const mimeType = isImage(absolutePath);
 
       const exists = yield* fs.exists(absolutePath).pipe(
         Effect.mapError((e) => new ToolExecutionError("command_failed", String(e))),
       );
       if (!exists) {
-        return yield* Effect.fail(new ToolExecutionError("not_found", `File not found: ${params.path}`));
+        return yield* Effect.fail(new ToolExecutionError("not_found", `File not found: ${inputPath}`));
       }
 
       if (mimeType) {
