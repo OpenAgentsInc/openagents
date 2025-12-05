@@ -11,9 +11,12 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect } from "effect";
 import { parseArgs } from "util";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { DEFAULT_SESSIONS_DIR, makeSessionService } from "./service.js";
 import type { SessionEntry, UsageMetrics } from "./schema.js";
 import { extractText } from "./schema.js";
+import { exportSessionToHtml, parseSessionFile } from "./export-html.js";
 
 const formatTimestamp = (ts: string): string => {
   const date = new Date(ts);
@@ -83,11 +86,13 @@ Commands:
   show <id>         Pretty-print session content
   search <term>     Search sessions by text content
   by-task <task-id> Find all sessions for a specific task
+  export-html <id|path> Export a session JSONL to HTML transcript
 
 Options:
   --json            Output in JSON format
   --limit N         Limit results (default: 20)
   --dir <path>      Sessions directory (default: .openagents/sessions)
+  --output <path>   Output path for export-html (optional)
   --help            Show this help
 
 Examples:
@@ -105,6 +110,7 @@ const runCli = async () => {
       json: { type: "boolean", default: false },
       limit: { type: "string", default: "20" },
       dir: { type: "string", default: DEFAULT_SESSIONS_DIR },
+      output: { type: "string", default: "" },
       help: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -119,6 +125,7 @@ const runCli = async () => {
   const sessionsDir = values.dir as string;
   const limit = parseInt(values.limit as string, 10);
   const jsonOutput = values.json as boolean;
+  const outputPath = (values.output as string) || undefined;
 
   const program = Effect.gen(function* () {
     const service = yield* makeSessionService({ sessionsDir });
@@ -220,6 +227,38 @@ const runCli = async () => {
             console.log(`  ${colorize.dim(`${m.totalTurns} turns, ${duration}, ${formatUsage(m.totalUsage)}`)}`);
             console.log();
           }
+        }
+        break;
+      }
+
+      case "export-html": {
+        const target = positionals[1];
+        if (!target) {
+          console.error("Error: session ID or path required");
+          process.exit(1);
+        }
+
+        const result = yield* Effect.try({
+          try: () => {
+            const isPath = fs.existsSync(target);
+            const sessionPath = isPath
+              ? path.resolve(target)
+              : path.join(sessionsDir, `${target.replace(/\.jsonl$/i, "")}.jsonl`);
+
+            if (!fs.existsSync(sessionPath)) {
+              throw new Error(`session file not found: ${sessionPath}`);
+            }
+
+            parseSessionFile(sessionPath);
+            return exportSessionToHtml(sessionPath, outputPath);
+          },
+          catch: (e) => e as Error,
+        });
+
+        if (jsonOutput) {
+          console.log(JSON.stringify({ ok: true, output: result }, null, 2));
+        } else {
+          console.log(`Exported HTML transcript to ${result}`);
         }
         break;
       }
