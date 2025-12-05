@@ -21,6 +21,8 @@
  *   repair-deps Fix orphaned dependencies by removing references to missing tasks
  *   duplicates Find duplicate tasks by title+description hash, grouped by status
  *   compact    Compact old closed tasks to save space (--analyze, --apply, --stats)
+ *   hooks:install Install git hooks for task auto-sync
+ *   hooks:uninstall Uninstall git hooks
  *   comment:add Add a comment to a task
  *   comment:list List comments for a task
  *   rename-prefix Rename task IDs to a new prefix with optional dry-run
@@ -52,6 +54,8 @@ import {
   defaultProjectConfig,
   decodeProjectConfig,
   createTaskRepository,
+  installHooks,
+  uninstallHooks,
   type TaskCreate,
   type TaskUpdate,
   type TaskFilter,
@@ -722,6 +726,60 @@ const cmdCompact = (options: CliOptions) =>
       dryRun: result.dryRun,
       ...(result.dryRun ? {} : { message: `Compacted ${result.compacted.length} tasks` }),
       compactedIds: result.compacted.slice(0, 10).map((t) => t.id), // Sample of IDs
+    };
+
+    output(summary, options.json);
+    return summary;
+  });
+
+const cmdHooksInstall = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const result = yield* installHooks({
+      rootDir: options.rootDir,
+      openagentsDir: nodePath.join(options.rootDir, OPENAGENTS_DIR),
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    const summary = {
+      installed: result.installed,
+      skipped: result.skipped,
+      errors: result.errors,
+      success: result.errors.length === 0,
+    };
+
+    output(summary, options.json);
+    return summary;
+  });
+
+const cmdHooksUninstall = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const result = yield* uninstallHooks({
+      rootDir: options.rootDir,
+      openagentsDir: nodePath.join(options.rootDir, OPENAGENTS_DIR),
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    const summary = {
+      uninstalled: result.installed,
+      skipped: result.skipped,
+      errors: result.errors,
+      success: result.errors.length === 0,
     };
 
     output(summary, options.json);
@@ -2065,6 +2123,40 @@ const main = async () => {
     case "compact":
       try {
         await Effect.runPromise(cmdCompact(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "hooks:install":
+      try {
+        const result = await Effect.runPromise(
+          cmdHooksInstall(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        if (result && !result.success) {
+          process.exitCode = 1;
+        }
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "hooks:uninstall":
+      try {
+        const result = await Effect.runPromise(
+          cmdHooksUninstall(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        if (result && !result.success) {
+          process.exitCode = 1;
+        }
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));

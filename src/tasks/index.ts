@@ -131,3 +131,11 @@ export {
   type MergeResult,
   type MergeFilesOptions,
 } from "./merge.js";
+
+export {
+  installHooks,
+  uninstallHooks,
+  HooksError,
+  type HooksConfig,
+  type HooksResult,
+} from "./hooks.js";
