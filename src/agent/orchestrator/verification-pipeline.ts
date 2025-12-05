@@ -1,151 +1,98 @@
 import { Effect } from "effect";
 import { execSync } from "node:child_process";
+import { runVerificationWithSandbox, type SandboxRunnerConfig } from "./sandbox-runner.js";
+import { runVerificationOnHost, type VerificationRunResult } from "./verification-runner.js";
 import type { OrchestratorEvent } from "./types.js";
-import {
-  runVerificationOnHost,
-  type VerificationRunResult,
-} from "./verification-runner.js";
-import {
-  runVerificationWithSandbox,
-  type SandboxRunnerConfig,
-} from "./sandbox-runner.js";
 
-interface BuildPlanOptions {
-  typecheckCommands?: string[];
-  testCommands: string[];
-  sandboxTestCommands?: string[];
-  e2eCommands?: string[];
-  taskLabels?: readonly string[];
-  useSandbox?: boolean;
-}
+const SKIP_E2E_LABELS = ["skip-e2e", "no-e2e", "unit-only"];
+const E2E_LABELS = ["e2e", "golden-loop", "integration"];
+const DEFAULT_E2E_TIMEOUT_MS = 300_000;
 
-export interface VerificationPlan {
-  verificationCommands: string[];
-  e2eCommands: string[];
-  runE2e: boolean;
-  useSandbox: boolean;
-}
-
-export interface VerificationPipelineOptions {
-  plan: VerificationPlan;
+export interface VerificationCommandRunnerConfig {
   cwd: string;
   emit: (event: OrchestratorEvent) => void;
-  sandboxConfig?: SandboxRunnerConfig | undefined;
+  sandboxRunnerConfig?: SandboxRunnerConfig;
+}
+
+export interface E2eRunResult {
+  ran: boolean;
+  passed: boolean;
+  outputs: string[];
+  reason?: string;
 }
 
 export interface VerificationPipelineResult {
   verification: VerificationRunResult;
-  e2e?: {
-    ran: boolean;
-    passed: boolean;
-    outputs: string[];
-  };
+  e2e: E2eRunResult;
 }
 
-export interface VerificationPipelineDeps {
-  runHost?: typeof runVerificationOnHost;
-  runSandbox?: typeof runVerificationWithSandbox;
-  runE2eHost?: typeof runE2eOnHost;
+export interface VerificationPipelineOptions {
+  typecheckCommands?: string[];
+  testCommands: string[];
+  sandboxTestCommands?: string[];
+  e2eCommands?: string[];
+  cwd: string;
+  emit: (event: OrchestratorEvent) => void;
+  sandboxRunnerConfig?: SandboxRunnerConfig;
+  taskLabels?: readonly string[];
+  verificationCommands?: string[];
 }
 
-const buildVerificationCommands = (
+export const buildVerificationCommands = (
   typecheckCommands: string[] | undefined,
   testCommands: string[],
-  sandboxTestCommands: string[] | undefined,
-  useSandbox: boolean,
+  sandboxTestCommands?: string[],
+  useSandbox?: boolean
 ): string[] => {
   const effectiveTestCommands =
     useSandbox && sandboxTestCommands && sandboxTestCommands.length > 0
       ? sandboxTestCommands
       : testCommands;
 
-  // Skip typecheck inside sandbox to avoid memory pressure
   const effectiveTypecheckCommands = useSandbox ? [] : typecheckCommands ?? [];
 
   return [...effectiveTypecheckCommands, ...effectiveTestCommands];
 };
 
-const buildE2eCommands = (commands: string[] | undefined): string[] =>
-  commands?.filter((cmd) => cmd.trim().length > 0) ?? [];
-
-const shouldRunE2e = (
-  taskLabels: readonly string[] = [],
-  e2eCommandsConfigured = false,
-): boolean => {
-  const skipE2eLabels = ["skip-e2e", "no-e2e", "unit-only"];
-  const hasSkipLabel = taskLabels.some((label) =>
-    skipE2eLabels.includes(label.toLowerCase()),
-  );
+export const shouldRunE2e = (taskLabels: readonly string[] = [], e2eCommandsConfigured = false): boolean => {
+  const normalizedLabels = taskLabels.map((label) => label.toLowerCase());
+  const hasSkipLabel = normalizedLabels.some((label) => SKIP_E2E_LABELS.includes(label));
 
   if (e2eCommandsConfigured) {
     return !hasSkipLabel;
   }
 
-  const e2eLabels = ["e2e", "golden-loop", "integration"];
-  return taskLabels.some((label) => e2eLabels.includes(label.toLowerCase()));
+  return normalizedLabels.some((label) => E2E_LABELS.includes(label));
 };
 
-export const buildVerificationPlan = (options: BuildPlanOptions): VerificationPlan => {
-  const useSandbox = options.useSandbox === true;
-  const verificationCommands = buildVerificationCommands(
-    options.typecheckCommands,
-    options.testCommands,
-    options.sandboxTestCommands,
-    useSandbox,
-  );
+export const buildE2eCommands = (commands: string[] | undefined): string[] =>
+  commands?.filter((cmd) => cmd.trim().length > 0) ?? [];
 
-  const e2eCommands = buildE2eCommands(options.e2eCommands);
-  const runE2e =
-    e2eCommands.length > 0 &&
-    shouldRunE2e(options.taskLabels ?? [], e2eCommands.length > 0);
-
-  return { verificationCommands, e2eCommands, runE2e, useSandbox };
-};
-
-const mapSandboxResultToVerification = (
+export const runE2eOnHost = (
   commands: string[],
-  result: { passed: boolean; outputs: string[] },
-): VerificationRunResult => {
-  const results = result.outputs.map((output, idx) => ({
-    command: commands[idx] ?? `command-${idx + 1}`,
-    exitCode: result.passed ? 0 : 1,
-    stdout: output,
-    stderr: "",
-    durationMs: 0,
-  }));
-
-  return {
-    passed: result.passed,
-    outputs: result.outputs,
-    results,
-  };
-};
-
-const runE2eOnHost = (
-  commands: string[],
-  cwd: string,
-  emit: (event: OrchestratorEvent) => void,
+  config: { cwd: string; emit: (event: OrchestratorEvent) => void; timeoutMs?: number }
 ): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
   Effect.try({
     try: () => {
       const outputs: string[] = [];
       let allPassed = true;
+      const timeoutMs = config.timeoutMs ?? DEFAULT_E2E_TIMEOUT_MS;
 
-      for (const cmd of commands) {
-        emit({ type: "e2e_start", command: cmd });
+      for (const command of commands) {
+        config.emit({ type: "e2e_start", command });
         try {
-          const output = execSync(cmd, {
-            cwd,
+          const output = execSync(command, {
+            cwd: config.cwd,
             encoding: "utf-8",
             stdio: ["pipe", "pipe", "pipe"],
-            timeout: 300000,
+            timeout: timeoutMs,
           });
           outputs.push(String(output));
-          emit({ type: "e2e_complete", command: cmd, passed: true, output: String(output) });
+          config.emit({ type: "e2e_complete", command, passed: true, output: String(output) });
         } catch (error: any) {
           const output = String(error?.stdout || error?.stderr || error?.message || error);
           outputs.push(output);
-          emit({ type: "e2e_complete", command: cmd, passed: false, output });
+          config.emit({ type: "e2e_complete", command, passed: false, output });
           allPassed = false;
         }
       }
@@ -155,42 +102,89 @@ const runE2eOnHost = (
     catch: (error: any) => error as Error,
   });
 
+export const runVerificationCommands = (
+  commands: string[],
+  config: VerificationCommandRunnerConfig
+): Effect.Effect<VerificationRunResult, Error, never> => {
+  if (commands.length === 0) {
+    return Effect.succeed({ passed: true, results: [], outputs: [] });
+  }
+
+  const sandboxEnabled = config.sandboxRunnerConfig?.sandboxConfig.enabled !== false;
+
+  if (config.sandboxRunnerConfig && sandboxEnabled) {
+    const sandboxEmit = config.emit as (event: { type: string; [key: string]: any }) => void;
+    return runVerificationWithSandbox(commands, config.sandboxRunnerConfig, sandboxEmit).pipe(
+      Effect.map((result) => ({
+        passed: result.passed,
+        outputs: result.outputs,
+        results: result.outputs.map((output, index) => ({
+          command: commands[index] ?? `command-${index + 1}`,
+          exitCode: result.passed ? 0 : 1,
+          stdout: output,
+          stderr: "",
+          durationMs: 0,
+        })),
+      })),
+      Effect.catchAll(() => runVerificationOnHost(commands, config.cwd, config.emit))
+    );
+  }
+
+  return runVerificationOnHost(commands, config.cwd, config.emit);
+};
+
 export const runVerificationPipeline = (
-  options: VerificationPipelineOptions,
-  deps: VerificationPipelineDeps = {},
+  options: VerificationPipelineOptions
 ): Effect.Effect<VerificationPipelineResult, Error, never> =>
   Effect.gen(function* () {
-    const runHost = deps.runHost ?? runVerificationOnHost;
-    const runSandbox = deps.runSandbox ?? runVerificationWithSandbox;
-    const runE2eHost = deps.runE2eHost ?? runE2eOnHost;
+    const useSandbox = options.sandboxRunnerConfig
+      ? options.sandboxRunnerConfig.sandboxConfig.enabled !== false
+      : false;
+    const verificationCommands =
+      options.verificationCommands ??
+      buildVerificationCommands(
+        options.typecheckCommands,
+        options.testCommands,
+        options.sandboxTestCommands,
+        useSandbox
+      );
 
-    const verificationCommands = options.plan.verificationCommands;
-    const verificationResult = yield* (options.plan.useSandbox && options.sandboxConfig
-      ? runSandbox(verificationCommands, options.sandboxConfig, options.emit as any).pipe(
-          Effect.map((result) => mapSandboxResultToVerification(verificationCommands, result)),
-          Effect.catchAll(() => runHost(verificationCommands, options.cwd, options.emit)),
-        )
-      : runHost(verificationCommands, options.cwd, options.emit));
+    const verification = yield* runVerificationCommands(verificationCommands, {
+      cwd: options.cwd,
+      emit: options.emit,
+      ...(options.sandboxRunnerConfig ? { sandboxRunnerConfig: options.sandboxRunnerConfig } : {}),
+    });
 
-    let e2eResult: VerificationPipelineResult["e2e"];
+    const e2eCommands = buildE2eCommands(options.e2eCommands);
+    const e2eConfigured = e2eCommands.length > 0;
+    const shouldRun = shouldRunE2e(options.taskLabels, e2eConfigured);
 
-    const shouldRunE2e = options.plan.runE2e && verificationResult.passed;
+    if (shouldRun && e2eConfigured) {
+      const e2eResult = yield* runE2eOnHost(e2eCommands, {
+        cwd: options.cwd,
+        emit: options.emit,
+      });
 
-    if (shouldRunE2e) {
-      const result = yield* runE2eHost(options.plan.e2eCommands, options.cwd, options.emit);
-      e2eResult = { ran: true, passed: result.passed, outputs: result.outputs };
-    } else if (!options.plan.runE2e && options.plan.e2eCommands.length > 0) {
-      e2eResult = { ran: false, passed: true, outputs: [] };
-      options.emit({
-        type: "e2e_skipped",
-        reason: "Task has skip-e2e label",
-      } as any);
-    } else if (options.plan.runE2e && !verificationResult.passed) {
-      e2eResult = { ran: false, passed: false, outputs: [] };
+      return {
+        verification,
+        e2e: {
+          ran: true,
+          passed: e2eResult.passed,
+          outputs: e2eResult.outputs,
+        },
+      };
     }
 
+    const skipReason = !e2eConfigured ? "No e2eCommands configured" : "Task has skip-e2e label";
+    options.emit({ type: "e2e_skipped", reason: skipReason });
+
     return {
-      verification: verificationResult,
-      ...(e2eResult ? { e2e: e2eResult } : {}),
+      verification,
+      e2e: {
+        ran: false,
+        passed: true,
+        outputs: [],
+        reason: skipReason,
+      },
     };
   });

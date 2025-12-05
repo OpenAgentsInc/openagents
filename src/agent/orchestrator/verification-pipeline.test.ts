@@ -1,79 +1,63 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
 import { Effect } from "effect";
 import {
-  buildVerificationPlan,
+  buildVerificationCommands,
+  runVerificationCommands,
   runVerificationPipeline,
-  type VerificationPlan,
+  shouldRunE2e,
 } from "./verification-pipeline.js";
 
 describe("verification-pipeline", () => {
-  test("buildVerificationPlan uses sandbox test commands and skips typecheck when sandboxed", () => {
-    const plan = buildVerificationPlan({
-      typecheckCommands: ["bun run typecheck"],
-      testCommands: ["bun test"],
-      sandboxTestCommands: ["bun run test:container"],
-      useSandbox: true,
-    });
+  test("buildVerificationCommands prefers sandbox commands and skips typecheck in sandbox", () => {
+    const commands = buildVerificationCommands(
+      ["bun run typecheck"],
+      ["bun test"],
+      ["bun run test:container"],
+      true
+    );
 
-    expect(plan.verificationCommands).toEqual(["bun run test:container"]);
-    expect(plan.useSandbox).toBe(true);
+    expect(commands).toEqual(["bun run test:container"]);
   });
 
-  test("buildVerificationPlan skips e2e when labels opt out", () => {
-    const plan = buildVerificationPlan({
-      testCommands: ["bun test"],
-      e2eCommands: ["bun run e2e:test"],
-      taskLabels: ["skip-e2e"],
-    });
-
-    expect(plan.runE2e).toBe(false);
-  });
-
-  test("runVerificationPipeline prefers sandbox runner when configured", async () => {
-    const calls: Array<{ runner: string; commands: string[] }> = [];
-    const plan: VerificationPlan = {
-      verificationCommands: ["echo ok"],
-      e2eCommands: [],
-      runE2e: false,
-      useSandbox: true,
-    };
-
-    const sandboxRun = () => {
-      calls.push({ runner: "sandbox", commands: plan.verificationCommands });
-      return Effect.succeed({ passed: true, outputs: ["ok"], sandboxed: true });
-    };
-
-    const hostRun = () => {
-      calls.push({ runner: "host", commands: plan.verificationCommands });
-      return Effect.succeed({ passed: true, results: [], outputs: [] });
-    };
+  test("runVerificationCommands returns structured results on host", async () => {
+    const emit = vi.fn();
+    const commands = ["echo hello", "echo world"];
 
     const result = await Effect.runPromise(
-      runVerificationPipeline(
-        {
-          plan,
-          cwd: process.cwd(),
-          emit: () => {},
-          sandboxConfig: {
-            sandboxConfig: {
-              enabled: true,
-              backend: "macos-container",
-              memoryLimit: "8G",
-              timeoutMs: 120000,
-            },
-            cwd: process.cwd(),
-          },
-        },
-        {
-          runSandbox: sandboxRun as any,
-          runHost: hostRun as any,
-        },
-      ),
+      runVerificationCommands(commands, { cwd: process.cwd(), emit })
+    );
+
+    expect(result.passed).toBe(true);
+    expect(result.outputs).toHaveLength(2);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]?.command).toBe("echo hello");
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "verification_start" }));
+  });
+
+  test("runVerificationPipeline runs verification and e2e when configured", async () => {
+    const emit = vi.fn();
+    const result = await Effect.runPromise(
+      runVerificationPipeline({
+        typecheckCommands: ["echo typecheck"],
+        testCommands: ["echo test"],
+        e2eCommands: ["echo e2e"],
+        cwd: process.cwd(),
+        emit,
+        taskLabels: [],
+      })
     );
 
     expect(result.verification.passed).toBe(true);
-    expect(calls[0]?.runner).toBe("sandbox");
-    expect(calls.some((c) => c.runner === "host")).toBe(false);
+    expect(result.verification.outputs).toHaveLength(2);
+    expect(result.e2e.ran).toBe(true);
+    expect(result.e2e.passed).toBe(true);
+    expect(result.e2e.outputs).toHaveLength(1);
+  });
+
+  test("shouldRunE2e skips when skip label present", () => {
+    expect(shouldRunE2e(["skip-e2e"], true)).toBe(false);
+    expect(shouldRunE2e(["no-e2e"], true)).toBe(false);
+    expect(shouldRunE2e(["unit-only"], true)).toBe(false);
   });
 
   test("runVerificationPipeline runs verification and e2e commands on host", async () => {
