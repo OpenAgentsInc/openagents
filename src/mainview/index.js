@@ -1461,7 +1461,11 @@ ${pad}</g>`;
     }
     const tbControls = document.getElementById("tb-controls");
     if (tbControls) {
-      tbControls.style.display = "block";
+      tbControls.style.display = viewMode === "tbench" ? "block" : "none";
+    }
+    const categoryTree = document.getElementById("tb-category-tree");
+    if (categoryTree) {
+      categoryTree.style.display = viewMode === "tbench" ? "block" : "none";
     }
   }
   setTimeout(updateViewModeUI, 0);

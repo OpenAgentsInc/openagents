@@ -251,10 +251,16 @@ function updateViewModeUI(): void {
     tbBtn.classList.toggle("active", viewMode === "tbench")
   }
 
-  // TB controls always visible (user can trigger runs from any view)
+  // TB controls only visible in TB view
   const tbControls = document.getElementById("tb-controls")
   if (tbControls) {
-    tbControls.style.display = "block"
+    tbControls.style.display = viewMode === "tbench" ? "block" : "none"
+  }
+
+  // Category tree only visible in TB view
+  const categoryTree = document.getElementById("tb-category-tree")
+  if (categoryTree) {
+    categoryTree.style.display = viewMode === "tbench" ? "block" : "none"
   }
 }
 
