@@ -228,7 +228,7 @@ describe("TBControlsWidget", () => {
   test("initialState returns correct defaults", () => {
     const state = TBControlsWidget.initialState()
 
-    expect(state.suitePath).toBe("")
+    expect(state.suitePath).toBe("./tasks/terminal-bench-2.json")
     expect(state.suite).toBeNull()
     expect(state.selectedTaskIds.size).toBe(0)
     expect(state.loading).toBe(false)
