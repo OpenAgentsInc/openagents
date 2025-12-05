@@ -66,6 +66,7 @@ interface PendingToolCall {
   function_name: string;
   arguments: unknown;
   started_at: string;
+  index: number; // Content block index for matching stop events
 }
 
 // ============================================================================
@@ -78,6 +79,7 @@ export class SDKToATIFAdapter {
   private stepCounter = 1;
   private pendingToolCalls = new Map<string, PendingToolCall>();
   private toolInputBuffers = new Map<string, string>();
+  private indexToToolId = new Map<number, string>(); // Map content block index to tool_call_id
 
   constructor(runId: string, sessionId: string) {
     this.runId = runId;
@@ -112,28 +114,38 @@ export class SDKToATIFAdapter {
    * Handle SDK stream_event messages
    */
   private handleStreamEvent(event: SDKStreamEvent): void {
+    const eventData = event.event as any;
     const { type, content_block, delta } = event.event;
+    const index: number | undefined = eventData?.index;
 
-    // Tool use started
+    // Tool use started - track by both id and index
     if (type === "content_block_start" && content_block?.type === "tool_use") {
       const toolCallId = content_block.id;
       const functionName = content_block.name ?? "unknown";
 
-      console.log(`[ATIF-Adapter] Tool start: ${functionName} (${toolCallId})`);
-
       this.pendingToolCalls.set(toolCallId, {
         tool_call_id: toolCallId,
         function_name: functionName,
-        arguments: null, // Will be filled as we stream input
+        arguments: null,
         started_at: new Date().toISOString(),
+        index: index ?? -1,
       });
+
+      // Map index to tool ID for stop event matching
+      if (index !== undefined) {
+        this.indexToToolId.set(index, toolCallId);
+      }
 
       this.toolInputBuffers.set(toolCallId, "");
     }
 
-    // Tool input streaming
+    // Tool input streaming - use index to find the tool since content_block might not have id in deltas
     if (type === "content_block_delta" && delta?.type === "input_json_delta") {
-      const toolCallId = content_block?.id;
+      // Try content_block.id first, then fall back to index lookup
+      let toolCallId = content_block?.id;
+      if (!toolCallId && index !== undefined) {
+        toolCallId = this.indexToToolId.get(index);
+      }
       if (!toolCallId) return;
 
       const chunk = delta.partial_json ?? delta.text ?? "";
@@ -141,9 +153,11 @@ export class SDKToATIFAdapter {
       this.toolInputBuffers.set(toolCallId, currentBuffer + chunk);
     }
 
-    // Tool use completed
-    if (type === "content_block_stop" && content_block?.type === "tool_use") {
-      const toolCallId = content_block.id;
+    // Tool use completed - use index to find the tool since content_block_stop doesn't have content_block
+    if (type === "content_block_stop" && index !== undefined) {
+      const toolCallId = this.indexToToolId.get(index);
+      if (!toolCallId) return; // Not a tool_use block (could be text or thinking)
+
       const pending = this.pendingToolCalls.get(toolCallId);
       if (!pending) return;
 
@@ -162,8 +176,9 @@ export class SDKToATIFAdapter {
       // Emit ATIF step with tool_calls
       this.emitAgentStepWithToolCalls([pending]);
 
-      // Clean up buffer
+      // Clean up
       this.toolInputBuffers.delete(toolCallId);
+      this.indexToToolId.delete(index);
     }
   }
 
