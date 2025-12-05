@@ -390,8 +390,54 @@ Agent connects to :4242
 
 ## Lessons Learned
 
-1. **Always use `setHTML()` on macOS** - `navigate()` to localhost is blocked
-2. **Bundle JS first** - The browser needs a single `.js` file, not TypeScript
-3. **Inline everything** - CSS and JS must be embedded in HTML for `setHTML()`
-4. **WebSocket still works** - You can still run a WS server and connect from the webview JS, just can't navigate to HTTP URLs
-5. **Debug bindings help** - Bind a `bunLog` function to get console output from webview
+1. **Always use `setHTML()` on macOS** - `navigate()` to localhost HTTP is blocked by WebKit
+
+2. **Build with `--format iife`** - ES module exports (`export {}`) don't work in inline scripts:
+   ```bash
+   bun build src/mainview/index.ts --target browser --format iife --outdir src/mainview
+   ```
+
+3. **NO `type="module"` scripts** - Inline scripts must be plain `<script>`, not `<script type="module">`
+
+4. **addEventListener works, inline onclick doesn't** - WebKit CSP blocks inline event handlers:
+   ```html
+   <!-- DOESN'T WORK -->
+   <button onclick="doThing()">Click</button>
+
+   <!-- WORKS -->
+   <button id="btn">Click</button>
+   <script>document.getElementById('btn').addEventListener('click', doThing)</script>
+   ```
+
+5. **localStorage/sessionStorage is BLOCKED** - In about:blank context (setHTML), storage APIs throw SecurityError:
+   ```typescript
+   // Wrap in try-catch
+   let setting = "default";
+   try {
+     setting = localStorage.getItem("key") || "default";
+   } catch {
+     // Blocked in webview context
+   }
+   ```
+
+6. **WebSocket connections work** - Despite HTTP navigation being blocked, WebSocket TO localhost works fine from setHTML content
+
+7. **Debug with bunLog binding** - Bind a function to get console output in terminal:
+   ```typescript
+   // In main.ts
+   webview.bind("bunLog", (...args) => console.log("[Webview]", ...args));
+
+   // In frontend JS
+   window.bunLog?.("Debug message");
+   ```
+
+8. **Wrap large bundles in try-catch** - Silent failures are hard to debug:
+   ```typescript
+   const wrappedJs = `
+   try {
+   ${js}
+   } catch(e) {
+     window.bunLog?.('[JS ERROR] ' + e.name + ': ' + e.message);
+   }
+   `;
+   ```

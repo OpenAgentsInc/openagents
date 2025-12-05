@@ -1363,9 +1363,10 @@ socketClient.onMessage((message: HudMessage) => {
 
 /** Load a TB suite and populate the task list */
 async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
-  console.log("[TB] Loading suite:", suitePath)
+  window.bunLog?.("[TB RPC] loadTBSuite calling socketClient...")
+  window.bunLog?.("[TB RPC] socketClient connected?", socketClient.isConnected())
   const suiteInfo = await socketClient.loadTBSuite(suitePath)
-  console.log("[TB] Suite loaded:", suiteInfo.name, `(${suiteInfo.tasks.length} tasks)`)
+  window.bunLog?.("[TB RPC] loadTBSuite returned:", suiteInfo?.name)
   return suiteInfo
 }
 
@@ -1521,8 +1522,12 @@ async function handleStartRandomTask(): Promise<void> {
   if (!loadedSuite) {
     try {
       updateTBStatus("Loading...")
+      window.bunLog?.("[TB] Calling loadTBSuiteRpc with path:", suitePath)
       loadedSuite = await loadTBSuiteRpc(suitePath)
+      window.bunLog?.("[TB] loadTBSuiteRpc succeeded:", JSON.stringify(loadedSuite).slice(0, 200))
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      window.bunLog?.("[TB] loadTBSuiteRpc FAILED:", errMsg)
       console.error("[TB] Load failed:", err)
       updateTBStatus("Load failed", "error")
       return
