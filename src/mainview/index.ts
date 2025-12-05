@@ -32,7 +32,7 @@ import type {
   APMUpdateMessage,
   APMSnapshotMessage,
 } from "../hud/protocol.js"
-import type { TBRunHistoryItem } from "../desktop/protocol.js"
+import type { TBRunHistoryItem, UnifiedTrajectory } from "../desktop/protocol.js"
 import {
   isTBRunStart,
   isTBRunComplete,
@@ -119,6 +119,74 @@ async function loadMCTasks(): Promise<void> {
     render()
     mcTasksLoading = false
   }
+}
+
+// ============================================================================
+// Unified Trajectory State
+// ============================================================================
+
+let unifiedTrajectories: UnifiedTrajectory[] = []
+let selectedTrajectoryId: string | null = null
+let trajectoriesLoading = false
+
+async function loadTrajectories(): Promise<void> {
+  if (trajectoriesLoading) return
+  trajectoriesLoading = true
+
+  try {
+    console.log("[Trajectories] Loading unified trajectories...")
+    window.bunLog?.("[Trajectories] Loading unified trajectories...")
+    unifiedTrajectories = await socketClient.loadUnifiedTrajectories(50)
+    console.log(`[Trajectories] Loaded ${unifiedTrajectories.length} trajectories`)
+    window.bunLog?.(`[Trajectories] Loaded ${unifiedTrajectories.length} trajectories`)
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.error("[Trajectories] Failed to load:", errMsg)
+    window.bunLog?.(`[Trajectories] FAILED: ${errMsg}`)
+    unifiedTrajectories = []
+  } finally {
+    trajectoriesLoading = false
+    renderTrajectoryPane()
+  }
+}
+
+function renderTrajectoryPane(): void {
+  const list = document.getElementById("trajectory-list")
+  if (!list) return
+
+  if (trajectoriesLoading) {
+    list.innerHTML = '<div class="trajectory-loading">Loading trajectories...</div>'
+    return
+  }
+
+  if (unifiedTrajectories.length === 0) {
+    list.innerHTML = '<div class="trajectory-empty">No trajectories found</div>'
+    return
+  }
+
+  list.innerHTML = unifiedTrajectories.map((traj) => {
+    const isSelected = traj.id === selectedTrajectoryId
+    const typeClass = traj.type === "tb-run" ? "tb" : "atif"
+    const shortId = traj.id.slice(-8)
+    const date = new Date(traj.timestamp).toLocaleString()
+
+    return `
+      <div class="trajectory-card ${isSelected ? "selected" : ""}"
+           data-trajectory-id="${traj.id}">
+        <div class="trajectory-card-id">${shortId}</div>
+        <div class="trajectory-card-timestamp">${date}</div>
+        <div class="trajectory-card-label ${typeClass}">${traj.label}</div>
+      </div>
+    `
+  }).join("")
+}
+
+function handleTrajectoryClick(trajectoryId: string): void {
+  selectedTrajectoryId = trajectoryId
+  console.log(`[Trajectories] Selected: ${trajectoryId}`)
+  window.bunLog?.(`[Trajectories] Selected: ${trajectoryId}`)
+  renderTrajectoryPane()
+  // Future: load and display trajectory details in main area
 }
 
 // ============================================================================
@@ -469,14 +537,10 @@ let tbState: TBState = {
 // ============================================================================
 
 type ViewMode = "flow" | "tbench"
-// Default to MC (flow) mode
+// Default to TB mode (MechaCoder view is hidden for now)
 // Note: localStorage is blocked in about:blank context (webview setHTML)
-let viewMode: ViewMode = "flow"
-try {
-  viewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "flow"
-} catch {
-  // localStorage blocked in webview context
-}
+let viewMode: ViewMode = "tbench"
+// Skip localStorage restore - always default to TB mode
 
 function setViewMode(mode: ViewMode): void {
   console.log(`[View] setViewMode called: ${mode}`)
@@ -506,16 +570,22 @@ function updateViewModeUI(): void {
     tbBtn.classList.toggle("active", viewMode === "tbench")
   }
 
-  // TB controls only visible in TB view
+  // Hide main TB controls panel (now accessible via trajectory pane toggle)
   const tbControls = document.getElementById("tb-controls")
   if (tbControls) {
-    tbControls.style.display = viewMode === "tbench" ? "block" : "none"
+    tbControls.style.display = "none" // Always hidden, use trajectory pane instead
   }
 
-  // Category tree only visible in TB view
+  // Category tree hidden (replaced by trajectory pane)
   const categoryTree = document.getElementById("tb-category-tree")
   if (categoryTree) {
-    categoryTree.style.display = viewMode === "tbench" ? "block" : "none"
+    categoryTree.style.display = "none" // Always hidden, use trajectory pane instead
+  }
+
+  // Show trajectory pane in TB mode
+  const trajectoryPane = document.getElementById("trajectory-pane")
+  if (trajectoryPane) {
+    trajectoryPane.style.display = viewMode === "tbench" ? "flex" : "none"
   }
 }
 
@@ -1924,6 +1994,9 @@ socketClient.connect().then(() => {
 
   // Fetch initial TB run history (subsequent updates arrive via push)
   void refreshTBLayout()
+
+  // Load unified trajectories for the left pane
+  void loadTrajectories()
 }).catch((err) => {
   const errMsg = err instanceof Error ? err.message : String(err)
   window.bunLog?.("[Socket] FAILED to connect:", errMsg)
@@ -2566,5 +2639,37 @@ treeCloseBtn?.addEventListener("click", hideCategoryTree)
 // Expose tree functions for triggering from handleHudMessage
 ;(window as unknown as Record<string, unknown>).__showCategoryTree = showCategoryTree
 ;(window as unknown as Record<string, unknown>).__renderCategoryTree = renderCategoryTree
+
+// ============================================================================
+// Trajectory Pane Event Handlers
+// ============================================================================
+
+// Click handler for trajectory cards (using event delegation)
+const trajectoryList = document.getElementById("trajectory-list")
+trajectoryList?.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement
+  const card = target.closest(".trajectory-card") as HTMLElement | null
+  if (card) {
+    const trajectoryId = card.dataset.trajectoryId
+    if (trajectoryId) {
+      handleTrajectoryClick(trajectoryId)
+    }
+  }
+})
+
+// TB controls toggle button
+let tbControlsExpanded = false
+const tbControlsToggle = document.getElementById("tb-controls-toggle")
+const tbControlsCollapsed = document.getElementById("tb-controls-collapsed")
+
+tbControlsToggle?.addEventListener("click", () => {
+  tbControlsExpanded = !tbControlsExpanded
+  if (tbControlsCollapsed) {
+    tbControlsCollapsed.classList.toggle("hidden", !tbControlsExpanded)
+  }
+  if (tbControlsToggle) {
+    tbControlsToggle.innerHTML = tbControlsExpanded ? "&#x25B2;" : "&#x25BC;"
+  }
+})
 
 export { renderTBDashboard }
