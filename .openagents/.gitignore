@@ -2,3 +2,4 @@
 sessions/
 run-logs/
 usage.jsonl
+step-results.json
