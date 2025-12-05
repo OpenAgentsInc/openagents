@@ -1,4 +1,5 @@
 import { Effect, pipe } from "effect";
+import * as Stream from "effect/Stream";
 import * as ParseResult from "effect/ParseResult";
 import * as S from "effect/Schema";
 
@@ -10,8 +11,21 @@ export const isTextContent = (content: ToolContent): content is { type: "text"; 
 	content.type === "text";
 
 export interface ToolResult<Details = unknown> {
-	content: ToolContent[];
-	details?: Details;
+  content: ToolContent[];
+  details?: Details;
+}
+
+export interface StreamingToolResult<Details = unknown> extends ToolResult<Details> {
+  /**
+   * Optional stream for live tool output (e.g., ANSI text from bash).
+   * Consumers can attach to this stream to surface incremental progress (HUD, logs).
+   */
+  stream?: Stream.Stream<ToolContent>;
+}
+
+export interface ToolRunOptions {
+  signal?: AbortSignal;
+  onStream?: (chunk: ToolContent) => void;
 }
 
 export type ToolErrorReason =
@@ -38,14 +52,14 @@ export interface Tool<Params, Details = unknown, R = never, E = never> {
   schema: S.Schema<Params>;
   execute: (
     params: Params,
-    options?: { signal?: AbortSignal },
-  ) => Effect.Effect<ToolResult<Details>, E | ToolExecutionError, R>;
+    options?: ToolRunOptions,
+  ) => Effect.Effect<StreamingToolResult<Details>, E | ToolExecutionError, R>;
 }
 
 export const runTool = <Params, Details, R, E>(
   tool: Tool<Params, Details, R, E>,
   input: unknown,
-  options?: { signal?: AbortSignal },
+  options?: ToolRunOptions,
 ) =>
   pipe(
     input,

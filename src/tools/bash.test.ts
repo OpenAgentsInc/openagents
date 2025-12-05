@@ -1,8 +1,9 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
+import * as Stream from "effect/Stream";
 import { describe, expect, it } from "bun:test";
 import { Effect } from "effect";
-import { bashTool } from "./bash.js";
+import { bashTool, bashStreamTool } from "./bash.js";
 import { runTool, ToolExecutionError, isTextContent } from "./schema.js";
 
 const runWithBun = <A, E>(program: Effect.Effect<A, E, CommandExecutor.CommandExecutor>) =>
@@ -35,5 +36,23 @@ describe("bashTool", () => {
     const result = await runWithBun(runTool(bashTool, { command: "sleep 0.1", run_in_background: true }));
     const text = result.content.find(isTextContent)?.text ?? "";
     expect(text).toContain("background process");
+  });
+
+  it("streams output incrementally", async () => {
+    const streamed = await runWithBun(
+      Effect.gen(function* () {
+        const result = yield* runTool(bashStreamTool, { command: "printf 'a\\n' && printf 'b\\n'" });
+        const stream = result.details?.stream;
+        const combined = stream
+          ? yield* Stream.runFold(stream, "", (acc, block) => acc + (isTextContent(block) ? block.text : ""))
+          : "";
+        return { combined, details: result.details };
+      }),
+    );
+
+    expect(streamed.combined).toContain("a");
+    expect(streamed.combined).toContain("b");
+    expect(streamed.combined).toContain("exit");
+    expect(streamed.details?.streaming).toBe(true);
   });
 });

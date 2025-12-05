@@ -2,8 +2,9 @@ import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { Effect } from "effect";
 import * as Stream from "effect/Stream";
+import * as Ref from "effect/Ref";
 import * as S from "effect/Schema";
-import type { Tool } from "./schema.js";
+import type { Tool, ToolContent } from "./schema.js";
 import { ToolExecutionError } from "./schema.js";
 
 const MAX_OUTPUT = 10 * 1024 * 1024; // 10 MB
@@ -16,14 +17,16 @@ interface BashDetails {
   command: string;
   runInBackground: boolean;
   pid?: number;
-  timeoutSeconds?: number;
-  exitCode: number;
-  durationMs: number;
-  outputBytes: number;
-  truncatedOutput: boolean;
+  timeoutSeconds: number | undefined;
+  exitCode: number | undefined;
+  durationMs: number | undefined;
+  outputBytes: number | undefined;
+  truncatedOutput: boolean | undefined;
+  streaming?: boolean;
 }
 
 type LimitedOutput = { text: string; bytes: number; truncated: boolean };
+type BashStreamDetails = BashDetails & { stream: Stream.Stream<ToolContent, ToolExecutionError> };
 
 const BashParametersSchema = S.Struct({
   command: S.String.pipe(
@@ -157,4 +160,111 @@ export const bashTool: Tool<BashParameters, BashDetails, CommandExecutor.Command
         };
       }),
     ) as any,
+};
+
+export const bashStreamTool: Tool<BashParameters, BashStreamDetails, CommandExecutor.CommandExecutor> = {
+  name: "bash_stream",
+  label: "bash_stream",
+  description:
+    "Execute a bash command and stream stdout/stderr incrementally. Emits chunks as ToolContent text blocks and appends an exit code chunk when done.",
+  schema: BashParametersSchema,
+  execute: (params) =>
+    Effect.gen(function* () {
+      const executor = yield* CommandExecutor.CommandExecutor;
+      const cmd = Command.make("sh", "-c", params.command);
+      const bytesRef = yield* Ref.make(0);
+      const startedAt = Date.now();
+
+      const details: BashStreamDetails = {
+        command: params.command,
+        runInBackground: false,
+        timeoutSeconds: params.timeout ?? undefined,
+        streaming: true,
+        exitCode: undefined,
+        durationMs: undefined,
+        outputBytes: undefined,
+        truncatedOutput: false,
+        stream: Stream.empty,
+      };
+
+      const toTextBlock = (chunk: Uint8Array) => ({
+        type: "text" as const,
+        text: Buffer.from(chunk).toString("utf-8"),
+      });
+
+      const stream = Stream.unwrapScoped(
+        Effect.gen(function* () {
+          const process = yield* executor.start(cmd).pipe(
+            Effect.mapError((e) => new ToolExecutionError("aborted", String(e))),
+          );
+
+          const trackBytes = (chunk: Uint8Array) => Ref.update(bytesRef, (n) => n + chunk.length);
+
+          const stdout = process.stdout.pipe(
+            Stream.mapError((e) => new ToolExecutionError("command_failed", String(e))),
+            Stream.tap(trackBytes),
+            Stream.map(toTextBlock),
+          );
+
+          const stderr = process.stderr.pipe(
+            Stream.mapError((e) => new ToolExecutionError("command_failed", String(e))),
+            Stream.tap(trackBytes),
+            Stream.map(toTextBlock),
+          );
+
+          const output = Stream.merge(stdout, stderr);
+
+          const exitEffect = (() => {
+            const baseExit = process.exitCode.pipe(
+              Effect.mapError((e) => new ToolExecutionError("command_failed", String(e))),
+            );
+
+            const withTimeout =
+              params.timeout && params.timeout > 0
+                ? Effect.timeoutFail(baseExit, {
+                    duration: params.timeout * 1000,
+                    onTimeout: () =>
+                      new ToolExecutionError("aborted", `Command timed out after ${params.timeout} seconds`),
+                  })
+                : baseExit;
+
+            return withTimeout.pipe(
+              Effect.tapError(() =>
+                process.kill("SIGKILL").pipe(
+                  Effect.catchAll(() => Effect.void),
+                ),
+              ),
+              Effect.map(normalizeExitCode),
+              Effect.tap((code) =>
+                Ref.get(bytesRef).pipe(
+                  Effect.tap((bytes) =>
+                    Effect.sync(() => {
+                      details.exitCode = code;
+                      details.durationMs = Date.now() - startedAt;
+                      details.outputBytes = bytes;
+                      details.truncatedOutput = false;
+                    }),
+                  ),
+                ),
+              ),
+              Effect.map((code) => ({
+                type: "text" as const,
+                text: `exit ${code}\n`,
+              })),
+            );
+          })();
+
+          const exitChunk = Stream.fromEffect(exitEffect);
+
+          return Stream.concat(output, exitChunk);
+        }),
+      );
+
+      details.stream = stream;
+
+      return {
+        content: [],
+        details,
+      };
+    }),
 };
