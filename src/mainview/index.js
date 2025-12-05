@@ -1321,8 +1321,7 @@ var isContainerError = (msg) => msg.type === "container_error";
 
 // src/mainview/index.ts
 console.log("[OpenAgents] Script loading...");
-if (typeof bunLog === "function")
-  bunLog("Script loading...");
+alert("JS IS RUNNING - you should see this on page load!");
 var apmState = {
   sessionAPM: 0,
   recentAPM: 0,
@@ -2371,8 +2370,12 @@ async function handleStopRun() {
   }
 }
 async function handleStartRandomTask() {
+  console.log("[TB] Random button clicked!");
+  alert("Random button clicked! Check console for more details.");
   const suitePath = tbSuitePathInput.value.trim();
+  console.log("[TB] Suite path:", suitePath);
   if (!suitePath) {
+    console.log("[TB] No path provided");
     updateTBStatus("No path", "error");
     return;
   }

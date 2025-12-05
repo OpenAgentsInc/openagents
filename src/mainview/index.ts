@@ -1,6 +1,5 @@
 console.log("[OpenAgents] Script loading...");
-// @ts-ignore - bunLog is injected by webview-bun
-if (typeof bunLog === 'function') bunLog("Script loading...");
+alert("JS IS RUNNING - you should see this on page load!");
 
 import { calculateLayout } from "../flow/layout.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
@@ -649,7 +648,7 @@ interface TBSuiteInfo {
   }>
 }
 
-// Note: HudRpcSchema and local types were removed - now using SocketClient and types from protocol.ts
+// Note: Types defined locally to avoid importing from desktop/protocol.ts (not browser-compatible)
 
 // ============================================================================
 // HUD Event State
@@ -972,7 +971,7 @@ let tbLayout = calculateLayout({
  */
 async function refreshTBLayout(): Promise<void> {
   try {
-    // Load recent runs via RPC
+    // Load recent runs via WebSocket RPC
     const runs = await socketClient.loadRecentTBRuns(20)
     console.log(`[TB] Loaded ${runs.length} runs via RPC`)
 
@@ -1333,6 +1332,8 @@ setInterval(refreshTBLayout, REFRESH_INTERVAL_MS)
 // ============================================================================
 
 // Get the shared socket client and connect
+// Note: WebSocket to localhost DOES work from setHTML() content,
+// only navigate() to localhost HTTP is blocked by WebKit
 const socketClient = getSocketClient({ verbose: true })
 
 // Connect and set up HUD message handler
@@ -1493,8 +1494,13 @@ async function handleStopRun(): Promise<void> {
 }
 
 async function handleStartRandomTask(): Promise<void> {
+  console.log("[TB] Random button clicked!")
+  alert("Random button clicked! Check console for more details.")
+
   const suitePath = tbSuitePathInput.value.trim()
+  console.log("[TB] Suite path:", suitePath)
   if (!suitePath) {
+    console.log("[TB] No path provided")
     updateTBStatus("No path", "error")
     return
   }
