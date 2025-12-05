@@ -14,15 +14,12 @@ import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import {
   parseSocketMessage,
   isSocketRequest,
-  isSocketResponse,
   isHudEvent,
   serializeSocketMessage,
   DESKTOP_HTTP_PORT,
   DESKTOP_WS_PATH,
-  type SocketMessage,
-  type SocketResponse,
 } from "./protocol.js";
-import { handleRequest, getProjectRootDir } from "./handlers.js";
+import { handleRequest } from "./handlers.js";
 
 // ============================================================================
 // Types

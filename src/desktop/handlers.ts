@@ -258,13 +258,12 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
     }
 
     if (isStartTBRunRequest(request)) {
-      const data = startTBRunProcess({
-        suitePath: request.suitePath,
-        taskIds: request.taskIds,
-        timeout: request.timeout,
-        maxTurns: request.maxTurns,
-        outputDir: request.outputDir,
-      });
+      const options: TBRunOptions = { suitePath: request.suitePath };
+      if (request.taskIds) options.taskIds = request.taskIds;
+      if (request.timeout) options.timeout = request.timeout;
+      if (request.maxTurns) options.maxTurns = request.maxTurns;
+      if (request.outputDir) options.outputDir = request.outputDir;
+      const data = startTBRunProcess(options);
       return createSuccessResponse("response:startTBRun", correlationId, data);
     }
 
@@ -283,18 +282,20 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       return createSuccessResponse("response:loadTBRunDetails", correlationId, data);
     }
 
-    // Unknown request type
+    // Unknown request type - cast to any to access type property on exhausted union
+    const unknownRequest = request as { type: string };
     return createErrorResponse(
       "response:loadTBSuite" as const, // fallback type
       correlationId,
-      `Unknown request type: ${request.type}`
+      `Unknown request type: ${unknownRequest.type}`
     );
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[Handler] Error handling ${request.type}:`, errorMessage);
+    const requestAny = request as { type?: string };
+    console.error(`[Handler] Error handling ${requestAny.type ?? "unknown"}:`, errorMessage);
 
     // Map request type to response type
-    const responseType = request.type.replace("request:", "response:") as SocketResponse["type"];
+    const responseType = (requestAny.type ?? "request:unknown").replace("request:", "response:") as SocketResponse["type"];
     return createErrorResponse(responseType, correlationId, errorMessage);
   }
 }
