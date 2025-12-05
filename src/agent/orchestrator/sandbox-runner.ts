@@ -290,13 +290,28 @@ const runInSandboxContainer = (
 const hostBackend: SandboxBackend = {
   name: "host",
   sandboxed: false,
-  run: ({ command, cwd, sandboxConfig, hudAdapter, env }) =>
-    runOnHostWithCallbacks(command, cwd, {
+  run: ({ command, cwd, sandboxConfig, hudAdapter, env }) => {
+    const options: {
+      timeoutMs?: number;
+      onStdout?: (chunk: string) => void;
+      onStderr?: (chunk: string) => void;
+      env?: Record<string, string>;
+    } = {
       timeoutMs: sandboxConfig.timeoutMs,
-      ...(hudAdapter?.callbacks.onStdout ? { onStdout: hudAdapter.callbacks.onStdout } : {}),
-      ...(hudAdapter?.callbacks.onStderr ? { onStderr: hudAdapter.callbacks.onStderr } : {}),
-      ...(env ? { env } : {}),
-    }),
+    };
+
+    if (hudAdapter?.callbacks.onStdout) {
+      options.onStdout = hudAdapter.callbacks.onStdout;
+    }
+    if (hudAdapter?.callbacks.onStderr) {
+      options.onStderr = hudAdapter.callbacks.onStderr;
+    }
+    if (env) {
+      options.env = env;
+    }
+
+    return runOnHostWithCallbacks(command, cwd, options);
+  },
 };
 
 const createContainerBackend = (): SandboxBackend => ({
