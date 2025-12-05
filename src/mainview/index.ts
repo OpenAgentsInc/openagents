@@ -1,3 +1,7 @@
+console.log("[OpenAgents] Script loading...");
+// @ts-ignore - bunLog is injected by webview-bun
+if (typeof bunLog === 'function') bunLog("Script loading...");
+
 import { calculateLayout } from "../flow/layout.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
 // TB flow tree imports
@@ -1314,7 +1318,9 @@ container.addEventListener("mouseup", (e) => {
 })
 
 // Initial render
+console.log("[OpenAgents] About to render...");
 render()
+console.log("[OpenAgents] Render complete!");
 
 // Load live data and refresh periodically (fallback polling)
 void refreshLayoutFromState()

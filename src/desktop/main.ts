@@ -60,9 +60,40 @@ server.onMessage((msg) => {
 
 const webview = new Webview();
 
+// Debug: inject code to log page loading
+webview.init(`
+  console.log('[DEBUG] Webview init script running');
+  window.onerror = function(msg, url, line) {
+    console.error('[JS ERROR]', msg, 'at', url, line);
+  };
+`);
+
+// Debug: bind a function to get logs from webview
+webview.bind("bunLog", (...args: unknown[]) => {
+  console.log("[Webview]", ...args);
+});
+
 webview.title = "OpenAgents";
 webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
-webview.navigate(`http://localhost:${server.getHttpPort()}`);
+
+// Load content and embed directly - WebKit blocks localhost HTTP
+const htmlFile = Bun.file(join(MAINVIEW_DIR, "index.html"));
+const cssFile = Bun.file(join(MAINVIEW_DIR, "index.css"));
+const jsFile = Bun.file(join(MAINVIEW_DIR, "index.js"));
+
+const [html, css, js] = await Promise.all([
+  htmlFile.text(),
+  cssFile.text(),
+  jsFile.text(),
+]);
+
+// Inject CSS and JS inline
+const inlinedHtml = html
+  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
+  .replace('<script type="module" src="index.js"></script>', `<script>${js}</script>`);
+
+console.log(`[Desktop] Loaded: HTML=${html.length}b, CSS=${css.length}b, JS=${js.length}b`);
+webview.setHTML(inlinedHtml);
 
 console.log("[Desktop] Opening webview window...");
 
