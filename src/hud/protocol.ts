@@ -668,11 +668,18 @@ export type StatusStreamMessage = HudMessage | { type: "status_heartbeat"; ts: s
 // Protocol Constants
 // ============================================================================
 
-/** Default WebSocket port for HUD server */
-export const HUD_WS_PORT = 4242;
+/**
+ * HUD WebSocket port - unified with desktop server.
+ * Agents and UI both connect to the same endpoint.
+ * @deprecated Use DESKTOP_HTTP_PORT from desktop/protocol.ts
+ */
+export const HUD_WS_PORT = 8080;
 
-/** Default WebSocket URL */
-export const HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}`;
+/**
+ * HUD WebSocket URL - unified with desktop server.
+ * Agents connect here to send events; server broadcasts to UI clients.
+ */
+export const HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}/ws`;
 
 // ============================================================================
 // Helpers

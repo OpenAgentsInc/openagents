@@ -58,6 +58,8 @@
     "e2e:ui": "bunx playwright test --config e2e/playwright.config.ts --ui",
     "e2e:report": "bunx playwright show-report",
     "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots",
+    "e2e:desktop": "bunx playwright test --config e2e/playwright.desktop.config.ts",
+    "e2e:desktop:headed": "HEADED=1 bunx playwright test --config e2e/playwright.desktop.config.ts --headed",
     "health": "bun src/health/cli.ts",
     "health:report": "bun src/health/report-cli.ts",
     "deps:audit": "bun src/deps/audit-cli.ts",
@@ -88,6 +90,7 @@
     "@effect/language-service": "0.58.0",
     "@playwright/test": "^1.57.0",
     "@types/bun": "1.3.3",
+    "happy-dom": "^20.0.11",
     "typescript": "5.9.3"
   }
 }

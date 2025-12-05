@@ -22,7 +22,6 @@ const server = createDesktopServer({
 });
 
 log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
-log("Worker", `HUD server on ws://localhost:${server.getHudPort()}`);
 
 // Wire ATIF HUD emitter to desktop server WebSocket
 setATIFHudSender((message) => {
