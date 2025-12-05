@@ -865,6 +865,9 @@ const doOneTaskOrchestrator = (config: Config) =>
       agent: atif.collector.getCurrentState()!.agent,
       baseDir: nodePath.join(config.workDir, ".openagents/trajectories"),
     });
+
+    // Initialize streaming writer (create directories and files) - must happen before any steps
+    yield* Effect.promise(() => streamingWriter.initialize());
     atif.collector.setStreamingWriter(streamingWriter);
 
     // Initialize Healer service with LLM capabilities
