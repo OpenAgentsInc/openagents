@@ -3,6 +3,7 @@ import {
   createMechaCoderMcpServer,
   getAllowedClaudeCodeTools,
 } from "./claude-code-mcp.js";
+import { createSDKToATIFAdapter } from "../../atif/sdk-adapter.js";
 import {
   appendToolChunk,
   buildToolPayload,
@@ -57,6 +58,8 @@ export interface ClaudeCodeSubagentOptions {
   reflections?: string;
   /** PreToolUse hook to enforce worktree boundaries */
   worktreeGuardHook?: HookCallback;
+  /** TB run ID for ATIF step emission to HUD */
+  runId?: string;
 }
 
 const isToolCallMessage = (message: any): message is { tool_calls?: Array<{ name?: string; input?: any }> } =>
@@ -345,6 +348,9 @@ export const runClaudeCodeSubagent = async (
   const hooks = createClaudeCodeHooks(options.onEvent, options.worktreeGuardHook);
   const toolBuffers: ToolLogBufferMap = new Map();
 
+  // SDK → ATIF adapter (created lazily once we have sessionId)
+  let atifAdapter: ReturnType<typeof createSDKToATIFAdapter> | null = null;
+
   // Retry loop for rate limits and server errors
   while (retryAttempt <= retryConfig.maxRetries) {
     const { controller, getAbortReason, cleanup } = createAbortController(options.signal, timeoutMs);
@@ -371,6 +377,18 @@ export const runClaudeCodeSubagent = async (
         },
       })) {
         console.log("[SDK] Received message type:", (message as any).type, "subtype:", (message as any).subtype);
+
+        // Create SDK → ATIF adapter once we have sessionId
+        if (!atifAdapter && options.runId && sessionId) {
+          atifAdapter = createSDKToATIFAdapter(options.runId, sessionId);
+          console.log("[ATIF] Created SDK → ATIF adapter for run:", options.runId, "session:", sessionId);
+        }
+
+        // Process SDK message through ATIF adapter (converts to ATIF steps and emits to HUD)
+        if (atifAdapter) {
+          atifAdapter.processSDKMessage(message);
+        }
+
         // Handle streaming partial messages
         if ((message as any).type === "stream_event" && options.onOutput) {
           const event = (message as any).event;

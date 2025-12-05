@@ -43,6 +43,7 @@ interface TBenchLocalArgs {
   timeout: number | undefined;
   maxTurns: number | undefined;
   parallel: number | undefined;
+  runId: string | undefined;
   help: boolean | undefined;
 }
 
@@ -57,6 +58,7 @@ const parseCliArgs = (): TBenchLocalArgs => {
       timeout: { type: "string" },
       "max-turns": { type: "string" },
       parallel: { type: "string", short: "p" },
+      "run-id": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -113,6 +115,7 @@ Examples:
     timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
     maxTurns: values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined,
     parallel: values.parallel ? parseInt(values.parallel, 10) : undefined,
+    runId: values["run-id"],
     help: values.help,
   };
 };
@@ -237,6 +240,7 @@ const runTask = async (
     maxTurns: number;
     outputDir: string;
     sourceRepo?: string;
+    runId?: string; // TB run ID for ATIF step emission to HUD
     tbEmitter?: TBEmitter;
     taskIndex?: number;
     totalTasks?: number;
@@ -338,6 +342,7 @@ const runTask = async (
       maxTurns: tbTask.max_turns ?? options.maxTurns,
       permissionMode: "bypassPermissions",
       timeoutMs: (tbTask.timeout_seconds ?? options.timeout) * 1000,
+      ...(options.runId ? { runId: options.runId } : {}), // Pass runId for ATIF step emission to HUD
       onOutput,
     });
 
@@ -666,6 +671,7 @@ const main = async (): Promise<void> => {
       maxTurns,
       outputDir: args.output,
       ...(sourceRepo !== undefined ? { sourceRepo } : {}),
+      ...(args.runId ? { runId: args.runId } : {}), // Pass runId for ATIF step emission to HUD
       tbEmitter,
       taskIndex: i,
       totalTasks: tasksToRun.length,
