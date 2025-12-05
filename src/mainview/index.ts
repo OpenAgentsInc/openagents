@@ -1,8 +1,4 @@
-import * as BunContext from "@effect/platform-bun/BunContext"
-import { Effect } from "effect"
 import { calculateLayout } from "../flow/layout.js"
-import { buildMechaCoderFlowTree, generateNodeSizes } from "../flow/mechacoder-map.js"
-import { loadMechaCoderState } from "../flow/mechacoder-state.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
 // TB flow tree imports
 import {
@@ -1111,29 +1107,20 @@ function getCenteredPan(viewWidth: number, viewHeight: number) {
 }
 
 async function refreshLayoutFromState(): Promise<void> {
+  // NOTE: MechaCoder state loading disabled in browser context.
+  // The browser webview cannot access the filesystem directly.
+  // State is now received via WebSocket HUD messages.
+  // This function is a no-op; the initial layout uses sample data.
   if (isRefreshing) return
   isRefreshing = true
   try {
-    const state = await Effect.runPromise(
-      loadMechaCoderState({ rootDir: "." }).pipe(Effect.provide(BunContext.layer)),
-    )
-    const tree = buildMechaCoderFlowTree(state)
-    const nodeSizes = generateNodeSizes(tree)
-    layout = calculateLayout({
-      root: tree,
-      nodeSizes,
-      config: LAYOUT_CONFIG,
-    })
-
+    // Use sample data for now - live data comes via WebSocket
     if (!hasLiveLayout) {
       const recentered = getCenteredPan(canvasState.viewportWidth, canvasState.viewportHeight)
       canvasState = { ...canvasState, ...recentered }
       hasLiveLayout = true
+      render()
     }
-
-    render()
-  } catch (error) {
-    console.error("Failed to load MechaCoder state", error)
   } finally {
     isRefreshing = false
   }
