@@ -84,12 +84,12 @@ const dockerRun: ContainerBackend["run"] = (command, config, options) =>
     const runConfig = {
       image: config.image,
       workspaceDir: config.workspaceDir,
-      workdir: config.workdir,
-      memoryLimit: config.memoryLimit,
-      cpuLimit: config.cpuLimit,
-      env: config.env,
-      volumeMounts: config.volumeMounts,
-      autoRemove: config.autoRemove,
+      ...(config.workdir ? { workdir: config.workdir } : {}),
+      ...(config.memoryLimit ? { memoryLimit: config.memoryLimit } : {}),
+      ...(config.cpuLimit !== undefined ? { cpuLimit: config.cpuLimit } : {}),
+      ...(config.env ? { env: config.env } : {}),
+      ...(config.volumeMounts ? { volumeMounts: [...config.volumeMounts] } : {}),
+      ...(config.autoRemove !== undefined ? { autoRemove: config.autoRemove } : {}),
     };
     const args = buildDockerArgs(command, runConfig, name);
     const proc = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
