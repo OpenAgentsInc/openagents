@@ -26,6 +26,7 @@ import {
 import { runOrchestrator } from "./orchestrator.js";
 import { makeReflectionService } from "./reflection/index.js";
 import { loadProjectConfig } from "../../tasks/index.js";
+import type { ProjectConfig } from "../../tasks/schema.js";
 import { openRouterClientLayer, openRouterConfigLayer } from "../../llm/openrouter.js";
 import { Layer } from "effect";
 
@@ -48,6 +49,27 @@ interface WorktreeRunResult {
   error?: string;
   merged: boolean;
 }
+
+export interface InstallSettings {
+  args: string[];
+  timeoutMs: number;
+  skipInstall: boolean;
+}
+
+export const getInstallSettings = (projectConfig: ProjectConfig): InstallSettings => {
+  const parallel = projectConfig.parallelExecution;
+  const args =
+    parallel?.installArgs && parallel.installArgs.length > 0
+      ? parallel.installArgs
+      : ["--frozen-lockfile"];
+  const timeoutMs = parallel?.installTimeoutMs ?? 15 * 60 * 1000;
+  const skipInstall = args.includes("--skip-install");
+  return {
+    args: args.filter((arg) => arg !== "--skip-install"),
+    timeoutMs,
+    skipInstall,
+  };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Git Operations
@@ -243,20 +265,43 @@ export const runInWorktree = async (
       }
 
       // Install dependencies in worktree (required for typecheck)
-      console.log("  Installing dependencies...");
-      const bunInstall = Bun.spawn(["bun", "install"], {
-        cwd: worktreeInfo.path,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      await bunInstall.exited;
-      if (bunInstall.exitCode !== 0) {
-        const stderr = await new Response(bunInstall.stderr).text();
-        console.error(`  ❌ bun install failed: ${stderr}`);
-        result.error = "bun install failed";
-        return result;
+      const installSettings = getInstallSettings(projectConfig);
+      if (installSettings.skipInstall) {
+        console.log("  Skipping dependency install (--skip-install provided).");
+      } else {
+        console.log(
+          `  Installing dependencies (bun install ${installSettings.args.join(" ")})...`,
+        );
+        let timedOut = false;
+        const bunInstall = Bun.spawn(["bun", "install", ...installSettings.args], {
+          cwd: worktreeInfo.path,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const timer = setTimeout(() => {
+          timedOut = true;
+          bunInstall.kill();
+        }, installSettings.timeoutMs);
+
+        await bunInstall.exited;
+        clearTimeout(timer);
+
+        if (timedOut) {
+          const message = `bun install timed out after ${Math.floor(installSettings.timeoutMs / 1000)}s`;
+          console.error(`  ❌ ${message}`);
+          result.error = message;
+          return result;
+        }
+
+        if (bunInstall.exitCode !== 0) {
+          const stderr = await new Response(bunInstall.stderr).text();
+          const message = `bun install failed: ${stderr}`;
+          console.error(`  ❌ ${message}`);
+          result.error = message;
+          return result;
+        }
+        console.log("  Dependencies installed.");
       }
-      console.log("  Dependencies installed.");
 
       const reflectionService = makeReflectionService({
         openagentsDir: worktreeOpenagentsDir,
@@ -383,7 +428,9 @@ async function main() {
   process.exit(result.success ? 0 : 1);
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
