@@ -13,7 +13,7 @@
  */
 
 import { join } from "node:path";
-import { mkdir, rename, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, rename, writeFile, appendFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { Step, Agent, FinalMetrics } from "./schema.js";
 import { timestamp } from "./schema.js";
@@ -224,6 +224,8 @@ export class StreamingWriter {
     status: "in_progress" | "complete" | "failed";
     final_metrics: FinalMetrics | null;
   }): Promise<void> {
+    await mkdir(this.paths.dateDir, { recursive: true });
+
     const indexData: IndexData = {
       session_id: this.sessionId,
       agent: this.agent,
@@ -240,12 +242,28 @@ export class StreamingWriter {
       indexData.parent_session_id = this.parentSessionId;
     }
 
-    // Write to .tmp file first
-    const tmpPath = this.paths.index + ".tmp";
-    await writeFile(tmpPath, JSON.stringify(indexData, null, 2), "utf-8");
+    const indexJson = JSON.stringify(indexData, null, 2);
 
-    // Atomic rename
-    await rename(tmpPath, this.paths.index);
+    const writeAndRename = async () => {
+      const tmpPath = this.buildTempIndexPath();
+      try {
+        await writeFile(tmpPath, indexJson, "utf-8");
+        await rename(tmpPath, this.paths.index);
+      } finally {
+        await rm(tmpPath, { force: true });
+      }
+    };
+
+    try {
+      await writeAndRename();
+    } catch (error: any) {
+      if (error?.code === "ENOENT") {
+        await mkdir(this.paths.dateDir, { recursive: true });
+        await writeAndRename();
+      } else {
+        throw error;
+      }
+    }
   }
 
   /**
@@ -263,5 +281,10 @@ export class StreamingWriter {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     return `${year}${month}${day}`;
+  }
+
+  private buildTempIndexPath(): string {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${this.paths.index}.${suffix}.tmp`;
   }
 }
