@@ -61,20 +61,28 @@ describe("verification-pipeline", () => {
   });
 
   test("runVerificationPipeline runs verification and e2e commands on host", async () => {
+    const verificationCommands = buildVerificationCommands(
+      ["echo typecheck"],
+      ["echo test"],
+      undefined,
+      false
+    );
+
     const result = await Effect.runPromise(
       runVerificationPipeline({
-        verificationCommands: ["echo typecheck", "echo test"],
-        e2eCommands: ["echo e2e"],
-        testCommands: ["echo test"],
         cwd: process.cwd(),
+        verificationCommands,
+        typecheckCommands: ["echo typecheck"],
+        testCommands: ["echo test"],
+        e2eCommands: ["echo e2e"],
         emit: () => {},
       })
     );
 
     expect(result.verification.passed).toBe(true);
-    expect(result.verification.outputs).toHaveLength(2);
-    expect(result.e2e?.ran).toBe(true);
-    expect(result.e2e?.passed).toBe(true);
-    expect(result.e2e?.outputs).toHaveLength(1);
+    expect(result.verification.outputs).toHaveLength(verificationCommands.length);
+    expect(result.e2e.ran).toBe(true);
+    expect(result.e2e.passed).toBe(true);
+    expect(result.e2e.outputs).toHaveLength(1);
   });
 });
