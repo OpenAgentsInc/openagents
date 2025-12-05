@@ -28,6 +28,30 @@ describe("findTool", () => {
     const text = result.content.find(isTextContent)?.text ?? "";
     expect(text).toContain("alpha.txt");
     expect(text).toContain("beta.txt"); // pattern matches filename containing "a"
+    expect(result.details).toEqual(
+      expect.objectContaining({
+        matches: 2,
+        truncated: false,
+      }),
+    );
+  });
+
+  it("supports SDK-style aliases (file_path and glob)", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "find-tool" });
+        yield* fs.writeFileString(path.join(dir, "alpha.txt"), "a");
+        yield* fs.writeFileString(path.join(dir, "beta.txt"), "b");
+
+        return yield* runTool(findTool, { file_path: dir, glob: "alpha" });
+      }),
+    );
+
+    const text = result.content.find(isTextContent)?.text ?? "";
+    expect(text).toContain("alpha.txt");
+    expect(text).not.toContain("beta.txt");
   });
 
   it("limits results", async () => {

@@ -7,7 +7,17 @@ import { ToolExecutionError } from "./schema.js";
 
 const FindParametersSchema = S.Struct({
   path: S.optional(S.String),
+  file_path: S.optional(
+    S.String.pipe(
+      S.annotations({ description: "SDK-style alias for path" }),
+    ),
+  ),
   pattern: S.optional(S.String), // substring match on filename
+  glob: S.optional(
+    S.String.pipe(
+      S.annotations({ description: "SDK-style alias for pattern matching" }),
+    ),
+  ),
   maxResults: S.optional(S.Number.pipe(S.int(), S.greaterThan(0))),
   includeHidden: S.optional(S.Boolean),
 });
@@ -22,7 +32,15 @@ const matches = (name: string, pattern?: string, includeHidden?: boolean) => {
 
 export const findTool: Tool<
   FindParameters,
-  undefined,
+  {
+    root: string;
+    resolvedRoot: string;
+    pattern?: string;
+    maxResults?: number;
+    includeHidden: boolean;
+    matches: number;
+    truncated: boolean;
+  },
   FileSystem.FileSystem | Path.Path
 > = {
   name: "find",
@@ -35,7 +53,8 @@ export const findTool: Tool<
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
 
-      const root = pathService.resolve(params.path ?? ".");
+      const rootPath = params.file_path ?? params.path ?? ".";
+      const root = pathService.resolve(rootPath);
       const exists = yield* fs.exists(root).pipe(
         Effect.mapError(
           (e) => new ToolExecutionError("command_failed", `Failed to check path: ${e.message}`),
@@ -43,12 +62,13 @@ export const findTool: Tool<
       );
       if (!exists) {
         return yield* Effect.fail(
-          new ToolExecutionError("not_found", `Path not found: ${params.path ?? "."}`),
+          new ToolExecutionError("not_found", `Path not found: ${rootPath}`),
         );
       }
 
       const collected: string[] = [];
       const stack = [root];
+      const pattern = params.glob ?? params.pattern;
 
       while (stack.length > 0) {
         const current = stack.pop()!;
@@ -77,7 +97,7 @@ export const findTool: Tool<
             stack.push(fullPath);
           }
 
-          if (matches(name, params.pattern, params.includeHidden)) {
+          if (matches(name, pattern, params.includeHidden)) {
             collected.push(relative);
           }
         }
@@ -88,11 +108,31 @@ export const findTool: Tool<
       }
 
       if (collected.length === 0) {
-        return { content: [{ type: "text" as const, text: "No matches found." }] };
+        return {
+          content: [{ type: "text" as const, text: "No matches found." }],
+          details: {
+            root: rootPath,
+            resolvedRoot: root,
+            ...(pattern !== undefined ? { pattern } : {}),
+            ...(params.maxResults !== undefined ? { maxResults: params.maxResults } : {}),
+            includeHidden: params.includeHidden ?? false,
+            matches: 0,
+            truncated: false,
+          },
+        };
       }
 
       return {
         content: [{ type: "text" as const, text: collected.join("\n") }],
+        details: {
+          root: rootPath,
+          resolvedRoot: root,
+          ...(pattern !== undefined ? { pattern } : {}),
+          ...(params.maxResults !== undefined ? { maxResults: params.maxResults } : {}),
+          includeHidden: params.includeHidden ?? false,
+          matches: collected.length,
+          truncated: params.maxResults ? collected.length >= params.maxResults : false,
+        },
       };
     }),
 };
