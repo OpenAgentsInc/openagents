@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "bun:test";
 import { Effect } from "effect";
-import { buildVerificationCommands, runVerificationCommands, runVerificationPipeline, shouldRunE2e } from "./verification-pipeline.js";
+import {
+  buildVerificationCommands,
+  runVerificationCommands,
+  runVerificationPipeline,
+  shouldRunE2e,
+} from "./verification-pipeline.js";
 
 describe("verification-pipeline", () => {
   test("buildVerificationCommands prefers sandbox commands and skips typecheck in sandbox", () => {
@@ -56,23 +61,20 @@ describe("verification-pipeline", () => {
   });
 
   test("runVerificationPipeline runs verification and e2e commands on host", async () => {
-    const verificationCommands = buildVerificationCommands(["echo typecheck"], ["echo test"]);
-    const e2eCommands = ["echo e2e"];
-
     const result = await Effect.runPromise(
       runVerificationPipeline({
-        verificationCommands,
+        verificationCommands: ["echo typecheck", "echo test"],
+        e2eCommands: ["echo e2e"],
         testCommands: ["echo test"],
-        e2eCommands,
         cwd: process.cwd(),
         emit: () => {},
       })
     );
 
     expect(result.verification.passed).toBe(true);
-    expect(result.verification.outputs).toHaveLength(verificationCommands.length);
+    expect(result.verification.outputs).toHaveLength(2);
     expect(result.e2e?.ran).toBe(true);
     expect(result.e2e?.passed).toBe(true);
-    expect(result.e2e?.outputs).toHaveLength(e2eCommands.length);
+    expect(result.e2e?.outputs).toHaveLength(1);
   });
 });

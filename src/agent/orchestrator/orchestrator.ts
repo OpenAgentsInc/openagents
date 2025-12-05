@@ -14,7 +14,7 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
-import { pickNextTask, updateTask } from "../../tasks/index.js";
+import { pickNextTask, readTasks, updateTask, type Task } from "../../tasks/index.js";
 import {
   createCommit,
   getCurrentBranch,
@@ -54,6 +54,7 @@ import {
   type SubagentResult,
   type Subtask,
   type InitScriptResult,
+  type OrchestratorPhase,
   getProgressPath,
 } from "./types.js";
 import type { FailureContextType, ReflectionType } from "./reflection/index.js";
@@ -97,6 +98,23 @@ const mapReflectionsToNotes = (reflections: ReflectionType[], limit: number): st
     .slice(0, limit)
     .map((r) => `${r.analysis} - Next: ${r.suggestion}`)
     .map((text) => text.slice(0, 400));
+
+const PHASE_ORDER: OrchestratorPhase[] = [
+  "idle",
+  "orienting",
+  "selecting_task",
+  "decomposing",
+  "executing_subtask",
+  "verifying",
+  "committing",
+  "updating_task",
+  "logging",
+  "done",
+  "failed",
+];
+
+const advancePhase = (current: OrchestratorPhase, target: OrchestratorPhase): OrchestratorPhase =>
+  PHASE_ORDER.indexOf(target) >= PHASE_ORDER.indexOf(current) ? target : current;
 
 /**
  * Write checkpoint at phase transition.
@@ -298,6 +316,7 @@ export const runOrchestrator = (
 
     // Track checkpoint for crash recovery
     let currentCheckpoint: OrchestratorCheckpoint | null = null;
+    let resumeCheckpoint: OrchestratorCheckpoint | null = null;
 
     // Check for existing checkpoint from previous crash
     const maybeExistingCheckpoint = yield* maybeResumeCheckpoint(openagentsDir, config.cwd).pipe(
@@ -306,6 +325,11 @@ export const runOrchestrator = (
 
     if (Option.isSome(maybeExistingCheckpoint)) {
       const existingCheckpoint = maybeExistingCheckpoint.value;
+      currentCheckpoint = existingCheckpoint;
+      resumeCheckpoint = existingCheckpoint;
+      progress.taskId = existingCheckpoint.taskId;
+      progress.taskTitle = existingCheckpoint.taskTitle;
+      state.sessionId = sessionId;
       emit({
         type: "checkpoint_found",
         sessionId: existingCheckpoint.sessionId,
@@ -474,20 +498,53 @@ export const runOrchestrator = (
       // Phase 2: Select Task
       state.phase = "selecting_task";
 
-      // Use pre-assigned task if provided (parallel runner), otherwise pick next ready task
-      let taskResult: ReturnType<typeof pickNextTask> extends Effect.Effect<infer T, any, any> ? T : never;
-      if (config.task) {
-        taskResult = config.task;
-      } else {
-        taskResult = yield* durableStep(
-          stepResultsManager,
-          "select_task",
-          () =>
-            pickNextTask(tasksPath).pipe(
-              Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
-            ),
-          { inputHash: tasksPath }
+      // Use checkpointed task when resuming; otherwise use pre-assigned task or pick next ready task
+      let taskResult: Task | null = null;
+
+      if (resumeCheckpoint) {
+        const tasks = yield* readTasks(tasksPath).pipe(
+          Effect.catchAll(() => Effect.succeed([] as Task[]))
         );
+        taskResult = tasks.find((t) => t.id === resumeCheckpoint!.taskId) ?? null;
+
+        if (!taskResult) {
+          // Checkpoint refers to unknown task - clear and proceed normally
+          yield* clearCheckpoint(openagentsDir).pipe(Effect.catchAll(() => Effect.void));
+          resumeCheckpoint = null;
+          currentCheckpoint = null;
+        } else {
+          // Refresh checkpoint timestamp/git for the resumed session
+          const gitState = yield* captureGitState(config.cwd).pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({
+                branch: "unknown",
+                headCommit: "unknown",
+                isDirty: false,
+                stagedFiles: [] as string[],
+              })
+            )
+          );
+          currentCheckpoint = updateCheckpointPhase(resumeCheckpoint, resumeCheckpoint.phase, {
+            git: gitState,
+          });
+          yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+        }
+      }
+
+      if (!taskResult) {
+        if (config.task) {
+          taskResult = config.task;
+        } else {
+          taskResult = yield* durableStep(
+            stepResultsManager,
+            "select_task",
+            () =>
+              pickNextTask(tasksPath).pipe(
+                Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
+              ),
+            { inputHash: tasksPath }
+          );
+        }
       }
 
       if (!taskResult) {
@@ -505,26 +562,30 @@ export const runOrchestrator = (
       progress.taskTitle = taskResult.title;
       emit({ type: "task_selected", task: taskResult });
 
-      // Write checkpoint after task selection
-      const gitState = yield* captureGitState(config.cwd).pipe(
-        Effect.catchAll(() => Effect.succeed({
-          branch: "unknown",
-          headCommit: "unknown",
-          isDirty: false,
-          stagedFiles: [] as string[],
-        }))
-      );
+      // Write checkpoint after task selection (unless resuming an existing one)
+      if (!currentCheckpoint) {
+        const gitState = yield* captureGitState(config.cwd).pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({
+              branch: "unknown",
+              headCommit: "unknown",
+              isDirty: false,
+              stagedFiles: [] as string[],
+            })
+          )
+        );
 
-      currentCheckpoint = createCheckpoint({
-        sessionId,
-        phase: "selecting_task",
-        taskId: taskResult.id,
-        taskTitle: taskResult.title,
-        completedSubtaskIds: [],
-        currentSubtaskId: null,
-        git: gitState,
-      });
-      yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+        currentCheckpoint = createCheckpoint({
+          sessionId,
+          phase: "selecting_task",
+          taskId: taskResult.id,
+          taskTitle: taskResult.title,
+          completedSubtaskIds: [],
+          currentSubtaskId: null,
+          git: gitState,
+        });
+        yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+      }
 
       // Phase 3: Decompose
       state.phase = "decomposing";
@@ -586,9 +647,26 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       writeSubtasks(openagentsDir, subtaskList);
       emit({ type: "task_decomposed", subtasks: subtaskList.subtasks });
 
+      const completedSubtasks = subtaskList.subtasks
+        .filter((s) => s.status === "done" || s.status === "verified")
+        .map((s) => s.id);
+      const inProgressSubtasks = subtaskList.subtasks
+        .filter((s) => s.status === "in_progress")
+        .map((s) => s.id);
+
+      progress.work.subtasksCompleted = completedSubtasks;
+      progress.work.subtasksInProgress = inProgressSubtasks;
+
       // Update checkpoint after decomposition
       if (currentCheckpoint) {
-        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, "decomposing");
+        const mergedCompleted = Array.from(
+          new Set([...(currentCheckpoint.completedSubtaskIds ?? []), ...completedSubtasks])
+        );
+        const nextPhase = advancePhase(currentCheckpoint.phase, "decomposing");
+        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, nextPhase, {
+          completedSubtaskIds: mergedCompleted,
+          currentSubtaskId: null,
+        });
         yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
       }
 
@@ -887,24 +965,42 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       state.phase = "verifying";
       progress.work.testsRun = true;
 
-      const verificationOutcome = yield* runVerificationPipeline({
-        cwd: config.cwd,
-        emit,
-        testCommands: config.testCommands,
-        ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
-        ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
-        ...(config.e2eCommands ? { e2eCommands: config.e2eCommands } : {}),
-        ...(state.task?.labels ? { taskLabels: state.task.labels } : {}),
-        ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
-        ...(verificationCommands.length > 0 ? { verificationCommands } : {}),
-      }).pipe(
-        Effect.catchAll(() =>
-          Effect.succeed({
-            verification: { passed: false, outputs: [], results: [] },
-            e2e: { ran: false, passed: true, outputs: [] },
-          } satisfies VerificationPipelineResult),
-        ),
-      );
+      const skipVerification =
+        currentCheckpoint?.phase === "verifying" && currentCheckpoint.verification !== undefined;
+
+      const verificationOutcome = skipVerification
+        ? {
+            verification: {
+              passed:
+                currentCheckpoint!.verification!.typecheckPassed &&
+                currentCheckpoint!.verification!.testsPassed,
+              outputs: [],
+              results: [],
+            },
+            e2e: { ran: false, passed: true, outputs: [], reason: "resume_from_checkpoint" },
+          }
+        : yield* runVerificationPipeline({
+            cwd: config.cwd,
+            emit,
+            testCommands: config.testCommands,
+            ...(config.typecheckCommands ? { typecheckCommands: config.typecheckCommands } : {}),
+            ...(config.sandboxTestCommands ? { sandboxTestCommands: config.sandboxTestCommands } : {}),
+            ...(config.e2eCommands ? { e2eCommands: config.e2eCommands } : {}),
+            ...(state.task?.labels ? { taskLabels: state.task.labels } : {}),
+            ...(sandboxRunnerConfig ? { sandboxRunnerConfig } : {}),
+            ...(verificationCommands.length > 0 ? { verificationCommands } : {}),
+          }).pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({
+                verification: { passed: false, outputs: [], results: [] },
+                e2e: { ran: false, passed: true, outputs: [] },
+              } satisfies VerificationPipelineResult),
+            ),
+          );
+
+      if (skipVerification) {
+        emit({ type: "e2e_skipped", reason: "resume_from_checkpoint" });
+      }
 
       const verifyResult = verificationOutcome.verification;
 
@@ -1052,6 +1148,12 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       const commitMessage = taskResult.title;
       const commitBranch = yield* getCurrentBranch(config.cwd);
 
+      if (currentCheckpoint) {
+        const nextPhase = advancePhase(currentCheckpoint.phase, "committing");
+        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, nextPhase);
+        yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+      }
+
       yield* updateTask({
         tasksPath,
         id: taskResult.id,
@@ -1107,6 +1209,12 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
         },
         appendCommits: [sha],
       }).pipe(Effect.catchAll(() => Effect.void));
+
+      if (currentCheckpoint) {
+        const nextPhase = advancePhase(currentCheckpoint.phase, "updating_task");
+        currentCheckpoint = updateCheckpointPhase(currentCheckpoint, nextPhase);
+        yield* saveCheckpoint(openagentsDir, currentCheckpoint, emit);
+      }
 
       emit({ type: "task_updated", task: taskResult, status: "closed" });
 
