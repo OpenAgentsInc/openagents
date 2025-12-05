@@ -700,8 +700,6 @@ export const isTBSuiteInfo = (msg: HudMessage): msg is TBSuiteInfoMessage =>
 export const isTBRunRequest = (msg: HudMessage): msg is TBRunRequestMessage =>
   msg.type === "tb_run_request";
 
-export const isTBRunHistory = (msg: HudMessage): msg is TBRunHistoryMessage =>
-  msg.type === "tb_run_history";
 
 /** Check if message is any TB-related message */
 export const isTBMessage = (msg: HudMessage): boolean =>

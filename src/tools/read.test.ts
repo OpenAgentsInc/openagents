@@ -10,7 +10,7 @@ const runWithBun = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem | P
   Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 describe("readTool", () => {
-  it("reads text content", async () => {
+  it("reads text content via file_path alias", async () => {
     const result = await runWithBun(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -19,7 +19,7 @@ describe("readTool", () => {
         const file = path.join(dir, "sample.txt");
         yield* fs.writeFileString(file, "alpha\nbravo\ncharlie\n");
 
-        return yield* runTool(readTool, { path: file });
+        return yield* runTool(readTool, { file_path: file });
       }),
     );
 
@@ -50,7 +50,7 @@ describe("readTool", () => {
 
   it("fails when file is missing", async () => {
     const error = await runWithBun(
-      runTool(readTool, { path: "/no/such/file.txt" }).pipe(Effect.flip),
+      runTool(readTool, { file_path: "/no/such/file.txt" }).pipe(Effect.flip),
     );
 
     expect(error).toBeInstanceOf(ToolExecutionError);
