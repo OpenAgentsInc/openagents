@@ -75,4 +75,26 @@ describe("verification-pipeline", () => {
     expect(calls[0]?.runner).toBe("sandbox");
     expect(calls.some((c) => c.runner === "host")).toBe(false);
   });
+
+  test("runVerificationPipeline runs verification and e2e commands on host", async () => {
+    const plan = buildVerificationPlan({
+      typecheckCommands: ["echo typecheck"],
+      testCommands: ["echo test"],
+      e2eCommands: ["echo e2e"],
+    });
+
+    const result = await Effect.runPromise(
+      runVerificationPipeline({
+        plan,
+        cwd: process.cwd(),
+        emit: () => {},
+      })
+    );
+
+    expect(result.verification.passed).toBe(true);
+    expect(result.verification.outputs).toHaveLength(plan.verificationCommands.length);
+    expect(result.e2e?.ran).toBe(true);
+    expect(result.e2e?.passed).toBe(true);
+    expect(result.e2e?.outputs).toHaveLength(plan.e2eCommands.length);
+  });
 });

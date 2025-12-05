@@ -174,16 +174,20 @@ export const runVerificationPipeline = (
 
     let e2eResult: VerificationPipelineResult["e2e"];
 
-  if (options.plan.runE2e) {
-    const result = yield* runE2eHost(options.plan.e2eCommands, options.cwd, options.emit);
-    e2eResult = { ran: true, passed: result.passed, outputs: result.outputs };
-  } else if (options.plan.e2eCommands.length > 0) {
-    e2eResult = { ran: false, passed: true, outputs: [] };
-    options.emit({
-      type: "e2e_skipped",
-      reason: "Task has skip-e2e label",
-    } as any);
-  }
+    const shouldRunE2e = options.plan.runE2e && verificationResult.passed;
+
+    if (shouldRunE2e) {
+      const result = yield* runE2eHost(options.plan.e2eCommands, options.cwd, options.emit);
+      e2eResult = { ran: true, passed: result.passed, outputs: result.outputs };
+    } else if (!options.plan.runE2e && options.plan.e2eCommands.length > 0) {
+      e2eResult = { ran: false, passed: true, outputs: [] };
+      options.emit({
+        type: "e2e_skipped",
+        reason: "Task has skip-e2e label",
+      } as any);
+    } else if (options.plan.runE2e && !verificationResult.passed) {
+      e2eResult = { ran: false, passed: false, outputs: [] };
+    }
 
     return {
       verification: verificationResult,
