@@ -18,8 +18,8 @@ describe("writeTool", () => {
         const dir = yield* fs.makeTempDirectory({ prefix: "write-tool" });
         const file = path.join(dir, "sample.txt");
 
-        yield* runTool(writeTool, { path: file, content: "hello" });
-        yield* runTool(writeTool, { path: file, content: "updated" });
+        yield* runTool(writeTool, { file_path: file, content: "hello" });
+        yield* runTool(writeTool, { file_path: file, content: "updated" });
 
         const content = yield* fs.readFileString(file);
         return { result: content };
@@ -37,7 +37,7 @@ describe("writeTool", () => {
         const dir = yield* fs.makeTempDirectory({ prefix: "write-tool" });
         const nested = path.join(dir, "deep/nested/sample.txt");
 
-        yield* runTool(writeTool, { path: nested, content: "data" });
+        yield* runTool(writeTool, { file_path: nested, content: "data" });
         const content = yield* fs.readFileString(nested);
         return content;
       }),
@@ -46,9 +46,16 @@ describe("writeTool", () => {
     expect(result).toBe("data");
   });
 
+  it("requires a path or file_path", async () => {
+    const error = await runWithBun(runTool(writeTool, { content: "x" }).pipe(Effect.flip));
+
+    expect(error).toBeInstanceOf(ToolExecutionError);
+    expect((error as ToolExecutionError).reason).toBe("invalid_arguments");
+  });
+
   it("fails on invalid path", async () => {
     const error = await runWithBun(
-      runTool(writeTool, { path: "/root/forbidden.txt", content: "x" }).pipe(Effect.flip),
+      runTool(writeTool, { file_path: "/root/forbidden.txt", content: "x" }).pipe(Effect.flip),
     );
 
     expect(error).toBeInstanceOf(ToolExecutionError);
