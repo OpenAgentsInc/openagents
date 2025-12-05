@@ -50,9 +50,10 @@ fi
 # 2. Smoke test: typecheck
 log "Running smoke test (typecheck)..."
 if ! bun run typecheck >> "$LOG_FILE" 2>&1; then
-    fatal "Typecheck failed at preflight. Fix errors before running agent."
+    warn "Typecheck failed at preflight. Agent will be notified to fix type errors."
+else
+    log "Typecheck passed."
 fi
-log "Typecheck passed."
 
 # 3. Smoke test: quick test run (optional, based on project config)
 SMOKE_TEST=$(jq -r '.smokeTestCommand // empty' .openagents/project.json 2>/dev/null)
