@@ -10,8 +10,13 @@ high-quality code generation with comprehensive tool support.
 
 import json
 import os
+import platform
+import re
 import shlex
+import subprocess
+import tempfile
 from pathlib import Path
+from shutil import rmtree
 
 from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
 from harbor.models.agent.context import AgentContext
@@ -141,3 +146,86 @@ class MechaCoderAgent(BaseInstalledAgent):
             print(f"Failed to parse MechaCoder metrics: {e}")
         except Exception as e:
             print(f"Error reading MechaCoder metrics: {e}")
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        """
+        Run the agent with best-effort credential injection for Claude Code.
+
+        When API keys are not provided via environment variables, attempt to
+        read Claude Code OAuth credentials from the macOS Keychain and upload
+        them into the container at ~/.claude/.credentials.json so the Claude
+        CLI can authenticate in Harbor sandboxes.
+        """
+        await self._maybe_inject_credentials(environment)
+        await super().run(instruction, environment, context)
+
+    def _extract_credentials_from_keychain(self) -> str | None:
+        """
+        Extract Claude Code credentials from macOS Keychain.
+
+        Returns the raw JSON credential string when present, otherwise None.
+        """
+        if platform.system() != "Darwin":
+            return None
+
+        try:
+            result = subprocess.run(
+                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-g"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[mechacoder] Failed to invoke security for credentials: {exc}")
+            return None
+
+        if result.returncode != 0:
+            return None
+
+        output = result.stderr or ""
+        match = re.search(r'^password:\s*"(.+)"$', output, re.MULTILINE)
+        if not match:
+            return None
+
+        raw = match.group(1)
+        json_str = raw.replace(r'\\"', '"').replace(r"\\\\", "\\")
+
+        try:
+            json.loads(json_str)
+        except json.JSONDecodeError:
+            return None
+
+        return json_str
+
+    async def _maybe_inject_credentials(self, environment: BaseEnvironment) -> None:
+        """
+        If env vars are missing, try to inject credentials file into container.
+        """
+        if "ANTHROPIC_API_KEY" in os.environ or "ANTHROPIC_OAUTH_TOKEN" in os.environ:
+            return
+
+        credentials = self._extract_credentials_from_keychain()
+        if not credentials:
+            return
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="mechacoder-creds-"))
+        creds_path = tmp_dir / ".credentials.json"
+        try:
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            creds_path.write_text(credentials)
+
+            await environment.exec(command="mkdir -p /root/.claude")
+            await environment.upload_file(
+                source_path=creds_path,
+                target_path="/root/.claude/.credentials.json",
+            )
+            await environment.exec(command="chmod 600 /root/.claude/.credentials.json")
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[mechacoder] Failed to inject Claude credentials into sandbox: {exc}")
+        finally:
+            rmtree(tmp_dir, ignore_errors=True)
