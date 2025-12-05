@@ -299,9 +299,13 @@ const parseArgs = (): Config => {
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dir" && args[i + 1]) {
-      workDir = args[i + 1].startsWith("~")
-        ? args[i + 1].replace("~", process.env.HOME || "")
-        : args[i + 1];
+      const dirArg = args[i + 1];
+      // Resolve ~ to home directory
+      const expandedDir = dirArg.startsWith("~")
+        ? dirArg.replace("~", process.env.HOME || "")
+        : dirArg;
+      // Resolve to absolute path (handles ".", "..", and relative paths)
+      workDir = nodePath.resolve(expandedDir);
       i++;
     } else if (args[i] === "--legacy") {
       legacy = true;
