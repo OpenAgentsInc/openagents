@@ -19,6 +19,7 @@ import type {
   TBSuiteInfo,
   TBRunHistoryItem,
   TBRunDetails,
+  MCTask,
 } from "./protocol.js";
 import {
   isLoadTBSuiteRequest,
@@ -26,9 +27,13 @@ import {
   isStopTBRunRequest,
   isLoadRecentTBRunsRequest,
   isLoadTBRunDetailsRequest,
+  isLoadReadyTasksRequest,
   createSuccessResponse,
   createErrorResponse,
 } from "./protocol.js";
+import { Effect } from "effect";
+import { BunContext } from "@effect/platform-bun";
+import { readyTasks as getReadyTasks } from "../tasks/service.js";
 
 // ============================================================================
 // Project Root Resolution
@@ -250,6 +255,40 @@ export function getProjectRootDir(): string {
 }
 
 // ============================================================================
+// Ready Tasks Loading
+// ============================================================================
+
+const TASKS_FILE = ".openagents/tasks.jsonl";
+
+export async function loadReadyTasks(limit?: number): Promise<MCTask[]> {
+  const tasksPath = join(PROJECT_ROOT, TASKS_FILE);
+  console.log(`[Handler] loadReadyTasks called, path: ${tasksPath}, limit: ${limit}`);
+
+  try {
+    const program = getReadyTasks(tasksPath, { limit });
+    const tasks = await Effect.runPromise(
+      program.pipe(Effect.provide(BunContext.layer))
+    );
+    console.log(`[Handler] Found ${tasks.length} ready tasks`);
+
+    return tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? "",
+      status: t.status,
+      priority: t.priority,
+      type: t.type,
+      labels: Array.from(t.labels ?? []),
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }));
+  } catch (err) {
+    console.error("[Handler] Failed to load ready tasks:", err);
+    return [];
+  }
+}
+
+// ============================================================================
 // WebSocket Request Handler
 // ============================================================================
 
@@ -290,6 +329,13 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
     if (isLoadTBRunDetailsRequest(request)) {
       const data = await loadTBRunDetails(request.runId);
       return createSuccessResponse("response:loadTBRunDetails", correlationId, data);
+    }
+
+    if (isLoadReadyTasksRequest(request)) {
+      console.log("[Handler] Received loadReadyTasks request");
+      const data = await loadReadyTasks(request.limit);
+      console.log(`[Handler] Returning ${data.length} tasks`);
+      return createSuccessResponse("response:loadReadyTasks", correlationId, data);
     }
 
     // Unknown request type

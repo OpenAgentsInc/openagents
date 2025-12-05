@@ -79,7 +79,8 @@ webview.bind("bunLog", (...args: unknown[]) => {
 });
 
 webview.title = "OpenAgents";
-webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
+// Launch near-fullscreen on typical laptop resolutions
+webview.size = { width: 1920, height: 1200, hint: SizeHint.MAX };
 
 // Navigate to localhost HTTP server - this gives the page a real origin
 // so WebSocket connections to localhost will work

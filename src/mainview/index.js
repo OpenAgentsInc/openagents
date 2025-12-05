@@ -1294,6 +1294,13 @@ ${pad}</g>`;
       }
       return response.data ?? null;
     }
+    async loadReadyTasks(limit) {
+      const response = await this.request("request:loadReadyTasks", { limit });
+      if (!response.success) {
+        throw new Error(response.error ?? "Failed to load ready tasks");
+      }
+      return response.data ?? [];
+    }
     handleMessage(data) {
       const parsed = parseSocketMessage(data);
       if (!parsed) {
@@ -1360,6 +1367,53 @@ ${pad}</g>`;
 
   // src/mainview/index.ts
   console.log("[OpenAgents] Script loading...");
+  var mcTasks = [];
+  var mcTasksLoading = false;
+  var mcTasksError = null;
+  async function loadMCTasks() {
+    if (mcTasksLoading) {
+      console.log("[MC] Already loading, skipping");
+      return;
+    }
+    mcTasksLoading = true;
+    mcTasksError = null;
+    const t0 = performance.now();
+    render();
+    const t1 = performance.now();
+    const loadingRenderTime = (t1 - t0).toFixed(2);
+    console.log(`[MC] Loading state render took ${loadingRenderTime}ms`);
+    window.bunLog?.(`[MC] Loading state render took ${loadingRenderTime}ms`);
+    try {
+      const t2 = performance.now();
+      console.log("[MC] Loading ready tasks via RPC...");
+      window.bunLog?.("[MC] Loading ready tasks via RPC...");
+      const tasks = await socketClient.loadReadyTasks(20);
+      const t3 = performance.now();
+      const rpcTime = (t3 - t2).toFixed(2);
+      console.log(`[MC] RPC took ${rpcTime}ms`);
+      window.bunLog?.(`[MC] RPC took ${rpcTime}ms`);
+      mcTasks = tasks;
+      console.log(`[MC] Loaded ${tasks.length} ready tasks`);
+      window.bunLog?.(`[MC] Loaded ${tasks.length} ready tasks`);
+      const t4 = performance.now();
+      requestAnimationFrame(() => {
+        render();
+        const t5 = performance.now();
+        const dataRenderTime = (t5 - t4).toFixed(2);
+        console.log(`[MC] Data render took ${dataRenderTime}ms`);
+        window.bunLog?.(`[MC] Data render took ${dataRenderTime}ms`);
+        mcTasksLoading = false;
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[MC] Failed to load tasks:", errMsg);
+      window.bunLog?.(`[MC] FAILED to load tasks: ${errMsg}`);
+      mcTasksError = errMsg;
+      mcTasks = [];
+      render();
+      mcTasksLoading = false;
+    }
+  }
   var apmState = {
     sessionAPM: 0,
     recentAPM: 0,
@@ -1373,51 +1427,134 @@ ${pad}</g>`;
     mechaCoderAPM: 0,
     efficiencyRatio: 0
   };
-  function getAPMColor(apm) {
-    if (apm >= 30)
-      return "#f59e0b";
-    if (apm >= 15)
-      return "#22c55e";
-    if (apm >= 5)
-      return "#3b82f6";
-    return "#6b7280";
+  function getPriorityLabel(priority) {
+    switch (priority) {
+      case 0:
+        return "P0";
+      case 1:
+        return "P1";
+      case 2:
+        return "P2";
+      case 3:
+        return "P3";
+      case 4:
+        return "P4";
+      default:
+        return `P${priority}`;
+    }
   }
-  function renderAPMWidget() {
-    const color = getAPMColor(apmState.sessionAPM);
-    const efficiencyText = apmState.efficiencyRatio > 0 ? `${apmState.efficiencyRatio.toFixed(1)}x faster` : "";
-    const deltaPercent = apmState.efficiencyRatio > 0 ? `+${((apmState.efficiencyRatio - 1) * 100).toFixed(0)}%` : "";
-    return `
-    <g transform="translate(20, 20)" class="apm-widget">
-      <!-- Background -->
-      <rect x="0" y="0" width="260" height="110" rx="8" ry="8"
-            fill="#141017" stroke="rgba(245, 158, 11, 0.25)" stroke-width="1"/>
+  function getPriorityClasses(priority) {
+    switch (priority) {
+      case 0:
+        return "bg-red-500/20 text-red-400 border-red-500/30";
+      case 1:
+        return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      case 2:
+        return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      case 3:
+        return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+      case 4:
+        return "bg-zinc-600/20 text-zinc-500 border-zinc-600/30";
+      default:
+        return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+    }
+  }
+  function renderMCTasksWidget() {
+    const t0 = performance.now();
+    const widget = document.getElementById("mc-tasks-widget");
+    if (!widget)
+      return;
+    if (viewMode !== "flow") {
+      widget.classList.add("hidden");
+      return;
+    }
+    widget.classList.remove("hidden");
+    const t1 = performance.now();
+    const prepTime = (t1 - t0).toFixed(2);
+    console.log(`[MC] Widget prep took ${prepTime}ms`);
+    window.bunLog?.(`[MC] Widget prep took ${prepTime}ms`);
+    if (mcTasksLoading) {
+      widget.innerHTML = `
+      <div class="card fixed inset-x-4 top-4 p-6">
+        <div class="text-violet-400 text-center font-mono">Loading ready tasks...</div>
+      </div>
+    `;
+      return;
+    }
+    if (mcTasksError) {
+      widget.innerHTML = `
+      <div class="card fixed inset-x-4 top-4 p-6 border-destructive">
+        <div class="text-destructive text-center font-mono">Error: ${mcTasksError.slice(0, 50)}</div>
+      </div>
+    `;
+      return;
+    }
+    if (mcTasks.length === 0) {
+      widget.innerHTML = `
+      <div class="card fixed inset-x-4 top-4 p-6">
+        <div class="text-muted-foreground text-center font-mono">No ready tasks found</div>
+      </div>
+    `;
+      return;
+    }
+    const taskRows = mcTasks.slice(0, 20).map((task) => {
+      const prioClasses = getPriorityClasses(task.priority);
+      const prioLabel = getPriorityLabel(task.priority);
+      const labelStr = task.labels.slice(0, 2).join(", ");
+      return `
+      <tr>
+        <td>
+          <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border ${prioClasses}">
+            ${prioLabel}
+          </span>
+        </td>
+        <td class="text-muted-foreground font-mono text-xs">${task.id}</td>
+        <td class="font-medium font-mono" title="${task.title}">${task.title}</td>
+        <td>
+          <span class="text-violet-400 font-mono text-xs">${task.type}</span>
+        </td>
+        <td class="text-muted-foreground font-mono text-xs">${labelStr}</td>
+      </tr>
+    `;
+    }).join("");
+    widget.innerHTML = `
+    <div class="card fixed inset-x-4 top-4 max-h-[70vh] overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h2 class="text-violet-400 font-bold font-mono text-lg">Ready Tasks (${mcTasks.length})</h2>
+        <span class="text-muted-foreground text-xs font-mono">Ctrl+1 to refresh</span>
+      </div>
 
-      <!-- Header: APM value -->
-      <text x="16" y="32" fill="${color}" font-size="24" font-weight="bold" font-family="Berkeley Mono, monospace">
-        APM: ${apmState.sessionAPM.toFixed(1)}
-      </text>
-      ${efficiencyText ? `
-      <text x="140" y="32" fill="#22c55e" font-size="14" font-family="Berkeley Mono, monospace">
-        ▲ ${efficiencyText}
-      </text>` : ""}
+      <!-- Table -->
+      <div class="overflow-x-auto max-h-[calc(70vh-60px)] overflow-y-auto">
+        <table class="table">
+          <thead>
+            <tr>
+              <th class="w-12">Pri</th>
+              <th class="w-24">ID</th>
+              <th>Title</th>
+              <th class="w-20">Type</th>
+              <th class="w-32">Labels</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${taskRows}
+          </tbody>
+        </table>
+      </div>
 
-      <!-- Session stats -->
-      <text x="16" y="54" fill="#9ca3af" font-size="12" font-family="Berkeley Mono, monospace">
-        Session: ${apmState.totalActions} actions | ${apmState.durationMinutes.toFixed(0)}m
-      </text>
-
-      <!-- Time windows -->
-      <text x="16" y="74" fill="#6b7280" font-size="11" font-family="Berkeley Mono, monospace">
-        1h: ${apmState.apm1h.toFixed(1)} | 6h: ${apmState.apm6h.toFixed(1)} | 24h: ${apmState.apm1d.toFixed(1)}
-      </text>
-
-      <!-- Comparison -->
-      ${apmState.mechaCoderAPM > 0 ? `
-      <text x="16" y="94" fill="#f59e0b" font-size="11" font-family="Berkeley Mono, monospace">
-        MechaCoder vs Claude Code: ${deltaPercent}
-      </text>` : ""}
-    </g>
+      ${mcTasks.length > 20 ? `
+      <div class="px-4 py-2 border-t border-border text-center">
+        <span class="text-muted-foreground text-xs font-mono">+ ${mcTasks.length - 20} more tasks...</span>
+      </div>
+      ` : ""}
+    </div>
   `;
+    const t2 = performance.now();
+    const innerHTMLTime = (t2 - t1).toFixed(2);
+    const totalTime = (t2 - t0).toFixed(2);
+    console.log(`[MC] Widget innerHTML set took ${innerHTMLTime}ms, total: ${totalTime}ms`);
+    window.bunLog?.(`[MC] Widget innerHTML set took ${innerHTMLTime}ms, total: ${totalTime}ms`);
   }
   var tbState = {
     isRunning: false,
@@ -1440,17 +1577,24 @@ ${pad}</g>`;
     comparison: null,
     baselineRunId: null
   };
-  var viewMode = "tbench";
+  var viewMode = "flow";
   try {
-    viewMode = localStorage.getItem("hud-view-mode") || "tbench";
+    viewMode = localStorage.getItem("hud-view-mode") || "flow";
   } catch {}
   function setViewMode(mode) {
+    console.log(`[View] setViewMode called: ${mode}`);
+    window.bunLog?.(`[View] setViewMode called: ${mode}`);
     viewMode = mode;
     try {
       localStorage.setItem("hud-view-mode", mode);
     } catch {}
     updateViewModeUI();
     render();
+    if (mode === "flow") {
+      console.log("[View] Triggering loadMCTasks...");
+      window.bunLog?.("[View] Triggering loadMCTasks...");
+      loadMCTasks();
+    }
   }
   function updateViewModeUI() {
     const flowBtn = document.getElementById("view-flow-btn");
@@ -2167,17 +2311,27 @@ ${pad}</g>`;
   var initialPan = getCenteredPan(window.innerWidth, window.innerHeight);
   canvasState = { ...canvasState, ...initialPan };
   function render() {
+    const r0 = performance.now();
     if (viewMode === "flow") {
+      const r1 = performance.now();
       const flowGroup = renderFlowSVG(layout, canvasState, DEFAULT_RENDER_CONFIG);
-      const apmOverlay = renderAPMWidget();
-      const tbOverlay = renderTBWidget();
-      const comparisonOverlay = renderComparisonWidget();
-      svg.innerHTML = svgElementToString(flowGroup) + apmOverlay + tbOverlay + comparisonOverlay;
+      const r2 = performance.now();
+      console.log(`[Render] renderFlowSVG took ${(r2 - r1).toFixed(2)}ms`);
+      window.bunLog?.(`[Render] renderFlowSVG took ${(r2 - r1).toFixed(2)}ms`);
+      svg.innerHTML = svgElementToString(flowGroup);
+      const r3 = performance.now();
+      console.log(`[Render] svgElementToString + innerHTML took ${(r3 - r2).toFixed(2)}ms`);
+      window.bunLog?.(`[Render] svgElementToString + innerHTML took ${(r3 - r2).toFixed(2)}ms`);
+      renderMCTasksWidget();
+      const r4 = performance.now();
+      console.log(`[Render] Total render took ${(r4 - r0).toFixed(2)}ms`);
+      window.bunLog?.(`[Render] Total render took ${(r4 - r0).toFixed(2)}ms`);
     } else {
       const tbFlowGroup = renderFlowSVG(tbLayout, canvasState, DEFAULT_RENDER_CONFIG);
       const tbOverlay = renderTBWidget();
       const comparisonOverlay = renderComparisonWidget();
       svg.innerHTML = svgElementToString(tbFlowGroup) + tbOverlay + comparisonOverlay;
+      renderMCTasksWidget();
     }
     zoomLevel.textContent = `${Math.round(canvasState.scale * 100)}%`;
   }
@@ -2300,6 +2454,9 @@ ${pad}</g>`;
   socketClient.connect().then(() => {
     window.bunLog?.("[Socket] Connected to desktop server!");
     console.log("[Socket] Connected to desktop server");
+    if (viewMode === "flow") {
+      loadMCTasks();
+    }
   }).catch((err) => {
     const errMsg = err instanceof Error ? err.message : String(err);
     window.bunLog?.("[Socket] FAILED to connect:", errMsg);

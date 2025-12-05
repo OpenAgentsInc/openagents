@@ -1,10 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenAgents</title>
+  <!-- Basecoat CSS (includes Tailwind utilities pre-compiled) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/basecoat.cdn.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
+  <!-- Tailwind Browser for arbitrary values (debounced to reduce lag) -->
+  <script>
+    window.tailwindConfig = {
+      scan: {
+        debounce: 100, // Wait 100ms before re-scanning
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Force dark mode -->
+  <script>
+    // Set dark mode before Basecoat loads to prevent flash
+    try {
+      localStorage.setItem('themeMode', 'dark');
+      document.documentElement.classList.add('dark');
+    } catch (e) {
+      // localStorage may be blocked
+    }
+  </script>
+  <!-- Local styles -->
   <link rel="stylesheet" href="index.css">
 </head>
 
@@ -12,6 +35,9 @@
   <div id="flow-container">
     <svg id="flow-svg" class="flow-svg"></svg>
   </div>
+
+  <!-- MC Tasks Widget (Tailwind) -->
+  <div id="mc-tasks-widget" class="hidden"></div>
   <div id="flow-controls">
     <div id="view-mode-switcher">
       <button id="view-flow-btn" class="active" title="MechaCoder View (Ctrl+1)">MC</button>

@@ -429,6 +429,67 @@ Agent connects to :4242
 }
 ```
 
+## UI Views
+
+The HUD has two view modes accessible via the toggle buttons or keyboard shortcuts:
+
+### MC View (MechaCoder) - Ctrl+1
+
+Displays ready tasks from `.openagents/tasks.jsonl`:
+
+- **Ready Tasks Widget**: Shows tasks that are ready to work on (status=open, no blocking deps)
+- Tasks sorted by priority (P0-P4) and age
+- Displays: Priority badge, Task ID, Title, Type, Labels
+- Up to 15 tasks shown with overflow indicator
+- Auto-loads when switching to MC view
+
+**RPC Request:**
+```typescript
+{
+  type: "request:loadReadyTasks",
+  correlationId: "abc123",
+  limit: 20  // optional
+}
+```
+
+**Response:**
+```typescript
+{
+  type: "response:loadReadyTasks",
+  correlationId: "abc123",
+  success: true,
+  data: [{
+    id: "oa-abc123",
+    title: "Fix bug in parser",
+    description: "...",
+    status: "open",
+    priority: 1,
+    type: "bug",
+    labels: ["parser", "urgent"],
+    createdAt: "2024-...",
+    updatedAt: "2024-..."
+  }, ...]
+}
+```
+
+### TB View (Terminal-Bench) - Ctrl+2
+
+Displays Terminal-Bench run history and controls:
+
+- **TB Controls Panel**: Load suite, start/stop runs, random task
+- **Run History Flow**: Visual tree of past runs with pass/fail rates
+- **Category Tree**: Hierarchical task view during runs
+- **Output Viewer**: Live streaming output from running tasks
+- **Comparison Widget**: Compare current run against a baseline (Shift+click)
+
+**Keyboard Shortcuts (TB View):**
+- `Ctrl+L` - Load suite
+- `Ctrl+T` - Start run
+- `Ctrl+R` - Start random task
+- `Ctrl+X` - Stop run
+- `Ctrl+B` - Clear baseline comparison
+- `Shift+Click` on run node - Set as comparison baseline
+
 ## Lessons Learned
 
 1. **Use `navigate()` to localhost HTTP** - This gives the page a real origin so WebSocket works.
