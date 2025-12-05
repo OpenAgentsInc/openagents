@@ -951,7 +951,8 @@ function handleHudMessage(message: HudMessage): void {
 // Larger padding/spacing to keep stacked agent->repo->task columns readable
 const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
 const TB_LAYOUT_CONFIG = { padding: 12, spacing: 180 }
-const REFRESH_INTERVAL_MS = 5000
+// Polling interval for layout refresh (60s - mostly rely on WebSocket events)
+const REFRESH_INTERVAL_MS = 60000
 
 // Calculate layout once from sample data as a placeholder until live data loads
 let layout = calculateLayout({
