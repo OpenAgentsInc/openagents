@@ -105,7 +105,12 @@ const buildVerificationCommands = (
     useSandbox && sandboxTestCommands && sandboxTestCommands.length > 0
       ? sandboxTestCommands
       : testCommands;
-  return [...(typecheckCommands ?? []), ...effectiveTestCommands];
+
+  // Skip typecheck in sandbox (runs on host in init script instead)
+  // tsc uses too much memory for container limits
+  const effectiveTypecheckCommands = useSandbox ? [] : (typecheckCommands ?? []);
+
+  return [...effectiveTypecheckCommands, ...effectiveTestCommands];
 };
 
 /**
