@@ -5,11 +5,14 @@ import * as S from "effect/Schema";
 import type { Tool } from "./schema.js";
 import { ToolExecutionError } from "./schema.js";
 
+const pathField = S.String.pipe(
+  S.minLength(1),
+  S.annotations({ description: "Path to the file to write (relative or absolute)" }),
+);
+
 const WriteParametersSchema = S.Struct({
-  path: S.String.pipe(
-    S.minLength(1),
-    S.annotations({ description: "Path to the file to write (relative or absolute)" }),
-  ),
+  path: S.optional(pathField),
+  file_path: S.optional(pathField),
   content: S.String.pipe(S.annotations({ description: "Content to write to the file" })),
 });
 
@@ -37,7 +40,14 @@ export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem |
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
 
-      const absolutePath = pathService.resolve(expandUserPath(params.path, pathService));
+      const inputPath = params.path ?? params.file_path;
+      if (!inputPath) {
+        return yield* Effect.fail(
+          new ToolExecutionError("invalid_arguments", "Either path or file_path is required"),
+        );
+      }
+
+      const absolutePath = pathService.resolve(expandUserPath(inputPath, pathService));
       const dir = pathService.dirname(absolutePath);
 
       yield* fs.makeDirectory(dir, { recursive: true }).pipe(
@@ -56,7 +66,7 @@ export const writeTool: Tool<WriteParameters, undefined, FileSystem.FileSystem |
         content: [
           {
             type: "text",
-            text: `Successfully wrote ${params.content.length} bytes to ${params.path}`,
+            text: `Successfully wrote ${params.content.length} bytes to ${inputPath}`,
           },
         ],
       };
