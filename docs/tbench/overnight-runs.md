@@ -73,10 +73,39 @@ results/YYYYMMDD/
     │   └── <task-id>/
     │       ├── workspace/    # Task workspace with agent output
     │       ├── output.txt    # Agent conversation log
-    │       └── verification.txt  # Test output
+    │       ├── verification.txt  # Test output
+    │       └── atif/         # ATIF trajectories (see below)
+    │           └── YYYYMMDD/
+    │               ├── <sessionId>.atif.jsonl
+    │               └── <sessionId>.index.json
     ├── 002/
     │   └── ...
     └── ...
+```
+
+## ATIF Disk Persistence
+
+Each task run saves its full ATIF trajectory to disk for future analysis and learning:
+
+**Files saved:**
+- `<sessionId>.atif.jsonl` - Append-only step log (one JSON line per step)
+- `<sessionId>.index.json` - Metadata and checkpoint info
+
+**ATIF step data includes:**
+- Tool calls (function name, arguments)
+- Observations (tool results)
+- Timestamps for each step
+- Agent source info
+
+**Use cases:**
+- Post-run analysis of agent behavior
+- Training data for future learning systems (Gym Trainer)
+- Debugging failed tasks
+- Comparing agent strategies across iterations
+
+**Path format:**
+```
+<output>/<task-id>/atif/<YYYYMMDD>/<sessionId>.atif.jsonl
 ```
 
 ## Episode Tracking
