@@ -352,6 +352,7 @@ bun src/cli/tbench-iterate.ts --resume ./results/20251205/state.json
 **Features:**
 - Support for Claude Code and local Ollama models
 - Episode tracking in `.openagents/gym/episodes.jsonl`
+- **ATIF disk persistence** - Full trajectory saved for each task run
 - Resume capability for interrupted runs
 - Baseline comparison
 - HUD integration for real-time monitoring
@@ -367,7 +368,14 @@ results/YYYYMMDD/
     ├── 001/
     │   ├── results.json
     │   ├── report.md
-    │   └── <task-id>/workspace/
+    │   └── <task-id>/
+    │       ├── workspace/        # Agent output files
+    │       ├── output.txt        # Agent conversation log
+    │       ├── verification.txt  # Test results
+    │       └── atif/             # ATIF trajectories
+    │           └── YYYYMMDD/
+    │               ├── <sessionId>.atif.jsonl  # Step-by-step log
+    │               └── <sessionId>.index.json  # Metadata + checkpoint
     └── ...
 ```
 
