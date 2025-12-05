@@ -15,6 +15,7 @@
 import { Webview, SizeHint } from "webview-bun";
 import { resolve, dirname, join } from "node:path";
 import { DESKTOP_HTTP_PORT } from "./protocol.js";
+import { log } from "./logger.js";
 
 // ============================================================================
 // Project Root Resolution
@@ -42,8 +43,8 @@ const MAINVIEW_DIR = join(PROJECT_ROOT, "src/mainview");
 // Desktop Server (runs in Worker to avoid blocking by webview.run())
 // ============================================================================
 
-console.log(`[Desktop] Project root: ${PROJECT_ROOT}`);
-console.log(`[Desktop] Mainview dir: ${MAINVIEW_DIR}`);
+log("Desktop", `Project root: ${PROJECT_ROOT}`);
+log("Desktop", `Mainview dir: ${MAINVIEW_DIR}`);
 
 // Start server in a Worker so it doesn't get blocked by webview.run()
 const workerPath = join(import.meta.dir, "server-worker.ts");
@@ -56,7 +57,7 @@ const worker = new Worker(workerPath, {
 
 // Give worker time to start
 await new Promise((resolve) => setTimeout(resolve, 500));
-console.log(`[Desktop] Server worker started`);
+log("Desktop", "Server worker started");
 
 // ============================================================================
 // Native Window via webview-bun
@@ -74,7 +75,7 @@ webview.init(`
 
 // Debug: bind a function to get logs from webview
 webview.bind("bunLog", (...args: unknown[]) => {
-  console.log("[Webview]", ...args);
+  log("Webview", ...args);
 });
 
 webview.title = "OpenAgents";
@@ -83,14 +84,14 @@ webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
 // Navigate to localhost HTTP server - this gives the page a real origin
 // so WebSocket connections to localhost will work
 const url = `http://localhost:${DESKTOP_HTTP_PORT}/`;
-console.log(`[Desktop] Navigating to: ${url}`);
+log("Desktop", `Navigating to: ${url}`);
 webview.navigate(url);
 
-console.log("[Desktop] Opening webview window...");
+log("Desktop", "Opening webview window...");
 
 // This blocks until the window is closed
 webview.run();
 
 // Cleanup on exit
-console.log("[Desktop] Window closed, shutting down...");
+log("Desktop", "Window closed, shutting down...");
 worker.terminate();
