@@ -1,10 +1,13 @@
 /**
  * Desktop entry point using webview-bun
  *
- * This replaces the Electrobun-based entry point with a simpler architecture:
- * - DesktopServer for HTTP (static files) and WebSocket (unified protocol)
- * - webview-bun for native window
- * - No RPC layer - all communication via WebSocket with request/response
+ * Architecture:
+ * - webview-bun for native window (content loaded via setHTML)
+ * - WebSocket for RPC and HUD events (frontend ↔ DesktopServer)
+ * - DesktopServer handles both UI clients and agent HUD connections
+ *
+ * Note: We use setHTML() because WebKit blocks navigate() to localhost.
+ * But WebSocket connections TO localhost work fine from setHTML() content.
  */
 
 import { Webview, SizeHint } from "webview-bun";
@@ -49,20 +52,15 @@ console.log(`[Desktop] HUD server: ws://localhost:${server.getHudPort()}`);
 console.log(`[Desktop] Project root: ${PROJECT_ROOT}`);
 console.log(`[Desktop] Mainview dir: ${MAINVIEW_DIR}`);
 
-// Optional: log HUD messages
-server.onMessage((msg) => {
-  console.log(`[HUD] ${msg.type}`);
-});
-
 // ============================================================================
 // Native Window via webview-bun
 // ============================================================================
 
 const webview = new Webview();
 
-// Debug: inject code to log page loading
+// Debug: inject error handler and HUD event listener
 webview.init(`
-  console.log('[DEBUG] Webview init script running');
+  console.log('[OpenAgents] Webview initialized');
   window.onerror = function(msg, url, line) {
     console.error('[JS ERROR]', msg, 'at', url, line);
   };
@@ -73,6 +71,9 @@ webview.bind("bunLog", (...args: unknown[]) => {
   console.log("[Webview]", ...args);
 });
 
+// Note: RPC and HUD events are handled via WebSocket (SocketClient in frontend)
+// The DesktopServer broadcasts HUD messages to all UI clients over WebSocket
+
 webview.title = "OpenAgents";
 webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
 
@@ -81,19 +82,34 @@ const htmlFile = Bun.file(join(MAINVIEW_DIR, "index.html"));
 const cssFile = Bun.file(join(MAINVIEW_DIR, "index.css"));
 const jsFile = Bun.file(join(MAINVIEW_DIR, "index.js"));
 
-const [html, css, js] = await Promise.all([
+const [_html, css, _js] = await Promise.all([
   htmlFile.text(),
   cssFile.text(),
   jsFile.text(),
 ]);
 
-// Inject CSS and JS inline
-const inlinedHtml = html
-  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
-  .replace('<script type="module" src="index.js"></script>', `<script>${js}</script>`);
+// Test: inline script with addEventListener (not onclick)
+const testHtml = `
+<!DOCTYPE html>
+<html>
+<head><style>${css}</style></head>
+<body>
+  <h1 id="test">If you see this, HTML loaded</h1>
+  <button id="btn">Click me</button>
+  <script>
+    document.getElementById('test').textContent = 'JS IS WORKING!';
+    document.getElementById('btn').addEventListener('click', function() {
+      alert('Button clicked via addEventListener!');
+      document.getElementById('test').textContent = 'BUTTON CLICKED!';
+    });
+    console.log('Script with addEventListener executed');
+  </script>
+</body>
+</html>
+`;
 
-console.log(`[Desktop] Loaded: HTML=${html.length}b, CSS=${css.length}b, JS=${js.length}b`);
-webview.setHTML(inlinedHtml);
+console.log(`[Desktop] Testing with addEventListener...`);
+webview.setHTML(testHtml);
 
 console.log("[Desktop] Opening webview window...");
 

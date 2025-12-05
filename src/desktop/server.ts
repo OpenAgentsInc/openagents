@@ -207,7 +207,7 @@ export class DesktopServer {
             return;
           }
 
-          // Handle requests from UI clients
+          // Handle requests from UI clients via WebSocket RPC
           if (isSocketRequest(parsed)) {
             self.log(`Request received: ${parsed.type}`);
             const response = await handleRequest(parsed);

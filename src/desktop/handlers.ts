@@ -1,8 +1,9 @@
 /**
  * Desktop Request Handlers
  *
- * Implements handlers for socket requests, ported from Electrobun RPC.
- * These handlers have filesystem access and can spawn subprocesses.
+ * Handlers for TB operations, used by both:
+ * - WebSocket RPC (server.ts)
+ * - webview.bind() RPC (main.ts)
  */
 
 import { spawn } from "bun";
@@ -14,6 +15,7 @@ import {
 } from "../tbench-hud/persistence.js";
 import type {
   SocketRequest,
+  SocketResponse,
   TBSuiteInfo,
   TBRunHistoryItem,
   TBRunDetails,
@@ -26,7 +28,6 @@ import {
   isLoadTBRunDetailsRequest,
   createSuccessResponse,
   createErrorResponse,
-  type SocketResponse,
 } from "./protocol.js";
 
 // ============================================================================
@@ -60,7 +61,7 @@ let activeTBRun: ReturnType<typeof spawn> | null = null;
 // TB Suite Loading
 // ============================================================================
 
-async function loadTBSuiteFile(suitePath: string): Promise<TBSuiteInfo> {
+export async function loadTBSuite(suitePath: string): Promise<TBSuiteInfo> {
   const fullPath = suitePath.startsWith("/")
     ? suitePath
     : join(PROJECT_ROOT, suitePath);
@@ -87,7 +88,7 @@ async function loadTBSuiteFile(suitePath: string): Promise<TBSuiteInfo> {
 // TB Run Spawning
 // ============================================================================
 
-interface TBRunOptions {
+export interface TBRunOptions {
   suitePath: string;
   taskIds?: string[];
   timeout?: number;
@@ -95,7 +96,7 @@ interface TBRunOptions {
   outputDir?: string;
 }
 
-function startTBRunProcess(options: TBRunOptions): { runId: string } {
+export async function startTBRun(options: TBRunOptions): Promise<{ runId: string }> {
   // Generate run ID
   const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
   const random = Math.random().toString(36).slice(2, 8);
@@ -150,7 +151,7 @@ function startTBRunProcess(options: TBRunOptions): { runId: string } {
   return { runId };
 }
 
-function stopTBRunProcess(): { stopped: boolean } {
+export function stopTBRun(): { stopped: boolean } {
   if (activeTBRun) {
     console.log("[TB] Stopping active run");
     activeTBRun.kill();
@@ -164,7 +165,7 @@ function stopTBRunProcess(): { stopped: boolean } {
 // TB Run History Loading
 // ============================================================================
 
-async function loadRecentTBRunsFromDisk(count: number): Promise<TBRunHistoryItem[]> {
+export async function loadRecentTBRuns(count: number = 20): Promise<TBRunHistoryItem[]> {
   const runsDir = join(PROJECT_ROOT, DEFAULT_TB_RUNS_DIR);
 
   try {
@@ -191,7 +192,7 @@ async function loadRecentTBRunsFromDisk(count: number): Promise<TBRunHistoryItem
   }
 }
 
-async function loadTBRunDetailsFromDisk(runId: string): Promise<TBRunDetails | null> {
+export async function loadTBRunDetails(runId: string): Promise<TBRunDetails | null> {
   const runsDir = join(PROJECT_ROOT, DEFAULT_TB_RUNS_DIR);
   console.log(`[TB] Loading run details for: ${runId}`);
 
@@ -241,51 +242,60 @@ async function loadTBRunDetailsFromDisk(runId: string): Promise<TBRunDetails | n
   }
 }
 
+/**
+ * Get the project root directory.
+ */
+export function getProjectRootDir(): string {
+  return PROJECT_ROOT;
+}
+
 // ============================================================================
-// Request Handler
+// WebSocket Request Handler
 // ============================================================================
 
 /**
  * Handle a socket request and return a response.
+ * Used by server.ts for WebSocket RPC.
  */
 export async function handleRequest(request: SocketRequest): Promise<SocketResponse> {
   const { correlationId } = request;
 
   try {
     if (isLoadTBSuiteRequest(request)) {
-      const data = await loadTBSuiteFile(request.suitePath);
+      const data = await loadTBSuite(request.suitePath);
       return createSuccessResponse("response:loadTBSuite", correlationId, data);
     }
 
     if (isStartTBRunRequest(request)) {
-      const options: TBRunOptions = { suitePath: request.suitePath };
-      if (request.taskIds) options.taskIds = request.taskIds;
-      if (request.timeout) options.timeout = request.timeout;
-      if (request.maxTurns) options.maxTurns = request.maxTurns;
-      if (request.outputDir) options.outputDir = request.outputDir;
-      const data = startTBRunProcess(options);
+      const data = await startTBRun({
+        suitePath: request.suitePath,
+        ...(request.taskIds && { taskIds: request.taskIds }),
+        ...(request.timeout !== undefined && { timeout: request.timeout }),
+        ...(request.maxTurns !== undefined && { maxTurns: request.maxTurns }),
+        ...(request.outputDir && { outputDir: request.outputDir }),
+      });
       return createSuccessResponse("response:startTBRun", correlationId, data);
     }
 
     if (isStopTBRunRequest(request)) {
-      const data = stopTBRunProcess();
+      const data = stopTBRun();
       return createSuccessResponse("response:stopTBRun", correlationId, data);
     }
 
     if (isLoadRecentTBRunsRequest(request)) {
-      const data = await loadRecentTBRunsFromDisk(request.count ?? 20);
+      const data = await loadRecentTBRuns(request.count ?? 20);
       return createSuccessResponse("response:loadRecentTBRuns", correlationId, data);
     }
 
     if (isLoadTBRunDetailsRequest(request)) {
-      const data = await loadTBRunDetailsFromDisk(request.runId);
+      const data = await loadTBRunDetails(request.runId);
       return createSuccessResponse("response:loadTBRunDetails", correlationId, data);
     }
 
-    // Unknown request type - cast to any to access type property on exhausted union
+    // Unknown request type
     const unknownRequest = request as { type: string };
     return createErrorResponse(
-      "response:loadTBSuite" as const, // fallback type
+      "response:loadTBSuite" as const,
       correlationId,
       `Unknown request type: ${unknownRequest.type}`
     );
@@ -294,15 +304,7 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
     const requestAny = request as { type?: string };
     console.error(`[Handler] Error handling ${requestAny.type ?? "unknown"}:`, errorMessage);
 
-    // Map request type to response type
     const responseType = (requestAny.type ?? "request:unknown").replace("request:", "response:") as SocketResponse["type"];
     return createErrorResponse(responseType, correlationId, errorMessage);
   }
-}
-
-/**
- * Get the project root directory.
- */
-export function getProjectRootDir(): string {
-  return PROJECT_ROOT;
 }

@@ -260,6 +260,134 @@ src/mainview/
   socket-client.ts  # WebSocket client for server communication
 ```
 
+## OpenAgents Desktop Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              DESKTOP APP                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐                      ┌─────────────────────────────┐  │
+│  │   webview-bun   │      setHTML()       │         UI (HTML)           │  │
+│  │  (native win)   │ ────────────────────→│                             │  │
+│  │                 │                      │  - index.html (inlined)     │  │
+│  │  main.ts        │                      │  - index.css (inlined)      │  │
+│  │                 │                      │  - index.js  (inlined)      │  │
+│  └─────────────────┘                      │                             │  │
+│                                           │  ┌───────────────────────┐  │  │
+│                                           │  │    SocketClient       │  │  │
+│                                           │  │  (socket-client.ts)   │  │  │
+│                                           │  └───────────┬───────────┘  │  │
+│                                           └──────────────│──────────────┘  │
+│                                                          │                  │
+│                                                          │ WebSocket        │
+│                                                          │ ws://localhost:8080/ws
+│                                                          │                  │
+│  ┌───────────────────────────────────────────────────────▼───────────────┐  │
+│  │                        DesktopServer                                  │  │
+│  │                         (server.ts)                                   │  │
+│  │                                                                       │  │
+│  │   ┌─────────────────────────┐    ┌─────────────────────────────────┐ │  │
+│  │   │   HTTP Server :8080     │    │   HUD Server :4242              │ │  │
+│  │   │                         │    │                                 │ │  │
+│  │   │  - Static files         │    │  - Agent connections            │ │  │
+│  │   │  - WebSocket upgrade    │    │  - HUD message ingestion        │ │  │
+│  │   │  - RPC handling         │    │                                 │ │  │
+│  │   └─────────────────────────┘    └─────────────────────────────────┘ │  │
+│  │                                                                       │  │
+│  │   ┌─────────────────────────────────────────────────────────────────┐│  │
+│  │   │                    handleRequest()                              ││  │
+│  │   │                     (handlers.ts)                               ││  │
+│  │   │                                                                 ││  │
+│  │   │  - loadTBSuite      - loadRecentTBRuns                         ││  │
+│  │   │  - startTBRun       - loadTBRunDetails                         ││  │
+│  │   │  - stopTBRun                                                   ││  │
+│  │   └─────────────────────────────────────────────────────────────────┘│  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      ▲
+                                      │ WebSocket :4242
+                                      │
+┌─────────────────────────────────────┴─────────────────────────────────────┐
+│                              EXTERNAL AGENTS                              │
+│                                                                           │
+│   MechaCoder, Claude Code, TB Runners, etc.                              │
+│   Connect to ws://localhost:4242 to send HUD messages                    │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+**1. Content Loading (startup)**
+```
+main.ts → reads HTML/CSS/JS files → inlines them → webview.setHTML()
+```
+
+**2. RPC Requests (UI → Backend)**
+```
+UI button click
+  → SocketClient.request("request:loadTBSuite", { suitePath })
+  → WebSocket to DesktopServer
+  → handleRequest() in handlers.ts
+  → Response back via WebSocket
+  → SocketClient resolves Promise
+```
+
+**3. HUD Events (Agents → UI)**
+```
+Agent connects to :4242
+  → Sends HudMessage (JSON)
+  → DesktopServer receives
+  → Broadcasts to all UI clients via :8080 WebSocket
+  → SocketClient.onMessage() fires
+  → UI updates
+```
+
+### Why This Architecture?
+
+1. **setHTML() bypasses WebKit restriction** - Can't navigate to localhost HTTP, but can load HTML directly
+
+2. **WebSocket works from setHTML() content** - Even though HTTP navigation is blocked, WebSocket connections TO localhost work fine
+
+3. **Single server handles everything** - DesktopServer provides both HTTP (for dev/debugging) and WebSocket (for RPC + HUD)
+
+4. **Agents connect separately** - HUD port 4242 is dedicated to agent connections, keeping concerns separated
+
+5. **No webview.bind() for RPC** - WebSocket is more flexible, supports correlation IDs, and doesn't require Bun-specific APIs in the frontend
+
+### Socket Protocol
+
+**Requests** (UI → Backend):
+```typescript
+{
+  type: "request:loadTBSuite",
+  correlationId: "abc123",
+  suitePath: "path/to/suite.json"
+}
+```
+
+**Responses** (Backend → UI):
+```typescript
+{
+  type: "response:loadTBSuite",
+  correlationId: "abc123",
+  success: true,
+  data: { name: "...", tasks: [...] }
+}
+```
+
+**HUD Events** (Agents → UI):
+```typescript
+{
+  type: "task:start",
+  runId: "tb-123",
+  taskId: "task-1",
+  timestamp: "2024-..."
+}
+```
+
 ## Lessons Learned
 
 1. **Always use `setHTML()` on macOS** - `navigate()` to localhost is blocked
