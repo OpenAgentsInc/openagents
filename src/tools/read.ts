@@ -39,8 +39,9 @@ const baseReadFields = {
 };
 
 const ReadParametersSchema = S.Struct({
-  path: S.optional(pathField),
   file_path: S.optional(pathField),
+  // Backward-compat alias kept for internal callers
+  path: S.optional(pathField),
   ...baseReadFields,
 });
 
@@ -70,17 +71,17 @@ export const readTool: Tool<
   name: "read",
   label: "read",
   description:
-    "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). For text, defaults to the first 2000 lines; use offset/limit to paginate.",
+    "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Prefer `file_path` (SDK naming); `path` remains as a backward-compatible alias. For text, defaults to the first 2000 lines; use offset/limit to paginate.",
   schema: ReadParametersSchema,
   execute: (params, _options) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
 
-      const inputPath = params.path ?? params.file_path;
+      const inputPath = params.file_path ?? params.path;
       if (!inputPath) {
         return yield* Effect.fail(
-          new ToolExecutionError("invalid_arguments", "Either path or file_path is required"),
+          new ToolExecutionError("invalid_arguments", "Either file_path or path is required"),
         );
       }
 
