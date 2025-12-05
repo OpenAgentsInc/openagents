@@ -459,9 +459,19 @@ export const TrajectoryCollectorLive = Layer.effect(
 /**
  * Create a standalone TrajectoryCollector (not as a service)
  * Useful for simple use cases or testing
+ *
+ * Optionally supports streaming to disk via StreamingWriter.
  */
 export class StandaloneTrajectoryCollector {
   private state: ActiveTrajectory | null = null;
+  private streamingWriter?: import("./streaming-writer.js").StreamingWriter;
+
+  /**
+   * Set streaming writer for incremental persistence
+   */
+  setStreamingWriter(writer: import("./streaming-writer.js").StreamingWriter): void {
+    this.streamingWriter = writer;
+  }
 
   startTrajectory(options: {
     sessionId?: string;
@@ -493,6 +503,13 @@ export class StandaloneTrajectoryCollector {
       totalCostUsd: 0,
     };
 
+    // Initialize streaming writer if present
+    if (this.streamingWriter) {
+      this.streamingWriter.initialize().catch((err) => {
+        console.warn(`[ATIF] Failed to initialize streaming writer: ${err}`);
+      });
+    }
+
     return sessionId;
   }
 
@@ -516,6 +533,14 @@ export class StandaloneTrajectoryCollector {
       extra,
     };
     state.steps.push(step);
+
+    // Stream to disk if writer configured
+    if (this.streamingWriter) {
+      this.streamingWriter.writeStep(step).catch((err) => {
+        console.warn(`[ATIF] Failed to stream step ${step.step_id}: ${err}`);
+      });
+    }
+
     return step;
   }
 
@@ -578,6 +603,13 @@ export class StandaloneTrajectoryCollector {
       state.totalCostUsd += options.metrics.costUsd ?? 0;
     }
 
+    // Stream to disk if writer configured
+    if (this.streamingWriter) {
+      this.streamingWriter.writeStep(step).catch((err) => {
+        console.warn(`[ATIF] Failed to stream step ${step.step_id}: ${err}`);
+      });
+    }
+
     return step;
   }
 
@@ -591,6 +623,14 @@ export class StandaloneTrajectoryCollector {
       extra,
     };
     state.steps.push(step);
+
+    // Stream to disk if writer configured
+    if (this.streamingWriter) {
+      this.streamingWriter.writeStep(step).catch((err) => {
+        console.warn(`[ATIF] Failed to stream step ${step.step_id}: ${err}`);
+      });
+    }
+
     return step;
   }
 
@@ -628,6 +668,14 @@ export class StandaloneTrajectoryCollector {
     };
 
     state.steps.push(step);
+
+    // Stream to disk if writer configured
+    if (this.streamingWriter) {
+      this.streamingWriter.writeStep(step).catch((err) => {
+        console.warn(`[ATIF] Failed to stream step ${step.step_id}: ${err}`);
+      });
+    }
+
     return step;
   }
 
@@ -667,6 +715,13 @@ export class StandaloneTrajectoryCollector {
         ? { parent_session_id: state.parentSessionId }
         : undefined,
     };
+
+    // Finalize streaming writer if present
+    if (this.streamingWriter) {
+      this.streamingWriter.close(finalMetrics, "complete").catch((err) => {
+        console.warn(`[ATIF] Failed to finalize streaming writer: ${err}`);
+      });
+    }
 
     this.state = null;
     return trajectory;
