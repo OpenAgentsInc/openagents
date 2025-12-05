@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "runId": "parallel-1764922493169",
+  "startedAt": "2025-12-05T08:14:56.222Z",
+  "config": {
+    "workDir": "/Users/christopherdavid/code/openagents",
+    "mergeTargetBranch": "main",
+    "maxAgents": 2,
+    "maxTasks": 4
+  },
+  "batches": [
+    {
+      "batchIndex": 0,
+      "startedAt": "2025-12-05T08:14:56.392Z",
+      "agents": [
+        {
+          "taskId": "oa-9c48cf",
+          "worktreePath": "/Users/christopherdavid/code/openagents/.worktrees/oa-9c48cf",
+          "branch": "agent/oa-9c48cf",
+          "status": "running",
+          "startedAt": "2025-12-05T08:14:57.084Z"
+        },
+        {
+          "taskId": "oa-d99f3e",
+          "worktreePath": "/Users/christopherdavid/code/openagents/.worktrees/oa-d99f3e",
+          "branch": "agent/oa-d99f3e",
+          "status": "running",
+          "startedAt": "2025-12-05T08:14:57.639Z"
+        }
+      ]
+    }
+  ],
+  "currentBatchIndex": 0,
+  "tasksCompleted": 0,
+  "tasksFailed": 0,
+  "pendingMerges": [],
+  "completedMerges": []
+}

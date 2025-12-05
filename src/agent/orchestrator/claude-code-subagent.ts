@@ -66,7 +66,8 @@ const isResultMessage = (message: any): message is { type?: string; subtype?: st
 const defaultBuildPrompt = (
   subtask: Subtask,
   additionalContext?: string,
-  reflections?: string
+  reflections?: string,
+  cwd?: string
 ): string => {
   let prompt = "";
 
@@ -75,6 +76,27 @@ const defaultBuildPrompt = (
     prompt += `## Project Context
 
 ${additionalContext}
+
+---
+
+`;
+  }
+
+  // Worktree guidance if running in isolated worktree
+  if (cwd && cwd.includes("/.worktrees/")) {
+    prompt += `## IMPORTANT: Worktree Isolation
+
+You are running in an ISOLATED git worktree at:
+\`${cwd}\`
+
+This is your workspace. ALL your work happens here:
+- Make all file changes in this worktree directory
+- Run all commands (tests, typecheck, git) in this worktree
+- DO NOT try to work in "the main repo" or switch directories
+- The worktree IS the repository - it has all project files
+- Your changes will be merged to main after you complete
+
+Stay in this worktree for all operations. This isolation prevents conflicts with other agents.
 
 ---
 
@@ -320,7 +342,7 @@ export const runClaudeCodeSubagent = async (
 
     try {
       for await (const message of query({
-        prompt: defaultBuildPrompt(subtask, options.additionalContext, options.reflections),
+        prompt: defaultBuildPrompt(subtask, options.additionalContext, options.reflections, options.cwd),
         options: {
           cwd: options.cwd,
           // Use Claude Code's system prompt with CLAUDE.md context
