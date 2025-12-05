@@ -47,7 +47,6 @@ import {
   isContainerError,
   type ContainerStreamType,
 } from "../hud/protocol.js"
-import type { TBRunHistoryItem } from "../desktop/protocol.js"
 
 // ============================================================================
 // MC (MechaCoder) Tasks State
@@ -1310,6 +1309,10 @@ const applyTBRunList = (runs: TBRunWithPath[], forceRender = false): void => {
   if (viewMode === "tbench" || forceRender) {
     render()
   }
+}
+
+const applyTBRunHistory = (runs: TBRunHistoryItem[]): void => {
+  applyTBRunList(runs.map(mapHistoryItemToRun))
 }
 
 const upsertTBRunHistoryItem = (
