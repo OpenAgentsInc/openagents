@@ -209,13 +209,17 @@ bun build --compile --minify src/desktop/main.ts --outfile openagents.app
 
 ## Using Bun.serve() with Webview
 
-If you need a server running alongside the webview (e.g., for WebSocket), use Workers:
+**CRITICAL**: `webview.run()` blocks Bun's event loop. You MUST run the server in a Worker:
 
 ```typescript
-// index.ts
-const worker = new Worker("./server-worker.ts");
+// main.ts
+const worker = new Worker("./server-worker.ts", {
+  env: { STATIC_DIR: "./src/mainview", HTTP_PORT: "8080" }
+});
+await new Promise(r => setTimeout(r, 500)); // Wait for server
+
 const webview = new Webview();
-webview.setHTML(html);  // Use setHTML, not navigate to localhost
+webview.navigate("http://localhost:8080/"); // Use navigate, not setHTML!
 webview.run();
 worker.terminate();
 ```
@@ -223,18 +227,28 @@ worker.terminate();
 ```typescript
 // server-worker.ts
 Bun.serve({
-  port: 4242,
-  fetch(req, server) {
-    if (server.upgrade(req)) return;
-    return new Response("OK");
+  port: parseInt(process.env.HTTP_PORT || "8080", 10),
+  async fetch(req, server) {
+    const url = new URL(req.url);
+    if (url.pathname === "/ws" && server.upgrade(req)) return;
+
+    // Serve static files
+    const file = Bun.file(process.env.STATIC_DIR + url.pathname);
+    if (await file.exists()) return new Response(file);
+    return new Response("Not found", { status: 404 });
   },
-  websocket: { /* ... */ }
+  websocket: {
+    open(ws) { console.log("Client connected"); },
+    message(ws, msg) { /* handle */ },
+    close(ws) { console.log("Client disconnected"); }
+  }
 });
+setInterval(() => {}, 1000); // Keep worker alive
 ```
 
 ## Debugging Tips
 
-1. **White screen?** Check if you're using `navigate()` with localhost - use `setHTML()` instead
+1. **White screen?** The server might not be responding. Make sure it's in a Worker!
 
 2. **JS not running?** Inject debug code:
    ```typescript
@@ -452,3 +466,38 @@ Agent connects to :4242
 
 7. **Serve static files via HTTP** - The HTTP server serves HTML, CSS, JS from src/mainview/.
    WebSocket is handled on the same port via upgrade.
+
+8. **CRITICAL: Run server in a Worker** - `webview.run()` blocks Bun's event loop completely.
+   If you run the HTTP server in the main thread, it won't respond while the webview is open!
+   ```typescript
+   // server-worker.ts
+   import { createDesktopServer } from "./server.js";
+   const server = createDesktopServer({
+     staticDir: process.env.STATIC_DIR!,
+     httpPort: parseInt(process.env.HTTP_PORT || "8080", 10),
+     verbose: true,
+   });
+   setInterval(() => {}, 1000); // Keep worker alive
+   ```
+
+   ```typescript
+   // main.ts
+   const worker = new Worker("./server-worker.ts", {
+     env: { STATIC_DIR: MAINVIEW_DIR, HTTP_PORT: "8080" },
+   });
+   await new Promise(r => setTimeout(r, 500)); // Wait for server to start
+
+   webview.navigate("http://localhost:8080/");
+   webview.run(); // This blocks, but Worker keeps serving
+
+   worker.terminate(); // Cleanup on exit
+   ```
+
+9. **No `type="module"` with IIFE bundles** - If building with `--format iife`, use plain `<script>`:
+   ```html
+   <!-- WRONG with IIFE bundle -->
+   <script type="module" src="index.js"></script>
+
+   <!-- CORRECT with IIFE bundle -->
+   <script src="index.js"></script>
+   ```
