@@ -26,9 +26,17 @@ import {
 import { runOrchestrator } from "./orchestrator.js";
 import { makeReflectionService } from "./reflection/index.js";
 import { loadProjectConfig } from "../../tasks/index.js";
-import type { ProjectConfig } from "../../tasks/schema.js";
 import { openRouterClientLayer, openRouterConfigLayer } from "../../llm/openrouter.js";
 import { Layer } from "effect";
+import {
+  hasCommitsAhead,
+  mergeBranch,
+  type MergeResult,
+} from "./git-helpers.js";
+import { getInstallSettings, installDeps } from "./install-deps.js";
+
+export { getInstallSettings } from "./install-deps.js";
+export type { InstallSettings } from "./install-deps.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -49,114 +57,6 @@ interface WorktreeRunResult {
   error?: string;
   merged: boolean;
 }
-
-export interface InstallSettings {
-  args: string[];
-  timeoutMs: number;
-  skipInstall: boolean;
-}
-
-export const getInstallSettings = (projectConfig: ProjectConfig): InstallSettings => {
-  const parallel = projectConfig.parallelExecution;
-  const args =
-    parallel?.installArgs && parallel.installArgs.length > 0
-      ? parallel.installArgs
-      : ["--frozen-lockfile"];
-  const timeoutMs = parallel?.installTimeoutMs ?? 15 * 60 * 1000;
-  const skipInstall = args.includes("--skip-install");
-  return {
-    args: args.filter((arg) => arg !== "--skip-install"),
-    timeoutMs,
-    skipInstall,
-  };
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Git Operations
-// ─────────────────────────────────────────────────────────────────────────────
-
-const runGit = async (
-  cwd: string,
-  args: string[],
-): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
-  return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() };
-};
-
-/**
- * Check if branch has commits ahead of base
- */
-const hasCommitsAhead = async (
-  worktreePath: string,
-  baseBranch: string,
-): Promise<boolean> => {
-  const result = await runGit(worktreePath, [
-    "rev-list",
-    "--count",
-    `origin/${baseBranch}..HEAD`,
-  ]);
-  return parseInt(result.stdout, 10) > 0;
-};
-
-/**
- * Merge worktree branch to the configured target branch
- */
-const mergeToMain = async (
-  repoPath: string,
-  branch: string,
-  targetBranch: string,
-): Promise<{ success: boolean; commitSha?: string; error?: string }> => {
-  try {
-    // Checkout target branch
-    let result = await runGit(repoPath, ["checkout", targetBranch]);
-    if (result.exitCode !== 0) {
-      return { success: false, error: `Checkout ${targetBranch} failed: ${result.stderr}` };
-    }
-
-    // Pull latest
-    result = await runGit(repoPath, ["pull", "--ff-only", "origin", targetBranch]);
-    if (result.exitCode !== 0) {
-      // Try without ff-only
-      result = await runGit(repoPath, ["pull", "origin", targetBranch]);
-      if (result.exitCode !== 0) {
-        return { success: false, error: `Pull failed: ${result.stderr}` };
-      }
-    }
-
-    // Merge branch
-    result = await runGit(repoPath, ["merge", "--ff-only", branch]);
-    if (result.exitCode !== 0) {
-      // Try without ff-only (create merge commit)
-      result = await runGit(repoPath, ["merge", "--no-edit", branch]);
-      if (result.exitCode !== 0) {
-        return { success: false, error: `Merge failed: ${result.stderr}` };
-      }
-    }
-
-    // Get commit SHA
-    result = await runGit(repoPath, ["rev-parse", "HEAD"]);
-    const commitSha = result.stdout;
-
-    // Push
-    result = await runGit(repoPath, ["push", "origin", targetBranch]);
-    if (result.exitCode !== 0) {
-      return { success: false, error: `Push failed: ${result.stderr}` };
-    }
-
-    return { success: true, commitSha };
-  } catch (error: any) {
-    return { success: false, error: error.message };
-  }
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Runner
@@ -196,6 +96,10 @@ export const runInWorktree = async (
   console.log(`  Task ID:   ${taskId}`);
 
   const targetBranch = projectConfig.workBranch ?? projectConfig.defaultBranch ?? "main";
+  const testCommands = [...(projectConfig.testCommands ?? [])];
+  const typecheckCommands = [...(projectConfig.typecheckCommands ?? [])];
+  const e2eCommands = [...(projectConfig.e2eCommands ?? [])];
+  const sandboxTestCommands = [...(projectConfig.sandboxTestCommands ?? [])];
 
   // Create/validate worktree (self-healing)
   console.log("\n📁 Ensuring valid worktree...");
@@ -272,30 +176,13 @@ export const runInWorktree = async (
         console.log(
           `  Installing dependencies (bun install ${installSettings.args.join(" ")})...`,
         );
-        let timedOut = false;
-        const bunInstall = Bun.spawn(["bun", "install", ...installSettings.args], {
-          cwd: worktreeInfo.path,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        const timer = setTimeout(() => {
-          timedOut = true;
-          bunInstall.kill();
-        }, installSettings.timeoutMs);
-
-        await bunInstall.exited;
-        clearTimeout(timer);
-
-        if (timedOut) {
-          const message = `bun install timed out after ${Math.floor(installSettings.timeoutMs / 1000)}s`;
-          console.error(`  ❌ ${message}`);
-          result.error = message;
-          return result;
-        }
-
-        if (bunInstall.exitCode !== 0) {
-          const stderr = await new Response(bunInstall.stderr).text();
-          const message = `bun install failed: ${stderr}`;
+        const installResult = await installDeps(worktreeInfo.path, installSettings);
+        if (!installResult.success) {
+          const message =
+            installResult.error ??
+            `bun install ${installSettings.args.join(" ")} failed${
+              installResult.timedOut ? " (timed out)" : ""
+            }`;
           console.error(`  ❌ ${message}`);
           result.error = message;
           return result;
@@ -312,12 +199,10 @@ export const runInWorktree = async (
       const orchestratorConfig = {
         cwd: worktreeInfo.path,
         openagentsDir: worktreeOpenagentsDir,
-        testCommands: [...projectConfig.testCommands],
-        ...(projectConfig.sandboxTestCommands?.length && {
-          sandboxTestCommands: [...projectConfig.sandboxTestCommands],
-        }),
-        typecheckCommands: [...projectConfig.typecheckCommands],
-        e2eCommands: [...projectConfig.e2eCommands],
+        testCommands,
+        ...(sandboxTestCommands.length > 0 ? { sandboxTestCommands } : {}),
+        typecheckCommands,
+        e2eCommands,
         allowPush: false, // Don't push from worktree - we'll merge and push from main
         claudeCode: projectConfig.claudeCode,
         subagentModel: projectConfig.defaultModel,
@@ -367,7 +252,10 @@ export const runInWorktree = async (
 
       if (hasCommits) {
         console.log(`\n🔀 Merging changes to ${targetBranch}...`);
-        const mergeResult = await mergeToMain(repoPath, worktreeInfo.branch, targetBranch);
+        const mergeResult: MergeResult = await mergeBranch(repoPath, {
+          targetBranch,
+          sourceBranch: worktreeInfo.branch,
+        });
 
         if (mergeResult.success) {
           result.merged = true;
