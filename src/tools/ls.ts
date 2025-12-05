@@ -7,6 +7,11 @@ import { ToolExecutionError } from "./schema.js";
 
 const LsParametersSchema = S.Struct({
   path: S.optional(S.String),
+  file_path: S.optional(
+    S.String.pipe(
+      S.annotations({ description: "SDK-style alias for path" }),
+    ),
+  ),
   recursive: S.optional(S.Boolean),
   includeHidden: S.optional(S.Boolean),
   maxResults: S.optional(S.Number.pipe(S.int(), S.greaterThan(0))),
@@ -29,7 +34,8 @@ export const lsTool: Tool<
       const fs = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
 
-      const root = pathService.resolve(params.path ?? ".");
+      const inputPath = params.file_path ?? params.path ?? ".";
+      const root = pathService.resolve(inputPath);
       const exists = yield* fs.exists(root).pipe(
         Effect.mapError(
           (e) => new ToolExecutionError("command_failed", `Failed to check path: ${e.message}`),
@@ -37,7 +43,7 @@ export const lsTool: Tool<
       );
       if (!exists) {
         return yield* Effect.fail(
-          new ToolExecutionError("not_found", `Path not found: ${params.path ?? "."}`),
+          new ToolExecutionError("not_found", `Path not found: ${inputPath}`),
         );
       }
 

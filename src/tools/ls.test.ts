@@ -29,6 +29,22 @@ describe("lsTool", () => {
     expect(text).toContain("sub/");
   });
 
+  it("supports SDK-style file_path alias", async () => {
+    const text = await runWithBun(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectory({ prefix: "ls-tool" });
+        yield* fs.writeFileString(path.join(dir, "sdk.txt"), "data");
+
+        const result = yield* runTool(lsTool, { file_path: dir });
+        return result.content.find(isTextContent)?.text ?? "";
+      }),
+    );
+
+    expect(text).toContain("sdk.txt");
+  });
+
   it("respects recursion and hidden toggle", async () => {
     const text = await runWithBun(
       Effect.gen(function* () {
