@@ -852,7 +852,9 @@ const doOneTaskOrchestrator = (config: Config) =>
 
     // Create ATIF trajectory context with streaming persistence
     const atifSessionId = generateSessionId();
-    const modelName = projectConfig.defaultModel ?? "claude-sonnet-4-5";
+    // Orchestrator model: "orchestrator" (doesn't make LLM calls itself, just coordinates)
+    // The actual LLM usage happens in subagents (Claude Code or minimal)
+    const modelName = "orchestrator";
     const atif = createOrchestratorATIF({
       cwd: config.workDir,
       modelName,
