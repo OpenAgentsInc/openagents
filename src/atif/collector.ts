@@ -503,13 +503,6 @@ export class StandaloneTrajectoryCollector {
       totalCostUsd: 0,
     };
 
-    // Initialize streaming writer if present
-    if (this.streamingWriter) {
-      this.streamingWriter.initialize().catch((err) => {
-        console.warn(`[ATIF] Failed to initialize streaming writer: ${err}`);
-      });
-    }
-
     return sessionId;
   }
 
