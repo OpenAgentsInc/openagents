@@ -59,6 +59,10 @@ import {
 } from "./sandbox-runner.js";
 import { appendUsageRecord, computeUsageIdempotencyKey } from "../../usage/store.js";
 import type { UsageRecord } from "../../usage/types.js";
+import {
+  createStepResultsManager,
+  durableStep,
+} from "./step-results.js";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -294,10 +298,12 @@ export const runOrchestrator = (
   deps?: { runSubagent?: typeof runBestAvailableSubagent }
 ): Effect.Effect<OrchestratorState, Error, FileSystem.FileSystem | Path.Path | OpenRouterClient> =>
   Effect.gen(function* () {
-    const sessionId = generateSessionId();
+    let sessionId = generateSessionId();
     const now = new Date().toISOString();
     const subagentRunner = deps?.runSubagent ?? runBestAvailableSubagent;
     const openagentsDir = config.openagentsDir ?? `${config.cwd}/.openagents`;
+    const stepResultsManager = yield* createStepResultsManager(openagentsDir, sessionId);
+    sessionId = stepResultsManager.sessionId;
     const tasksPath = `${openagentsDir}/tasks.jsonl`;
     const sessionStartedAt = Date.now();
     const usageAccumulator = {
@@ -503,7 +509,12 @@ export const runOrchestrator = (
         initScriptResult = { ran: false, success: true, output: "Skipped (skipInitScript=true)" };
         emit({ type: "init_script_complete", result: initScriptResult });
       } else {
-        initScriptResult = yield* runInitScript(openagentsDir, config.cwd, emit);
+        initScriptResult = yield* durableStep(
+          stepResultsManager,
+          "init_script",
+          () => runInitScript(openagentsDir, config.cwd, emit),
+          { inputHash: config.cwd }
+        );
       }
       progress.orientation.initScript = initScriptResult;
 
@@ -527,6 +538,11 @@ export const runOrchestrator = (
               // Self-healing succeeded! Update init script result and continue
               initScriptResult = retryResult;
               progress.orientation.initScript = retryResult;
+              yield* stepResultsManager.recordResult(
+                "init_script",
+                retryResult,
+                config.cwd
+              );
             }
           } else if (healerOutcome.status === "contained") {
             // Healer contained the issue (e.g., marked task blocked)
@@ -622,8 +638,14 @@ export const runOrchestrator = (
       if (config.task) {
         taskResult = config.task;
       } else {
-        taskResult = yield* pickNextTask(tasksPath).pipe(
-          Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
+        taskResult = yield* durableStep(
+          stepResultsManager,
+          "select_task",
+          () =>
+            pickNextTask(tasksPath).pipe(
+              Effect.catchAll((error) => Effect.fail(new Error(`No ready tasks: ${error}`)))
+            ),
+          { inputHash: tasksPath }
         );
       }
 
@@ -633,6 +655,7 @@ export const runOrchestrator = (
         writeProgress(openagentsDir, progress);
         yield* recordUsage();
         emit({ type: "session_complete", success: true, summary: "No tasks to process" });
+        yield* stepResultsManager.clear();
         return state;
       }
 
@@ -674,7 +697,12 @@ export const runOrchestrator = (
         // Create new subtask list with intelligent decomposition
         const subtaskOptions =
           config.maxSubtasksPerTask !== undefined ? { maxSubtasks: config.maxSubtasksPerTask } : undefined;
-        subtaskList = createSubtaskList(taskResult, subtaskOptions);
+        subtaskList = yield* durableStep(
+          stepResultsManager,
+          "decompose_task",
+          () => Effect.succeed(createSubtaskList(taskResult, subtaskOptions)),
+          { inputHash: taskResult.id }
+        );
       }
 
       // If typecheck is failing at start, inject a "fix typecheck" subtask at the beginning
@@ -1226,6 +1254,9 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       yield* clearCheckpoint(openagentsDir);
       emit({ type: "checkpoint_cleared" });
 
+      // Clear memoized step results on success
+      yield* stepResultsManager.clear();
+
       emit({
         type: "session_complete",
         success: true,
@@ -1244,6 +1275,8 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       // Clear checkpoint on failed completion (checkpoint is for crash recovery, not failed runs)
       yield* clearCheckpoint(openagentsDir);
+      // Also clear memoized step results to avoid stale replays on next run
+      yield* stepResultsManager.clear();
 
       return state;
     }
