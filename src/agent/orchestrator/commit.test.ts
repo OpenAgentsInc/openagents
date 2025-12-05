@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { createCommit } from "./orchestrator.js";
+import { createCommit } from "./services/git-service.js";
 
 const setupRepo = () => {
   const dir = mkdtempSync(path.join(tmpdir(), "commit-scope-"));
