@@ -16,6 +16,7 @@ import {
   readArchivedTasks,
   searchAllTasks,
   getStaleTasks,
+  addComment,
 } from "./service.js";
 import type { TaskCreate } from "./schema.js";
 
@@ -143,6 +144,47 @@ describe("TaskService", () => {
     expect(finalTask.assignee).toBe("mechacoder");
     expect(finalTask.commits).toEqual(["abc123"]);
     expect(finalTask.closedAt).toBe("2025-01-01T02:00:00.000Z");
+  });
+
+  test("appends comments with generated metadata", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+        const created = yield* createTask({
+          tasksPath,
+          task: makeTask("Collect feedback"),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+        });
+
+        const first = yield* addComment({
+          tasksPath,
+          taskId: created.id,
+          text: "Initial note",
+          author: "alice",
+          commentId: "c-1",
+          timestamp: new Date("2025-01-01T01:00:00Z"),
+        });
+
+        const second = yield* addComment({
+          tasksPath,
+          taskId: created.id,
+          text: "Follow-up",
+          author: "bob",
+          commentId: "c-2",
+          timestamp: new Date("2025-01-01T02:00:00Z"),
+        });
+
+        const saved = yield* readTasks(tasksPath);
+        return { first, second, saved };
+      }),
+    );
+
+    expect(result.saved[0]?.comments).toHaveLength(2);
+    expect(result.saved[0]?.comments?.[0]?.id).toBe("c-1");
+    expect(result.saved[0]?.comments?.[0]?.createdAt).toBe("2025-01-01T01:00:00.000Z");
+    expect(result.saved[0]?.comments?.[1]?.author).toBe("bob");
+    expect(result.saved[0]?.updatedAt).toBe("2025-01-01T02:00:00.000Z");
+    expect(result.second.comment.text).toBe("Follow-up");
   });
 
   test("lists tasks with filters, sort policy, and picks next ready", async () => {

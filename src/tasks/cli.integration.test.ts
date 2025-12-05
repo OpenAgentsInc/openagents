@@ -738,4 +738,44 @@ describe("tasks CLI integration", () => {
     const closedGroup = payload.groups.find((g: any) => g.status === "closed");
     expect(closedGroup.ids.sort()).toEqual(["oa-closed-1", "oa-closed-2"].sort());
   });
+
+  test("comment add/list commands append and display comments", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-comments-"));
+
+    const init = runCli(["init", "--dir", tmp, "--json"], tmp);
+    expect(init.code).toBe(0);
+
+    const create = runCli(
+      ["create", "--dir", tmp, "--title", "Task with comments", "--json"],
+      tmp,
+    );
+    expect(create.code).toBe(0);
+    const task = JSON.parse(create.stdout);
+
+    const add = runCli(
+      [
+        "comment:add",
+        "--dir",
+        tmp,
+        "--id",
+        task.id,
+        "--text",
+        "first note",
+        "--author",
+        "tester",
+        "--json",
+      ],
+      tmp,
+    );
+    expect(add.code).toBe(0);
+    const addResult = JSON.parse(add.stdout);
+    expect(addResult.comment.text).toBe("first note");
+    expect(addResult.comment.author).toBe("tester");
+
+    const list = runCli(["comment:list", "--dir", tmp, "--id", task.id, "--json"], tmp);
+    expect(list.code).toBe(0);
+    const listed = JSON.parse(list.stdout);
+    expect(listed.comments).toHaveLength(1);
+    expect(listed.comments[0]?.text).toBe("first note");
+  });
 });
