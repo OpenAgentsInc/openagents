@@ -76,6 +76,12 @@ bun run tasks:ready --json     # List ready tasks
 bun run tasks:next --json      # Claim next task
 ```
 
+## Telemetry (OpenTelemetry)
+
+- Optional OTEL export is available for spans (agent turns, LLM calls, tool executions) and counters (tool_calls, tokens_used, verification_runs).
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`) and optionally `OTEL_SERVICE_NAME` to send data to your collector.
+- Without these env vars, telemetry is a no-op.
+
 ## Related
 
 - [AGENTS.md](../../AGENTS.md) - Project-wide coding guidelines and conventions

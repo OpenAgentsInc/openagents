@@ -3,6 +3,7 @@ import type { Tool, ToolResult } from "../tools/schema.js";
 import { ToolExecutionError, runTool } from "../tools/schema.js";
 import type { ChatMessage, ChatRequest } from "../llm/openrouter.js";
 import { OpenRouterClient } from "../llm/openrouter.js";
+import { endSpan, recordTokenUsage, recordToolCall, recordVerification, startSpan } from "../telemetry/otel.js";
 
 // Event types that can be emitted during the loop
 export type LoopEvent = 
@@ -68,8 +69,11 @@ const executeToolCall = (
 > =>
   Effect.gen(function* () {
     const tool = tools.find((t) => t.name === toolCall.name);
+    const toolSpan = startSpan("tool.execute", { tool: tool?.name ?? toolCall.name, toolCallId: toolCall.id });
 
     if (!tool) {
+      recordToolCall(toolCall.name, false);
+      endSpan(toolSpan, new Error("tool not found"));
       return {
         toolCallId: toolCall.id,
         name: toolCall.name,
@@ -86,7 +90,7 @@ const executeToolCall = (
     }).pipe(Effect.catchAll((e) => Effect.succeed({ __parseError: e.message })));
 
     if ("__parseError" in args) {
-      return {
+      const parseErrorResult = {
         toolCallId: toolCall.id,
         name: toolCall.name,
         result: {
@@ -94,6 +98,9 @@ const executeToolCall = (
         },
         isError: true,
       };
+      recordToolCall(tool.name, false);
+      endSpan(toolSpan, new Error(parseErrorResult.result.content[0]?.text ?? "parse error"));
+      return parseErrorResult;
     }
 
     const result = yield* runTool(tool, args, {
@@ -115,6 +122,9 @@ const executeToolCall = (
         } as ToolResult),
       ),
     );
+
+    recordToolCall(tool.name, true);
+    endSpan(toolSpan);
 
     return {
       toolCallId: toolCall.id,
@@ -177,124 +187,153 @@ export const agentLoop = (
 
     while (continueLoop && turnCount < maxTurns) {
       turnCount++;
-      
-      // EMIT turn_start BEFORE calling LLM
-      emit({ type: "turn_start", turn: turnCount });
+      const turnSpan = startSpan("agent.turn", { turn: turnCount, model: config.model ?? "default" });
+      try {
+        // EMIT turn_start BEFORE calling LLM
+        emit({ type: "turn_start", turn: turnCount });
 
-      const request: ChatRequest = {
-        messages,
-        tools: tools as unknown as Tool<any>[],
-        ...(config.model ? { model: config.model } : {}),
-        ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
-      };
+        const request: ChatRequest = {
+          messages,
+          tools: tools as unknown as Tool<any>[],
+          ...(config.model ? { model: config.model } : {}),
+          ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
+        };
 
-      // EMIT llm_request BEFORE calling provider
-      emit({ type: "llm_request", turn: turnCount, messages, toolNames: tools.map((t) => t.name) });
+        // EMIT llm_request BEFORE calling provider
+        emit({ type: "llm_request", turn: turnCount, messages, toolNames: tools.map((t) => t.name) });
 
-      const response = yield* client.chat(request).pipe(
-        Effect.mapError((e: Error) => new AgentLoopError("llm_error", e.message)),
-      );
+        const llmSpan = startSpan("llm.call", { turn: turnCount, model: request.model ?? "default" });
+        const response = yield* client.chat(request).pipe(
+          Effect.tap((res) =>
+            Effect.sync(() => {
+              const usage = (res as any).usage;
+            recordTokenUsage({
+              ...(request.model ? { model: request.model } : {}),
+              promptTokens:
+                usage?.prompt_tokens ?? usage?.promptTokens ?? usage?.input_tokens ?? usage?.inputTokens,
+              completionTokens:
+                usage?.completion_tokens ??
+                usage?.completionTokens ??
+                usage?.output_tokens ??
+                usage?.outputTokens,
+            });
+              endSpan(llmSpan);
+            }),
+          ),
+          Effect.tapError((e) => Effect.sync(() => endSpan(llmSpan, e))),
+          Effect.mapError((e: Error) => new AgentLoopError("llm_error", e.message)),
+        );
 
-      const choice = response.choices[0];
-      if (!choice) {
-        return yield* Effect.fail(new AgentLoopError("no_response", "No response from LLM"));
-      }
-
-      const assistantMessage = choice.message;
-      const toolCalls = assistantMessage.tool_calls ?? [];
-      const assistantContent =
-        typeof assistantMessage.content === "string"
-          ? assistantMessage.content
-          : "";
-      const safeAssistantMessage: ChatMessage = {
-        ...assistantMessage,
-        content: assistantContent,
-      };
-      
-      // EMIT llm_response AFTER LLM returns
-      emit({
-        type: "llm_response",
-        turn: turnCount,
-        hasToolCalls: toolCalls.length > 0,
-        message: safeAssistantMessage,
-        toolCalls,
-      });
-
-      messages.push({
-        role: "assistant",
-        content: safeAssistantMessage.content,
-      });
-
-      const turnContent =
-        typeof safeAssistantMessage.content === "string" ? safeAssistantMessage.content : "";
-      const turn: AgentTurn = {
-        role: "assistant",
-        content: turnContent,
-        ...(toolCalls.length > 0 ? { toolCalls } : {}),
-      };
-
-      if (toolCalls.length === 0) {
-        turns.push(turn);
-        continueLoop = false;
-      } else {
-        const toolResults: AgentTurn["toolResults"] = [];
-
-        for (const toolCall of toolCalls) {
-          // EMIT tool_call BEFORE executing
-          emit({ type: "tool_call", tool: toolCall.name, toolCallId: toolCall.id, args: toolCall.arguments });
-          
-          const result = yield* executeToolCall(tools, toolCall, undefined, config.onOutput, emit);
-          toolResults.push(result);
-          
-          // EMIT tool_result AFTER executing
-          emit({ type: "tool_result", tool: toolCall.name, toolCallId: toolCall.id, ok: !result.isError, result: result.result });
-
-          const toolOutput = result.result.content
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
-            .map((c) => c.text)
-            .join("\n") || (result.isError ? "Error" : "Success");
-
-          messages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            name: toolCall.name,
-            content: toolOutput,
-          });
-
-          // Track verification state based on tool calls
-          const toolName = toolCall.name.toLowerCase();
-          
-          // edit/write marks as dirty
-          if ((toolName === "edit" || toolName === "write") && !result.isError) {
-            verifyState.dirtySinceVerify = true;
-            verifyState.typecheckOk = false;
-            verifyState.testsOk = false;
-            // EMIT edit_detected
-            emit({ type: "edit_detected", tool: toolName });
-          }
-          
-          // bash commands: check for typecheck/test commands
-          if (toolName === "bash" && !result.isError) {
-            const args = toolCall.arguments;
-            if (isTypecheckCommand(args)) {
-              if (isTypecheckSuccess(toolOutput)) {
-                verifyState.typecheckOk = true;
-              }
-            }
-            if (isTestCommand(args)) {
-              if (isTestSuccess(toolOutput)) {
-                verifyState.testsOk = true;
-              }
-            }
-            // If both pass after edits, we're no longer dirty
-            if (verifyState.typecheckOk && verifyState.testsOk) {
-              verifyState.dirtySinceVerify = false;
-            }
-          }
+        const choice = response.choices[0];
+        if (!choice) {
+          endSpan(turnSpan, new AgentLoopError("no_response", "No response from LLM"));
+          return yield* Effect.fail(new AgentLoopError("no_response", "No response from LLM"));
         }
 
-        turn.toolResults = toolResults;
-        turns.push(turn);
+        const assistantMessage = choice.message;
+        const toolCalls = assistantMessage.tool_calls ?? [];
+        const assistantContent =
+          typeof assistantMessage.content === "string"
+            ? assistantMessage.content
+            : "";
+        const safeAssistantMessage: ChatMessage = {
+          ...assistantMessage,
+          content: assistantContent,
+        };
+        
+        // EMIT llm_response AFTER LLM returns
+        emit({
+          type: "llm_response",
+          turn: turnCount,
+          hasToolCalls: toolCalls.length > 0,
+          message: safeAssistantMessage,
+          toolCalls,
+        });
+
+        messages.push({
+          role: "assistant",
+          content: safeAssistantMessage.content,
+        });
+
+        const turnContent =
+          typeof safeAssistantMessage.content === "string" ? safeAssistantMessage.content : "";
+        const turn: AgentTurn = {
+          role: "assistant",
+          content: turnContent,
+          ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        };
+
+        if (toolCalls.length === 0) {
+          turns.push(turn);
+          continueLoop = false;
+        } else {
+          const toolResults: AgentTurn["toolResults"] = [];
+
+          for (const toolCall of toolCalls) {
+            // EMIT tool_call BEFORE executing
+            emit({ type: "tool_call", tool: toolCall.name, toolCallId: toolCall.id, args: toolCall.arguments });
+            
+            const result = yield* executeToolCall(tools, toolCall, undefined, config.onOutput, emit);
+            toolResults.push(result);
+            
+            // EMIT tool_result AFTER executing
+            emit({ type: "tool_result", tool: toolCall.name, toolCallId: toolCall.id, ok: !result.isError, result: result.result });
+
+            const toolOutput = result.result.content
+              .filter((c): c is { type: "text"; text: string } => c.type === "text")
+              .map((c) => c.text)
+              .join("\n") || (result.isError ? "Error" : "Success");
+
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              name: toolCall.name,
+              content: toolOutput,
+            });
+
+            // Track verification state based on tool calls
+            const toolName = toolCall.name.toLowerCase();
+            
+            // edit/write marks as dirty
+            if ((toolName === "edit" || toolName === "write") && !result.isError) {
+              verifyState.dirtySinceVerify = true;
+              verifyState.typecheckOk = false;
+              verifyState.testsOk = false;
+              // EMIT edit_detected
+              emit({ type: "edit_detected", tool: toolName });
+            }
+            
+            // bash commands: check for typecheck/test commands
+            if (toolName === "bash" && !result.isError) {
+              const args = toolCall.arguments;
+              if (isTypecheckCommand(args)) {
+                const ok = isTypecheckSuccess(toolOutput);
+                recordVerification("typecheck", ok);
+                if (ok) {
+                  verifyState.typecheckOk = true;
+                }
+              }
+              if (isTestCommand(args)) {
+                const ok = isTestSuccess(toolOutput);
+                recordVerification("tests", ok);
+                if (ok) {
+                  verifyState.testsOk = true;
+                }
+              }
+              // If both pass after edits, we're no longer dirty
+              if (verifyState.typecheckOk && verifyState.testsOk) {
+                verifyState.dirtySinceVerify = false;
+              }
+            }
+          }
+
+          turn.toolResults = toolResults;
+          turns.push(turn);
+        }
+        endSpan(turnSpan);
+      } catch (error) {
+        endSpan(turnSpan, error);
+        throw error;
       }
     }
 
