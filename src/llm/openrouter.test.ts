@@ -106,4 +106,42 @@ describe("openrouter client", () => {
     globalThis.fetch = originalFetch;
     resetEnv();
   });
+
+  test("applies per-request baseUrl/apiKey/header overrides", async () => {
+    setApiKey();
+    let receivedUrl = "";
+    let receivedAuth: string | undefined;
+    let receivedHeader: string | undefined;
+
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      receivedUrl = url;
+      const hdrs = init?.headers as Record<string, string> | undefined;
+      receivedAuth = hdrs?.Authorization;
+      receivedHeader = hdrs?.["X-Test-Header"];
+      return {
+        ok: true,
+        json: async () => ({
+          id: "resp-override",
+          choices: [{ message: { content: "hello", tool_calls: [] } }],
+        }),
+      } as any;
+    }) as any;
+
+    await Effect.runPromise(
+      runOpenRouterChat({
+        baseUrl: "https://example.test/api",
+        apiKey: "override-key",
+        headers: { "X-Test-Header": "present" },
+        messages: [{ role: "user", content: "hi" }],
+        retry: { attempts: 1 },
+      }),
+    );
+
+    expect(receivedUrl).toContain("https://example.test/api/chat/completions");
+    expect(receivedAuth).toBe("Bearer override-key");
+    expect(receivedHeader).toBe("present");
+
+    globalThis.fetch = originalFetch;
+    resetEnv();
+  });
 });
