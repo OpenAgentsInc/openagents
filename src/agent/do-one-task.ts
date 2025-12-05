@@ -47,6 +47,9 @@ import type { Subtask } from "./orchestrator/types.js";
 import { createHealerService } from "../healer/service.js";
 import { createHealerCounters } from "../healer/types.js";
 import type { ProjectConfig } from "../tasks/schema.js";
+import { createOrchestratorATIF, wrapEventHandler } from "../atif/integration.js";
+import { StreamingWriter } from "../atif/streaming-writer.js";
+import { generateSessionId } from "../atif/schema.js";
 
 const tools = [readTool, editTool, bashTool, writeTool];
 
@@ -847,6 +850,23 @@ const doOneTaskOrchestrator = (config: Config) =>
     // These silently fail if the HUD isn't running
     const { emit: hudEmit, emitHud, onOutput: hudOnOutput, client: hudClient } = createHudCallbacks();
 
+    // Create ATIF trajectory context with streaming persistence
+    const atifSessionId = generateSessionId();
+    const modelName = projectConfig.defaultModel ?? "claude-sonnet-4-5";
+    const atif = createOrchestratorATIF({
+      cwd: config.workDir,
+      modelName,
+      sessionId: atifSessionId,
+    });
+
+    // Create streaming writer for real-time trajectory persistence
+    const streamingWriter = new StreamingWriter({
+      sessionId: atifSessionId,
+      agent: atif.collector.getCurrentState()!.agent,
+      baseDir: nodePath.join(config.workDir, ".openagents/trajectories"),
+    });
+    atif.collector.setStreamingWriter(streamingWriter);
+
     // Initialize Healer service with LLM capabilities
     const healerCounters = createHealerCounters();
 
@@ -927,11 +947,14 @@ const doOneTaskOrchestrator = (config: Config) =>
       }
     };
 
-    // Wrap emit to send orchestrator events to both log and HUD
-    const emit = (event: OrchestratorEvent) => {
-      logOrchestratorEvent(event);
-      hudEmit(event);
-    };
+    // Wrap emit to send orchestrator events to log, HUD, and ATIF
+    const emit = wrapEventHandler(
+      (event: OrchestratorEvent) => {
+        logOrchestratorEvent(event);
+        hudEmit(event);
+      },
+      atif.handleEvent
+    );
 
     // Build claudeCode config, applying --cc-only override if specified
     const claudeCodeConfig = config.ccOnly
@@ -982,6 +1005,10 @@ const doOneTaskOrchestrator = (config: Config) =>
       reflexionConfig: projectConfig.reflexion,
     };
     const state = yield* runOrchestrator(orchestratorConfig, emit);
+
+    // Finalize and save ATIF trajectory (use Effect.promise for async in Effect.gen)
+    const trajectoryPath = yield* Effect.promise(() => atif.finalize());
+    console.log(`[ATIF] Trajectory saved: ${trajectoryPath}`);
 
     // Generate a placeholder log file path for compatibility with legacy return type
     const logFile = nodePath.join(config.runLogDir, `orchestrator-${Date.now()}.log`);
