@@ -35,6 +35,15 @@ const sendChatRaw = (
     request.logLevel ? parseLogLevel(request.logLevel, config.logLevel) : config.logLevel,
     request.logger,
   );
+  const baseUrl = request.baseUrl ?? config.baseUrl;
+  const apiKey = request.apiKey ? Secret.fromString(request.apiKey) : config.apiKey;
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${Secret.value(apiKey)}`,
+    "Content-Type": "application/json",
+    ...(config.referer._tag === "Some" ? { "HTTP-Referer": config.referer.value } : {}),
+    ...(config.siteName._tag === "Some" ? { "X-Title": config.siteName.value } : {}),
+    ...(request.headers ?? {}),
+  };
 
   const sendOnce = Effect.gen(function* () {
     const body = makeRequestBody(request);
@@ -50,7 +59,7 @@ const sendChatRaw = (
     logAtLevel(
       logger,
       "debug",
-      `[OpenRouter] Sending request to ${config.baseUrl}/chat/completions`,
+      `[OpenRouter] Sending request to ${baseUrl}/chat/completions`,
     );
     logAtLevel(logger, "debug", `[OpenRouter] Model: ${body.model}, Messages: ${apiMessages.length}`);
 
@@ -59,15 +68,9 @@ const sendChatRaw = (
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const res = await fetch(`${config.baseUrl}/chat/completions`, {
+          const res = await fetch(`${baseUrl}/chat/completions`, {
             method: "POST",
-            headers: {
-              "Authorization": `Bearer ${Secret.value(config.apiKey)}`,
-              "Content-Type": "application/json",
-              ...(config.referer._tag === "Some" ? { "HTTP-Referer": config.referer.value } : {}),
-              ...(config.siteName._tag === "Some" ? { "X-Title": config.siteName.value } : {}),
-              ...(request.headers ?? {}),
-            },
+            headers,
             body: JSON.stringify({ ...body, messages: apiMessages }),
             signal: controller.signal,
           });
