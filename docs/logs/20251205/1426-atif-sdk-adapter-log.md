@@ -60,6 +60,13 @@ SDK query() stream → SDKToATIFAdapter → emitATIFStep() → HUD WebSocket →
 - Pass `runId` through to `runClaudeCodeSubagent()`
 - Handle `exactOptionalPropertyTypes` TypeScript constraint with conditional spreads
 
+### 8. TB Sandbox Runner (`src/cli/tbench-sandbox.ts`)
+- Added `runId` to `TBenchSandboxArgs` interface
+- Added `--run-id` CLI option parsing
+- Added `runId` to `runTask()` options interface
+- Pass `runId` through to `runClaudeCodeSubagent()` with conditional spread
+- Matches tbench-local.ts pattern for consistency
+
 ## Architecture
 
 **ATIF is now the single source of truth:**
@@ -106,6 +113,7 @@ Frontend (TODO: next phase)
 - `src/agent/orchestrator/claude-code-subagent.ts` (+16 lines)
 - `src/desktop/handlers.ts` (+1 line)
 - `src/cli/tbench-local.ts` (+10 lines)
+- `src/cli/tbench-sandbox.ts` (+10 lines)
 
 ## Technical Notes
 - Effect Schema types (readonly) mapped to HUD protocol types (mutable) via object spreading
