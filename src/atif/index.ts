@@ -22,10 +22,13 @@ export {
   type Observation,
   type ObservationResult,
   type Step,
+  type StepStatus,
   type StepSource,
   type SubagentTrajectoryRef,
   type ToolCall,
   type Trajectory,
+  type Checkpoint,
+  type RecoveryInfo,
   // Schema objects (for validation)
   Agent as AgentSchema,
   FinalMetrics as FinalMetricsSchema,
@@ -33,10 +36,13 @@ export {
   Observation as ObservationSchema,
   ObservationResult as ObservationResultSchema,
   Step as StepSchema,
+  StepStatus as StepStatusSchema,
   StepSource as StepSourceSchema,
   SubagentTrajectoryRef as SubagentTrajectoryRefSchema,
   ToolCall as ToolCallSchema,
   Trajectory as TrajectorySchema,
+  Checkpoint as CheckpointSchema,
+  RecoveryInfo as RecoveryInfoSchema,
   // Decode/encode helpers
   decodeAgent,
   decodeStep,
@@ -57,6 +63,8 @@ export {
   isAgentStep,
   isSystemStep,
   isUserStep,
+  isStepCompleted,
+  latestCheckpoint,
   timestamp,
 } from "./schema.js";
 
@@ -133,3 +141,16 @@ export {
   // Utility
   wrapEventHandler,
 } from "./integration.js";
+
+// Recovery / incremental persistence
+export {
+  type AppendStepOptions,
+  type RecoveryPlan,
+  type StepInput,
+  appendCheckpoint,
+  appendStepToTrajectory,
+  initializeTrajectoryFile,
+  planRecoveryFromFile,
+  planRecoveryFromTrajectory,
+  recordRecoveryInfo,
+} from "./recovery.js";
