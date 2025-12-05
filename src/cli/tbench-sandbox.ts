@@ -55,6 +55,7 @@ interface TBenchSandboxArgs {
   parallel: number | undefined;
   sandboxBackend: "docker" | "macos-container" | undefined;
   sandboxImage: string | undefined;
+  runId: string | undefined;
   help: boolean | undefined;
 }
 
@@ -72,6 +73,7 @@ const parseCliArgs = (): TBenchSandboxArgs => {
       parallel: { type: "string", short: "p" },
       "sandbox-backend": { type: "string" },
       "sandbox-image": { type: "string" },
+      "run-id": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -134,6 +136,7 @@ Examples:
     parallel: values.parallel ? parseInt(values.parallel, 10) : undefined,
     sandboxBackend: values["sandbox-backend"] as "docker" | "macos-container" | undefined,
     sandboxImage: values["sandbox-image"],
+    runId: values["run-id"],
     help: values.help,
   };
 };
@@ -289,6 +292,7 @@ const runTask = async (
     maxTurns: number;
     outputDir: string;
     sourceRepo?: string;
+    runId?: string; // TB run ID for ATIF step emission to HUD
     tbEmitter?: TBEmitter;
     taskIndex?: number;
     totalTasks?: number;
@@ -416,6 +420,7 @@ const runTask = async (
       maxTurns: tbTask.max_turns ?? options.maxTurns,
       permissionMode: "bypassPermissions",
       timeoutMs: (tbTask.timeout_seconds ?? options.timeout) * 1000,
+      ...(options.runId ? { runId: options.runId } : {}), // Conditional spread for exactOptionalPropertyTypes
       onOutput,
     });
 
@@ -605,6 +610,7 @@ const main = async (): Promise<void> => {
       maxTurns: args.maxTurns ?? 300,
       outputDir: args.output,
       sourceRepo: undefined,
+      ...(args.runId ? { runId: args.runId } : {}), // Conditional spread
       tbEmitter,
       taskIndex: i,
       totalTasks: tasksToRun.length,
