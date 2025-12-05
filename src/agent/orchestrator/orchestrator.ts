@@ -63,6 +63,8 @@ import {
   createStepResultsManager,
   durableStep,
 } from "./step-results.js";
+import * as nodePath from "node:path";
+import * as fs from "node:fs";
 
 // Minimal tools for subagent (pi-mono pattern)
 const SUBAGENT_TOOLS = [readTool, editTool, bashTool, writeTool];
@@ -220,35 +222,104 @@ const mapReflectionsToNotes = (reflections: ReflectionType[], limit: number): st
     .map((r) => `${r.analysis} - Next: ${r.suggestion}`)
     .map((text) => text.slice(0, 400));
 
+const normalizePathsForGit = (paths: readonly string[], cwd: string): string[] => {
+  const normalized = new Set<string>();
+
+  for (const raw of paths) {
+    if (!raw) continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+
+    const resolved = nodePath.isAbsolute(trimmed)
+      ? trimmed
+      : nodePath.resolve(cwd, trimmed);
+    const relative = nodePath.relative(cwd, resolved);
+
+    // Ignore paths outside the repo
+    if (relative.startsWith("..")) continue;
+
+    const gitPath = relative === "" ? "." : relative.split(nodePath.sep).join("/");
+    normalized.add(gitPath);
+  }
+
+  return Array.from(normalized);
+};
+
 /**
- * Create a git commit with the task ID
+ * Create a git commit with the task ID.
+ * Stages only the provided paths and passes the commit message via stdin to avoid quoting issues.
  */
-const createCommit = (
+export const createCommit = (
   taskId: string,
   message: string,
-  cwd: string
+  cwd: string,
+  pathsToStage: readonly string[]
 ): Effect.Effect<string, Error, never> =>
   Effect.tryPromise({
     try: async () => {
-      const { execSync } = await import("node:child_process");
-      
-      // Stage all changes
-      execSync("git add -A", { cwd, encoding: "utf-8" });
-      
-      // Create commit
+      const { execFileSync } = await import("node:child_process");
+      const debugCommit = process.env.DEBUG_CREATE_COMMIT === "1";
+
+      const normalizedPaths = normalizePathsForGit(pathsToStage, cwd);
+      if (normalizedPaths.length === 0) {
+        throw new Error("No paths provided to stage for commit");
+      }
+
+      const statusOutput = execFileSync(
+        "git",
+        ["status", "--porcelain", "--", ...normalizedPaths],
+        { cwd, encoding: "utf-8" }
+      );
+      if (debugCommit) {
+        console.log("[createCommit] normalizedPaths:", normalizedPaths);
+        console.log("[createCommit] statusOutput:", statusOutput);
+      }
+      const stageable = Array.from(
+        new Set(
+          statusOutput
+            .split("\n")
+            .map((line) => line)
+            .filter((line) => line.trim().length > 0)
+            .map((line) => {
+              const status = line.slice(0, 2);
+              const pathPart = line.slice(3);
+              const renameParts = pathPart.split(" -> ");
+              const candidate = renameParts[renameParts.length - 1]?.trim() ?? "";
+              const absolutePath = nodePath.resolve(cwd, candidate);
+              const exists = fs.existsSync(absolutePath);
+              const isDeletion = status.includes("D");
+              return !candidate || (!exists && !isDeletion) ? "" : candidate;
+            })
+            .filter((line) => line.length > 0)
+        )
+      );
+
+      if (stageable.length === 0) {
+        throw new Error(
+          `No matching changes found for provided paths: ${normalizedPaths.join(", ")}`
+        );
+      }
+
+      if (debugCommit) {
+        console.log("[createCommit] stageable:", stageable);
+      }
+
+      execFileSync("git", ["add", "--", ...stageable], { cwd, encoding: "utf-8" });
+
       const fullMessage = `${taskId}: ${message}
 
 🤖 Generated with [OpenAgents](https://openagents.com)
 
-Co-Authored-By: MechaCoder <noreply@openagents.com>`;
+Co-Authored-By: MechaCoder <noreply@openagents.com>
+`;
 
-      execSync(`git commit -m "${fullMessage.replace(/"/g, '\\"')}"`, {
+      execFileSync("git", ["commit", "-F", "-"], {
         cwd,
         encoding: "utf-8",
+        input: fullMessage,
       });
-      
-      // Get commit SHA
-      const sha = execSync("git rev-parse HEAD", { cwd, encoding: "utf-8" }).trim();
+
+      const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8" }).trim();
       return sha;
     },
     catch: (error: any) => new Error(`Failed to create commit: ${error.message}`),
@@ -1209,7 +1280,13 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
       }).pipe(Effect.catchAll(() => Effect.void));
 
       // Phase 6b: Create git commit
-      const sha = yield* createCommit(taskResult.id, commitMessage, config.cwd);
+      const stagePaths = Array.from(
+        new Set([
+          ...progress.work.filesModified.map((file) => file.trim()).filter((file) => file.length > 0),
+          openagentsDir,
+        ])
+      );
+      const sha = yield* createCommit(taskResult.id, commitMessage, config.cwd, stagePaths);
       emit({ type: "commit_created", sha, message: commitMessage });
 
       // Update pending commit with SHA (for crash recovery verification)
