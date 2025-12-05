@@ -108,14 +108,18 @@ export class SocketClient {
 
       this.isConnecting = true;
       this.log(`Connecting to ${this.url}`);
+      // Also log to terminal via bunLog
+      (window as any).bunLog?.(`[SocketClient] Connecting to ${this.url}`);
 
       try {
         this.ws = new WebSocket(this.url);
+        (window as any).bunLog?.(`[SocketClient] WebSocket created, waiting for open...`);
 
         this.ws.onopen = () => {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.log("Connected");
+          (window as any).bunLog?.(`[SocketClient] WebSocket OPEN!`);
 
           // Flush queued messages
           while (this.messageQueue.length > 0) {
@@ -161,6 +165,7 @@ export class SocketClient {
         this.ws.onerror = (error) => {
           this.isConnecting = false;
           this.log(`Connection error: ${error}`);
+          (window as any).bunLog?.(`[SocketClient] WebSocket ERROR:`, String(error));
           reject(new Error("WebSocket connection failed"));
         };
       } catch (e) {
