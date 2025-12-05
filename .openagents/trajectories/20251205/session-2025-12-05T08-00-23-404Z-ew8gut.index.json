@@ -1,0 +1,23 @@
+{
+  "session_id": "session-2025-12-05T08-00-23-404Z-ew8gut",
+  "agent": {
+    "name": "mechacoder-orchestrator",
+    "version": "1.0.0",
+    "model_name": "orchestrator",
+    "extra": {
+      "type": "orchestrator"
+    }
+  },
+  "checkpoint": {
+    "step_id": 13,
+    "timestamp": "2025-12-05T08:04:39.755Z",
+    "completed_step_count": 13
+  },
+  "status": "complete",
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_steps": 13
+  },
+  "created_at": "2025-12-05T08:00:23.404Z"
+}
