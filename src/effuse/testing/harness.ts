@@ -7,8 +7,8 @@
 
 import { Context, Effect, Stream, type Scope } from "effect"
 import type { Widget } from "../widget/types.js"
-import type { StateCell } from "../state/cell.js"
 import type { HudMessage } from "../../hud/protocol.js"
+import { StateServiceTag } from "../services/state.js"
 import { TestError, type WaitOptions } from "./errors.js"
 
 /**
@@ -119,7 +119,7 @@ export interface TestHarness {
       /** Initial state override */
       initialState?: S
     }
-  ) => Effect.Effect<WidgetHandle<S, E>, TestError, R | Scope.Scope>
+  ) => Effect.Effect<WidgetHandle<S, E>, TestError, R | StateServiceTag | Scope.Scope>
 
   // ─────────────────────────────────────────────────────────────────
   // Socket Message Injection
