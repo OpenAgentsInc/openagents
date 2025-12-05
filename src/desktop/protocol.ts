@@ -80,6 +80,14 @@ export interface LoadTBRunDetailsRequest extends BaseRequest {
 }
 
 /**
+ * Load ready tasks from .openagents/tasks.jsonl
+ */
+export interface LoadReadyTasksRequest extends BaseRequest {
+  type: "request:loadReadyTasks";
+  limit?: number;
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -87,7 +95,8 @@ export type SocketRequest =
   | StartTBRunRequest
   | StopTBRunRequest
   | LoadRecentTBRunsRequest
-  | LoadTBRunDetailsRequest;
+  | LoadTBRunDetailsRequest
+  | LoadReadyTasksRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -201,6 +210,29 @@ export interface LoadTBRunDetailsResponse extends BaseResponse {
 }
 
 /**
+ * MechaCoder task item (simplified Task for UI)
+ */
+export interface MCTask {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: number;
+  type: string;
+  labels: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Response to LoadReadyTasksRequest
+ */
+export interface LoadReadyTasksResponse extends BaseResponse {
+  type: "response:loadReadyTasks";
+  data?: MCTask[];
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -208,7 +240,8 @@ export type SocketResponse =
   | StartTBRunResponse
   | StopTBRunResponse
   | LoadRecentTBRunsResponse
-  | LoadTBRunDetailsResponse;
+  | LoadTBRunDetailsResponse
+  | LoadReadyTasksResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -273,6 +306,9 @@ export const isLoadRecentTBRunsRequest = (msg: SocketRequest): msg is LoadRecent
 
 export const isLoadTBRunDetailsRequest = (msg: SocketRequest): msg is LoadTBRunDetailsRequest =>
   msg.type === "request:loadTBRunDetails";
+
+export const isLoadReadyTasksRequest = (msg: SocketRequest): msg is LoadReadyTasksRequest =>
+  msg.type === "request:loadReadyTasks";
 
 // ============================================================================
 // Serialization Helpers

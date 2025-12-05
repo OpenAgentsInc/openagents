@@ -18,6 +18,7 @@ import type {
   TBSuiteInfo,
   TBRunHistoryItem,
   TBRunDetails,
+  MCTask,
 } from "../desktop/protocol.js";
 import {
   generateCorrelationId,
@@ -339,6 +340,17 @@ export class SocketClient {
       throw new Error(response.error ?? "Failed to load run details");
     }
     return (response as Extract<SocketResponse, { type: "response:loadTBRunDetails" }>).data ?? null;
+  }
+
+  /**
+   * Load ready tasks from .openagents/tasks.jsonl
+   */
+  async loadReadyTasks(limit?: number): Promise<MCTask[]> {
+    const response = await this.request("request:loadReadyTasks", { limit });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to load ready tasks");
+    }
+    return (response as Extract<SocketResponse, { type: "response:loadReadyTasks" }>).data ?? [];
   }
 
   // ============================================================================

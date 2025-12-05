@@ -1,0 +1,4 @@
+# $TS Work Log (oa-2eaf5a)
+
+- Updated desktop window default size to 1920x1200 with MAX hint to start near-fullscreen on laptops.
+- Tests not rerun this pass (suite currently has known failures unrelated to this change).
