@@ -506,6 +506,8 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
       parallelExecution: {
         enabled: false,
         maxAgents: 4,
+        perAgentMemoryMb: 4096,
+        hostMemoryReserveMb: 6144,
         worktreeTimeout: 30 * 60 * 1000,
         installTimeoutMs: 15 * 60 * 1000,
         installArgs: ["--frozen-lockfile"],

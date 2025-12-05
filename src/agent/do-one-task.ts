@@ -783,6 +783,8 @@ const doOneTaskOrchestrator = (config: Config) =>
       parallelExecution: {
         enabled: false,
         maxAgents: 2,
+        perAgentMemoryMb: 4096,
+        hostMemoryReserveMb: 6144,
         worktreeTimeout: 30 * 60 * 1000,
         installTimeoutMs: 15 * 60 * 1000,
         installArgs: ["--frozen-lockfile"],

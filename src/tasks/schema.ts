@@ -165,6 +165,10 @@ export const ParallelExecutionConfig = S.Struct({
   enabled: S.optionalWith(S.Boolean, { default: () => false }),
   /** Maximum number of agents to run in parallel */
   maxAgents: S.optionalWith(S.Number, { default: () => 4 }),
+  /** Approximate memory to allocate per agent in MiB (used for auto-scaling) */
+  perAgentMemoryMb: S.optionalWith(S.Number, { default: () => 4096 }),
+  /** Host memory to reserve in MiB (prevents over-commit) */
+  hostMemoryReserveMb: S.optionalWith(S.Number, { default: () => 6144 }),
   /** Timeout for each worktree in milliseconds */
   worktreeTimeout: S.optionalWith(S.Number, { default: () => 30 * 60 * 1000 }),
   /** Timeout for dependency installation in milliseconds (default: 15 minutes) */

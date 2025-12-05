@@ -35,6 +35,7 @@ import {
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { readyTasks as getReadyTasks } from "../tasks/service.js";
+import { extractCredentialsFromKeychain } from "../sandbox/credentials.js";
 
 // ============================================================================
 // Project Root Resolution
