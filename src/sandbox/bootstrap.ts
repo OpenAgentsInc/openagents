@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { Effect } from "effect";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -10,6 +11,8 @@ import { ContainerError } from "./schema.js";
 
 const GITHUB_API = "https://api.github.com/repos/apple/container/releases/latest";
 const CONTAINER_CLI = "container";
+const DEFAULT_TIMEOUT_MS = 30_000;
+const USER_AGENT = "openagents-sandbox-bootstrap/1.0";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -46,6 +49,38 @@ const runCommand = (cmd: string, ...args: string[]) =>
     },
     catch: (e) => new ContainerError("execution_failed", `Command failed: ${e}`),
   });
+
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "user-agent": USER_AGENT,
+        ...(init.headers ?? {}),
+      },
+    });
+    return resp;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const readSha256FromAsset = (contents: string): string | null => {
+  const line = contents.split("\n").find((l) => l.trim().length > 0);
+  if (!line) return null;
+  const match = line.match(/[a-fA-F0-9]{64}/);
+  return match ? match[0].toLowerCase() : null;
+};
+
+const cleanupDir = (fs: FileSystem.FileSystem, dir: string) =>
+  fs.remove(dir, { recursive: true }).pipe(Effect.ignore);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Check Status
@@ -104,9 +139,26 @@ export const downloadInstaller = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
+  const cleanupOnError = (dir: string, error: unknown) =>
+    cleanupDir(fs, dir).pipe(
+      Effect.flatMap(() =>
+        Effect.fail(
+          error instanceof ContainerError
+            ? error
+            : new ContainerError("not_available", String(error))
+        )
+      )
+    );
+
   // Get latest release info
   const response = yield* Effect.tryPromise({
-    try: () => fetch(GITHUB_API).then((r) => r.json()),
+    try: async () => {
+      const resp = await fetchWithTimeout(GITHUB_API, { headers: { Accept: "application/json" } });
+      if (!resp.ok) {
+        throw new ContainerError("not_available", `Failed to fetch release info: HTTP ${resp.status}`);
+      }
+      return resp.json();
+    },
     catch: (e) =>
       new ContainerError("not_available", `Failed to fetch release info: ${e}`),
   });
@@ -122,32 +174,71 @@ export const downloadInstaller = Effect.gen(function* () {
     );
   }
 
+  const checksumAsset = assets.find((a: any) => a.name.toLowerCase().includes("sha256"));
+  if (!checksumAsset) {
+    return yield* Effect.fail(
+      new ContainerError("not_available", "No checksum asset found alongside installer"),
+    );
+  }
+
   const downloadUrl = installer.browser_download_url;
+  const checksumUrl = checksumAsset.browser_download_url;
   const version = (response as any).tag_name ?? "unknown";
 
   // Create temp directory
   const tmpDir = path.join("/tmp", `container-installer-${Date.now()}`);
-  yield* fs.makeDirectory(tmpDir, { recursive: true });
+  yield* fs.makeDirectory(tmpDir, { recursive: true }).pipe(
+    Effect.mapError((e) => new ContainerError("not_available", `Failed to create temp dir: ${e}`))
+  );
 
   const pkgPath = path.join(tmpDir, `container-${version}.pkg`);
+  const checksumPath = path.join(tmpDir, `container-${version}.sha256`);
 
   // Download the installer
-  yield* Effect.tryPromise({
+  const downloadResult = yield* Effect.tryPromise({
     try: async () => {
-      const resp = await fetch(downloadUrl);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const buffer = await resp.arrayBuffer();
-      await Bun.write(pkgPath, buffer);
+      try {
+        const resp = await fetchWithTimeout(downloadUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buffer = await resp.arrayBuffer();
+        await Bun.write(pkgPath, buffer);
+      } catch (e) {
+        throw e;
+      }
+
+      const checksumResp = await fetchWithTimeout(checksumUrl);
+      if (!checksumResp.ok) throw new Error(`HTTP ${checksumResp.status}`);
+      const checksumText = await checksumResp.text();
+      await Bun.write(checksumPath, checksumText);
+
+      const expected = readSha256FromAsset(checksumText);
+      if (!expected) {
+        throw new ContainerError("not_available", "Checksum asset missing SHA-256 value");
+      }
+
+      const fileBuffer = await Bun.file(pkgPath).arrayBuffer();
+      const actual = createHash("sha256").update(Buffer.from(fileBuffer)).digest("hex").toLowerCase();
+      if (actual !== expected) {
+        throw new ContainerError(
+          "not_available",
+          `Checksum mismatch for installer (expected ${expected}, got ${actual})`
+        );
+      }
+
+      return {
+        success: true,
+        message: `Downloaded container ${version} installer`,
+        installerPath: pkgPath,
+      } satisfies BootstrapResult;
     },
-    catch: (e) =>
-      new ContainerError("not_available", `Failed to download installer: ${e}`),
+    catch: (e) => e,
   });
 
-  return {
-    success: true,
-    message: `Downloaded container ${version} installer`,
-    installerPath: pkgPath,
-  } satisfies BootstrapResult;
+  if (downloadResult instanceof ContainerError || downloadResult instanceof Error) {
+    return yield* cleanupOnError(tmpDir, downloadResult);
+  }
+
+  return downloadResult satisfies BootstrapResult;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
