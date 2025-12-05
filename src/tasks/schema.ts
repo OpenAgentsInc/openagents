@@ -365,9 +365,23 @@ export const isTaskReady = (task: Task, allTasks: Task[]): boolean => {
   });
 };
 
+// DeletionEntry tracks when a task is deleted (tombstone for restore)
+export const DeletionEntry = S.Struct({
+  /** Task ID that was deleted */
+  taskId: S.String,
+  /** Timestamp when task was deleted */
+  deletedAt: S.String, // ISO 8601 timestamp
+  /** Actor who deleted the task (e.g., username, agent name) */
+  deletedBy: S.optional(S.String),
+  /** Reason for deletion */
+  reason: S.optional(S.String),
+});
+export type DeletionEntry = S.Schema.Type<typeof DeletionEntry>;
+
 // Helper to decode a task from unknown input
 export const decodeTask = S.decodeUnknownSync(Task);
 export const decodeTaskCreate = S.decodeUnknownSync(TaskCreate);
 export const decodeTaskUpdate = S.decodeUnknownSync(TaskUpdate);
 export const decodeProjectConfig = S.decodeUnknownSync(ProjectConfig);
 export const decodePendingCommit = S.decodeUnknownSync(PendingCommit);
+export const decodeDeletionEntry = S.decodeUnknownSync(DeletionEntry);
