@@ -88,28 +88,38 @@ const [_html, css, _js] = await Promise.all([
   jsFile.text(),
 ]);
 
-// Test: inline script with addEventListener (not onclick)
-const testHtml = `
-<!DOCTYPE html>
-<html>
-<head><style>${css}</style></head>
-<body>
-  <h1 id="test">If you see this, HTML loaded</h1>
-  <button id="btn">Click me</button>
-  <script>
-    document.getElementById('test').textContent = 'JS IS WORKING!';
-    document.getElementById('btn').addEventListener('click', function() {
-      alert('Button clicked via addEventListener!');
-      document.getElementById('test').textContent = 'BUTTON CLICKED!';
-    });
-    console.log('Script with addEventListener executed');
-  </script>
-</body>
-</html>
+// Test: WebSocket connectivity from setHTML content
+const html = _html;
+const js = _js;
+
+// Prepend error catching to see what fails
+const testScript = `
+  console.log('[TEST] Script starting...');
+  window.bunLog('[TEST] bunLog available, JS is running!');
+  window.onerror = function(msg, url, line, col, error) {
+    window.bunLog('[JS ERROR] ' + msg + ' at line ' + line + ':' + col);
+    return true;
+  };
 `;
 
-console.log(`[Desktop] Testing with addEventListener...`);
-webview.setHTML(testHtml);
+// Wrap bundle in try-catch to get actual error details
+const wrappedJs = `
+try {
+${js}
+} catch(e) {
+  window.bunLog('[JS CATCH] ' + e.name + ': ' + e.message);
+  window.bunLog('[JS STACK] ' + e.stack);
+}
+`;
+
+// Inject CSS and JS inline (addEventListener works, inline onclick doesn't)
+const inlinedHtml = html
+  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
+  .replace('<script type="module" src="index.js"></script>', `<script>${testScript}\n${wrappedJs}</script>`);
+
+console.log(`[Desktop] Loaded: HTML=${html.length}b, CSS=${css.length}b, JS=${js.length}b`);
+console.log(`[Desktop] Inlined HTML: ${inlinedHtml.length}b`);
+webview.setHTML(inlinedHtml);
 
 console.log("[Desktop] Opening webview window...");
 
