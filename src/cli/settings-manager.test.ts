@@ -11,6 +11,7 @@ describe("SettingsManager", () => {
     mgr.setQueueMode("all");
     mgr.setDefaultThinkingLevel("medium");
     mgr.setTheme("dark");
+    mgr.setLastSeenChangelogVersion("1.2.3");
 
     const raw = readFileSync(join(dir, "settings.json"), "utf8");
     expect(raw).toContain("gpt-5");
@@ -21,5 +22,6 @@ describe("SettingsManager", () => {
     expect(reloaded.getQueueMode()).toBe("all");
     expect(reloaded.getDefaultThinkingLevel()).toBe("medium");
     expect(reloaded.getTheme()).toBe("dark");
+    expect(reloaded.getLastSeenChangelogVersion()).toBe("1.2.3");
   });
 });

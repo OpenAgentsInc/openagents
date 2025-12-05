@@ -14,6 +14,8 @@
 
 import { Webview, SizeHint } from "webview-bun";
 import { resolve, dirname, join } from "node:path";
+import { showChangelogOnStart } from "../cli/changelog.js";
+import { SettingsManager } from "../cli/settings-manager.js";
 import { DESKTOP_HTTP_PORT } from "./protocol.js";
 import { log } from "./logger.js";
 
@@ -45,6 +47,11 @@ const MAINVIEW_DIR = join(PROJECT_ROOT, "src/mainview");
 
 log("Desktop", `Project root: ${PROJECT_ROOT}`);
 log("Desktop", `Mainview dir: ${MAINVIEW_DIR}`);
+
+showChangelogOnStart({
+  settingsManager: new SettingsManager(),
+  log: (line) => log("Desktop", line),
+});
 
 // Start server in a Worker so it doesn't get blocked by webview.run()
 const workerPath = join(import.meta.dir, "server-worker.ts");
