@@ -11,6 +11,7 @@ export type LoopEvent =
   | { type: "llm_response"; turn: number; hasToolCalls: boolean; message: ChatMessage; toolCalls: Array<{ id: string; name: string; arguments: string }> }
   | { type: "tool_call"; tool: string; toolCallId: string; args: string }
   | { type: "tool_result"; tool: string; toolCallId: string; ok: boolean; result: ToolResult }
+  | { type: "tool_output"; tool: string; toolCallId: string; chunk: string }
   | { type: "edit_detected"; tool: string };
 
 export interface AgentConfig {
@@ -19,6 +20,8 @@ export interface AgentConfig {
   maxTurns?: number;
   temperature?: number;
   onEvent?: (event: LoopEvent) => void;  // Callback for streaming events DURING the loop
+  /** Streaming tool output (stdout/stderr) */
+  onOutput?: (text: string) => void;
 }
 
 export interface AgentTurn {
@@ -56,6 +59,8 @@ const executeToolCall = (
   tools: Tool<any, any, any, any>[],
   toolCall: { id: string; name: string; arguments: string },
   signal?: AbortSignal,
+  onOutput?: (text: string) => void,
+  emit?: (event: LoopEvent) => void,
 ): Effect.Effect<
   { toolCallId: string; name: string; result: ToolResult; isError: boolean },
   never,
@@ -91,7 +96,19 @@ const executeToolCall = (
       };
     }
 
-    const result = yield* runTool(tool, args, signal ? { signal } : undefined).pipe(
+    const result = yield* runTool(tool, args, {
+      ...(signal ? { signal } : {}),
+      ...(onOutput
+        ? {
+            onStream: (chunk) => {
+              if (chunk.type === "text") {
+                onOutput(chunk.text);
+                emit?.({ type: "tool_output", tool: tool.name, toolCallId: toolCall.id, chunk: chunk.text });
+              }
+            },
+          }
+        : {}),
+    }).pipe(
       Effect.catchAll((error) =>
         Effect.succeed({
           content: [{ type: "text" as const, text: error.message }],
@@ -226,7 +243,7 @@ export const agentLoop = (
           // EMIT tool_call BEFORE executing
           emit({ type: "tool_call", tool: toolCall.name, toolCallId: toolCall.id, args: toolCall.arguments });
           
-          const result = yield* executeToolCall(tools, toolCall);
+          const result = yield* executeToolCall(tools, toolCall, undefined, config.onOutput, emit);
           toolResults.push(result);
           
           // EMIT tool_result AFTER executing
