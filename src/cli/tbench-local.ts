@@ -338,11 +338,35 @@ const runTask = async (
       onOutput,
     });
 
+    // Give SDK time to clean up background processes (prevent AbortError during cleanup)
+    await new Promise(resolve => setTimeout(resolve, 250));
+
     // Save raw output
     writeFileSync(join(taskOutputDir, "output.txt"), outputText);
+
+    // Check for silent failures (0 turns = agent didn't run)
+    if (!result.success && result.turns === 0) {
+      const errorMsg = result.error || "Agent session started but did not process any turns (SDK silent failure)";
+      console.error(`\n❌ Agent failure: ${errorMsg}`);
+      if (result.error) {
+        console.error(`   Details: ${result.error}`);
+      }
+      writeFileSync(join(taskOutputDir, "error.txt"), errorMsg);
+      return {
+        taskId: tbTask.id,
+        outcome: "error",
+        durationMs: Date.now() - startTime,
+        turns: 0,
+        tokens: 0,
+        verificationOutput: undefined,
+        errorMessage: errorMsg,
+      };
+    }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    writeFileSync(join(taskOutputDir, "error.txt"), errorMsg);
+    const fullError = e instanceof Error && e.stack ? `${errorMsg}\n\nStack:\n${e.stack}` : errorMsg;
+    console.error(`\n❌ Exception during agent run: ${errorMsg}`);
+    writeFileSync(join(taskOutputDir, "error.txt"), fullError);
     return {
       taskId: tbTask.id,
       outcome: "error",
@@ -357,6 +381,14 @@ const runTask = async (
   const durationMs = Date.now() - startTime;
   const usage = result.sessionMetadata?.usage;
   const tokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+
+  // Surface error details if agent failed
+  if (!result.success && result.error) {
+    console.error(`\n⚠️  Agent completed unsuccessfully: ${result.error}`);
+    if (result.blockers && result.blockers.length > 0) {
+      console.error(`   Blockers: ${result.blockers.join(", ")}`);
+    }
+  }
 
   // Run verification
   console.log("\nRunning verification...");
@@ -398,6 +430,9 @@ const runTask = async (
   console.log(`Turns: ${result.turns}`);
   console.log(`Tokens: ${tokens}`);
   console.log(`Verification: ${verificationResult.passed ? "PASSED" : "FAILED"}`);
+  if (result.error) {
+    console.log(`Error: ${result.error}`);
+  }
 
   // Emit task complete to HUD
   if (options.tbEmitter) {
