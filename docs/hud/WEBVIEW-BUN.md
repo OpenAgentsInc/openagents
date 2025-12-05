@@ -1,0 +1,269 @@
+# webview-bun
+
+Bun bindings for the [webview](https://github.com/webview/webview/) library - a tiny cross-platform library for creating web-based desktop GUIs.
+
+**Source:** https://github.com/tr1ckydev/webview-bun
+
+## How It Works
+
+webview-bun uses Bun's FFI (Foreign Function Interface) to call native webview functions. The native library uses:
+- **macOS**: WebKit (WKWebView)
+- **Windows**: Microsoft Edge WebView2
+- **Linux**: WebKitGTK
+
+The FFI bindings are in `src/ffi.ts` which loads the platform-specific shared library:
+- `libwebview.dylib` (macOS)
+- `libwebview.dll` (Windows)
+- `libwebview-{arch}.so` (Linux)
+
+## Key Limitation: macOS WebKit Blocks localhost HTTP
+
+**CRITICAL**: On macOS, WebKit blocks `navigate()` calls to `http://localhost:*` URLs. This is a security restriction in the underlying WKWebView.
+
+### What Works
+```typescript
+// Direct HTML content - WORKS
+webview.setHTML(`<html><body>Hello</body></html>`);
+
+// Data URIs - WORKS
+webview.navigate("data:text/html,<html><body>Hello</body></html>");
+```
+
+### What Doesn't Work
+```typescript
+// localhost HTTP - BLOCKED (shows white screen)
+webview.navigate("http://localhost:8080");
+webview.navigate("http://127.0.0.1:8080");
+```
+
+### Our Solution
+Load files and embed them directly via `setHTML()`:
+
+```typescript
+const html = await Bun.file("index.html").text();
+const css = await Bun.file("index.css").text();
+const js = await Bun.file("index.js").text();
+
+const inlined = html
+  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
+  .replace('<script src="index.js"></script>', `<script>${js}</script>`);
+
+webview.setHTML(inlined);
+```
+
+## API Reference
+
+### Creating a Window
+
+```typescript
+import { Webview, SizeHint } from "webview-bun";
+
+const webview = new Webview();
+
+// Optional: enable dev tools (first param)
+const webview = new Webview(true);
+
+// Optional: set initial size
+const webview = new Webview(false, {
+  width: 1200,
+  height: 800,
+  hint: SizeHint.NONE  // NONE, MIN, MAX, or FIXED
+});
+```
+
+### Window Properties
+
+```typescript
+// Set window title
+webview.title = "My App";
+
+// Set window size
+webview.size = { width: 800, height: 600, hint: SizeHint.NONE };
+```
+
+### Loading Content
+
+```typescript
+// Load HTML directly (RECOMMENDED for our use case)
+webview.setHTML(`<html><body>Hello</body></html>`);
+
+// Navigate to URL (doesn't work with localhost on macOS!)
+webview.navigate("https://example.com");
+```
+
+### JavaScript Injection
+
+```typescript
+// Inject code that runs before window.onload on every page load
+webview.init(`
+  console.log('Page loading...');
+  window.myGlobal = 42;
+`);
+
+// Evaluate code immediately (async, result ignored)
+webview.eval(`console.log('Hello from bun!')`);
+```
+
+### Binding Functions (Bun <-> Webview Communication)
+
+```typescript
+// Bind a function callable from webview JavaScript
+webview.bind("myFunction", (arg1, arg2) => {
+  console.log("[Bun]", arg1, arg2);
+  return { result: "from bun" };  // Returned to JS as Promise
+});
+
+// In webview JavaScript:
+// const result = await myFunction("hello", 123);
+```
+
+### Running the Event Loop
+
+```typescript
+// Blocks until window is closed, then auto-destroys
+webview.run();
+
+// Manual cleanup (called automatically by run())
+webview.destroy();
+```
+
+## Complete Example (OpenAgents Pattern)
+
+```typescript
+import { Webview, SizeHint } from "webview-bun";
+import { join } from "node:path";
+
+const MAINVIEW_DIR = join(import.meta.dir, "../mainview");
+
+// Load and inline all content
+const html = await Bun.file(join(MAINVIEW_DIR, "index.html")).text();
+const css = await Bun.file(join(MAINVIEW_DIR, "index.css")).text();
+const js = await Bun.file(join(MAINVIEW_DIR, "index.js")).text();
+
+const inlined = html
+  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
+  .replace('<script type="module" src="index.js"></script>', `<script>${js}</script>`);
+
+const webview = new Webview();
+
+// Debug: inject error handler
+webview.init(`
+  window.onerror = (msg, url, line) => console.error('[JS ERROR]', msg, url, line);
+`);
+
+// Bind logging function
+webview.bind("bunLog", (...args) => console.log("[Webview]", ...args));
+
+webview.title = "OpenAgents";
+webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
+webview.setHTML(inlined);
+
+console.log("[Desktop] Opening window...");
+webview.run();
+console.log("[Desktop] Window closed");
+```
+
+## Building Executables
+
+```bash
+# Compile to single executable
+bun build --compile --minify src/desktop/main.ts --outfile openagents
+
+# Cross-compile for other platforms
+bun build --compile --target=bun-windows-x64 --minify src/desktop/main.ts --outfile openagents.exe
+bun build --compile --target=bun-linux-x64 --minify src/desktop/main.ts --outfile openagents-linux
+```
+
+### macOS: Hide Terminal Window
+Add `.app` extension to output:
+```bash
+bun build --compile --minify src/desktop/main.ts --outfile openagents.app
+```
+
+## Using Bun.serve() with Webview
+
+If you need a server running alongside the webview (e.g., for WebSocket), use Workers:
+
+```typescript
+// index.ts
+const worker = new Worker("./server-worker.ts");
+const webview = new Webview();
+webview.setHTML(html);  // Use setHTML, not navigate to localhost
+webview.run();
+worker.terminate();
+```
+
+```typescript
+// server-worker.ts
+Bun.serve({
+  port: 4242,
+  fetch(req, server) {
+    if (server.upgrade(req)) return;
+    return new Response("OK");
+  },
+  websocket: { /* ... */ }
+});
+```
+
+## Debugging Tips
+
+1. **White screen?** Check if you're using `navigate()` with localhost - use `setHTML()` instead
+
+2. **JS not running?** Inject debug code:
+   ```typescript
+   webview.init(`console.log('[DEBUG] Page loaded')`);
+   ```
+
+3. **Need console output?** Bind a log function:
+   ```typescript
+   webview.bind("bunLog", (...args) => console.log("[Webview]", ...args));
+   // In JS: bunLog("message")
+   ```
+
+4. **Build the JS bundle first:**
+   ```bash
+   bun build src/mainview/index.ts --target browser --outdir src/mainview
+   ```
+
+## Platform Notes
+
+### macOS
+- WebKit is built-in, no deps needed
+- Needs `cmake` and `ninja` for building from source
+- Use `.app` extension for compiled binaries to hide terminal
+
+### Windows
+- Requires Microsoft Edge WebView2 runtime
+- Pre-installed on Windows 11, manual install on older versions
+- Use `scripts/hidecmd.bat` to hide terminal on compiled exe
+
+### Linux
+- Requires GTK 4 and WebKitGTK 6:
+  - Debian: `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`
+  - Arch: `sudo pacman -S gtk4 webkitgtk-6.0`
+  - Fedora: `sudo dnf install gtk4 webkitgtk6.0`
+
+## File Structure in OpenAgents
+
+```
+src/desktop/
+  main.ts        # Entry point - creates webview, loads content
+  server.ts      # HTTP + WebSocket server (for HUD)
+  protocol.ts    # Socket message types
+  handlers.ts    # Request handlers
+
+src/mainview/
+  index.html     # Main HTML
+  index.css      # Styles
+  index.ts       # Source TypeScript
+  index.js       # Bundled JS (bun build output)
+  socket-client.ts  # WebSocket client for server communication
+```
+
+## Lessons Learned
+
+1. **Always use `setHTML()` on macOS** - `navigate()` to localhost is blocked
+2. **Bundle JS first** - The browser needs a single `.js` file, not TypeScript
+3. **Inline everything** - CSS and JS must be embedded in HTML for `setHTML()`
+4. **WebSocket still works** - You can still run a WS server and connect from the webview JS, just can't navigate to HTTP URLs
+5. **Debug bindings help** - Bind a `bunLog` function to get console output from webview
