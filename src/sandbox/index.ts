@@ -24,6 +24,7 @@ export {
 
 // Re-export implementations
 export { macOSContainerLayer, macOSContainerLive } from "./macos-container.js";
+export { dockerBackendLayer, dockerBackendLive } from "./docker.js";
 export { detectBackend, autoDetectLayer } from "./detect.js";
 
 // Re-export bootstrap utilities

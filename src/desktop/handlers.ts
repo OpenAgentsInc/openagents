@@ -28,6 +28,7 @@ import {
   isLoadRecentTBRunsRequest,
   isLoadTBRunDetailsRequest,
   isLoadReadyTasksRequest,
+  isAssignTaskToMCRequest,
   createSuccessResponse,
   createErrorResponse,
 } from "./protocol.js";
@@ -260,6 +261,55 @@ export function getProjectRootDir(): string {
 
 const TASKS_FILE = ".openagents/tasks.jsonl";
 
+// ============================================================================
+// MechaCoder Task Assignment
+// ============================================================================
+
+export async function assignTaskToMC(
+  taskId: string,
+  options?: { sandbox?: boolean }
+): Promise<{ assigned: boolean }> {
+  const scriptPath = join(PROJECT_ROOT, "src/agent/do-one-task.ts");
+  const args = ["bun", scriptPath, "--dir", PROJECT_ROOT, "--cc-only"];
+
+  if (options?.sandbox) {
+    args.push("--sandbox");
+  }
+
+  // TODO: Add --task-id flag support to do-one-task.ts
+  // For now, we'll just spawn MechaCoder and let it pick the next ready task
+  console.log(`[MC] Assigning task ${taskId} to MechaCoder:`, args.join(" "));
+
+  try {
+    // Spawn as background process (fire-and-forget)
+    const proc = spawn({
+      cmd: args,
+      cwd: PROJECT_ROOT,
+      stdout: "inherit",
+      stderr: "inherit",
+      env: {
+        ...process.env,
+        HOME: process.env.HOME ?? Bun.env.HOME,
+        PATH: process.env.PATH ?? Bun.env.PATH,
+      },
+    });
+
+    // Don't wait for completion - let it run in background
+    proc.exited.then(() => {
+      console.log(`[MC] MechaCoder process completed for task ${taskId}`);
+    });
+
+    return { assigned: true };
+  } catch (err) {
+    console.error(`[MC] Failed to spawn MechaCoder:`, err);
+    throw new Error(`Failed to spawn MechaCoder: ${err}`);
+  }
+}
+
+// ============================================================================
+// Ready Tasks Loading
+// ============================================================================
+
 export async function loadReadyTasks(limit?: number): Promise<MCTask[]> {
   const tasksPath = join(PROJECT_ROOT, TASKS_FILE);
   console.log(`[Handler] loadReadyTasks called, path: ${tasksPath}, limit: ${limit}`);
@@ -336,6 +386,12 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       const data = await loadReadyTasks(request.limit);
       console.log(`[Handler] Returning ${data.length} tasks`);
       return createSuccessResponse("response:loadReadyTasks", correlationId, data);
+    }
+
+    if (isAssignTaskToMCRequest(request)) {
+      console.log(`[Handler] Received assignTaskToMC request for task ${request.taskId}`);
+      const data = await assignTaskToMC(request.taskId, request.options);
+      return createSuccessResponse("response:assignTaskToMC", correlationId, data);
     }
 
     // Unknown request type

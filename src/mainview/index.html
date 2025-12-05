@@ -4,29 +4,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenAgents</title>
+  <title>OpenAgents v3</title>
+  <!-- Force dark mode FIRST -->
+  <script>
+    console.log('[EARLY] Setting dark mode...');
+    try {
+      localStorage.setItem('themeMode', 'dark');
+      document.documentElement.classList.add('dark');
+    } catch (e) {
+      console.error('[EARLY] localStorage blocked:', e);
+    }
+  </script>
+  <!-- Load our JS FIRST, defer to not block -->
+  <script defer src="index.js"></script>
   <!-- Basecoat CSS (includes Tailwind utilities pre-compiled) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/basecoat.cdn.min.css">
   <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
   <!-- Tailwind Browser for arbitrary values (debounced to reduce lag) -->
   <script>
+    console.log('[EARLY] Configuring Tailwind...');
     window.tailwindConfig = {
       scan: {
         debounce: 100, // Wait 100ms before re-scanning
       }
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <!-- Force dark mode -->
-  <script>
-    // Set dark mode before Basecoat loads to prevent flash
-    try {
-      localStorage.setItem('themeMode', 'dark');
-      document.documentElement.classList.add('dark');
-    } catch (e) {
-      // localStorage may be blocked
-    }
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
   <!-- Local styles -->
   <link rel="stylesheet" href="index.css">
 </head>
@@ -100,8 +103,6 @@
       <div id="tb-task-list" class="tb-task-list"></div>
     </div>
   </div>
-
-  <script src="index.js"></script>
 </body>
 
 </html>

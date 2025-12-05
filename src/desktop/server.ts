@@ -143,11 +143,17 @@ export class DesktopServer {
                 entrypoints: [tsPath],
                 target: "browser",
                 minify: false,
+                format: "iife",
               });
               if (result.success && result.outputs.length > 0) {
                 const text = await result.outputs[0].text();
                 return new Response(text, {
-                  headers: { "Content-Type": "application/javascript" },
+                  headers: {
+                    "Content-Type": "application/javascript",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                  },
                 });
               }
             } catch (e) {
@@ -172,7 +178,12 @@ export class DesktopServer {
           const contentType = contentTypes[ext] || "application/octet-stream";
 
           return new Response(file, {
-            headers: { "Content-Type": contentType },
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              "Pragma": "no-cache",
+              "Expires": "0",
+            },
           });
         }
 
