@@ -35,6 +35,7 @@ import {
 } from "./agent-lock.js";
 import { runOrchestrator } from "./orchestrator.js";
 import type { OrchestratorConfig, ClaudeCodeSettings } from "./types.js";
+import { makeReflectionService, type ReflexionConfigType } from "./reflection/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -90,6 +91,8 @@ export interface ParallelRunnerConfig {
   installTimeoutMs?: number;
   /** Extra arguments for bun install (e.g., --frozen-lockfile) */
   installArgs?: string[];
+  /** Reflexion configuration */
+  reflexionConfig?: ReflexionConfigType;
   /** Custom orchestrator runner (tests) */
   runOrchestratorFn?: typeof runOrchestrator;
 }
@@ -452,6 +455,12 @@ const runAgentInWorktree = (
       });
     }
 
+    const reflectionService = makeReflectionService({
+      openagentsDir: worktreeOpenagentsDir,
+      cwd: worktree.path,
+      ...(config.reflexionConfig ? { config: config.reflexionConfig } : {}),
+    });
+
     // Build orchestrator config with Golden Loop invariants
     const orchestratorConfig: OrchestratorConfig = {
       cwd: worktree.path,
@@ -462,6 +471,8 @@ const runAgentInWorktree = (
       task, // Pre-assigned task (CRITICAL: prevents race condition)
       forceNewSubtasks: true, // Avoid stale subtask files from git
       claudeCode: config.claudeCode ?? { enabled: true },
+      reflectionService,
+      ...(config.reflexionConfig ? { reflexionConfig: config.reflexionConfig } : {}),
     };
 
     // Only set optional properties if they have values
@@ -821,6 +832,8 @@ export interface CreateParallelRunnerOptions {
   ccOnly?: boolean;
   /** Allow push to remote */
   allowPush?: boolean;
+  /** Reflexion configuration */
+  reflexionConfig?: ReflexionConfigType;
   /** Event callback */
   onAgentEvent?: (agentId: string, event: AgentEvent) => void;
   /** Custom orchestrator runner (tests) */
@@ -896,6 +909,9 @@ export const runParallelFromConfig = (
   }
   if (options.allowPush !== undefined) {
     config.allowPush = options.allowPush;
+  }
+  if (options.reflexionConfig) {
+    config.reflexionConfig = options.reflexionConfig;
   }
   if (options.runOrchestratorFn) {
     config.runOrchestratorFn = options.runOrchestratorFn;
