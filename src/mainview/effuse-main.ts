@@ -116,19 +116,29 @@ const mountAllWidgets = Effect.gen(function* () {
 
 /**
  * Initialize the Effuse mainview
+ *
+ * We mount widgets and then keep the program alive with Effect.never
+ * so the scope stays open and event handlers keep running.
  */
 const initEffuse = () => {
   const layer = createEffuseLayer()
 
-  const program = Effect.scoped(mountAllWidgets)
-
-  Effect.runPromise(
-    program.pipe(Effect.provide(layer))
-  ).then(() => {
-    console.log("[Effuse] Mainview initialized")
-  }).catch((err) => {
-    console.error("[Effuse] Failed to initialize:", err)
+  // Mount widgets then wait forever (keeps scope open for event handlers)
+  const program = Effect.gen(function* () {
+    yield* mountAllWidgets
+    console.log("[Effuse] Widgets mounted, keeping scope alive...")
+    // Never complete - keeps the scope open so forked fibers keep running
+    yield* Effect.never
   })
+
+  Effect.runFork(
+    program.pipe(
+      Effect.provide(layer),
+      Effect.scoped
+    )
+  )
+
+  console.log("[Effuse] Mainview initialized")
 }
 
 // Initialize when DOM is ready
