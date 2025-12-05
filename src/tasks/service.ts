@@ -6,6 +6,7 @@ import {
   decodeTaskCreate,
   decodeTaskUpdate,
   isTaskReady,
+  type Comment,
   type Task,
   type TaskCreate,
   type TaskFilter,
@@ -16,6 +17,7 @@ import {
   findNextChildNumber,
   generateChildId,
   generateHashId,
+  generateRandomId,
 } from "./id.js";
 
 export class TaskServiceError extends Error {
@@ -411,14 +413,16 @@ export const updateTask = ({
     }
     if (validatedUpdate.labels !== undefined)
       current.labels = [...validatedUpdate.labels];
-    if (validatedUpdate.deps !== undefined) current.deps = [...validatedUpdate.deps];
-    if (validatedUpdate.commits !== undefined)
-      current.commits = [...validatedUpdate.commits];
-    current.closeReason = closeReason;
-    if (validatedUpdate.design !== undefined) current.design = validatedUpdate.design;
-    if (validatedUpdate.acceptanceCriteria !== undefined)
-      current.acceptanceCriteria = validatedUpdate.acceptanceCriteria;
-    if (validatedUpdate.notes !== undefined) current.notes = validatedUpdate.notes;
+  if (validatedUpdate.deps !== undefined) current.deps = [...validatedUpdate.deps];
+  if (validatedUpdate.commits !== undefined)
+    current.commits = [...validatedUpdate.commits];
+  if (validatedUpdate.comments !== undefined)
+    current.comments = [...validatedUpdate.comments];
+  current.closeReason = closeReason;
+  if (validatedUpdate.design !== undefined) current.design = validatedUpdate.design;
+  if (validatedUpdate.acceptanceCriteria !== undefined)
+    current.acceptanceCriteria = validatedUpdate.acceptanceCriteria;
+  if (validatedUpdate.notes !== undefined) current.notes = validatedUpdate.notes;
     if (validatedUpdate.estimatedMinutes !== undefined)
       current.estimatedMinutes = validatedUpdate.estimatedMinutes;
     if (validatedUpdate.pendingCommit !== undefined) {
@@ -475,6 +479,79 @@ export const closeTask = ({
 
   return updateTask(updateOptions);
 };
+
+export interface AddCommentOptions {
+  tasksPath: string;
+  taskId: string;
+  text: string;
+  author: string;
+  commentId?: string;
+  idPrefix?: string;
+  timestamp?: Date;
+}
+
+export const addComment = ({
+  tasksPath,
+  taskId,
+  text,
+  author,
+  commentId,
+  idPrefix = "c",
+  timestamp,
+}: AddCommentOptions): Effect.Effect<
+  { task: Task; comment: Comment },
+  TaskServiceError,
+  FileSystem.FileSystem | Path.Path
+> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const tasks = yield* readTasks(tasksPath);
+    const index = tasks.findIndex((t) => t.id === taskId);
+    if (index === -1) {
+      return yield* Effect.fail(
+        new TaskServiceError("not_found", `Task not found: ${taskId}`),
+      );
+    }
+
+    const generatedId = commentId ?? (yield* generateRandomId(idPrefix));
+    const comment: Comment = {
+      id: generatedId,
+      text,
+      author,
+      createdAt: nowIso(now),
+    };
+
+    const existing = tasks[index]!;
+    const updatedComments = [...(existing.comments ?? []), comment];
+
+    const updatedTask = yield* updateTask({
+      tasksPath,
+      id: taskId,
+      update: { comments: updatedComments },
+      timestamp: now,
+    });
+
+    return { task: updatedTask, comment };
+  });
+
+export const listComments = ({
+  tasksPath,
+  taskId,
+}: {
+  tasksPath: string;
+  taskId: string;
+}): Effect.Effect<Comment[], TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const tasks = yield* readTasks(tasksPath);
+    const task = tasks.find((t) => t.id === taskId);
+  if (!task) {
+    return yield* Effect.fail(
+      new TaskServiceError("not_found", `Task not found: ${taskId}`),
+    );
+  }
+
+  return [...(task.comments ?? [])];
+});
 
 export interface ReopenTaskOptions {
   tasksPath: string;

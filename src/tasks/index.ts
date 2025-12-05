@@ -72,6 +72,8 @@ export {
   getStaleTasks,
   getTaskWithDeps,
   hasConflictMarkers,
+  addComment,
+  listComments,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
@@ -82,6 +84,7 @@ export {
   type TaskStats,
   type StaleTasksOptions,
   type TaskWithDeps,
+  type AddCommentOptions,
 } from "./service.js";
 
 export {

@@ -20,6 +20,8 @@
  *   doctor     Diagnose common issues in tasks.jsonl
  *   repair-deps Fix orphaned dependencies by removing references to missing tasks
  *   duplicates Find duplicate tasks by title+description hash, grouped by status
+ *   comment:add Add a comment to a task
+ *   comment:list List comments for a task
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -46,6 +48,8 @@ import {
   mergeTaskFiles,
   TaskMergeError,
   TaskServiceError,
+  addComment,
+  listComments,
   loadProjectConfig,
   saveProjectConfig,
   defaultProjectConfig,
@@ -73,6 +77,9 @@ interface CliOptions {
   labels?: string[];
   assignee?: string;
   unassigned?: boolean;
+  text?: string;
+  author?: string;
+  commentId?: string;
   limit?: number;
   title?: string;
   description?: string;
@@ -188,6 +195,24 @@ const parseArgs = (args: string[]): { command: string; options: CliOptions } => 
       case "--description":
         if (nextArg) {
           options.description = nextArg;
+          i++;
+        }
+        break;
+      case "--text":
+        if (nextArg) {
+          options.text = nextArg;
+          i++;
+        }
+        break;
+      case "--author":
+        if (nextArg) {
+          options.author = nextArg;
+          i++;
+        }
+        break;
+      case "--comment-id":
+        if (nextArg) {
+          options.commentId = nextArg;
           i++;
         }
         break;
@@ -1484,6 +1509,87 @@ const cmdShow = (options: CliOptions) =>
     return result;
   });
 
+const cmdCommentAdd = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.id) {
+      output({ error: "Missing required --id <task-id>" }, options.json);
+      return null;
+    }
+    if (!options.text) {
+      output({ error: "Missing required --text <comment>" }, options.json);
+      return null;
+    }
+
+    const author = options.author ?? process.env.USER ?? "unknown";
+
+    const addOptions = {
+      tasksPath,
+      taskId: options.id,
+      text: options.text,
+      author,
+      ...(options.commentId ? { commentId: options.commentId } : {}),
+    };
+
+    const result = yield* addComment(addOptions).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    if (options.json) {
+      output(result, true);
+    } else {
+      console.log(
+        `Added comment ${result.comment.id} by ${result.comment.author} to task ${options.id}`,
+      );
+    }
+
+    return result;
+  });
+
+const cmdCommentList = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+
+    if (!options.id) {
+      output({ error: "Missing required --id <task-id>" }, options.json);
+      return null;
+    }
+
+    const comments = yield* listComments({ tasksPath, taskId: options.id }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!comments) {
+      return null;
+    }
+
+    if (options.json) {
+      output({ id: options.id, comments }, true);
+    } else {
+      if (comments.length === 0) {
+        console.log(`No comments for task ${options.id}`);
+      } else {
+        console.log(`Comments for task ${options.id}:`);
+        for (const c of comments) {
+          console.log(`- [${c.createdAt}] ${c.author}: ${c.text} (${c.id})`);
+        }
+      }
+    }
+
+    return comments;
+  });
+
 const showHelp = (): void => {
   console.log(`
 OpenAgents Task CLI
@@ -1500,6 +1606,8 @@ Commands:
   close     Close a task with optional commit SHA capture
   reopen    Reopen a closed task
   show      Show task details with dependency tree
+  comment:add  Add a comment to a task
+  comment:list List comments for a task
   stats     Show task statistics (counts by status, type, priority)
   stale     Find tasks not updated in N days
   archive   Archive old closed tasks to tasks-archive.jsonl
@@ -1551,6 +1659,15 @@ reopen Options:
 
 show Options:
   --id <task-id>          Task ID to show (required)
+
+comment:add Options:
+  --id <task-id>          Task ID to comment on (required)
+  --text <comment>        Comment text (required)
+  --author <name>         Comment author (default: $USER or "unknown")
+  --comment-id <id>       Optional explicit comment ID
+
+comment:list Options:
+  --id <task-id>          Task ID to list comments for (required)
 
 stale Options:
   --days <n>              Find tasks not updated in N days (default: 30)
@@ -1621,6 +1738,8 @@ Examples:
   bun src/tasks/cli.ts cleanup --older-than 90 --json  # delete closed tasks older than 90 days
   bun src/tasks/cli.ts delete --id oa-123 --json  # delete a task by ID
   bun src/tasks/cli.ts doctor --json  # diagnose orphan deps, duplicates, cycles, stale tasks
+  bun src/tasks/cli.ts comment:add --id oa-123 --text "Noted" --author alice --json  # add a comment
+  bun src/tasks/cli.ts comment:list --id oa-123 --json  # list comments
 `);
 };
 
@@ -1727,6 +1846,30 @@ const main = async () => {
     case "show":
       try {
         await Effect.runPromise(cmdShow(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "comment:add":
+      try {
+        await Effect.runPromise(cmdCommentAdd(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "comment:list":
+      try {
+        await Effect.runPromise(cmdCommentList(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
