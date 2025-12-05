@@ -467,6 +467,25 @@ export interface TBRunRequestMessage {
   maxTurns?: number;
 }
 
+export interface TBRunHistoryMessage {
+  type: "tb_run_history";
+  runs: Array<{
+    runId: string;
+    suiteName: string;
+    suiteVersion: string;
+    timestamp: string;
+    passRate: number;
+    passed: number;
+    failed: number;
+    timeout: number;
+    error: number;
+    totalDurationMs: number;
+    totalTokens: number;
+    taskCount: number;
+    filepath: string;
+  }>;
+}
+
 // ============================================================================
 // Container Execution Events
 // ============================================================================
@@ -583,6 +602,7 @@ export type HudMessage =
   | TBTaskCompleteMessage
   | TBSuiteInfoMessage
   | TBRunRequestMessage
+  | TBRunHistoryMessage
   | ContainerStartMessage
   | ContainerOutputMessage
   | ContainerCompleteMessage
@@ -653,6 +673,9 @@ export const isTBSuiteInfo = (msg: HudMessage): msg is TBSuiteInfoMessage =>
 
 export const isTBRunRequest = (msg: HudMessage): msg is TBRunRequestMessage =>
   msg.type === "tb_run_request";
+
+export const isTBRunHistory = (msg: HudMessage): msg is TBRunHistoryMessage =>
+  msg.type === "tb_run_history";
 
 /** Check if message is any TB-related message */
 export const isTBMessage = (msg: HudMessage): boolean =>
