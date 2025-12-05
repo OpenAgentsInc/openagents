@@ -59,6 +59,7 @@
     "e2e:report": "bunx playwright show-report",
     "e2e:update-snapshots": "bunx playwright test --config e2e/playwright.config.ts --update-snapshots",
     "health": "bun src/health/cli.ts",
+    "health:report": "bun src/health/report-cli.ts",
     "deps:audit": "bun src/deps/audit-cli.ts",
     "desktop": "bun src/desktop/main.ts",
     "desktop:debug": "bun --inspect src/desktop/main.ts",
