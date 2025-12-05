@@ -2004,7 +2004,7 @@ ${pad}</g>`;
   }
   var LAYOUT_CONFIG = { padding: 16, spacing: 280 };
   var TB_LAYOUT_CONFIG = { padding: 12, spacing: 180 };
-  var REFRESH_INTERVAL_MS = 5000;
+  var REFRESH_INTERVAL_MS = 60000;
   var layout = calculateLayout({
     root: sampleMechaCoderTree,
     nodeSizes: sampleNodeSizes,
