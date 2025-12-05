@@ -18,6 +18,7 @@ import {
   getStaleTasks,
   addComment,
   renameTaskPrefix,
+  mergeTasksById,
 } from "./service.js";
 import type { TaskCreate } from "./schema.js";
 
@@ -242,6 +243,49 @@ describe("TaskService", () => {
     const child = renamed.updated.find((t) => t.title === "Child task");
     expect(child?.deps?.[0]?.id).toEqual(expect.stringMatching(/^zz-/));
     expect(child?.updatedAt).toBe("2025-01-02T00:00:00.000Z");
+  });
+
+  test("merges duplicate tasks into a target and rewrites deps", async () => {
+    const result = await runWithBun(
+      Effect.gen(function* () {
+        const { tasksPath } = yield* setup();
+        const sourceA = yield* createTask({
+          tasksPath,
+          task: makeTask("A"),
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+          idPrefix: "oa",
+        });
+        const sourceB = yield* createTask({
+          tasksPath,
+          task: makeTask("B"),
+          timestamp: new Date("2025-01-01T00:10:00Z"),
+          idPrefix: "oa",
+        });
+        const dependent = yield* createTask({
+          tasksPath,
+          task: makeTask("Dependent", { deps: [{ id: sourceB.id, type: "blocks" }] }),
+          timestamp: new Date("2025-01-01T00:20:00Z"),
+        });
+
+        const mergeResult = yield* mergeTasksById({
+          tasksPath,
+          ids: [sourceB.id],
+          targetId: sourceA.id,
+          timestamp: new Date("2025-01-02T00:00:00Z"),
+        });
+
+        const updated = yield* readTasks(tasksPath);
+        const depTask = updated.find((t) => t.id === dependent.id);
+        const target = updated.find((t) => t.id === sourceA.id);
+
+        return { mergeResult, updated, depTask, target };
+      }),
+    );
+
+    expect(result.mergeResult.mergedIds).toHaveLength(1);
+    expect(result.depTask?.deps?.[0]?.id).toBe(result.mergeResult.targetId);
+    expect(result.updated.find((t) => t.title === "B")).toBeUndefined();
+    expect(result.target?.updatedAt).toBe("2025-01-02T00:00:00.000Z");
   });
 
   test("lists tasks with filters, sort policy, and picks next ready", async () => {

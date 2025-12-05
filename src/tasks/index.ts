@@ -75,6 +75,7 @@ export {
   addComment,
   listComments,
   renameTaskPrefix,
+  mergeTasksById,
   type CreateTaskOptions,
   type UpdateTaskOptions,
   type CloseTaskOptions,
@@ -88,6 +89,8 @@ export {
   type AddCommentOptions,
   type RenamePrefixOptions,
   type RenamePrefixResult,
+  type MergeTasksOptions,
+  type MergeTasksResult,
 } from "./service.js";
 
 export {
