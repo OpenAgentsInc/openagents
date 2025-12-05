@@ -1396,3 +1396,246 @@ Based on this synthesis, the immediate actionable items are:
 - **Published**: NeurIPS 2023
 - **Key insight**: Verbal self-reflection on failures improves subsequent attempts
 - **Local summary**: `docs/research/paper-summaries/reflexion-summary.md`
+
+---
+
+## Research Updates (2025-12-04) - Additional Papers
+
+### Papers Integrated
+
+This update adds five more papers that provide complementary techniques for memory, retrieval, and self-improvement:
+
+#### 1. **Titans: Surprise-Aware Multi-Timescale Memory** (Google Research, 2023)
+
+- **Key finding**: Combine fast episodic memory with slower semantic memory, using a **surprise/importance gate** to decide what should be retained long-term. Only "surprising or important" experiences persist beyond immediate context.
+- **Implementation impact**: Enhance Archivist scoring with **surprise weighting**—unexpected failures or rare edge cases should be retained longer than routine successes.
+
+**Concrete additions for MechaCoder:**
+```typescript
+// Surprise-weighted memory scoring
+interface SurpriseScore {
+  unexpectedness: number;    // How different from prediction/expectation
+  rarity: number;           // How uncommon this pattern is
+  consequence: number;      // Impact of the event (failure severity, etc.)
+}
+
+function computeSurpriseScore(event: Event, history: Event[]): SurpriseScore {
+  // Unexpected failures score higher than expected successes
+  const unexpectedness = event.actual !== event.predicted ? 0.8 : 0.2;
+
+  // Rare patterns (seen <3 times) score higher
+  const similarEvents = history.filter(e => similarity(e, event) > 0.8);
+  const rarity = Math.max(0, 1 - (similarEvents.length / 10));
+
+  // High-impact events (test failures, security issues) score higher
+  const consequence = event.severity ?? 0.5;
+
+  return { unexpectedness, rarity, consequence };
+}
+
+// Use surprise score in retention decisions
+function shouldRetainLongTerm(memory: Memory, surprise: SurpriseScore): boolean {
+  const threshold = 0.6;
+  const score = 0.4 * surprise.unexpectedness +
+                0.3 * surprise.rarity +
+                0.3 * surprise.consequence;
+  return score > threshold;
+}
+```
+
+**Key insight**: Self-modifying memory reads (retrieval influences subsequent retrieval keys/weights) could help MechaCoder bias toward files/commands implicated in surprising failures.
+
+#### 2. **MoT: Memory-of-Thought Enables ChatGPT to Self-Improve** (Fudan University, 2023)
+
+- **Key finding**: Cache **high-confidence reasoning traces** (chain-of-thought solutions) as external memory. At test time, retrieve relevant thoughts to guide reasoning without parameter updates. Achieves +9 points over zero-shot CoT, +4 points over few-shot CoT.
+- **Implementation impact**: Treat **passing test runs and solid debugging traces as "thoughts"**—cache successful reasoning steps and retrieve them when similar errors appear.
+
+**Concrete additions for MechaCoder:**
+```typescript
+// Memory-of-Thought for coding
+interface ThoughtMemory {
+  question: string;       // "How to fix type error in Effect.gen?"
+  rationale: string;      // "The issue was missing explicit type annotation..."
+  answer: string;         // "Add type parameter: const result: Type = yield* effect;"
+  confidence: number;     // Based on: tests passed, no flakes, clear fix
+  embedding: number[];    // For retrieval
+}
+
+// Pre-think phase: generate thoughts for common patterns in new repos
+async function prethinkPhase(repo: Repository): Effect.Effect<ThoughtMemory[]> {
+  // 1. Run lightweight dry-runs/static checks
+  const patterns = yield* analyzeCodePatterns(repo);
+
+  // 2. Generate reasoning traces for common scenarios
+  const thoughts: ThoughtMemory[] = [];
+  for (const pattern of patterns) {
+    const thought = yield* generateThought(pattern);
+    if (thought.confidence > 0.8) {  // Quality filter
+      thoughts.push(thought);
+    }
+  }
+
+  return thoughts;
+}
+
+// Retrieval: use LLM-aware similarity (not just BM25)
+async function retrieveThoughts(query: string, thoughts: ThoughtMemory[]): ThoughtMemory[] {
+  // LLM-based retrieval outperforms BM25/MPNet per paper
+  const queryEmbed = await embed(query);
+  const ranked = thoughts
+    .map(t => ({ thought: t, score: cosineSimilarity(queryEmbed, t.embedding) }))
+    .filter(r => r.score > 0.7)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked.slice(0, 5).map(r => r.thought);
+}
+```
+
+**Key insight**: The paper emphasizes **confidence filtering**—only store high-confidence traces (tests passed, low flake rate). MechaCoder should apply similar quality gates to its memory.
+
+#### 3. **R2-MGA: Retrieval and Reflection Memory-Augmented Generative Agent** (AAAI 2025)
+
+- **Key finding**: For citation-grounded generation, retrieve the best-matching snippet from memory, **reflect on why it applies** to form an explicit rationale, then use snippet+rationale as an in-context demonstration. Two refinement passes polish answers and citations.
+- **Implementation impact**: Add a **reflection step over retrieved traces** before generating fixes. Link generated explanations to source code/commit evidence.
+
+**Concrete additions for MechaCoder:**
+```typescript
+// R2-MGA pattern: retrieve → reflect → generate
+async function generateWithEvidence(task: Task, memoryBank: Memory[]): Effect.Effect<Solution> {
+  // 1. Retrieve best-matching memory
+  const bestMatch = yield* retrieveBestMatch(task.description, memoryBank);
+
+  // 2. Reflect on why this memory applies
+  const reflection = yield* reflect({
+    task: task.description,
+    retrievedMemory: bestMatch,
+    prompt: `Why does this past solution apply to the current task?
+             What should be adapted?`
+  });
+
+  // 3. Generate solution with evidence
+  const solution = yield* generate({
+    task,
+    demonstration: bestMatch,
+    rationale: reflection,
+    requireCitations: true  // Link to file/commit evidence
+  });
+
+  // 4. Refinement passes
+  const refined = yield* refineForCorrectness(solution);
+  const withCitations = yield* refineForCitations(refined);
+
+  return withCitations;
+}
+```
+
+**Key insight**: Emphasize **verifiability**—attach links to source code or commit hashes in generated explanations. This maps to MechaCoder's commit tracking in tasks.jsonl.
+
+#### 4. **Additional Insights from Titans/Nested Learning Integration**
+
+The Titans paper provides detail that complements the Nested Learning analysis already in this document:
+
+**Two-speed memory architecture:**
+- Fast store: Rapid, short-term memory that decays quickly
+- Slow store: Consolidated buffer where surprising/important events persist
+
+**Self-referential memory reads:**
+- Memory lookups influence subsequent memory parameters
+- Retrieval keys/values adapt over time based on what's retrieved
+
+This reinforces the multi-timescale memory architecture proposed in Part III, Section 8 of this document.
+
+---
+
+### Cross-Paper Patterns (Extended)
+
+Building on the earlier cross-paper patterns, the new papers reveal additional convergent ideas:
+
+#### Pattern 5: Surprise-Based Retention
+
+| Paper | Implementation |
+|-------|----------------|
+| **Titans** | Surprise gate controls what enters long-term memory |
+| **MoT** | Confidence filter keeps only high-quality traces |
+| **A-MEM** | Importance scoring during memory creation |
+
+**Synthesis**: Not all memories are equal. MechaCoder should implement **quality gates** based on:
+- Surprise (unexpected events)
+- Confidence (verified outcomes)
+- Importance (high-impact patterns)
+
+#### Pattern 6: Pre-Retrieval Reflection
+
+| Paper | Implementation |
+|-------|----------------|
+| **R2-MGA** | Reflect on retrieved snippet before using it |
+| **Reflexion** | Reflect on failures before retrying |
+| **MoT** | Retrieved thoughts include reasoning rationale |
+
+**Synthesis**: Before using retrieved memories, **explain why they apply**. This prevents blindly copying patterns that don't fit the current context.
+
+#### Pattern 7: Cached Reasoning Traces
+
+| Paper | Implementation |
+|-------|----------------|
+| **MoT** | Cache chain-of-thought solutions as memory |
+| **R2-MGA** | Memory bank of cited reasoning snippets |
+| **Voyager** | Skill library stores executable reasoning (code) |
+
+**Synthesis**: Store not just *what* worked, but *why* it worked. The reasoning trace is often more valuable than the final answer.
+
+---
+
+### Updated Implementation Priorities (Final)
+
+Incorporating all 10 papers, the final recommended implementation order:
+
+| Priority | Component | Papers Supporting | Expected Impact |
+|----------|-----------|-------------------|-----------------|
+| **1** | Skill Library | Voyager, Odyssey, MoT | Highest—key differentiator |
+| **2** | Reflection on Failures | Reflexion, R2-MGA | +11% on coding benchmarks |
+| **3** | Surprise-Weighted Retention | Titans, MoT | Better memory quality |
+| **4** | Memory Evolution/Connections | A-MEM | +35% with evolving links |
+| **5** | Pre-Retrieval Reflection | R2-MGA, MoT | Improved retrieval relevance |
+| **6** | Parameterized Skills | PLAP | Reduced hallucination |
+| **7** | Multi-Timescale Memory | Nested Learning, Titans | Cross-session learning |
+| **8** | Automatic Curriculum | Voyager, Odyssey | Self-directed improvement |
+
+---
+
+### New Questions from Extended Research
+
+1. **Surprise Quantification**: Titans references surprise but doesn't specify how it's computed. Should MechaCoder use prediction error, entropy, or task-specific heuristics?
+
+2. **Pre-Think Investment**: MoT proposes a pre-think phase on unlabeled data. For new repos, how much compute should MechaCoder invest in generating reusable traces before starting tasks?
+
+3. **Citation Granularity**: R2-MGA emphasizes citations. Should MechaCoder cite at file level, function level, or line level when explaining its reasoning?
+
+4. **Memory Quality vs Quantity**: MoT shows confidence filtering is essential—poor-quality memories hurt performance. What's the right quality threshold for MechaCoder?
+
+5. **Self-Referential Retrieval**: Titans mentions retrieval influencing future retrieval parameters. Should MechaCoder's retrieval system learn from which memories were actually useful?
+
+---
+
+### Appendix: Additional Paper References
+
+#### Titans
+- **Paper**: "Titans: Surprise-Aware Multi-Timescale Memory for Agents" (inferred title)
+- **Authors**: Google Research (per secondary sources)
+- **Published**: 2023
+- **Key insight**: Surprise-driven retention + multi-timescale stores
+- **Local summary**: `docs/research/paper-summaries/titans-summary.md`
+
+#### MoT (Memory-of-Thought)
+- **Paper**: "MoT: Memory-of-Thought Enables ChatGPT to Self-Improve"
+- **Authors**: Li, Qiu (Fudan University)
+- **Published**: arXiv:2305.05181, October 2023
+- **Key insight**: Cached high-confidence reasoning traces improve performance
+- **Local summary**: `docs/research/paper-summaries/memory-of-thought-prompting-summary.md`
+
+#### R2-MGA
+- **Paper**: "Towards Verifiable Text Generation with Generative Agent"
+- **Authors**: Ji et al. (NUDT, NTU, NUS)
+- **Published**: AAAI 2025
+- **Key insight**: Retrieval + reflection + refinement for verifiable generation
+- **Local summary**: `docs/research/paper-summaries/r2-mga-summary.md`
