@@ -127,7 +127,7 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
   id: "tb-controls",
 
   initialState: () => ({
-    suitePath: "",
+    suitePath: "./tasks/terminal-bench-2.json",
     suite: null,
     selectedTaskIds: new Set(),
     loading: false,
