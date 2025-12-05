@@ -1,5 +1,4 @@
 console.log("[OpenAgents] Script loading...");
-alert("JS IS RUNNING - you should see this on page load!");
 
 import { calculateLayout } from "../flow/layout.js"
 import { sampleMechaCoderTree, sampleNodeSizes } from "../flow/sample-data.js"
@@ -225,11 +224,21 @@ let tbState: TBState = {
 
 type ViewMode = "flow" | "tbench"
 // Default to TB mode (previously "flow")
-let viewMode: ViewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "tbench"
+// Note: localStorage is blocked in about:blank context (webview setHTML)
+let viewMode: ViewMode = "tbench"
+try {
+  viewMode = (localStorage.getItem("hud-view-mode") as ViewMode) || "tbench"
+} catch {
+  // localStorage blocked in webview context
+}
 
 function setViewMode(mode: ViewMode): void {
   viewMode = mode
-  localStorage.setItem("hud-view-mode", mode)
+  try {
+    localStorage.setItem("hud-view-mode", mode)
+  } catch {
+    // localStorage blocked in webview context
+  }
   updateViewModeUI()
   render()
 }
@@ -1495,7 +1504,10 @@ async function handleStopRun(): Promise<void> {
 
 async function handleStartRandomTask(): Promise<void> {
   console.log("[TB] Random button clicked!")
-  alert("Random button clicked! Check console for more details.")
+  // Log to terminal via bound bunLog function
+  if (typeof window.bunLog === "function") {
+    window.bunLog("[TB] Random button clicked!")
+  }
 
   const suitePath = tbSuitePathInput.value.trim()
   console.log("[TB] Suite path:", suitePath)
@@ -1641,6 +1653,7 @@ document.addEventListener("keydown", (e) => {
 // Expose for console access during development
 declare global {
   interface Window {
+    bunLog: (...args: unknown[]) => void
     TB: {
       loadSuite: typeof loadTBSuiteRpc
       startRun: typeof startTBRunRpc
@@ -1670,6 +1683,11 @@ window.TB = {
 console.log("Flow HUD loaded with WebSocket support")
 console.log("View modes: Ctrl+1 (Flow), Ctrl+2 (TB) | TB: Ctrl+L (load), Ctrl+T (start), Ctrl+R (random), Ctrl+X (stop)")
 console.log("Comparison: Shift+click run to set baseline, Ctrl+B to clear")
+
+// Log to terminal that JS loaded successfully
+if (typeof window.bunLog === "function") {
+  window.bunLog("[Mainview] JS loaded and initialized!")
+}
 
 // ============================================================================
 // Container Panes Rendering
