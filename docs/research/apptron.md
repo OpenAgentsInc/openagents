@@ -78,6 +78,100 @@ Current sandboxing limitations:
 
 ---
 
+## No Rewrite Required: Why MechaCoder Works in Apptron As-Is
+
+A common question: "Would MechaCoder need to be rewritten to run in Apptron?" The answer is **no**.
+
+### The Core Insight
+
+MechaCoder is TypeScript running on Bun. Apptron is Linux in a browser. Bun runs on Linux. Therefore, MechaCoder can run inside Apptron without modification - you'd just `bun install` and `bun run` like on any Linux box.
+
+Apptron isn't some special runtime or sandboxed JavaScript environment. It's literally Alpine Linux with a real kernel, real filesystem, real networking. When you type `apk add nodejs` in Apptron's terminal, you get actual Node.js. When you clone a git repo, it's real git. The fact that it's running inside a browser via x86 emulation is invisible to the software running inside.
+
+### What "Installation" Actually Means
+
+In Apptron, you'd create a `.apptron/envbuild` script:
+
+```bash
+#!/bin/sh
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+source ~/.bashrc
+
+# Clone MechaCoder (or mount it from the project directory)
+git clone https://github.com/openagents/openagents.git /opt/mechacoder
+cd /opt/mechacoder
+bun install
+```
+
+That's it. When the Apptron environment boots, it runs this script, caches the result to IndexedDB, and now you have MechaCoder installed. Every subsequent page load reuses the cached environment - no reinstallation.
+
+The `.openagents/` directory, the task system, the orchestrator, the subagent - all of it runs exactly as it does on your Mac or a Linux server. The TypeScript doesn't know or care that it's inside a browser.
+
+### Two Integration Models
+
+**Model A: MechaCoder runs INSIDE Apptron**
+
+The entire MechaCoder stack - orchestrator, subagent, verification pipeline - runs inside the v86 Linux environment. The user opens an Apptron tab, MechaCoder picks up tasks, executes them, commits to git. Everything happens in-browser.
+
+This is powerful for demos, education, and zero-install access. But it has the v86 performance penalty. Running `bun test` on a large codebase inside v86 would be noticeably slower than native - maybe 10-20x slower for CPU-bound operations.
+
+**Model B: MechaCoder uses Apptron AS a sandbox**
+
+More surgical. The MechaCoder orchestrator runs natively on your machine (fast), but when it needs to execute untrusted code or wants isolation, it spins up an Apptron instance as its sandbox. Think of it like how MechaCoder currently uses Docker, but instead of `docker run`, it's controlling a headless browser running Apptron.
+
+```
+Model A (all in browser):
+  Browser Tab
+    └── Apptron v86 Linux
+        └── MechaCoder Orchestrator
+            └── Subagent execution
+                └── Tool calls
+
+Model B (hybrid):
+  Native Host
+    └── MechaCoder Orchestrator (fast)
+        └── Headless Browser
+            └── Apptron v86 Linux
+                └── Subagent execution (isolated)
+```
+
+Model B gives you the best of both worlds: native speed for orchestration, browser-based isolation for execution. And it removes the Docker dependency entirely - you just need a browser.
+
+### The 32-bit Caveat
+
+One genuine limitation: v86 emulates 32-bit x86, not x86_64. Most software has 32-bit builds (Node, Python, Go), but some modern tools assume 64-bit. Bun specifically might be an issue here - needs investigation whether Bun has 32-bit Linux builds.
+
+If Bun doesn't work, you'd fall back to Node.js (which definitely has 32-bit builds) and run MechaCoder via `npx tsx` or similar. The TypeScript code wouldn't change - just the runtime.
+
+### Why This Matters
+
+The reason this intersection is exciting isn't just "we can run MechaCoder in a browser" - it's what that enables:
+
+1. **True isolation**: Docker containers share a kernel with the host. v86 is a full emulator - there's no kernel sharing, no escape path (barring emulator bugs). For running AI-generated code, this is meaningful.
+
+2. **No infrastructure dependencies**: Docker isn't available everywhere (Windows pain, corporate lockdowns, Chromebooks). Browsers are universal.
+
+3. **Shareable environments**: An Apptron environment is just a URL. You could send someone `https://your-apptron.dev/mechacoder-workspace` and they'd have a fully configured agent environment instantly.
+
+4. **User-provided compute**: Instead of OpenAgents paying for cloud VMs to run agents, users bring their own browser. The compute happens on their machine, data never leaves their control.
+
+### What Would Need Work (Not Rewriting)
+
+Even though MechaCoder itself wouldn't need rewriting, there's integration work:
+
+- **Sandbox runner adapter**: `src/agent/orchestrator/sandbox-runner.ts` currently knows Docker/Podman. It would need an Apptron backend that controls a headless browser.
+
+- **Performance tuning**: Figuring out which operations are acceptable in v86 vs. which need native execution. Maybe verification runs in v86 but heavy builds run natively.
+
+- **Bun 32-bit investigation**: Confirming Bun works, or setting up a Node.js fallback path.
+
+- **Apptron environment template**: Building the `.apptron/envbuild` that pre-installs everything MechaCoder needs.
+
+But none of that is "rewriting MechaCoder." It's building a bridge.
+
+---
+
 ## Synthesis: Potential Integrations
 
 ### 1. Browser-Native Sandbox for MechaCoder
