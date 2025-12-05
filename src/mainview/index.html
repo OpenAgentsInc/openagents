@@ -7,12 +7,11 @@
   <title>OpenAgents v3</title>
   <!-- Force dark mode FIRST -->
   <script>
-    console.log('[EARLY] Setting dark mode...');
     try {
       localStorage.setItem('themeMode', 'dark');
       document.documentElement.classList.add('dark');
     } catch (e) {
-      console.error('[EARLY] localStorage blocked:', e);
+      // localStorage may be blocked
     }
   </script>
   <!-- Load our JS FIRST, defer to not block -->
@@ -22,7 +21,6 @@
   <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
   <!-- Tailwind Browser for arbitrary values (debounced to reduce lag) -->
   <script>
-    console.log('[EARLY] Configuring Tailwind...');
     window.tailwindConfig = {
       scan: {
         debounce: 100, // Wait 100ms before re-scanning

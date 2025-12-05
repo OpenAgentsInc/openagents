@@ -67,25 +67,20 @@ const webview = new Webview();
 
 // Debug: inject error handler and HUD event listener
 webview.init(`
-  const originalLog = console.log;
-  const originalError = console.error;
-
   console.log = function(...args) {
-    window.bunLog?.('[CONSOLE]', ...args);
-    originalLog.apply(console, args);
+    window.bunLog?.(...args);
   };
 
   console.error = function(...args) {
     window.bunLog?.('[ERROR]', ...args);
-    originalError.apply(console, args);
   };
-
-  console.log('[OpenAgents] Webview initialized - console forwarding active');
 
   window.onerror = function(msg, url, line) {
-    console.error('[JS ERROR]', msg, 'at', url, line);
+    window.bunLog?.('[JS ERROR]', msg, 'at', url, line);
     return false;
   };
+
+  window.bunLog?.('[Webview] Initialized');
 `);
 
 // Debug: bind a function to get logs from webview
@@ -102,9 +97,6 @@ webview.size = { width: 1600, height: 1000, hint: SizeHint.NONE };
 const url = `http://localhost:${DESKTOP_HTTP_PORT}/`;
 log("Desktop", `Navigating to: ${url}`);
 webview.navigate(url);
-
-log("Desktop", "DAFJUQQQQQQ...");
-
 
 log("Desktop", "Opening webview window...");
 
