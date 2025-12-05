@@ -79,38 +79,49 @@ export const updateDependencies = (options: UpdateOptions = {}): UpdateResult =>
     args.push("--dry");
   }
 
-  const result = runCommand("bun", args);
+  const commandResult = runCommand("bun", args);
 
-  if (!result.success) {
+  if (!commandResult.success) {
     // Rollback on failure
     if (backup) {
       try {
         restoreLockfile(backup);
       } catch (rollbackErr) {
-        return {
+        const rollbackFailure: UpdateResult = {
           success: false,
           packagesUpdated: [],
-          backupPath: backup,
-          error: `Update failed and rollback failed: ${result.error}. Backup at: ${backup}`,
+          error: `Update failed and rollback failed: ${commandResult.error}. Backup at: ${backup}`,
         };
+        rollbackFailure.backupPath = backup;
+        return rollbackFailure;
       }
     }
-    return {
+    const failure: UpdateResult = {
       success: false,
       packagesUpdated: [],
-      backupPath: backup,
-      error: result.error,
     };
+    if (commandResult.error) {
+      failure.error = commandResult.error;
+    }
+    if (backup) {
+      failure.backupPath = backup;
+    }
+    return failure;
   }
 
   // Parse output to determine what was updated
   const updatedPackages = packages.length > 0 ? packages : ["all"];
 
-  return {
+  const successResult: UpdateResult = {
     success: true,
     packagesUpdated: updatedPackages,
-    backupPath: backup,
   };
+
+  if (backup) {
+    successResult.backupPath = backup;
+  }
+
+  return successResult;
 };
 
 /**

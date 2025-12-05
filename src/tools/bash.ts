@@ -7,6 +7,21 @@ import type { Tool } from "./schema.js";
 import { ToolExecutionError } from "./schema.js";
 
 const MAX_OUTPUT = 10 * 1024 * 1024; // 10 MB
+const normalizeExitCode = (exitCode: unknown) => {
+  const asNumber = Number(exitCode as number);
+  return Number.isFinite(asNumber) ? asNumber : 0;
+};
+
+interface BashDetails {
+  command: string;
+  timeoutSeconds?: number;
+  exitCode: number;
+  durationMs: number;
+  outputBytes: number;
+  truncatedOutput: boolean;
+}
+
+type LimitedOutput = { text: string; bytes: number; truncated: boolean };
 
 const BashParametersSchema = S.Struct({
   command: S.String.pipe(
@@ -23,17 +38,30 @@ const BashParametersSchema = S.Struct({
 
 type BashParameters = S.Schema.Type<typeof BashParametersSchema>;
 
-const collectLimited = (stream: Stream.Stream<Uint8Array, unknown, unknown>): Effect.Effect<string, unknown, unknown> =>
-  Stream.runFold(stream, "", (acc, chunk) => {
-    if (acc.length >= MAX_OUTPUT) {
-      return acc;
-    }
-    const remaining = MAX_OUTPUT - acc.length;
-    const text = Buffer.from(chunk.subarray(0, remaining)).toString("utf-8");
-    return acc + text;
-  });
+const collectLimited = (
+  stream: Stream.Stream<Uint8Array, unknown, unknown>,
+): Effect.Effect<LimitedOutput, unknown, unknown> =>
+  Stream.runFold(
+    stream,
+    { text: "", bytes: 0, truncated: false } as LimitedOutput,
+    (state, chunk) => {
+      if (state.truncated) {
+        return { ...state, bytes: state.bytes + chunk.length };
+      }
 
-export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandExecutor> = {
+      const remaining = Math.max(0, MAX_OUTPUT - state.text.length);
+      const text = Buffer.from(chunk.subarray(0, remaining)).toString("utf-8");
+      const truncated = state.truncated || state.text.length + chunk.length > MAX_OUTPUT;
+
+      return {
+        text: state.text + text,
+        bytes: state.bytes + chunk.length,
+        truncated,
+      };
+    },
+  );
+
+export const bashTool: Tool<BashParameters, BashDetails, CommandExecutor.CommandExecutor> = {
   name: "bash",
   label: "bash",
   description:
@@ -46,6 +74,7 @@ export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandEx
         const executor = yield* CommandExecutor.CommandExecutor;
 
         const cmd = Command.make("sh", "-c", params.command);
+        const startedAt = Date.now();
 
         const process = yield* Effect.acquireRelease(executor.start(cmd), (proc) =>
           proc.isRunning.pipe(
@@ -72,10 +101,11 @@ export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandEx
             : baseCollect;
 
         const [stdout, stderr, exitCode] = yield* withTimeout;
+        const durationMs = Date.now() - startedAt;
         const output =
-          [stdout, stderr].filter((s) => s && s.trim() !== "").join("\n") || "(no output)";
+          [stdout.text, stderr.text].filter((s) => s && s.trim() !== "").join("\n") || "(no output)";
 
-        const exitNum = Number(exitCode as unknown as number);
+        const exitNum = normalizeExitCode(exitCode);
         if (Number.isFinite(exitNum) && exitNum !== 0) {
           return yield* Effect.fail(
             new ToolExecutionError("command_failed", `${output}\n\nCommand exited with code ${exitNum}`),
@@ -84,6 +114,14 @@ export const bashTool: Tool<BashParameters, undefined, CommandExecutor.CommandEx
 
         return {
           content: [{ type: "text" as const, text: output }],
+          details: {
+            command: params.command,
+            timeoutSeconds: params.timeout,
+            exitCode: exitNum,
+            durationMs,
+            outputBytes: stdout.bytes + stderr.bytes,
+            truncatedOutput: stdout.truncated || stderr.truncated,
+          },
         };
       }),
     ) as any,

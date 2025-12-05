@@ -13,6 +13,8 @@ describe("bashTool", () => {
     const result = await runWithBun(runTool(bashTool, { command: "echo hello" }));
     const first = result.content.find(isTextContent);
     expect(first?.text.trim()).toBe("hello");
+    expect(result.details?.exitCode).toBe(0);
+    expect(result.details?.command).toContain("echo hello");
   });
 
   it("fails on non-zero exit", async () => {

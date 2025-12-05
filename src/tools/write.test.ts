@@ -19,14 +19,15 @@ describe("writeTool", () => {
         const file = path.join(dir, "sample.txt");
 
         yield* runTool(writeTool, { file_path: file, content: "hello" });
-        yield* runTool(writeTool, { file_path: file, content: "updated" });
+        const finalResult = yield* runTool(writeTool, { file_path: file, content: "updated" });
 
         const content = yield* fs.readFileString(file);
-        return { result: content };
+        return { text: content, details: finalResult.details };
       }),
     );
 
-    expect(result.result).toBe("updated");
+    expect(result.text).toBe("updated");
+    expect(result.details?.newSize).toBeGreaterThan(0);
   });
 
   it("creates parent directories", async () => {
