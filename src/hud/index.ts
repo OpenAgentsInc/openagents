@@ -10,3 +10,4 @@ export * from "./client.js";
 export * from "./server.js";
 export * from "./emit.js";
 export * from "./status-stream.js";
+export * from "./transport.js";
