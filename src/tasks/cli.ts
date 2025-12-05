@@ -20,6 +20,7 @@
  *   doctor     Diagnose common issues in tasks.jsonl
  *   repair-deps Fix orphaned dependencies by removing references to missing tasks
  *   duplicates Find duplicate tasks by title+description hash, grouped by status
+ *   compact    Compact old closed tasks to save space (--analyze, --apply, --stats)
  *   comment:add Add a comment to a task
  *   comment:list List comments for a task
  *   rename-prefix Rename task IDs to a new prefix with optional dry-run
@@ -32,6 +33,7 @@ import { createHash } from "node:crypto";
 import {
   initOpenAgentsProject,
   archiveTasks,
+  compactTasks,
   writeTasks,
   searchAllTasks,
   getTaskStats,
@@ -687,6 +689,39 @@ const cmdArchive = (options: CliOptions) =>
       archivePath: result.archivePath,
       dryRun: result.dryRun,
       archivedIds: result.archived.map((t) => t.id),
+    };
+
+    output(summary, options.json);
+    return summary;
+  });
+
+const cmdCompact = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const result = yield* compactTasks({
+      tasksPath,
+      daysOld: options.days ?? 90,
+      dryRun: options.dryRun ?? true, // Default to analyze mode
+    }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    const summary = {
+      totalOldTasks: result.stats.totalOldTasks,
+      spaceSavedPercent: result.stats.spaceSavedPercent,
+      originalSizeBytes: result.stats.originalSize,
+      compactedSizeBytes: result.stats.compactedSize,
+      spaceSavedBytes: result.stats.originalSize - result.stats.compactedSize,
+      dryRun: result.dryRun,
+      ...(result.dryRun ? {} : { message: `Compacted ${result.compacted.length} tasks` }),
+      compactedIds: result.compacted.slice(0, 10).map((t) => t.id), // Sample of IDs
     };
 
     output(summary, options.json);
@@ -2018,6 +2053,18 @@ const main = async () => {
     case "archive":
       try {
         await Effect.runPromise(cmdArchive(options).pipe(Effect.provide(BunContext.layer)));
+      } catch (err) {
+        if (options.json) {
+          console.log(JSON.stringify({ error: String(err) }));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "compact":
+      try {
+        await Effect.runPromise(cmdCompact(options).pipe(Effect.provide(BunContext.layer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));

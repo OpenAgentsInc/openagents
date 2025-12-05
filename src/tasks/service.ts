@@ -1115,6 +1115,102 @@ export interface SearchAllTasksOptions {
   includeArchived?: boolean;
 }
 
+// --- Compaction functionality ---
+
+export interface CompactOptions {
+  tasksPath: string;
+  daysOld?: number;
+  dryRun?: boolean;
+  timestamp?: Date;
+}
+
+export interface CompactResult {
+  compacted: Task[];
+  remaining: Task[];
+  stats: {
+    totalOldTasks: number;
+    spaceSavedPercent: number;
+    originalSize: number;
+    compactedSize: number;
+  };
+  dryRun: boolean;
+}
+
+const DEFAULT_COMPACT_DAYS = 90;
+
+/**
+ * Compact old closed tasks by removing non-essential fields
+ * Keeps: id, title, status, closedAt, closeReason, commits
+ * Removes: description, comments, deps, labels, etc.
+ */
+const compactTask = (task: Task): Task => ({
+  id: task.id,
+  title: task.title,
+  description: "",
+  status: task.status,
+  priority: task.priority,
+  type: task.type,
+  labels: [],
+  deps: [],
+  commits: task.commits || [],
+  comments: [],
+  createdAt: task.createdAt,
+  updatedAt: task.updatedAt,
+  closedAt: task.closedAt,
+  ...(task.closeReason ? { closeReason: task.closeReason } : {}),
+});
+
+export const compactTasks = ({
+  tasksPath,
+  daysOld = DEFAULT_COMPACT_DAYS,
+  dryRun = false,
+  timestamp,
+}: CompactOptions): Effect.Effect<CompactResult, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const now = timestamp ?? new Date();
+    const tasks = yield* readTasks(tasksPath);
+
+    const toCompact: Task[] = [];
+    const toKeep: Task[] = [];
+
+    // Find old closed tasks
+    for (const task of tasks) {
+      if (task.status === "closed" && isOldEnough(task, daysOld, now)) {
+        toCompact.push(task);
+      } else {
+        toKeep.push(task);
+      }
+    }
+
+    // Calculate space savings
+    const originalSize = JSON.stringify(toCompact).length;
+    const compactedTasks = toCompact.map(compactTask);
+    const compactedSize = JSON.stringify(compactedTasks).length;
+    const spaceSavedPercent = originalSize > 0
+      ? Math.round(((originalSize - compactedSize) / originalSize) * 100)
+      : 0;
+
+    const result: CompactResult = {
+      compacted: compactedTasks,
+      remaining: toKeep,
+      stats: {
+        totalOldTasks: toCompact.length,
+        spaceSavedPercent,
+        originalSize,
+        compactedSize,
+      },
+      dryRun,
+    };
+
+    // Apply compaction if not dry run
+    if (!dryRun && toCompact.length > 0) {
+      const allTasks = [...toKeep, ...compactedTasks];
+      yield* writeTasks(tasksPath, allTasks);
+    }
+
+    return result;
+  });
+
 // --- Stats functionality ---
 
 export interface TaskStats {
