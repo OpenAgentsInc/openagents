@@ -114,6 +114,15 @@ export type FinalMetrics = S.Schema.Type<typeof FinalMetrics>;
  * - source restricted to: user, agent, system
  * - model_name, reasoning_content only valid on agent steps
  */
+export const StepStatus = S.Literal(
+  "pending",
+  "executing",
+  "completed",
+  "failed",
+  "replayed",
+);
+export type StepStatus = S.Schema.Type<typeof StepStatus>;
+
 export const Step = S.Struct({
   step_id: S.Number.pipe(S.int(), S.positive()),
   timestamp: S.String, // ISO 8601
@@ -124,6 +133,9 @@ export const Step = S.Struct({
   tool_calls: S.optional(S.Array(ToolCall)),
   observation: S.optional(Observation),
   metrics: S.optional(Metrics),
+  status: S.optional(StepStatus),
+  completed_at: S.optional(S.String), // When the step finished (for replay)
+  error: S.optional(S.String), // Error message when failed
   extra: S.optional(S.Record({ key: S.String, value: S.Unknown })),
 });
 export type Step = S.Schema.Type<typeof Step>;
@@ -131,6 +143,25 @@ export type Step = S.Schema.Type<typeof Step>;
 /**
  * Root trajectory object
  */
+export const Checkpoint = S.Struct({
+  checkpoint_id: S.String,
+  phase: S.String,
+  timestamp: S.String,
+  resumable: S.Boolean,
+  step_id: S.optional(S.Number.pipe(S.int(), S.positive())),
+  extra: S.optional(S.Record({ key: S.String, value: S.Unknown })),
+});
+export type Checkpoint = S.Schema.Type<typeof Checkpoint>;
+
+export const RecoveryInfo = S.Struct({
+  recovered_from_session: S.optional(S.String),
+  recovered_at_step: S.optional(S.Number.pipe(S.int(), S.positive())),
+  recovery_timestamp: S.optional(S.String),
+  notes: S.optional(S.String),
+  extra: S.optional(S.Record({ key: S.String, value: S.Unknown })),
+});
+export type RecoveryInfo = S.Schema.Type<typeof RecoveryInfo>;
+
 export const Trajectory = S.Struct({
   schema_version: S.Literal(ATIF_SCHEMA_VERSION),
   session_id: S.String,
@@ -138,6 +169,8 @@ export const Trajectory = S.Struct({
   steps: S.Array(Step),
   notes: S.optional(S.String), // Developer annotations
   final_metrics: S.optional(FinalMetrics),
+  checkpoints: S.optional(S.Array(Checkpoint)),
+  recovery_info: S.optional(RecoveryInfo),
   extra: S.optional(S.Record({ key: S.String, value: S.Unknown })),
 });
 export type Trajectory = S.Schema.Type<typeof Trajectory>;
@@ -194,6 +227,27 @@ export const hasSubagentRefs = (step: Step): boolean => {
   return step.observation.results.some(
     (r) => r.subagent_trajectory_ref && r.subagent_trajectory_ref.length > 0,
   );
+};
+
+/**
+ * Determine if a step is considered completed for replay purposes.
+ * Missing status defaults to completed for backward compatibility.
+ */
+export const isStepCompleted = (step: Step): boolean => {
+  if (!step.status) return true;
+  return step.status === "completed" || step.status === "replayed";
+};
+
+/**
+ * Find the latest checkpoint in a trajectory.
+ */
+export const latestCheckpoint = (
+  trajectory: Trajectory,
+): Checkpoint | undefined => {
+  if (!trajectory.checkpoints || trajectory.checkpoints.length === 0) return;
+  return [...trajectory.checkpoints].sort((a, b) =>
+    b.timestamp.localeCompare(a.timestamp)
+  )[0];
 };
 
 /**
