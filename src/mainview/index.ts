@@ -1346,9 +1346,13 @@ setInterval(refreshTBLayout, REFRESH_INTERVAL_MS)
 const socketClient = getSocketClient({ verbose: true })
 
 // Connect and set up HUD message handler
+window.bunLog?.("[Socket] Attempting to connect...")
 socketClient.connect().then(() => {
+  window.bunLog?.("[Socket] Connected to desktop server!")
   console.log("[Socket] Connected to desktop server")
 }).catch((err) => {
+  const errMsg = err instanceof Error ? err.message : String(err)
+  window.bunLog?.("[Socket] FAILED to connect:", errMsg)
   console.error("[Socket] Failed to connect:", err)
 })
 
@@ -1361,13 +1365,10 @@ socketClient.onMessage((message: HudMessage) => {
 // TB Run Controls (exposed for UI interaction)
 // ============================================================================
 
-/** Load a TB suite and populate the task list */
+/** Load a TB suite via WebSocket RPC */
 async function loadTBSuiteRpc(suitePath: string): Promise<TBSuiteInfo> {
-  window.bunLog?.("[TB RPC] loadTBSuite calling socketClient...")
-  window.bunLog?.("[TB RPC] socketClient connected?", socketClient.isConnected())
-  const suiteInfo = await socketClient.loadTBSuite(suitePath)
-  window.bunLog?.("[TB RPC] loadTBSuite returned:", suiteInfo?.name)
-  return suiteInfo
+  console.log("[TB] Loading suite:", suitePath)
+  return await socketClient.loadTBSuite(suitePath)
 }
 
 /** Start a TB run with the given options */

@@ -1141,12 +1141,15 @@ ${pad}</g>`;
         }
         this.isConnecting = true;
         this.log(`Connecting to ${this.url}`);
+        window.bunLog?.(`[SocketClient] Connecting to ${this.url}`);
         try {
           this.ws = new WebSocket(this.url);
+          window.bunLog?.(`[SocketClient] WebSocket created, waiting for open...`);
           this.ws.onopen = () => {
             this.isConnecting = false;
             this.reconnectAttempts = 0;
             this.log("Connected");
+            window.bunLog?.(`[SocketClient] WebSocket OPEN!`);
             while (this.messageQueue.length > 0) {
               const msg = this.messageQueue.shift();
               this.ws?.send(msg);
@@ -1180,6 +1183,7 @@ ${pad}</g>`;
           this.ws.onerror = (error) => {
             this.isConnecting = false;
             this.log(`Connection error: ${error}`);
+            window.bunLog?.(`[SocketClient] WebSocket ERROR:`, String(error));
             reject(new Error("WebSocket connection failed"));
           };
         } catch (e) {
@@ -2288,20 +2292,21 @@ ${pad}</g>`;
   setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS);
   setInterval(refreshTBLayout, REFRESH_INTERVAL_MS);
   var socketClient = getSocketClient({ verbose: true });
+  window.bunLog?.("[Socket] Attempting to connect...");
   socketClient.connect().then(() => {
+    window.bunLog?.("[Socket] Connected to desktop server!");
     console.log("[Socket] Connected to desktop server");
   }).catch((err) => {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    window.bunLog?.("[Socket] FAILED to connect:", errMsg);
     console.error("[Socket] Failed to connect:", err);
   });
   socketClient.onMessage((message) => {
     handleHudMessage(message);
   });
   async function loadTBSuiteRpc(suitePath) {
-    window.bunLog?.("[TB RPC] loadTBSuite calling socketClient...");
-    window.bunLog?.("[TB RPC] socketClient connected?", socketClient.isConnected());
-    const suiteInfo = await socketClient.loadTBSuite(suitePath);
-    window.bunLog?.("[TB RPC] loadTBSuite returned:", suiteInfo?.name);
-    return suiteInfo;
+    console.log("[TB] Loading suite:", suitePath);
+    return await socketClient.loadTBSuite(suitePath);
   }
   async function startTBRunRpc(options) {
     console.log("[TB] Starting run:", options);

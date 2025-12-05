@@ -16,39 +16,45 @@ The FFI bindings are in `src/ffi.ts` which loads the platform-specific shared li
 - `libwebview.dll` (Windows)
 - `libwebview-{arch}.so` (Linux)
 
-## Key Limitation: macOS WebKit Blocks localhost HTTP
+## Key Limitation: about:blank Origin Blocks WebSocket
 
-**CRITICAL**: On macOS, WebKit blocks `navigate()` calls to `http://localhost:*` URLs. This is a security restriction in the underlying WKWebView.
+**CRITICAL**: When using `setHTML()`, WebKit loads the content with an `about:blank` origin.
+This "opaque origin" blocks WebSocket connections to `localhost`.
 
 ### What Works
 ```typescript
-// Direct HTML content - WORKS
-webview.setHTML(`<html><body>Hello</body></html>`);
+// Navigate to localhost HTTP - WORKS (gives real origin)
+webview.navigate("http://localhost:8080");
 
-// Data URIs - WORKS
-webview.navigate("data:text/html,<html><body>Hello</body></html>");
+// This page can then connect WebSocket to localhost - WORKS
+// const ws = new WebSocket("ws://localhost:8080/ws")
 ```
 
 ### What Doesn't Work
 ```typescript
-// localhost HTTP - BLOCKED (shows white screen)
-webview.navigate("http://localhost:8080");
-webview.navigate("http://127.0.0.1:8080");
+// setHTML creates about:blank origin - WebSocket BLOCKED
+webview.setHTML(`<html><body>Hello</body></html>`);
+// Any WebSocket("ws://localhost:*") from this page will fail
 ```
 
 ### Our Solution
-Load files and embed them directly via `setHTML()`:
+Serve HTML via HTTP and navigate to it:
 
 ```typescript
-const html = await Bun.file("index.html").text();
-const css = await Bun.file("index.css").text();
-const js = await Bun.file("index.js").text();
+// Start HTTP server to serve static files
+const server = Bun.serve({
+  port: 8080,
+  fetch(req) {
+    // Serve index.html, index.css, index.js from src/mainview/
+    return serveStatic(req);
+  },
+  websocket: {
+    // Handle WebSocket connections
+  }
+});
 
-const inlined = html
-  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
-  .replace('<script src="index.js"></script>', `<script>${js}</script>`);
-
-webview.setHTML(inlined);
+// Navigate to the HTTP server (gives real origin)
+webview.navigate("http://localhost:8080/");
 ```
 
 ## API Reference
@@ -134,15 +140,33 @@ import { Webview, SizeHint } from "webview-bun";
 import { join } from "node:path";
 
 const MAINVIEW_DIR = join(import.meta.dir, "../mainview");
+const HTTP_PORT = 8080;
 
-// Load and inline all content
-const html = await Bun.file(join(MAINVIEW_DIR, "index.html")).text();
-const css = await Bun.file(join(MAINVIEW_DIR, "index.css")).text();
-const js = await Bun.file(join(MAINVIEW_DIR, "index.js")).text();
+// Start HTTP server to serve static files + WebSocket
+const server = Bun.serve({
+  port: HTTP_PORT,
+  async fetch(req, server) {
+    const url = new URL(req.url);
 
-const inlined = html
-  .replace('<link rel="stylesheet" href="index.css">', `<style>${css}</style>`)
-  .replace('<script type="module" src="index.js"></script>', `<script>${js}</script>`);
+    // WebSocket upgrade
+    if (url.pathname === "/ws" && server.upgrade(req)) {
+      return; // Upgraded to WebSocket
+    }
+
+    // Serve static files from mainview dir
+    const path = url.pathname === "/" ? "/index.html" : url.pathname;
+    const file = Bun.file(join(MAINVIEW_DIR, path));
+    if (await file.exists()) {
+      return new Response(file);
+    }
+    return new Response("Not found", { status: 404 });
+  },
+  websocket: {
+    message(ws, msg) { /* handle messages */ },
+    open(ws) { console.log("WebSocket connected"); },
+    close(ws) { console.log("WebSocket disconnected"); },
+  },
+});
 
 const webview = new Webview();
 
@@ -151,16 +175,19 @@ webview.init(`
   window.onerror = (msg, url, line) => console.error('[JS ERROR]', msg, url, line);
 `);
 
-// Bind logging function
+// Bind logging function (useful for debugging)
 webview.bind("bunLog", (...args) => console.log("[Webview]", ...args));
 
 webview.title = "OpenAgents";
 webview.size = { width: 1200, height: 800, hint: SizeHint.NONE };
-webview.setHTML(inlined);
+
+// Navigate to HTTP server - gives page real origin for WebSocket
+webview.navigate(`http://localhost:${HTTP_PORT}/`);
 
 console.log("[Desktop] Opening window...");
 webview.run();
 console.log("[Desktop] Window closed");
+server.stop();
 ```
 
 ## Building Executables
@@ -390,16 +417,15 @@ Agent connects to :4242
 
 ## Lessons Learned
 
-1. **Always use `setHTML()` on macOS** - `navigate()` to localhost HTTP is blocked by WebKit
+1. **Use `navigate()` to localhost HTTP** - This gives the page a real origin so WebSocket works.
+   `setHTML()` creates `about:blank` origin which blocks WebSocket to localhost.
 
 2. **Build with `--format iife`** - ES module exports (`export {}`) don't work in inline scripts:
    ```bash
    bun build src/mainview/index.ts --target browser --format iife --outdir src/mainview
    ```
 
-3. **NO `type="module"` scripts** - Inline scripts must be plain `<script>`, not `<script type="module">`
-
-4. **addEventListener works, inline onclick doesn't** - WebKit CSP blocks inline event handlers:
+3. **addEventListener works, inline onclick doesn't** - WebKit CSP blocks inline event handlers:
    ```html
    <!-- DOESN'T WORK -->
    <button onclick="doThing()">Click</button>
@@ -409,20 +435,13 @@ Agent connects to :4242
    <script>document.getElementById('btn').addEventListener('click', doThing)</script>
    ```
 
-5. **localStorage/sessionStorage is BLOCKED** - In about:blank context (setHTML), storage APIs throw SecurityError:
-   ```typescript
-   // Wrap in try-catch
-   let setting = "default";
-   try {
-     setting = localStorage.getItem("key") || "default";
-   } catch {
-     // Blocked in webview context
-   }
-   ```
+4. **localStorage/sessionStorage works with real origin** - When using `navigate()` to localhost,
+   storage APIs work normally. They only fail with `about:blank` origin (setHTML).
 
-6. **WebSocket connections work** - Despite HTTP navigation being blocked, WebSocket TO localhost works fine from setHTML content
+5. **WebSocket needs real origin** - WebSocket connections to localhost are blocked from `about:blank`.
+   Use `navigate("http://localhost:PORT/")` to give the page a real origin.
 
-7. **Debug with bunLog binding** - Bind a function to get console output in terminal:
+6. **Debug with bunLog binding** - Bind a function to get console output in terminal:
    ```typescript
    // In main.ts
    webview.bind("bunLog", (...args) => console.log("[Webview]", ...args));
@@ -431,13 +450,5 @@ Agent connects to :4242
    window.bunLog?.("Debug message");
    ```
 
-8. **Wrap large bundles in try-catch** - Silent failures are hard to debug:
-   ```typescript
-   const wrappedJs = `
-   try {
-   ${js}
-   } catch(e) {
-     window.bunLog?.('[JS ERROR] ' + e.name + ': ' + e.message);
-   }
-   `;
-   ```
+7. **Serve static files via HTTP** - The HTTP server serves HTML, CSS, JS from src/mainview/.
+   WebSocket is handled on the same port via upgrade.
