@@ -68,10 +68,10 @@ import type {
   APMUpdateMessage,
   APMSnapshotMessage,
 } from "./protocol.js";
-import { getHudClient } from "./client.js";
+import { getHudClient, type HudClientOptions } from "./client.js";
 import type { APMCollector } from "../agent/apm.js";
 import type { APMBySource } from "../agent/apm.js";
-import { createHudTransport, type HudSender, type HudTransportOptions } from "./transport.js";
+import { createHudTransport, resolveStatusStreamEnabled, type HudTransportOptions, type HudSender } from "./transport.js";
 
 /**
  * Convert an OrchestratorEvent to a HudMessage.
@@ -228,11 +228,11 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
  *   runOrchestrator(config, emit);
  */
 export const createHudEmitter = (
-  clientOptions?: HudTransportOptions
+  clientOptions?: HudClientOptions
 ): ((event: OrchestratorEvent) => void) => {
   const transport = createHudTransport({
-    ...(clientOptions ?? {}),
     client: getHudClient(clientOptions),
+    statusStream: { enabled: false },
     eventFilter: orchestratorEventToHudMessage,
   });
 
@@ -249,12 +249,12 @@ export const createHudEmitter = (
  *   runOrchestrator({ ...config, onOutput });
  */
 export const createHudOutputCallback = (
-  clientOptions?: HudTransportOptions,
+  clientOptions?: HudClientOptions,
   source: "claude-code" | "minimal" | "orchestrator" = "claude-code"
 ): ((text: string) => void) => {
   const transport = createHudTransport({
-    ...(clientOptions ?? {}),
     client: getHudClient(clientOptions),
+    statusStream: { enabled: false },
     outputSource: source,
   });
 
@@ -272,12 +272,19 @@ export const createHudOutputCallback = (
  *   // Later:
  *   client.close();
  */
-export type HudCallbackOptions = HudTransportOptions;
+export interface HudCallbackOptions extends HudTransportOptions {}
 
 export const createHudCallbacks = (options?: HudCallbackOptions) => {
+  const { statusStream, eventFilter, ...rest } = options ?? {};
+  const resolvedStatusStream =
+    statusStream && "enabled" in statusStream
+      ? { ...statusStream, enabled: resolveStatusStreamEnabled(statusStream) }
+      : statusStream;
+
   const transport = createHudTransport({
-    ...options,
-    eventFilter: orchestratorEventToHudMessage,
+    ...rest,
+    ...(resolvedStatusStream ? { statusStream: resolvedStatusStream } : {}),
+    eventFilter: eventFilter ?? orchestratorEventToHudMessage,
   });
 
   /**
@@ -308,7 +315,6 @@ export const createHudCallbacks = (options?: HudCallbackOptions) => {
     onOutput,
     client: transport.client,
     statusStream: transport.statusStream,
-    transport,
   };
 };
 
@@ -413,11 +419,17 @@ export const createHudCallbacksWithAPM = (
   // Import APMCollector dynamically to avoid circular dependency issues
   const { APMCollector } = require("../agent/apm.js") as typeof import("../agent/apm.js");
 
+  const { sessionId, projectName, statusStream, eventFilter, ...rest } = options;
+  const resolvedStatusStream =
+    statusStream && "enabled" in statusStream
+      ? { ...statusStream, enabled: resolveStatusStreamEnabled(statusStream) }
+      : statusStream;
   const transport = createHudTransport({
-    ...options,
-    eventFilter: orchestratorEventToHudMessage,
+    ...rest,
+    ...(resolvedStatusStream ? { statusStream: resolvedStatusStream } : {}),
+    eventFilter: eventFilter ?? orchestratorEventToHudMessage,
   });
-  const apmCollector = new APMCollector(options.sessionId, options.projectName);
+  const apmCollector = new APMCollector(sessionId, projectName);
 
   const emit = (event: OrchestratorEvent) => {
     transport.emitEvent(event);
@@ -429,13 +441,6 @@ export const createHudCallbacksWithAPM = (
 
   const apmEmit = createAPMEmitter(transport.client, apmCollector);
 
-  return {
-    emit,
-    onOutput,
-    client: transport.client,
-    statusStream: transport.statusStream,
-    transport,
-    apmCollector,
-    apmEmit,
-  };
+  return { emit, onOutput, client: transport.client, apmCollector, apmEmit };
 };
+
