@@ -68,10 +68,10 @@ import type {
   APMUpdateMessage,
   APMSnapshotMessage,
 } from "./protocol.js";
-import { HudClient, getHudClient } from "./client.js";
+import { getHudClient } from "./client.js";
 import type { APMCollector } from "../agent/apm.js";
 import type { APMBySource } from "../agent/apm.js";
-import { createHudTransport, type HudTransportOptions } from "./transport.js";
+import { createHudTransport, type HudSender, type HudTransportOptions } from "./transport.js";
 
 /**
  * Convert an OrchestratorEvent to a HudMessage.
@@ -334,7 +334,7 @@ const APM_UPDATE_INTERVAL = 30000; // 30 seconds
  * ```
  */
 export const createAPMEmitter = (
-  client: HudClient,
+  client: HudSender,
   collector: APMCollector,
 ): ((force?: boolean) => void) => {
   let lastUpdate = 0;
@@ -363,7 +363,7 @@ export const createAPMEmitter = (
  * Call this at session start/end to provide full context.
  */
 export const sendAPMSnapshot = (
-  client: HudClient,
+  client: HudSender,
   stats: APMBySource,
 ): void => {
   const message: APMSnapshotMessage = {

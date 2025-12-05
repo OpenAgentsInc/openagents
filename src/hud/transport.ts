@@ -3,7 +3,7 @@ import { HudClient, type HudClientOptions } from "./client.js";
 import type { HudMessage } from "./protocol.js";
 import { StatusStreamServer, type StatusStreamOptions } from "./status-stream.js";
 
-type HudSender = Pick<HudClient, "send" | "close">;
+export type HudSender = Pick<HudClient, "send" | "close">;
 type StatusBroadcaster = Pick<StatusStreamServer, "broadcast" | "close">;
 
 export interface StatusStreamConfig extends StatusStreamOptions {
