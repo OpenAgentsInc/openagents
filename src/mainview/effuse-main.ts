@@ -12,6 +12,7 @@ import {
   DomServiceLive,
   StateServiceLive,
   SocketServiceFromClient,
+  SocketServiceTag,
   // Widgets
   APMWidget,
   TrajectoryPaneWidget,
@@ -23,6 +24,26 @@ import {
 } from "../effuse/index.js"
 
 console.log("[Effuse] Loading mainview...")
+
+// Add visible error display
+const showError = (msg: string) => {
+  document.body.innerHTML = `<div style="padding:20px;color:red;font-family:monospace;background:#1a1a1a;">
+    <h2>Effuse Error</h2>
+    <pre>${msg}</pre>
+  </div>`
+}
+
+// Global error handler
+window.onerror = (msg, src, line, col, error) => {
+  console.error("[Effuse] Global error:", msg, src, line, col, error)
+  showError(`${msg}\n\nSource: ${src}:${line}:${col}\n\n${error?.stack || ""}`)
+  return false
+}
+
+window.onunhandledrejection = (event) => {
+  console.error("[Effuse] Unhandled rejection:", event.reason)
+  showError(`Unhandled Promise rejection:\n\n${event.reason?.stack || event.reason}`)
+}
 
 // ============================================================================
 // Layer Setup
@@ -50,6 +71,16 @@ const createEffuseLayer = () => {
  */
 const mountAllWidgets = Effect.gen(function* () {
   console.log("[Effuse] Mounting widgets...")
+
+  // Connect to desktop server WebSocket first
+  const socket = yield* SocketServiceTag
+  yield* socket.connect().pipe(
+    Effect.tap(() => console.log("[Effuse] Socket connected")),
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] Socket connection failed:", e)
+      return Effect.void
+    })
+  )
 
   // Mount APM Widget (bottom-right corner)
   yield* mountWidgetById(APMWidget, "apm-widget").pipe(
@@ -121,7 +152,16 @@ const mountAllWidgets = Effect.gen(function* () {
  * so the scope stays open and event handlers keep running.
  */
 const initEffuse = () => {
-  const layer = createEffuseLayer()
+  console.log("[Effuse] Creating layer...")
+
+  let layer
+  try {
+    layer = createEffuseLayer()
+    console.log("[Effuse] Layer created")
+  } catch (e) {
+    console.error("[Effuse] Failed to create layer:", e)
+    return
+  }
 
   // Mount widgets then wait forever (keeps scope open for event handlers)
   const program = Effect.gen(function* () {
@@ -131,10 +171,16 @@ const initEffuse = () => {
     yield* Effect.never
   })
 
+  console.log("[Effuse] Starting Effect runtime...")
+
   Effect.runFork(
     program.pipe(
       Effect.provide(layer),
-      Effect.scoped
+      Effect.scoped,
+      Effect.catchAllDefect((defect) => {
+        console.error("[Effuse] Defect:", defect)
+        return Effect.void
+      })
     )
   )
 
@@ -143,9 +189,19 @@ const initEffuse = () => {
 
 // Initialize when DOM is ready
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initEffuse)
+  document.addEventListener("DOMContentLoaded", () => {
+    try {
+      initEffuse()
+    } catch (e) {
+      console.error("[Effuse] Init error:", e)
+    }
+  })
 } else {
-  initEffuse()
+  try {
+    initEffuse()
+  } catch (e) {
+    console.error("[Effuse] Init error:", e)
+  }
 }
 
 // Export for debugging

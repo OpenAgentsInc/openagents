@@ -1,16 +1,22 @@
 /**
  * Desktop Server
  *
- * Combined HTTP + WebSocket server for the webview-bun desktop app.
+ * Unified HTTP + WebSocket server for the webview-bun desktop app.
+ *
+ * Architecture (unified):
+ * - Single port (8080) for everything
+ * - UI clients connect for request/response + receiving HUD events
+ * - Agents connect to send HUD events (which get broadcast to UI clients)
+ * - No separate HUD port needed
+ *
  * Handles:
  * - Static file serving for the UI
  * - Unified socket protocol (events + requests/responses)
- * - HUD messages from agents
+ * - HUD messages from agents (broadcast to UI clients)
  */
 
 import { join } from "node:path";
 import type { HudMessage, TBRunHistoryMessage } from "../hud/protocol.js";
-import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import {
   parseSocketMessage,
   isSocketRequest,
@@ -32,8 +38,6 @@ export type ConnectionHandler = (clientId: string) => void;
 export interface DesktopServerOptions {
   /** HTTP port for static files and WebSocket (default: 8080) */
   httpPort?: number;
-  /** Port for agent HUD connections (default: 4242) */
-  hudPort?: number;
   /** Directory to serve static files from */
   staticDir: string;
   /** Enable verbose logging */
@@ -43,7 +47,7 @@ export interface DesktopServerOptions {
 interface WebSocketClient {
   id: string;
   ws: unknown;
-  isAgent: boolean; // true if connected to HUD port (agent), false if UI client
+  isAgent: boolean; // true if sending HUD events only, false if UI client (also receives)
 }
 
 // ============================================================================
@@ -52,10 +56,8 @@ interface WebSocketClient {
 
 export class DesktopServer {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
-  private hudServer: ReturnType<typeof Bun.serve> | null = null;
 
   private readonly httpPort: number;
-  private readonly hudPort: number;
   private readonly staticDir: string;
   private readonly verbose: boolean;
 
@@ -69,33 +71,27 @@ export class DesktopServer {
 
   constructor(options: DesktopServerOptions) {
     this.httpPort = options.httpPort ?? DESKTOP_HTTP_PORT;
-    this.hudPort = options.hudPort ?? HUD_WS_PORT;
     this.staticDir = options.staticDir;
     this.verbose = options.verbose ?? false;
   }
 
   /**
-   * Start both servers.
+   * Start the unified server.
    */
   start(): void {
     this.startHttpServer();
-    this.startHudServer();
   }
 
   /**
-   * Stop both servers.
+   * Stop the server.
    */
   stop(): void {
     if (this.httpServer) {
       this.httpServer.stop();
       this.httpServer = null;
     }
-    if (this.hudServer) {
-      this.hudServer.stop();
-      this.hudServer = null;
-    }
     this.clients.clear();
-    this.log("Servers stopped");
+    this.log("Server stopped");
   }
 
   /**
@@ -256,52 +252,7 @@ export class DesktopServer {
 
     this.log(`HTTP server started on port ${this.httpPort}`);
     this.log(`WebSocket endpoint: ws://localhost:${this.httpPort}${DESKTOP_WS_PATH}`);
-  }
-
-  /**
-   * Start HUD server for agent connections (port 4242).
-   */
-  private startHudServer(): void {
-    if (this.hudServer) return;
-
-    const self = this;
-
-    this.hudServer = Bun.serve({
-      port: this.hudPort,
-
-      fetch(req, server) {
-        const clientId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        if (server.upgrade(req, { data: { clientId, isAgent: true } })) {
-          return;
-        }
-        return new Response("OpenAgents HUD WebSocket Server", { status: 200 });
-      },
-
-      websocket: {
-        open(ws) {
-          const data = (ws as unknown as { data: { clientId: string } }).data;
-          self.clients.set(data.clientId, { id: data.clientId, ws, isAgent: true });
-          self.log(`Agent connected: ${data.clientId} (total agents: ${self.getAgentCount()})`);
-        },
-
-        message(ws, message) {
-          const data = typeof message === "string" ? message : message.toString();
-          const parsed = parseHudMessage(data);
-
-          if (parsed) {
-            self.handleHudMessage(parsed);
-          }
-        },
-
-        close(ws) {
-          const data = (ws as unknown as { data: { clientId: string } }).data;
-          self.clients.delete(data.clientId);
-          self.log(`Agent disconnected: ${data.clientId} (total agents: ${self.getAgentCount()})`);
-        },
-      },
-    });
-
-    this.log(`HUD server started on port ${this.hudPort}`);
+    this.log(`Agents should connect to the same endpoint to send HUD events`);
   }
 
   /**
@@ -427,10 +378,10 @@ export class DesktopServer {
   }
 
   /**
-   * Check if servers are running.
+   * Check if server is running.
    */
   isRunning(): boolean {
-    return this.httpServer !== null && this.hudServer !== null;
+    return this.httpServer !== null;
   }
 
   /**
@@ -438,13 +389,6 @@ export class DesktopServer {
    */
   getHttpPort(): number {
     return this.httpPort;
-  }
-
-  /**
-   * Get HUD port.
-   */
-  getHudPort(): number {
-    return this.hudPort;
   }
 
   private log(msg: string): void {

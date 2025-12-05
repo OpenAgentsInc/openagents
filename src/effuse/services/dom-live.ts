@@ -100,9 +100,13 @@ const makeDomService = (root: Document | Element = document): DomService => ({
 })
 
 /**
- * Layer providing the live DomService implementation
+ * Layer providing the live DomService implementation.
+ * Uses Effect.sync to defer document access until runtime.
  */
-export const DomServiceLive = Layer.succeed(DomServiceTag, makeDomService())
+export const DomServiceLive = Layer.effect(
+  DomServiceTag,
+  Effect.sync(() => makeDomService())
+)
 
 /**
  * Create a DomService layer scoped to a specific root element.
