@@ -9,7 +9,7 @@
  */
 
 import { join } from "node:path";
-import type { HudMessage } from "../hud/protocol.js";
+import type { HudMessage, TBRunHistoryMessage } from "../hud/protocol.js";
 import { HUD_WS_PORT, parseHudMessage } from "../hud/protocol.js";
 import {
   parseSocketMessage,
@@ -19,7 +19,7 @@ import {
   DESKTOP_HTTP_PORT,
   DESKTOP_WS_PATH,
 } from "./protocol.js";
-import { handleRequest } from "./handlers.js";
+import { handleRequest, loadRecentTBRuns } from "./handlers.js";
 import { error as logError, log as logWithColor } from "./logger.js";
 
 // ============================================================================
@@ -208,6 +208,9 @@ export class DesktopServer {
               logError("DesktopServer", "Connect handler error:", e);
             }
           }
+
+          // Push latest TB run history to all clients (includes the new one)
+          void self.sendTBRunHistory();
         },
 
         async message(ws, message) {
@@ -333,6 +336,16 @@ export class DesktopServer {
     }
   }
 
+  async sendTBRunHistory(): Promise<void> {
+    try {
+      const runs = await loadRecentTBRuns();
+      const message: TBRunHistoryMessage = { type: "tb_run_history", runs };
+      this.handleHudMessage(message);
+    } catch (e) {
+      logError("DesktopServer", "Failed to broadcast TB run history:", e);
+    }
+  }
+
   /**
    * Register a handler for HUD messages.
    */
@@ -442,6 +455,13 @@ export class DesktopServer {
  */
 export function createDesktopServer(options: DesktopServerOptions): DesktopServer {
   const server = new DesktopServer(options);
+
+  server.onMessage((message) => {
+    if (message.type === "tb_run_complete") {
+      void server.sendTBRunHistory();
+    }
+  });
+
   server.start();
   return server;
 }

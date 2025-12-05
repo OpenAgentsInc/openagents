@@ -38,12 +38,14 @@ import {
   isTBTaskProgress,
   isTBTaskOutput,
   isTBTaskComplete,
+  isTBRunHistory,
   isContainerStart,
   isContainerOutput,
   isContainerComplete,
   isContainerError,
   type ContainerStreamType,
 } from "../hud/protocol.js"
+import type { TBRunHistoryItem } from "../desktop/protocol.js"
 
 // ============================================================================
 // MC (MechaCoder) Tasks State
@@ -974,6 +976,11 @@ function handleHudMessage(message: HudMessage): void {
     return
   }
 
+  if (isTBRunHistory(message)) {
+    applyTBRunHistory(message.runs)
+    return
+  }
+
   // Handle Terminal-Bench messages
   if (isTBRunStart(message)) {
     // Preserve baseline for comparison across runs
@@ -1129,8 +1136,6 @@ function handleHudMessage(message: HudMessage): void {
     document.getElementById("tb-status")!.className = "tb-status"
     ;(document.getElementById("tb-start-btn") as HTMLButtonElement).disabled = false
     ;(document.getElementById("tb-stop-btn") as HTMLButtonElement).disabled = true
-    // Reload run history to include the completed run
-    void refreshTBLayout()
     // Recompute comparison if baseline is set
     if (tbState.baselineRunId) {
       void computeComparison(tbState.baselineRunId).then(comp => {
@@ -1209,7 +1214,7 @@ function handleHudMessage(message: HudMessage): void {
 // Larger padding/spacing to keep stacked agent->repo->task columns readable
 const LAYOUT_CONFIG = { padding: 16, spacing: 280 }
 const TB_LAYOUT_CONFIG = { padding: 12, spacing: 180 }
-// Polling interval for layout refresh (60s - mostly rely on WebSocket events)
+// Polling interval for flow layout fallback refresh (60s - rely on WebSocket events for live updates)
 const REFRESH_INTERVAL_MS = 60000
 
 // Calculate layout once from sample data as a placeholder until live data loads
@@ -1233,6 +1238,41 @@ let tbLayout = calculateLayout({
   config: TB_LAYOUT_CONFIG,
 })
 
+function applyTBRunHistory(runs: TBRunHistoryItem[]): void {
+  const runIds = new Set(runs.map((run) => run.runId))
+
+  // Drop cached details for runs that no longer exist
+  for (const runId of Array.from(tbRunDetails.keys())) {
+    if (!runIds.has(runId)) {
+      tbRunDetails.delete(runId)
+    }
+  }
+
+  tbFlowState = {
+    ...tbFlowState,
+    runs: runs.map((r) => ({
+      runId: r.runId,
+      suiteName: r.suiteName,
+      suiteVersion: r.suiteVersion,
+      timestamp: r.timestamp,
+      passRate: r.passRate,
+      passed: r.passed,
+      failed: r.failed,
+      timeout: r.timeout,
+      error: r.error,
+      totalDurationMs: r.totalDurationMs,
+      totalTokens: r.totalTokens,
+      taskCount: r.taskCount,
+      filepath: r.filepath,
+    })),
+  }
+
+  syncTBFlowWithState()
+  if (viewMode === "tbench") {
+    render()
+  }
+}
+
 /**
  * Refresh TB flow layout from current state and load run history via RPC.
  * Uses RPC to load run history since browser webview cannot use Node.js fs APIs.
@@ -1243,34 +1283,10 @@ async function refreshTBLayout(): Promise<void> {
     const runs = await socketClient.loadRecentTBRuns(20)
     console.log(`[TB] Loaded ${runs.length} runs via RPC`)
 
-    // Update tbFlowState with loaded runs (maps to TBRunWithPath format)
-    tbFlowState = {
-      ...tbFlowState,
-      runs: runs.map((r) => ({
-        runId: r.runId,
-        suiteName: r.suiteName,
-        suiteVersion: r.suiteVersion,
-        timestamp: r.timestamp,
-        passRate: r.passRate,
-        passed: r.passed,
-        failed: r.failed,
-        timeout: r.timeout,
-        error: r.error,
-        totalDurationMs: r.totalDurationMs,
-        totalTokens: r.totalTokens,
-        taskCount: r.taskCount,
-        filepath: r.filepath,
-      })),
-    }
+    applyTBRunHistory(runs)
   } catch (err) {
     console.error("[TB] Failed to load runs via RPC:", err)
     // Continue with empty/existing runs - don't block the UI
-  }
-
-  // Sync state and rebuild
-  syncTBFlowWithState()
-  if (viewMode === "tbench") {
-    render()
   }
 }
 
@@ -1605,9 +1621,7 @@ console.log("[OpenAgents] Render complete!");
 
 // Load live data and refresh periodically (fallback polling)
 void refreshLayoutFromState()
-void refreshTBLayout()
 setInterval(refreshLayoutFromState, REFRESH_INTERVAL_MS)
-setInterval(refreshTBLayout, REFRESH_INTERVAL_MS)
 
 // ============================================================================
 // Socket Client Setup for Real-time HUD Events
@@ -1628,6 +1642,9 @@ socketClient.connect().then(() => {
   if (viewMode === "flow") {
     void loadMCTasks()
   }
+
+  // Fetch initial TB run history (subsequent updates arrive via push)
+  void refreshTBLayout()
 }).catch((err) => {
   const errMsg = err instanceof Error ? err.message : String(err)
   window.bunLog?.("[Socket] FAILED to connect:", errMsg)
