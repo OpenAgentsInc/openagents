@@ -562,4 +562,99 @@ describe("tasks CLI integration", () => {
       .map((line) => JSON.parse(line));
     expect(remaining).toHaveLength(0);
   });
+
+  test("duplicates command groups by status and content hash", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-cli-duplicates-"));
+    const dir = path.join(tmp, ".openagents");
+    fs.mkdirSync(dir, { recursive: true });
+    const tasksPath = path.join(dir, "tasks.jsonl");
+    const now = "2024-01-01T00:00:00.000Z";
+
+    const tasks = [
+      {
+        id: "oa-open-1",
+        title: "Same title",
+        description: "Same description",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-open-2",
+        title: "Same title",
+        description: "Same description",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+      {
+        id: "oa-closed-1",
+        title: "Closed same",
+        description: "Closed desc",
+        status: "closed",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: now,
+      },
+      {
+        id: "oa-closed-2",
+        title: "Closed same",
+        description: "Closed desc",
+        status: "closed",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: now,
+      },
+      {
+        id: "oa-unique",
+        title: "Unique task",
+        description: "Different content",
+        status: "open",
+        priority: 2,
+        type: "task",
+        labels: [],
+        deps: [],
+        commits: [],
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+    ];
+
+    fs.writeFileSync(tasksPath, tasks.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf8");
+
+    const run = runCli(["duplicates", "--dir", tmp, "--json"], tmp);
+    expect(run.code).toBe(1);
+    const payload = JSON.parse(run.stdout);
+    expect(payload.ok).toBe(false);
+    expect(payload.groups).toHaveLength(2);
+
+    const openGroup = payload.groups.find((g: any) => g.status === "open");
+    expect(openGroup.ids.sort()).toEqual(["oa-open-1", "oa-open-2"].sort());
+
+    const closedGroup = payload.groups.find((g: any) => g.status === "closed");
+    expect(closedGroup.ids.sort()).toEqual(["oa-closed-1", "oa-closed-2"].sort());
+  });
 });

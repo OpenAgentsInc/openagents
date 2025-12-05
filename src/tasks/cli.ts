@@ -9,20 +9,22 @@
  *   bun src/tasks/cli.ts <command> [options]
  * 
  * Commands:
- *   init     Initialize .openagents for a repo
- *   list     List tasks with optional filters
- *   ready    List ready tasks (no open blockers)
- *   next     Pick the next ready task and mark it in_progress
- *   create   Create a new task
- *   update   Update an existing task
- *   validate Validate tasks.jsonl (schema + conflict markers)
- *   config   Manage project config (list/get/set)
- *   doctor   Diagnose common issues in tasks.jsonl
+ *   init       Initialize .openagents for a repo
+ *   list       List tasks with optional filters
+ *   ready      List ready tasks (no open blockers)
+ *   next       Pick the next ready task and mark it in_progress
+ *   create     Create a new task
+ *   update     Update an existing task
+ *   validate   Validate tasks.jsonl (schema + conflict markers)
+ *   config     Manage project config (list/get/set)
+ *   doctor     Diagnose common issues in tasks.jsonl
+ *   duplicates Find duplicate tasks by title+description hash, grouped by status
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { Effect } from "effect";
 import * as nodePath from "node:path";
+import { createHash } from "node:crypto";
 import {
   initOpenAgentsProject,
   readyTasks,
@@ -722,6 +724,37 @@ const findDuplicateIds = (tasks: Task[]): string[] => {
   return [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id);
 };
 
+const hashTaskContent = (task: Task): string => {
+  const title = task.title?.trim() ?? "";
+  const description = task.description?.trim() ?? "";
+  return createHash("sha256").update(title).update("\n").update(description).digest("hex");
+};
+
+const groupDuplicateTasks = (tasks: Task[]) => {
+  const byStatus = new Map<Task["status"], Map<string, Task[]>>();
+
+  for (const task of tasks) {
+    const statusMap = byStatus.get(task.status) ?? new Map<string, Task[]>();
+    byStatus.set(task.status, statusMap);
+
+    const hash = hashTaskContent(task);
+    const bucket = statusMap.get(hash) ?? [];
+    bucket.push(task);
+    statusMap.set(hash, bucket);
+  }
+
+  const groups: Array<{ status: Task["status"]; hash: string; tasks: Task[] }> = [];
+  for (const [status, map] of byStatus.entries()) {
+    for (const [hash, dupes] of map.entries()) {
+      if (dupes.length > 1) {
+        groups.push({ status, hash, tasks: dupes });
+      }
+    }
+  }
+
+  return groups;
+};
+
 const findDependencyCycles = (tasks: Task[]): string[][] => {
   const ids = new Set(tasks.map((t) => t.id));
   const graph = new Map<string, string[]>();
@@ -920,6 +953,49 @@ const cmdDoctor = (options: CliOptions) =>
 
     const result = { ok: issues.length === 0, issues };
     output(result, options.json);
+    return result;
+  });
+
+const cmdDuplicates = (options: CliOptions) =>
+  Effect.gen(function* () {
+    const tasksPath = getTasksPath(options.rootDir);
+    const fs = yield* FileSystem.FileSystem;
+
+    const exists = yield* fs.exists(tasksPath);
+    if (!exists) {
+      const result = {
+        ok: false,
+        error: `${TASKS_FILE} is missing`,
+      };
+      output(result, options.json);
+      return result;
+    }
+
+    const tasks = yield* readTasks(tasksPath);
+    const groups = groupDuplicateTasks(tasks).map((group) => ({
+      status: group.status,
+      hash: group.hash,
+      ids: group.tasks.map((t) => t.id),
+      titles: group.tasks.map((t) => t.title),
+    }));
+
+    const result = { ok: groups.length === 0, groups };
+
+    if (!options.json) {
+      if (groups.length === 0) {
+        console.log("No duplicate tasks found.");
+      } else {
+        for (const group of groups) {
+          console.log(`status=${group.status} hash=${group.hash}`);
+          for (const id of group.ids) {
+            console.log(`  - ${id}`);
+          }
+        }
+      }
+    } else {
+      output(result, true);
+    }
+
     return result;
   });
 
@@ -1374,6 +1450,7 @@ Commands:
   config:get   Get a project config value by key (dot notation supported)
   config:set   Set a project config value by key (value parsed as JSON when possible)
   doctor    Diagnose common tasks.jsonl issues (orphan deps, duplicates, cycles, stale tasks)
+  duplicates Find duplicate tasks by title+description hash (grouped by status)
   merge     Three-way merge for .openagents/tasks.jsonl (git merge driver helper)
 
 Global Options:
@@ -1666,6 +1743,26 @@ const main = async () => {
           cmdDoctor(options).pipe(Effect.provide(BunContext.layer)),
         );
         if (result && result.ok === false) {
+          process.exitCode = 1;
+        }
+      } catch (err) {
+        const payload = { ok: false, error: String(err) };
+        if (options.json) {
+          console.log(JSON.stringify(payload));
+        } else {
+          console.error("Error:", err);
+        }
+        process.exit(1);
+      }
+      break;
+    case "duplicates":
+      try {
+        const result = await Effect.runPromise(
+          cmdDuplicates(options).pipe(Effect.provide(BunContext.layer)),
+        );
+        const hasGroups = (value: any): value is { groups: any[] } =>
+          value && Array.isArray(value.groups);
+        if (hasGroups(result) && result.groups.length > 0) {
           process.exitCode = 1;
         }
       } catch (err) {
