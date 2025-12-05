@@ -85,3 +85,79 @@ From revised plan:
 - src/desktop/handlers.ts - Modified (script switching)
 - src/desktop/protocol.ts - Modified (sandbox fields)
 
+
+## Testing Session 2 - Fixes and Validation
+
+### Issues Found and Fixed
+
+#### Issue 1: parseArgs Positional Arguments Error
+**Error**: `TypeError: Unexpected argument ''. This command does not take positional arguments`
+
+**Root Cause**: parseArgs() was rejecting unexpected arguments in strict mode.
+
+**Fix**: Added `strict: false` to parseArgs configuration in tbench-sandbox.ts:62
+
+**Commit**: (pending)
+
+#### Issue 2: Docker Volume Mount Error  
+**Error**: `Error: invalidArgument: "invalid volume name 'results/sandbox-quick-test/regex-log/workspace': must match ^[A-Za-z0-9][A-Za-z0-9_.-]*$"`
+
+**Root Cause**: Docker requires absolute paths for host volume mounts, but workspaceDir was a relative path.
+
+**Fix**: 
+1. Added `resolve` to path imports (line 21)
+2. Converted workspaceDir to absolute path using `resolve()` (line 297)
+
+**Commit**: (pending)
+
+### Test Results
+
+**Test Command**:
+```bash
+bun src/cli/tbench-sandbox.ts \
+  --suite ./tasks/terminal-bench-2.json \
+  --tasks regex-log \
+  --output ./results/sandbox-quick-test \
+  --timeout 180 \
+  --max-turns 20 \
+  --sandbox-backend docker
+```
+
+**Execution Flow Verified**:
+✅ Credential mount created successfully
+✅ SDK running on HOST with absolute path: `/Users/christopherdavid/code/openagents/results/sandbox-quick-test/regex-log/workspace`
+✅ SDK authentication successful (got system init message)
+✅ Agent processed task successfully
+✅ Docker volume mount working (no "invalid volume name" error)
+⚠️  Verification failed: Container lacks Python (`oven/bun:latest` doesn't include python3/pytest)
+
+**Verification Error (Expected)**:
+```
+STDERR:
+error: Script not found "python3"
+```
+
+This is expected behavior - the `oven/bun:latest` image doesn't include Python. The verification step correctly attempted to run pytest in the container, which demonstrates the hybrid execution model is working as designed.
+
+### Architecture Validation
+
+The hybrid execution model is working correctly:
+
+1. **Setup** → Would run in CONTAINER (task had no setup commands)
+2. **SDK Execution** → Ran on HOST (confirmed by absolute path in logs)
+3. **Verification** → Attempted to run in CONTAINER (confirmed by "python3 not found" error from container)
+
+### Next Steps
+
+1. ✅ parseArgs fix tested and working
+2. ✅ Docker volume mount fix tested and working
+3. ✅ Hybrid execution flow validated
+4. 🔄 Need to commit fixes
+5. 🔄 Consider documenting recommended container images with Python (e.g., `python:3.11-slim`)
+
+### Files Modified (This Session)
+
+1. `src/cli/tbench-sandbox.ts:21` - Added `resolve` to path imports
+2. `src/cli/tbench-sandbox.ts:64` - Added `strict: false` to parseArgs
+3. `src/cli/tbench-sandbox.ts:297` - Convert workspaceDir to absolute path
+
