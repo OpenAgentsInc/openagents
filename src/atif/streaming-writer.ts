@@ -74,6 +74,8 @@ export class StreamingWriter {
 
   private stepCount = 0;
   private closed = false;
+  private initPromise: Promise<void> | null = null;
+  private initialized = false;
 
   constructor(options: StreamingWriterOptions) {
     this.sessionId = options.sessionId;
@@ -100,13 +102,29 @@ export class StreamingWriter {
   }
 
   /**
-   * Initialize: Create directories and write JSONL header + initial index
+   * Initialize: Create directories and write JSONL header + initial index.
+   * Can be called multiple times safely - subsequent calls return the same promise.
    */
   async initialize(): Promise<void> {
     if (this.closed) {
       throw new Error("StreamingWriter already closed");
     }
 
+    // Return existing promise if already initializing/initialized
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    // Create and store the initialization promise
+    this.initPromise = this.doInitialize();
+    await this.initPromise;
+    this.initialized = true;
+  }
+
+  /**
+   * Internal initialization logic
+   */
+  private async doInitialize(): Promise<void> {
     // Create date directory if needed
     if (!existsSync(this.paths.dateDir)) {
       await mkdir(this.paths.dateDir, { recursive: true });
@@ -146,11 +164,24 @@ export class StreamingWriter {
   }
 
   /**
-   * Append a step to the JSONL file and update index checkpoint
+   * Append a step to the JSONL file and update index checkpoint.
+   * If initialization is in progress, waits for it to complete first.
+   * If not initialized, auto-initializes.
    */
   async writeStep(step: Step): Promise<void> {
     if (this.closed) {
       throw new Error("StreamingWriter already closed");
+    }
+
+    // Ensure initialized before writing
+    if (!this.initialized) {
+      if (this.initPromise) {
+        // Initialization in progress - wait for it
+        await this.initPromise;
+      } else {
+        // Not initialized yet - auto-initialize
+        await this.initialize();
+      }
     }
 
     // Append step as single line
@@ -171,11 +202,17 @@ export class StreamingWriter {
   }
 
   /**
-   * Finalize trajectory with final_metrics and status
+   * Finalize trajectory with final_metrics and status.
+   * If initialization is in progress, waits for it to complete first.
    */
   async close(finalMetrics: FinalMetrics, status: "complete" | "failed" = "complete"): Promise<StreamingWriterPaths> {
     if (this.closed) {
       throw new Error("StreamingWriter already closed");
+    }
+
+    // Ensure initialized before closing
+    if (!this.initialized && this.initPromise) {
+      await this.initPromise;
     }
 
     this.closed = true;
