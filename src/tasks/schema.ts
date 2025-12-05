@@ -164,7 +164,7 @@ export const ParallelExecutionConfig = S.Struct({
   /** Enable parallel agent execution (default: false) */
   enabled: S.optionalWith(S.Boolean, { default: () => false }),
   /** Maximum number of agents to run in parallel */
-  maxAgents: S.optionalWith(S.Number, { default: () => 4 }),
+  maxAgents: S.optionalWith(S.Number, { default: () => 2 }),
   /** Approximate memory to allocate per agent in MiB (used for auto-scaling) */
   perAgentMemoryMb: S.optionalWith(S.Number, { default: () => 4096 }),
   /** Host memory to reserve in MiB (prevents over-commit) */

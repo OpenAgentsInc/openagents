@@ -505,7 +505,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
       sandbox: { enabled: true, backend: "auto", timeoutMs: 300000 },
       parallelExecution: {
         enabled: false,
-        maxAgents: 4,
+        maxAgents: 2,
         perAgentMemoryMb: 4096,
         hostMemoryReserveMb: 6144,
         worktreeTimeout: 30 * 60 * 1000,
