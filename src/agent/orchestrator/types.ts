@@ -302,6 +302,7 @@ export type OrchestratorEvent =
   | { type: "subtask_failed"; subtask: Subtask; error: string }
   | { type: "verification_start"; command: string }
   | { type: "verification_complete"; command: string; passed: boolean; output: string }
+  | { type: "verification_output"; command: string; chunk: string; stream: "stdout" | "stderr" }
   | { type: "e2e_start"; command: string }
   | { type: "e2e_complete"; command: string; passed: boolean; output: string }
   | { type: "e2e_skipped"; reason: string }

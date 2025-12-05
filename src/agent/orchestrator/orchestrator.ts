@@ -63,6 +63,10 @@ import {
   createStepResultsManager,
   durableStep,
 } from "./step-results.js";
+import {
+  runVerificationOnHost,
+  type VerificationRunResult,
+} from "./verification-runner.js";
 import * as nodePath from "node:path";
 import * as fs from "node:fs";
 
@@ -101,67 +105,34 @@ const buildVerificationCommands = (
 };
 
 /**
- * Run verification commands (typecheck, tests) on the host.
- * Used when sandbox is not enabled or as a fallback.
- */
-const runVerificationOnHost = (
-  commands: string[],
-  cwd: string,
-  emit: (event: OrchestratorEvent) => void
-): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> =>
-  Effect.try({
-    try: () => {
-      const outputs: string[] = [];
-      let allPassed = true;
-
-      for (const cmd of commands) {
-        emit({ type: "verification_start", command: cmd });
-        try {
-          const { execSync } = require("node:child_process") as typeof import("node:child_process");
-          const output = execSync(cmd, {
-            cwd,
-            encoding: "utf-8",
-            stdio: ["pipe", "pipe", "pipe"],
-            timeout: 120000,
-          });
-          outputs.push(String(output));
-          emit({ type: "verification_complete", command: cmd, passed: true, output: String(output) });
-        } catch (error: any) {
-          const output = String(error?.stdout || error?.stderr || error?.message || error);
-          outputs.push(output);
-          emit({ type: "verification_complete", command: cmd, passed: false, output });
-          allPassed = false;
-        }
-      }
-
-      return { passed: allPassed, outputs };
-    },
-    catch: (error: any) => error as Error,
-  });
-
-/**
  * Run verification commands (typecheck, tests).
  * Uses sandbox when config.sandbox is enabled and available, otherwise runs on host.
+ * Returns structured per-command results with aggregated pass/fail.
  */
 const runVerification = (
   commands: string[],
   cwd: string,
   emit: (event: OrchestratorEvent) => void,
   sandboxConfig?: SandboxRunnerConfig
-): Effect.Effect<{ passed: boolean; outputs: string[] }, Error, never> => {
+): Effect.Effect<VerificationRunResult, Error, never> => {
   // If no sandbox config or sandbox explicitly disabled, run on host
   if (!sandboxConfig || sandboxConfig.sandboxConfig.enabled === false) {
     return runVerificationOnHost(commands, cwd, emit);
   }
 
   // Try sandbox execution with automatic fallback to host
-  // Cast emit to compatible type for sandbox runner
   const sandboxEmit = emit as (event: { type: string; [key: string]: any }) => void;
   return runVerificationWithSandbox(commands, sandboxConfig, sandboxEmit).pipe(
-    Effect.map((result) => ({
-      passed: result.passed,
-      outputs: result.outputs,
-    })),
+    Effect.map((result) => {
+      const results = result.outputs.map((output, idx) => ({
+        command: commands[idx] ?? `command-${idx + 1}`,
+        exitCode: result.passed ? 0 : 1,
+        stdout: output,
+        stderr: "",
+        durationMs: 0,
+      }));
+      return { passed: result.passed, outputs: result.outputs, results };
+    }),
     Effect.catchAll(() => runVerificationOnHost(commands, cwd, emit))
   );
 };
