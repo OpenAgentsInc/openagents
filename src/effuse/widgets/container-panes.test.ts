@@ -259,6 +259,48 @@ describe("ContainerPanesWidget", () => {
     )
   })
 
+  test("US-13.4 updates status from container start and completion events", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const container = { id: "container-test" } as Element
+
+          yield* mountWidget(ContainerPanesWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "container_start",
+            executionId: "exec-live",
+            image: "ubuntu:22.04",
+            command: ["bash", "-c", "echo hi"],
+            context: "sandbox",
+            sandboxed: true,
+            workdir: "/work",
+            timestamp: "2024-12-05T12:00:00Z",
+          })
+          yield* Effect.sleep(0)
+
+          let html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("ubuntu:22.04")
+          expect(html).toContain("▶")
+          expect(html).toContain("sandbox")
+
+          yield* injectMessage({
+            type: "container_complete",
+            executionId: "exec-live",
+            exitCode: 0,
+            durationMs: 2500,
+          })
+          yield* Effect.sleep(0)
+
+          html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("✓")
+          expect(html).toContain("2.5s")
+        })
+      )
+    )
+  })
+
   test("US-13.5 shows sandbox/host label and exit status", async () => {
     await Effect.runPromise(
       Effect.scoped(

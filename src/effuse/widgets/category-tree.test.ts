@@ -377,6 +377,42 @@ describe("CategoryTreeWidget", () => {
     )
   })
 
+  test("US-2.2 shows stats when category is collapsed", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "category-tree-test" } as Element
+              const tasks = new Map<string, TBTaskData>([
+                ["task-pass", { id: "task-pass", name: "Task Pass", difficulty: "easy", category: "core", status: "passed" }],
+                ["task-fail", { id: "task-fail", name: "Task Fail", difficulty: "medium", category: "core", status: "failed" }],
+              ])
+              const state = yield* stateService.cell({
+                tasks,
+                collapsedCategories: new Set(["core"]),
+                visible: true,
+                selectedTaskId: null,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+              expect(html).toContain("✓1")
+              expect(html).toContain("✗1")
+              expect(html).not.toContain("Task Pass")
+              expect(html).not.toContain("Task Fail")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-4.5 updates status icons on task start and completion", async () => {
     await Effect.runPromise(
       Effect.scoped(
