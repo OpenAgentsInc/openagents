@@ -528,4 +528,49 @@ describe("CategoryTreeWidget", () => {
       )
     )
   })
+
+  test("US-4.4 shows category pass/fail counts as tasks complete", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [
+              { id: "task-pass", name: "Pass task", difficulty: "easy", category: "alpha" },
+              { id: "task-fail", name: "Fail task", difficulty: "hard", category: "beta" },
+            ],
+          })
+
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-pass",
+            outcome: "passed",
+          })
+
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-fail",
+            outcome: "failed",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("alpha")
+          expect(html).toContain("beta")
+          expect(html).toContain("✓1")
+          expect(html).toContain("✗1")
+        })
+      )
+    )
+  })
 })
