@@ -17,6 +17,7 @@
 
 import { join } from "node:path";
 import type { HudMessage, TBRunHistoryMessage } from "../hud/protocol.js";
+import { isHudMessage } from "../hud/protocol.js";
 import {
   parseSocketMessage,
   isSocketRequest,
@@ -115,6 +116,41 @@ export class DesktopServer {
             return;
           }
           return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+
+        // Test injection API - POST /api/inject-hud
+        if (url.pathname === "/api/inject-hud" && req.method === "POST") {
+          try {
+            const body = await req.json();
+            if (!isHudMessage(body)) {
+              return new Response(JSON.stringify({ ok: false, error: "Invalid HUD message" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+            self.handleHudMessage(body);
+            return new Response(JSON.stringify({ ok: true, type: body.type }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch (e) {
+            return new Response(JSON.stringify({ ok: false, error: String(e) }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+
+        // Health check - GET /api/health
+        if (url.pathname === "/api/health" && req.method === "GET") {
+          return new Response(JSON.stringify({
+            ok: true,
+            clients: self.getClientCount(),
+            agents: self.getAgentCount(),
+            uiClients: self.getUIClientCount(),
+            historySize: self.getMessageHistory().length,
+          }), {
+            headers: { "Content-Type": "application/json" },
+          });
         }
 
         // Static file serving

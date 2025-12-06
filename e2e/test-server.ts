@@ -8,7 +8,7 @@
  */
 
 import type { HudMessage } from "../src/hud/protocol.js";
-import { serializeHudMessage } from "../src/hud/protocol.js";
+import { isHudMessage, serializeHudMessage } from "../src/hud/protocol.js";
 import { TEST_HTTP_PORT, TEST_WS_PORT } from "./constants.js";
 
 // Store WebSocket clients for test message injection (keyed by clientId)
@@ -17,6 +17,10 @@ const wsClients = new Map<string, WebSocket>();
 // Message queues for messages sent before target clients connect
 const messageQueue: HudMessage[] = [];
 const targetedMessageQueues = new Map<string, HudMessage[]>();
+
+// Message history for new clients
+const messageHistory: HudMessage[] = [];
+const MAX_HISTORY_SIZE = 100;
 
 // Start WebSocket server for HUD message injection
 const wsServer = Bun.serve<{ clientId: string }>({
@@ -39,6 +43,11 @@ const wsServer = Bun.serve<{ clientId: string }>({
         (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
       wsClients.set(clientId, ws as unknown as WebSocket);
       console.log(`[WS] Client connected (${clientId}) (total: ${wsClients.size})`);
+
+      // Send message history to new client
+      for (const msg of messageHistory) {
+        ws.send(serializeHudMessage(msg));
+      }
 
       // Send any queued messages for this client
       const queuedForClient = targetedMessageQueues.get(clientId);
@@ -76,6 +85,12 @@ console.log(`[WS] WebSocket server listening on ws://localhost:${TEST_WS_PORT}`)
 // Broadcast HUD message to all connected clients or a specific client
 function broadcastHudMessage(message: HudMessage, targetClientId?: string): void {
   const serialized = serializeHudMessage(message);
+
+  // Store in history
+  messageHistory.push(message);
+  if (messageHistory.length > MAX_HISTORY_SIZE) {
+    messageHistory.shift();
+  }
 
   if (targetClientId) {
     const client = wsClients.get(targetClientId);
@@ -322,10 +337,30 @@ const httpServer = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
+    // Health check endpoint
+    if (url.pathname === "/api/health" && req.method === "GET") {
+      return new Response(JSON.stringify({
+        ok: true,
+        clients: wsClients.size,
+        agents: 0, // Test server doesn't track agent vs UI clients
+        uiClients: wsClients.size,
+        historySize: messageHistory.length,
+      }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // API endpoint for injecting HUD messages
     if (url.pathname === "/api/inject-hud" && req.method === "POST") {
       try {
-        const message = (await req.json()) as HudMessage;
+        const body = await req.json();
+        if (!isHudMessage(body)) {
+          return new Response(JSON.stringify({ ok: false, error: "Invalid HUD message" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const message = body as HudMessage;
         const targetClientId = req.headers.get("x-client-id") ?? url.searchParams.get("clientId") ?? undefined;
         broadcastHudMessage(message, targetClientId ?? undefined);
         return new Response(JSON.stringify({ ok: true, type: message.type }), {
