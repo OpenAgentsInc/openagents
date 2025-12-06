@@ -388,4 +388,44 @@ describe("TrajectoryPaneWidget", () => {
       )
     )
   })
+
+  test("US-7.5 clears run history and resets selection", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "trajectory-test" } as Element
+              const state = yield* stateService.cell({
+                trajectories: [
+                  { id: "run-1", type: "tb-run", timestamp: "2024-12-05T11:00:00Z", label: "Run 1" },
+                  { id: "run-2", type: "atif", timestamp: "2024-12-05T12:00:00Z", label: "ATIF 2" },
+                ],
+                selectedId: "run-2",
+                loading: false,
+                error: "some-error",
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TrajectoryPaneWidget.handleEvent({ type: "clear" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.trajectories).toHaveLength(0)
+              expect(updated.selectedId).toBeNull()
+              expect(updated.error).toBeNull()
+
+              const html = (yield* TrajectoryPaneWidget.render(ctx)).toString()
+              expect(html).toContain("No trajectories found")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
