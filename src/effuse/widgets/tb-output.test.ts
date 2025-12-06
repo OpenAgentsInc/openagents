@@ -51,7 +51,7 @@ describe("TBOutputWidget", () => {
               autoScroll: true,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
@@ -87,7 +87,7 @@ describe("TBOutputWidget", () => {
               autoScroll: true,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
@@ -122,7 +122,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
-                visibleSources: { agent: true, verification: true, system: true },
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -162,7 +162,7 @@ describe("TBOutputWidget", () => {
               autoScroll: true,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             })
             const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -204,7 +204,7 @@ describe("TBOutputWidget", () => {
               autoScroll: true,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
@@ -238,7 +238,7 @@ describe("TBOutputWidget", () => {
               autoScroll: true,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
@@ -258,7 +258,7 @@ describe("TBOutputWidget", () => {
               autoScroll: false,
               showLineNumbers: true,
               selectedLine: null,
-              visibleSources: { agent: true, verification: true, system: true },
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
@@ -281,7 +281,7 @@ describe("TBOutputWidget", () => {
     expect(state.autoScroll).toBe(true)
     expect(state.showLineNumbers).toBe(true)
     expect(state.selectedLine).toBeNull()
-    expect(state.visibleSources).toEqual({ agent: true, verification: true, system: true })
+    expect(state.visibleSources).toEqual({ agent: true, verification: true, system: true, tool: true })
   })
 
   test("US-5.1 streams live output on tb_task_output", async () => {
@@ -483,7 +483,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
-                visibleSources: { agent: true, verification: true, system: true },
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -538,7 +538,7 @@ describe("TBOutputWidget", () => {
                   autoScroll: true,
                   showLineNumbers: true,
                   selectedLine: null,
-                  visibleSources: { agent: true, verification: true, system: true },
+                  visibleSources: { agent: true, verification: true, system: true, tool: true },
                 })
                 const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -586,7 +586,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
-                visibleSources: { agent: true, verification: true, system: true },
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -636,7 +636,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
-                visibleSources: { agent: true, verification: true, system: true },
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -685,7 +685,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
-                visibleSources: { agent: true, verification: true, system: true },
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -699,6 +699,171 @@ describe("TBOutputWidget", () => {
 
               const toggledHtml = (yield* TBOutputWidget.render(ctx)).toString()
               expect(toggledHtml).toContain('data-autoscroll="false"')
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("displays ATIF step with tool calls", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-atif" })
+          yield* injectMessage({
+            type: "atif_step",
+            runId: "run-atif",
+            sessionId: "session-123",
+            step: {
+              step_id: 1,
+              timestamp: new Date().toISOString(),
+              source: "agent",
+              message: "Let me read that file",
+              tool_calls: [
+                {
+                  tool_call_id: "tc-001",
+                  function_name: "read_file",
+                  arguments: { file_path: "/src/test.ts" },
+                },
+              ],
+            },
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("TL") // Tool label
+          expect(html).toContain("read_file")
+          expect(html).toContain("file_path")
+        })
+      )
+    )
+  })
+
+  test("displays ATIF step with observation results", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-obs" })
+          yield* injectMessage({
+            type: "atif_step",
+            runId: "run-obs",
+            sessionId: "session-456",
+            step: {
+              step_id: 2,
+              timestamp: new Date().toISOString(),
+              source: "system",
+              message: "Tool execution results",
+              observation: {
+                results: [
+                  {
+                    source_call_id: "tc-001",
+                    content: "File contents here",
+                  },
+                ],
+              },
+            },
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("TL") // Tool label
+          expect(html).toContain("File contents here")
+        })
+      )
+    )
+  })
+
+  test("ignores ATIF steps from other runs", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-current" })
+          yield* injectMessage({
+            type: "atif_step",
+            runId: "run-other",
+            sessionId: "session-other",
+            step: {
+              step_id: 1,
+              timestamp: new Date().toISOString(),
+              source: "agent",
+              message: "Should be ignored",
+              tool_calls: [
+                {
+                  tool_call_id: "tc-ignored",
+                  function_name: "ignored_tool",
+                  arguments: {},
+                },
+              ],
+            },
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).not.toContain("ignored_tool")
+        })
+      )
+    )
+  })
+
+  test("toggles tool source visibility", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [
+                  { text: "→ read_file(path=\"/test.ts\")", source: "tool", timestamp: Date.now() },
+                  { text: "Agent message", source: "agent", timestamp: Date.now() },
+                ],
+                maxLines: 500,
+                visible: true,
+                runId: "run-toggle",
+                taskId: "task-toggle",
+                autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true, tool: true },
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              let html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain("TL")
+              expect(html).toContain("read_file")
+              expect(html).toContain("2 lines")
+
+              yield* TBOutputWidget.handleEvent({ type: "toggleSource", source: "tool" }, ctx)
+              html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).not.toContain("read_file")
+              expect(html).toContain("1 lines")
+
+              const updated = yield* state.get
+              expect(updated.visibleSources.tool).toBe(false)
             }),
             layer
           )
