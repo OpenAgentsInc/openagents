@@ -894,4 +894,37 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-1.5 shows suite file path in the UI", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suitePath: "/abs/path/to/suite.json",
+                suite: {
+                  name: "terminal-bench-v1",
+                  version: "1.0.0",
+                  tasks: [{ id: "t1", name: "Task 1", difficulty: "easy", category: "alpha" }],
+                },
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("/abs/path/to/suite.json")
+              expect(html).toContain("terminal-bench-v1")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
