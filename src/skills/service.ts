@@ -22,6 +22,68 @@ import {
   type SkillCategory,
   createSkill,
 } from "./schema.js";
+import { createHash } from "crypto";
+
+// --- Deduplication Helpers ---
+
+/**
+ * Normalize code for comparison (remove whitespace, comments).
+ */
+const normalizeCode = (code: string): string => {
+  return code
+    .replace(/\/\/.*$/gm, "") // Remove single-line comments
+    .replace(/\/\*[\s\S]*?\*\//g, "") // Remove multi-line comments
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim()
+    .toLowerCase();
+};
+
+/**
+ * Generate a content hash for a skill.
+ */
+const generateContentHash = (skill: Skill): string => {
+  const normalized = normalizeCode(skill.code);
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+};
+
+/**
+ * Check if two skills are content-duplicates.
+ * Returns true if code is substantially similar.
+ */
+const areSkillsSimilar = (a: Skill, b: Skill): boolean => {
+  const codeA = normalizeCode(a.code);
+  const codeB = normalizeCode(b.code);
+
+  // Exact match after normalization
+  if (codeA === codeB) return true;
+
+  // Check if one contains the other (substring match)
+  if (codeA.length > 50 && codeB.length > 50) {
+    if (codeA.includes(codeB) || codeB.includes(codeA)) return true;
+  }
+
+  // Same category and similar description (fuzzy match)
+  if (a.category === b.category) {
+    const descA = a.description.toLowerCase();
+    const descB = b.description.toLowerCase();
+
+    // Extract key words (remove common words)
+    const commonWords = new Set(["the", "a", "an", "to", "for", "in", "on", "at", "and", "or", "is", "are"]);
+    const wordsA = descA.split(/\s+/).filter(w => w.length > 3 && !commonWords.has(w));
+    const wordsB = descB.split(/\s+/).filter(w => w.length > 3 && !commonWords.has(w));
+
+    // Check word overlap
+    const setB = new Set(wordsB);
+    const overlap = wordsA.filter(w => setB.has(w)).length;
+    const maxLen = Math.max(wordsA.length, wordsB.length);
+
+    if (maxLen > 0 && overlap / maxLen > 0.6) {
+      return true;
+    }
+  }
+
+  return false;
+};
 
 // --- Unified Error Type ---
 
@@ -65,6 +127,12 @@ export interface ISkillService {
 
   /** Archive a skill */
   readonly archiveSkill: (id: string) => Effect.Effect<void, SkillServiceError>;
+
+  /** Delete a skill (alias for archive) */
+  readonly deleteSkill: (id: string) => Effect.Effect<void, SkillServiceError>;
+
+  /** Get all skills (alias for listSkills with no filter) */
+  readonly getAllSkills: () => Effect.Effect<Skill[], SkillServiceError>;
 
   // --- Skill Retrieval ---
 
@@ -149,7 +217,39 @@ const makeSkillService = (): Effect.Effect<
     const mapRetrievalError = Effect.mapError(SkillServiceError.from);
 
     const registerSkill = (skill: Skill): Effect.Effect<void, SkillServiceError> =>
-      store.add(skill).pipe(mapStoreError);
+      Effect.gen(function* () {
+        // Check for content duplicates before adding
+        const existingSkills = yield* store.list({ status: ["active"] }).pipe(mapStoreError);
+
+        // Find similar skill
+        const similarSkill = existingSkills.find((existing) => areSkillsSimilar(existing, skill));
+
+        if (similarSkill) {
+          // Merge: update existing skill's stats instead of creating duplicate
+          const merged: Skill = {
+            ...similarSkill,
+            // Combine usage stats
+            usageCount: (similarSkill.usageCount ?? 0) + (skill.usageCount ?? 0),
+            // Average success rates
+            successRate:
+              similarSkill.successRate !== undefined && skill.successRate !== undefined
+                ? (similarSkill.successRate + skill.successRate) / 2
+                : similarSkill.successRate ?? skill.successRate,
+            // Merge tags
+            tags: [...new Set([...(similarSkill.tags ?? []), ...(skill.tags ?? [])])],
+            // Merge learnedFrom
+            learnedFrom: [...new Set([...(similarSkill.learnedFrom ?? []), ...(skill.learnedFrom ?? [])])],
+            // Update timestamp
+            updatedAt: new Date().toISOString(),
+          };
+
+          yield* store.update(merged).pipe(mapStoreError);
+          return;
+        }
+
+        // No duplicate found, add new skill
+        yield* store.add(skill).pipe(mapStoreError);
+      });
 
     const createSkillFn = (
       partial: Partial<Skill> & Pick<Skill, "name" | "description" | "code" | "category">,
@@ -171,6 +271,12 @@ const makeSkillService = (): Effect.Effect<
 
     const archiveSkill = (id: string): Effect.Effect<void, SkillServiceError> =>
       store.archive(id).pipe(mapStoreError);
+
+    // Alias for archive (used by Archivist)
+    const deleteSkill = archiveSkill;
+
+    // Alias for listSkills with no filter (used by Archivist)
+    const getAllSkills = (): Effect.Effect<Skill[], SkillServiceError> => listSkills();
 
     const query = (q: SkillQuery): Effect.Effect<SkillMatch[], SkillServiceError> =>
       retrieval.query(q).pipe(mapRetrievalError);
@@ -265,6 +371,8 @@ const makeSkillService = (): Effect.Effect<
       listSkills,
       updateSkill,
       archiveSkill,
+      deleteSkill,
+      getAllSkills,
       query,
       selectSkills,
       formatForPrompt: formatForPromptFn,
