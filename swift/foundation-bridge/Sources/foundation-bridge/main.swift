@@ -5,7 +5,7 @@ import Foundation
 /// Default port: 11435
 
 @main
-struct FoundationBridge {
+enum FoundationBridge {
     static func main() async {
         // Parse port from arguments
         let port: UInt16

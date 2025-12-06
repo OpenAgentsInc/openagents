@@ -42,8 +42,11 @@ actor HTTPServer {
 
         listener.start(queue: .main)
 
-        // Keep running
-        try await Task.sleep(for: .seconds(.max))
+        // Keep running indefinitely using RunLoop
+        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
+            // Never resume - keeps the task alive forever
+            RunLoop.main.run()
+        }
     }
 
     /// Stop the server
@@ -128,7 +131,7 @@ actor HTTPServer {
     // MARK: - Route Handlers
 
     private func handleHealth() async -> Data {
-        let (available, message) = await chatHandler.getAvailabilityStatus()
+        let (available, _) = await chatHandler.getAvailabilityStatus()
         let health = HealthResponse(
             status: available ? "ok" : "degraded",
             modelAvailable: available,

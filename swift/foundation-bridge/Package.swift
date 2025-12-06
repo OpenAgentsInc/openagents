@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.2
 // Foundation Models HTTP Bridge for OpenAgents
 // Requires macOS 26+ with Apple Intelligence
 
@@ -15,7 +15,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "foundation-bridge",
-            path: "Sources/foundation-bridge"
+            path: "Sources/foundation-bridge",
+            swiftSettings: [
+                .unsafeFlags(["-parse-as-library"])
+            ]
         )
     ]
 )

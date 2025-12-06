@@ -20,16 +20,7 @@ actor ChatHandler {
         case .available:
             return (true, "Foundation Models is available")
         case .unavailable(let reason):
-            switch reason {
-            case .deviceNotSupported:
-                return (false, "Device not supported - requires Apple Silicon Mac")
-            case .appleIntelligenceNotEnabled:
-                return (false, "Apple Intelligence is not enabled in System Settings")
-            case .modelNotReady:
-                return (false, "Model is not ready - please wait for download to complete")
-            @unknown default:
-                return (false, "Foundation Models unavailable: \(reason)")
-            }
+            return (false, "Foundation Models unavailable: \(reason)")
         @unknown default:
             return (false, "Unknown availability status")
         }
@@ -57,16 +48,15 @@ actor ChatHandler {
 
         // Generate response
         let startTime = Date()
-        let response: LanguageModelSession.Response
+        let content: String
         do {
-            response = try await session.respond(to: prompt)
+            let response = try await session.respond(to: prompt)
+            content = response.content
         } catch {
             throw FMError.requestFailed("Foundation Models request failed: \(error.localizedDescription)")
         }
         let endTime = Date()
-
-        // Extract content
-        let content = response.content
+        _ = endTime // Silence unused variable warning
 
         // Estimate token counts (rough approximation: ~4 chars per token)
         let promptTokens = prompt.count / 4
