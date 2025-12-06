@@ -573,4 +573,35 @@ describe("CategoryTreeWidget", () => {
       )
     )
   })
+
+  test("US-2.11 shows difficulty badges for each task", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [
+              { id: "easy", name: "Easy task", difficulty: "easy", category: "alpha" },
+              { id: "medium", name: "Medium task", difficulty: "medium", category: "alpha" },
+              { id: "hard", name: "Hard task", difficulty: "hard", category: "beta" },
+            ],
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("E</span>")
+          expect(html).toContain("M</span>")
+          expect(html).toContain("H</span>")
+        })
+      )
+    )
+  })
 })
