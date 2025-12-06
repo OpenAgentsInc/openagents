@@ -15,11 +15,7 @@ Before you make any code changes in this repo, do the following:
      - `defaultBranch`, `testCommands`, `e2eCommands`, `allowPush`, etc.
    - Skim `.openagents/tasks.jsonl` to see how work is structured.
 
-3. **Check current health:**
-   - Run `bun test` in this repo to see current status.
-   - If tests fail, note the failures in your log; continue with your task but re-check after your changes before committing.
-
-4. **Start a work log:**
+3. **Start a work log:**
    - Use the `DAY`/`TS` snippet under "Work Logs".
    - Note the task ID you're about to work on and your intent for this session.
 
@@ -187,7 +183,7 @@ Guidelines:
 - NEVER use `-i` flag (interactive mode not supported)
 - NEVER use `git stash` when confused about branch state or conflicts - **multiple agents may be working simultaneously**. If in doubt about uncommitted changes, branches, or conflicts, **STOP and request clarification** from the user instead of stashing
 
-> **Exception – MechaCoder:**  
+> **Exception – MechaCoder:**
 > The MechaCoder autonomous agent is allowed to commit and push changes **without explicit user confirmation** as long as it:
 > - Follows the Golden Loop v2 spec (`docs/mechacoder/GOLDEN-LOOP-v2.md`),
 > - Runs the configured tests from `.openagents/project.json` and they pass,
