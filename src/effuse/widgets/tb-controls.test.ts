@@ -844,4 +844,54 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-1.4 reloads suite and reselects all tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const suite: TBSuiteInfo = {
+            name: "terminal-bench-v1",
+            version: "1.0.0",
+            tasks: [
+              { id: "task-a", name: "Task A", difficulty: "easy", category: "alpha" },
+              { id: "task-b", name: "Task B", difficulty: "hard", category: "beta" },
+            ],
+          }
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: () => Effect.succeed(suite),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite,
+                selectedTaskIds: new Set(["task-a"]),
+                status: "Dirty",
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.selectedTaskIds.size).toBe(2)
+              expect(updated.status).toBe("Ready")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("2/2 selected")
+              expect(html).toContain("terminal-bench-v1")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
