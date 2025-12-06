@@ -41,24 +41,20 @@ window.onerror = (msg, src, line, col, error) => {
 }
 
 window.onunhandledrejection = (event) => {
-  console.error("=== UNHANDLED REJECTION DEBUG ===")
-  console.error("Reason:", event.reason)
-  console.error("Reason type:", typeof event.reason)
-  console.error("Reason constructor:", event.reason?.constructor?.name)
-  console.error("Reason keys:", Object.keys(event.reason || {}))
-  console.error("Reason JSON:", JSON.stringify(event.reason, null, 2))
-  console.error("Promise:", event.promise)
-  if (event.reason?.stack) {
-    console.error("Reason stack:", event.reason.stack)
+  // Ignore empty Error objects (webview-bun internal artifacts)
+  if (
+    event.reason &&
+    event.reason.constructor?.name === "Error" &&
+    Object.keys(event.reason).length === 0
+  ) {
+    // Silently ignore - these are harmless webview-bun artifacts
+    event.preventDefault()
+    return
   }
-  const currentStack = new Error("Current stack trace")
-  console.error("Call stack:", currentStack.stack)
-  console.error("================================")
 
-  // Only show error dialog if reason is not an empty object
-  if (event.reason && Object.keys(event.reason).length > 0) {
-    showError(`Unhandled Promise rejection:\n\n${event.reason?.stack || event.reason}`)
-  }
+  // Log actual errors
+  console.error("[Effuse] Unhandled rejection:", event.reason)
+  showError(`Unhandled Promise rejection:\n\n${event.reason?.stack || event.reason}`)
 }
 
 // ============================================================================

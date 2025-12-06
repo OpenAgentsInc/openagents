@@ -74,7 +74,10 @@ const webview = new Webview();
 
 // Debug: inject error handler and HUD event listener
 webview.init(`
-  // Mark: VERSION-2025-12-06-01 (confirm new code is running)
+  // Mark: VERSION-2025-12-06-02 (stub bunLog to prevent race conditions)
+
+  // Stub bunLog immediately to prevent race conditions
+  window.bunLog = window.bunLog || function() {};
 
   console.log = function(...args) {
     if (window.bunLog) window.bunLog(...args);
@@ -90,7 +93,7 @@ webview.init(`
   };
 
   if (window.bunLog) {
-    window.bunLog('[Webview] Initialized VERSION-2025-12-06-01');
+    window.bunLog('[Webview] Initialized VERSION-2025-12-06-02');
   }
 `);
 
