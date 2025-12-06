@@ -19,13 +19,16 @@ export {
   type Trajectory,
   type TrajectoryAction,
   type ExtractedPattern,
+  type ArchivistLesson,
   type ArchiveResult,
   type ArchiveConfig,
   DEFAULT_ARCHIVE_CONFIG,
   generateTrajectoryId,
   generatePatternId,
   generateArchiveId,
+  generateLessonId,
   createTrajectory,
+  createLesson,
   buildPatternExtractionPrompt,
   parsePatternsFromResponse,
   calculateSuccessRate,
@@ -38,7 +41,12 @@ export {
   TrajectoryStoreError,
   makeTrajectoryStoreLive,
   TrajectoryStoreLive,
+  LessonStore,
+  LessonStoreError,
+  makeLessonStoreLive,
+  LessonStoreLive,
   type ITrajectoryStore,
+  type ILessonStore,
 } from "./store.js";
 
 // Extractor exports
@@ -60,3 +68,13 @@ export {
   makeArchivistServiceLive,
   type IArchivistService,
 } from "./service.js";
+
+// Retrieval exports
+export {
+  getRelevantLessons,
+  getLessonsForTask,
+  formatLessonsForPrompt,
+  formatLessonsCompact,
+  getFormattedLessons,
+  type LessonQuery,
+} from "./retrieval.js";
