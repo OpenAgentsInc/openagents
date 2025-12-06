@@ -23,3 +23,20 @@ export {
   // Config
   DEFAULT_CONFIG,
 } from "./loop-runner.js";
+
+export {
+  // Episode Learner
+  createEpisodeLearner,
+  learnFromRecentEpisodes,
+  learnFromEpisode,
+  // Types
+  type IEpisodeLearner,
+  type EpisodeLearnerConfig,
+  type LearningResult,
+  type LearningSummary,
+  type Reflection,
+  // Error
+  EpisodeLearnerError,
+  // Config
+  DEFAULT_LEARNER_CONFIG,
+} from "./episode-learner.js";
