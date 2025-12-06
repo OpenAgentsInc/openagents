@@ -337,4 +337,43 @@ describe("CategoryTreeWidget", () => {
       )
     )
   })
+
+  test("US-2.2 toggles category collapse state", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "category-tree-test" } as Element
+              const tasks = new Map<string, TBTaskData>([
+                ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
+              ])
+              const state = yield* stateService.cell({
+                tasks,
+                collapsedCategories: new Set(["basics"]),
+                visible: true,
+                selectedTaskId: null,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              // Expand basics
+              yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              const expanded = yield* state.get
+              expect(expanded.collapsedCategories.has("basics")).toBe(false)
+
+              // Collapse again
+              yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              const collapsed = yield* state.get
+              expect(collapsed.collapsedCategories.has("basics")).toBe(true)
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
