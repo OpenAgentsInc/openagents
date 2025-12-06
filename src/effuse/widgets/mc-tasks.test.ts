@@ -338,6 +338,114 @@ describe("MCTasksWidget", () => {
     )
   })
 
+  test("US-10.5 shows task type badges", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "mc-tasks-test" } as Element
+
+          const customWidget = {
+            ...MCTasksWidget,
+            initialState: (): MCTasksState => ({
+              tasks: [
+                {
+                  id: "oa-bug",
+                  title: "Bug task",
+                  description: "",
+                  status: "open",
+                  priority: 1,
+                  type: "bug",
+                  labels: [],
+                  createdAt: "2024-12-03",
+                  updatedAt: "2024-12-03",
+                },
+                {
+                  id: "oa-feature",
+                  title: "Feature task",
+                  description: "",
+                  status: "open",
+                  priority: 2,
+                  type: "feature",
+                  labels: [],
+                  createdAt: "2024-12-03",
+                  updatedAt: "2024-12-03",
+                },
+              ],
+              loading: false,
+              error: null,
+              collapsed: false,
+              maxDisplay: 20,
+              assigningId: null,
+            }),
+          }
+
+          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("bug")
+          expect(html).toContain("feature")
+          expect(html).toContain("oa-bug")
+          expect(html).toContain("oa-feature")
+        })
+      )
+    )
+  })
+
+  test("US-10.8 refresh reloads ready tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let requestedLimit: number | undefined
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              loadReadyTasks: (limit = 50) => {
+                requestedLimit = limit
+                return Effect.succeed([
+                  {
+                    id: "oa-new",
+                    title: "New task",
+                    description: "",
+                    status: "open",
+                    priority: 1,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-04",
+                    updatedAt: "2024-12-04",
+                  },
+                ])
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell(MCTasksWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.loading).toBe(false)
+              expect(updated.tasks).toHaveLength(1)
+              expect(updated.tasks[0]?.id).toBe("oa-new")
+
+              const html = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(html).toContain("oa-new")
+              expect(html).toContain("Refresh")
+            }),
+            layer
+          )
+
+          expect(requestedLimit).toBe(50)
+        })
+      )
+    )
+  })
+
   test("US-10.1 loads ready tasks from socket and updates list", async () => {
     await Effect.runPromise(
       Effect.scoped(
