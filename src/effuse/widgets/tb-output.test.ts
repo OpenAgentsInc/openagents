@@ -339,4 +339,43 @@ describe("TBOutputWidget", () => {
       )
     )
   })
+
+  test("US-5.1 toggles auto-scroll state and attribute", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [{ text: "line one", source: "agent", timestamp: Date.now() }],
+                maxLines: 500,
+                visible: true,
+                runId: "run-auto",
+                taskId: "task-auto",
+                autoScroll: true,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const initialHtml = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(initialHtml).toContain('data-autoscroll="true"')
+
+              yield* TBOutputWidget.handleEvent({ type: "toggleAutoScroll" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.autoScroll).toBe(false)
+
+              const toggledHtml = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(toggledHtml).toContain('data-autoscroll="false"')
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
