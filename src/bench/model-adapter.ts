@@ -20,6 +20,8 @@ import { createFMClient, checkFMHealth, isMacOS } from "../llm/foundation-models
 import type { TerminalBenchTask } from "./terminal-bench.js";
 import { Effect } from "effect";
 import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
+import { MemoryService, makeMemoryServiceLive } from "../memory/service.js";
+import { ReflexionService, makeReflexionServiceLive } from "../reflexion/service.js";
 
 // --- Configuration Types ---
 
@@ -47,6 +49,14 @@ export interface FMModelConfig {
   maxSkills?: number;
   /** Min similarity threshold for skill retrieval (default: 0.3) */
   minSimilarity?: number;
+  /** Enable memory retrieval and injection (default: false) */
+  useMemory?: boolean;
+  /** Max memories to inject into prompt (default: 5) */
+  maxMemories?: number;
+  /** Enable reflexion on failures (default: false) */
+  useReflection?: boolean;
+  /** Max reflection-based retries per task (default: 2) */
+  maxReflectionRetries?: number;
 }
 
 export type ModelConfig = ClaudeCodeModelConfig | OllamaModelConfig | FMModelConfig;
@@ -517,31 +527,35 @@ Wait for the tool result before continuing.
 When you have completed the task, say "TASK_COMPLETE" on its own line.`;
 
 /**
- * Build system prompt with injected skills (Voyager-style).
- * Skills are retrieved based on semantic similarity to the task.
+ * Build system prompt with injected skills and memories (Voyager + Generative Agents style).
+ * Skills and memories are retrieved based on semantic similarity to the task.
  */
-const buildFMSystemPrompt = (skills?: Skill[]): string => {
-  if (!skills || skills.length === 0) {
-    return FM_BASE_PROMPT;
-  }
+const buildFMSystemPrompt = (options?: {
+  skills?: Skill[];
+  memories?: string;
+  reflections?: string;
+}): string => {
+  const { skills, memories, reflections } = options ?? {};
+  let prompt = FM_BASE_PROMPT;
 
-  // Format skills as code snippets with usage examples
-  const skillsSection = skills.map(skill => {
-    const params = skill.parameters
-      .map(p => `${p.name}: ${p.type}${p.required ? " (required)" : ""}`)
-      .join(", ");
-    const successInfo = skill.successRate !== undefined
-      ? ` [${(skill.successRate * 100).toFixed(0)}% success rate]`
-      : "";
-    return `### ${skill.name}${successInfo}
+  // Add skills section
+  if (skills && skills.length > 0) {
+    const skillsSection = skills.map(skill => {
+      const params = skill.parameters
+        .map(p => `${p.name}: ${p.type}${p.required ? " (required)" : ""}`)
+        .join(", ");
+      const successInfo = skill.successRate !== undefined
+        ? ` [${(skill.successRate * 100).toFixed(0)}% success rate]`
+        : "";
+      return `### ${skill.name}${successInfo}
 ${skill.description}
 ${params ? `Parameters: ${params}` : ""}
 \`\`\`typescript
 ${skill.code}
 \`\`\``;
-  }).join("\n\n");
+    }).join("\n\n");
 
-  return `${FM_BASE_PROMPT}
+    prompt += `
 
 ## Relevant Skills (use these patterns when applicable)
 
@@ -551,6 +565,29 @@ Adapt them to your specific situation:
 ${skillsSection}
 
 Remember: These are reference patterns, not exact solutions. Modify as needed.`;
+  }
+
+  // Add memories section
+  if (memories && memories.trim()) {
+    prompt += `
+
+## Relevant Memories
+
+Previous experiences that may be helpful:
+
+${memories}`;
+  }
+
+  // Add reflections section (from previous failures)
+  if (reflections && reflections.trim()) {
+    prompt += `
+
+## Lessons from Previous Attempts
+
+${reflections}`;
+  }
+
+  return prompt;
 };
 
 /**
@@ -581,12 +618,18 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
   const port = fmConfig.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
   const useSkills = fmConfig.useSkills ?? true;
+  const useMemory = fmConfig.useMemory ?? false;
+  const useReflection = fmConfig.useReflection ?? false;
+  const maxReflectionRetries = fmConfig.maxReflectionRetries ?? 2;
   const projectRoot = fmConfig.projectRoot ?? process.cwd();
   const maxSkills = fmConfig.maxSkills ?? 5;
+  const maxMemories = fmConfig.maxMemories ?? 5;
   const minSimilarity = fmConfig.minSimilarity ?? 0.3;
 
-  // Create skill layer for this project
+  // Create service layers for this project
   const skillLayer = makeSkillServiceLive(projectRoot);
+  const memoryLayer = useMemory ? makeMemoryServiceLive(projectRoot) : null;
+  const reflexionLayer = useReflection ? makeReflexionServiceLive(projectRoot) : null;
 
   // Skill retrieval helper (returns empty array on failure)
   const getRelevantSkills = async (taskDescription: string): Promise<{ skills: Skill[]; ids: string[] }> => {
@@ -643,6 +686,114 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       );
     } catch {
       // Ignore skill usage tracking errors
+    }
+  };
+
+  // Memory retrieval helper (returns empty string on failure)
+  const getRelevantMemories = async (taskDescription: string): Promise<string> => {
+    if (!useMemory || !memoryLayer) {
+      return "";
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* MemoryService;
+        const formatted = yield* service.formatForPrompt(taskDescription, {
+          limit: maxMemories,
+          minRelevance: minSimilarity,
+        });
+        return formatted;
+      });
+
+      return await Effect.runPromise(
+        program.pipe(
+          Effect.provide(memoryLayer),
+          Effect.catchAll(() => Effect.succeed("")),
+        ),
+      );
+    } catch {
+      return "";
+    }
+  };
+
+  // Record task outcome in memory
+  const recordTaskMemory = async (
+    taskDescription: string,
+    outcome: "success" | "failure",
+    options?: { errorMessage?: string; skillsUsed?: string[]; durationMs?: number },
+  ): Promise<void> => {
+    if (!useMemory || !memoryLayer) {
+      return;
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* MemoryService;
+        yield* service.recordTask(taskDescription, outcome, options);
+      });
+
+      await Effect.runPromise(
+        program.pipe(
+          Effect.provide(memoryLayer),
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        ),
+      );
+    } catch {
+      // Ignore memory recording errors
+    }
+  };
+
+  // Reflexion helper: generate reflection from failure
+  const generateReflection = async (
+    taskDescription: string,
+    errorMessage: string,
+    options?: { filesInvolved?: string[]; skillsUsed?: string[]; attemptNumber?: number },
+  ): Promise<string> => {
+    if (!useReflection || !reflexionLayer) {
+      return "";
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* ReflexionService;
+        const failure = yield* service.recordFailure(taskDescription, errorMessage, options);
+        const reflection = yield* service.reflect(failure);
+        // Format reflection for prompt injection
+        return `**What went wrong:** ${reflection.whatWentWrong}\n**Root cause:** ${reflection.whyItWentWrong}\n**Try next:** ${reflection.whatToTryNext}${reflection.suggestedFix ? `\n**Suggested fix:** ${reflection.suggestedFix}` : ""}`;
+      });
+
+      return await Effect.runPromise(
+        program.pipe(
+          Effect.provide(reflexionLayer),
+          Effect.catchAll(() => Effect.succeed("")),
+        ),
+      );
+    } catch {
+      return "";
+    }
+  };
+
+  // Get existing reflections for a task (for retry prompts)
+  const getReflections = async (taskDescription: string): Promise<string> => {
+    if (!useReflection || !reflexionLayer) {
+      return "";
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* ReflexionService;
+        const prompt = yield* service.getReflectionPrompt(taskDescription);
+        return prompt;
+      });
+
+      return await Effect.runPromise(
+        program.pipe(
+          Effect.provide(reflexionLayer),
+          Effect.catchAll(() => Effect.succeed("")),
+        ),
+      );
+    } catch {
+      return "";
     }
   };
 
@@ -727,6 +878,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       let outputText = "";
       let totalTokens = 0;
       let turns = 0;
+      let attemptNumber = 0;
 
       const log = (text: string): void => {
         outputText += text + "\n";
@@ -739,11 +891,24 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         log(`[Skills] Injected ${skills.length} relevant skills: ${skills.map(s => s.name).join(", ")}`);
       }
 
-      // Build system prompt with injected skills
-      const systemPrompt = buildFMSystemPrompt(skills);
+      // Retrieve relevant memories (Generative Agents style)
+      const memories = await getRelevantMemories(task.description);
+      if (memories) {
+        log(`[Memory] Injected relevant memories`);
+      }
+
+      // Get any existing reflections from previous attempts
+      let reflections = await getReflections(task.description);
+      if (reflections) {
+        log(`[Reflexion] Loaded reflections from previous attempts`);
+      }
+
+      // Build system prompt with injected skills, memories, and reflections
+      const buildPrompt = () => buildFMSystemPrompt({ skills, memories, reflections });
+      let systemPrompt = buildPrompt();
 
       // Build initial messages
-      const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+      let messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
         { role: "user", content: task.description },
       ];
@@ -751,9 +916,18 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       const maxTurns = task.max_turns ?? options.maxTurns;
       const timeoutMs = (task.timeout_seconds ?? options.timeout) * 1000;
 
-      // Helper to finalize with skill tracking
+      // Helper to finalize with skill tracking and memory recording
       const finalize = async (result: TaskRunResult): Promise<TaskRunResult> => {
         await recordSkillUsage(skillIds, result.success);
+        await recordTaskMemory(
+          task.description,
+          result.success ? "success" : "failure",
+          {
+            ...(result.error ? { errorMessage: result.error } : {}),
+            skillsUsed: skillIds,
+            durationMs: result.durationMs,
+          },
+        );
         return {
           ...result,
           sessionMetadata: {
@@ -762,6 +936,20 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           },
         };
       };
+
+      // Retry loop with reflexion on failure
+      while (attemptNumber <= maxReflectionRetries) {
+        attemptNumber++;
+        if (attemptNumber > 1) {
+          log(`\n[Reflexion] Retry attempt ${attemptNumber}/${maxReflectionRetries + 1}`);
+          // Reset messages with updated reflections
+          systemPrompt = buildPrompt();
+          messages = [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: task.description },
+          ];
+          turns = 0; // Reset turn count for new attempt
+        }
 
       try {
         while (turns < maxTurns) {
@@ -855,20 +1043,48 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           }
         }
 
-        // Reached max turns
+        // Reached max turns - generate reflection and retry if enabled
+        const error = `Reached max turns (${maxTurns})`;
+        if (useReflection && attemptNumber <= maxReflectionRetries) {
+          log(`\n[Reflexion] Generating reflection for failure...`);
+          const newReflection = await generateReflection(task.description, error, {
+            skillsUsed: skillIds,
+            attemptNumber,
+          });
+          if (newReflection) {
+            reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
+            log(`[Reflexion] Generated new insight, will retry with updated context`);
+            continue; // Retry with new reflection
+          }
+        }
         return await finalize({
           success: false,
           turns,
           tokens: totalTokens,
           durationMs: Date.now() - startTime,
           output: outputText,
-          error: `Reached max turns (${maxTurns})`,
+          error,
           model: "fm:default",
         });
       } catch (e) {
         const durationMs = Date.now() - startTime;
         const errorMsg = e instanceof Error ? e.message : String(e);
         log(`Error: ${errorMsg}`);
+
+        // Generate reflection and retry if enabled
+        if (useReflection && attemptNumber <= maxReflectionRetries) {
+          log(`\n[Reflexion] Generating reflection for error...`);
+          const newReflection = await generateReflection(task.description, errorMsg, {
+            skillsUsed: skillIds,
+            attemptNumber,
+          });
+          if (newReflection) {
+            reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
+            log(`[Reflexion] Generated new insight, will retry with updated context`);
+            continue; // Retry with new reflection
+          }
+        }
+
         return await finalize({
           success: false,
           turns,
@@ -879,6 +1095,18 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           model: "fm:default",
         });
       }
+      } // End of retry loop
+
+      // Should not reach here, but return failure if we do
+      return await finalize({
+        success: false,
+        turns,
+        tokens: totalTokens,
+        durationMs: Date.now() - startTime,
+        output: outputText,
+        error: "Exhausted all retry attempts",
+        model: "fm:default",
+      });
     },
 
     async checkHealth(): Promise<{ available: boolean; error?: string }> {

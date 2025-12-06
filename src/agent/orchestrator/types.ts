@@ -145,7 +145,7 @@ export interface SubagentResult {
   filesModified: string[];
   error?: string;
   turns: number;
-  agent?: "claude-code" | "minimal";
+  agent?: "claude-code" | "minimal" | "fm";
   /** Session ID returned by Claude Code for resumption */
   claudeCodeSessionId?: string;
   /** Original session ID when a forked branch was created */

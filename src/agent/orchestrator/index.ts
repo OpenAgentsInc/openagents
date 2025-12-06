@@ -37,7 +37,14 @@ export {
 
 // Subagent
 export { runSubagent, createSubagentConfig } from "./subagent.js";
-export { runBestAvailableSubagent, shouldUseClaudeCode } from "./subagent-router.js";
+export {
+  runBestAvailableSubagent,
+  shouldUseClaudeCode,
+  // FM (Apple Foundation Models) exports
+  detectFMAvailability,
+  runFMSubagent,
+} from "./subagent-router.js";
+export type { FMSettings, FMAvailability } from "./subagent-router.js";
 
 // Init Script
 export { runInitScript } from "./init-script.js";
