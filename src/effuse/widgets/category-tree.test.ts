@@ -427,4 +427,39 @@ describe("CategoryTreeWidget", () => {
       )
     )
   })
+
+  test("US-14.6 marks timeout tasks with timeout icon", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [{ id: "task-timeout", name: "Timeout task", difficulty: "medium", category: "core" }],
+          })
+
+          yield* Effect.sleep(0)
+
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-timeout",
+            taskId: "task-timeout",
+            outcome: "timeout",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("⏱")
+          expect(html).toContain("Timeout task")
+        })
+      )
+    )
+  })
 })
