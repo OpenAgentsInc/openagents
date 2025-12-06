@@ -511,20 +511,17 @@ const createOllamaRunner = (ollamaConfig: OllamaModelConfig): ModelRunner => {
 /**
  * System prompt for Foundation Models-based coding agents.
  * Uses text-based tool calling since FM may not support native JSON tool calling.
+ * Keep this SHORT - Apple FM has limited context window.
  */
-const FM_BASE_PROMPT = `You are a coding assistant. Complete the task by writing code and using tools.
+const FM_BASE_PROMPT = `You are a coding assistant. Use relative paths only.
 
-Available tools:
-- read_file(path): Read a file's contents
-- write_file(path, content): Write content to a file
-- edit_file(path, old_text, new_text): Replace text in a file
-- run_command(command): Execute a shell command
+Tools (use <tool_call>{"name":"...", "arguments":{...}}</tool_call>):
+- write_file(path, content)
+- read_file(path)
+- edit_file(path, old_text, new_text)
+- run_command(command)
 
-To use a tool, output in this exact format on its own line:
-<tool_call>{"name": "tool_name", "arguments": {"arg1": "value"}}</tool_call>
-
-Wait for the tool result before continuing.
-When you have completed the task, say "TASK_COMPLETE" on its own line.`;
+Say TASK_COMPLETE when done.`;
 
 /**
  * Build system prompt with injected skills and memories (Voyager + Generative Agents style).
@@ -804,12 +801,21 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
     workspace: string,
   ): Promise<{ success: boolean; output: string }> => {
     try {
-      const { resolve, dirname } = await import("path");
+      const { resolve, dirname, basename, isAbsolute } = await import("path");
       const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import("fs");
+
+      // Helper to normalize paths - reject absolute paths and resolve relative ones
+      const normalizePath = (inputPath: string): string => {
+        if (isAbsolute(inputPath)) {
+          // If it's an absolute path, just use the basename to make it relative
+          return resolve(workspace, basename(inputPath));
+        }
+        return resolve(workspace, inputPath);
+      };
 
       switch (name) {
         case "read_file": {
-          const path = resolve(workspace, args.path as string);
+          const path = normalizePath(args.path as string);
           if (!existsSync(path)) {
             return { success: false, output: `File not found: ${path}` };
           }
@@ -818,7 +824,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         }
 
         case "write_file": {
-          const path = resolve(workspace, args.path as string);
+          const path = normalizePath(args.path as string);
           const dir = dirname(path);
           if (!existsSync(dir)) {
             mkdirSync(dir, { recursive: true });
@@ -828,7 +834,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         }
 
         case "edit_file": {
-          const path = resolve(workspace, args.path as string);
+          const path = normalizePath(args.path as string);
           if (!existsSync(path)) {
             return { success: false, output: `File not found: ${path}` };
           }
@@ -907,10 +913,12 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       const buildPrompt = () => buildFMSystemPrompt({ skills, memories, reflections });
       let systemPrompt = buildPrompt();
 
-      // Build initial messages
+      // Build initial messages with workspace context (keep short for FM context limits)
+      const userMessage = `${task.description}`;
+
       let messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
-        { role: "user", content: task.description },
+        { role: "user", content: userMessage },
       ];
 
       const maxTurns = task.max_turns ?? options.maxTurns;

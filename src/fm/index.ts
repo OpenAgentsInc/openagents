@@ -6,7 +6,7 @@
  * @module
  */
 
-// Schema exports
+// Schema exports - values
 export {
   FMChatMessage,
   FMChatRequest,
@@ -19,10 +19,12 @@ export {
   FMHealthStatus,
   FMModel,
   FMModelsResult,
-  FMServiceConfig,
   defaultFMServiceConfig,
   isRetryableError,
 } from "./schema.js";
+
+// Schema exports - types (interfaces must use export type)
+export type { FMServiceConfig } from "./schema.js";
 
 // Service exports
 export {
@@ -55,11 +57,9 @@ export {
   defaultFMLayerConfig,
 } from "./layer.js";
 
-// Re-export underlying client types for advanced usage
+// Re-export underlying client types for advanced usage - values
 export {
   FMClientTag,
-  FMClient,
-  FMConfig,
   FMError,
   createFMClient,
   checkFMHealth,
@@ -68,5 +68,11 @@ export {
   isMacOS,
   DEFAULT_FM_PORT,
   DEFAULT_FM_TIMEOUT_MS,
-  type FMModelsResult as FMModelsResultClient,
+} from "../llm/foundation-models.js";
+
+// Re-export underlying client types - interfaces
+export type {
+  FMClient,
+  FMConfig,
+  FMModelsResult as FMModelsResultClient,
 } from "../llm/foundation-models.js";
