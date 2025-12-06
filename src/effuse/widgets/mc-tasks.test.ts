@@ -637,6 +637,59 @@ describe("MCTasksWidget", () => {
     )
   })
 
+  test("US-10.7 shows task count when collapsed", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell({
+                ...MCTasksWidget.initialState(),
+                tasks: [
+                  {
+                    id: "oa-1",
+                    title: "Task A",
+                    description: "",
+                    status: "open",
+                    priority: 1,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-01",
+                    updatedAt: "2024-12-01",
+                  },
+                  {
+                    id: "oa-2",
+                    title: "Task B",
+                    description: "",
+                    status: "open",
+                    priority: 2,
+                    type: "bug",
+                    labels: [],
+                    createdAt: "2024-12-02",
+                    updatedAt: "2024-12-02",
+                  },
+                ],
+                collapsed: true,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(html).toContain("Ready Tasks (2)")
+              expect(html).not.toContain("oa-1")
+              expect(html).not.toContain("oa-2")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-10.3 assigns task in sandbox mode", async () => {
     await Effect.runPromise(
       Effect.scoped(
