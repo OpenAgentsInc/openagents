@@ -666,6 +666,9 @@ export const truncateMessagesForFM = (
 /**
  * Build system prompt with injected skills and memories (Voyager + Generative Agents style).
  * Skills and memories are retrieved based on semantic similarity to the task.
+ *
+ * Uses micro-task condensation to fit within FM's ~1100 char context window.
+ * See src/fm/micro-task.ts for the condensation logic.
  */
 const buildFMSystemPrompt = (options?: {
   skills?: Skill[];
@@ -673,55 +676,34 @@ const buildFMSystemPrompt = (options?: {
   reflections?: string;
 }): string => {
   const { skills, memories, reflections } = options ?? {};
+
+  // Import micro-task functions dynamically to avoid circular deps
+  // These condense skills/memories/reflections to fit FM context
+  const {
+    condenseSkillsForPrompt,
+    condenseMemoriesForPrompt,
+    condenseReflectionsForPrompt,
+  } = require("../fm/micro-task.js");
+
+  // Start with base prompt
   let prompt = FM_BASE_PROMPT;
 
-  // Add skills section
-  if (skills && skills.length > 0) {
-    const skillsSection = skills.map(skill => {
-      const params = skill.parameters
-        .map(p => `${p.name}: ${p.type}${p.required ? " (required)" : ""}`)
-        .join(", ");
-      const successInfo = skill.successRate !== undefined
-        ? ` [${(skill.successRate * 100).toFixed(0)}% success rate]`
-        : "";
-      return `### ${skill.name}${successInfo}
-${skill.description}
-${params ? `Parameters: ${params}` : ""}
-\`\`\`typescript
-${skill.code}
-\`\`\``;
-    }).join("\n\n");
-
-    prompt += `
-
-## Relevant Skills (use these patterns when applicable)
-
-The following code patterns have been proven effective for similar tasks.
-Adapt them to your specific situation:
-
-${skillsSection}
-
-Remember: These are reference patterns, not exact solutions. Modify as needed.`;
+  // Add condensed skills (max ~300 chars instead of full code blocks)
+  const skillsSection = condenseSkillsForPrompt(skills ?? []);
+  if (skillsSection) {
+    prompt += `\n${skillsSection}`;
   }
 
-  // Add memories section
-  if (memories && memories.trim()) {
-    prompt += `
-
-## Relevant Memories
-
-Previous experiences that may be helpful:
-
-${memories}`;
+  // Add condensed memories (max ~150 chars)
+  const memoriesSection = condenseMemoriesForPrompt(memories);
+  if (memoriesSection) {
+    prompt += `\n${memoriesSection}`;
   }
 
-  // Add reflections section (from previous failures)
-  if (reflections && reflections.trim()) {
-    prompt += `
-
-## Lessons from Previous Attempts
-
-${reflections}`;
+  // Add condensed reflections (max ~100 chars)
+  const reflectionsSection = condenseReflectionsForPrompt(reflections);
+  if (reflectionsSection) {
+    prompt += `\n${reflectionsSection}`;
   }
 
   return prompt;
