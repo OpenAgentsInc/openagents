@@ -305,6 +305,36 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.1 keeps output visible after run completes and clears runId", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-complete" })
+          yield* injectMessage({
+            type: "tb_task_output",
+            runId: "run-complete",
+            taskId: "task-1",
+            text: "Finished line",
+            source: "system",
+          })
+          yield* injectMessage({ type: "tb_run_complete", runId: "run-complete" })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("Finished line")
+          expect(html).not.toContain("run-complete") // runId cleared
+          expect(html).toContain("TB Output")
+        })
+      )
+    )
+  })
+
   test("US-5.3 renders verification output lines", async () => {
     await Effect.runPromise(
       Effect.scoped(
