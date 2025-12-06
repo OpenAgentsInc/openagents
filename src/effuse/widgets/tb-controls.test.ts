@@ -348,6 +348,63 @@ describe("TBControlsWidget", () => {
     )
   })
 
+  test("US-3.2 starts a run for only selected tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockSuite: TBSuiteInfo = {
+            name: "terminal-bench-v1",
+            version: "1.2.3",
+            tasks: [
+              { id: "task-001", name: "First", difficulty: "easy", category: "basics" },
+              { id: "task-002", name: "Second", difficulty: "medium", category: "core" },
+              { id: "task-003", name: "Third", difficulty: "hard", category: "advanced" },
+            ],
+          }
+
+          let receivedOptions: StartTBRunOptions | null = null
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: (_suitePath) => Effect.succeed(mockSuite),
+              startTBRun: (options) => {
+                receivedOptions = options
+                return Effect.succeed({ runId: "run-99" })
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* state.update((s) => ({
+                ...s,
+                selectedTaskIds: new Set(["task-002"]),
+              }))
+
+              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+
+              const updated = yield* state.get
+              expect(receivedOptions?.taskIds).toEqual(["task-002"])
+              expect(updated.isRunning).toBe(true)
+              expect(updated.runId).toBe("run-99")
+              expect(updated.status).toBe("Running...")
+              expect(updated.statusType).toBe("running")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-3.4 stops an active run and resets controls", async () => {
     await Effect.runPromise(
       Effect.scoped(
