@@ -11,3 +11,5 @@ export * from "./api-key.js";
 export * from "./custom-providers.js";
 export * from "./oauth.js";
 export * from "./thinking.js";
+export * from "./foundation-models.js";
+export * from "./ollama.js";
