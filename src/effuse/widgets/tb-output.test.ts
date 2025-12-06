@@ -6,7 +6,9 @@ import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { TBOutputWidget, type TBOutputState, type TBOutputLine } from "./tb-output.js"
 import { mountWidget } from "../widget/mount.js"
-import { makeTestLayer } from "../layers/test.js"
+import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
 
 describe("TBOutputWidget", () => {
   test("renders hidden when not visible", async () => {
@@ -183,5 +185,102 @@ describe("TBOutputWidget", () => {
     expect(state.runId).toBeNull()
     expect(state.taskId).toBeNull()
     expect(state.autoScroll).toBe(true)
+  })
+
+  test("US-5.1 streams live output on tb_task_output", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-live" })
+          yield* injectMessage({
+            type: "tb_task_output",
+            runId: "run-live",
+            taskId: "task-001",
+            text: "Agent is working",
+            source: "agent",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("Agent is working")
+          expect(html).toContain("AGT")
+        })
+      )
+    )
+  })
+
+  test("US-5.2 shows run/task context for output", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-12345678" })
+          yield* injectMessage({
+            type: "tb_task_output",
+            runId: "run-12345678",
+            taskId: "task-xyz",
+            text: "Task-specific output",
+            source: "verification",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("12345678")
+          expect(html).toContain("task-xyz")
+          expect(html).toContain("Task-specific output")
+        })
+      )
+    )
+  })
+
+  test("US-5.5 clear output removes lines", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [
+                  { text: "keep?", source: "agent", timestamp: Date.now() },
+                  { text: "another", source: "system", timestamp: Date.now() },
+                ],
+                maxLines: 500,
+                visible: true,
+                runId: "run-clear",
+                taskId: "task-clear",
+                autoScroll: true,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBOutputWidget.handleEvent({ type: "clear" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.outputLines.length).toBe(0)
+
+              const html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain("No output yet")
+              expect(html).toContain("0 lines")
+            }),
+            layer
+          )
+        })
+      )
+    )
   })
 })
