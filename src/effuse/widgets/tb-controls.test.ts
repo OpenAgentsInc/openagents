@@ -822,4 +822,26 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-4.1 ignores completion for a different runId", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-controls-test" } as Element
+
+          yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-active" })
+          yield* Effect.sleep(0)
+
+          yield* injectMessage({ type: "tb_run_complete", runId: "run-other" })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("Running...")
+        })
+      )
+    )
+  })
 })
