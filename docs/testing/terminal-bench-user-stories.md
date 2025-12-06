@@ -3,6 +3,7 @@
 > Comprehensive user stories for Terminal Bench (TB) and Effuse HUD integration testing.
 > These stories define all user flows for full management of Terminal Bench via the HUD.
 
+> Log 2025-12-06: Added test for US-1.1 (default suite path pre-populated) in src/effuse/widgets/tb-controls.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-5.9 (close output viewer hides panel) in src/effuse/widgets/tb-output.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-10.7 (collapsed MC Tasks still shows task count) in src/effuse/widgets/mc-tasks.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-2.8 (selection count updates as tasks toggled) in src/effuse/widgets/tb-controls.test.ts; bun test passing.
