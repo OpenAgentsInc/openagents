@@ -6,6 +6,8 @@ import { detectClaudeCode, type ClaudeCodeAvailability } from "./claude-code-det
 import { runClaudeCodeSubagent } from "./claude-code-subagent.js";
 import { runSubagent, createSubagentConfig } from "./subagent.js";
 import { checkFMHealth, isMacOS, createFMClient } from "../../fm/index.js";
+import { SkillService, makeSkillServiceLive, type Skill } from "../../skills/index.js";
+import { MemoryService, makeMemoryServiceLive, type Memory } from "../../memory/index.js";
 import type {
   SubagentResult,
   Subtask,
@@ -89,6 +91,83 @@ export const detectFMAvailability = async (port = 11435): Promise<FMAvailability
  * Run a subtask using Apple Foundation Models.
  * Uses a simplified tool execution loop similar to the TB model adapter.
  */
+/**
+ * Load skills relevant to a task for FM injection.
+ * Keeps it minimal (max 2-3 skills) to fit FM's limited context.
+ */
+const loadSkillsForFM = async (
+  taskDescription: string,
+  projectRoot: string,
+  maxSkills: number = 3,
+  minSimilarity: number = 0.3,
+): Promise<{ skills: Skill[]; formatted: string }> => {
+  try {
+    const skillLayer = makeSkillServiceLive(projectRoot);
+    const skills = await Effect.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* SkillService;
+        return yield* svc.selectSkills(taskDescription, {
+          topK: maxSkills,
+          minSimilarity,
+          filter: { status: ["active"] },
+        });
+      }).pipe(Effect.provide(skillLayer)),
+    );
+
+    if (skills.length === 0) {
+      return { skills: [], formatted: "" };
+    }
+
+    // Format skills concisely for FM's limited context
+    const formatted = skills
+      .map((s, i) => `${i + 1}. ${s.name}: ${s.description.slice(0, 100)}`)
+      .join("\n");
+
+    return { skills, formatted };
+  } catch {
+    return { skills: [], formatted: "" };
+  }
+};
+
+/**
+ * Load memories relevant to a task for FM injection.
+ * Keeps it minimal (max 2-3 memories) to fit FM's limited context.
+ */
+const loadMemoriesForFM = async (
+  taskDescription: string,
+  projectRoot: string,
+  maxMemories: number = 3,
+  minRelevance: number = 0.3,
+): Promise<{ memories: Memory[]; formatted: string }> => {
+  try {
+    const memoryLayer = makeMemoryServiceLive(projectRoot);
+    const memories = await Effect.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* MemoryService;
+        return yield* svc.getRelevantMemories(taskDescription, {
+          limit: maxMemories,
+          minRelevance,
+          filter: { status: ["active"] },
+        });
+      }).pipe(Effect.provide(memoryLayer)),
+    );
+
+    if (memories.length === 0) {
+      return { memories: [], formatted: "" };
+    }
+
+    // Format memories concisely for FM's limited context
+    // Use the top-level description field (not content.*)
+    const formatted = memories
+      .map((m, i) => `${i + 1}. ${m.description.slice(0, 80)}`)
+      .join("\n");
+
+    return { memories, formatted };
+  } catch {
+    return { memories: [], formatted: "" };
+  }
+};
+
 export const runFMSubagent = async (
   subtask: Subtask,
   options: {
@@ -102,17 +181,59 @@ export const runFMSubagent = async (
   const port = options.settings?.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
   const maxTurns = options.maxTurns ?? 300;
-  const startTime = Date.now();
   let turns = 0;
+
+  // Extract learning settings with defaults
+  const useSkills = options.settings?.useSkills ?? true; // Default: skills enabled
+  const useMemory = options.settings?.useMemory ?? false; // Default: memory disabled
+  const projectRoot = options.settings?.projectRoot ?? options.cwd;
+  const maxSkillsToInject = options.settings?.maxSkills ?? 3;
+  const maxMemoriesToInject = options.settings?.maxMemories ?? 3;
+  const minSimilarity = options.settings?.minSimilarity ?? 0.3;
 
   const log = (text: string): void => {
     options.onOutput?.(text + "\n");
   };
 
   log(`[FM] Starting subtask: ${subtask.description.slice(0, 100)}...`);
+  log(`[FM] Learning: skills=${useSkills}, memory=${useMemory}`);
 
-  // Build system prompt
-  const systemPrompt = `You are an expert coding assistant. Complete the subtask below.
+  // Load skills and memories if enabled
+  let skillsSection = "";
+  let memoriesSection = "";
+  let injectedSkillIds: string[] = [];
+  let injectedMemoryIds: string[] = [];
+
+  if (useSkills) {
+    const { skills, formatted } = await loadSkillsForFM(
+      subtask.description,
+      projectRoot,
+      maxSkillsToInject,
+      minSimilarity,
+    );
+    if (formatted) {
+      skillsSection = `\n\nRelevant skills from past successes:\n${formatted}`;
+      injectedSkillIds = skills.map((s) => s.id);
+      log(`[FM] Injected ${skills.length} skills: ${injectedSkillIds.join(", ")}`);
+    }
+  }
+
+  if (useMemory) {
+    const { memories, formatted } = await loadMemoriesForFM(
+      subtask.description,
+      projectRoot,
+      maxMemoriesToInject,
+      minSimilarity,
+    );
+    if (formatted) {
+      memoriesSection = `\n\nPrevious lessons learned:\n${formatted}`;
+      injectedMemoryIds = memories.map((m) => m.id);
+      log(`[FM] Injected ${memories.length} memories: ${injectedMemoryIds.join(", ")}`);
+    }
+  }
+
+  // Build system prompt with optional skills/memory injection
+  const systemPrompt = `You are an expert coding assistant. Complete the subtask below.${skillsSection}${memoriesSection}
 
 Tools available:
 - read_file(path): Read a file
@@ -245,6 +366,10 @@ Complete this subtask. When finished, output SUBTASK_COMPLETE on its own line.`;
           turns,
           agent: "fm",
           error: "Aborted",
+          learningMetrics: {
+            skillsInjected: injectedSkillIds,
+            memoriesInjected: injectedMemoryIds,
+          },
         };
       }
 
@@ -268,6 +393,10 @@ Complete this subtask. When finished, output SUBTASK_COMPLETE on its own line.`;
           filesModified: Array.from(filesModified),
           turns,
           agent: "fm",
+          learningMetrics: {
+            skillsInjected: injectedSkillIds,
+            memoriesInjected: injectedMemoryIds,
+          },
         };
       }
 
@@ -312,6 +441,10 @@ Complete this subtask. When finished, output SUBTASK_COMPLETE on its own line.`;
       turns,
       agent: "fm",
       error: `Reached max turns (${maxTurns})`,
+      learningMetrics: {
+        skillsInjected: injectedSkillIds,
+        memoriesInjected: injectedMemoryIds,
+      },
     };
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
@@ -323,6 +456,10 @@ Complete this subtask. When finished, output SUBTASK_COMPLETE on its own line.`;
       turns,
       agent: "fm",
       error: errorMsg,
+      learningMetrics: {
+        skillsInjected: injectedSkillIds,
+        memoriesInjected: injectedMemoryIds,
+      },
     };
   }
 };
@@ -449,10 +586,10 @@ export const runBestAvailableSubagent = <R = OpenRouterClient>(
       const fmRunner = options.runFMFn ?? runFMSubagent;
       return fmRunner(subtask, {
         cwd: options.cwd,
-        settings: fm,
+        ...(fm ? { settings: fm } : {}),
         maxTurns,
-        signal: options.signal,
-        onOutput: options.onOutput,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.onOutput ? { onOutput: options.onOutput } : {}),
       });
     };
 

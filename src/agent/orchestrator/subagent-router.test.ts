@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { runBestAvailableSubagent, shouldUseClaudeCode } from "./subagent-router.js";
+import {
+  runBestAvailableSubagent,
+  shouldUseClaudeCode,
+  runFMSubagent,
+  type FMSettings,
+} from "./subagent-router.js";
 import type { SubagentResult, Subtask } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 
@@ -479,5 +484,189 @@ describe("verification edge cases", () => {
     expect(result.agent).toBe("minimal");
     // Should show the fallback verification failure
     expect(result.error).toContain("Failure #2");
+  });
+});
+
+describe("FM subagent routing", () => {
+  test("routes to FM when Claude Code unavailable and FM available", async () => {
+    let fmCalled = false;
+    let minimalCalled = false;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask("Simple coding task"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true },
+        fm: { enabled: true },
+        detectClaudeCodeFn: async () => ({ available: false }),
+        detectFMFn: async () => ({ available: true }),
+        runFMFn: async (subtask) => {
+          fmCalled = true;
+          return {
+            success: true,
+            subtaskId: subtask.id,
+            filesModified: ["fm.ts"],
+            turns: 1,
+            agent: "fm",
+            learningMetrics: {
+              skillsInjected: [],
+              memoriesInjected: [],
+            },
+          };
+        },
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(fmCalled).toBe(true);
+    expect(minimalCalled).toBe(false);
+    expect(result.agent).toBe("fm");
+  });
+
+  test("falls back to minimal when FM fails", async () => {
+    let minimalCalled = false;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask("Simple coding task"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: true },
+        fm: { enabled: true },
+        detectClaudeCodeFn: async () => ({ available: false }),
+        detectFMFn: async () => ({ available: true }),
+        runFMFn: async (subtask) => ({
+          success: false,
+          subtaskId: subtask.id,
+          filesModified: [],
+          turns: 1,
+          agent: "fm",
+          error: "FM failed",
+          learningMetrics: {
+            skillsInjected: [],
+            memoriesInjected: [],
+          },
+        }),
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(minimalCalled).toBe(true);
+    expect(result.agent).toBe("minimal");
+  });
+
+  test("passes FM settings to FM runner", async () => {
+    let receivedSettings: FMSettings | undefined;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask("Simple coding task"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: false },
+        fm: {
+          enabled: true,
+          useSkills: true,
+          useMemory: true,
+          maxSkills: 5,
+          maxMemories: 3,
+        },
+        detectFMFn: async () => ({ available: true }),
+        runFMFn: async (subtask, options) => {
+          receivedSettings = options.settings;
+          return {
+            success: true,
+            subtaskId: subtask.id,
+            filesModified: [],
+            turns: 1,
+            agent: "fm",
+            learningMetrics: {
+              skillsInjected: ["skill-1"],
+              memoriesInjected: ["mem-1"],
+            },
+          };
+        },
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(receivedSettings).toBeDefined();
+    expect(receivedSettings?.useSkills).toBe(true);
+    expect(receivedSettings?.useMemory).toBe(true);
+    expect(receivedSettings?.maxSkills).toBe(5);
+    expect(receivedSettings?.maxMemories).toBe(3);
+  });
+
+  test("FM returns learning metrics in result", async () => {
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask("Simple coding task"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: false },
+        fm: { enabled: true, useSkills: true, useMemory: true },
+        detectFMFn: async () => ({ available: true }),
+        runFMFn: async (subtask) => ({
+          success: true,
+          subtaskId: subtask.id,
+          filesModified: ["fm.ts"],
+          turns: 1,
+          agent: "fm",
+          learningMetrics: {
+            skillsInjected: ["skill-abc", "skill-xyz"],
+            memoriesInjected: ["mem-123"],
+          },
+        }),
+        runMinimalSubagent: () => Effect.succeed(minimalResult),
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.agent).toBe("fm");
+    expect(result.learningMetrics).toBeDefined();
+    expect(result.learningMetrics?.skillsInjected).toEqual(["skill-abc", "skill-xyz"]);
+    expect(result.learningMetrics?.memoriesInjected).toEqual(["mem-123"]);
+  });
+
+  test("skips FM when disabled", async () => {
+    let fmCalled = false;
+    let minimalCalled = false;
+
+    const result = await Effect.runPromise(
+      runBestAvailableSubagent({
+        subtask: makeSubtask("Simple coding task"),
+        cwd: "/tmp",
+        openagentsDir: "/tmp/.openagents",
+        tools: [],
+        claudeCode: { enabled: false },
+        fm: { enabled: false },
+        detectFMFn: async () => {
+          fmCalled = true;
+          return { available: true };
+        },
+        runMinimalSubagent: () => {
+          minimalCalled = true;
+          return Effect.succeed(minimalResult);
+        },
+      }).pipe(Effect.provide(MockOpenRouterClient))
+    );
+
+    expect(result.success).toBe(true);
+    expect(fmCalled).toBe(false);
+    expect(minimalCalled).toBe(true);
   });
 });

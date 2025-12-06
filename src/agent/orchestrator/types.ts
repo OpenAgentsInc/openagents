@@ -177,6 +177,13 @@ export interface SubagentResult {
     /** Total cost in USD from Claude API */
     totalCostUsd?: number;
   };
+  /** Learning metrics for FM subagent runs (skills/memory injection) */
+  learningMetrics?: {
+    /** IDs of skills injected into the prompt */
+    skillsInjected: string[];
+    /** IDs of memories injected into the prompt */
+    memoriesInjected: string[];
+  };
 }
 
 // ============================================================================
