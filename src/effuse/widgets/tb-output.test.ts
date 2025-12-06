@@ -272,6 +272,39 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.1 opens output and clears old lines on run start", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          const prefilledWidget = {
+            ...TBOutputWidget,
+            initialState: (): TBOutputState => ({
+              outputLines: [{ text: "Old line", source: "agent", timestamp: Date.now() }],
+              maxLines: 500,
+              visible: false,
+              runId: "run-old",
+              taskId: "task-old",
+              autoScroll: true,
+            }),
+          }
+
+          yield* mountWidget(prefilledWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-fresh" })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("run-fresh".slice(-8))
+          expect(html).not.toContain("Old line")
+          expect(html).toContain("TB Output")
+        })
+      )
+    )
+  })
+
   test("US-5.3 renders verification output lines", async () => {
     await Effect.runPromise(
       Effect.scoped(
