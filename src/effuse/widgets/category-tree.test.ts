@@ -413,6 +413,46 @@ describe("CategoryTreeWidget", () => {
     )
   })
 
+  test("US-2.10 highlights selected task in the list", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "category-tree-test" } as Element
+              const tasks = new Map<string, TBTaskData>([
+                ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "core", status: "pending" }],
+                ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium", category: "core", status: "pending" }],
+              ])
+              const state = yield* stateService.cell({
+                tasks,
+                collapsedCategories: new Set(),
+                visible: true,
+                selectedTaskId: null,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.selectedTaskId).toBe("task-2")
+
+              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+              expect(html).toContain("Task One")
+              expect(html).toContain("Task Two")
+              expect(html).toContain("bg-zinc-800/60") // Selected highlight class
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-4.5 updates status icons on task start and completion", async () => {
     await Effect.runPromise(
       Effect.scoped(
