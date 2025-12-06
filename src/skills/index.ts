@@ -7,7 +7,7 @@
  * @module
  */
 
-// Schema exports
+// Schema exports - values
 export {
   Skill,
   SkillParameter,
@@ -17,15 +17,19 @@ export {
   SkillExample,
   SkillCategory,
   SkillStatus,
-  SkillFilter,
-  SkillQuery,
-  SkillMatch,
   SkillCall,
   SkillExecutionResult,
   generateSkillId,
   createSkill,
   formatSkillForPrompt,
   formatSkillsForPrompt,
+} from "./schema.js";
+
+// Schema exports - types (interfaces must be re-exported with type)
+export type {
+  SkillFilter,
+  SkillQuery,
+  SkillMatch,
 } from "./schema.js";
 
 // Store exports
