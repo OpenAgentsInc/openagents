@@ -1,3 +1,7 @@
+
+
+
+
 Here’s a spec you can hand straight to MechaCoder / Claude Code.
 
 ---
