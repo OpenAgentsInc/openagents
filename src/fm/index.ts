@@ -34,6 +34,24 @@ export {
   type IFMService,
 } from "./service.js";
 
+// Layer composition exports
+export {
+  // Layer factories
+  makeFMLayerWithMonitor,
+  makeFMLayerWithAutoStart,
+  makeFMLayerComplete,
+  // Pre-configured layers
+  FMServiceWithHealthMonitor,
+  FMServiceWithAutoStart,
+  FMServiceComplete,
+  // Composition utilities
+  provideFM,
+  withFM,
+  // Types
+  type FMLayerConfig,
+  defaultFMLayerConfig,
+} from "./layer.js";
+
 // Re-export underlying client types for advanced usage
 export {
   FMClientTag,
