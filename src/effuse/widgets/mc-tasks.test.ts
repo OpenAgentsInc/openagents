@@ -6,7 +6,9 @@ import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { MCTasksWidget, type MCTasksState, type MCTask } from "./mc-tasks.js"
 import { mountWidget } from "../widget/mount.js"
-import { makeTestLayer } from "../layers/test.js"
+import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
 
 describe("MCTasksWidget", () => {
   test("renders empty state", async () => {
@@ -240,5 +242,196 @@ describe("MCTasksWidget", () => {
     expect(state.collapsed).toBe(false)
     expect(state.maxDisplay).toBe(20)
     expect(state.assigningId).toBeNull()
+  })
+
+  test("US-10.1 loads ready tasks from socket and updates list", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tasks: MCTask[] = [
+            {
+              id: "oa-1",
+              title: "Fix bug",
+              description: "desc",
+              status: "open",
+              priority: 0,
+              type: "bug",
+              labels: ["bugfix"],
+              createdAt: "2024-12-01",
+              updatedAt: "2024-12-01",
+            },
+            {
+              id: "oa-2",
+              title: "Add feature",
+              description: "desc",
+              status: "open",
+              priority: 2,
+              type: "feature",
+              labels: ["feature"],
+              createdAt: "2024-12-02",
+              updatedAt: "2024-12-02",
+            },
+          ]
+
+          let requestedLimit: number | undefined
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              loadReadyTasks: (limit = 50) => {
+                requestedLimit = limit
+                return Effect.succeed(tasks)
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell(MCTasksWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.loading).toBe(false)
+              expect(updated.tasks).toHaveLength(2)
+
+              const html = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(html).toContain("Ready Tasks (2)")
+              expect(html).toContain("oa-1")
+              expect(html).toContain("oa-2")
+              expect(html).toContain("P0")
+              expect(html).toContain("P2")
+            }),
+            layer
+          )
+
+          expect(requestedLimit).toBe(50)
+        })
+      )
+    )
+  })
+
+  test("US-10.2 assigns a task to MechaCoder and removes it from list", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let lastAssignTask: string | null = null
+          let lastAssignSandbox: boolean | undefined
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              assignTaskToMC: (taskId, options) => {
+                lastAssignTask = taskId
+                lastAssignSandbox = options?.sandbox
+                return Effect.succeed({ assigned: true })
+              },
+              loadReadyTasks: () => Effect.succeed([]),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell({
+                ...MCTasksWidget.initialState(),
+                tasks: [
+                  {
+                    id: "oa-assign",
+                    title: "Assign me",
+                    description: "",
+                    status: "open",
+                    priority: 1,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-01",
+                    updatedAt: "2024-12-01",
+                  },
+                  {
+                    id: "oa-stay",
+                    title: "Keep me",
+                    description: "",
+                    status: "open",
+                    priority: 2,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-02",
+                    updatedAt: "2024-12-02",
+                  },
+                ],
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-assign" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.assigningId).toBeNull()
+              expect(updated.tasks.map((t) => t.id)).toEqual(["oa-stay"])
+
+              const html = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(html).not.toContain("oa-assign")
+              expect(html).toContain("oa-stay")
+            }),
+            layer
+          )
+
+          expect(lastAssignTask).toBe("oa-assign")
+          expect(lastAssignSandbox).toBe(true)
+        })
+      )
+    )
+  })
+
+  test("US-10.7 toggles collapse state to hide task list", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell({
+                ...MCTasksWidget.initialState(),
+                tasks: [
+                  {
+                    id: "oa-1",
+                    title: "Task",
+                    description: "",
+                    status: "open",
+                    priority: 1,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-01",
+                    updatedAt: "2024-12-01",
+                  },
+                ],
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const expandedHtml = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(expandedHtml).toContain("Task")
+              expect(expandedHtml).toContain("Ready Tasks (1)")
+
+              yield* MCTasksWidget.handleEvent({ type: "toggleCollapse" }, ctx)
+
+              const collapsed = yield* state.get
+              expect(collapsed.collapsed).toBe(true)
+
+              const collapsedHtml = (yield* MCTasksWidget.render(ctx)).toString()
+              expect(collapsedHtml).toContain("Ready Tasks (1)")
+              expect(collapsedHtml).toContain("▼")
+              expect(collapsedHtml).not.toContain("oa-1")
+            }),
+            layer
+          )
+        })
+      )
+    )
   })
 })
