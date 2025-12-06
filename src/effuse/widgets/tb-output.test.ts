@@ -114,6 +114,8 @@ describe("TBOutputWidget", () => {
                 runId: "run-123",
                 taskId: "task-1",
                 autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -125,6 +127,43 @@ describe("TBOutputWidget", () => {
 
               const htmlHidden = (yield* TBOutputWidget.render(ctx)).toString()
               expect(htmlHidden).toContain("hidden")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-5.1 open event shows viewer when hidden", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [],
+                maxLines: 500,
+                visible: false,
+                runId: null,
+                taskId: null,
+                autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              let html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain("hidden")
+
+              yield* TBOutputWidget.handleEvent({ type: "open" }, ctx)
+              html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain("TB Output")
             }),
             layer
           )
@@ -422,6 +461,8 @@ describe("TBOutputWidget", () => {
                 runId: "run-clear",
                 taskId: "task-clear",
                 autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -474,6 +515,8 @@ describe("TBOutputWidget", () => {
                   runId: "run-copy",
                   taskId: "task-copy",
                   autoScroll: true,
+                  showLineNumbers: true,
+                  selectedLine: null,
                 })
                 const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -497,6 +540,57 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.8 toggles line numbers and highlights selected line", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [
+                  { text: "first line", source: "agent", timestamp: Date.now() },
+                  { text: "second line", source: "system", timestamp: Date.now() },
+                ],
+                maxLines: 500,
+                visible: true,
+                runId: "run-lines",
+                taskId: "task-lines",
+                autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              let html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain('data-line="1"')
+              expect(html).toContain('data-line="2"')
+
+              yield* TBOutputWidget.handleEvent({ type: "selectLine", lineNumber: 2 }, ctx)
+              html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain('data-line="2"')
+              expect(html).toContain("bg-zinc-800/80")
+
+              yield* TBOutputWidget.handleEvent({ type: "toggleLineNumbers" }, ctx)
+              const updated = yield* state.get
+              expect(updated.showLineNumbers).toBe(false)
+              expect(updated.selectedLine).toBeNull()
+
+              html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).not.toContain('data-line="1"')
+              expect(html).not.toContain('data-line="2"')
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-5.1 toggles auto-scroll state and attribute", async () => {
     await Effect.runPromise(
       Effect.scoped(
@@ -515,6 +609,8 @@ describe("TBOutputWidget", () => {
                 runId: "run-auto",
                 taskId: "task-auto",
                 autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
