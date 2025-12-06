@@ -9,14 +9,15 @@ import { Effect, Stream, pipe } from "effect"
 import { html, joinTemplates } from "../template/html.js"
 import type { Widget } from "../widget/types.js"
 import { SocketServiceTag } from "../services/socket.js"
-import type { HudMessage } from "../../hud/protocol.js"
+import type { HudMessage, ATIFStepMessage } from "../../hud/protocol.js"
+import { isATIFStep } from "../../hud/protocol.js"
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /** Output source type */
-export type TBOutputSource = "agent" | "verification" | "system"
+export type TBOutputSource = "agent" | "verification" | "system" | "tool"
 
 /** Single output line with metadata */
 export interface TBOutputLine {
@@ -79,6 +80,8 @@ const getSourceColorClass = (source: TBOutputSource): string => {
       return "text-emerald-300"
     case "system":
       return "text-zinc-400"
+    case "tool":
+      return "text-amber-300"
   }
 }
 
@@ -93,7 +96,45 @@ const getSourceLabel = (source: TBOutputSource): string => {
       return "VRF"
     case "system":
       return "SYS"
+    case "tool":
+      return "TL"
   }
+}
+
+/**
+ * Format ATIF tool calls into displayable text
+ */
+const formatToolCall = (toolCall: ATIFStepMessage["step"]["tool_calls"][0]): string => {
+  const args = toolCall.arguments
+  let argsStr = ""
+  if (args && typeof args === "object") {
+    // Truncate long argument values for display
+    const truncated = Object.entries(args as Record<string, unknown>)
+      .slice(0, 3)
+      .map(([k, v]) => {
+        const val = typeof v === "string" && v.length > 50 ? v.slice(0, 47) + "..." : v
+        return `${k}=${JSON.stringify(val)}`
+      })
+      .join(", ")
+    argsStr = truncated + (Object.keys(args as object).length > 3 ? ", ..." : "")
+  }
+  return `→ ${toolCall.function_name}(${argsStr})`
+}
+
+/**
+ * Format ATIF observation result into displayable text
+ */
+const formatObservationResult = (result: { source_call_id?: string; content?: unknown }): string => {
+  const content = result.content
+  if (typeof content === "string") {
+    const truncated = content.length > 100 ? content.slice(0, 97) + "..." : content
+    return `← ${truncated}`
+  }
+  if (content && typeof content === "object") {
+    const str = JSON.stringify(content)
+    return `← ${str.length > 100 ? str.slice(0, 97) + "..." : str}`
+  }
+  return `← (result)`
 }
 
 // ============================================================================
@@ -119,7 +160,7 @@ const isTBRunComplete = (msg: HudMessage): msg is HudMessage & {
 } => msg.type === "tb_run_complete"
 
 const isTBMessage = (msg: HudMessage): boolean =>
-  isTBTaskOutput(msg) || isTBRunStart(msg) || isTBRunComplete(msg)
+  isTBTaskOutput(msg) || isTBRunStart(msg) || isTBRunComplete(msg) || isATIFStep(msg)
 
 // ============================================================================
 // Widget Definition
@@ -141,6 +182,7 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
       agent: true,
       verification: true,
       system: true,
+      tool: true,
     },
   }),
 
@@ -176,7 +218,7 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
               ↓
             </button>
             <div class="flex items-center gap-1">
-              ${(["agent", "verification", "system"] as const).map((source) => {
+              ${(["agent", "verification", "system", "tool"] as const).map((source) => {
                 const active = state.visibleSources[source]
                 const label = getSourceLabel(source)
                 const base = "text-xs px-2 py-1 rounded border transition-colors"
@@ -400,6 +442,7 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
                   agent: true,
                   verification: true,
                   system: true,
+                  tool: true,
                 },
               }))
             }
@@ -422,6 +465,44 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
                   ...s,
                   taskId: msg.taskId,
                   outputLines: newLines,
+                }
+              })
+            }
+
+            // Handle ATIF step messages with tool calls
+            if (isATIFStep(msg)) {
+              yield* ctx.state.update((s) => {
+                // Only accept ATIF steps for current run
+                if (s.runId && s.runId !== msg.runId) return s
+
+                const newLines: TBOutputLine[] = [...s.outputLines]
+                const timestamp = Date.now()
+
+                // Add tool call lines
+                if (msg.step.tool_calls && msg.step.tool_calls.length > 0) {
+                  for (const toolCall of msg.step.tool_calls) {
+                    newLines.push({
+                      text: formatToolCall(toolCall),
+                      source: "tool",
+                      timestamp,
+                    })
+                  }
+                }
+
+                // Add observation/result lines
+                if (msg.step.observation?.results && msg.step.observation.results.length > 0) {
+                  for (const result of msg.step.observation.results) {
+                    newLines.push({
+                      text: formatObservationResult(result),
+                      source: "tool",
+                      timestamp,
+                    })
+                  }
+                }
+
+                return {
+                  ...s,
+                  outputLines: newLines.slice(-s.maxLines),
                 }
               })
             }
