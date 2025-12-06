@@ -551,6 +551,53 @@ describe("TBControlsWidget", () => {
     )
   })
 
+  test("US-1.3 shows suite metadata after loading", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockSuite: TBSuiteInfo = {
+            name: "terminal-bench-v2",
+            version: "2.0.0",
+            tasks: [
+              { id: "task-alpha", name: "Alpha", difficulty: "easy", category: "basics" },
+              { id: "task-beta", name: "Beta", difficulty: "medium", category: "core" },
+            ],
+          }
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: (_suitePath) => Effect.succeed(mockSuite),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.suite?.name).toBe("terminal-bench-v2")
+              expect(updated.suite?.version).toBe("2.0.0")
+              expect(updated.selectedTaskIds.size).toBe(2)
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("terminal-bench-v2")
+              expect(html).toContain("v2.0.0")
+              expect(html).toContain("2/2 selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("US-2.8 toggles individual task selection", async () => {
     await Effect.runPromise(
       Effect.scoped(
@@ -630,6 +677,102 @@ describe("TBControlsWidget", () => {
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("2/2 selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-14.3 surfaces suite load errors and clears selection", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: () => Effect.fail(new Error("file missing")),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite: {
+                  name: "previous-suite",
+                  version: "1.0.0",
+                  tasks: [{ id: "task-keep", name: "Keep", difficulty: "easy", category: "basics" }],
+                },
+                selectedTaskIds: new Set(["task-keep"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.suite).toBeNull()
+              expect(updated.selectedTaskIds.size).toBe(0)
+              expect(updated.status).toBe("Load failed")
+              expect(updated.statusType).toBe("error")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("Load failed")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-14.4 shows run error when startTBRun fails", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let startCalls = 0
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              startTBRun: () => {
+                startCalls++
+                return Effect.fail(new Error("runner exploded"))
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite: {
+                  name: "terminal-bench-v1",
+                  version: "1.0.0",
+                  tasks: [{ id: "task-1", name: "Task 1", difficulty: "easy", category: "basics" }],
+                },
+                selectedTaskIds: new Set(["task-1"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+
+              const updated = yield* state.get
+              expect(startCalls).toBe(1)
+              expect(updated.isRunning).toBe(false)
+              expect(updated.runId).toBeNull()
+              expect(updated.status).toBe("Start failed")
+              expect(updated.statusType).toBe("error")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("Start failed")
             }),
             layer
           )

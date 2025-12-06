@@ -376,4 +376,55 @@ describe("CategoryTreeWidget", () => {
       )
     )
   })
+
+  test("US-4.5 updates status icons on task start and completion", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [
+              { id: "task-001", name: "First", difficulty: "easy", category: "basics" },
+              { id: "task-002", name: "Second", difficulty: "hard", category: "advanced" },
+            ],
+          })
+
+          yield* Effect.sleep(10)
+
+          yield* injectMessage({
+            type: "tb_task_start",
+            runId: "run-1",
+            taskId: "task-001",
+            taskName: "First",
+            difficulty: "easy",
+            category: "basics",
+          })
+
+          yield* Effect.sleep(10)
+
+          let html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("▶")
+
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-001",
+            outcome: "passed",
+          })
+
+          yield* Effect.sleep(10)
+
+          html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("✓")
+        })
+      )
+    )
+  })
 })
