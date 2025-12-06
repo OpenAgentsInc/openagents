@@ -95,6 +95,44 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.9 close button hides the output viewer", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "tb-output-test" } as Element
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+
+              const state = yield* stateService.cell({
+                outputLines: [{ text: "line 1", source: "system", timestamp: Date.now() }],
+                maxLines: 500,
+                visible: true,
+                runId: "run-123",
+                taskId: "task-1",
+                autoScroll: true,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const htmlVisible = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(htmlVisible).toContain("line 1")
+              expect(htmlVisible).toContain("TB Output")
+
+              yield* TBOutputWidget.handleEvent({ type: "close" }, ctx)
+
+              const htmlHidden = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(htmlHidden).toContain("hidden")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
   test("renders source badges correctly", async () => {
     await Effect.runPromise(
       Effect.scoped(
