@@ -244,6 +244,34 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.2 ignores output from other runs", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-active" })
+          yield* injectMessage({
+            type: "tb_task_output",
+            runId: "run-other",
+            taskId: "task-x",
+            text: "Should be ignored",
+            source: "agent",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).not.toContain("Should be ignored")
+          expect(html).toContain("run-active".slice(-8))
+        })
+      )
+    )
+  })
+
   test("US-5.3 renders verification output lines", async () => {
     await Effect.runPromise(
       Effect.scoped(
