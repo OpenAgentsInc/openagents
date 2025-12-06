@@ -11,6 +11,7 @@ import {
   fmChat,
   fmCheckHealth,
   fmGetMetrics,
+  fmListModels,
 } from "./service.js";
 import { isRetryableError, defaultFMServiceConfig } from "./schema.js";
 import type { ChatResponse } from "../llm/openrouter-types.js";
@@ -115,7 +116,23 @@ describe("FM Service Layer", () => {
     const client = await Effect.runPromise(program.pipe(Effect.provide(layer)));
     expect(client).toBeDefined();
     expect(client.chat).toBeDefined();
+    expect(client.listModels).toBeDefined();
     expect(client.config).toBeDefined();
+  });
+
+  test("service provides listModels method", async () => {
+    const layer = makeFMServiceLayer({
+      enableLogging: false,
+      autoStart: false,
+    });
+
+    const program = Effect.gen(function* () {
+      const service = yield* FMService;
+      return typeof service.listModels;
+    });
+
+    const listModelsType = await Effect.runPromise(program.pipe(Effect.provide(layer)));
+    expect(listModelsType).toBe("function");
   });
 });
 
@@ -128,6 +145,11 @@ describe("FM Service Convenience Functions", () => {
 
     const metrics = await Effect.runPromise(fmGetMetrics().pipe(Effect.provide(layer)));
     expect(metrics.totalRequests).toBe(0);
+  });
+
+  test("fmListModels convenience function is defined", () => {
+    expect(fmListModels).toBeDefined();
+    expect(typeof fmListModels).toBe("function");
   });
 });
 

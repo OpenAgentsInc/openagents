@@ -17,6 +17,8 @@ export {
   FMAggregateMetrics,
   FMErrorReason,
   FMHealthStatus,
+  FMModel,
+  FMModelsResult,
   FMServiceConfig,
   defaultFMServiceConfig,
   isRetryableError,
@@ -31,6 +33,7 @@ export {
   fmChat,
   fmCheckHealth,
   fmGetMetrics,
+  fmListModels,
   type IFMService,
 } from "./service.js";
 
@@ -65,4 +68,5 @@ export {
   isMacOS,
   DEFAULT_FM_PORT,
   DEFAULT_FM_TIMEOUT_MS,
+  type FMModelsResult as FMModelsResultClient,
 } from "../llm/foundation-models.js";

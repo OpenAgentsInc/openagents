@@ -111,6 +111,18 @@ interface FMErrorResponse {
   };
 }
 
+interface FMModelApiResponse {
+  id: string;
+  object: "model";
+  created: number;
+  owned_by: string;
+}
+
+interface FMModelsApiResponse {
+  object: "list";
+  data: FMModelApiResponse[];
+}
+
 // --- Discovery ---
 
 /**
@@ -301,9 +313,23 @@ const convertResponse = (resp: FMApiResponse): ChatResponse => {
 
 // --- Client Implementation ---
 
+/**
+ * Models list result type.
+ */
+export interface FMModelsResult {
+  object: "list";
+  data: Array<{
+    id: string;
+    object: "model";
+    created: number;
+    owned_by: string;
+  }>;
+}
+
 export interface FMClient {
   readonly config: FMConfig;
   chat: (request: ChatRequest) => Effect.Effect<ChatResponse, FMError>;
+  listModels: () => Effect.Effect<FMModelsResult, FMError>;
 }
 
 export class FMClientTag extends Context.Tag("FMClient")<FMClientTag, FMClient>() {}
@@ -417,9 +443,72 @@ export const createFMClient = (config: Partial<FMConfig> = {}): FMClient => {
       }
     });
 
+  const listModels = (): Effect.Effect<FMModelsResult, FMError> =>
+    Effect.gen(function* () {
+      // Platform check
+      if (!isMacOS()) {
+        return yield* Effect.fail(
+          new FMError("not_macos", "Foundation Models requires macOS"),
+        );
+      }
+
+      // Auto-start server if enabled
+      if (autoStart) {
+        yield* ensureServerRunning(fullConfig).pipe(
+          Effect.catchAll((e) => {
+            console.warn(`Auto-start warning: ${e.message}`);
+            return Effect.succeed(undefined);
+          }),
+        );
+      }
+
+      const url = `http://localhost:${port}/v1/models`;
+
+      const response = yield* Effect.tryPromise({
+        try: async () => {
+          const resp = await fetch(url, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            signal: AbortSignal.timeout(5000),
+          });
+
+          const data = await resp.json();
+
+          if (!resp.ok) {
+            const errorData = data as FMErrorResponse;
+            throw new FMError(
+              "request_failed",
+              errorData.error?.message ?? `HTTP ${resp.status}`,
+              resp.status,
+            );
+          }
+
+          return data as FMModelsApiResponse;
+        },
+        catch: (e) => {
+          if (e instanceof FMError) return e;
+          if (e instanceof TypeError && e.message.includes("fetch")) {
+            return new FMError(
+              "server_not_running",
+              `Failed to connect to Foundation Models server at port ${port}`,
+            );
+          }
+          return new FMError(
+            "request_failed",
+            `Foundation Models request failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        },
+      });
+
+      return response;
+    });
+
   return {
     config: fullConfig,
     chat,
+    listModels,
   };
 };
 
