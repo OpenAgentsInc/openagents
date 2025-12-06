@@ -106,6 +106,79 @@ export interface ExtractedPattern {
   extractedAt: string;
 }
 
+// --- Lesson Types ---
+
+/**
+ * A lesson learned from task executions.
+ * Lessons are higher-level insights extracted from patterns and trajectories.
+ */
+export interface ArchivistLesson {
+  /** Unique lesson ID */
+  id: string;
+  /** Source of the lesson */
+  source: "terminal-bench" | "mechacoder" | "manual";
+  /** Related task ID (if from a specific task) */
+  taskId?: string;
+  /** Suite name (if from TB) */
+  suite?: string;
+  /** Model that generated this lesson */
+  model: string;
+  /** Human-readable summary of the lesson */
+  summary: string;
+  /** Patterns that lead to failure */
+  failurePatterns?: string[];
+  /** Patterns that lead to success */
+  successPatterns?: string[];
+  /** Skills mentioned or used in this lesson */
+  skillsMentioned?: string[];
+  /** Confidence score (0-1) */
+  confidence: number;
+  /** Tags for filtering */
+  tags: string[];
+  /** Creation timestamp */
+  createdAt: string;
+}
+
+/**
+ * Generate a unique lesson ID.
+ */
+export const generateLessonId = (): string => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `lesson-${timestamp}-${random}`;
+};
+
+/**
+ * Create a lesson from task execution data.
+ */
+export const createLesson = (
+  summary: string,
+  data: {
+    source: ArchivistLesson["source"];
+    model: string;
+    taskId?: string;
+    suite?: string;
+    failurePatterns?: string[];
+    successPatterns?: string[];
+    skillsMentioned?: string[];
+    confidence?: number;
+    tags?: string[];
+  },
+): ArchivistLesson => ({
+  id: generateLessonId(),
+  source: data.source,
+  ...(data.taskId ? { taskId: data.taskId } : {}),
+  ...(data.suite ? { suite: data.suite } : {}),
+  model: data.model,
+  summary,
+  ...(data.failurePatterns ? { failurePatterns: data.failurePatterns } : {}),
+  ...(data.successPatterns ? { successPatterns: data.successPatterns } : {}),
+  ...(data.skillsMentioned ? { skillsMentioned: data.skillsMentioned } : {}),
+  confidence: data.confidence ?? 0.5,
+  tags: data.tags ?? [],
+  createdAt: new Date().toISOString(),
+});
+
 // --- Archive Types ---
 
 /**

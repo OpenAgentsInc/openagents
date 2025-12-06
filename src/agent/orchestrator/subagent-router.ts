@@ -8,6 +8,7 @@ import { runSubagent, createSubagentConfig } from "./subagent.js";
 import { checkFMHealth, isMacOS, createFMClient } from "../../fm/index.js";
 import { SkillService, makeSkillServiceLive, type Skill } from "../../skills/index.js";
 import { MemoryService, makeMemoryServiceLive, type Memory } from "../../memory/index.js";
+import { getFormattedLessons } from "../../archivist/index.js";
 import type {
   SubagentResult,
   Subtask,
@@ -232,8 +233,33 @@ export const runFMSubagent = async (
     }
   }
 
-  // Build system prompt with optional skills/memory injection
-  const systemPrompt = `You are an expert coding assistant. Complete the subtask below.${skillsSection}${memoriesSection}
+  // Load Archivist lessons if skills enabled (lessons come with skills)
+  let lessonsSection = "";
+  if (useSkills) {
+    try {
+      const lessonsFormatted = await Effect.runPromise(
+        getFormattedLessons(
+          {
+            source: "terminal-bench",
+            model: "fm",
+            limit: 3,
+            minConfidence: 0.4,
+          },
+          projectRoot,
+          true, // compact format for FM context
+        ),
+      );
+      if (lessonsFormatted) {
+        lessonsSection = `\n\n${lessonsFormatted}`;
+        log(`[FM] Injected lessons from Archivist`);
+      }
+    } catch {
+      // Silently ignore lesson retrieval errors
+    }
+  }
+
+  // Build system prompt with optional skills/memory/lessons injection
+  const systemPrompt = `You are an expert coding assistant. Complete the subtask below.${skillsSection}${memoriesSection}${lessonsSection}
 
 Tools available:
 - read_file(path): Read a file
