@@ -1,7 +1,7 @@
 {
   "name": "hello-world",
   "version": "2.0.0",
-  "description": "Imported 1 tasks from Terminal-Bench",
+  "description": "Simple hello world task for FM testing",
   "tasks": [
     {
       "id": "hello-world",
@@ -10,8 +10,8 @@
       "difficulty": "easy",
       "category": "implementation",
       "verification": {
-        "type": "test",
-        "command": "cd /app && pytest tests/ -v"
+        "type": "custom",
+        "script": "test -f hello.txt && grep -q 'Hello, world!' hello.txt"
       },
       "timeout_seconds": 120,
       "max_turns": 100,

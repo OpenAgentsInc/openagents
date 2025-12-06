@@ -509,19 +509,76 @@ const createOllamaRunner = (ollamaConfig: OllamaModelConfig): ModelRunner => {
 // --- Foundation Models Runner ---
 
 /**
+ * Apple FM context limits (determined empirically):
+ * - Max per-request: ~1373 chars = ~347 tokens
+ * - Safe limit: ~1100 chars = ~280 tokens
+ * - Bridge can corrupt after repeated errors - needs restart
+ */
+const FM_MAX_CONTEXT_CHARS = 1100; // Safe limit with room for response
+const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
+
+/**
  * System prompt for Foundation Models-based coding agents.
  * Uses text-based tool calling since FM may not support native JSON tool calling.
  * Keep this SHORT - Apple FM has limited context window.
  */
-const FM_BASE_PROMPT = `You are a coding assistant. Use relative paths only.
+const FM_BASE_PROMPT = `You must use tools. Output ONLY a tool_call tag.
 
-Tools (use <tool_call>{"name":"...", "arguments":{...}}</tool_call>):
-- write_file(path, content)
-- read_file(path)
-- edit_file(path, old_text, new_text)
-- run_command(command)
+Example: To create hello.txt with "Hi":
+<tool_call>{"name":"write_file","arguments":{"path":"hello.txt","content":"Hi"}}</tool_call>
 
-Say TASK_COMPLETE when done.`;
+Available: write_file, read_file, run_command
+
+After the tool runs, say TASK_COMPLETE.`;
+
+/**
+ * Truncate messages to fit within FM context limit.
+ * Strategy: Keep system prompt, trim middle history, keep last user message.
+ */
+const truncateMessagesForFM = (
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  maxChars: number = FM_MAX_CONTEXT_CHARS,
+): Array<{ role: "system" | "user" | "assistant"; content: string }> => {
+  // Calculate total chars
+  const totalChars = messages.reduce((sum, m) => sum + m.content.length + 20, 0); // +20 for role overhead
+
+  if (totalChars <= maxChars) {
+    return messages;
+  }
+
+  // Need to truncate
+  // Strategy: Keep first (system) and last (user) messages, truncate middle
+  const result: typeof messages = [];
+  let usedChars = 0;
+  const reserveForLast = 200; // Reserve space for last user message
+
+  // Always keep system message (but truncate if too long)
+  if (messages.length > 0 && messages[0].role === "system") {
+    const systemMsg = messages[0];
+    const maxSystemChars = Math.min(systemMsg.content.length, maxChars - reserveForLast - 100);
+    result.push({
+      role: "system",
+      content: systemMsg.content.slice(0, maxSystemChars),
+    });
+    usedChars += maxSystemChars + 20;
+  }
+
+  // Always keep last message
+  if (messages.length > 1) {
+    const lastMsg = messages[messages.length - 1];
+    const maxLastChars = Math.min(lastMsg.content.length, maxChars - usedChars - 50);
+    // Truncate content if needed
+    const truncatedContent = lastMsg.content.length > maxLastChars
+      ? lastMsg.content.slice(0, maxLastChars) + "...[truncated]"
+      : lastMsg.content;
+    result.push({
+      role: lastMsg.role,
+      content: truncatedContent,
+    });
+  }
+
+  return result;
+};
 
 /**
  * Build system prompt with injected skills and memories (Voyager + Generative Agents style).
@@ -589,13 +646,20 @@ ${reflections}`;
 
 /**
  * Parse tool calls from model output.
- * Extracts <tool_call>...</tool_call> blocks.
+ * Handles multiple formats:
+ * - <tool_call>{"name":"...", "arguments":{...}}</tool_call>
+ * - ```json {"tool_call":{"name":"...", "arguments":{...}}} ```
+ * - ```json {"name":"...", "arguments":{...}} ```
+ * - "Using write_file tool with arguments: path=hello.txt, content=Hello World"
+ * - {"response":"Using write_file tool with arguments: path=X, content=Y"}
  */
 const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
-  const regex = /<tool_call>(.*?)<\/tool_call>/gs;
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+
+  // Try <tool_call>...</tool_call> format
+  const tagRegex = /<tool_call>(.*?)<\/tool_call>/gs;
   let match;
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = tagRegex.exec(text)) !== null) {
     try {
       const parsed = JSON.parse(match[1]);
       if (parsed.name && typeof parsed.name === "string") {
@@ -608,7 +672,107 @@ const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<s
       // Skip malformed tool calls
     }
   }
+
+  // Try ```json ... ``` format (FM sometimes uses this)
+  if (calls.length === 0) {
+    const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/g;
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        // Handle {"tool_call": {...}} wrapper
+        const toolData = parsed.tool_call ?? parsed;
+        if (toolData.name && typeof toolData.name === "string") {
+          calls.push({
+            name: toolData.name,
+            arguments: toolData.arguments ?? {},
+          });
+        }
+        // Handle {"response": "Using write_file tool with arguments: ..."} format
+        if (parsed.response && typeof parsed.response === "string") {
+          const descriptiveCall = parseDescriptiveToolCall(parsed.response);
+          if (descriptiveCall) {
+            calls.push(descriptiveCall);
+          }
+        }
+      } catch {
+        // Skip malformed tool calls
+      }
+    }
+  }
+
+  // Try descriptive format as last resort: "Using {tool} tool with arguments: ..."
+  if (calls.length === 0) {
+    const descriptiveCall = parseDescriptiveToolCall(text);
+    if (descriptiveCall) {
+      calls.push(descriptiveCall);
+    }
+  }
+
   return calls;
+};
+
+/**
+ * Parse descriptive tool call format from FM.
+ * e.g., "Using write_file tool with arguments: path=hello.txt, content=Hello, world!"
+ */
+const parseDescriptiveToolCall = (text: string): { name: string; arguments: Record<string, unknown> } | null => {
+  // Match "Using {tool_name} tool with arguments: {args}"
+  const descriptiveRegex = /Using\s+(\w+)\s+tool\s+with\s+arguments?:\s*(.+)/i;
+  const match = descriptiveRegex.exec(text);
+  if (!match) return null;
+
+  const toolName = match[1];
+  const argsStr = match[2];
+
+  // Parse arguments: "path=hello.txt, content=Hello, world!"
+  // Handle both comma-separated and key=value format
+  const args: Record<string, unknown> = {};
+
+  // For write_file, expect path= and content=
+  if (toolName === "write_file") {
+    const pathMatch = argsStr.match(/path\s*=\s*([^,]+?)(?:,|$)/);
+    const contentMatch = argsStr.match(/content\s*=\s*(.+)/);
+    if (pathMatch) {
+      args.path = pathMatch[1].trim();
+    }
+    if (contentMatch) {
+      args.content = contentMatch[1].trim();
+    }
+    if (args.path) {
+      return { name: toolName, arguments: args };
+    }
+  }
+
+  // For read_file, expect path=
+  if (toolName === "read_file") {
+    const pathMatch = argsStr.match(/path\s*=\s*(.+)/);
+    if (pathMatch) {
+      args.path = pathMatch[1].trim();
+      return { name: toolName, arguments: args };
+    }
+  }
+
+  // For run_command, expect command=
+  if (toolName === "run_command") {
+    const commandMatch = argsStr.match(/command\s*=\s*(.+)/);
+    if (commandMatch) {
+      args.command = commandMatch[1].trim();
+      return { name: toolName, arguments: args };
+    }
+  }
+
+  // Generic fallback: try to parse key=value pairs
+  const pairRegex = /(\w+)\s*=\s*([^,]+)(?:,|$)/g;
+  let pairMatch;
+  while ((pairMatch = pairRegex.exec(argsStr)) !== null) {
+    args[pairMatch[1]] = pairMatch[2].trim();
+  }
+
+  if (Object.keys(args).length > 0) {
+    return { name: toolName, arguments: args };
+  }
+
+  return null;
 };
 
 const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
@@ -977,10 +1141,36 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           turns++;
           log(`\n--- Turn ${turns} ---`);
 
-          // Call Foundation Models
-          const response = await Effect.runPromise(
-            client.chat({ messages }),
-          );
+          // Truncate messages to fit FM context limit
+          const truncatedMessages = truncateMessagesForFM(messages);
+          if (truncatedMessages.length < messages.length) {
+            log(`[Context] Truncated ${messages.length} messages to ${truncatedMessages.length} for context limit`);
+          }
+
+          // Call Foundation Models with retry on context error
+          let response;
+          try {
+            response = await Effect.runPromise(
+              client.chat({ messages: truncatedMessages }),
+            );
+          } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            // If context exceeded, try with even shorter context
+            if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
+              log(`[Context] Hit context limit, retrying with minimal context`);
+              const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS / 2);
+              try {
+                response = await Effect.runPromise(
+                  client.chat({ messages: minimalMessages }),
+                );
+              } catch (e2) {
+                // If still failing, throw original error
+                throw e;
+              }
+            } else {
+              throw e;
+            }
+          }
 
           // Track tokens
           if (response.usage) {
@@ -993,19 +1183,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           // Log assistant response
           log(`Assistant: ${assistantContent}`);
 
-          // Check for completion
-          if (assistantContent.includes("TASK_COMPLETE")) {
-            return await finalize({
-              success: true,
-              turns,
-              tokens: totalTokens,
-              durationMs: Date.now() - startTime,
-              output: outputText,
-              model: "fm:default",
-            });
-          }
-
-          // Parse and execute tool calls
+          // Parse and execute tool calls FIRST (before checking TASK_COMPLETE)
           const toolCalls = parseToolCalls(assistantContent);
 
           if (toolCalls.length > 0) {
@@ -1033,9 +1211,33 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
               role: "user",
               content: "Tool results:\n" + toolResults.join("\n\n"),
             });
+
+            // Check for completion AFTER executing tools
+            if (assistantContent.includes("TASK_COMPLETE")) {
+              return await finalize({
+                success: true,
+                turns,
+                tokens: totalTokens,
+                durationMs: Date.now() - startTime,
+                output: outputText,
+                model: "fm:default",
+              });
+            }
           } else {
             // No tool calls - add response and continue
             messages.push({ role: "assistant", content: assistantContent });
+
+            // Check for completion (no tools needed)
+            if (assistantContent.includes("TASK_COMPLETE")) {
+              return await finalize({
+                success: true,
+                turns,
+                tokens: totalTokens,
+                durationMs: Date.now() - startTime,
+                output: outputText,
+                model: "fm:default",
+              });
+            }
 
             // If no tool calls and no completion, prompt for action
             if (!assistantContent.trim()) {
