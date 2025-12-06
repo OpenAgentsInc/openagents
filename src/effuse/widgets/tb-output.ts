@@ -221,13 +221,13 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
         const action = (target as HTMLElement).dataset.action
 
         if (action === "clear") {
-          Effect.runPromise(ctx.emit({ type: "clear" }))
+          Effect.runFork(ctx.emit({ type: "clear" }))
         } else if (action === "copy") {
-          Effect.runPromise(ctx.emit({ type: "copy" }))
+          Effect.runFork(ctx.emit({ type: "copy" }))
         } else if (action === "close") {
-          Effect.runPromise(ctx.emit({ type: "close" }))
+          Effect.runFork(ctx.emit({ type: "close" }))
         } else if (action === "toggleAutoScroll") {
-          Effect.runPromise(ctx.emit({ type: "toggleAutoScroll" }))
+          Effect.runFork(ctx.emit({ type: "toggleAutoScroll" }))
         }
       })
     }),

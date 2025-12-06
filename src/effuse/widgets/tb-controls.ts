@@ -305,27 +305,27 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
         const taskId = el.dataset.taskId
 
         if (action === "toggleCollapse") {
-          Effect.runPromise(ctx.emit({ type: "toggleCollapse" }))
+          Effect.runFork(ctx.emit({ type: "toggleCollapse" }))
         } else if (action === "loadSuite") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "loadSuite" }))
+          Effect.runFork(ctx.emit({ type: "loadSuite" }))
         } else if (action === "startRun") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "startRun" }))
+          Effect.runFork(ctx.emit({ type: "startRun" }))
         } else if (action === "startRandomTask") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "startRandomTask" }))
+          Effect.runFork(ctx.emit({ type: "startRandomTask" }))
         } else if (action === "stopRun") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "stopRun" }))
+          Effect.runFork(ctx.emit({ type: "stopRun" }))
         } else if (action === "selectAll") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "selectAll" }))
+          Effect.runFork(ctx.emit({ type: "selectAll" }))
         } else if (action === "selectNone") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "selectNone" }))
+          Effect.runFork(ctx.emit({ type: "selectNone" }))
         } else if (action === "toggleTask" && taskId) {
-          Effect.runPromise(ctx.emit({ type: "toggleTask", taskId }))
+          Effect.runFork(ctx.emit({ type: "toggleTask", taskId }))
         }
       })
 
@@ -335,7 +335,7 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
         const inputType = el.dataset.input
 
         if (inputType === "suitePath") {
-          Effect.runPromise(ctx.emit({ type: "setSuitePath", path: el.value }))
+          Effect.runFork(ctx.emit({ type: "setSuitePath", path: el.value }))
         }
       })
     }),

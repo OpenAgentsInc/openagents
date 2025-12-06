@@ -277,12 +277,12 @@ export const MCTasksWidget: Widget<MCTasksState, MCTasksEvent, SocketServiceTag>
         // Prevent collapse toggle when clicking load button
         if (action === "load") {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "load" }))
+          Effect.runFork(ctx.emit({ type: "load" }))
         } else if (action === "toggleCollapse") {
-          Effect.runPromise(ctx.emit({ type: "toggleCollapse" }))
+          Effect.runFork(ctx.emit({ type: "toggleCollapse" }))
         } else if (action === "assign" && taskId) {
           e.stopPropagation()
-          Effect.runPromise(ctx.emit({ type: "assign", taskId }))
+          Effect.runFork(ctx.emit({ type: "assign", taskId }))
         }
       })
     }),

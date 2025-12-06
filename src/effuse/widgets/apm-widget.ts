@@ -261,7 +261,7 @@ export const APMWidget: Widget<APMState, APMEvent, SocketServiceTag> = {
       yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", (_e, target) => {
         const action = (target as HTMLElement).dataset.action
         if (action === "toggleExpand") {
-          Effect.runPromise(ctx.emit({ type: "toggleExpand" }))
+          Effect.runFork(ctx.emit({ type: "toggleExpand" }))
         }
       })
     }),
