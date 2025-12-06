@@ -6,8 +6,10 @@ import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { TrajectoryPaneWidget, type TrajectoryPaneState } from "./trajectory-pane.js"
 import { mountWidget } from "../widget/mount.js"
-import { makeTestLayer } from "../layers/test.js"
+import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
 import type { UnifiedTrajectory } from "../../desktop/protocol.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
 
 describe("TrajectoryPaneWidget", () => {
   test("renders empty state", async () => {
@@ -154,5 +156,193 @@ describe("TrajectoryPaneWidget", () => {
     expect(state.loading).toBe(false)
     expect(state.error).toBeNull()
     expect(state.collapsed).toBe(false)
+  })
+
+  test("US-7.1 loads recent trajectories on load event", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockTrajectories: UnifiedTrajectory[] = [
+            {
+              id: "run-aaaa",
+              type: "tb-run",
+              timestamp: "2024-12-05T10:00:00Z",
+              label: "TB: 90% (9/10)",
+              suiteName: "suite",
+              passRate: 90,
+              passed: 9,
+              failed: 1,
+              taskCount: 10,
+            },
+          ]
+
+          let requestedLimit: number | undefined
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              loadUnifiedTrajectories: (limit = 50) => {
+                requestedLimit = limit
+                return Effect.succeed(mockTrajectories)
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "trajectory-test" } as Element
+              const state = yield* stateService.cell(TrajectoryPaneWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+
+              const html = (yield* TrajectoryPaneWidget.render(ctx)).toString()
+              expect(html).toContain("run-aaaa")
+              expect(html).toContain("TB: 90%")
+              const updated = yield* state.get
+              expect(updated.loading).toBe(false)
+              expect(updated.trajectories).toHaveLength(1)
+            }),
+            layer
+          )
+
+          expect(requestedLimit).toBe(50)
+        })
+      )
+    )
+  })
+
+  test("US-7.2 selects a trajectory for details", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "trajectory-test" } as Element
+              const trajectories: UnifiedTrajectory[] = [
+                { id: "run-1", type: "tb-run", timestamp: "2024-01-01", label: "Run 1" },
+                { id: "run-2", type: "tb-run", timestamp: "2024-01-02", label: "Run 2" },
+              ]
+              const state = yield* stateService.cell({
+                trajectories,
+                selectedId: null,
+                loading: false,
+                error: null,
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TrajectoryPaneWidget.handleEvent({ type: "select", trajectoryId: "run-2" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.selectedId).toBe("run-2")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-7.6 refresh reloads the trajectory list", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              loadUnifiedTrajectories: (_limit = 50) =>
+                Effect.succeed([
+                  {
+                    id: "run-new",
+                    type: "tb-run",
+                    timestamp: "2024-12-06T00:00:00Z",
+                    label: "New TB run",
+                  },
+                ]),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "trajectory-test" } as Element
+              const state = yield* stateService.cell({
+                trajectories: [],
+                selectedId: null,
+                loading: false,
+                error: null,
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.loading).toBe(false)
+              expect(updated.error).toBeNull()
+              expect(updated.trajectories).toHaveLength(1)
+              expect(updated.trajectories[0]?.id).toBe("run-new")
+
+              const html = (yield* TrajectoryPaneWidget.render(ctx)).toString()
+              expect(html).toContain("run-new")
+              expect(html).toContain("Refresh")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-7.7 toggles collapse to hide and show trajectories", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "trajectory-test" } as Element
+              const state = yield* stateService.cell({
+                trajectories: [
+                  {
+                    id: "run-1",
+                    type: "tb-run",
+                    timestamp: "2024-12-05T11:00:00Z",
+                    label: "Run 1",
+                  },
+                ],
+                selectedId: null,
+                loading: false,
+                error: null,
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const expanded = (yield* TrajectoryPaneWidget.render(ctx)).toString()
+              expect(expanded).toContain("Run 1")
+              expect(expanded).toContain("- Trajectories")
+
+              yield* TrajectoryPaneWidget.handleEvent({ type: "toggleCollapse" }, ctx)
+
+              const collapsed = yield* state.get
+              expect(collapsed.collapsed).toBe(true)
+
+              const collapsedHtml = (yield* TrajectoryPaneWidget.render(ctx)).toString()
+              expect(collapsedHtml).toContain("+ Trajectories")
+              expect(collapsedHtml).not.toContain("Run 1")
+            }),
+            layer
+          )
+        })
+      )
+    )
   })
 })
