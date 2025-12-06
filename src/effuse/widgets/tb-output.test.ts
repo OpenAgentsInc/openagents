@@ -244,6 +244,34 @@ describe("TBOutputWidget", () => {
     )
   })
 
+  test("US-5.3 renders verification output lines", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-output-test" } as Element
+
+          yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-verify" })
+          yield* injectMessage({
+            type: "tb_task_output",
+            runId: "run-verify",
+            taskId: "task-verify",
+            text: "Verification is checking assertions",
+            source: "verification",
+          })
+
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("VRF")
+          expect(html).toContain("Verification is checking assertions")
+        })
+      )
+    )
+  })
+
   test("US-5.5 clear output removes lines", async () => {
     await Effect.runPromise(
       Effect.scoped(
