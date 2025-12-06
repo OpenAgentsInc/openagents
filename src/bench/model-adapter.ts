@@ -1287,7 +1287,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
             // If context exceeded, try with even shorter context
             if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
               log(`[Context] Hit context limit, retrying with minimal context`);
-              const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS / 2);
+              const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS_DEFAULT / 2);
               try {
                 response = await Effect.runPromise(
                   client.chat({ messages: minimalMessages }),
