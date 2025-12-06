@@ -1,0 +1,311 @@
+/**
+ * Skill Library Service
+ *
+ * Main service interface for the skill library.
+ * Combines store, embedding, and retrieval into a unified API.
+ */
+
+import { Effect, Context, Layer } from "effect";
+import { SkillStore, makeSkillStoreLayer, type SkillStoreError } from "./store.js";
+import { EmbeddingService, EmbeddingServiceLive, type EmbeddingError } from "./embedding.js";
+import {
+  SkillRetrievalService,
+  SkillRetrievalServiceLive,
+  type SkillRetrievalError,
+} from "./retrieval.js";
+import { FMService, makeFMServiceLayer } from "../fm/service.js";
+import {
+  type Skill,
+  type SkillQuery,
+  type SkillMatch,
+  type SkillFilter,
+  type SkillCategory,
+  createSkill,
+} from "./schema.js";
+
+// --- Unified Error Type ---
+
+export class SkillServiceError extends Error {
+  readonly _tag = "SkillServiceError";
+  constructor(
+    readonly reason: string,
+    message: string,
+    readonly cause?: Error,
+  ) {
+    super(message);
+    this.name = "SkillServiceError";
+  }
+
+  static from(e: SkillStoreError | SkillRetrievalError | EmbeddingError): SkillServiceError {
+    return new SkillServiceError(e._tag, e.message, e);
+  }
+}
+
+// --- Service Interface ---
+
+export interface ISkillService {
+  // --- Skill Management ---
+
+  /** Register a new skill */
+  readonly registerSkill: (skill: Skill) => Effect.Effect<void, SkillServiceError>;
+
+  /** Create and register a skill from partial data */
+  readonly createSkill: (
+    partial: Partial<Skill> & Pick<Skill, "name" | "description" | "code" | "category">,
+  ) => Effect.Effect<Skill, SkillServiceError>;
+
+  /** Get a skill by ID */
+  readonly getSkill: (id: string) => Effect.Effect<Skill | null, SkillServiceError>;
+
+  /** List skills with optional filter */
+  readonly listSkills: (filter?: SkillFilter) => Effect.Effect<Skill[], SkillServiceError>;
+
+  /** Update an existing skill */
+  readonly updateSkill: (skill: Skill) => Effect.Effect<void, SkillServiceError>;
+
+  /** Archive a skill */
+  readonly archiveSkill: (id: string) => Effect.Effect<void, SkillServiceError>;
+
+  // --- Skill Retrieval ---
+
+  /** Query skills using semantic search */
+  readonly query: (query: SkillQuery) => Effect.Effect<SkillMatch[], SkillServiceError>;
+
+  /** Get skills relevant to a task description */
+  readonly selectSkills: (
+    taskDescription: string,
+    options?: {
+      topK?: number;
+      minSimilarity?: number;
+      filter?: SkillFilter;
+    },
+  ) => Effect.Effect<Skill[], SkillServiceError>;
+
+  /** Format skills for prompt injection */
+  readonly formatForPrompt: (
+    taskDescription: string,
+    options?: {
+      topK?: number;
+      minSimilarity?: number;
+      filter?: SkillFilter;
+    },
+  ) => Effect.Effect<string, SkillServiceError>;
+
+  // --- Stats & Tracking ---
+
+  /** Record skill usage */
+  readonly recordUsage: (skillId: string, success: boolean) => Effect.Effect<void, SkillServiceError>;
+
+  /** Update skill success rate */
+  readonly updateStats: (
+    skillId: string,
+    success: boolean,
+  ) => Effect.Effect<void, SkillServiceError>;
+
+  /** Get library statistics */
+  readonly getStats: () => Effect.Effect<
+    {
+      totalSkills: number;
+      skillsWithEmbeddings: number;
+      averageSuccessRate: number;
+      byCategory: Record<string, number>;
+    },
+    SkillServiceError
+  >;
+
+  // --- Maintenance ---
+
+  /** Populate embeddings for all skills */
+  readonly populateEmbeddings: () => Effect.Effect<number, SkillServiceError>;
+
+  /** Prune low-performing skills (archive skills with low success rate) */
+  readonly pruneSkills: (
+    options?: {
+      minSuccessRate?: number;
+      minUsageCount?: number;
+    },
+  ) => Effect.Effect<number, SkillServiceError>;
+
+  /** Get skill count */
+  readonly count: () => Effect.Effect<number, SkillServiceError>;
+}
+
+// --- Service Tag ---
+
+export class SkillService extends Context.Tag("SkillService")<SkillService, ISkillService>() {}
+
+// --- Implementation ---
+
+const makeSkillService = (): Effect.Effect<
+  ISkillService,
+  never,
+  SkillStore | SkillRetrievalService
+> =>
+  Effect.gen(function* () {
+    const store = yield* SkillStore;
+    const retrieval = yield* SkillRetrievalService;
+
+    const mapStoreError = Effect.mapError(SkillServiceError.from);
+    const mapRetrievalError = Effect.mapError(SkillServiceError.from);
+
+    const registerSkill = (skill: Skill): Effect.Effect<void, SkillServiceError> =>
+      store.add(skill).pipe(mapStoreError);
+
+    const createSkillFn = (
+      partial: Partial<Skill> & Pick<Skill, "name" | "description" | "code" | "category">,
+    ): Effect.Effect<Skill, SkillServiceError> =>
+      Effect.gen(function* () {
+        const skill = createSkill(partial);
+        yield* store.add(skill).pipe(mapStoreError);
+        return skill;
+      });
+
+    const getSkill = (id: string): Effect.Effect<Skill | null, SkillServiceError> =>
+      store.get(id).pipe(mapStoreError);
+
+    const listSkills = (filter?: SkillFilter): Effect.Effect<Skill[], SkillServiceError> =>
+      store.list(filter).pipe(mapStoreError);
+
+    const updateSkill = (skill: Skill): Effect.Effect<void, SkillServiceError> =>
+      store.update(skill).pipe(mapStoreError);
+
+    const archiveSkill = (id: string): Effect.Effect<void, SkillServiceError> =>
+      store.archive(id).pipe(mapStoreError);
+
+    const query = (q: SkillQuery): Effect.Effect<SkillMatch[], SkillServiceError> =>
+      retrieval.query(q).pipe(mapRetrievalError);
+
+    const selectSkills = (
+      taskDescription: string,
+      options?: {
+        topK?: number;
+        minSimilarity?: number;
+        filter?: SkillFilter;
+      },
+    ): Effect.Effect<Skill[], SkillServiceError> =>
+      retrieval.getForTask(taskDescription, options).pipe(mapRetrievalError);
+
+    const formatForPromptFn = (
+      taskDescription: string,
+      options?: {
+        topK?: number;
+        minSimilarity?: number;
+        filter?: SkillFilter;
+      },
+    ): Effect.Effect<string, SkillServiceError> =>
+      retrieval.formatForPrompt(taskDescription, options).pipe(mapRetrievalError);
+
+    const recordUsage = (
+      skillId: string,
+      success: boolean,
+    ): Effect.Effect<void, SkillServiceError> =>
+      retrieval.recordUsage(skillId, success).pipe(mapRetrievalError);
+
+    const updateStats = recordUsage; // Alias
+
+    const getStats = (): Effect.Effect<
+      {
+        totalSkills: number;
+        skillsWithEmbeddings: number;
+        averageSuccessRate: number;
+        byCategory: Record<string, number>;
+      },
+      SkillServiceError
+    > =>
+      Effect.gen(function* () {
+        const baseStats = yield* retrieval.getStats().pipe(mapRetrievalError);
+        const skills = yield* store.list().pipe(mapStoreError);
+
+        // Count by category
+        const byCategory: Record<string, number> = {};
+        for (const skill of skills) {
+          byCategory[skill.category] = (byCategory[skill.category] ?? 0) + 1;
+        }
+
+        return { ...baseStats, byCategory };
+      });
+
+    const populateEmbeddings = (): Effect.Effect<number, SkillServiceError> =>
+      retrieval.populateEmbeddings().pipe(mapRetrievalError);
+
+    const pruneSkills = (
+      options?: {
+        minSuccessRate?: number;
+        minUsageCount?: number;
+      },
+    ): Effect.Effect<number, SkillServiceError> =>
+      Effect.gen(function* () {
+        const minRate = options?.minSuccessRate ?? 0.2;
+        const minCount = options?.minUsageCount ?? 5;
+
+        const skills = yield* store.list({ status: ["active"] }).pipe(mapStoreError);
+
+        let pruned = 0;
+        for (const skill of skills) {
+          const usageCount = skill.usageCount ?? 0;
+          const successRate = skill.successRate ?? 1; // Default to 1 if never used
+
+          // Only prune skills that have been used enough to have reliable stats
+          if (usageCount >= minCount && successRate < minRate) {
+            yield* store.archive(skill.id).pipe(mapStoreError);
+            pruned++;
+          }
+        }
+
+        return pruned;
+      });
+
+    const countFn = (): Effect.Effect<number, SkillServiceError> =>
+      store.count().pipe(Effect.map((n) => n));
+
+    return {
+      registerSkill,
+      createSkill: createSkillFn,
+      getSkill,
+      listSkills,
+      updateSkill,
+      archiveSkill,
+      query,
+      selectSkills,
+      formatForPrompt: formatForPromptFn,
+      recordUsage,
+      updateStats,
+      getStats,
+      populateEmbeddings,
+      pruneSkills,
+      count: countFn,
+    };
+  });
+
+// --- Layer ---
+
+/**
+ * SkillService layer that requires SkillStore and SkillRetrievalService.
+ */
+export const SkillServiceLayer: Layer.Layer<
+  SkillService,
+  never,
+  SkillStore | SkillRetrievalService
+> = Layer.effect(SkillService, makeSkillService());
+
+/**
+ * Create a complete SkillService layer with all dependencies.
+ */
+export const makeSkillServiceLive = (
+  projectRoot: string = process.cwd(),
+): Layer.Layer<SkillService, SkillStoreError, never> => {
+  const fmLayer = makeFMServiceLayer({ autoStart: false, enableLogging: false });
+  const storeLayer = makeSkillStoreLayer(projectRoot);
+  const embeddingLayer = Layer.provide(EmbeddingServiceLive, fmLayer);
+  const retrievalLayer = Layer.provide(
+    SkillRetrievalServiceLive,
+    Layer.merge(storeLayer, embeddingLayer),
+  );
+  return Layer.provide(SkillServiceLayer, Layer.merge(storeLayer, retrievalLayer));
+};
+
+/**
+ * Default SkillService layer using current working directory.
+ */
+export const SkillServiceLive: Layer.Layer<SkillService, SkillStoreError, never> =
+  makeSkillServiceLive();
