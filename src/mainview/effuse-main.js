@@ -24095,6 +24095,11 @@ ${endStackCall}`;
     }
   };
   var initialContainerPanesState = ContainerPanesWidget.initialState();
+  // src/hud/protocol.ts
+  var HUD_WS_PORT = 4242;
+  var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}`;
+  var isATIFStep = (msg) => msg.type === "atif_step";
+
   // src/effuse/widgets/tb-output.ts
   var MAX_OUTPUT_LINES = 500;
   var getSourceColorClass = (source) => {
@@ -24105,6 +24110,8 @@ ${endStackCall}`;
         return "text-emerald-300";
       case "system":
         return "text-zinc-400";
+      case "tool":
+        return "text-amber-300";
     }
   };
   var getSourceLabel = (source) => {
@@ -24115,12 +24122,38 @@ ${endStackCall}`;
         return "VRF";
       case "system":
         return "SYS";
+      case "tool":
+        return "TL";
     }
+  };
+  var formatToolCall = (toolCall) => {
+    const args2 = toolCall.arguments;
+    let argsStr = "";
+    if (args2 && typeof args2 === "object") {
+      const truncated = Object.entries(args2).slice(0, 3).map(([k, v]) => {
+        const val = typeof v === "string" && v.length > 50 ? v.slice(0, 47) + "..." : v;
+        return `${k}=${JSON.stringify(val)}`;
+      }).join(", ");
+      argsStr = truncated + (Object.keys(args2).length > 3 ? ", ..." : "");
+    }
+    return `→ ${toolCall.function_name}(${argsStr})`;
+  };
+  var formatObservationResult = (result) => {
+    const content = result.content;
+    if (typeof content === "string") {
+      const truncated = content.length > 100 ? content.slice(0, 97) + "..." : content;
+      return `← ${truncated}`;
+    }
+    if (content && typeof content === "object") {
+      const str = JSON.stringify(content);
+      return `← ${str.length > 100 ? str.slice(0, 97) + "..." : str}`;
+    }
+    return `← (result)`;
   };
   var isTBTaskOutput = (msg) => msg.type === "tb_task_output";
   var isTBRunStart = (msg) => msg.type === "tb_run_start";
   var isTBRunComplete = (msg) => msg.type === "tb_run_complete";
-  var isTBMessage = (msg) => isTBTaskOutput(msg) || isTBRunStart(msg) || isTBRunComplete(msg);
+  var isTBMessage = (msg) => isTBTaskOutput(msg) || isTBRunStart(msg) || isTBRunComplete(msg) || isATIFStep(msg);
   var TBOutputWidget = {
     id: "tb-output",
     initialState: () => ({
@@ -24129,7 +24162,15 @@ ${endStackCall}`;
       visible: false,
       runId: null,
       taskId: null,
-      autoScroll: true
+      autoScroll: true,
+      showLineNumbers: true,
+      selectedLine: null,
+      visibleSources: {
+        agent: true,
+        verification: true,
+        system: true,
+        tool: true
+      }
     }),
     render: (ctx) => exports_Effect.gen(function* () {
       const state = yield* ctx.state.get;
@@ -24150,6 +24191,32 @@ ${endStackCall}`;
               title="Auto-scroll"
             >
               ↓
+            </button>
+            <div class="flex items-center gap-1">
+              ${["agent", "verification", "system", "tool"].map((source) => {
+        const active2 = state.visibleSources[source];
+        const label = getSourceLabel(source);
+        const base = "text-xs px-2 py-1 rounded border transition-colors";
+        const activeClasses = "bg-zinc-800/80 text-zinc-100 border-zinc-600/60";
+        const inactiveClasses = "text-zinc-400 border-zinc-700/50 hover:border-zinc-600/60";
+        return html`
+                  <button
+                    class="${base} ${active2 ? activeClasses : inactiveClasses}"
+                    data-action="toggleSource"
+                    data-source="${source}"
+                    title="Toggle ${source} output"
+                  >
+                    ${label}
+                  </button>
+                `;
+      })}
+            </div>
+            <button
+              class="text-xs px-2 py-1 rounded border transition-colors ${state.showLineNumbers ? "bg-zinc-800/80 text-zinc-100 border-zinc-600/60" : "text-zinc-400 border-zinc-700/50 hover:border-zinc-600/60"}"
+              data-action="toggleLineNumbers"
+              title="Toggle line numbers"
+            >
+              #
             </button>
             <button
               class="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded border border-zinc-700/50 hover:border-zinc-600/60 transition-colors"
@@ -24172,14 +24239,29 @@ ${endStackCall}`;
           </div>
         </div>
       `;
-      const lines = state.outputLines.length > 0 ? joinTemplates(state.outputLines.slice(-100).map((line) => html`
+      const visibleLines = state.outputLines.filter((line) => state.visibleSources[line.source]);
+      const lines = visibleLines.length > 0 ? joinTemplates(visibleLines.slice(-100).map((line, index, arr) => {
+        const lineNumber = state.outputLines.length - arr.length + index + 1;
+        const lineNumberStyles = state.selectedLine === lineNumber ? "bg-zinc-800/80 text-zinc-100 border-zinc-700/60" : "text-zinc-500 border-transparent";
+        return html`
                   <div class="flex gap-2 font-mono text-xs leading-relaxed">
+                    ${state.showLineNumbers ? html`
+                          <button
+                            class="w-10 text-right pr-2 rounded border ${lineNumberStyles}"
+                            data-action="selectLine"
+                            data-line="${lineNumber}"
+                            title="Line ${lineNumber}"
+                          >
+                            ${lineNumber}
+                          </button>
+                        ` : ""}
                     <span class="w-8 flex-shrink-0 ${getSourceColorClass(line.source)}">
                       ${getSourceLabel(line.source)}
                     </span>
                     <span class="text-zinc-300 whitespace-pre-wrap break-all">${line.text}</span>
                   </div>
-                `)) : html`<div class="text-xs text-zinc-600 italic">No output yet</div>`;
+                `;
+      })) : html`<div class="text-xs text-zinc-600 italic">No output yet</div>`;
       return html`
         <div class="fixed right-4 bottom-20 w-[600px] max-h-[400px] flex flex-col bg-zinc-950/95 border border-zinc-800/60 rounded-lg shadow-xl backdrop-blur-sm overflow-hidden">
           ${header}
@@ -24191,7 +24273,7 @@ ${endStackCall}`;
             ${lines}
           </div>
           <div class="px-3 py-1 border-t border-zinc-800/40 bg-zinc-900/60 text-xs text-zinc-500">
-            ${state.outputLines.length} lines
+            ${visibleLines.length} lines
           </div>
         </div>
       `;
@@ -24207,6 +24289,18 @@ ${endStackCall}`;
           exports_Effect.runFork(ctx.emit({ type: "close" }));
         } else if (action === "toggleAutoScroll") {
           exports_Effect.runFork(ctx.emit({ type: "toggleAutoScroll" }));
+        } else if (action === "toggleLineNumbers") {
+          exports_Effect.runFork(ctx.emit({ type: "toggleLineNumbers" }));
+        } else if (action === "selectLine") {
+          const lineValue = target.dataset.line;
+          if (lineValue) {
+            exports_Effect.runFork(ctx.emit({ type: "selectLine", lineNumber: Number(lineValue) }));
+          }
+        } else if (action === "toggleSource") {
+          const source = target.dataset.source;
+          if (source) {
+            exports_Effect.runFork(ctx.emit({ type: "toggleSource", source }));
+          }
         }
       });
     }),
@@ -24215,12 +24309,20 @@ ${endStackCall}`;
         case "clear":
           yield* ctx.state.update((s) => ({
             ...s,
-            outputLines: []
+            outputLines: [],
+            selectedLine: null
           }));
           break;
         case "copy": {
           const state = yield* ctx.state.get;
-          const text = state.outputLines.map((l) => `[${l.source}] ${l.text}`).join(`
+          const linesToCopy = state.outputLines.filter((line) => state.visibleSources[line.source]);
+          const total = state.outputLines.length;
+          const start3 = total - linesToCopy.length;
+          const text = linesToCopy.map((l, index) => {
+            const lineNumber = start3 + index + 1;
+            const prefix = state.showLineNumbers ? `${lineNumber}: ` : "";
+            return `${prefix}[${l.source}] ${l.text}`;
+          }).join(`
 `);
           if (typeof navigator !== "undefined" && navigator.clipboard) {
             try {
@@ -24238,6 +24340,29 @@ ${endStackCall}`;
         case "toggleAutoScroll":
           yield* ctx.state.update((s) => ({ ...s, autoScroll: !s.autoScroll }));
           break;
+        case "toggleLineNumbers":
+          yield* ctx.state.update((s) => ({
+            ...s,
+            showLineNumbers: !s.showLineNumbers,
+            selectedLine: s.showLineNumbers ? null : s.selectedLine
+          }));
+          break;
+        case "selectLine":
+          yield* ctx.state.update((s) => ({
+            ...s,
+            selectedLine: s.selectedLine === event.lineNumber ? null : event.lineNumber
+          }));
+          break;
+        case "toggleSource":
+          yield* ctx.state.update((s) => ({
+            ...s,
+            visibleSources: {
+              ...s.visibleSources,
+              [event.source]: !s.visibleSources[event.source]
+            },
+            selectedLine: s.showLineNumbers ? s.selectedLine : null
+          }));
+          break;
       }
     }),
     subscriptions: (ctx) => {
@@ -24250,7 +24375,14 @@ ${endStackCall}`;
               runId: msg.runId,
               taskId: null,
               outputLines: [],
-              visible: true
+              visible: true,
+              selectedLine: null,
+              visibleSources: {
+                agent: true,
+                verification: true,
+                system: true,
+                tool: true
+              }
             }));
           }
           if (isTBTaskOutput(msg)) {
@@ -24269,6 +24401,36 @@ ${endStackCall}`;
                 ...s,
                 taskId: msg.taskId,
                 outputLines: newLines
+              };
+            });
+          }
+          if (isATIFStep(msg)) {
+            yield* ctx.state.update((s) => {
+              if (s.runId && s.runId !== msg.runId)
+                return s;
+              const newLines = [...s.outputLines];
+              const timestamp = Date.now();
+              if (msg.step.tool_calls && msg.step.tool_calls.length > 0) {
+                for (const toolCall of msg.step.tool_calls) {
+                  newLines.push({
+                    text: formatToolCall(toolCall),
+                    source: "tool",
+                    timestamp
+                  });
+                }
+              }
+              if (msg.step.observation?.results && msg.step.observation.results.length > 0) {
+                for (const result of msg.step.observation.results) {
+                  newLines.push({
+                    text: formatObservationResult(result),
+                    source: "tool",
+                    timestamp
+                  });
+                }
+              }
+              return {
+                ...s,
+                outputLines: newLines.slice(-s.maxLines)
               };
             });
           }
