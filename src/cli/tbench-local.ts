@@ -26,6 +26,11 @@ import {
   type TerminalBenchSuite,
   type TerminalBenchResults,
 } from "../bench/terminal-bench.js";
+import {
+  createModelRunner,
+  parseModelString,
+  type ModelRunner,
+} from "../bench/model-adapter.js";
 import { BunContext } from "@effect/platform-bun";
 import { Effect } from "effect";
 import { cpSync, readdirSync, statSync } from "fs";
@@ -44,6 +49,7 @@ interface TBenchLocalArgs {
   maxTurns: number | undefined;
   parallel: number | undefined;
   runId: string | undefined;
+  model: string;
   help: boolean | undefined;
 }
 
@@ -59,6 +65,7 @@ const parseCliArgs = (): TBenchLocalArgs => {
       "max-turns": { type: "string" },
       parallel: { type: "string", short: "p" },
       "run-id": { type: "string" },
+      model: { type: "string", short: "m" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -79,17 +86,22 @@ Required:
 Options:
   -t, --tasks       Comma-separated task IDs to run (default: all)
   -b, --baseline    Path to baseline results JSON for comparison
+  -m, --model       Model to use: claude-code, fm, foundation-models, ollama:<model>
+                    (default: claude-code)
       --timeout     Task timeout in seconds (default: 3600)
       --max-turns   Max agent turns per task (default: 300)
   -p, --parallel    Run tasks in parallel (default: 1)
   -h, --help        Show this help message
 
 Examples:
-  # Run all tasks in suite
+  # Run all tasks with Claude Code (default)
   bun src/cli/tbench-local.ts -s ./tasks/tb-2.0.json -o ./results
 
-  # Run specific tasks
-  bun src/cli/tbench-local.ts -s ./tasks/tb-2.0.json -o ./results -t task1,task2
+  # Run with Apple Foundation Models
+  bun src/cli/tbench-local.ts -s ./tasks/fm-mini-suite.json -o ./results -m fm
+
+  # Run specific tasks with FM
+  bun src/cli/tbench-local.ts -s ./tasks/fm-mini-suite.json -o ./results -t hello-world -m fm
 
   # Compare with baseline
   bun src/cli/tbench-local.ts -s ./tasks/tb-2.0.json -o ./results -b ./baseline.json
@@ -116,6 +128,7 @@ Examples:
     maxTurns: values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined,
     parallel: values.parallel ? parseInt(values.parallel, 10) : undefined,
     runId: values["run-id"],
+    model: values.model ?? "claude-code",
     help: values.help,
   };
 };
@@ -143,6 +156,19 @@ const setupTaskWorkspace = (
   sourceRepo?: string
 ): void => {
   mkdirSync(workspaceDir, { recursive: true });
+
+  // Handle inline setup files (from FM mini-suite format)
+  const setupConfig = tbTask.setup as { files?: Record<string, string> } | string[] | undefined;
+  if (setupConfig && typeof setupConfig === "object" && !Array.isArray(setupConfig) && setupConfig.files) {
+    for (const [filename, content] of Object.entries(setupConfig.files)) {
+      const filePath = join(workspaceDir, filename);
+      const dir = join(filePath, "..");
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      writeFileSync(filePath, content);
+    }
+  }
 
   // If source_path is available, copy environment and test files
   const sourcePath = tbTask.source_path ?? (sourceRepo ? join(sourceRepo, tbTask.id) : null);
@@ -191,45 +217,61 @@ const runLocalVerification = async (
   workspaceDir: string,
   tbTask: TerminalBenchTask
 ): Promise<{ passed: boolean; output: string }> => {
-  const testsDir = join(workspaceDir, "tests");
-
-  // Check if tests directory exists
-  if (!existsSync(testsDir)) {
-    // Fall back to simple verification if defined
-    if (tbTask.verification.type === "output" && tbTask.verification.command) {
-      const proc = Bun.spawn(["sh", "-c", tbTask.verification.command], {
-        cwd: workspaceDir,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      await proc.exited;
-      const stdout = await new Response(proc.stdout).text();
-      const expected = tbTask.verification.expected ?? "";
-      const passed = stdout.trim() === expected.trim();
-      return {
-        passed,
-        output: `Expected: ${expected}\nActual: ${stdout}`,
-      };
-    }
-    return { passed: false, output: "No tests directory found" };
+  // Handle custom verification (shell script)
+  if (tbTask.verification.type === "custom") {
+    const script = tbTask.verification.script ?? tbTask.verification.command ?? "exit 1";
+    const proc = Bun.spawn(["sh", "-c", script], {
+      cwd: workspaceDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    return {
+      passed: exitCode === 0,
+      output: `Script: ${script}\nExit code: ${exitCode}\n${stdout}${stderr ? `\nSTDERR:\n${stderr}` : ""}`,
+    };
   }
 
-  // Run pytest on the tests
-  const proc = Bun.spawn(["python3", "-m", "pytest", "tests/", "-v", "--tb=short"], {
-    cwd: workspaceDir,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
-  });
+  // Handle output verification (command with expected output)
+  if (tbTask.verification.type === "output" && tbTask.verification.command) {
+    const proc = Bun.spawn(["sh", "-c", tbTask.verification.command], {
+      cwd: workspaceDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const expected = tbTask.verification.expected ?? "";
+    const passed = stdout.trim() === expected.trim();
+    return {
+      passed,
+      output: `Expected: ${expected}\nActual: ${stdout}`,
+    };
+  }
 
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  // Handle test verification (pytest)
+  const testsDir = join(workspaceDir, "tests");
+  if (existsSync(testsDir)) {
+    const proc = Bun.spawn(["python3", "-m", "pytest", "tests/", "-v", "--tb=short"], {
+      cwd: workspaceDir,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+    });
 
-  return {
-    passed: exitCode === 0,
-    output: stdout + (stderr ? `\nSTDERR:\n${stderr}` : ""),
-  };
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    return {
+      passed: exitCode === 0,
+      output: stdout + (stderr ? `\nSTDERR:\n${stderr}` : ""),
+    };
+  }
+
+  return { passed: false, output: "No verification method available" };
 };
 
 const runTask = async (
@@ -244,6 +286,7 @@ const runTask = async (
     tbEmitter?: TBEmitter;
     taskIndex?: number;
     totalTasks?: number;
+    modelRunner: ModelRunner;
   }
 ): Promise<TaskResult> => {
   const startTime = Date.now();
@@ -334,19 +377,35 @@ const runTask = async (
 
   let result;
   try {
-    console.log("[TB] Calling runClaudeCodeSubagent for task:", tbTask.id);
+    console.log("[TB] Running task with model:", options.modelRunner.modelName);
+    console.log("[TB] Task:", tbTask.id);
     console.log("[TB] Workspace:", workspaceDir);
     console.log("[TB] MaxTurns:", tbTask.max_turns ?? options.maxTurns);
-    result = await runClaudeCodeSubagent(subtask, {
-      cwd: workspaceDir,
+
+    // Use the model runner (supports Claude Code, FM, Ollama)
+    const runResult = await options.modelRunner.runTask(tbTask, {
+      workspace: workspaceDir,
+      timeout: tbTask.timeout_seconds ?? options.timeout,
       maxTurns: tbTask.max_turns ?? options.maxTurns,
-      permissionMode: "bypassPermissions",
-      timeoutMs: (tbTask.timeout_seconds ?? options.timeout) * 1000,
-      ...(options.runId ? { runId: options.runId } : {}), // Pass runId for ATIF step emission to HUD
+      runId: options.runId,
       onOutput,
     });
 
-    // Give SDK time to clean up background processes (prevent AbortError during cleanup)
+    // Convert TaskRunResult to the expected format
+    result = {
+      success: runResult.success,
+      turns: runResult.turns,
+      error: runResult.error,
+      sessionMetadata: {
+        usage: {
+          inputTokens: runResult.tokens,
+          outputTokens: 0,
+        },
+        ...runResult.sessionMetadata,
+      },
+    };
+
+    // Give time to clean up background processes (prevent AbortError during cleanup)
     await new Promise(resolve => setTimeout(resolve, 250));
 
     // Save raw output
@@ -633,8 +692,23 @@ const main = async (): Promise<void> => {
   const maxTurns = args.maxTurns ?? 300;
   const cwd = process.cwd();
 
+  // Create model runner from args.model
+  const modelConfig = parseModelString(args.model);
+  const modelRunner = createModelRunner(modelConfig);
+
+  // Check model health
+  console.log(`\nChecking model health: ${modelRunner.modelName}...`);
+  const healthCheck = await modelRunner.checkHealth();
+  if (!healthCheck.available) {
+    console.error(`Error: Model ${modelRunner.modelName} is not available`);
+    console.error(`  ${healthCheck.error}`);
+    process.exit(1);
+  }
+  console.log(`Model ${modelRunner.modelName} is available`);
+
   console.log(`\n=== Starting Terminal-Bench Run ===`);
   console.log(`Suite: ${suite.name}`);
+  console.log(`Model: ${modelRunner.modelName}`);
   console.log(`Tasks: ${tasksToRun.length}`);
   console.log(`Timeout: ${timeout}s`);
   console.log(`Max Turns: ${maxTurns}`);
@@ -670,6 +744,7 @@ const main = async (): Promise<void> => {
       timeout,
       maxTurns,
       outputDir: args.output,
+      modelRunner,
       ...(sourceRepo !== undefined ? { sourceRepo } : {}),
       ...(args.runId ? { runId: args.runId } : {}), // Pass runId for ATIF step emission to HUD
       tbEmitter,
@@ -679,7 +754,7 @@ const main = async (): Promise<void> => {
     results.push(result);
 
     // Save intermediate results
-    const intermediateResults = toBenchmarkResults(suite, "claude-code", results);
+    const intermediateResults = toBenchmarkResults(suite, modelRunner.modelName, results);
     writeFileSync(
       join(args.output, "results.json"),
       JSON.stringify(intermediateResults, null, 2)
@@ -689,7 +764,7 @@ const main = async (): Promise<void> => {
   const totalDuration = Date.now() - startTime;
 
   // Generate final results
-  const finalResults = toBenchmarkResults(suite, "claude-code", results);
+  const finalResults = toBenchmarkResults(suite, modelRunner.modelName, results);
   writeFileSync(join(args.output, "results.json"), JSON.stringify(finalResults, null, 2));
 
   // Generate comparison report

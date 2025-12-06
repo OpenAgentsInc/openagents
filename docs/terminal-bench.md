@@ -102,6 +102,19 @@ curl http://localhost:11435/health
 
 ### Basic FM Run
 
+Run FM mini-suite (7 quick regression tasks):
+```bash
+# Using package.json script
+bun run tbench:fm-mini
+
+# Or manually with tbench-local
+bun src/cli/tbench-local.ts \
+  --suite tasks/fm-mini-suite.json \
+  --output .openagents/tb-runs/fm-test \
+  --model fm
+```
+
+Run full Terminal-Bench with FM:
 ```bash
 bun src/cli/tbench-iterate.ts \
   --suite tasks/terminal-bench-2.json \
@@ -155,6 +168,35 @@ FM is also available as a subagent in the MechaCoder orchestrator. When enabled,
 1. Claude Code (if available and appropriate)
 2. FM (if macOS and bridge healthy)
 3. Minimal subagent (OpenRouter fallback)
+
+### FM Mini-Suite
+
+The FM mini-suite (`tasks/fm-mini-suite.json`) contains 7 tasks designed for quick FM regression testing:
+
+| Task | Description | Tools Used |
+|------|-------------|------------|
+| fm-hello-world | Create hello.txt | write_file |
+| fm-read-and-echo | Read and copy file | read_file, write_file |
+| fm-append-to-file | Append to existing file | read_file, write_file |
+| fm-list-directory | List files via command | run_command, write_file |
+| fm-create-and-run | Create and execute script | write_file, run_command |
+| fm-simple-edit | Edit existing file | edit_file |
+| fm-word-count | Count words via command | run_command, write_file |
+
+Run with:
+```bash
+bun run tbench:fm-mini           # Local run with FM
+bun run tbench:fm-mini:iterate   # Iterate with learning features
+```
+
+### FM Context Limits
+
+Apple FM has a very limited context window (~1100 chars). The adapter automatically:
+- Truncates message history to fit context
+- Keeps system prompt and last message
+- Retries with minimal context if initial call fails
+
+Configure via `FM_MODEL_CONFIGS` in `src/bench/model-adapter.ts`.
 
 ## Helpful references
 - `docs/tbench/README.md` – full adapter/CLI details

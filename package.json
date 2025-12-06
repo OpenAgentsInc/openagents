@@ -68,7 +68,10 @@
     "desktop": "bun src/desktop/main.ts",
     "desktop:debug": "bun --inspect src/desktop/main.ts",
     "session:export-html": "bun src/sessions/cli.ts export-html",
-    "build:health": "bun scripts/generate-build-health.ts"
+    "build:health": "bun scripts/generate-build-health.ts",
+    "tbench:local": "bun src/cli/tbench-local.ts",
+    "tbench:fm-mini": "bun src/cli/tbench-local.ts --suite tasks/fm-mini-suite.json --output .openagents/tb-runs/fm-mini-$(date +%Y%m%d-%H%M%S) --model fm",
+    "tbench:fm-mini:iterate": "bun src/cli/tbench-iterate.ts --suite tasks/fm-mini-suite.json --max-tasks 10 --model fm"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.56",
