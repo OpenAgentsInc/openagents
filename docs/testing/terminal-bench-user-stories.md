@@ -3,6 +3,7 @@
 > Comprehensive user stories for Terminal Bench (TB) and Effuse HUD integration testing.
 > These stories define all user flows for full management of Terminal Bench via the HUD.
 
+> Log 2025-12-06: Added test for US-5.1 (auto-scroll toggle) in src/effuse/widgets/tb-output.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-10.3 (assign task in sandbox) in src/effuse/widgets/mc-tasks.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-7.5 (clear/delete trajectory history) in src/effuse/widgets/trajectory-pane.test.ts; bun test passing.
 > Log 2025-12-06: Added test for US-7.3 (unified TB/ATIF trajectories with type badges) in src/effuse/widgets/trajectory-pane.test.ts; bun test passing.
