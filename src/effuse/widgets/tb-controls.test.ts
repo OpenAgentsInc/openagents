@@ -33,6 +33,22 @@ describe("TBControlsWidget", () => {
     )
   })
 
+  test("US-1.1 pre-populates default suite path input", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "tb-controls-test" } as Element
+
+          yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain('value="./tasks/terminal-bench-2.json"')
+        })
+      )
+    )
+  })
+
   test("renders with loaded suite", async () => {
     await Effect.runPromise(
       Effect.scoped(
