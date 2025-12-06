@@ -65,3 +65,17 @@ export {
   makeSkillServiceLive,
   type ISkillService,
 } from "./service.js";
+
+// Evolution exports
+export {
+  SkillEvolutionService,
+  SkillEvolutionError,
+  SkillEvolutionServiceLive,
+  makeSkillEvolutionLayer,
+  DEFAULT_EVOLUTION_CONFIG,
+  type ISkillEvolutionService,
+  type SkillEvolutionConfig,
+  type SkillEvolutionAction,
+  type EvolutionResult,
+  type EvolutionReport,
+} from "./evolution.js";
