@@ -360,13 +360,15 @@ describe("VotingService", () => {
   });
 
   test("getStats tracks voting sessions", () => {
+    // Use fresh layer to avoid stats accumulation from other tests
+    const freshLayer = makeVotingServiceLayer();
     const result = runEffect(
       Effect.gen(function* () {
         const service = yield* VotingService;
         yield* service.vote([createMockVote()]);
         yield* service.vote([createMockVote(), createMockVote()]);
         return yield* service.getStats();
-      }).pipe(Effect.provide(VotingServiceLive)),
+      }).pipe(Effect.provide(freshLayer)),
     );
 
     expect(result.totalVotingSessions).toBe(2);

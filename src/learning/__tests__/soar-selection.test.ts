@@ -316,6 +316,8 @@ describe("SelectionService", () => {
   });
 
   test("getStats tracks selections", () => {
+    // Use fresh layer to avoid stats accumulation from other tests
+    const freshLayer = makeSelectionServiceLayer();
     const result = runEffect(
       Effect.gen(function* () {
         const service = yield* SelectionService;
@@ -324,7 +326,7 @@ describe("SelectionService", () => {
         );
         yield* service.selectGreedyDiverse(candidates);
         return yield* service.getStats();
-      }).pipe(Effect.provide(SelectionServiceLive)),
+      }).pipe(Effect.provide(freshLayer)),
     );
 
     expect(result.totalSelections).toBe(1);
