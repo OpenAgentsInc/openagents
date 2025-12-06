@@ -36,5 +36,17 @@
     "enabled": true,
     "maxInvocationsPerSession": 3,
     "maxInvocationsPerSubtask": 2
+  },
+  "tbench": {
+    "defaultModel": "fm",
+    "defaultSuite": "tasks/fm-mini-suite.json",
+    "defaultTimeout": 3600,
+    "defaultMaxTurns": 300,
+    "defaultLearning": {
+      "skills": true,
+      "memory": true,
+      "reflexion": true,
+      "learn": true
+    }
   }
 }
