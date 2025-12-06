@@ -11,6 +11,8 @@ import {
   type Skill,
 } from "./schema.js";
 import { primitiveSkills } from "./library/primitives.js";
+import { compositionalSkills } from "./library/compositional.js";
+import { bootstrapSkills, getSkillStats } from "./library/index.js";
 
 describe("Skill Schema", () => {
   test("generateSkillId creates valid ID", () => {
@@ -163,5 +165,67 @@ describe("Primitive Skills Library", () => {
     expect(names).toContain("Git Diff");
     expect(names).toContain("Git Add");
     expect(names).toContain("Git Commit");
+  });
+});
+
+describe("Compositional Skills Library", () => {
+  test("compositionalSkills has expected count (40+)", () => {
+    expect(compositionalSkills.length).toBeGreaterThanOrEqual(40);
+  });
+
+  test("all compositional skills have required fields", () => {
+    for (const skill of compositionalSkills) {
+      expect(skill.id).toBeDefined();
+      expect(skill.name).toBeDefined();
+      expect(skill.description).toBeDefined();
+      expect(skill.code).toBeDefined();
+      expect(skill.category).toBeDefined();
+      expect(skill.status).toBe("active");
+      expect(skill.source).toBe("bootstrap");
+    }
+  });
+
+  test("compositional skills cover advanced categories", () => {
+    const categories = new Set(compositionalSkills.map(s => s.category));
+
+    expect(categories.has("debugging")).toBe(true);
+    expect(categories.has("testing")).toBe(true);
+    expect(categories.has("git")).toBe(true);
+    expect(categories.has("refactoring")).toBe(true);
+    expect(categories.has("api")).toBe(true);
+  });
+
+  test("error fixing skills are present", () => {
+    const debugging = compositionalSkills.filter(s => s.category === "debugging");
+    const names = debugging.map(s => s.name);
+
+    expect(names).toContain("Fix TypeScript Import Error");
+    expect(names).toContain("Fix TypeScript Type Error");
+  });
+
+  test("effect-ts skills are present", () => {
+    const effect = compositionalSkills.filter(s => s.category === "effect");
+    const names = effect.map(s => s.name);
+
+    expect(names).toContain("Create Effect Service");
+    expect(names).toContain("Handle Effect Error");
+  });
+});
+
+describe("Bootstrap Skills Library", () => {
+  test("bootstrapSkills combines primitives and compositional", () => {
+    expect(bootstrapSkills.length).toBe(primitiveSkills.length + compositionalSkills.length);
+  });
+
+  test("total bootstrap skills is 70+", () => {
+    expect(bootstrapSkills.length).toBeGreaterThanOrEqual(70);
+  });
+
+  test("getSkillStats returns correct counts", () => {
+    const stats = getSkillStats();
+
+    expect(stats.total).toBe(bootstrapSkills.length);
+    expect(stats.bySource["bootstrap"]).toBe(bootstrapSkills.length);
+    expect(Object.keys(stats.byCategory).length).toBeGreaterThan(5);
   });
 });

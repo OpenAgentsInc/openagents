@@ -19,6 +19,7 @@ import { createOllamaClient, checkOllamaHealth } from "../llm/ollama.js";
 import { createFMClient, checkFMHealth, isMacOS } from "../llm/foundation-models.js";
 import type { TerminalBenchTask } from "./terminal-bench.js";
 import { Effect } from "effect";
+import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
 
 // --- Configuration Types ---
 
@@ -38,6 +39,14 @@ export interface FMModelConfig {
   type: "foundation-models";
   /** Server port (default: 11435) */
   port?: number;
+  /** Enable skill injection for Voyager-style learning (default: true) */
+  useSkills?: boolean;
+  /** Project root for skill library (default: process.cwd()) */
+  projectRoot?: string;
+  /** Max skills to inject into prompt (default: 5) */
+  maxSkills?: number;
+  /** Min similarity threshold for skill retrieval (default: 0.3) */
+  minSimilarity?: number;
 }
 
 export type ModelConfig = ClaudeCodeModelConfig | OllamaModelConfig | FMModelConfig;
@@ -58,6 +67,8 @@ export interface TaskRunResult {
       inputTokens?: number;
       outputTokens?: number;
     };
+    /** Skills injected into the system prompt (Voyager-style) */
+    skillsUsed?: string[];
   };
 }
 
@@ -491,7 +502,7 @@ const createOllamaRunner = (ollamaConfig: OllamaModelConfig): ModelRunner => {
  * System prompt for Foundation Models-based coding agents.
  * Uses text-based tool calling since FM may not support native JSON tool calling.
  */
-const FM_SYSTEM_PROMPT = `You are a coding assistant. Complete the task by writing code and using tools.
+const FM_BASE_PROMPT = `You are a coding assistant. Complete the task by writing code and using tools.
 
 Available tools:
 - read_file(path): Read a file's contents
@@ -504,6 +515,43 @@ To use a tool, output in this exact format on its own line:
 
 Wait for the tool result before continuing.
 When you have completed the task, say "TASK_COMPLETE" on its own line.`;
+
+/**
+ * Build system prompt with injected skills (Voyager-style).
+ * Skills are retrieved based on semantic similarity to the task.
+ */
+const buildFMSystemPrompt = (skills?: Skill[]): string => {
+  if (!skills || skills.length === 0) {
+    return FM_BASE_PROMPT;
+  }
+
+  // Format skills as code snippets with usage examples
+  const skillsSection = skills.map(skill => {
+    const params = skill.parameters
+      .map(p => `${p.name}: ${p.type}${p.required ? " (required)" : ""}`)
+      .join(", ");
+    const successInfo = skill.successRate !== undefined
+      ? ` [${(skill.successRate * 100).toFixed(0)}% success rate]`
+      : "";
+    return `### ${skill.name}${successInfo}
+${skill.description}
+${params ? `Parameters: ${params}` : ""}
+\`\`\`typescript
+${skill.code}
+\`\`\``;
+  }).join("\n\n");
+
+  return `${FM_BASE_PROMPT}
+
+## Relevant Skills (use these patterns when applicable)
+
+The following code patterns have been proven effective for similar tasks.
+Adapt them to your specific situation:
+
+${skillsSection}
+
+Remember: These are reference patterns, not exact solutions. Modify as needed.`;
+};
 
 /**
  * Parse tool calls from model output.
@@ -532,6 +580,71 @@ const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<s
 const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
   const port = fmConfig.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
+  const useSkills = fmConfig.useSkills ?? true;
+  const projectRoot = fmConfig.projectRoot ?? process.cwd();
+  const maxSkills = fmConfig.maxSkills ?? 5;
+  const minSimilarity = fmConfig.minSimilarity ?? 0.3;
+
+  // Create skill layer for this project
+  const skillLayer = makeSkillServiceLive(projectRoot);
+
+  // Skill retrieval helper (returns empty array on failure)
+  const getRelevantSkills = async (taskDescription: string): Promise<{ skills: Skill[]; ids: string[] }> => {
+    if (!useSkills) {
+      return { skills: [], ids: [] };
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* SkillService;
+        const skills = yield* service.selectSkills(taskDescription, {
+          topK: maxSkills,
+          minSimilarity,
+        });
+        return skills;
+      });
+
+      const skills = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(skillLayer),
+          Effect.catchAll(() => Effect.succeed([] as Skill[])),
+        ),
+      );
+
+      return {
+        skills,
+        ids: skills.map(s => s.id),
+      };
+    } catch {
+      // Skill retrieval failed - continue without skills
+      return { skills: [], ids: [] };
+    }
+  };
+
+  // Record skill usage after task completion
+  const recordSkillUsage = async (skillIds: string[], success: boolean): Promise<void> => {
+    if (!useSkills || skillIds.length === 0) {
+      return;
+    }
+
+    try {
+      const program = Effect.gen(function* () {
+        const service = yield* SkillService;
+        for (const id of skillIds) {
+          yield* service.recordUsage(id, success);
+        }
+      });
+
+      await Effect.runPromise(
+        program.pipe(
+          Effect.provide(skillLayer),
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        ),
+      );
+    } catch {
+      // Ignore skill usage tracking errors
+    }
+  };
 
   // Execute a tool call (reuses the same logic as Ollama runner)
   const executeTool = async (
@@ -620,20 +733,41 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         options.onOutput?.(text + "\n");
       };
 
+      // Retrieve relevant skills for this task (Voyager-style)
+      const { skills, ids: skillIds } = await getRelevantSkills(task.description);
+      if (skills.length > 0) {
+        log(`[Skills] Injected ${skills.length} relevant skills: ${skills.map(s => s.name).join(", ")}`);
+      }
+
+      // Build system prompt with injected skills
+      const systemPrompt = buildFMSystemPrompt(skills);
+
       // Build initial messages
       const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: FM_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: task.description },
       ];
 
       const maxTurns = task.max_turns ?? options.maxTurns;
       const timeoutMs = (task.timeout_seconds ?? options.timeout) * 1000;
 
+      // Helper to finalize with skill tracking
+      const finalize = async (result: TaskRunResult): Promise<TaskRunResult> => {
+        await recordSkillUsage(skillIds, result.success);
+        return {
+          ...result,
+          sessionMetadata: {
+            ...result.sessionMetadata,
+            skillsUsed: skills.map(s => s.id),
+          },
+        };
+      };
+
       try {
         while (turns < maxTurns) {
           // Check timeout
           if (Date.now() - startTime > timeoutMs) {
-            return {
+            return await finalize({
               success: false,
               turns,
               tokens: totalTokens,
@@ -641,7 +775,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
               output: outputText,
               error: "Task timed out",
               model: "fm:default",
-            };
+            });
           }
 
           turns++;
@@ -665,14 +799,14 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
 
           // Check for completion
           if (assistantContent.includes("TASK_COMPLETE")) {
-            return {
+            return await finalize({
               success: true,
               turns,
               tokens: totalTokens,
               durationMs: Date.now() - startTime,
               output: outputText,
               model: "fm:default",
-            };
+            });
           }
 
           // Parse and execute tool calls
@@ -722,7 +856,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         }
 
         // Reached max turns
-        return {
+        return await finalize({
           success: false,
           turns,
           tokens: totalTokens,
@@ -730,12 +864,12 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           output: outputText,
           error: `Reached max turns (${maxTurns})`,
           model: "fm:default",
-        };
+        });
       } catch (e) {
         const durationMs = Date.now() - startTime;
         const errorMsg = e instanceof Error ? e.message : String(e);
         log(`Error: ${errorMsg}`);
-        return {
+        return await finalize({
           success: false,
           turns,
           tokens: totalTokens,
@@ -743,7 +877,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           output: outputText,
           error: errorMsg,
           model: "fm:default",
-        };
+        });
       }
     },
 
