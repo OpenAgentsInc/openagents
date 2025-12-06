@@ -45,6 +45,12 @@ import {
 import { createTBEmitter, type TBEmitter } from "../tbench-hud/emit.js";
 import { StreamingWriter } from "../atif/streaming-writer.js";
 import { registerATIFDiskWriter, unregisterATIFDiskWriter } from "../atif/hud-emitter.js";
+import {
+  createEpisodeLearner,
+  type LearningResult,
+  type LearningSummary,
+} from "../training/episode-learner.js";
+import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -62,6 +68,13 @@ interface TBenchIterateArgs {
   claudeValidationRate: number;
   resume: string | undefined;
   help: boolean;
+  // Learning flags
+  skills: boolean;
+  memory: boolean;
+  reflect: boolean;
+  maxRetries: number;
+  // Post-run learning
+  learn: boolean;
 }
 
 const parseCliArgs = (): TBenchIterateArgs => {
@@ -79,6 +92,14 @@ const parseCliArgs = (): TBenchIterateArgs => {
       "claude-validation-rate": { type: "string" },
       resume: { type: "string", short: "r" },
       help: { type: "boolean", short: "h" },
+      // Learning flags
+      skills: { type: "boolean" },
+      "no-skills": { type: "boolean" },
+      memory: { type: "boolean" },
+      reflect: { type: "boolean" },
+      "max-retries": { type: "string" },
+      // Post-run learning
+      learn: { type: "boolean" },
     },
   });
 
@@ -107,6 +128,14 @@ Options:
   -r, --resume          Resume from state file
   -h, --help            Show this help message
 
+Learning Options (Foundation Models only):
+      --skills          Enable skill injection (default: true for FM)
+      --no-skills       Disable skill injection
+      --memory          Enable memory retrieval and injection
+      --reflect         Enable reflexion on failures (FM-generated reflections)
+      --max-retries     Max reflection-based retries per task (default: 2)
+      --learn           Enable post-iteration learning (extract skills, generate reflections)
+
 Examples:
   # Run 10 iterations with Claude Code
   bun src/cli/tbench-iterate.ts -s ./tasks/tb-2.0.json -i 10
@@ -117,6 +146,14 @@ Examples:
   # Mixed: 90% Ollama, 10% Claude for validation
   bun src/cli/tbench-iterate.ts -s ./tasks/tb-2.0.json -m ollama:codellama:34b \\
     --claude-validation-rate 0.1 -i 20
+
+  # FM with full learning stack (skills + memory + reflexion)
+  bun src/cli/tbench-iterate.ts -s ./tasks/tb-2.0.json -m fm \\
+    --skills --memory --reflect -i 10
+
+  # Overnight learning sweep (extract skills after each iteration)
+  bun src/cli/tbench-iterate.ts -s ./tasks/tb-2.0.json -m fm \\
+    --skills --memory --reflect --learn -i 10
 
   # Resume interrupted run
   bun src/cli/tbench-iterate.ts --resume ./results/20251205/state.json
@@ -133,6 +170,11 @@ Examples:
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const defaultOutput = `./results/${today}`;
 
+  // Skills: default true for FM, false otherwise. --no-skills overrides
+  const isFM = (values.model ?? "claude-code").startsWith("fm");
+  const skillsDefault = isFM;
+  const skillsEnabled = values["no-skills"] ? false : (values.skills ?? skillsDefault);
+
   return {
     suite: values.suite ?? "",
     output: values.output ?? defaultOutput,
@@ -147,6 +189,13 @@ Examples:
       : 0,
     resume: values.resume,
     help: values.help ?? false,
+    // Learning flags
+    skills: skillsEnabled,
+    memory: values.memory ?? false,
+    reflect: values.reflect ?? false,
+    maxRetries: values["max-retries"] ? parseInt(values["max-retries"], 10) : 2,
+    // Post-run learning
+    learn: values.learn ?? false,
   };
 };
 
@@ -167,6 +216,13 @@ interface RunState {
   claudeValidationRate: number;
   startedAt: string;
   lastUpdatedAt: string;
+  // Learning flags
+  skills?: boolean;
+  memory?: boolean;
+  reflect?: boolean;
+  maxRetries?: number;
+  // Post-run learning
+  learn?: boolean;
 }
 
 const saveState = (outputDir: string, state: RunState): void => {
@@ -655,6 +711,12 @@ const main = async (): Promise<void> => {
     args.timeout = state.timeout;
     args.maxTurns = state.maxTurns;
     args.claudeValidationRate = state.claudeValidationRate;
+    // Restore learning flags
+    args.skills = state.skills ?? args.skills;
+    args.memory = state.memory ?? args.memory;
+    args.reflect = state.reflect ?? args.reflect;
+    args.maxRetries = state.maxRetries ?? args.maxRetries;
+    args.learn = state.learn ?? args.learn;
   }
 
   // Load suite
@@ -682,6 +744,14 @@ const main = async (): Promise<void> => {
   const modelConfig = parseModelString(args.model);
   if (modelConfig.type === "ollama" && args.ollamaEndpoint) {
     modelConfig.endpoint = args.ollamaEndpoint;
+  }
+  // Pass learning flags to FM config
+  if (modelConfig.type === "foundation-models") {
+    modelConfig.useSkills = args.skills;
+    modelConfig.useMemory = args.memory;
+    modelConfig.useReflection = args.reflect;
+    modelConfig.maxReflectionRetries = args.maxRetries;
+    modelConfig.projectRoot = process.cwd();
   }
 
   // Create model runners
@@ -729,6 +799,13 @@ const main = async (): Promise<void> => {
     claudeValidationRate: args.claudeValidationRate,
     startedAt: state?.startedAt ?? new Date().toISOString(),
     lastUpdatedAt: new Date().toISOString(),
+    // Learning flags
+    skills: args.skills,
+    memory: args.memory,
+    reflect: args.reflect,
+    maxRetries: args.maxRetries,
+    // Post-run learning
+    learn: args.learn,
   };
   saveState(outputDir, state);
 
@@ -846,6 +923,55 @@ const main = async (): Promise<void> => {
 
     await episodeStore.record(episode);
     episodes.push(episode);
+
+    // Post-iteration learning (extract skills, generate reflections)
+    if (args.learn) {
+      console.log(`  [Learning] Processing episode for skill extraction...`);
+      try {
+        const learner = createEpisodeLearner({ projectRoot });
+        const learningResult = await Effect.runPromise(
+          learner.processEpisode(episode).pipe(
+            Effect.catchAll((e) => {
+              console.log(`    [Learning] Warning: ${e.message}`);
+              return Effect.succeed({
+                episodeId: episode.id,
+                skillsExtracted: [] as Skill[],
+                reflectionsGenerated: [],
+                patternsIdentified: [],
+                durationMs: 0,
+                processedAt: new Date().toISOString(),
+              } as LearningResult);
+            })
+          )
+        );
+
+        if (learningResult.skillsExtracted.length > 0) {
+          console.log(`    [Learning] Extracted ${learningResult.skillsExtracted.length} skills`);
+          // Register skills with SkillService
+          try {
+            const skillProgram = Effect.gen(function* () {
+              const service = yield* SkillService;
+              for (const skill of learningResult.skillsExtracted) {
+                yield* service.registerSkill(skill);
+              }
+            });
+            await Effect.runPromise(
+              skillProgram.pipe(
+                Effect.provide(makeSkillServiceLive(projectRoot)),
+                Effect.catchAll(() => Effect.void)
+              )
+            );
+          } catch {
+            // Skill registration is best-effort
+          }
+        }
+        if (learningResult.reflectionsGenerated.length > 0) {
+          console.log(`    [Learning] Generated ${learningResult.reflectionsGenerated.length} reflections`);
+        }
+      } catch (e) {
+        console.log(`    [Learning] Error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
 
     // Update state
     state.completedIterations = iter;

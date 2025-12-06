@@ -81,8 +81,86 @@ Artifacts land in `results/` (per-task workspaces plus `results.json`/`report.md
 - Per-task folders with `workspace/`, `output.txt` (agent log), `verification.txt` (pytest output)
 - Token/turn stats and category rollups available via `src/bench/reporter.ts`
 
+## Using Apple Foundation Models (FM)
+
+Run Terminal-Bench with Apple's on-device Foundation Models for free, local inference.
+
+### Prerequisites
+
+- macOS 26 (Tahoe) or later with Apple Intelligence enabled
+- Swift bridge built and running
+
+```bash
+# Build and start the FM bridge (keep running in one terminal)
+cd swift/foundation-bridge
+./build.sh
+./run.sh
+
+# Verify it's working (in another terminal)
+curl http://localhost:11435/health
+```
+
+### Basic FM Run
+
+```bash
+bun src/cli/tbench-iterate.ts \
+  --suite tasks/terminal-bench-2.json \
+  --model fm \
+  --iterations 1 \
+  --output ./results/fm-run
+```
+
+### FM with Learning Features
+
+FM supports three learning layers that improve performance over time:
+
+1. **Skills** (Voyager-style): Inject successful patterns from past runs
+2. **Memory** (Generative Agents): Retrieve relevant episodic memories
+3. **Reflexion**: Generate deep reflections on failures for retry
+
+```bash
+# Full learning stack
+bun src/cli/tbench-iterate.ts \
+  --suite tasks/terminal-bench-2.json \
+  --model fm \
+  --skills \
+  --memory \
+  --reflect \
+  --max-retries 2 \
+  --iterations 10
+
+# Overnight learning sweep (extract skills after each iteration)
+bun src/cli/tbench-iterate.ts \
+  --suite tasks/terminal-bench-2.json \
+  --model fm \
+  --skills --memory --reflect --learn \
+  --iterations 10
+```
+
+### Learning Flags Reference
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--skills` | Enable skill injection | true for FM |
+| `--no-skills` | Disable skill injection | - |
+| `--memory` | Enable memory retrieval and injection | false |
+| `--reflect` | Enable FM-generated reflexion on failures | false |
+| `--max-retries` | Max reflection-based retries per task | 2 |
+| `--learn` | Extract skills and reflections after each iteration | false |
+
+### FM in Subagent Router
+
+FM is also available as a subagent in the MechaCoder orchestrator. When enabled, the routing order is:
+
+1. Claude Code (if available and appropriate)
+2. FM (if macOS and bridge healthy)
+3. Minimal subagent (OpenRouter fallback)
+
 ## Helpful references
 - `docs/tbench/README.md` – full adapter/CLI details
 - `src/cli/tbench-local.ts` – local runner implementation and options
+- `src/cli/tbench-iterate.ts` – overnight iteration runner with learning
 - `src/harbor/openagents_harbor/mechacoder_agent.py` – Harbor entrypoint
 - `src/bench/reporter.ts` – reporters for per-category summaries and markdown
+- `src/fm/` – Foundation Models service implementation
+- `swift/foundation-bridge/` – Swift bridge for Apple FM
