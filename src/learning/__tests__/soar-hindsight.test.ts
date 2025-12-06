@@ -334,13 +334,15 @@ describe("HindsightService", () => {
   });
 
   test("getStats tracks processing", () => {
+    // Use fresh layer to avoid stats accumulation from other tests
+    const freshLayer = makeHindsightServiceLayer();
     const result = runEffect(
       Effect.gen(function* () {
         const service = yield* HindsightService;
         const attempts = createMockAttemptBatch(10, 0.5, 0.2);
         yield* service.relabelBatch(attempts);
         return yield* service.getStats();
-      }).pipe(Effect.provide(HindsightServiceLive)),
+      }).pipe(Effect.provide(freshLayer)),
     );
 
     expect(result.totalAttemptsProcessed).toBe(10);
