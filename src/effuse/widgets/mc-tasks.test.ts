@@ -244,6 +244,100 @@ describe("MCTasksWidget", () => {
     expect(state.assigningId).toBeNull()
   })
 
+  test("US-10.4 shows priority badges for tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "mc-tasks-test" } as Element
+
+          const customWidget = {
+            ...MCTasksWidget,
+            initialState: (): MCTasksState => ({
+              tasks: [
+                {
+                  id: "oa-p0",
+                  title: "Critical bug",
+                  description: "",
+                  status: "open",
+                  priority: 0,
+                  type: "bug",
+                  labels: [],
+                  createdAt: "2024-12-01",
+                  updatedAt: "2024-12-01",
+                },
+                {
+                  id: "oa-p3",
+                  title: "Small tweak",
+                  description: "",
+                  status: "open",
+                  priority: 3,
+                  type: "task",
+                  labels: [],
+                  createdAt: "2024-12-02",
+                  updatedAt: "2024-12-02",
+                },
+              ],
+              loading: false,
+              error: null,
+              collapsed: false,
+              maxDisplay: 20,
+              assigningId: null,
+            }),
+          }
+
+          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("P0")
+          expect(html).toContain("P3")
+        })
+      )
+    )
+  })
+
+  test("US-10.6 displays task labels", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "mc-tasks-test" } as Element
+
+          const customWidget = {
+            ...MCTasksWidget,
+            initialState: (): MCTasksState => ({
+              tasks: [
+                {
+                  id: "oa-l1",
+                  title: "Label task",
+                  description: "",
+                  status: "open",
+                  priority: 2,
+                  type: "feature",
+                  labels: ["ui", "theme"],
+                  createdAt: "2024-12-03",
+                  updatedAt: "2024-12-03",
+                },
+              ],
+              loading: false,
+              error: null,
+              collapsed: false,
+              maxDisplay: 20,
+              assigningId: null,
+            }),
+          }
+
+          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("ui, theme")
+          expect(html).toContain("feature")
+          expect(html).toContain("oa-l1")
+        })
+      )
+    )
+  })
+
   test("US-10.1 loads ready tasks from socket and updates list", async () => {
     await Effect.runPromise(
       Effect.scoped(
