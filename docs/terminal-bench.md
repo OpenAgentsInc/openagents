@@ -198,6 +198,29 @@ Apple FM has a very limited context window (~1100 chars). The adapter automatica
 
 Configure via `FM_MODEL_CONFIGS` in `src/bench/model-adapter.ts`.
 
+### FM Project Defaults
+
+You can set FM as the default TB model and enable learning features in `.openagents/project.json`:
+
+```json
+{
+  "tbench": {
+    "defaultModel": "fm",
+    "defaultSuite": "tasks/fm-mini-suite.json",
+    "defaultTimeout": 3600,
+    "defaultMaxTurns": 300,
+    "defaultLearning": {
+      "skills": true,
+      "memory": true,
+      "reflexion": true,
+      "learn": true
+    }
+  }
+}
+```
+
+With this config, running `bun src/cli/tbench-iterate.ts --suite tasks/terminal-bench-2.json` will automatically use FM with all learning features enabled. CLI flags override these defaults.
+
 ## Helpful references
 - `docs/tbench/README.md` – full adapter/CLI details
 - `src/cli/tbench-local.ts` – local runner implementation and options

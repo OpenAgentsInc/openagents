@@ -260,6 +260,36 @@ export const FailureCleanupConfig = S.Struct({
 });
 export type FailureCleanupConfig = S.Schema.Type<typeof FailureCleanupConfig>;
 
+/** Default learning options for Terminal-Bench runs */
+export const TBenchLearningConfig = S.Struct({
+  /** Enable skill injection (Voyager-style) */
+  skills: S.optionalWith(S.Boolean, { default: () => true }),
+  /** Enable memory retrieval (Generative Agents-style) */
+  memory: S.optionalWith(S.Boolean, { default: () => false }),
+  /** Enable reflexion on failures */
+  reflexion: S.optionalWith(S.Boolean, { default: () => false }),
+  /** Enable post-iteration learning (skill extraction) */
+  learn: S.optionalWith(S.Boolean, { default: () => false }),
+});
+export type TBenchLearningConfig = S.Schema.Type<typeof TBenchLearningConfig>;
+
+/** Configuration for Terminal-Bench runs */
+export const TBenchConfig = S.Struct({
+  /** Default model for TB runs (e.g., "fm", "claude-code") */
+  defaultModel: S.optionalWith(S.String, { default: () => "claude-code" }),
+  /** Default suite path (relative to project root) */
+  defaultSuite: S.optional(S.String),
+  /** Default task timeout in seconds */
+  defaultTimeout: S.optionalWith(S.Number, { default: () => 3600 }),
+  /** Default max turns per task */
+  defaultMaxTurns: S.optionalWith(S.Number, { default: () => 300 }),
+  /** Default learning options */
+  defaultLearning: S.optionalWith(TBenchLearningConfig, {
+    default: () => S.decodeUnknownSync(TBenchLearningConfig)({}),
+  }),
+});
+export type TBenchConfig = S.Schema.Type<typeof TBenchConfig>;
+
 /** Configuration for Healer self-healing subagent */
 export const HealerConfig = S.Struct({
   /** Enable Healer (default: true, replaces safeMode) */
@@ -326,6 +356,9 @@ export const ProjectConfig = S.Struct({
   }),
   failureCleanup: S.optionalWith(FailureCleanupConfig, {
     default: () => S.decodeUnknownSync(FailureCleanupConfig)({}),
+  }),
+  tbench: S.optionalWith(TBenchConfig, {
+    default: () => S.decodeUnknownSync(TBenchConfig)({}),
   }),
   cloud: S.optional(
     S.Struct({
