@@ -403,4 +403,124 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-1.2 shows error when loading with empty path", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suitePath: "   ",
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.status).toBe("No path")
+              expect(updated.statusType).toBe("error")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("No path")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-2.8 toggles individual task selection", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const suite: TBSuiteInfo = {
+                name: "suite",
+                version: "1",
+                tasks: [
+                  { id: "a", name: "A", difficulty: "easy", category: "c" },
+                  { id: "b", name: "B", difficulty: "hard", category: "c" },
+                ],
+              }
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite,
+                selectedTaskIds: new Set(["a"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "b" }, ctx)
+              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "a" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.selectedTaskIds.has("b")).toBe(true)
+              expect(updated.selectedTaskIds.has("a")).toBe(false)
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("1/2 selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-2.9 select all and clear selection buttons work", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const suite: TBSuiteInfo = {
+                name: "suite",
+                version: "1",
+                tasks: [
+                  { id: "a", name: "A", difficulty: "easy", category: "c" },
+                  { id: "b", name: "B", difficulty: "hard", category: "c" },
+                ],
+              }
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite,
+                selectedTaskIds: new Set(["a", "b"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "selectNone" }, ctx)
+              let updated = yield* state.get
+              expect(updated.selectedTaskIds.size).toBe(0)
+
+              yield* TBControlsWidget.handleEvent({ type: "selectAll" }, ctx)
+              updated = yield* state.get
+              expect(updated.selectedTaskIds.size).toBe(2)
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("2/2 selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
