@@ -49,6 +49,9 @@ describe("TBOutputWidget", () => {
               runId: "run-abc12345",
               taskId: "task-001",
               autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
             }),
           }
 
@@ -82,6 +85,9 @@ describe("TBOutputWidget", () => {
               runId: "run-xyz",
               taskId: null,
               autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
             }),
           }
 
@@ -116,6 +122,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -148,15 +155,16 @@ describe("TBOutputWidget", () => {
               const container = { id: "tb-output-test" } as Element
               const state = yield* stateService.cell({
                 outputLines: [],
-                maxLines: 500,
-                visible: false,
-                runId: null,
-                taskId: null,
-                autoScroll: true,
-                showLineNumbers: true,
-                selectedLine: null,
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              maxLines: 500,
+              visible: false,
+              runId: null,
+              taskId: null,
+              autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
+            })
+            const ctx = { state, emit: () => Effect.void, dom, container }
 
               let html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain("hidden")
@@ -194,6 +202,9 @@ describe("TBOutputWidget", () => {
               runId: null,
               taskId: null,
               autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
             }),
           }
 
@@ -225,6 +236,9 @@ describe("TBOutputWidget", () => {
               runId: null,
               taskId: null,
               autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
             }),
           }
 
@@ -242,6 +256,9 @@ describe("TBOutputWidget", () => {
               runId: null,
               taskId: null,
               autoScroll: false,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true },
             }),
           }
 
@@ -262,6 +279,9 @@ describe("TBOutputWidget", () => {
     expect(state.runId).toBeNull()
     expect(state.taskId).toBeNull()
     expect(state.autoScroll).toBe(true)
+    expect(state.showLineNumbers).toBe(true)
+    expect(state.selectedLine).toBeNull()
+    expect(state.visibleSources).toEqual({ agent: true, verification: true, system: true })
   })
 
   test("US-5.1 streams live output on tb_task_output", async () => {
@@ -463,6 +483,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -517,6 +538,7 @@ describe("TBOutputWidget", () => {
                   autoScroll: true,
                   showLineNumbers: true,
                   selectedLine: null,
+                  visibleSources: { agent: true, verification: true, system: true },
                 })
                 const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -535,6 +557,57 @@ describe("TBOutputWidget", () => {
               delete (globalThis as any).navigator
             }
           }
+        })
+      )
+    )
+  })
+
+  test("US-5.7 toggles output sources to show/hide streams", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-output-test" } as Element
+              const state = yield* stateService.cell({
+                outputLines: [
+                  { text: "agent only", source: "agent", timestamp: Date.now() },
+                  { text: "verify line", source: "verification", timestamp: Date.now() },
+                  { text: "system note", source: "system", timestamp: Date.now() },
+                ],
+                maxLines: 500,
+                visible: true,
+                runId: "run-sources",
+                taskId: "task-sources",
+                autoScroll: true,
+                showLineNumbers: true,
+                selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true },
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              let html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).toContain("AGT")
+              expect(html).toContain("VRF")
+              expect(html).toContain("SYS")
+              expect(html).toContain("3 lines")
+
+              yield* TBOutputWidget.handleEvent({ type: "toggleSource", source: "agent" }, ctx)
+              html = (yield* TBOutputWidget.render(ctx)).toString()
+              expect(html).not.toContain("agent only")
+              expect(html).toContain("VRF")
+              expect(html).toContain("SYS")
+              expect(html).toContain("2 lines")
+
+              const updated = yield* state.get
+              expect(updated.visibleSources.agent).toBe(false)
+            }),
+            layer
+          )
         })
       )
     )
@@ -563,6 +636,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
@@ -611,6 +685,7 @@ describe("TBOutputWidget", () => {
                 autoScroll: true,
                 showLineNumbers: true,
                 selectedLine: null,
+                visibleSources: { agent: true, verification: true, system: true },
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 

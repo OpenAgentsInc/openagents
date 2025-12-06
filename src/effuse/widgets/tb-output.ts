@@ -43,6 +43,8 @@ export interface TBOutputState {
   showLineNumbers: boolean
   /** Selected line number */
   selectedLine: number | null
+  /** Visible sources filter */
+  visibleSources: Record<TBOutputSource, boolean>
 }
 
 /** Widget events */
@@ -54,6 +56,7 @@ export type TBOutputEvent =
   | { type: "toggleAutoScroll" }
   | { type: "toggleLineNumbers" }
   | { type: "selectLine"; lineNumber: number }
+  | { type: "toggleSource"; source: TBOutputSource }
 
 // ============================================================================
 // Constants
@@ -134,6 +137,11 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
     autoScroll: true,
     showLineNumbers: true,
     selectedLine: null,
+    visibleSources: {
+      agent: true,
+      verification: true,
+      system: true,
+    },
   }),
 
   render: (ctx) =>
@@ -167,6 +175,25 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
             >
               ↓
             </button>
+            <div class="flex items-center gap-1">
+              ${(["agent", "verification", "system"] as const).map((source) => {
+                const active = state.visibleSources[source]
+                const label = getSourceLabel(source)
+                const base = "text-xs px-2 py-1 rounded border transition-colors"
+                const activeClasses = "bg-zinc-800/80 text-zinc-100 border-zinc-600/60"
+                const inactiveClasses = "text-zinc-400 border-zinc-700/50 hover:border-zinc-600/60"
+                return html`
+                  <button
+                    class="${base} ${active ? activeClasses : inactiveClasses}"
+                    data-action="toggleSource"
+                    data-source="${source}"
+                    title="Toggle ${source} output"
+                  >
+                    ${label}
+                  </button>
+                `
+              })}
+            </div>
             <button
               class="text-xs px-2 py-1 rounded border transition-colors ${state.showLineNumbers
                 ? "bg-zinc-800/80 text-zinc-100 border-zinc-600/60"
@@ -199,10 +226,11 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
       `
 
       // Output lines
+      const visibleLines = state.outputLines.filter((line) => state.visibleSources[line.source])
       const lines =
-        state.outputLines.length > 0
+        visibleLines.length > 0
           ? joinTemplates(
-              state.outputLines.slice(-100).map((line, index, arr) => {
+              visibleLines.slice(-100).map((line, index, arr) => {
                 const lineNumber = state.outputLines.length - arr.length + index + 1
                 const lineNumberStyles = state.selectedLine === lineNumber
                   ? "bg-zinc-800/80 text-zinc-100 border-zinc-700/60"
@@ -243,7 +271,7 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
             ${lines}
           </div>
           <div class="px-3 py-1 border-t border-zinc-800/40 bg-zinc-900/60 text-xs text-zinc-500">
-            ${state.outputLines.length} lines
+            ${visibleLines.length} lines
           </div>
         </div>
       `
@@ -269,6 +297,11 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
           if (lineValue) {
             Effect.runFork(ctx.emit({ type: "selectLine", lineNumber: Number(lineValue) }))
           }
+        } else if (action === "toggleSource") {
+          const source = (target as HTMLElement).dataset.source as TBOutputSource | undefined
+          if (source) {
+            Effect.runFork(ctx.emit({ type: "toggleSource", source }))
+          }
         }
       })
     }),
@@ -286,9 +319,13 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
 
         case "copy": {
           const state = yield* ctx.state.get
-          const text = state.outputLines
+          const linesToCopy = state.outputLines.filter((line) => state.visibleSources[line.source])
+          const total = state.outputLines.length
+          const start = total - linesToCopy.length
+          const text = linesToCopy
             .map((l, index) => {
-              const prefix = state.showLineNumbers ? `${index + 1}: ` : ""
+              const lineNumber = start + index + 1
+              const prefix = state.showLineNumbers ? `${lineNumber}: ` : ""
               return `${prefix}[${l.source}] ${l.text}`
             })
             .join("\n")
@@ -328,6 +365,17 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
             selectedLine: s.selectedLine === event.lineNumber ? null : event.lineNumber,
           }))
           break
+
+        case "toggleSource":
+          yield* ctx.state.update((s) => ({
+            ...s,
+            visibleSources: {
+              ...s.visibleSources,
+              [event.source]: !s.visibleSources[event.source],
+            },
+            selectedLine: s.showLineNumbers ? s.selectedLine : null,
+          }))
+          break
       }
     }),
 
@@ -348,6 +396,11 @@ export const TBOutputWidget: Widget<TBOutputState, TBOutputEvent, SocketServiceT
                 outputLines: [],
                 visible: true,
                 selectedLine: null,
+                visibleSources: {
+                  agent: true,
+                  verification: true,
+                  system: true,
+                },
               }))
             }
 
