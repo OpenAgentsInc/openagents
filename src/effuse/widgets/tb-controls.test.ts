@@ -993,4 +993,52 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-4.2 displays progress bar during run with pass/fail counts", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                isRunning: true,
+                totalTasks: 10,
+                completedTasks: 7,
+                passedTasks: 5,
+                failedTasks: 2,
+                status: "7/10 tasks",
+                statusType: "running",
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+
+              // Verify progress bar is shown
+              expect(html).toContain('data-testid="progress-bar"')
+
+              // Verify progress percentage
+              expect(html).toContain("Progress: 7/10 (70%)")
+
+              // Verify pass/fail counts
+              expect(html).toContain("✓5")
+              expect(html).toContain("✗2")
+
+              // Verify progress bar segments
+              expect(html).toContain('data-testid="progress-passed"')
+              expect(html).toContain('data-testid="progress-failed"')
+              expect(html).toContain("width: 50%") // 5/10 passed = 50%
+              expect(html).toContain("width: 20%") // 2/10 failed = 20%
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })

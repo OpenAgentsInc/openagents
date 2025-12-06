@@ -50,6 +50,14 @@ export interface TBControlsState {
   runId: string | null
   /** Collapsed state */
   collapsed: boolean
+  /** Progress tracking - total tasks in current run */
+  totalTasks: number
+  /** Progress tracking - completed tasks */
+  completedTasks: number
+  /** Progress tracking - passed tasks */
+  passedTasks: number
+  /** Progress tracking - failed tasks */
+  failedTasks: number
 }
 
 /** Widget events */
@@ -116,8 +124,15 @@ const isTBRunComplete = (msg: HudMessage): msg is HudMessage & {
   runId: string
 } => msg.type === "tb_run_complete"
 
+const isTBTaskComplete = (msg: HudMessage): msg is HudMessage & {
+  type: "tb_task_complete"
+  runId: string
+  taskId: string
+  outcome: string
+} => msg.type === "tb_task_complete"
+
 const isTBMessage = (msg: HudMessage): boolean =>
-  isTBRunStart(msg) || isTBRunComplete(msg)
+  isTBRunStart(msg) || isTBRunComplete(msg) || isTBTaskComplete(msg)
 
 // ============================================================================
 // Widget Definition
@@ -136,6 +151,10 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
     isRunning: false,
     runId: null,
     collapsed: false,
+    totalTasks: 0,
+    completedTasks: 0,
+    passedTasks: 0,
+    failedTasks: 0,
   }),
 
   render: (ctx) =>
@@ -230,6 +249,39 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
         </div>
       `
 
+      // Progress bar (US-4.2: shown during run or after completion with results)
+      const progressPercent = state.totalTasks > 0 ? Math.round((state.completedTasks / state.totalTasks) * 100) : 0
+      const passPercent = state.totalTasks > 0 ? Math.round((state.passedTasks / state.totalTasks) * 100) : 0
+      const failPercent = state.totalTasks > 0 ? Math.round((state.failedTasks / state.totalTasks) * 100) : 0
+      const progressBar = (state.isRunning || state.completedTasks > 0) ? html`
+        <div class="px-4 py-2 border-b border-zinc-800/40" data-testid="progress-bar">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-mono text-zinc-400">
+              Progress: ${state.completedTasks}/${state.totalTasks} (${progressPercent}%)
+            </span>
+            <span class="text-xs font-mono">
+              <span class="text-emerald-400">✓${state.passedTasks}</span>
+              <span class="text-zinc-500 mx-1">|</span>
+              <span class="text-red-400">✗${state.failedTasks}</span>
+            </span>
+          </div>
+          <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="h-full flex">
+              <div
+                class="bg-emerald-500 transition-all duration-300"
+                style="width: ${passPercent}%"
+                data-testid="progress-passed"
+              ></div>
+              <div
+                class="bg-red-500 transition-all duration-300"
+                style="width: ${failPercent}%"
+                data-testid="progress-failed"
+              ></div>
+            </div>
+          </div>
+        </div>
+      ` : ""
+
       // Task list (if suite loaded)
       const taskList = state.suite
         ? html`
@@ -291,6 +343,7 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
           ${header}
           ${pathInput}
           ${controls}
+          ${progressBar}
           ${taskList}
         </div>
       `
@@ -396,6 +449,10 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
             isRunning: true,
             status: "Starting...",
             statusType: "running" as const,
+            totalTasks: s.selectedTaskIds.size,
+            completedTasks: 0,
+            passedTasks: 0,
+            failedTasks: 0,
           }))
 
           const result = yield* socket.startTBRun({
@@ -438,6 +495,10 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
             isRunning: true,
             status: `Random: ${randomTask.name}`,
             statusType: "running" as const,
+            totalTasks: 1,
+            completedTasks: 0,
+            passedTasks: 0,
+            failedTasks: 0,
           }))
 
           const result = yield* socket.startTBRun({
@@ -536,14 +597,29 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
               }))
             }
 
+            if (isTBTaskComplete(msg)) {
+              yield* ctx.state.update((s) => {
+                if (s.runId !== msg.runId) return s
+                const isPassed = msg.outcome === "passed"
+                return {
+                  ...s,
+                  completedTasks: s.completedTasks + 1,
+                  passedTasks: s.passedTasks + (isPassed ? 1 : 0),
+                  failedTasks: s.failedTasks + (isPassed ? 0 : 1),
+                  status: `${s.completedTasks + 1}/${s.totalTasks} tasks`,
+                }
+              })
+            }
+
             if (isTBRunComplete(msg)) {
               yield* ctx.state.update((s) => {
                 if (s.runId !== msg.runId) return s
+                const passRate = s.totalTasks > 0 ? Math.round((s.passedTasks / s.totalTasks) * 100) : 0
                 return {
                   ...s,
                   isRunning: false,
                   runId: null,
-                  status: "Complete",
+                  status: `Complete: ${passRate}% (${s.passedTasks}/${s.totalTasks})`,
                   statusType: "success" as const,
                 }
               })
