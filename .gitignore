@@ -83,3 +83,5 @@ coverage/
 # Foundation Models bridge
 bin/foundation-bridge
 swift/foundation-bridge/.build/
+
+openagents
