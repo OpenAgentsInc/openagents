@@ -71,6 +71,7 @@ interface TBenchIterateArgs {
   maxTurns: number;
   claudeValidationRate: number;
   resume: string | undefined;
+  hudUrl: string | undefined;
   help: boolean;
   // Learning flags
   skills: boolean;
@@ -95,6 +96,7 @@ const parseCliArgs = (tbenchDefaults?: ProjectConfig["tbench"] | null): TBenchIt
       "max-turns": { type: "string" },
       "claude-validation-rate": { type: "string" },
       resume: { type: "string", short: "r" },
+      "hud-url": { type: "string" },
       help: { type: "boolean", short: "h" },
       // Learning flags
       skills: { type: "boolean" },
@@ -130,6 +132,7 @@ Options:
       --max-turns       Max agent turns per task (default: 300)
       --claude-validation-rate  Use Claude Code for N% of iterations (0.0-1.0)
   -r, --resume          Resume from state file
+      --hud-url         WebSocket URL for HUD events (default: ws://localhost:8080/ws)
   -h, --help            Show this help message
 
 Learning Options (Foundation Models only):
@@ -203,6 +206,7 @@ Examples:
       ? parseFloat(values["claude-validation-rate"])
       : 0,
     resume: values.resume,
+    hudUrl: values["hud-url"],
     help: values.help ?? false,
     // Learning flags - CLI > project config > defaults
     skills: skillsEnabled,
@@ -960,7 +964,7 @@ const main = async (): Promise<void> => {
   }
 
   // Create HUD emitter
-  const tbEmitter = createTBEmitter();
+  const tbEmitter = createTBEmitter(args.hudUrl ? { url: args.hudUrl } : undefined);
 
   console.log(`\n${"=".repeat(60)}`);
   console.log(`Starting overnight run: ${runId}`);

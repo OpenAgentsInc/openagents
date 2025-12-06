@@ -50,6 +50,7 @@ interface TBenchLocalArgs {
   parallel: number | undefined;
   runId: string | undefined;
   model: string;
+  hudUrl: string | undefined;
   help: boolean | undefined;
 }
 
@@ -66,6 +67,7 @@ const parseCliArgs = (): TBenchLocalArgs => {
       parallel: { type: "string", short: "p" },
       "run-id": { type: "string" },
       model: { type: "string", short: "m" },
+      "hud-url": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -91,6 +93,7 @@ Options:
       --timeout     Task timeout in seconds (default: 3600)
       --max-turns   Max agent turns per task (default: 300)
   -p, --parallel    Run tasks in parallel (default: 1)
+      --hud-url     WebSocket URL for HUD events (default: ws://localhost:8080/ws)
   -h, --help        Show this help message
 
 Examples:
@@ -129,6 +132,7 @@ Examples:
     parallel: values.parallel ? parseInt(values.parallel, 10) : undefined,
     runId: values["run-id"],
     model: values.model ?? "claude-code",
+    hudUrl: values["hud-url"],
     help: values.help,
   };
 };
@@ -718,7 +722,7 @@ const main = async (): Promise<void> => {
   const startTime = Date.now();
 
   // Create TB HUD emitter (silently fails if HUD not running)
-  const tbEmitter = createTBEmitter();
+  const tbEmitter = createTBEmitter(args.hudUrl ? { url: args.hudUrl } : undefined);
 
   // Emit run start to HUD
   const suiteInfo = {

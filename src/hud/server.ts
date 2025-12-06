@@ -22,7 +22,7 @@ export type MessageHandler = (message: HudMessage) => void;
 export type ConnectionHandler = () => void;
 
 export interface HudServerOptions {
-  /** Port to listen on (default: 4242) */
+  /** Port to listen on (default: 8080) */
   port?: number;
   /** Whether to enable verbose logging (default: false) */
   verbose?: boolean;

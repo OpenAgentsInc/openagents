@@ -19,7 +19,7 @@ import type { HudMessage } from "./protocol.js";
 import { HUD_WS_URL, serializeHudMessage } from "./protocol.js";
 
 export interface HudClientOptions {
-  /** WebSocket URL (default: ws://localhost:4242) */
+  /** WebSocket URL (default: ws://localhost:8080/ws) */
   url?: string;
   /** Max queue size before dropping oldest messages (default: 1000) */
   maxQueueSize?: number;

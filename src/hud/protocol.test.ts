@@ -15,12 +15,12 @@ import {
 } from "./protocol.js";
 
 describe("protocol constants", () => {
-  test("HUD_WS_PORT is 4242", () => {
-    expect(HUD_WS_PORT).toBe(4242);
+  test("HUD_WS_PORT is 8080", () => {
+    expect(HUD_WS_PORT).toBe(8080);
   });
 
   test("HUD_WS_URL uses correct port", () => {
-    expect(HUD_WS_URL).toBe("ws://localhost:4242");
+    expect(HUD_WS_URL).toBe("ws://localhost:8080/ws");
   });
 });
 

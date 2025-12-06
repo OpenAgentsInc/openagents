@@ -24096,8 +24096,8 @@ ${endStackCall}`;
   };
   var initialContainerPanesState = ContainerPanesWidget.initialState();
   // src/hud/protocol.ts
-  var HUD_WS_PORT = 4242;
-  var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}`;
+  var HUD_WS_PORT = 8080;
+  var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}/ws`;
   var isATIFStep = (msg) => msg.type === "atif_step";
 
   // src/effuse/widgets/tb-output.ts

@@ -23,11 +23,9 @@
       "description": "There is a file called source.txt in the current directory. Read its contents and create a new file called echo.txt with the exact same content.",
       "difficulty": "easy",
       "category": "implementation",
-      "setup": {
-        "files": {
-          "source.txt": "This is the source content.\nIt has multiple lines.\nPlease copy it exactly."
-        }
-      },
+      "setup": [
+        "printf 'This is the source content.\\nIt has multiple lines.\\nPlease copy it exactly.' > source.txt"
+      ],
       "verification": {
         "type": "custom",
         "script": "test -f echo.txt && diff -q source.txt echo.txt"
@@ -42,11 +40,9 @@
       "description": "There is a file called log.txt with some content. Append the text \"[DONE]\" on a new line at the end of the file.",
       "difficulty": "easy",
       "category": "implementation",
-      "setup": {
-        "files": {
-          "log.txt": "Task started.\nProcessing...\n"
-        }
-      },
+      "setup": [
+        "printf 'Task started.\\nProcessing...\\n' > log.txt"
+      ],
       "verification": {
         "type": "custom",
         "script": "test -f log.txt && grep -q '\\[DONE\\]' log.txt && tail -1 log.txt | grep -q '\\[DONE\\]'"
@@ -61,13 +57,11 @@
       "description": "Use a command to list the files in the current directory and save the output to a file called listing.txt",
       "difficulty": "easy",
       "category": "implementation",
-      "setup": {
-        "files": {
-          "file1.txt": "content1",
-          "file2.txt": "content2",
-          "data.json": "{}"
-        }
-      },
+      "setup": [
+        "echo 'content1' > file1.txt",
+        "echo 'content2' > file2.txt",
+        "echo '{}' > data.json"
+      ],
       "verification": {
         "type": "custom",
         "script": "test -f listing.txt && grep -q 'file1.txt' listing.txt && grep -q 'file2.txt' listing.txt"
@@ -96,11 +90,9 @@
       "description": "There is a file called config.txt that contains 'DEBUG=false'. Change it to 'DEBUG=true'.",
       "difficulty": "easy",
       "category": "implementation",
-      "setup": {
-        "files": {
-          "config.txt": "# Configuration\nDEBUG=false\nVERBOSE=true\n"
-        }
-      },
+      "setup": [
+        "printf '# Configuration\\nDEBUG=false\\nVERBOSE=true\\n' > config.txt"
+      ],
       "verification": {
         "type": "custom",
         "script": "test -f config.txt && grep -q 'DEBUG=true' config.txt && grep -q 'VERBOSE=true' config.txt"
@@ -115,11 +107,9 @@
       "description": "Count the number of words in document.txt and write ONLY the number to count.txt",
       "difficulty": "easy",
       "category": "implementation",
-      "setup": {
-        "files": {
-          "document.txt": "The quick brown fox jumps over the lazy dog."
-        }
-      },
+      "setup": [
+        "echo 'The quick brown fox jumps over the lazy dog.' > document.txt"
+      ],
       "verification": {
         "type": "custom",
         "script": "test -f count.txt && grep -q '9' count.txt"
