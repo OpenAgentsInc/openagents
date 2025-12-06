@@ -7,6 +7,10 @@ import { Effect } from "effect"
 import { ContainerPanesWidget, type ContainerPanesState, type ContainerPane } from "./container-panes.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeTestLayer } from "../layers/test.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
 
 describe("ContainerPanesWidget", () => {
   test("renders empty state", async () => {
@@ -207,5 +211,96 @@ describe("ContainerPanesWidget", () => {
     expect(state.maxVisible).toBe(10)
     expect(state.maxLinesPerPane).toBe(500)
     expect(state.collapsed).toBe(false)
+  })
+
+  test("US-13.4 shows container logs per task", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "container-test" } as Element
+              const pane: ContainerPane = {
+                executionId: "exec-logs",
+                image: "busybox",
+                command: ["echo", "hello"],
+                context: "sandbox",
+                sandboxed: true,
+                workdir: "/work",
+                status: "running",
+                outputLines: [
+                  { text: "stdout line", stream: "stdout", sequence: 1 },
+                  { text: "stderr line", stream: "stderr", sequence: 2 },
+                ],
+                startedAt: "2024-12-05T10:00:00Z",
+              }
+
+              const state = yield* stateService.cell({
+                panes: new Map([["exec-logs", pane]]),
+                maxVisible: 5,
+                maxLinesPerPane: 10,
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* ContainerPanesWidget.render(ctx)).toString()
+              expect(html).toContain("stdout line")
+              expect(html).toContain("stderr line")
+              expect(html).toContain("busybox")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-13.5 shows sandbox/host label and exit status", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "container-test" } as Element
+              const pane: ContainerPane = {
+                executionId: "exec-status",
+                image: "debian",
+                command: ["ls"],
+                context: "init",
+                sandboxed: false,
+                workdir: "/",
+                status: "completed",
+                exitCode: 123,
+                durationMs: 2000,
+                outputLines: [{ text: "done", stream: "stdout", sequence: 1 }],
+                startedAt: "2024-12-05T10:00:00Z",
+              }
+
+              const state = yield* stateService.cell({
+                panes: new Map([["exec-status", pane]]),
+                maxVisible: 5,
+                maxLinesPerPane: 10,
+                collapsed: false,
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* ContainerPanesWidget.render(ctx)).toString()
+              expect(html).toContain("host")
+              expect(html).toContain("123")
+              expect(html).toContain("debian")
+            }),
+            layer
+          )
+        })
+      )
+    )
   })
 })
