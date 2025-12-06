@@ -780,4 +780,46 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-4.1 updates status when tb_run_start arrives", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-controls-test" } as Element
+
+          yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-socket" })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("Running...")
+        })
+      )
+    )
+  })
+
+  test("US-4.1 marks run complete on tb_run_complete for active run", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "tb-controls-test" } as Element
+
+          yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({ type: "tb_run_start", runId: "run-complete" })
+          yield* Effect.sleep(0)
+
+          yield* injectMessage({ type: "tb_run_complete", runId: "run-complete" })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("Complete")
+          expect(html).not.toContain("Running...")
+        })
+      )
+    )
+  })
 })
