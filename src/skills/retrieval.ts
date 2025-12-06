@@ -122,12 +122,7 @@ const makeRetrievalService = (): Effect.Effect<
 
     const query = (q: SkillQuery): Effect.Effect<SkillMatch[], SkillRetrievalError> =>
       Effect.gen(function* () {
-        // Get query embedding
-        const queryEmbedding = yield* embedding.embed(q.query).pipe(
-          Effect.mapError(SkillRetrievalError.fromEmbeddingError),
-        );
-
-        // Get all active skills
+        // Get all active skills FIRST - avoid embedding call if no skills exist
         const skills = yield* store
           .list({
             ...q.filter,
@@ -135,9 +130,15 @@ const makeRetrievalService = (): Effect.Effect<
           })
           .pipe(Effect.mapError(SkillRetrievalError.fromStoreError));
 
+        // Early exit if no skills - avoids unnecessary embedding call
         if (skills.length === 0) {
           return [];
         }
+
+        // Only generate query embedding if we have skills to compare against
+        const queryEmbedding = yield* embedding.embed(q.query).pipe(
+          Effect.mapError(SkillRetrievalError.fromEmbeddingError),
+        );
 
         // Build embeddings for skills that don't have them
         const skillsWithEmbeddings: Array<{ skill: Skill; embedding: number[] }> = [];
