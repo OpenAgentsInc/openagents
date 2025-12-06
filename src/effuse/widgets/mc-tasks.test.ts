@@ -636,4 +636,56 @@ describe("MCTasksWidget", () => {
       )
     )
   })
+
+  test("US-10.3 assigns task in sandbox mode", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let sandboxOption: boolean | undefined
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              assignTaskToMC: (_taskId, options) => {
+                sandboxOption = options?.sandbox
+                return Effect.succeed({ assigned: true })
+              },
+              loadReadyTasks: () => Effect.succeed([]),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "mc-tasks-test" } as Element
+              const state = yield* stateService.cell({
+                ...MCTasksWidget.initialState(),
+                tasks: [
+                  {
+                    id: "oa-sandbox",
+                    title: "Sandbox task",
+                    description: "",
+                    status: "open",
+                    priority: 2,
+                    type: "task",
+                    labels: [],
+                    createdAt: "2024-12-03",
+                    updatedAt: "2024-12-03",
+                  },
+                ],
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-sandbox" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.tasks).toHaveLength(0)
+            }),
+            layer
+          )
+
+          expect(sandboxOption).toBe(true)
+        })
+      )
+    )
+  })
 })
