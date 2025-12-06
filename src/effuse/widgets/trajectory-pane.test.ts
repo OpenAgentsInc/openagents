@@ -389,6 +389,54 @@ describe("TrajectoryPaneWidget", () => {
     )
   })
 
+  test("US-6.1 displays run summary with pass rate and counts", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "trajectory-test" } as Element
+
+          // Create widget with a completed run showing summary stats
+          const customWidget = {
+            ...TrajectoryPaneWidget,
+            initialState: (): TrajectoryPaneState => ({
+              trajectories: [
+                {
+                  id: "run-summary-test",
+                  type: "tb-run",
+                  timestamp: "2024-12-06T12:00:00Z",
+                  label: "TB: 75% (15/20)",
+                  suiteName: "terminal-bench-v1",
+                  passRate: 75,
+                  passed: 15,
+                  failed: 5,
+                  taskCount: 20,
+                },
+              ],
+              selectedId: null,
+              loading: false,
+              error: null,
+              collapsed: false,
+            }),
+          }
+
+          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
+
+          const html = yield* getRendered(container)
+
+          // Verify run summary shows pass rate
+          expect(html).toContain("75%")
+          // Verify passed/failed counts shown
+          expect(html).toContain("15/20")
+          // Verify run ID visible
+          expect(html).toContain("summary-test")
+          // Verify type badge
+          expect(html).toContain("TB")
+        })
+      )
+    )
+  })
+
   test("US-7.5 clears run history and resets selection", async () => {
     await Effect.runPromise(
       Effect.scoped(

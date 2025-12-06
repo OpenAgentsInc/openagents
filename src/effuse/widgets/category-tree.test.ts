@@ -650,6 +650,120 @@ describe("CategoryTreeWidget", () => {
     )
   })
 
+  test("US-4.3 updates pass/fail counts in real-time as tasks complete", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          // Load suite
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [
+              { id: "task-1", name: "Task 1", difficulty: "easy", category: "test" },
+              { id: "task-2", name: "Task 2", difficulty: "easy", category: "test" },
+              { id: "task-3", name: "Task 3", difficulty: "easy", category: "test" },
+            ],
+          })
+          yield* Effect.sleep(0)
+
+          // Initially all pending
+          let html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("test")
+
+          // First task passes
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-1",
+            outcome: "passed",
+          })
+          yield* Effect.sleep(0)
+
+          html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("✓1") // 1 passed
+
+          // Second task fails
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-2",
+            outcome: "failed",
+          })
+          yield* Effect.sleep(0)
+
+          html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("✓1") // Still 1 passed
+          expect(html).toContain("✗1") // Now 1 failed
+
+          // Third task passes
+          yield* injectMessage({
+            type: "tb_task_complete",
+            runId: "run-1",
+            taskId: "task-3",
+            outcome: "passed",
+          })
+          yield* Effect.sleep(0)
+
+          html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("✓2") // Now 2 passed
+          expect(html).toContain("✗1") // Still 1 failed
+        })
+      )
+    )
+  })
+
+  test("US-6.2 shows per-task results with status icons and names", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeCustomTestLayer({})
+          const container = { id: "category-tree-test" } as Element
+
+          yield* mountWidget(CategoryTreeWidget, container).pipe(Effect.provide(layer))
+
+          // Load suite with tasks in different categories
+          yield* injectMessage({
+            type: "tb_suite_info",
+            suiteName: "terminal-bench-v1",
+            suiteVersion: "1.0.0",
+            tasks: [
+              { id: "pass-task", name: "Passed Task", difficulty: "easy", category: "alpha" },
+              { id: "fail-task", name: "Failed Task", difficulty: "medium", category: "beta" },
+              { id: "timeout-task", name: "Timeout Task", difficulty: "hard", category: "alpha" },
+            ],
+          })
+          yield* Effect.sleep(0)
+
+          // Complete all tasks with different outcomes
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "pass-task", outcome: "passed" })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "fail-task", outcome: "failed" })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "timeout-task", outcome: "timeout" })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+
+          // Verify all tasks are visible with correct icons
+          expect(html).toContain("Passed Task")
+          expect(html).toContain("✓") // passed icon
+          expect(html).toContain("Failed Task")
+          expect(html).toContain("✗") // failed icon
+          expect(html).toContain("Timeout Task")
+          expect(html).toContain("⏱") // timeout icon
+
+          // Verify categories are shown
+          expect(html).toContain("alpha")
+          expect(html).toContain("beta")
+        })
+      )
+    )
+  })
+
   test("US-2.11 shows difficulty badges for each task", async () => {
     await Effect.runPromise(
       Effect.scoped(
