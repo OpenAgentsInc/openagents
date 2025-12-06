@@ -97,8 +97,70 @@ describe("APMWidget", () => {
 
           // Check updated content
           html = yield* getRendered(container)
-          // Note: The state should update but our mock doesn't re-render automatically
-          // This test verifies the subscription is set up correctly
+          expect(html).toContain("15.5")
+          expect(html).toContain("50 actions")
+        })
+      )
+    )
+  })
+
+  test("US-4.8 updates live APM metrics from socket", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const container = { id: "apm-test" } as Element
+
+          yield* mountWidget(APMWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "apm_update",
+            sessionId: "session-live",
+            sessionAPM: 22.4,
+            recentAPM: 18.3,
+            totalActions: 75,
+            durationMinutes: 15,
+          })
+
+          yield* Effect.sleep(30)
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("22.4")
+          expect(html).toContain("75 actions")
+        })
+      )
+    )
+  })
+
+  test("US-4.8 renders snapshot metrics and comparison when expanded", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const container = { id: "apm-test" } as Element
+
+          const expandedWidget = {
+            ...APMWidget,
+            initialState: (): APMState => ({ ...APMWidget.initialState(), expanded: true }),
+          }
+
+          yield* mountWidget(expandedWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "apm_snapshot",
+            sessionId: "session-snap",
+            combined: { apm1h: 12.5, apm6h: 10.1, apm1d: 8.5, apmLifetime: 9.9 },
+            comparison: { claudeCodeAPM: 14.2, mechaCoderAPM: 18.4, efficiencyRatio: 1.8 },
+          })
+
+          yield* Effect.sleep(30)
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("12.5")
+          expect(html).toContain("10.1")
+          expect(html).toContain("1.8x")
+          expect(html).toContain("Claude")
+          expect(html).toContain("MC")
         })
       )
     )
