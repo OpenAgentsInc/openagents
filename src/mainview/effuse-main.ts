@@ -72,75 +72,71 @@ const createEffuseLayer = () => {
 const mountAllWidgets = Effect.gen(function* () {
   console.log("[Effuse] Mounting widgets...")
 
-  console.log("[Effuse] ⚠️ SOCKET CONNECTION DISABLED FOR DEBUGGING")
+  // Connect to desktop server WebSocket first
+  const socket = yield* SocketServiceTag
+  yield* socket.connect().pipe(
+    Effect.tap(() => console.log("[Effuse] Socket connected")),
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] Socket connection failed:", e)
+      return Effect.void
+    })
+  )
 
-  // // Connect to desktop server WebSocket first
-  // const socket = yield* SocketServiceTag
-  // yield* socket.connect().pipe(
-  //   Effect.tap(() => console.log("[Effuse] Socket connected")),
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] Socket connection failed:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount APM Widget (bottom-right corner)
+  yield* mountWidgetById(APMWidget, "apm-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] APM widget container not found:", e)
+      return Effect.void
+    })
+  )
 
-  console.log("[Effuse] ⚠️ ALL WIDGETS DISABLED FOR DEBUGGING")
+  // Mount Trajectory Pane (left sidebar)
+  yield* mountWidgetById(TrajectoryPaneWidget, "trajectory-pane-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] Trajectory pane container not found:", e)
+      return Effect.void
+    })
+  )
 
-  // // Mount APM Widget (bottom-right corner)
-  // yield* mountWidgetById(APMWidget, "apm-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] APM widget container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount Container Panes (execution output grid)
+  yield* mountWidgetById(ContainerPanesWidget, "container-panes-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] Container panes container not found:", e)
+      return Effect.void
+    })
+  )
 
-  // // Mount Trajectory Pane (left sidebar)
-  // yield* mountWidgetById(TrajectoryPaneWidget, "trajectory-pane-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] Trajectory pane container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount TB Output (streaming output viewer)
+  yield* mountWidgetById(TBOutputWidget, "tb-output-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] TB output container not found:", e)
+      return Effect.void
+    })
+  )
 
-  // // Mount Container Panes (execution output grid)
-  // yield* mountWidgetById(ContainerPanesWidget, "container-panes-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] Container panes container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount MC Tasks (ready tasks list)
+  yield* mountWidgetById(MCTasksWidget, "mc-tasks-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] MC tasks container not found:", e)
+      return Effect.void
+    })
+  )
 
-  // // Mount TB Output (streaming output viewer)
-  // yield* mountWidgetById(TBOutputWidget, "tb-output-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] TB output container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount TB Controls (suite loading, run control)
+  yield* mountWidgetById(TBControlsWidget, "tb-controls-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] TB controls container not found:", e)
+      return Effect.void
+    })
+  )
 
-  // // Mount MC Tasks (ready tasks list)
-  // yield* mountWidgetById(MCTasksWidget, "mc-tasks-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] MC tasks container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
-
-  // // Mount TB Controls (suite loading, run control)
-  // yield* mountWidgetById(TBControlsWidget, "tb-controls-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] TB controls container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
-
-  // // Mount Category Tree (task categories)
-  // yield* mountWidgetById(CategoryTreeWidget, "category-tree-widget").pipe(
-  //   Effect.catchAll((e) => {
-  //     console.warn("[Effuse] Category tree container not found:", e)
-  //     return Effect.void
-  //   })
-  // )
+  // Mount Category Tree (task categories)
+  yield* mountWidgetById(CategoryTreeWidget, "category-tree-widget").pipe(
+    Effect.catchAll((e) => {
+      console.warn("[Effuse] Category tree container not found:", e)
+      return Effect.void
+    })
+  )
 
   console.log("[Effuse] All widgets mounted successfully")
 })
@@ -156,14 +152,37 @@ const mountAllWidgets = Effect.gen(function* () {
  * so the scope stays open and event handlers keep running.
  */
 const initEffuse = () => {
-  console.log("[Effuse] TEST: Creating layer without using it")
+  console.log("[Effuse] Creating layer...")
 
+  let layer
   try {
-    const layer = createEffuseLayer()
-    console.log("[Effuse] Layer created successfully")
+    layer = createEffuseLayer()
+    console.log("[Effuse] Layer created")
   } catch (e) {
-    console.error("[Effuse] Layer creation failed:", e)
+    console.error("[Effuse] Failed to create layer:", e)
+    return
   }
+
+  // Mount widgets then wait forever (keeps scope open for event handlers)
+  const program = Effect.gen(function* () {
+    yield* mountAllWidgets
+    console.log("[Effuse] Widgets mounted, keeping scope alive...")
+    // Never complete - keeps the scope open so forked fibers keep running
+    yield* Effect.never
+  })
+
+  console.log("[Effuse] Starting Effect runtime...")
+
+  Effect.runFork(
+    program.pipe(
+      Effect.provide(layer),
+      Effect.scoped,
+      Effect.catchAllDefect((defect) => {
+        console.error("[Effuse] Defect:", defect)
+        return Effect.void
+      })
+    )
+  )
 
   console.log("[Effuse] Mainview initialized")
 }

@@ -522,7 +522,7 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
 
     return [
       pipe(
-        Stream.unwrap(Effect.map(socket, (s) => s.messages)),
+        Stream.unwrap(Effect.map(socket, (s) => s.getMessages())),
         Stream.filter((msg): msg is HudMessage => isTBMessage(msg)),
         Stream.map((msg) =>
           Effect.gen(function* () {

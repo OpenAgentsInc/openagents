@@ -56,7 +56,10 @@ export const mountWidget = <S, E, R>(
     // Build context
     const ctx: WidgetContext<S, E> = {
       state,
-      emit: (event) => Queue.offer(eventQueue, event),
+      emit: (event) =>
+        Queue.offer(eventQueue, event).pipe(
+          Effect.catchAll(() => Effect.void) // Silently ignore queue full/shutdown
+        ),
       dom,
       container,
     }
