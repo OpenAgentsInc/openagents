@@ -22,6 +22,7 @@ import {
   fmChat,
   fmCheckHealth,
   fmGetMetrics,
+  fmListModels,
 } from "./service.js";
 import {
   makeFMLayerWithMonitor,
@@ -373,6 +374,60 @@ describe.skipIf(!isMacOS())("FM Layer Integration (macOS)", () => {
     // Health callback should have been triggered
     expect(healthChangeCalled).toBe(true);
     expect(lastHealth).not.toBeNull();
+  });
+});
+
+// --- Models List Integration ---
+
+describe.skipIf(!isMacOS())("FM Models List Integration (macOS, bridge required)", () => {
+  const skipIfNoBridge = !bridgeAvailable;
+
+  test.skipIf(skipIfNoBridge)("listModels returns available models", async () => {
+    const layer = makeFMServiceLayer({
+      port: FM_PORT,
+      enableLogging: false,
+      autoStart: false,
+      maxRetries: 1,
+    });
+
+    const program = Effect.gen(function* () {
+      const service = yield* FMService;
+      return yield* service.listModels();
+    });
+
+    const result = await Effect.runPromise(
+      program.pipe(Effect.provide(layer), Effect.timeout(Duration.millis(10_000))),
+    );
+
+    expect(result).toBeDefined();
+    expect(result.object).toBe("list");
+    expect(Array.isArray(result.data)).toBe(true);
+    // FM bridge should return at least one model
+    expect(result.data.length).toBeGreaterThan(0);
+    // Check model structure
+    if (result.data.length > 0) {
+      expect(result.data[0].id).toBeDefined();
+      expect(result.data[0].object).toBe("model");
+      expect(typeof result.data[0].created).toBe("number");
+      expect(result.data[0].owned_by).toBeDefined();
+    }
+  });
+
+  test.skipIf(skipIfNoBridge)("fmListModels convenience function works", async () => {
+    const layer = makeFMServiceLayer({
+      port: FM_PORT,
+      enableLogging: false,
+      autoStart: false,
+      maxRetries: 1,
+    });
+
+    const result = await Effect.runPromise(
+      fmListModels().pipe(Effect.provide(layer), Effect.timeout(Duration.millis(10_000))),
+    );
+
+    expect(result).toBeDefined();
+    expect(result.object).toBe("list");
+    expect(Array.isArray(result.data)).toBe(true);
   });
 });
 

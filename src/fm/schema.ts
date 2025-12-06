@@ -108,6 +108,22 @@ export const isRetryableError = (reason: FMErrorReason): boolean => {
   }
 };
 
+// --- Model Types ---
+
+export const FMModel = S.Struct({
+  id: S.String,
+  object: S.Literal("model"),
+  created: S.Number,
+  owned_by: S.String,
+});
+export type FMModel = S.Schema.Type<typeof FMModel>;
+
+export const FMModelsResult = S.Struct({
+  object: S.Literal("list"),
+  data: S.Array(FMModel),
+});
+export type FMModelsResult = S.Schema.Type<typeof FMModelsResult>;
+
 // --- Health Types ---
 
 export const FMHealthStatus = S.Struct({

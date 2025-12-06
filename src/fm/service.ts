@@ -29,6 +29,7 @@ import {
   FMError,
   type FMClient,
   type FMHealthResult,
+  type FMModelsResult,
 } from "../llm/foundation-models.js";
 import type { ChatRequest, ChatResponse } from "../llm/openrouter-types.js";
 import {
@@ -75,6 +76,11 @@ export interface IFMService {
    * Get the underlying client for advanced usage.
    */
   readonly getClient: () => FMClient;
+
+  /**
+   * List available models from the FM bridge.
+   */
+  readonly listModels: () => Effect.Effect<FMModelsResult, FMServiceError>;
 }
 
 // --- Service Tag ---
@@ -289,6 +295,9 @@ const makeService = (
   const resetMetricsImpl = (): Effect.Effect<void, never> =>
     Ref.set(metricsRef, initialMetricsState);
 
+  const listModelsImpl = (): Effect.Effect<FMModelsResult, FMServiceError> =>
+    client.listModels().pipe(Effect.mapError((e) => FMServiceError.fromFMError(e)));
+
   return {
     chat,
     checkHealth: checkHealthImpl,
@@ -296,6 +305,7 @@ const makeService = (
     getMetrics: getMetricsImpl,
     resetMetrics: resetMetricsImpl,
     getClient: () => client,
+    listModels: listModelsImpl,
   };
 };
 
@@ -359,4 +369,13 @@ export const fmGetMetrics = (): Effect.Effect<FMAggregateMetrics, never, FMServi
   Effect.gen(function* () {
     const service = yield* FMService;
     return yield* service.getMetrics();
+  });
+
+/**
+ * List available FM models using FMService from context.
+ */
+export const fmListModels = (): Effect.Effect<FMModelsResult, FMServiceError, FMService> =>
+  Effect.gen(function* () {
+    const service = yield* FMService;
+    return yield* service.listModels();
   });
