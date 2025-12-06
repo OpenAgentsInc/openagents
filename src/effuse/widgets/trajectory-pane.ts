@@ -216,11 +216,11 @@ export const TrajectoryPaneWidget: Widget<TrajectoryPaneState, TrajectoryPaneEve
         const trajectoryId = (target as HTMLElement).dataset.trajectoryId
 
         if (action === "load") {
-          Effect.runPromise(ctx.emit({ type: "load" }))
+          Effect.runFork(ctx.emit({ type: "load" }))
         } else if (action === "select" && trajectoryId) {
-          Effect.runPromise(ctx.emit({ type: "select", trajectoryId }))
+          Effect.runFork(ctx.emit({ type: "select", trajectoryId }))
         } else if (action === "toggleCollapse") {
-          Effect.runPromise(ctx.emit({ type: "toggleCollapse" }))
+          Effect.runFork(ctx.emit({ type: "toggleCollapse" }))
         }
       })
     }),

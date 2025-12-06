@@ -313,15 +313,15 @@ export const CategoryTreeWidget: Widget<CategoryTreeState, CategoryTreeEvent, So
         const taskId = el.dataset.taskId
 
         if (action === "hide") {
-          Effect.runPromise(ctx.emit({ type: "hide" }))
+          Effect.runFork(ctx.emit({ type: "hide" }))
         } else if (action === "expandAll") {
-          Effect.runPromise(ctx.emit({ type: "expandAll" }))
+          Effect.runFork(ctx.emit({ type: "expandAll" }))
         } else if (action === "collapseAll") {
-          Effect.runPromise(ctx.emit({ type: "collapseAll" }))
+          Effect.runFork(ctx.emit({ type: "collapseAll" }))
         } else if (action === "toggleCategory" && category) {
-          Effect.runPromise(ctx.emit({ type: "toggleCategory", category }))
+          Effect.runFork(ctx.emit({ type: "toggleCategory", category }))
         } else if (action === "selectTask" && taskId) {
-          Effect.runPromise(ctx.emit({ type: "selectTask", taskId }))
+          Effect.runFork(ctx.emit({ type: "selectTask", taskId }))
         }
       })
     }),

@@ -57,7 +57,11 @@ const makeSocketService = (client: SocketClient): SocketService => {
         // Create a stream from the client's message handler
         messageStream = Stream.async<HudMessage>((emit) => {
           const unsubscribe = client.onMessage((message) => {
-            emit.single(message)
+            // emit.single returns a Promise - must handle it to avoid unhandled rejections
+            void emit.single(message).catch(() => {
+              // Stream might be closed, queue might be full, etc.
+              // Silently ignore - this is fire-and-forget event emission
+            })
           })
           // Return cleanup function
           return Effect.sync(unsubscribe)

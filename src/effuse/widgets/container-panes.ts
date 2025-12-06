@@ -303,11 +303,11 @@ export const ContainerPanesWidget: Widget<ContainerPanesState, ContainerPanesEve
         const executionId = el.dataset.executionId
 
         if (action === "clear") {
-          Effect.runPromise(ctx.emit({ type: "clear" }))
+          Effect.runFork(ctx.emit({ type: "clear" }))
         } else if (action === "toggleCollapse") {
-          Effect.runPromise(ctx.emit({ type: "toggleCollapse" }))
+          Effect.runFork(ctx.emit({ type: "toggleCollapse" }))
         } else if (action === "dismiss" && executionId) {
-          Effect.runPromise(ctx.emit({ type: "dismiss", executionId }))
+          Effect.runFork(ctx.emit({ type: "dismiss", executionId }))
         }
       })
     }),
