@@ -283,4 +283,60 @@ describe("TBOutputWidget", () => {
       )
     )
   })
+
+  test("US-5.6 copy output collects rendered text", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          let copied = ""
+          const originalNavigator = globalThis.navigator
+          ;(globalThis as any).navigator = {
+            clipboard: {
+              writeText: (text: string) => {
+                copied = text
+                return Promise.resolve()
+              },
+            },
+          }
+
+          try {
+            yield* Effect.provide(
+              Effect.gen(function* () {
+                const stateService = yield* StateServiceTag
+                const dom = yield* DomServiceTag
+                const container = { id: "tb-output-test" } as Element
+                const state = yield* stateService.cell({
+                  outputLines: [
+                    { text: "line one", source: "agent", timestamp: Date.now() },
+                    { text: "line two", source: "verification", timestamp: Date.now() },
+                  ],
+                  maxLines: 500,
+                  visible: true,
+                  runId: "run-copy",
+                  taskId: "task-copy",
+                  autoScroll: true,
+                })
+                const ctx = { state, emit: () => Effect.void, dom, container }
+
+                yield* TBOutputWidget.handleEvent({ type: "copy" }, ctx)
+
+                expect(copied).toContain("[agent] line one")
+                expect(copied).toContain("[verification] line two")
+              }),
+              layer
+            )
+          } finally {
+            if (originalNavigator) {
+              ;(globalThis as any).navigator = originalNavigator
+            } else {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              delete (globalThis as any).navigator
+            }
+          }
+        })
+      )
+    )
+  })
 })
