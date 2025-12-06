@@ -22,20 +22,20 @@ export class TestError extends Data.TaggedError("TestError")<{
 }> {}
 
 /**
- * Error type for CDP operations.
+ * Error type for webview-bun test operations.
  *
- * Covers browser launch, WebSocket, and protocol errors.
+ * Covers webview launch, subprocess, and execution errors.
  */
-export class CDPError extends Data.TaggedError("CDPError")<{
+export class WebviewTestError extends Data.TaggedError("WebviewTestError")<{
   readonly reason:
-    | "browser_not_found"
+    | "webview_not_found"
     | "launch_failed"
-    | "connection_failed"
-    | "protocol_error"
-    | "navigation_failed"
-    | "page_closed"
+    | "subprocess_failed"
+    | "execution_failed"
+    | "timeout"
+    | "parse_failed"
   readonly message: string
-  readonly code?: number
+  readonly exitCode?: number
 }> {}
 
 /**
@@ -49,17 +49,13 @@ export interface WaitOptions {
 }
 
 /**
- * Options for browser launch.
+ * Options for webview test execution.
  */
-export interface BrowserOptions {
-  /** Run headless (default: true) */
-  readonly headless?: boolean
+export interface WebviewTestOptions {
+  /** Show webview window for debugging (default: false) */
+  readonly headed?: boolean
   /** Delay between actions in ms (default: 0) */
   readonly slowMo?: number
-  /** Custom Chrome path */
-  readonly chromePath?: string
-  /** Viewport width (default: 1280) */
-  readonly width?: number
-  /** Viewport height (default: 720) */
-  readonly height?: number
+  /** Test timeout in ms (default: 30000) */
+  readonly timeout?: number
 }
