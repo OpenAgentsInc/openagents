@@ -301,6 +301,50 @@ describe("ContainerPanesWidget", () => {
     )
   })
 
+  test("US-5.10 shows container stdout and stderr output lines", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const container = { id: "container-test" } as Element
+
+          yield* mountWidget(ContainerPanesWidget, container).pipe(Effect.provide(layer))
+
+          yield* injectMessage({
+            type: "container_start",
+            executionId: "exec-logs",
+            image: "node:18",
+            command: ["npm", "test"],
+            context: "verification",
+            sandboxed: false,
+            workdir: "/repo",
+            timestamp: "2024-12-05T12:00:00Z",
+          })
+          yield* injectMessage({
+            type: "container_output",
+            executionId: "exec-logs",
+            text: "stdout line",
+            stream: "stdout",
+            sequence: 1,
+          })
+          yield* injectMessage({
+            type: "container_output",
+            executionId: "exec-logs",
+            text: "stderr line",
+            stream: "stderr",
+            sequence: 2,
+          })
+          yield* Effect.sleep(0)
+
+          const html = (yield* getRendered(container)) ?? ""
+          expect(html).toContain("stdout line")
+          expect(html).toContain("stderr line")
+          expect(html).toContain("node:18")
+        })
+      )
+    )
+  })
+
   test("US-13.5 shows sandbox/host label and exit status", async () => {
     await Effect.runPromise(
       Effect.scoped(
