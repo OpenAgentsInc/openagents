@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { Effect, Stream } from "effect"
-import { TBControlsWidget, type TBControlsState, type TBSuiteInfo } from "./tb-controls.js"
+import { TBControlsWidget, initialTBControlsState, type TBControlsState, type TBSuiteInfo } from "./tb-controls.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"
@@ -677,6 +677,56 @@ describe("TBControlsWidget", () => {
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("2/2 selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-2.8 shows selection count as tasks are toggled", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const suite: TBSuiteInfo = {
+                name: "terminal-bench-v1",
+                version: "1.0.0",
+                tasks: [
+                  { id: "task-1", name: "Task 1", difficulty: "easy", category: "alpha" },
+                  { id: "task-2", name: "Task 2", difficulty: "hard", category: "beta" },
+                ],
+              }
+
+              const state = yield* stateService.cell({
+                ...initialTBControlsState,
+                suitePath: "/tmp/suite.json",
+                suite,
+                selectedTaskIds: new Set(["task-1"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              // Initial render reflects 1/2 selected
+              let html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("1/2 selected")
+
+              // Toggle second task on
+              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "task-2" }, ctx)
+
+              html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("2/2 selected")
+
+              // Toggle first task off
+              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "task-1" }, ctx)
+              html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("1/2 selected")
             }),
             layer
           )
