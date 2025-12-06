@@ -514,8 +514,89 @@ const createOllamaRunner = (ollamaConfig: OllamaModelConfig): ModelRunner => {
  * - Safe limit: ~1100 chars = ~280 tokens
  * - Bridge can corrupt after repeated errors - needs restart
  */
-const FM_MAX_CONTEXT_CHARS = 1100; // Safe limit with room for response
+
+/**
+ * FM model configuration for different context limits.
+ * Allows per-model customization of context window size.
+ */
+export interface FMModelContextConfig {
+  /** Maximum context characters for this model */
+  maxContextChars: number;
+  /** Maximum response characters (optional, for future use) */
+  maxResponseChars?: number;
+  /** Supported tool set (optional, for future use) */
+  toolSet?: string[];
+}
+
+/**
+ * Configuration map for different FM models.
+ * Currently only "apple-foundation" is supported.
+ */
+export const FM_MODEL_CONFIGS: Record<string, FMModelContextConfig> = {
+  "apple-foundation": { maxContextChars: 1100 },
+  "default": { maxContextChars: 1100 },
+};
+
+/** Default context limit when no model-specific config exists */
+export const FM_MAX_CONTEXT_CHARS_DEFAULT = 1100;
+
+/** Helper to get context limit for a model */
+export const getFMContextLimit = (model?: string): number => {
+  if (model && FM_MODEL_CONFIGS[model]) {
+    return FM_MODEL_CONFIGS[model].maxContextChars;
+  }
+  return FM_MAX_CONTEXT_CHARS_DEFAULT;
+};
+
 const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
+
+/**
+ * Structured error type for FM tool parsing failures.
+ * Enables clear logging and debugging when FM output cannot be parsed.
+ */
+export interface FMToolParseError {
+  type: "FM_TOOL_PARSE_ERROR";
+  /** First 200 chars of the raw output that couldn't be parsed */
+  rawSnippet: string;
+  /** Reason for the parse failure */
+  reason: "no_valid_format" | "json_parse_error" | "missing_required_fields" | "unknown_tool";
+  /** ISO timestamp of the error */
+  timestamp: string;
+  /** Optional additional context */
+  details?: string;
+}
+
+/**
+ * Result type for tool parsing - either success with calls or failure with error.
+ */
+export type ToolParseResult =
+  | { success: true; calls: Array<{ name: string; arguments: Record<string, unknown> }> }
+  | { success: false; error: FMToolParseError };
+
+/**
+ * Log an FM tool parse error in a structured way.
+ */
+export const logFMToolParseError = (error: FMToolParseError): void => {
+  console.error(`[FM_TOOL_PARSE_ERROR] ${error.reason}: ${error.rawSnippet.slice(0, 100)}...`);
+  if (error.details) {
+    console.error(`  Details: ${error.details}`);
+  }
+};
+
+/**
+ * Create an FMToolParseError from raw text.
+ */
+export const createFMToolParseError = (
+  rawText: string,
+  reason: FMToolParseError["reason"],
+  details?: string,
+): FMToolParseError => ({
+  type: "FM_TOOL_PARSE_ERROR",
+  rawSnippet: rawText.slice(0, 200),
+  reason,
+  timestamp: new Date().toISOString(),
+  details,
+});
 
 /**
  * System prompt for Foundation Models-based coding agents.
@@ -533,11 +614,13 @@ After the tool runs, say TASK_COMPLETE.`;
 
 /**
  * Truncate messages to fit within FM context limit.
- * Strategy: Keep system prompt, trim middle history, keep last user message.
+ * Strategy: Keep system prompt (first), trim middle history, keep last message.
+ *
+ * Exported for testing.
  */
-const truncateMessagesForFM = (
+export const truncateMessagesForFM = (
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
-  maxChars: number = FM_MAX_CONTEXT_CHARS,
+  maxChars: number = FM_MAX_CONTEXT_CHARS_DEFAULT,
 ): Array<{ role: "system" | "user" | "assistant"; content: string }> => {
   // Calculate total chars
   const totalChars = messages.reduce((sum, m) => sum + m.content.length + 20, 0); // +20 for role overhead
@@ -652,8 +735,10 @@ ${reflections}`;
  * - ```json {"name":"...", "arguments":{...}} ```
  * - "Using write_file tool with arguments: path=hello.txt, content=Hello World"
  * - {"response":"Using write_file tool with arguments: path=X, content=Y"}
+ *
+ * Exported for testing.
  */
-const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
+export const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
   // Try <tool_call>...</tool_call> format
@@ -712,57 +797,101 @@ const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<s
 };
 
 /**
+ * Known tools that can be parsed from descriptive format.
+ */
+export const KNOWN_FM_TOOLS = ["write_file", "read_file", "run_command", "edit_file", "grep", "glob", "find"] as const;
+export type KnownFMTool = typeof KNOWN_FM_TOOLS[number];
+
+/**
  * Parse descriptive tool call format from FM.
  * e.g., "Using write_file tool with arguments: path=hello.txt, content=Hello, world!"
+ *
+ * Supports all known tools, not just a hardcoded subset.
+ * Exported for testing.
  */
-const parseDescriptiveToolCall = (text: string): { name: string; arguments: Record<string, unknown> } | null => {
-  // Match "Using {tool_name} tool with arguments: {args}"
-  const descriptiveRegex = /Using\s+(\w+)\s+tool\s+with\s+arguments?:\s*(.+)/i;
+export const parseDescriptiveToolCall = (text: string): { name: string; arguments: Record<string, unknown> } | null => {
+  // Match "Using {tool_name} tool with arguments: {args}" (case insensitive)
+  const descriptiveRegex = /Using\s+(\w+)\s+tool\s+with\s+arguments?:\s*(.+)/is;
   const match = descriptiveRegex.exec(text);
   if (!match) return null;
 
-  const toolName = match[1];
-  const argsStr = match[2];
+  const toolName = match[1].toLowerCase();
+  const argsStr = match[2].trim();
 
   // Parse arguments: "path=hello.txt, content=Hello, world!"
   // Handle both comma-separated and key=value format
   const args: Record<string, unknown> = {};
 
-  // For write_file, expect path= and content=
-  if (toolName === "write_file") {
-    const pathMatch = argsStr.match(/path\s*=\s*([^,]+?)(?:,|$)/);
-    const contentMatch = argsStr.match(/content\s*=\s*(.+)/);
-    if (pathMatch) {
-      args.path = pathMatch[1].trim();
+  // Tool-specific parsing for better accuracy
+  switch (toolName) {
+    case "write_file": {
+      // path is usually first, content is everything after "content="
+      const pathMatch = argsStr.match(/path\s*=\s*([^,\s]+)/i);
+      const contentMatch = argsStr.match(/content\s*=\s*(.+)/is);
+      if (pathMatch) {
+        args.path = pathMatch[1].trim();
+      }
+      if (contentMatch) {
+        // Content can contain commas, equals, anything - take it all
+        args.content = contentMatch[1].trim();
+      }
+      if (args.path) {
+        return { name: toolName, arguments: args };
+      }
+      break;
     }
-    if (contentMatch) {
-      args.content = contentMatch[1].trim();
-    }
-    if (args.path) {
-      return { name: toolName, arguments: args };
-    }
-  }
 
-  // For read_file, expect path=
-  if (toolName === "read_file") {
-    const pathMatch = argsStr.match(/path\s*=\s*(.+)/);
-    if (pathMatch) {
-      args.path = pathMatch[1].trim();
-      return { name: toolName, arguments: args };
+    case "read_file": {
+      const pathMatch = argsStr.match(/path\s*=\s*(.+)/i);
+      if (pathMatch) {
+        args.path = pathMatch[1].trim();
+        return { name: toolName, arguments: args };
+      }
+      break;
     }
-  }
 
-  // For run_command, expect command=
-  if (toolName === "run_command") {
-    const commandMatch = argsStr.match(/command\s*=\s*(.+)/);
-    if (commandMatch) {
-      args.command = commandMatch[1].trim();
-      return { name: toolName, arguments: args };
+    case "run_command": {
+      // Command can contain anything - pipes, redirects, etc.
+      const commandMatch = argsStr.match(/command\s*=\s*(.+)/is);
+      if (commandMatch) {
+        args.command = commandMatch[1].trim();
+        return { name: toolName, arguments: args };
+      }
+      break;
+    }
+
+    case "edit_file": {
+      // path, old_text, new_text
+      const pathMatch = argsStr.match(/path\s*=\s*([^,\s]+)/i);
+      const oldTextMatch = argsStr.match(/old_text\s*=\s*([^,]+?)(?:,\s*new_text|$)/i);
+      const newTextMatch = argsStr.match(/new_text\s*=\s*(.+)/is);
+      if (pathMatch) args.path = pathMatch[1].trim();
+      if (oldTextMatch) args.old_text = oldTextMatch[1].trim();
+      if (newTextMatch) args.new_text = newTextMatch[1].trim();
+      if (args.path && (args.old_text || args.new_text)) {
+        return { name: toolName, arguments: args };
+      }
+      break;
+    }
+
+    case "grep":
+    case "glob":
+    case "find": {
+      // Pattern-based tools: pattern=X, path=Y
+      const patternMatch = argsStr.match(/pattern\s*=\s*([^,]+)/i);
+      const pathMatch = argsStr.match(/path\s*=\s*([^,]+)/i);
+      if (patternMatch) args.pattern = patternMatch[1].trim();
+      if (pathMatch) args.path = pathMatch[1].trim();
+      if (args.pattern || args.path) {
+        return { name: toolName, arguments: args };
+      }
+      break;
     }
   }
 
   // Generic fallback: try to parse key=value pairs
-  const pairRegex = /(\w+)\s*=\s*([^,]+)(?:,|$)/g;
+  // This handles unknown tools and edge cases
+  const pairRegex = /(\w+)\s*=\s*([^,]+?)(?:,|$)/g;
   let pairMatch;
   while ((pairMatch = pairRegex.exec(argsStr)) !== null) {
     args[pairMatch[1]] = pairMatch[2].trim();
