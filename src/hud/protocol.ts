@@ -516,6 +516,65 @@ export interface TBRunRequestMessage {
   maxTurns?: number;
 }
 
+/**
+ * TB learning metrics update (FM learning features)
+ * Emitted when skills/memory/reflexion are used during task execution.
+ */
+export interface TBLearningMetricsMessage {
+  type: "tb_learning_metrics";
+  runId: string;
+  taskId?: string;
+  /** Model used (e.g., "fm", "claude-code") */
+  model: string;
+  /** Skills injected into the prompt */
+  skillsUsed: number;
+  /** Skill IDs used */
+  skillIds: string[];
+  /** Memories injected into the prompt */
+  memoriesUsed: number;
+  /** Whether reflexion was enabled */
+  reflexionEnabled: boolean;
+  /** Reflections generated during this run/task */
+  reflectionsGenerated: number;
+  /** New skills learned from this run */
+  newSkillsLearned: number;
+  /** Estimated token cost (if available) */
+  tokenCostUsd?: number;
+}
+
+/**
+ * TB learning summary (emitted at end of iteration/run)
+ */
+export interface TBLearningSummaryMessage {
+  type: "tb_learning_summary";
+  runId: string;
+  /** Total tasks processed */
+  totalTasks: number;
+  /** Tasks passed */
+  passed: number;
+  /** Pass rate for this run */
+  passRate: number;
+  /** Model used (e.g., "fm") */
+  model: string;
+  /** Learning features enabled */
+  learningFlags: {
+    skills: boolean;
+    memory: boolean;
+    reflexion: boolean;
+    learn: boolean;
+  };
+  /** Total skills used across all tasks */
+  totalSkillsUsed: number;
+  /** Total memories used across all tasks */
+  totalMemoriesUsed: number;
+  /** Total reflections generated */
+  totalReflectionsGenerated: number;
+  /** New skills learned from this run */
+  newSkillsLearned: number;
+  /** Total skill library size after run */
+  skillLibrarySize?: number;
+}
+
 export interface TBRunHistoryMessage {
   type: "tb_run_history";
   runs: Array<{
@@ -654,6 +713,8 @@ export type HudMessage =
   | TBSuiteInfoMessage
   | TBRunRequestMessage
   | TBRunHistoryMessage
+  | TBLearningMetricsMessage
+  | TBLearningSummaryMessage
   | ContainerStartMessage
   | ContainerOutputMessage
   | ContainerCompleteMessage
@@ -735,6 +796,11 @@ export const isTBSuiteInfo = (msg: HudMessage): msg is TBSuiteInfoMessage =>
 export const isTBRunRequest = (msg: HudMessage): msg is TBRunRequestMessage =>
   msg.type === "tb_run_request";
 
+export const isTBLearningMetrics = (msg: HudMessage): msg is TBLearningMetricsMessage =>
+  msg.type === "tb_learning_metrics";
+
+export const isTBLearningSummary = (msg: HudMessage): msg is TBLearningSummaryMessage =>
+  msg.type === "tb_learning_summary";
 
 /** Check if message is any TB-related message */
 export const isTBMessage = (msg: HudMessage): boolean =>

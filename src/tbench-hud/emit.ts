@@ -36,6 +36,8 @@ import type {
   TBTaskOutputMessage,
   TBTaskCompleteMessage,
   TBSuiteInfoMessage,
+  TBLearningMetricsMessage,
+  TBLearningSummaryMessage,
   TBDifficulty,
   TBTaskPhase,
   TBOutputSource,
@@ -81,6 +83,35 @@ export interface TBRunSummary {
   totalDurationMs: number;
 }
 
+export interface TBLearningMetrics {
+  model: string;
+  skillsUsed: number;
+  skillIds: string[];
+  memoriesUsed: number;
+  reflexionEnabled: boolean;
+  reflectionsGenerated: number;
+  newSkillsLearned: number;
+  tokenCostUsd?: number;
+}
+
+export interface TBLearningSummary {
+  totalTasks: number;
+  passed: number;
+  passRate: number;
+  model: string;
+  learningFlags: {
+    skills: boolean;
+    memory: boolean;
+    reflexion: boolean;
+    learn: boolean;
+  };
+  totalSkillsUsed: number;
+  totalMemoriesUsed: number;
+  totalReflectionsGenerated: number;
+  newSkillsLearned: number;
+  skillLibrarySize?: number;
+}
+
 // ============================================================================
 // ID Generation
 // ============================================================================
@@ -119,6 +150,12 @@ export interface TBEmitter {
 
   /** Emit task complete event */
   taskComplete: (taskId: string, result: TBTaskResult) => void;
+
+  /** Emit learning metrics for a task (FM learning features) */
+  learningMetrics: (taskId: string | undefined, metrics: TBLearningMetrics) => void;
+
+  /** Emit learning summary at end of run (FM learning features) */
+  learningSummary: (summary: TBLearningSummary) => void;
 
   /** Get the underlying HUD client */
   getClient: () => HudClient;
@@ -246,6 +283,43 @@ export const createTBEmitter = (clientOptions?: HudClientOptions): TBEmitter => 
     client.send(message);
   };
 
+  const learningMetrics = (taskId: string | undefined, metrics: TBLearningMetrics): void => {
+    if (!runId) return;
+    const message: TBLearningMetricsMessage = {
+      type: "tb_learning_metrics",
+      runId,
+      ...(taskId !== undefined ? { taskId } : {}),
+      model: metrics.model,
+      skillsUsed: metrics.skillsUsed,
+      skillIds: metrics.skillIds,
+      memoriesUsed: metrics.memoriesUsed,
+      reflexionEnabled: metrics.reflexionEnabled,
+      reflectionsGenerated: metrics.reflectionsGenerated,
+      newSkillsLearned: metrics.newSkillsLearned,
+      ...(metrics.tokenCostUsd !== undefined ? { tokenCostUsd: metrics.tokenCostUsd } : {}),
+    };
+    client.send(message);
+  };
+
+  const learningSummary = (summary: TBLearningSummary): void => {
+    if (!runId) return;
+    const message: TBLearningSummaryMessage = {
+      type: "tb_learning_summary",
+      runId,
+      totalTasks: summary.totalTasks,
+      passed: summary.passed,
+      passRate: summary.passRate,
+      model: summary.model,
+      learningFlags: summary.learningFlags,
+      totalSkillsUsed: summary.totalSkillsUsed,
+      totalMemoriesUsed: summary.totalMemoriesUsed,
+      totalReflectionsGenerated: summary.totalReflectionsGenerated,
+      newSkillsLearned: summary.newSkillsLearned,
+      ...(summary.skillLibrarySize !== undefined ? { skillLibrarySize: summary.skillLibrarySize } : {}),
+    };
+    client.send(message);
+  };
+
   return {
     get runId() {
       return runId;
@@ -257,6 +331,8 @@ export const createTBEmitter = (clientOptions?: HudClientOptions): TBEmitter => 
     taskProgress,
     taskOutput,
     taskComplete,
+    learningMetrics,
+    learningSummary,
     getClient: () => client,
     close: () => client.close(),
   };

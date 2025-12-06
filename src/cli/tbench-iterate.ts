@@ -43,6 +43,8 @@ import {
   type Episode,
 } from "../bench/episode-store.js";
 import { createTBEmitter, type TBEmitter } from "../tbench-hud/emit.js";
+import { loadProjectConfig, type ProjectServiceError } from "../tasks/project.js";
+import type { ProjectConfig } from "../tasks/schema.js";
 import { StreamingWriter } from "../atif/streaming-writer.js";
 import { registerATIFDiskWriter, unregisterATIFDiskWriter } from "../atif/hud-emitter.js";
 import {
@@ -77,7 +79,7 @@ interface TBenchIterateArgs {
   learn: boolean;
 }
 
-const parseCliArgs = (): TBenchIterateArgs => {
+const parseCliArgs = (tbenchDefaults?: ProjectConfig["tbench"] | null): TBenchIterateArgs => {
   const { values } = parseArgs({
     args: process.argv.slice(2),
     options: {
@@ -170,32 +172,43 @@ Examples:
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const defaultOutput = `./results/${today}`;
 
+  // Apply project tbench defaults
+  const projectModel = tbenchDefaults?.defaultModel ?? "claude-code";
+  const projectSuite = tbenchDefaults?.defaultSuite;
+  const projectTimeout = tbenchDefaults?.defaultTimeout ?? 3600;
+  const projectMaxTurns = tbenchDefaults?.defaultMaxTurns ?? 300;
+  const projectLearning = tbenchDefaults?.defaultLearning;
+
+  // Use CLI value > project default > hardcoded default
+  const model = values.model ?? projectModel;
+
   // Skills: default true for FM, false otherwise. --no-skills overrides
-  const isFM = (values.model ?? "claude-code").startsWith("fm");
-  const skillsDefault = isFM;
+  // Project config takes precedence over FM default
+  const isFM = model.startsWith("fm");
+  const skillsDefault = projectLearning?.skills ?? isFM;
   const skillsEnabled = values["no-skills"] ? false : (values.skills ?? skillsDefault);
 
   return {
-    suite: values.suite ?? "",
+    suite: values.suite ?? projectSuite ?? "",
     output: values.output ?? defaultOutput,
-    model: values.model ?? "claude-code",
+    model,
     ollamaEndpoint: values["ollama-endpoint"],
     iterations: values.iterations ? parseInt(values.iterations, 10) : 10,
     tasks: values.tasks,
-    timeout: values.timeout ? parseInt(values.timeout, 10) : 3600,
-    maxTurns: values["max-turns"] ? parseInt(values["max-turns"], 10) : 300,
+    timeout: values.timeout ? parseInt(values.timeout, 10) : projectTimeout,
+    maxTurns: values["max-turns"] ? parseInt(values["max-turns"], 10) : projectMaxTurns,
     claudeValidationRate: values["claude-validation-rate"]
       ? parseFloat(values["claude-validation-rate"])
       : 0,
     resume: values.resume,
     help: values.help ?? false,
-    // Learning flags
+    // Learning flags - CLI > project config > defaults
     skills: skillsEnabled,
-    memory: values.memory ?? false,
-    reflect: values.reflect ?? false,
+    memory: values.memory ?? projectLearning?.memory ?? false,
+    reflect: values.reflect ?? projectLearning?.reflexion ?? false,
     maxRetries: values["max-retries"] ? parseInt(values["max-retries"], 10) : 2,
     // Post-run learning
-    learn: values.learn ?? false,
+    learn: values.learn ?? projectLearning?.learn ?? false,
   };
 };
 
@@ -359,6 +372,12 @@ interface TaskResult {
   tokens: number;
   verificationOutput: string | undefined;
   errorMessage: string | undefined;
+  /** Learning metrics from FM model (if applicable) */
+  learningMetrics?: {
+    skillsUsed: string[];
+    memoriesUsed: number;
+    reflectionsGenerated: number;
+  };
 }
 
 const runSingleTask = async (
@@ -580,6 +599,30 @@ const runSingleTask = async (
     }
   }
 
+  // Extract learning metrics from FM model result (if available)
+  const learningMetrics = result.sessionMetadata?.skillsUsed
+    ? {
+        skillsUsed: result.sessionMetadata.skillsUsed,
+        memoriesUsed: 0, // FM runner doesn't track this separately yet
+        reflectionsGenerated: 0, // FM runner doesn't track this separately yet
+      }
+    : undefined;
+
+  // Emit learning metrics to HUD if available
+  if (options.tbEmitter && learningMetrics && learningMetrics.skillsUsed.length > 0) {
+    options.tbEmitter.learningMetrics(tbTask.id, {
+      model: runner.modelName,
+      skillsUsed: learningMetrics.skillsUsed.length,
+      skillIds: learningMetrics.skillsUsed,
+      memoriesUsed: learningMetrics.memoriesUsed,
+      reflexionEnabled: runner.config.type === "foundation-models"
+        ? Boolean((runner.config as import("../bench/model-adapter.js").FMModelConfig).useReflection)
+        : false,
+      reflectionsGenerated: learningMetrics.reflectionsGenerated,
+      newSkillsLearned: 0, // Tracked at iteration level
+    });
+  }
+
   return {
     taskId: tbTask.id,
     outcome,
@@ -588,6 +631,7 @@ const runSingleTask = async (
     tokens: result.tokens,
     verificationOutput: verificationResult.output,
     errorMessage: result.error,
+    learningMetrics,
   };
 };
 
@@ -704,11 +748,31 @@ const generateSummaryReport = (
 };
 
 // ============================================================================
+// Project Config Loading
+// ============================================================================
+
+const loadTBenchDefaults = async (): Promise<ProjectConfig["tbench"] | null> => {
+  try {
+    const config = await Effect.runPromise(
+      loadProjectConfig(process.cwd()).pipe(
+        Effect.provide(BunContext.layer),
+        Effect.catchAll(() => Effect.succeed(null))
+      )
+    );
+    return config?.tbench ?? null;
+  } catch {
+    return null;
+  }
+};
+
+// ============================================================================
 // Main Execution
 // ============================================================================
 
 const main = async (): Promise<void> => {
-  const args = parseCliArgs();
+  // Load project tbench defaults before parsing args
+  const tbenchDefaults = await loadTBenchDefaults();
+  const args = parseCliArgs(tbenchDefaults);
 
   // Handle resume
   let state: RunState | null = null;
@@ -941,11 +1005,12 @@ const main = async (): Promise<void> => {
     episodes.push(episode);
 
     // Post-iteration learning (extract skills, generate reflections)
+    let learningResult: LearningResult | null = null;
     if (args.learn) {
       console.log(`  [Learning] Processing episode for skill extraction...`);
       try {
         const learner = createEpisodeLearner({ projectRoot });
-        const learningResult = await Effect.runPromise(
+        learningResult = await Effect.runPromise(
           learner.processEpisode(episode).pipe(
             Effect.catchAll((e) => {
               console.log(`    [Learning] Warning: ${e.message}`);
@@ -989,6 +1054,31 @@ const main = async (): Promise<void> => {
       }
     }
 
+    // Emit learning summary to HUD
+    const totalSkillsUsed = results.reduce((sum, r) => sum + (r.learningMetrics?.skillsUsed.length ?? 0), 0);
+    const totalMemoriesUsed = results.reduce((sum, r) => sum + (r.learningMetrics?.memoriesUsed ?? 0), 0);
+    const totalReflectionsGenerated = results.reduce((sum, r) => sum + (r.learningMetrics?.reflectionsGenerated ?? 0), 0);
+    const newSkillsLearned = args.learn ? (learningResult?.skillsExtracted?.length ?? 0) : 0;
+
+    if (modelConfig.type === "foundation-models") {
+      tbEmitter.learningSummary({
+        totalTasks: results.length,
+        passed: iterResults.summary.passed,
+        passRate: iterResults.summary.pass_rate,
+        model: modelName,
+        learningFlags: {
+          skills: args.skills,
+          memory: args.memory,
+          reflexion: args.reflect,
+          learn: args.learn,
+        },
+        totalSkillsUsed,
+        totalMemoriesUsed,
+        totalReflectionsGenerated,
+        newSkillsLearned,
+      });
+    }
+
     // Update state
     state.completedIterations = iter;
     state.lastUpdatedAt = new Date().toISOString();
@@ -997,6 +1087,9 @@ const main = async (): Promise<void> => {
     // Print iteration summary
     console.log(`\n  Summary: ${iterResults.summary.passed}/${iterResults.summary.total} passed (${(iterResults.summary.pass_rate * 100).toFixed(1)}%)`);
     console.log(`  Duration: ${((iterEndTime - iterStartTime) / 1000 / 60).toFixed(1)} minutes`);
+    if (totalSkillsUsed > 0) {
+      console.log(`  Learning: ${totalSkillsUsed} skills used, ${newSkillsLearned} new skills learned`);
+    }
   }
 
   const totalDuration = Date.now() - runStartTime;
