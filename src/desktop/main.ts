@@ -74,20 +74,24 @@ const webview = new Webview();
 
 // Debug: inject error handler and HUD event listener
 webview.init(`
+  // Mark: VERSION-2025-12-06-01 (confirm new code is running)
+
   console.log = function(...args) {
-    window.bunLog?.(...args);
+    if (window.bunLog) window.bunLog(...args);
   };
 
   console.error = function(...args) {
-    window.bunLog?.('[ERROR]', ...args);
+    if (window.bunLog) window.bunLog('[ERROR]', ...args);
   };
 
   window.onerror = function(msg, url, line) {
-    window.bunLog?.('[JS ERROR]', msg, 'at', url, line);
+    if (window.bunLog) window.bunLog('[JS ERROR]', msg, 'at', url, line);
     return false;
   };
 
-  window.bunLog?.('[Webview] Initialized');
+  if (window.bunLog) {
+    window.bunLog('[Webview] Initialized VERSION-2025-12-06-01');
+  }
 `);
 
 // Debug: bind a function to get logs from webview
