@@ -299,6 +299,7 @@ const runLocalVerification = async (
   const testsDir = join(workspaceDir, "tests");
 
   if (!existsSync(testsDir)) {
+    // Handle "output" verification type
     if (tbTask.verification.type === "output" && tbTask.verification.command) {
       const proc = Bun.spawn(["sh", "-c", tbTask.verification.command], {
         cwd: workspaceDir,
@@ -311,7 +312,22 @@ const runLocalVerification = async (
       const passed = stdout.trim() === expected.trim();
       return { passed, output: `Expected: ${expected}\nActual: ${stdout}` };
     }
-    return { passed: false, output: "No tests directory found" };
+    // Handle "custom" verification type with script
+    if (tbTask.verification.type === "custom") {
+      const cmd = tbTask.verification.script ?? tbTask.verification.command ?? "exit 1";
+      const proc = Bun.spawn(["sh", "-c", cmd], {
+        cwd: workspaceDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const exitCode = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      const passed = exitCode === 0;
+      const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
+      return { passed, output: output || (passed ? "Verification passed" : "Verification failed") };
+    }
+    return { passed: false, output: "No tests directory found and no custom verification" };
   }
 
   const proc = Bun.spawn(["python3", "-m", "pytest", "tests/", "-v", "--tb=short"], {
