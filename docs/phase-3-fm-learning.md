@@ -1,8 +1,13 @@
 # Phase 3: Bridge FM Learning Into Real Coding & Archivist
 
-> **Status**: Ready for implementation
+> **Status**: Tasks 3A-3C COMPLETE, 3D pending validation
 > **Prerequisites**: Phase 2 complete (commit 863fce8d7)
 > **Goal**: Use learned skills from TB in real MechaCoder/FM coding runs, and start capturing long-term lessons via Archivist.
+>
+> **Completed Commits**:
+> - `3e974a5df` - Task 3A: Skill/memory injection for FM coding subagent
+> - `434d49909` - Task 3B: Archivist hook for TB FM runs
+> - `d4197b213` - Task 3C: FM consumes Archivist lessons
 
 ---
 
