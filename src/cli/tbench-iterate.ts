@@ -53,6 +53,8 @@ import {
   type LearningSummary,
 } from "../training/episode-learner.js";
 import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
+import { ArchivistService, makeArchivistServiceLive } from "../archivist/service.js";
+import type { Trajectory } from "../archivist/schema.js";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -379,6 +381,64 @@ interface TaskResult {
     reflectionsGenerated: number;
   };
 }
+
+/**
+ * Record a task trajectory to the Archivist for future learning.
+ * This creates a simplified trajectory record for TB runs.
+ */
+const recordTrajectoryToArchivist = async (
+  task: TerminalBenchTask,
+  result: TaskResult,
+  model: string,
+  projectRoot: string,
+): Promise<void> => {
+  try {
+    // Map TB outcome to Archivist outcome
+    const outcomeMap: Record<TaskResult["outcome"], Trajectory["outcome"]> = {
+      success: "success",
+      failure: "failure",
+      timeout: "timeout",
+      error: "failure", // Map error to failure for Archivist
+    };
+
+    const program = Effect.gen(function* () {
+      const archivist = yield* ArchivistService;
+      yield* archivist.recordTrajectory(task.id, task.name, {
+        actions: [
+          {
+            type: "tool_call",
+            tool: "terminal-bench-task",
+            content: `Run task: ${task.name} (${task.difficulty})`,
+            result: `outcome: ${result.outcome}${result.errorMessage ? ` - ${result.errorMessage}` : ""}`,
+            success: result.outcome === "success",
+            durationMs: result.durationMs,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        outcome: outcomeMap[result.outcome],
+        ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
+        skillsUsed: result.learningMetrics?.skillsUsed ?? [],
+        filesModified: [],
+        totalDurationMs: result.durationMs,
+        model,
+        tokens: {
+          input: result.tokens,
+          output: 0,
+          total: result.tokens,
+        },
+      });
+    });
+
+    await Effect.runPromise(
+      program.pipe(
+        Effect.provide(makeArchivistServiceLive(projectRoot)),
+        Effect.catchAll(() => Effect.void), // Best-effort, don't fail on archivist errors
+      ),
+    );
+  } catch {
+    // Silently ignore archivist errors
+  }
+};
 
 const runSingleTask = async (
   tbTask: TerminalBenchTask,
@@ -961,6 +1021,11 @@ const main = async (): Promise<void> => {
       });
       results.push(result);
 
+      // Record trajectory to Archivist for learning (best-effort)
+      if (args.learn) {
+        await recordTrajectoryToArchivist(task, result, modelName, projectRoot);
+      }
+
       // Save intermediate results
       const intermediateResults = toBenchmarkResults(suite, modelName, results);
       writeFileSync(
@@ -1051,6 +1116,39 @@ const main = async (): Promise<void> => {
         }
       } catch (e) {
         console.log(`    [Learning] Error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      // Run Archivist quick archive to extract patterns from trajectories
+      console.log(`  [Archivist] Processing recorded trajectories...`);
+      try {
+        const archiveResult = await Effect.runPromise(
+          Effect.gen(function* () {
+            const archivist = yield* ArchivistService;
+            return yield* archivist.runQuickArchive();
+          }).pipe(
+            Effect.provide(makeArchivistServiceLive(projectRoot)),
+            Effect.catchAll((e) => {
+              console.log(`    [Archivist] Warning: ${e.message}`);
+              return Effect.succeed({
+                id: "",
+                trajectoriesProcessed: 0,
+                patternsExtracted: 0,
+                skillsCreated: 0,
+                memoriesCreated: 0,
+                itemsPruned: 0,
+                durationMs: 0,
+                timestamp: new Date().toISOString(),
+              });
+            }),
+          ),
+        );
+
+        if (archiveResult.trajectoriesProcessed > 0) {
+          console.log(`    [Archivist] Processed ${archiveResult.trajectoriesProcessed} trajectories`);
+          console.log(`    [Archivist] Extracted ${archiveResult.patternsExtracted} patterns, created ${archiveResult.skillsCreated} skills`);
+        }
+      } catch (e) {
+        console.log(`    [Archivist] Error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
