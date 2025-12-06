@@ -405,6 +405,63 @@ describe("TBControlsWidget", () => {
     )
   })
 
+  test("US-3.3 starts a single random task", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockSuite: TBSuiteInfo = {
+            name: "terminal-bench-v1",
+            version: "1.2.3",
+            tasks: [
+              { id: "task-001", name: "First", difficulty: "easy", category: "basics" },
+              { id: "task-002", name: "Second", difficulty: "medium", category: "core" },
+            ],
+          }
+
+          let receivedOptions: StartTBRunOptions | null = null
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: (_suitePath) => Effect.succeed(mockSuite),
+              startTBRun: (options) => {
+                receivedOptions = options
+                return Effect.succeed({ runId: "run-random" })
+              },
+            },
+          })
+
+          const originalRandom = Math.random
+          Math.random = () => 0 // force first index
+
+          try {
+            yield* Effect.provide(
+              Effect.gen(function* () {
+                const stateService = yield* StateServiceTag
+                const dom = yield* DomServiceTag
+                const container = { id: "tb-controls-test" } as Element
+                const state = yield* stateService.cell(TBControlsWidget.initialState())
+                const ctx = { state, emit: () => Effect.void, dom, container }
+
+                yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+                yield* TBControlsWidget.handleEvent({ type: "startRandomTask" }, ctx)
+
+                const updated = yield* state.get
+                expect(receivedOptions?.taskIds).toEqual(["task-001"])
+                expect(updated.isRunning).toBe(true)
+                expect(updated.runId).toBe("run-random")
+                expect(updated.statusType).toBe("running")
+              }),
+              layer
+            )
+          } finally {
+            Math.random = originalRandom
+          }
+        })
+      )
+    )
+  })
+
   test("US-3.4 stops an active run and resets controls", async () => {
     await Effect.runPromise(
       Effect.scoped(
