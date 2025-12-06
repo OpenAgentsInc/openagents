@@ -52,7 +52,7 @@ const makeSocketService = (client: SocketClient): SocketService => {
 
     isConnected: () => Effect.sync(() => client.isConnected()),
 
-    get messages() {
+    getMessages: () => {
       if (!messageStream) {
         // Create a stream from the client's message handler
         messageStream = Stream.async<HudMessage>((emit) => {

@@ -285,7 +285,7 @@ export const APMWidget: Widget<APMState, APMEvent, SocketServiceTag> = {
     return [
       pipe(
         Stream.unwrap(
-          Effect.map(socket, (s) => s.messages)
+          Effect.map(socket, (s) => s.getMessages())
         ),
         Stream.filter((msg): msg is HudMessage => isAPMUpdate(msg) || isAPMSnapshot(msg)),
         Stream.map((msg) =>

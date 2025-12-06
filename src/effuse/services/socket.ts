@@ -60,8 +60,8 @@ export interface SocketService {
   /** Check if connected */
   readonly isConnected: () => Effect.Effect<boolean, never>
 
-  /** Stream of incoming HUD messages */
-  readonly messages: Stream.Stream<HudMessage, never>
+  /** Get stream of incoming HUD messages (creates stream on first call) */
+  readonly getMessages: () => Stream.Stream<HudMessage, never>
 
   // ============================================================================
   // TB Operations
