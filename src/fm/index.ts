@@ -76,3 +76,55 @@ export type {
   FMConfig,
   FMModelsResult as FMModelsResultClient,
 } from "../llm/foundation-models.js";
+
+// Code index exports for FM navigation
+export {
+  CodeIndexError,
+  indexFile,
+  createCodeIndex,
+  buildIndexFromDirectory,
+  findChunks,
+  getChunkContent,
+  getChunksWithinBudget,
+  formatChunksForPrompt,
+  selectChunksForTask,
+  type CodeChunk,
+  type ChunkType,
+  type FileIndex,
+  type CodeIndex,
+} from "./code-index.js";
+
+// Micro-task decomposition exports
+export {
+  FM_CONTEXT_BUDGET,
+  MAX_SKILLS_CHARS,
+  MAX_MEMORIES_CHARS,
+  MAX_REFLECTIONS_CHARS,
+  condenseSkill,
+  condenseSkillsForPrompt,
+  condenseMemoriesForPrompt,
+  condenseReflectionsForPrompt,
+  buildMicroTaskPrompt,
+  getUserMessageBudget,
+  truncateTaskDescription,
+  decomposeTask,
+  buildMicroStepPrompt,
+} from "./micro-task.js";
+
+// Verification loop exports
+export {
+  MAX_ERROR_CHARS,
+  MAX_ERROR_CONTEXT_CHARS,
+  MAX_VERIFY_ATTEMPTS,
+  extractErrorCore,
+  extractErrorLocation,
+  runVerification,
+  formatVerificationFeedback,
+  runVerifyLoop,
+  verifyFileExists,
+  verifyFileContains,
+  verifyCommand,
+  type VerificationResult,
+  type VerifyLoopOptions,
+  type VerifyLoopResult,
+} from "./verification-loop.js";
