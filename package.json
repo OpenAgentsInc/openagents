@@ -4,7 +4,8 @@
   "description": "Your agent command center",
   "scripts": {
     "dev": "bun run desktop",
-    "build": "bun build --compile src/desktop/main.ts --outfile openagents",
+    "build": "bun run build:frontend && bun build --compile src/desktop/main.ts --outfile openagents",
+    "build:frontend": "bun build src/mainview/effuse-main.ts --outfile src/mainview/effuse-main.js --target browser --format=iife",
     "start": "bun run desktop",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
