@@ -299,6 +299,49 @@ describe("TrajectoryPaneWidget", () => {
     )
   })
 
+  test("US-7.3 shows unified TB and ATIF trajectories with type badges", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, getRendered } = yield* makeTestLayer()
+          const container = { id: "trajectory-test" } as Element
+
+          const customWidget = {
+            ...TrajectoryPaneWidget,
+            initialState: (): TrajectoryPaneState => ({
+              trajectories: [
+                {
+                  id: "run-tb-1",
+                  type: "tb-run",
+                  timestamp: "2024-12-06T01:00:00Z",
+                  label: "TB run",
+                },
+                {
+                  id: "run-atif-1",
+                  type: "atif",
+                  timestamp: "2024-12-05T23:00:00Z",
+                  label: "ATIF trace",
+                },
+              ],
+              selectedId: null,
+              loading: false,
+              error: null,
+              collapsed: false,
+            }),
+          }
+
+          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
+
+          const html = yield* getRendered(container)
+          expect(html).toContain("run-tb-1")
+          expect(html).toContain("run-atif-1")
+          expect(html).toContain("TB")
+          expect(html).toContain("ATIF")
+        })
+      )
+    )
+  })
+
   test("US-7.7 toggles collapse to hide and show trajectories", async () => {
     await Effect.runPromise(
       Effect.scoped(
