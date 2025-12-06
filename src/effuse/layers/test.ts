@@ -79,30 +79,35 @@ const makeMockDomService = (
  */
 const makeMockSocketService = (
   messageQueue: Queue.Queue<HudMessage>
-): SocketService => ({
-  connect: () => Effect.void,
-  disconnect: () => Effect.void,
-  isConnected: () => Effect.succeed(true),
-  messages: Stream.fromQueue(messageQueue),
+): SocketService => {
+  const messages = Stream.fromQueue(messageQueue)
 
-  // All requests fail in test mode by default
-  loadTBSuite: (_suitePath) =>
-    Effect.fail(new SocketError("request_failed", "Mock: loadTBSuite not implemented")),
-  startTBRun: (_options) =>
-    Effect.fail(new SocketError("request_failed", "Mock: startTBRun not implemented")),
-  stopTBRun: () =>
-    Effect.fail(new SocketError("request_failed", "Mock: stopTBRun not implemented")),
-  loadRecentTBRuns: (_count) =>
-    Effect.fail(new SocketError("request_failed", "Mock: loadRecentTBRuns not implemented")),
-  loadTBRunDetails: (_runId) =>
-    Effect.fail(new SocketError("request_failed", "Mock: loadTBRunDetails not implemented")),
-  loadReadyTasks: (_limit) =>
-    Effect.fail(new SocketError("request_failed", "Mock: loadReadyTasks not implemented")),
-  assignTaskToMC: (_taskId, _options) =>
-    Effect.fail(new SocketError("request_failed", "Mock: assignTaskToMC not implemented")),
-  loadUnifiedTrajectories: (_limit) =>
-    Effect.fail(new SocketError("request_failed", "Mock: loadUnifiedTrajectories not implemented")),
-})
+  return {
+    connect: () => Effect.void,
+    disconnect: () => Effect.void,
+    isConnected: () => Effect.succeed(true),
+    messages,
+    getMessages: () => messages,
+
+    // All requests fail in test mode by default
+    loadTBSuite: (_suitePath) =>
+      Effect.fail(new SocketError("request_failed", "Mock: loadTBSuite not implemented")),
+    startTBRun: (_options) =>
+      Effect.fail(new SocketError("request_failed", "Mock: startTBRun not implemented")),
+    stopTBRun: () =>
+      Effect.fail(new SocketError("request_failed", "Mock: stopTBRun not implemented")),
+    loadRecentTBRuns: (_count) =>
+      Effect.fail(new SocketError("request_failed", "Mock: loadRecentTBRuns not implemented")),
+    loadTBRunDetails: (_runId) =>
+      Effect.fail(new SocketError("request_failed", "Mock: loadTBRunDetails not implemented")),
+    loadReadyTasks: (_limit) =>
+      Effect.fail(new SocketError("request_failed", "Mock: loadReadyTasks not implemented")),
+    assignTaskToMC: (_taskId, _options) =>
+      Effect.fail(new SocketError("request_failed", "Mock: assignTaskToMC not implemented")),
+    loadUnifiedTrajectories: (_limit) =>
+      Effect.fail(new SocketError("request_failed", "Mock: loadUnifiedTrajectories not implemented")),
+  }
+}
 
 /**
  * Create a test layer with mock services.

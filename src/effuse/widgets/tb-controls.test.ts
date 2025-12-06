@@ -3,10 +3,13 @@
  */
 
 import { describe, test, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 import { TBControlsWidget, type TBControlsState, type TBSuiteInfo } from "./tb-controls.js"
 import { mountWidget } from "../widget/mount.js"
-import { makeTestLayer } from "../layers/test.js"
+import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
+import type { StartTBRunOptions } from "../services/socket.js"
 
 describe("TBControlsWidget", () => {
   test("renders initial state", async () => {
@@ -237,5 +240,167 @@ describe("TBControlsWidget", () => {
     expect(state.isRunning).toBe(false)
     expect(state.runId).toBeNull()
     expect(state.collapsed).toBe(false)
+  })
+
+  test("US-1.1 loads suite and selects all tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockSuite: TBSuiteInfo = {
+            name: "terminal-bench-v1",
+            version: "1.2.3",
+            tasks: [
+              { id: "task-001", name: "Easy task", difficulty: "easy", category: "basics" },
+              { id: "task-002", name: "Hard task", difficulty: "hard", category: "advanced" },
+            ],
+          }
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: (_suitePath) => Effect.succeed(mockSuite),
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+
+              const updated = yield* state.get
+              expect(updated.suite?.name).toBe("terminal-bench-v1")
+              expect(updated.selectedTaskIds.size).toBe(mockSuite.tasks.length)
+              expect(updated.status).toBe("Ready")
+              expect(updated.statusType).toBe("idle")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("terminal-bench-v1")
+              expect(html).toContain("v1.2.3")
+              expect(html).toContain("2/2 selected")
+              expect(html).toContain("Easy task")
+              expect(html).toContain("Hard task")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-3.1 starts a run for the selected tasks", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mockSuite: TBSuiteInfo = {
+            name: "terminal-bench-v1",
+            version: "1.2.3",
+            tasks: [
+              { id: "task-001", name: "First", difficulty: "easy", category: "basics" },
+              { id: "task-002", name: "Second", difficulty: "medium", category: "core" },
+              { id: "task-003", name: "Third", difficulty: "hard", category: "advanced" },
+            ],
+          }
+
+          let receivedOptions: StartTBRunOptions | null = null
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              loadTBSuite: (_suitePath) => Effect.succeed(mockSuite),
+              startTBRun: (options) => {
+                receivedOptions = options
+                return Effect.succeed({ runId: "run-42" })
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+
+              const updated = yield* state.get
+              expect(receivedOptions?.taskIds).toEqual(mockSuite.tasks.map((task) => task.id))
+              expect(updated.isRunning).toBe(true)
+              expect(updated.runId).toBe("run-42")
+              expect(updated.status).toBe("Running...")
+              expect(updated.statusType).toBe("running")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("Running...")
+              expect(html).toContain("Stop")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-3.4 stops an active run and resets controls", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let stopCalls = 0
+
+          const { layer } = yield* makeCustomTestLayer({
+            socketService: {
+              getMessages: () => Stream.empty,
+              stopTBRun: () => {
+                stopCalls += 1
+                return Effect.succeed({ stopped: true })
+              },
+            },
+          })
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                isRunning: true,
+                runId: "run-stop-me",
+                status: "Running...",
+                statusType: "running",
+                suite: {
+                  name: "terminal-bench-v1",
+                  version: "1.0.0",
+                  tasks: [{ id: "task-001", name: "Task 1", difficulty: "easy", category: "basics" }],
+                },
+                selectedTaskIds: new Set(["task-001"]),
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              yield* TBControlsWidget.handleEvent({ type: "stopRun" }, ctx)
+
+              const updated = yield* state.get
+              expect(stopCalls).toBe(1)
+              expect(updated.isRunning).toBe(false)
+              expect(updated.runId).toBeNull()
+              expect(updated.status).toBe("Stopped")
+              expect(updated.statusType).toBe("idle")
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+              expect(html).toContain("Stopped")
+              expect(html).toContain("Start")
+            }),
+            layer
+          )
+        })
+      )
+    )
   })
 })

@@ -3,6 +3,8 @@
 > Comprehensive user stories for Terminal Bench (TB) and Effuse HUD integration testing.
 > These stories define all user flows for full management of Terminal Bench via the HUD.
 
+> Log 2025-12-06: Added tests for US-1.1 (load suite), US-3.1 (start run), and US-3.4 (stop run) in src/effuse/widgets/tb-controls.test.ts; bun test passing.
+
 ---
 
 ## Table of Contents
