@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenAgents v3</title>
+  <title>TerminalBench</title>
   <!-- Force dark mode FIRST -->
   <script>
     try {
@@ -33,39 +33,44 @@
   <link rel="stylesheet" href="index.css">
 </head>
 
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
-  <!-- Main Layout Grid -->
+<body class="bg-zinc-950 text-zinc-100 min-h-screen overflow-hidden">
+  <!-- SidebarLayout: 260px sidebar + border + main area -->
+  <div class="flex h-screen">
+    <!-- Sidebar (260px) -->
+    <aside class="w-[260px] flex-shrink-0 bg-zinc-950">
+      <div class="h-full p-4">
+        <!-- Sidebar content goes here -->
+      </div>
+    </aside>
+
+    <!-- Border -->
+    <div class="w-px bg-zinc-800 flex-shrink-0"></div>
+
+    <!-- Main Area -->
+    <main class="flex-1 bg-zinc-950">
+      <div class="h-full p-4">
+        <!-- Main content goes here -->
+      </div>
+    </main>
+  </div>
+
+  <!-- OLD LAYOUT - COMMENTED OUT
   <div class="flex h-screen overflow-hidden">
-
-    <!-- Left Sidebar: Trajectory Pane + TB Controls -->
     <aside class="w-80 flex-shrink-0 flex flex-col border-r border-zinc-800/60 bg-zinc-950/90">
-      <!-- TB Controls Widget -->
       <div id="tb-controls-widget" class="flex-shrink-0"></div>
-
-      <!-- Trajectory Pane Widget -->
       <div id="trajectory-pane-widget" class="flex-1 overflow-hidden"></div>
     </aside>
 
-    <!-- Main Content Area -->
     <main class="flex-1 flex flex-col overflow-hidden">
-      <!-- MC Tasks Widget (top, collapsible) -->
       <div id="mc-tasks-widget" class="flex-shrink-0 p-4"></div>
-
-      <!-- Container Panes Widget (middle, scrollable) -->
       <div id="container-panes-widget" class="flex-1 overflow-y-auto p-4"></div>
-
-      <!-- Category Tree Widget (overlay, initially hidden) -->
       <div id="category-tree-widget"></div>
     </main>
   </div>
 
-  <!-- Floating Widgets -->
-
-  <!-- APM Widget (bottom-right corner) -->
   <div id="apm-widget"></div>
-
-  <!-- TB Output Widget (floating panel) -->
   <div id="tb-output-widget"></div>
+  -->
 </body>
 
 </html>
