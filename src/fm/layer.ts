@@ -108,7 +108,7 @@ const createHealthMonitor = (
       lastStatus: status,
       checkCount: state.checkCount + 1,
       consecutiveFailures: status.available ? 0 : state.consecutiveFailures + 1,
-    }), Effect.void);
+    }), );
 
     // Notify on status change
     if (statusChanged && config.onHealthChange) {

@@ -11,7 +11,6 @@ import {
   type MemoryFilter,
   type MemoryType,
   type MemoryScope,
-  type MemoryStatus,
 } from "./schema.js";
 
 // --- Store Configuration ---

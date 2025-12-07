@@ -14,7 +14,6 @@ import {
   buildReflectionPrompt,
   buildSkillExtractionPrompt,
   createReflection,
-  generateReflectionId,
 } from "./schema.js";
 
 // --- Error Types ---

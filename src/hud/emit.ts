@@ -145,7 +145,7 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
         turns: event.result.turns,
       };
       
-      if (event.result.agent !== undefined) {
+      if (event.result.agent !== undefined && (event.result.agent === "claude-code" || event.result.agent === "minimal")) {
         result.agent = event.result.agent;
       }
       if (event.result.error !== undefined) {

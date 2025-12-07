@@ -6,23 +6,16 @@
  */
 
 import { Effect, Context, Layer } from "effect";
-import { FMService, makeFMServiceLayer, type FMServiceError } from "../fm/service.js";
-import {
-  ReflectionGenerator,
-  ReflectionGeneratorLive,
-  type ReflectionGeneratorError,
-} from "./generator.js";
+import { ReflectionGenerator, ReflectionGeneratorLive, type ReflectionGeneratorError } from "./generator.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
 import {
   type FailureContext,
   type Reflection,
   type ReflectionHistory,
-  type ExtractedSkillPattern,
   createFailureContext,
   formatReflectionsForPrompt,
 } from "./schema.js";
-import { createSkill } from "../skills/schema.js";
 
 // --- Error Types ---
 

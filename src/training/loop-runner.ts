@@ -205,7 +205,7 @@ export class LoopRunnerError extends Error {
       | "iteration_failed"
       | "time_limit_exceeded"
       | "iteration_limit_exceeded",
-    override readonly message: string,
+    readonly override message: string,
     readonly cause?: Error,
   ) {
     super(message);

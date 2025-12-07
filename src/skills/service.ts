@@ -7,22 +7,18 @@
 
 import { Effect, Context, Layer } from "effect";
 import { SkillStore, makeSkillStoreLayer, type SkillStoreError } from "./store.js";
-import { EmbeddingService, EmbeddingServiceLive, type EmbeddingError } from "./embedding.js";
 import {
   SkillRetrievalService,
   SkillRetrievalServiceLive,
   type SkillRetrievalError,
 } from "./retrieval.js";
-import { FMService, makeFMServiceLayer } from "../fm/service.js";
 import {
   type Skill,
   type SkillQuery,
   type SkillMatch,
   type SkillFilter,
-  type SkillCategory,
   createSkill,
 } from "./schema.js";
-import { createHash } from "crypto";
 
 // --- Deduplication Helpers ---
 
@@ -36,14 +32,6 @@ const normalizeCode = (code: string): string => {
     .replace(/\s+/g, " ") // Normalize whitespace
     .trim()
     .toLowerCase();
-};
-
-/**
- * Generate a content hash for a skill.
- */
-const generateContentHash = (skill: Skill): string => {
-  const normalized = normalizeCode(skill.code);
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
 };
 
 /**
@@ -91,7 +79,7 @@ export class SkillServiceError extends Error {
   readonly _tag = "SkillServiceError";
   constructor(
     readonly reason: string,
-    override readonly message: string,
+    readonly override message: string,
     readonly cause?: Error,
   ) {
     super(message);

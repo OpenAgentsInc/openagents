@@ -128,7 +128,6 @@ export const listMigrationFiles = (
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
 
     // Check if migrations directory exists
     const exists = yield* fs.exists(migrationsDir).pipe(

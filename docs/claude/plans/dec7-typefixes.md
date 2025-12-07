@@ -2,46 +2,57 @@
 
 ## Summary
 
-**Total Errors: 618**
+**Initial Errors: 618** → **Current Errors: 490** (20.7% fixed)
 
 Run `bun run typecheck` to see all errors.
 
-## Error Breakdown by Type
+## Error Breakdown by Type (Updated)
 
 | Error Code | Count | Description | Difficulty |
 |------------|-------|-------------|------------|
-| TS2322 | 148 | Type 'X' not assignable to type 'Y' | Medium |
-| TS2345 | 114 | Argument type mismatch | Medium |
-| TS6133 | 92 | Unused variable/import | Easy |
-| TS2379 | 46 | exactOptionalPropertyTypes | Medium |
+| TS2322 | 128 | Type 'X' not assignable to type 'Y' | Medium |
+| TS2345 | 102 | Argument type mismatch | Medium |
+| TS2379 | 52 | exactOptionalPropertyTypes | Medium |
 | TS2722 | 43 | Possibly undefined invocation | Easy |
+| TS2304 | 35 | Cannot find name | Easy |
 | TS2540 | 29 | Read-only property assignment | Medium |
-| TS2375 | 27 | exactOptionalPropertyTypes | Medium |
-| TS2353 | 22 | Unknown property in object literal | Easy |
-| TS2339 | 20 | Property doesn't exist on type | Medium |
-| TS4115 | 17 | Missing 'override' modifier | Easy |
-| TS6196 | 6 | Unused type import | Easy |
-| Others | ~54 | Various | Varies |
+| TS2353 | 20 | Unknown property in object literal | Easy |
+| TS2375 | 9 | exactOptionalPropertyTypes | Medium |
+| TS2349 | 7 | Expression not callable | Medium |
+| TS4115 | 6 | Missing 'override' modifier | Easy |
+| TS2561 | 6 | Object literal can only specify known properties | Easy |
+| TS1029 | 6 | 'public' modifier must precede | Easy |
+| TS2740 | 5 | Missing properties from type | Medium |
+| TS6196 | 4 | Unused type import | Easy |
+| TS6133 | 4 | Unused variable/import | Easy |
+| TS2783 | 4 | Required property missing | Medium |
+| TS2300 | 4 | Duplicate identifier | Medium |
+| Others | ~26 | Various | Varies |
 
-## Files with Most Errors (Top 15)
+## Files with Most Errors (Top 20)
 
 | File | Errors |
 |------|--------|
 | src/learning/__tests__/trm-halt.test.ts | 60 |
 | src/effuse/widgets/tb-controls.test.ts | 57 |
-| src/effuse/widgets/tb-output.test.ts | 44 |
-| src/effuse/widgets/category-tree.test.ts | 36 |
-| src/tasks/service.ts | 28 |
-| src/effuse/widgets/tb-widgets.test.ts | 24 |
-| src/cli/tbench-sandbox.ts | 21 |
-| src/effuse/testing/layers/webview.ts | 19 |
+| src/effuse/widgets/tb-output.test.ts | 43 |
+| src/effuse/widgets/category-tree.test.ts | 41 |
+| src/tasks/service.ts | 27 |
+| src/effuse/widgets/tb-widgets.test.ts | 27 |
+| src/effuse/widgets/mc-tasks.test.ts | 22 |
 | src/learning/__tests__/trm-state.test.ts | 18 |
+| src/effuse/widgets/tb-results.test.ts | 18 |
 | src/skills/library/compositional.ts | 17 |
-| src/effuse/widgets/trajectory-pane.test.ts | 15 |
-| src/learning/orchestrator.ts | 14 |
-| src/learning/__tests__/trm-integration.test.ts | 14 |
-| src/effuse/widgets/mc-tasks.test.ts | 13 |
-| src/training/loop-runner.ts | 12 |
+| src/effuse/widgets/trajectory-pane.test.ts | 12 |
+| src/learning/orchestrator.ts | 11 |
+| src/learning/__tests__/trm-integration.test.ts | 10 |
+| src/effuse/widgets/hf-trajectory-detail.test.ts | 10 |
+| src/training/episode-learner.test.ts | 9 |
+| src/training/loop-runner.ts | 8 |
+| src/storage/database.ts | 8 |
+| src/effuse/widgets/container-panes.test.ts | 8 |
+| src/reflexion/service.ts | 7 |
+| src/skills/service.ts | 6 |
 
 ---
 

@@ -19,8 +19,6 @@ import {
   type MemoryFilter,
   type ImportanceLevel,
   type SemanticContent,
-  type ProceduralContent,
-  createMemory,
   createEpisodicMemory,
   createSemanticMemory,
   createProceduralMemory,

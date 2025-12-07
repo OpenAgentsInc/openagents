@@ -12,7 +12,6 @@ import {
   runProgressiveBenchmark,
   LoopRunnerError,
   DEFAULT_CONFIG,
-  type LoopRunnerState,
 } from "./loop-runner.js";
 
 const TEST_PROJECT_ROOT = "/tmp/loop-runner-test";
