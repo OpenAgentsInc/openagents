@@ -22,6 +22,21 @@ import {
 } from "../soar-voting.js";
 import { createMockTTTState, createMockTTTIterationResult } from "./test-helpers.js";
 
+interface TTTIterationResult {
+  iteration: number;
+  task?: any;
+  result?: any;
+  reflection?: any;
+  skill?: any;
+  bestAccuracy: number;
+  bestSolution: string;
+  averageAccuracy: number;
+  attemptCount: number;
+  syntheticCount: number;
+  improved: boolean;
+  completedAt: string;
+}
+
 describe("TTT + Voting Integration", () => {
   test("TTT state accumulates attempts for voting", () => {
     // Simulate adding attempts with outputs

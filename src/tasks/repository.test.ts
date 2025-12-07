@@ -73,7 +73,7 @@ describe("TaskRepository", () => {
         const repo = createTaskRepository({ tasksPath });
 
         const created = yield* repo.create(makeTask("Comment"), { idPrefix: "oa" });
-        yield* repo.addComment({ taskId: created.id, author: "tester", text: "note" });
+        yield* repo.addComment({ taskId: created.id, comment: { author: "tester", text: "note" } });
 
         const comments = yield* repo.listComments(created.id);
         return { comments };
