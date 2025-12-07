@@ -378,8 +378,9 @@ const closeTaskAfterMerge = async (
   commitSha: string,
 ): Promise<{ success: boolean; error?: string }> => {
   try {
+    const databaseLayer = Layer.mergeAll(DatabaseLive, BunContext.layer);
     const task = await Effect.runPromise(
-      getTaskWithDeps(tasksPath, taskId).pipe(Effect.provide(BunContext.layer)),
+      getTaskWithDeps(tasksPath, taskId).pipe(Effect.provide(databaseLayer)),
     );
     const existingCommits = task?.commits ?? [];
     await Effect.runPromise(
@@ -392,7 +393,7 @@ const closeTaskAfterMerge = async (
           pendingCommit: null,
           commits: [...existingCommits, commitSha],
         },
-      }).pipe(Effect.provide(BunContext.layer)),
+      }).pipe(Effect.provide(databaseLayer)),
     );
     return { success: true };
   } catch (error: any) {

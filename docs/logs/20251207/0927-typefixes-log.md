@@ -1,1 +1,3 @@
 - Typecheck rerun: still many failures (DatabaseService context mismatches, archivist and trainer type mismatches, CLI/task service sorts). Prioritizing DatabaseService exposures and type refactors next.
+- Refactored tasks/test-helpers.ts to create disposable SQLite layers and exposed  + ; this gives tests a reusable  context instead of needing raw Bun services.
+- Refactored src/tasks/test-helpers.ts to create disposable SQLite layers and exposed helpers (runWithTestDb/makeTestDatabaseLayer) so tests can provide DatabaseService.
