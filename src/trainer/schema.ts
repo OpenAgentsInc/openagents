@@ -99,6 +99,8 @@ export interface TrainingConfig {
   projectRoot: string;
   /** Model to use */
   model: "foundation-models" | "openrouter";
+  /** Optional HUD message callback for real-time UI updates */
+  onHudMessage?: (msg: TrainerHudMessage) => void;
 }
 
 export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
@@ -398,3 +400,16 @@ export const TB_SUBSETS = {
 } as const;
 
 export type TBSubset = keyof typeof TB_SUBSETS;
+
+// --- HUD Integration ---
+
+/** Trainer HUD message types */
+export type TrainerHudMessage =
+  | { type: "trainer_run_start"; runId: string; totalTasks: number; config: { model: string; maxRetries: number; useSkills: boolean; useMemory: boolean; useReflection: boolean }; timestamp: string }
+  | { type: "trainer_task_start"; runId: string; taskId: string; taskPrompt: string; taskIndex: number; totalTasks: number }
+  | { type: "trainer_task_complete"; runId: string; taskId: string; outcome: "success" | "failure" | "timeout"; durationMs: number; turns: number; tokens: number; retriesUsed: number }
+  | { type: "trainer_run_complete"; runId: string; stats: { totalTasks: number; successRate: number; averageDurationMs: number; totalTokens: number }; durationMs: number }
+  | { type: "trainer_evolution_generation_start"; runId: string; generation: number; populationSize: number; topPerformers: string[] }
+  | { type: "trainer_evolution_profile_evaluated"; runId: string; profileId: string; profileName: string; generation: number; fitness: number; successRate: number }
+  | { type: "trainer_evolution_ab_result"; runId: string; profileA: string; profileB: string; winner: "A" | "B" | "tie"; effectSize: number; confidence: number }
+  | { type: "trainer_evolution_complete"; runId: string; generations: number; bestProfileId: string; bestProfileName: string; bestFitness: number; fitnessImprovement: number };
