@@ -23,7 +23,7 @@ export class DatabaseError extends Error {
       | "not_found"
       | "validation",
     override readonly message: string,
-    readonly cause?: unknown,
+    override readonly cause?: unknown,
   ) {
     super(message);
     this.name = "DatabaseError";
@@ -397,7 +397,7 @@ export const makeDatabaseLive = (
 
           if (!row) return null;
 
-          const task = rowToTask(row);
+          const taskBase = rowToTask(row);
 
           // Load dependencies
           const depStmt = db.prepare(`
@@ -405,9 +405,9 @@ export const makeDatabaseLive = (
             FROM task_dependencies
             WHERE task_id = ?
           `);
-          task.deps = depStmt.all(id) as Dependency[];
+          const deps = depStmt.all(id) as Dependency[];
 
-          return task;
+          return { ...taskBase, deps } as Task;
         });
 
       // List tasks with filter
@@ -421,7 +421,7 @@ export const makeDatabaseLive = (
           const rows = stmt.all(...params);
 
           const tasks = rows.map((row: any) => {
-            const task = rowToTask(row);
+            const taskBase = rowToTask(row);
 
             // Load dependencies for each task
             const depStmt = db.prepare(`
@@ -429,9 +429,9 @@ export const makeDatabaseLive = (
               FROM task_dependencies
               WHERE task_id = ?
             `);
-            task.deps = depStmt.all(task.id) as Dependency[];
+            const deps = depStmt.all(taskBase.id) as Dependency[];
 
-            return task;
+            return { ...taskBase, deps } as Task;
           });
 
           return tasks;
@@ -546,7 +546,7 @@ export const makeDatabaseLive = (
 
           const rows = stmt.all();
           const tasks = rows.map((row: any) => {
-            const task = rowToTask(row);
+            const taskBase = rowToTask(row);
 
             // Load dependencies
             const depStmt = db.prepare(`
@@ -554,9 +554,9 @@ export const makeDatabaseLive = (
               FROM task_dependencies
               WHERE task_id = ?
             `);
-            task.deps = depStmt.all(task.id) as Dependency[];
+            const deps = depStmt.all(taskBase.id) as Dependency[];
 
-            return task;
+            return { ...taskBase, deps } as Task;
           });
 
           return tasks;
@@ -576,7 +576,7 @@ export const makeDatabaseLive = (
 
           const rows = stmt.all();
           return rows.map((row: any) => {
-            const task = rowToTask(row);
+            const taskBase = rowToTask(row);
 
             // Load dependencies
             const depStmt = db.prepare(`
@@ -584,9 +584,9 @@ export const makeDatabaseLive = (
               FROM task_dependencies
               WHERE task_id = ?
             `);
-            task.deps = depStmt.all(task.id) as Dependency[];
+            const deps = depStmt.all(taskBase.id) as Dependency[];
 
-            return task;
+            return { ...taskBase, deps } as Task;
           });
         });
 
@@ -656,7 +656,7 @@ export const makeDatabaseLive = (
 
           const rows = stmt.all(daysOld);
           return rows.map((row: any) => {
-            const task = rowToTask(row);
+            const taskBase = rowToTask(row);
 
             // Load dependencies
             const depStmt = db.prepare(`
@@ -664,9 +664,9 @@ export const makeDatabaseLive = (
               FROM task_dependencies
               WHERE task_id = ?
             `);
-            task.deps = depStmt.all(task.id) as Dependency[];
+            const deps = depStmt.all(taskBase.id) as Dependency[];
 
-            return task;
+            return { ...taskBase, deps } as Task;
           });
         });
 

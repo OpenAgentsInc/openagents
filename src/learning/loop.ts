@@ -33,7 +33,7 @@ import {
   makeMemoryServiceLive,
   type MemoryServiceError,
 } from "../memory/service.js";
-import type { TrainingTask, TrainingRun, TrainingConfig, TBSubset } from "../trainer/schema.js";
+import type { TrainingRun, TrainingConfig, TBSubset } from "../trainer/schema.js";
 import type { ArchiveResult } from "../archivist/schema.js";
 
 // --- Error Types ---
@@ -281,7 +281,7 @@ const makeTrainingLoop = (
           totalTasksCompleted: newTotalCompleted,
           totalSuccessful: newTotalSuccessful,
           overallSuccessRate: newSuccessRate,
-          lastRun: run ?? undefined,
+          ...(run ? { lastRun: run } : {}),
           totalDurationMs: state.totalDurationMs + (Date.now() - iterationStart),
         });
 
@@ -387,7 +387,7 @@ export const makeTrainingLoopLive = (
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
 
-  return Layer.provide(
+  return Layer.merge(
     makeTrainingLoopLayer({ ...config, projectRoot }),
     Layer.mergeAll(trainerLayer, archivistLayer, skillLayer, memoryLayer),
   );

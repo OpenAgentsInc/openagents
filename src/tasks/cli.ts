@@ -1084,8 +1084,7 @@ const cmdDoctor = (options: CliOptions) =>
 
       const staleTasks = yield* getStaleTasks({
         tasksPath,
-        status: "in_progress",
-        days: options.days ?? 14,
+        daysOld: options.days ?? 14,
       }).pipe(Effect.catchAll(() => Effect.succeed([])));
       if (staleTasks.length > 0) {
         const now = Date.now();
@@ -1529,12 +1528,12 @@ const cmdStats = (options: CliOptions) =>
       console.log(`  Closed:      ${stats.closedCount}`);
       console.log();
       console.log(`By Type:`);
-      for (const [type, count] of Object.entries(stats.byType).sort(([, a], [, b]) => b - a)) {
+      for (const [type, count] of Object.entries(stats.byType).sort(([, a], [, b]) => (b as number) - (a as number))) {
         console.log(`  ${type}: ${count}`);
       }
       console.log();
       console.log(`By Priority:`);
-      for (const [priority, count] of Object.entries(stats.byPriority).sort(([a], [b]) => Number(a) - Number(b))) {
+      for (const [priority, count] of Object.entries(stats.byPriority).sort(([a], [b]) => Number(a as string) - Number(b as string))) {
         const label = ["P0 (Critical)", "P1 (High)", "P2 (Medium)", "P3 (Low)", "P4 (Backlog)"][Number(priority)] || `P${priority}`;
         console.log(`  ${label}: ${count}`);
       }

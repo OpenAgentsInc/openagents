@@ -13,7 +13,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -31,7 +31,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -125,7 +125,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -267,51 +267,54 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
             ...TBResultsWidget,
-            initialState: () => ({
-              ...TBResultsWidget.initialState(),
-              currentResult: {
-                runId: "run-789",
-                suiteName: "test",
-                suiteVersion: "1.0.0",
-                passRate: 0.5,
-                passed: 1,
-                failed: 1,
-                timeout: 0,
-                error: 0,
-                totalDurationMs: 10000,
-                totalTasks: 2,
-                totalTokens: 3000,
-                taskResults: [
-                  {
-                    taskId: "t1",
-                    taskName: "Success Task",
-                    category: "cat1",
-                    difficulty: "easy" as const,
-                    outcome: "success" as const,
-                    durationMs: 5000,
-                    turns: 3,
-                    tokens: 1500,
-                  },
-                  {
-                    taskId: "t2",
-                    taskName: "Failed Task",
-                    category: "cat2",
-                    difficulty: "hard" as const,
-                    outcome: "failure" as const,
-                    durationMs: 5000,
-                    turns: 3,
-                    tokens: 1500,
-                  },
-                ],
-                timestamp: "2024-12-06T10:00:00Z",
-              },
-              outcomeFilter: "success" as const,
-            }),
+            initialState: () => {
+              const baseState = TBResultsWidget.initialState()
+              return {
+                ...baseState,
+                currentResult: {
+                  runId: "run-789",
+                  suiteName: "test",
+                  suiteVersion: "1.0.0",
+                  passRate: 0.5,
+                  passed: 1,
+                  failed: 1,
+                  timeout: 0,
+                  error: 0,
+                  totalDurationMs: 10000,
+                  totalTasks: 2,
+                  totalTokens: 3000,
+                  taskResults: [
+                    {
+                      taskId: "t1",
+                      taskName: "Success Task",
+                      category: "cat1",
+                      difficulty: "easy" as const,
+                      outcome: "success" as const,
+                      durationMs: 5000,
+                      turns: 3,
+                      tokens: 1500,
+                    },
+                    {
+                      taskId: "t2",
+                      taskName: "Failed Task",
+                      category: "cat2",
+                      difficulty: "hard" as const,
+                      outcome: "failure" as const,
+                      durationMs: 5000,
+                      turns: 3,
+                      tokens: 1500,
+                    },
+                  ],
+                  timestamp: "2024-12-06T10:00:00Z",
+                },
+                outcomeFilter: "success" as const,
+              }
+            },
           }
 
           yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
@@ -333,52 +336,55 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
             ...TBResultsWidget,
-            initialState: () => ({
-              ...TBResultsWidget.initialState(),
-              currentResult: {
-                runId: "run-sort",
-                suiteName: "test",
-                suiteVersion: "1.0.0",
-                passRate: 0.5,
-                passed: 1,
-                failed: 1,
-                timeout: 0,
-                error: 0,
-                totalDurationMs: 10000,
-                totalTasks: 2,
-                totalTokens: 5000,
-                taskResults: [
-                  {
-                    taskId: "t1",
-                    taskName: "Fast Task",
-                    category: "cat1",
-                    difficulty: "easy" as const,
-                    outcome: "success" as const,
-                    durationMs: 2000,
-                    turns: 2,
-                    tokens: 1000,
-                  },
-                  {
-                    taskId: "t2",
-                    taskName: "Slow Task",
-                    category: "cat2",
-                    difficulty: "hard" as const,
-                    outcome: "failure" as const,
-                    durationMs: 8000,
-                    turns: 5,
-                    tokens: 4000,
-                  },
-                ],
-                timestamp: "2024-12-06T10:00:00Z",
-              },
-              sortBy: "duration" as const,
-              sortDir: "desc" as const,
-            }),
+            initialState: () => {
+              const baseState = TBResultsWidget.initialState()
+              return {
+                ...baseState,
+                currentResult: {
+                  runId: "run-sort",
+                  suiteName: "test",
+                  suiteVersion: "1.0.0",
+                  passRate: 0.5,
+                  passed: 1,
+                  failed: 1,
+                  timeout: 0,
+                  error: 0,
+                  totalDurationMs: 10000,
+                  totalTasks: 2,
+                  totalTokens: 5000,
+                  taskResults: [
+                    {
+                      taskId: "t1",
+                      taskName: "Fast Task",
+                      category: "cat1",
+                      difficulty: "easy" as const,
+                      outcome: "success" as const,
+                      durationMs: 2000,
+                      turns: 2,
+                      tokens: 1000,
+                    },
+                    {
+                      taskId: "t2",
+                      taskName: "Slow Task",
+                      category: "cat2",
+                      difficulty: "hard" as const,
+                      outcome: "failure" as const,
+                      durationMs: 8000,
+                      turns: 5,
+                      tokens: 4000,
+                    },
+                  ],
+                  timestamp: "2024-12-06T10:00:00Z",
+                },
+                sortBy: "duration" as const,
+                sortDir: "desc" as const,
+              }
+            },
           }
 
           yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
@@ -399,7 +405,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
