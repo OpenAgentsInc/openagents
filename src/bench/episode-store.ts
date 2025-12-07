@@ -146,11 +146,14 @@ export class EpisodeStore {
    * Returns the most recent successful episode.
    */
   async getBaseline(model?: string): Promise<Episode | null> {
-    const episodes = await this.query({
-      model,
+    const queryOptions: Parameters<EpisodeStore["query"]>[0] = {
       status: "success",
       limit: 1,
-    });
+    };
+    if (model) {
+      queryOptions.model = model;
+    }
+    const episodes = await this.query(queryOptions);
     return episodes[0] ?? null;
   }
 
@@ -294,7 +297,7 @@ export const createEpisode = (params: {
     status = "failed";
   }
 
-  const episode: Episode = {
+  const baseEpisode: Episode = {
     id: `${runId}-${String(iteration).padStart(3, "0")}`,
     runId,
     iteration,
@@ -317,17 +320,19 @@ export const createEpisode = (params: {
     resultsPath,
   };
 
-  // Add baseline comparison if available
   if (baselineEpisode) {
-    episode.baselineComparison = {
-      baselineEpisodeId: baselineEpisode.id,
-      passRateDelta: passRate - baselineEpisode.summary.passRate,
-      improved: improvedTasks ?? [],
-      regressed: regressedTasks ?? [],
+    return {
+      ...baseEpisode,
+      baselineComparison: {
+        baselineEpisodeId: baselineEpisode.id,
+        passRateDelta: passRate - baselineEpisode.summary.passRate,
+        improved: improvedTasks ?? [],
+        regressed: regressedTasks ?? [],
+      },
     };
   }
 
-  return episode;
+  return baseEpisode;
 };
 
 /**

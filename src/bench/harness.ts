@@ -12,6 +12,7 @@ import { readTasks } from "../tasks/service.js";
 import type { Tool } from "../tools/schema.js";
 import { agentLoop, type LoopEvent, type AgentConfig, type AgentResult } from "../agent/loop.js";
 import { OpenRouterClient } from "../llm/openrouter.js";
+import { DatabaseService } from "../storage/database.js";
 import {
   MetricsCollector,
   computeSummary,
@@ -226,7 +227,7 @@ export const runBenchmark = (
 ): Effect.Effect<
   BenchmarkResults,
   BenchmarkError,
-  FileSystem.FileSystem | Path.Path | OpenRouterClient
+  FileSystem.FileSystem | Path.Path | OpenRouterClient | DatabaseService
 > =>
   Effect.gen(function* () {
     const runId = context?.runId ?? generateRunId();

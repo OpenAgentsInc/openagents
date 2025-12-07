@@ -67,20 +67,30 @@ const createMockResults = (
     model,
     timestamp: new Date().toISOString(),
     results,
-    summary: {
-      total,
-      passed,
-      failed,
-      timeout: 0,
-      error: 0,
-      skipped: 0,
-      pass_rate: passRate,
-      avg_duration_ms: 1000,
-      avg_turns: 5,
-      total_tokens: 1000 * total,
-    },
-  };
+  summary: {
+    total,
+    passed,
+    failed,
+    timeout: 0,
+    error: 0,
+    skipped: 0,
+    pass_rate: passRate,
+    avg_duration_ms: 1000,
+    avg_turns: 5,
+    total_tokens: 1000 * total,
+  },
 };
+};
+
+const withTimestamp = (baseline: BaselineRecord, timestamp: string): BaselineRecord => ({
+  ...baseline,
+  timestamp,
+});
+
+const withSuiteName = (baseline: BaselineRecord, suiteName: string): BaselineRecord => ({
+  ...baseline,
+  suiteName,
+});
 
 describe("BaselineStore", () => {
   beforeEach(() => {
@@ -113,8 +123,10 @@ describe("BaselineStore", () => {
     const store = new BaselineStore(TEST_GYM_DIR);
 
     // Save older baseline
-    const older = createBaseline(createMockResults(0.7));
-    older.timestamp = new Date(Date.now() - 10000).toISOString();
+    const older = withTimestamp(
+      createBaseline(createMockResults(0.7)),
+      new Date(Date.now() - 10000).toISOString(),
+    );
     await store.save(older);
 
     // Save newer baseline
@@ -129,12 +141,10 @@ describe("BaselineStore", () => {
   test("getBaseline filters by suite name", async () => {
     const store = new BaselineStore(TEST_GYM_DIR);
 
-    const suiteA = createBaseline(createMockResults(0.8));
-    suiteA.suiteName = "suite-a";
+    const suiteA = withSuiteName(createBaseline(createMockResults(0.8)), "suite-a");
     await store.save(suiteA);
 
-    const suiteB = createBaseline(createMockResults(0.6));
-    suiteB.suiteName = "suite-b";
+    const suiteB = withSuiteName(createBaseline(createMockResults(0.6)), "suite-b");
     await store.save(suiteB);
 
     const baseline = await store.getBaseline("test-model", "suite-a");
@@ -147,8 +157,10 @@ describe("BaselineStore", () => {
     const store = new BaselineStore(TEST_GYM_DIR);
 
     for (let i = 0; i < 5; i++) {
-      const baseline = createBaseline(createMockResults(0.5 + i * 0.1));
-      baseline.timestamp = new Date(Date.now() + i * 1000).toISOString();
+      const baseline = withTimestamp(
+        createBaseline(createMockResults(0.5 + i * 0.1)),
+        new Date(Date.now() + i * 1000).toISOString(),
+      );
       await store.save(baseline);
     }
 
@@ -163,8 +175,10 @@ describe("BaselineStore", () => {
     const store = new BaselineStore(TEST_GYM_DIR);
 
     for (let i = 0; i < 10; i++) {
-      const baseline = createBaseline(createMockResults(0.5 + i * 0.05));
-      baseline.timestamp = new Date(Date.now() + i * 1000).toISOString();
+      const baseline = withTimestamp(
+        createBaseline(createMockResults(0.5 + i * 0.05)),
+        new Date(Date.now() + i * 1000).toISOString(),
+      );
       await store.save(baseline);
     }
 
@@ -554,8 +568,10 @@ describe("updateBaselineIfImproved", () => {
 
     // Create initial baseline with older timestamp
     const initial = createMockResults(0.6);
-    const initialBaseline = createBaseline(initial);
-    initialBaseline.timestamp = new Date(Date.now() - 10000).toISOString();
+    const initialBaseline = withTimestamp(
+      createBaseline(initial),
+      new Date(Date.now() - 10000).toISOString(),
+    );
     await store.save(initialBaseline);
 
     // Try to update with better results

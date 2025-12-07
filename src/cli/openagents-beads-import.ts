@@ -2,8 +2,9 @@
 import { Command, Options } from "@effect/cli";
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as BunRuntime from "@effect/platform-bun/BunRuntime";
-import { Console, Effect } from "effect";
+import { Console, Effect, Layer } from "effect";
 import { importBeadsIssues, BeadsImportError } from "../tasks/beads.js";
+import { DatabaseLive } from "../storage/database.js";
 
 const beadsPathOption = Options.text("beads-path").pipe(Options.withDefault(".beads/issues.jsonl"));
 const tasksPathOption = Options.text("tasks-path").pipe(Options.withDefault(".openagents/tasks.jsonl"));
@@ -29,6 +30,6 @@ cli(process.argv).pipe(
       error instanceof BeadsImportError || error instanceof Error ? error.message : String(error),
     ),
   ),
-  Effect.provide(BunContext.layer),
+  Effect.provide(Layer.mergeAll(DatabaseLive, BunContext.layer)),
   BunRuntime.runMain,
 );

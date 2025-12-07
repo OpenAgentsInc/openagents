@@ -116,27 +116,38 @@ Examples:
     process.exit(0);
   }
 
-  if (!values.suite) {
+  const suiteValue = typeof values.suite === "string" ? values.suite : undefined;
+  if (!suiteValue) {
     console.error("Error: --suite is required");
     process.exit(1);
   }
 
-  if (!values.output) {
+  const outputValue = typeof values.output === "string" ? values.output : undefined;
+  if (!outputValue) {
     console.error("Error: --output is required");
     process.exit(1);
   }
 
   return {
-    suite: values.suite,
-    output: values.output,
-    tasks: values.tasks,
-    baseline: values.baseline,
-    timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
-    maxTurns: values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined,
-    parallel: values.parallel ? parseInt(values.parallel, 10) : undefined,
-    sandboxBackend: values["sandbox-backend"] as "docker" | "macos-container" | undefined,
-    sandboxImage: values["sandbox-image"],
-    runId: values["run-id"],
+    suite: suiteValue,
+    output: outputValue,
+    tasks: typeof values.tasks === "string" ? values.tasks : undefined,
+    baseline: typeof values.baseline === "string" ? values.baseline : undefined,
+    timeout:
+      typeof values.timeout === "string" ? parseInt(values.timeout, 10) : undefined,
+    maxTurns:
+      typeof values["max-turns"] === "string"
+        ? parseInt(values["max-turns"], 10)
+        : undefined,
+    parallel:
+      typeof values.parallel === "string" ? parseInt(values.parallel, 10) : undefined,
+    sandboxBackend:
+      typeof values["sandbox-backend"] === "string"
+        ? (values["sandbox-backend"] as "docker" | "macos-container")
+        : undefined,
+    sandboxImage:
+      typeof values["sandbox-image"] === "string" ? values["sandbox-image"] : undefined,
+    runId: typeof values["run-id"] === "string" ? values["run-id"] : undefined,
     help: values.help,
   };
 };
@@ -477,9 +488,6 @@ const runTask = async (
   // Surface error details if agent failed
   if (!result.success && result.error) {
     console.error(`\n⚠️  Agent completed unsuccessfully: ${result.error}`);
-    if (result.blockers && result.blockers.length > 0) {
-      console.error(`   Blockers: ${result.blockers.join(", ")}`);
-    }
   }
 
   // Run verification in CONTAINER
@@ -521,13 +529,13 @@ const runTask = async (
 
   // Emit task completion
   if (options.tbEmitter) {
-    options.tbEmitter.taskComplete(
-      tbTask.id,
-      outcome === "success" ? "passed" : "failed",
+    options.tbEmitter.taskComplete(tbTask.id, {
+      outcome: outcome === "success" ? "passed" : "failed",
       durationMs,
-      result.turns,
-      tokens
-    );
+      turns: result.turns,
+      tokens,
+      verificationOutput: verificationResult.output,
+    });
   }
 
   console.log(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
@@ -593,10 +601,18 @@ const main = async (): Promise<void> => {
 
   // Create TB emitter for HUD events
   const tbEmitter = createTBEmitter();
-  tbEmitter.runStart(
-    { name: suite.name, version: suite.version, taskCount: tasksToRun.length },
-    Date.now()
-  );
+  const tbSuiteInfo = {
+    name: suite.name,
+    version: suite.version,
+    tasks: tasksToRun.map((task) => ({
+      id: task.id,
+      name: task.name,
+      category: task.category,
+      difficulty: String(task.difficulty),
+    })),
+  };
+  const suiteTaskIds = tasksToRun.map((task) => task.id);
+  tbEmitter.runStart(tbSuiteInfo, suiteTaskIds);
 
   // Run tasks sequentially (parallel support can be added later)
   const results: TaskResult[] = [];
@@ -636,7 +652,6 @@ const main = async (): Promise<void> => {
     error: errors,
     passRate,
     totalDurationMs,
-    totalTokens,
   });
 
   // Write results JSON
