@@ -224,22 +224,22 @@ interface RunState {
   runId: string;
   suite: string;
   model: string;
-  ollamaEndpoint?: string;
+  ollamaEndpoint?: string | undefined;
   iterations: number;
   completedIterations: number;
-  tasks?: string;
+  tasks?: string | undefined;
   timeout: number;
   maxTurns: number;
   claudeValidationRate: number;
   startedAt: string;
   lastUpdatedAt: string;
   // Learning flags
-  skills?: boolean;
-  memory?: boolean;
-  reflect?: boolean;
-  maxRetries?: number;
+  skills?: boolean | undefined;
+  memory?: boolean | undefined;
+  reflect?: boolean | undefined;
+  maxRetries?: number | undefined;
   // Post-run learning
-  learn?: boolean;
+  learn?: boolean | undefined;
 }
 
 const saveState = (outputDir: string, state: RunState): void => {
@@ -381,7 +381,7 @@ interface TaskResult {
     skillsUsed: string[];
     memoriesUsed: number;
     reflectionsGenerated: number;
-  };
+  } | undefined;
 }
 
 /**
@@ -449,11 +449,11 @@ const runSingleTask = async (
     outputDir: string;
     timeout: number;
     maxTurns: number;
-    sourceRepo?: string;
-    runId?: string;
-    tbEmitter?: TBEmitter;
-    taskIndex?: number;
-    totalTasks?: number;
+    sourceRepo?: string | undefined;
+    runId?: string | undefined;
+    tbEmitter?: TBEmitter | undefined;
+    taskIndex?: number | undefined;
+    totalTasks?: number | undefined;
   }
 ): Promise<TaskResult> => {
   const startTime = Date.now();
@@ -685,7 +685,7 @@ const runSingleTask = async (
     });
   }
 
-  return {
+  const baseResult = {
     taskId: tbTask.id,
     outcome,
     durationMs,
@@ -693,8 +693,11 @@ const runSingleTask = async (
     tokens: result.tokens,
     verificationOutput: verificationResult.output,
     errorMessage: result.error,
-    learningMetrics,
   };
+
+  return learningMetrics 
+    ? { ...baseResult, learningMetrics }
+    : baseResult;
 };
 
 // ============================================================================
@@ -1093,7 +1096,7 @@ const main = async (): Promise<void> => {
           )
         );
 
-        if (learningResult.skillsExtracted.length > 0) {
+        if (learningResult?.skillsExtracted.length > 0) {
           console.log(`    [Learning] Extracted ${learningResult.skillsExtracted.length} skills`);
           // Register skills with SkillService
           try {

@@ -8,12 +8,10 @@ import {
   FMService,
   FMServiceError,
   makeFMServiceLayer,
-  fmCheckHealth,
   fmGetMetrics,
   fmListModels,
 } from "./service.js";
 import { isRetryableError, defaultFMServiceConfig } from "./schema.js";
-import type { ChatResponse } from "../llm/openrouter-types.js";
 
 describe("FM Service Schema", () => {
   test("isRetryableError returns true for retryable errors", () => {

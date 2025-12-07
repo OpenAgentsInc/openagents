@@ -458,9 +458,6 @@ const runTask = async (
   // Surface error details if agent failed
   if (!result.success && result.error) {
     console.error(`\n⚠️  Agent completed unsuccessfully: ${result.error}`);
-    if (result.blockers && result.blockers.length > 0) {
-      console.error(`   Blockers: ${result.blockers.join(", ")}`);
-    }
   }
 
   // Run verification

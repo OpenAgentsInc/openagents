@@ -10,7 +10,6 @@ import * as Path from "@effect/platform/Path";
 import { Context, Effect, Layer } from "effect";
 import {
   type OpenThoughtsSftRow,
-  type HFDatasetConfig,
   HFDatasetError,
   OPENTHOUGHTS_SFT_CONFIG,
 } from "./schema.js";
@@ -119,7 +118,6 @@ export function sftRowToTrajectory(row: OpenThoughtsSftRow, index: number): Traj
 export const makeOpenThoughtsService = () =>
   Effect.gen(function* () {
     const hfService = yield* HFDatasetService;
-    const fs = yield* FileSystem.FileSystem;
     const pathService = yield* Path.Path;
 
     const repo = OPENTHOUGHTS_SFT_CONFIG.repo;

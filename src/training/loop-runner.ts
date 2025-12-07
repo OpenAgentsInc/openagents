@@ -267,12 +267,12 @@ export const createLoopRunner = (
       if (currentSubset === "TB_89") return false;
 
       // Need minimum iterations
-      if (subsetIterations[currentSubset] < fullConfig.minIterationsBeforeProgression) {
+      if (subsetIterations[currentSubset] < (fullConfig.minIterationsBeforeProgression ?? 0)) {
         return false;
       }
 
       // Check success rate threshold
-      return subsetSuccessRates[currentSubset] >= fullConfig.progressionThreshold;
+      return subsetSuccessRates[currentSubset] >= (fullConfig.progressionThreshold ?? 0);
     });
 
   const progressTier = (): Effect.Effect<TBSubset, never> =>
@@ -434,7 +434,7 @@ export const createLoopRunner = (
   const checkLimits = (): Effect.Effect<void, LoopRunnerError> =>
     Effect.gen(function* () {
       // Check time limit
-      if (fullConfig.maxDurationMs > 0 && state.totalDurationMs >= fullConfig.maxDurationMs) {
+      if ((fullConfig.maxDurationMs ?? 0) > 0 && state.totalDurationMs >= (fullConfig.maxDurationMs ?? 0)) {
         return yield* Effect.fail(
           new LoopRunnerError(
             "time_limit_exceeded",
@@ -444,7 +444,7 @@ export const createLoopRunner = (
       }
 
       // Check iteration limit
-      if (fullConfig.maxIterations > 0 && state.totalIterations >= fullConfig.maxIterations) {
+      if ((fullConfig.maxIterations ?? 0) > 0 && state.totalIterations >= (fullConfig.maxIterations ?? 0)) {
         return yield* Effect.fail(
           new LoopRunnerError(
             "iteration_limit_exceeded",
@@ -513,8 +513,8 @@ export const createLoopRunner = (
         }
 
         // Delay between iterations
-        if (fullConfig.iterationDelayMs > 0 && state.status === "running") {
-          yield* Effect.sleep(Duration.millis(fullConfig.iterationDelayMs));
+        if ((fullConfig.iterationDelayMs ?? 0) > 0 && state.status === "running") {
+          yield* Effect.sleep(Duration.millis(fullConfig.iterationDelayMs ?? 0));
         }
       }
 

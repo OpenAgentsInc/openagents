@@ -104,7 +104,7 @@ const getSourceLabel = (source: TBOutputSource): string => {
 /**
  * Format ATIF tool calls into displayable text
  */
-const formatToolCall = (toolCall: ATIFStepMessage["step"]["tool_calls"][0]): string => {
+const formatToolCall = (toolCall: NonNullable<ATIFStepMessage["step"]["tool_calls"]>[0]): string => {
   const args = toolCall.arguments
   let argsStr = ""
   if (args && typeof args === "object") {

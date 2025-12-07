@@ -428,7 +428,7 @@ describe("MCTasksWidget", () => {
 
               yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.loading).toBe(false)
               expect(updated.tasks).toHaveLength(1)
               expect(updated.tasks[0]?.id).toBe("oa-new")
@@ -495,7 +495,7 @@ describe("MCTasksWidget", () => {
 
               yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.loading).toBe(false)
               expect(updated.tasks).toHaveLength(2)
 
@@ -569,7 +569,7 @@ describe("MCTasksWidget", () => {
 
               yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-assign" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.assigningId).toBeNull()
               expect(updated.tasks.map((t) => t.id)).toEqual(["oa-stay"])
 
@@ -730,7 +730,7 @@ describe("MCTasksWidget", () => {
 
               yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-sandbox" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.tasks).toHaveLength(0)
             }),
             layer
