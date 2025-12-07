@@ -353,25 +353,15 @@ export const createReflection = (
     confidence?: number;
   },
 ): Reflection => {
-  const baseReflection = {
+  return {
     id: generateReflectionId(),
     failureId,
     whatWentWrong: data.whatWentWrong,
     whyItWentWrong: data.whyItWentWrong,
     whatToTryNext: data.whatToTryNext,
-    confidence: 0.7,
+    confidence: data.confidence ?? 0.7,
+    lessonsLearned: data.lessonsLearned ?? [],
+    ...(data.suggestedFix ? { suggestedFix: data.suggestedFix } : {}),
     timestamp: new Date().toISOString(),
   };
-
-  const result = { ...baseReflection };
-  if (data.confidence !== undefined) {
-    result.confidence = data.confidence;
-  }
-  if (data.suggestedFix) {
-    result.suggestedFix = data.suggestedFix;
-  }
-  if (data.lessonsLearned) {
-    result.lessonsLearned = data.lessonsLearned;
-  }
-  return result;
 };

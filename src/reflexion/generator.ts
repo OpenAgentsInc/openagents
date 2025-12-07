@@ -129,7 +129,7 @@ const makeReflectionGenerator = (): Effect.Effect<
         whatWentWrong,
         whyItWentWrong,
         whatToTryNext,
-        suggestedFix,
+        ...(suggestedFix ? { suggestedFix } : {}),
         lessonsLearned: lessons,
         confidence: 0.8,
       });
@@ -201,7 +201,7 @@ const makeReflectionGenerator = (): Effect.Effect<
         whatWentWrong,
         whyItWentWrong,
         whatToTryNext,
-        suggestedFix,
+        ...(suggestedFix ? { suggestedFix } : {}),
         lessonsLearned: lessons,
         confidence: 0.6, // Lower confidence for heuristic
       });

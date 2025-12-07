@@ -23,6 +23,8 @@ import {
   createSemanticMemory,
   createProceduralMemory,
 } from "./schema.js";
+import { EmbeddingError, EmbeddingServiceLive } from "../skills/embedding.js";
+import { makeFMServiceLayer } from "../fm/service.js";
 
 // --- Unified Error Type ---
 
@@ -387,7 +389,7 @@ export const MemoryServiceLayer: Layer.Layer<
  */
 export const makeMemoryServiceLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<MemoryService, MemoryStoreError, never> => {
+): Layer.Layer<MemoryService, never, never> => {
   const fmLayer = makeFMServiceLayer({ autoStart: false, enableLogging: false });
   const storeLayer = makeMemoryStoreLayer(projectRoot);
   const embeddingLayer = Layer.provide(EmbeddingServiceLive, fmLayer);

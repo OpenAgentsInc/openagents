@@ -85,7 +85,7 @@ export class SkillServiceError extends Error {
   constructor(
     readonly reason: string,
     override readonly message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "SkillServiceError";

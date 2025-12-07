@@ -252,7 +252,8 @@ export const createSkill = (
     createdAt: partial.createdAt ?? now,
     updatedAt: partial.updatedAt ?? now,
     source: partial.source ?? "manual",
-    ...partial,
+    tags: partial.tags ?? [],
+    examples: partial.examples ?? [],
   };
 };
 

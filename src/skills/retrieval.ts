@@ -28,7 +28,7 @@ export class SkillRetrievalError extends Error {
   constructor(
     readonly reason: "store_error" | "embedding_error" | "no_skills_found",
     override readonly message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "SkillRetrievalError";
@@ -147,7 +147,7 @@ const makeRetrievalService = (): Effect.Effect<
           let skillEmbedding: number[];
 
           if (skill.embedding && skill.embedding.length > 0) {
-            skillEmbedding = skill.embedding;
+            skillEmbedding = [...skill.embedding];
           } else {
             // Generate embedding on-the-fly
             skillEmbedding = yield* embedding.embedSkill(skill).pipe(
@@ -185,12 +185,17 @@ const makeRetrievalService = (): Effect.Effect<
         filter?: SkillFilter;
       },
     ): Effect.Effect<Skill[], SkillRetrievalError> =>
-      query({
+      const queryObject: SkillQuery = {
         query: taskDescription,
         topK: options?.topK ?? DEFAULT_TOP_K,
         minSimilarity: options?.minSimilarity ?? DEFAULT_MIN_SIMILARITY,
-        filter: options?.filter,
-      }).pipe(Effect.map((matches) => matches.map((m) => m.skill)));
+      };
+      
+      if (options?.filter) {
+        queryObject.filter = options.filter;
+      }
+      
+      return query(queryObject).pipe(Effect.map((matches) => matches.map((m) => m.skill)));
 
     const formatForPromptFn = (
       taskDescription: string,
