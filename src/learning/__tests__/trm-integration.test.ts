@@ -110,7 +110,7 @@ describe("TRM Halt Decisions", () => {
     const state = createMockTRMState({
       meta: { cycles: 3 },
       y: { confidence: 0.5 },
-      z: { progress: { isStuck: false, testsPassed: false } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
 
     const result = shouldHalt(state);
@@ -124,7 +124,7 @@ describe("TRM Halt Decisions", () => {
       z: { depth: 100, maxDepth: 42 },
     });
 
-    const result = shouldHalt(state, { maxDepth: 42, confidenceThreshold: 0.9, stuckThreshold: 3, accuracyThreshold: 1.0 });
+    const result = shouldHalt(state, { maxDepthOverride: 42, confidenceThreshold: 0.9, maxStuckCount: 3, accuracyThreshold: 1.0, minStepsBeforeHalt: 3 });
     expect(result.shouldHalt).toBe(true);
     expect(result.reason).toBe("max_depth");
   });

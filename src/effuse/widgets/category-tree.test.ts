@@ -485,7 +485,7 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-001",
-            outcome: "passed",
+            outcome: "success",
           })
 
           yield* Effect.sleep(10)
@@ -508,8 +508,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [{ id: "task-timeout", name: "Timeout task", difficulty: "medium", category: "core" }],
           })
 
@@ -520,6 +520,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-timeout",
             taskId: "task-timeout",
             outcome: "timeout",
+            durationMs: 5000,
+            turns: 0,
+            tokens: 0,
           })
 
           yield* Effect.sleep(0)
