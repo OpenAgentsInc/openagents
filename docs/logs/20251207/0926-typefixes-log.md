@@ -1,0 +1,1 @@
+- Removed TaskService appendCommits usage: orchestrator recovery/orchestrator now explicitly extend commits, parallel close + tests updated, CLI update merges commit arrays, and closeTask applies new commits list.

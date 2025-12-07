@@ -1,0 +1,1 @@
+- Added detailed tbench defaults to overnight orchestrator config (matching do-one-task) so ProjectConfig loads cleanly.

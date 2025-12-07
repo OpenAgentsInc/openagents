@@ -1,3 +1,21 @@
+import type { Effect } from "effect";
+import {
+  addComment,
+  archiveTasks,
+  closeTask,
+  compactTasks,
+  createTask,
+  getStaleTasks,
+  getTaskStats,
+  getTaskWithDeps,
+  mergeTasksById,
+  recordDeletion,
+  renameTaskPrefix,
+  reopenTask,
+  searchAllTasks,
+  updateTask,
+} from "./service.js";
+
 export {
   // Schemas
   Status,
@@ -83,24 +101,6 @@ export {
   readDeletions,
   writeDeletions,
   recordDeletion,
-  type CreateTaskOptions,
-  type UpdateTaskOptions,
-  type CloseTaskOptions,
-  type ReopenTaskOptions,
-  type ArchiveOptions,
-  type ArchiveResult,
-  type CompactOptions,
-  type CompactResult,
-  type SearchAllTasksOptions,
-  type TaskStats,
-  type StaleTasksOptions,
-  type TaskWithDeps,
-  type AddCommentOptions,
-  type RenamePrefixOptions,
-  type RenamePrefixResult,
-  type MergeTasksOptions,
-  type MergeTasksResult,
-  type RecordDeletionOptions,
 } from "./service.js";
 
 export {
@@ -146,3 +146,47 @@ export {
   type HooksConfig,
   type HooksResult,
 } from "./hooks.js";
+
+type ServiceOptions<T extends (...args: any) => any> = Parameters<T>[0];
+type ServiceEffectResult<T extends (...args: any) => any> =
+  ReturnType<T> extends Effect.Effect<infer A, any, any> ? A : never;
+
+type CreateTaskOptions = ServiceOptions<typeof createTask>;
+type UpdateTaskOptions = ServiceOptions<typeof updateTask>;
+type CloseTaskOptions = ServiceOptions<typeof closeTask>;
+type ReopenTaskOptions = ServiceOptions<typeof reopenTask>;
+type ArchiveOptions = ServiceOptions<typeof archiveTasks>;
+type ArchiveResult = ServiceEffectResult<typeof archiveTasks>;
+type CompactOptions = ServiceOptions<typeof compactTasks>;
+type CompactResult = ServiceEffectResult<typeof compactTasks>;
+type SearchAllTasksOptions = ServiceOptions<typeof searchAllTasks>;
+type TaskStats = ServiceEffectResult<typeof getTaskStats>;
+type StaleTasksOptions = ServiceOptions<typeof getStaleTasks>;
+type TaskWithDeps = ServiceEffectResult<typeof getTaskWithDeps>;
+type AddCommentOptions = ServiceOptions<typeof addComment>;
+type RenamePrefixOptions = ServiceOptions<typeof renameTaskPrefix>;
+type RenamePrefixResult = ServiceEffectResult<typeof renameTaskPrefix>;
+type MergeTasksOptions = ServiceOptions<typeof mergeTasksById>;
+type MergeTasksResult = ServiceEffectResult<typeof mergeTasksById>;
+type RecordDeletionOptions = ServiceOptions<typeof recordDeletion>;
+
+export type {
+  CreateTaskOptions,
+  UpdateTaskOptions,
+  CloseTaskOptions,
+  ReopenTaskOptions,
+  ArchiveOptions,
+  ArchiveResult,
+  CompactOptions,
+  CompactResult,
+  SearchAllTasksOptions,
+  TaskStats,
+  StaleTasksOptions,
+  TaskWithDeps,
+  AddCommentOptions,
+  RenamePrefixOptions,
+  RenamePrefixResult,
+  MergeTasksOptions,
+  MergeTasksResult,
+  RecordDeletionOptions,
+};

@@ -38,7 +38,7 @@ import {
 import { runOrchestrator } from "./orchestrator/orchestrator.js";
 import { makeReflectionService } from "./orchestrator/reflection/index.js";
 import { loadProjectConfig } from "../tasks/project.js";
-import { readTasks, updateTask } from "../tasks/service.js";
+import { getTaskWithDeps, readTasks, updateTask } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
 import { DatabaseLive } from "../storage/database.js";
 import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../llm/openrouter.js";
@@ -378,6 +378,10 @@ const closeTaskAfterMerge = async (
   commitSha: string,
 ): Promise<{ success: boolean; error?: string }> => {
   try {
+    const task = await Effect.runPromise(
+      getTaskWithDeps(tasksPath, taskId).pipe(Effect.provide(BunContext.layer)),
+    );
+    const existingCommits = task?.commits ?? [];
     await Effect.runPromise(
       updateTask({
         tasksPath,
@@ -386,8 +390,8 @@ const closeTaskAfterMerge = async (
           status: "closed",
           closeReason: "Completed by MechaCoder parallel agent",
           pendingCommit: null,
+          commits: [...existingCommits, commitSha],
         },
-        appendCommits: [commitSha],
       }).pipe(Effect.provide(BunContext.layer)),
     );
     return { success: true };

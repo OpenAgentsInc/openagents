@@ -580,10 +580,22 @@ const cmdUpdate = (options: CliOptions) =>
       return task;
     }
 
-    const task = yield* repo.update(
-      { id, ...updateFields },
-      { appendCommits: commits || [] },
-    ).pipe(
+    let mergedCommits: string[] | undefined;
+    if (commits?.length) {
+      const currentTask = yield* getTaskWithDeps(repo.paths.tasksPath, id).pipe(
+        Effect.provide(BunContext.layer),
+        Effect.catchAll(() => Effect.succeed(null)),
+      );
+      mergedCommits = [...(currentTask?.commits ?? []), ...commits];
+    }
+
+    const updatePayload: { id: string } & TaskUpdate = {
+      id,
+      ...updateFields,
+      ...(mergedCommits ? { commits: mergedCommits } : {}),
+    };
+
+    const task = yield* repo.update(updatePayload).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
         return Effect.succeed(null);

@@ -1,0 +1,3 @@
+- Typecheck: failed with numerous errors (see output). Planning to fix domain-specific type issues starting with overnight defaults.
+- Default project config now includes tbench placeholder to satisfy schema (overnight defaults).
+- Typecheck rerun: still fails, mostly due to TaskService/DatabaseService API mismatches + tests needing Database layer (see output).
