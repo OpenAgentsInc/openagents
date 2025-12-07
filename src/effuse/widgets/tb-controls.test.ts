@@ -1041,4 +1041,76 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-4.6 displays run duration timer in HH:MM:SS format", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+
+              // Test 1: Timer during active run
+              const startTime = Date.now() - (3 * 60 + 45) * 1000 // 3:45 ago
+              const runningState = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                isRunning: true,
+                totalTasks: 10,
+                completedTasks: 5,
+                passedTasks: 3,
+                failedTasks: 2,
+                startedAt: startTime,
+                duration: null,
+                status: "5/10 tasks",
+                statusType: "running",
+              })
+              const runningCtx = { state: runningState, emit: () => Effect.void, dom, container }
+
+              const runningHtml = (yield* TBControlsWidget.render(runningCtx)).toString()
+              expect(runningHtml).toContain('data-testid="run-duration"')
+              expect(runningHtml).toContain("00:03:") // Should show ~3 minutes
+              expect(runningHtml).toContain("⏱") // Timer icon
+
+              // Test 2: Duration after run completes
+              const completedState = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                isRunning: false,
+                totalTasks: 10,
+                completedTasks: 10,
+                passedTasks: 7,
+                failedTasks: 3,
+                startedAt: null,
+                duration: 125000, // 2 minutes 5 seconds
+                status: "Complete",
+                statusType: "success",
+              })
+              const completedCtx = { state: completedState, emit: () => Effect.void, dom, container }
+
+              const completedHtml = (yield* TBControlsWidget.render(completedCtx)).toString()
+              expect(completedHtml).toContain('data-testid="run-duration"')
+              expect(completedHtml).toContain("00:02:05") // Exact duration
+              expect(completedHtml).toContain("⏱") // Timer icon
+
+              // Test 3: No timer when not running and no duration
+              const idleState = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                isRunning: false,
+                startedAt: null,
+                duration: null,
+              })
+              const idleCtx = { state: idleState, emit: () => Effect.void, dom, container }
+
+              const idleHtml = (yield* TBControlsWidget.render(idleCtx)).toString()
+              expect(idleHtml).not.toContain('data-testid="run-duration"')
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
