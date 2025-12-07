@@ -2,7 +2,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import { decodeTask, type Task } from "./schema.js";
-import { writeTasks } from "./service.js";
+import { DatabaseService } from "../storage/database.js";
 
 export class BeadsImportError extends Error {
   readonly _tag = "BeadsImportError";
@@ -43,8 +43,16 @@ type BeadsIssue = {
 };
 
 const toTask = (issue: BeadsIssue): Task => {
-  const deps =
-    issue.dependencies?.map((d) => ({ id: d.depends_on_id, type: d.type as Task["deps"][number]["type"] })) ?? [];
+  // Deduplicate dependencies - keep only the first occurrence of each (issue_id, depends_on_id) pair
+  const seenDeps = new Set<string>();
+  const deps = (issue.dependencies ?? []).reduce((acc, d) => {
+    const key = `${d.issue_id}-${d.depends_on_id}`;
+    if (!seenDeps.has(key)) {
+      seenDeps.add(key);
+      acc.push({ id: d.depends_on_id, type: d.type as Task["deps"][number]["type"] });
+    }
+    return acc;
+  }, [] as Array<{ id: string; type: Task["deps"][number]["type"] }>);
 
   const baseTask: Task = {
     id: issue.id,
@@ -77,7 +85,7 @@ export const importBeadsIssues = (
 ): Effect.Effect<
   { count: number; tasksPath: string },
   BeadsImportError,
-  FileSystem.FileSystem | Path.Path
+  FileSystem.FileSystem | Path.Path | DatabaseService
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -106,7 +114,8 @@ export const importBeadsIssues = (
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    const tasks: Task[] = [];
+    const db = yield* DatabaseService;
+    let count = 0;
 
     for (const line of lines) {
       const parsed = yield* Effect.try({
@@ -124,20 +133,20 @@ export const importBeadsIssues = (
           ),
       });
 
-      tasks.push(task);
+      // Insert the task into the database
+      yield* db.insertTask(task).pipe(
+        Effect.mapError(
+          (e) =>
+            new BeadsImportError(
+              "write_error",
+              `Failed to insert task: ${e.message}`,
+            ),
+        ),
+      );
+
+      count++;
     }
 
     const resolvedTasks = path.resolve(tasksPath);
-
-    yield* writeTasks(resolvedTasks, tasks).pipe(
-      Effect.mapError(
-        (e) =>
-          new BeadsImportError(
-            "write_error",
-            `Failed to write tasks: ${e.message}`,
-          ),
-      ),
-    );
-
-    return { count: tasks.length, tasksPath: resolvedTasks };
+    return { count, tasksPath: resolvedTasks };
   });

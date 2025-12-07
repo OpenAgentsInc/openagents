@@ -42,6 +42,7 @@ import { editTool } from "../tools/edit.js";
 import { bashTool } from "../tools/bash.js";
 import { writeTool } from "../tools/write.js";
 import { openRouterLive } from "../llm/openrouter.js";
+import { DatabaseLive } from "../storage/database.js";
 import {
   createSession,
   writeSessionStart,
@@ -997,7 +998,7 @@ if (!config.workDir) {
   config.workDir = process.cwd();
 }
 
-const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
+const liveLayer = Layer.mergeAll(DatabaseLive, openRouterLive, BunContext.layer);
 
 // Route based on --legacy flag
 const program = config.legacy

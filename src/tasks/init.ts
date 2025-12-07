@@ -3,7 +3,7 @@ import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import { Database } from "bun:sqlite";
 import { defaultProjectConfig, saveProjectConfig } from "./project.js";
-import { runMigrations } from "../storage/migrations.js";
+import { runMigrations, INITIAL_SCHEMA_SQL } from "../storage/migrations.js";
 
 export class InitProjectError extends Error {
   readonly _tag = "InitProjectError";
@@ -90,6 +90,21 @@ export const initOpenAgentsProject = ({
       ),
     );
 
+    // Copy migration file (001_initial_schema.sql)
+    const migrationFilePath = path.join(migrationsDir, "001_initial_schema.sql");
+    yield* fs.writeFile(
+      migrationFilePath,
+      new TextEncoder().encode(INITIAL_SCHEMA_SQL),
+    ).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to write migration file: ${e.message}`,
+          ),
+      ),
+    );
+
     // Create sessions directory
     yield* fs.makeDirectory(sessionsDir, { recursive: true }).pipe(
       Effect.mapError(
@@ -130,15 +145,6 @@ export const initOpenAgentsProject = ({
     yield* Effect.try({
       try: () => {
         const db = new Database(dbPath);
-
-        // Run migrations to set up schema
-        Effect.runSync(runMigrations(db, migrationsDir).pipe(
-          Effect.provide({
-            FileSystem: fs,
-            Path: path,
-          } as any),
-        ));
-
         db.close();
       },
       catch: (e) =>
@@ -147,6 +153,16 @@ export const initOpenAgentsProject = ({
           `Failed to create database: ${e}`,
         ),
     });
+
+    // Run migrations using runMigrations (which requires FileSystem and Path services)
+    yield* runMigrations(new Database(dbPath), migrationsDir).pipe(
+      Effect.mapError((e) =>
+        new InitProjectError(
+          "write_error",
+          `Failed to run migrations: ${e.message}`,
+        ),
+      ),
+    );
 
     // Create .gitignore for sessions and run-logs
     yield* fs.writeFile(gitignorePath, new TextEncoder().encode(OPENAGENTS_GITIGNORE)).pipe(

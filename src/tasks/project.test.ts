@@ -1,4 +1,4 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
+
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
@@ -9,10 +9,8 @@ import {
   projectConfigPath,
   saveProjectConfig,
 } from "./project.js";
+import { runWithTestContext } from "./test-helpers.js";
 
-const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
-) => Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 const setup = () =>
   Effect.gen(function* () {
@@ -24,7 +22,7 @@ const setup = () =>
 
 describe("ProjectService", () => {
   test("returns null when config is missing", async () => {
-    const config = await runWithBun(
+    const config = await runWithTestContext(
       Effect.gen(function* () {
         const { dir } = yield* setup();
         return yield* loadProjectConfig(dir);
@@ -35,7 +33,7 @@ describe("ProjectService", () => {
   });
 
   test("saves and loads config with defaults applied", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { dir, configPath } = yield* setup();
         const config = defaultProjectConfig("openagents");
@@ -59,7 +57,7 @@ describe("ProjectService", () => {
   });
 
   test("overrides defaults when provided", async () => {
-    const config = await runWithBun(
+    const config = await runWithTestContext(
       Effect.gen(function* () {
         const { dir } = yield* setup();
         yield* saveProjectConfig(dir, {
@@ -81,7 +79,7 @@ describe("ProjectService", () => {
   });
 
   test("applies claudeCode defaults when missing", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { dir } = yield* setup();
         yield* saveProjectConfig(dir, defaultProjectConfig("claude-defaults"));
@@ -97,7 +95,7 @@ describe("ProjectService", () => {
   });
 
   test("persists claudeCode overrides", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { dir } = yield* setup();
         const overrides = {
@@ -129,7 +127,7 @@ describe("ProjectService", () => {
 
   test("loadProjectConfig expects root dir, not .openagents dir", async () => {
     // This test documents the API contract: pass the PROJECT ROOT, not .openagents
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -168,7 +166,7 @@ describe("ProjectService", () => {
 
   test("projectConfigPath constructs path with .openagents subdirectory", async () => {
     // Verify projectConfigPath adds .openagents to the provided root
-    const configPath = await runWithBun(
+    const configPath = await runWithTestContext(
       Effect.gen(function* () {
         return yield* projectConfigPath("/some/project/root");
       }),

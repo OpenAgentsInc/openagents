@@ -40,6 +40,7 @@ import { makeReflectionService } from "./orchestrator/reflection/index.js";
 import { loadProjectConfig } from "../tasks/project.js";
 import { readTasks, updateTask } from "../tasks/service.js";
 import type { Task } from "../tasks/index.js";
+import { DatabaseLive } from "../storage/database.js";
 import { openRouterClientLayer, openRouterConfigLayer, OpenRouterClient } from "../llm/openrouter.js";
 import {
   clearParallelState,
@@ -607,8 +608,9 @@ const runAgentInWorktree = async (
   // Merge layers - use noop OpenRouter layer in cc-only mode (no API key needed)
   // When ccOnly is true, we provide a stub that throws if accidentally called
   const combinedLayer = ccOnly
-    ? Layer.merge(BunContext.layer, noopOpenRouterLayer)
-    : Layer.merge(
+    ? Layer.mergeAll(DatabaseLive, BunContext.layer, noopOpenRouterLayer)
+    : Layer.mergeAll(
+        DatabaseLive,
         BunContext.layer,
         Layer.provide(openRouterClientLayer, openRouterConfigLayer),
       );
