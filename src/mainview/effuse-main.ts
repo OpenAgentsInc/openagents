@@ -80,9 +80,10 @@ const createEffuseLayer = () => {
 
 /**
  * Mount all widgets to their respective containers
+ * CURRENTLY DISABLED - using simple SidebarLayout
  */
 const mountAllWidgets = Effect.gen(function* () {
-  console.log("[Effuse] Mounting widgets...")
+  console.log("[Effuse] Widget mounting disabled - using SidebarLayout")
 
   // Connect to desktop server WebSocket first
   const socket = yield* SocketServiceTag
@@ -94,6 +95,7 @@ const mountAllWidgets = Effect.gen(function* () {
     })
   )
 
+  /* WIDGETS DISABLED FOR SIMPLE LAYOUT
   // Mount APM Widget (bottom-right corner)
   yield* mountWidgetById(APMWidget, "apm-widget").pipe(
     Effect.catchAll((e) => {
@@ -149,8 +151,9 @@ const mountAllWidgets = Effect.gen(function* () {
       return Effect.void
     })
   )
+  */
 
-  console.log("[Effuse] All widgets mounted successfully")
+  console.log("[Effuse] Simple layout ready")
 })
 
 // ============================================================================
