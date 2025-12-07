@@ -22,7 +22,7 @@ import type { Trajectory } from "../../atif/schema.js"
  * Create a mock trajectory for testing
  */
 const createMockTrajectory = (sessionId: string): Trajectory => ({
-  schema_version: "1.0",
+  schema_version: "ATIF-v1.4",
   session_id: sessionId,
   agent: {
     name: "test-agent",
@@ -44,7 +44,7 @@ const createMockTrajectory = (sessionId: string): Trajectory => ({
       reasoning_content: "The user is greeting me and asking for help.",
       tool_calls: [
         {
-          id: "call-1",
+          tool_call_id: "call-1",
           function_name: "searchDocs",
           arguments: { query: "help" },
         },
@@ -54,10 +54,11 @@ const createMockTrajectory = (sessionId: string): Trajectory => ({
       step_id: 3,
       timestamp: "2024-01-01T10:00:02Z",
       source: "system",
+      message: "Observation",
       observation: {
         results: [
           {
-            id: "obs-1",
+            source_call_id: "obs-1",
             content: "Found documentation on help topics.",
           },
         ],
@@ -113,7 +114,7 @@ describe("HFTrajectoryDetailWidget", () => {
     expect(state.loading).toBe(false)
     expect(state.error).toBe(null)
     expect(state.collapsed).toBe(false)
-    expect(state.expandedStepId).toBe(null)
+    expect(state.expandedStepIds.size).toBe(0)
     expect(state.viewMode).toBe("formatted")
   })
 
@@ -135,7 +136,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: false,
               error: null,
               collapsed: false,
-              expandedStepId: null,
+              expandedStepIds: new Set(),
               viewMode: "formatted",
             }),
           }
@@ -173,7 +174,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: false,
               error: null,
               collapsed: false,
-              expandedStepId: null,
+              expandedStepIds: new Set(),
               viewMode: "formatted",
             }),
           }
@@ -214,7 +215,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: false,
               error: null,
               collapsed: false,
-              expandedStepId: null,
+              expandedStepIds: new Set(),
               viewMode: "formatted",
             }),
           }
@@ -249,7 +250,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: false,
               error: null,
               collapsed: false,
-              expandedStepId: null,
+              expandedStepIds: new Set(),
               viewMode: "formatted",
             }),
           }
@@ -310,7 +311,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: true,
               error: null,
               collapsed: false,
-              expandedStepId: null,
+              expandedStepIds: new Set(),
               viewMode: "formatted",
             }),
           }
@@ -344,7 +345,7 @@ describe("HFTrajectoryDetailWidget", () => {
               loading: false,
               error: null,
               collapsed: false,
-              expandedStepId: 4, // Expand step with metrics
+              expandedStepIds: new Set([4]), // Expand step with metrics
               viewMode: "formatted",
             }),
           }

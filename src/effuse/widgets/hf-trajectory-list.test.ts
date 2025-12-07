@@ -24,7 +24,7 @@ import { HFDatasetError } from "../../huggingface/schema.js"
  * Create a mock trajectory for testing
  */
 const createMockTrajectory = (index: number): Trajectory => ({
-  schema_version: "1.0",
+  schema_version: "ATIF-v1.4",
   session_id: `session-${index}`,
   agent: {
     name: `agent-${index % 3}`, // 3 different agents

@@ -9,8 +9,6 @@ import { mountWidget } from "../widget/mount.js"
 import { makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"
 import { DomServiceTag } from "../services/dom.js"
-import { StateServiceTag } from "../services/state.js"
-import { DomServiceTag } from "../services/dom.js"
 
 describe("ContainerPanesWidget", () => {
   test("renders empty state", async () => {
@@ -228,7 +226,7 @@ describe("ContainerPanesWidget", () => {
                 executionId: "exec-logs",
                 image: "busybox",
                 command: ["echo", "hello"],
-                context: "sandbox",
+                context: "verification",
                 sandboxed: true,
                 workdir: "/work",
                 status: "running",
@@ -239,7 +237,7 @@ describe("ContainerPanesWidget", () => {
                 startedAt: "2024-12-05T10:00:00Z",
               }
 
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<ContainerPanesState>({
                 panes: new Map([["exec-logs", pane]]),
                 maxVisible: 5,
                 maxLinesPerPane: 10,
@@ -273,7 +271,7 @@ describe("ContainerPanesWidget", () => {
             executionId: "exec-live",
             image: "ubuntu:22.04",
             command: ["bash", "-c", "echo hi"],
-            context: "sandbox",
+            context: "verification",
             sandboxed: true,
             workdir: "/work",
             timestamp: "2024-12-05T12:00:00Z",
@@ -290,6 +288,7 @@ describe("ContainerPanesWidget", () => {
             executionId: "exec-live",
             exitCode: 0,
             durationMs: 2500,
+            sandboxed: true,
           })
           yield* Effect.sleep(0)
 
@@ -326,6 +325,7 @@ describe("ContainerPanesWidget", () => {
             text: "stdout line",
             stream: "stdout",
             sequence: 1,
+            sandboxed: false,
           })
           yield* injectMessage({
             type: "container_output",
@@ -333,6 +333,7 @@ describe("ContainerPanesWidget", () => {
             text: "stderr line",
             stream: "stderr",
             sequence: 2,
+            sandboxed: false,
           })
           yield* Effect.sleep(0)
 
@@ -370,7 +371,7 @@ describe("ContainerPanesWidget", () => {
                 startedAt: "2024-12-05T10:00:00Z",
               }
 
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<ContainerPanesState>({
                 panes: new Map([["exec-status", pane]]),
                 maxVisible: 5,
                 maxLinesPerPane: 10,
