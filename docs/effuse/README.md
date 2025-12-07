@@ -333,7 +333,9 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 | `APMWidget` | `widgets/apm-widget.ts` | Actions Per Minute monitor |
 | `TBControlsWidget` | `widgets/tb-controls.ts` | TerminalBench suite/run controls |
 | `TBOutputWidget` | `widgets/tb-output.ts` | Streaming test output |
-| `TBResultsWidget` | `widgets/tb-results.ts` | Run results display |
+| `TBResultsWidget` | `widgets/tb-results.ts` | Run results and per-task metrics |
+| `TBLearningWidget` | `widgets/tb-learning.ts` | FM learning metrics display |
+| `ATIFDetailsWidget` | `widgets/atif-details.ts` | ATIF trajectory step viewer |
 | `MCTasksWidget` | `widgets/mc-tasks.ts` | Ready tasks list |
 | `CategoryTreeWidget` | `widgets/category-tree.ts` | Task category tree |
 | `TrajectoryPaneWidget` | `widgets/trajectory-pane.ts` | Trajectory list |
@@ -343,6 +345,7 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 
 ## Further Reading
 
+- **[ui-components.md](./ui-components.md)** - Complete UI/layout guide with Tailwind patterns and examples
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Deep dive into Effuse architecture
 - **[TESTING.md](./TESTING.md)** - Complete testing guide
 - **Source code**: `src/effuse/widgets/apm-widget.ts` is the simplest complete example
