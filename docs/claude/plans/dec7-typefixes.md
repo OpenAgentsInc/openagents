@@ -56,326 +56,249 @@ Run `bun run typecheck` to see all errors.
 
 ---
 
-## Phase 1: Quick Wins (Est. 1-2 hours)
+## Agent Batch Assignments
 
-Start here - these are mechanical fixes that don't require understanding business logic.
+Work is divided into 7 batches. Each agent should work on ONE batch only to avoid conflicts.
 
-### 1.1 Remove Unused Imports/Variables (92 TS6133 + 6 TS6196 = 98 errors)
+---
 
-**Pattern:** Find and remove unused declarations.
+## Batch 1: Effuse Widget Tests - TB Group (~170 errors)
 
+**Agent Assignment:** Agent 1
+**Est. Time:** 2-3 hours
+**Files:**
+- `src/effuse/widgets/tb-controls.test.ts` (57 errors)
+- `src/effuse/widgets/tb-output.test.ts` (43 errors)
+- `src/effuse/widgets/category-tree.test.ts` (41 errors)
+- `src/effuse/widgets/tb-widgets.test.ts` (27 errors)
+
+**Common Error Patterns:**
+- TS2345: StateCell type mismatch - mock state doesn't match actual state type
+- TS2722: Possibly undefined invocation (add `?.` operator)
+- TS2353: Unknown properties in object literals (check schema updates)
+- TS2379: exactOptionalPropertyTypes (use conditional spread)
+- TS2349: Expression not callable (likely calling `.get()` result instead of awaiting)
+- TS2740: Missing properties from type (add required fields to mock state)
+
+**Fix Pattern for StateCell mocks:**
 ```typescript
-// Before
-import { Foo, Bar, Baz } from "./module.js";
-const unused = "hello";
+// WRONG - selectedTaskId: null is too narrow
+const state = StateCell.make({
+  selectedTaskId: null,  // Error: should be string | null
+});
 
-// After - remove if Baz is unused
-import { Foo, Bar } from "./module.js";
+// CORRECT - use type annotation
+const state = StateCell.make<CategoryTreeState>({
+  selectedTaskId: null,
+});
 ```
 
-**Files to fix (sample):**
-- `src/bench/baseline.test.ts:7` - remove unused `join`
-- `src/bench/harness.ts:15` - remove unused `DatabaseService`
-- `src/cli/tbench-iterate.ts:36,46,53` - multiple unused imports
-- `src/cli/tbench-local.ts:20,353` - unused imports and variables
-- `src/training/episode-learner.ts:21,30,292` - unused imports
+---
 
-**Command to find all:**
+## Batch 2: Effuse Widget Tests - MC/Trajectory/Other (~70 errors)
+
+**Agent Assignment:** Agent 2
+**Est. Time:** 1.5-2 hours
+**Files:**
+- `src/effuse/widgets/mc-tasks.test.ts` (22 errors)
+- `src/effuse/widgets/tb-results.test.ts` (18 errors)
+- `src/effuse/widgets/trajectory-pane.test.ts` (12 errors)
+- `src/effuse/widgets/hf-trajectory-detail.test.ts` (10 errors)
+- `src/effuse/widgets/container-panes.test.ts` (8 errors)
+
+**Common Error Patterns:**
+- Same StateCell type mismatches as Batch 1
+- Labels array typed as `never[]` instead of `string[]`
+- TS2722: Add optional chaining for possibly undefined callbacks
+
+---
+
+## Batch 3: Learning Module (~99 errors)
+
+**Agent Assignment:** Agent 3
+**Est. Time:** 2-3 hours
+**Files:**
+- `src/learning/__tests__/trm-halt.test.ts` (60 errors)
+- `src/learning/__tests__/trm-state.test.ts` (18 errors)
+- `src/learning/__tests__/trm-integration.test.ts` (10 errors)
+- `src/learning/orchestrator.ts` (11 errors)
+- `src/learning/loop.ts` (3 errors)
+
+**Common Error Patterns:**
+- TS2304: Cannot find name (35 total) - missing imports or schema changes
+- TS4115: Override modifier needed
+- TS2322/TS2345: Type assignment mismatches
+
+**Likely Root Cause:** Schema changes in learning types. Check `src/learning/schema.ts` for current definitions.
+
+---
+
+## Batch 4: Training Module (~20 errors)
+
+**Agent Assignment:** Agent 4
+**Est. Time:** 1 hour
+**Files:**
+- `src/training/episode-learner.test.ts` (9 errors)
+- `src/training/loop-runner.ts` (8 errors)
+- `src/training/episode-learner.ts` (3 errors)
+
+**Common Error Patterns:**
+- TS4115: Missing `override` modifier on Error subclass
+- TS2722: Possibly undefined
+- TS2379: exactOptionalPropertyTypes
+
+**Note:** Training files interact with learning module - coordinate with Agent 3 if needed.
+
+---
+
+## Batch 5: Tasks & Storage (~38 errors)
+
+**Agent Assignment:** Agent 5
+**Est. Time:** 1.5 hours
+**Files:**
+- `src/tasks/service.ts` (27 errors)
+- `src/tasks/cli.ts` (3 errors)
+- `src/storage/database.ts` (8 errors)
+
+**Common Error Patterns:**
+- TS2540: Cannot assign to read-only property (29 total in database.ts and service.ts)
+- TS2353: Unknown properties (closedAt, status)
+- TS2300: Duplicate identifier
+
+**Fix Pattern for Read-Only:**
+```typescript
+// WRONG
+task.deps = newDeps;
+
+// CORRECT
+const updatedTask = { ...task, deps: newDeps };
+// OR use type assertion if you're sure
+(task as Mutable<Task>).deps = newDeps;
+```
+
+**Special Case - src/tasks/service.ts:53:**
+This line has ~21 read-only errors. Look for Object.assign or spread on readonly type. Create a proper update helper.
+
+---
+
+## Batch 6: Skills Module (~31 errors)
+
+**Agent Assignment:** Agent 6
+**Est. Time:** 1.5 hours
+**Files:**
+- `src/skills/library/compositional.ts` (17 errors)
+- `src/skills/service.ts` (6 errors)
+- `src/skills/schema.ts` (4 errors)
+- `src/skills/retrieval.ts` (4 errors)
+
+**Common Error Patterns:**
+- TS4115: Override modifier (in compositional.ts)
+- TS1029: 'public' modifier must precede
+- TS2322/TS2345: Type mismatches
+
+---
+
+## Batch 7: Memory, Reflexion & Misc (~62 errors)
+
+**Agent Assignment:** Agent 7
+**Est. Time:** 2 hours
+**Files:**
+- `src/reflexion/service.ts` (7 errors)
+- `src/reflexion/schema.ts` (3 errors)
+- `src/memory/service.ts` (4 errors)
+- `src/memory/schema.ts` (3 errors)
+- `src/effuse/testing/layers/webview.ts` (2 errors)
+- `src/effuse/widget/mount.ts` (1 error)
+- `src/effuse/widgets/apm-widget.test.ts` (1 error)
+- `src/effuse/widgets/atif-details.test.ts` (1 error)
+- `src/llm/ollama.ts` (3 errors)
+- `src/trainer/service.ts` (3 errors)
+- All remaining scattered files (~34 errors)
+
+**Check for remaining errors:**
 ```bash
-bun run typecheck 2>&1 | grep "TS6133\|TS6196"
+bun run typecheck 2>&1 | grep "error TS" | sed 's/(.*//g' | sort | uniq -c | sort -rn
 ```
 
-### 1.2 Add Override Modifier (17 TS4115 errors)
+---
 
-**Pattern:** Add `override` to class properties that override base class members.
+## Common Fix Patterns Reference
+
+### exactOptionalPropertyTypes (TS2379, TS2375)
 
 ```typescript
-// Before
+// WRONG
+const obj = { name: "test", description: undefined };
+
+// CORRECT - use conditional spread
+const obj = {
+  name: "test",
+  ...(description ? { description } : {}),
+};
+```
+
+### Possibly Undefined Invocation (TS2722)
+
+```typescript
+// WRONG
+callback();
+
+// CORRECT
+callback?.();
+// OR
+if (callback) callback();
+```
+
+### Override Modifier (TS4115)
+
+```typescript
+// WRONG
 class MyError extends Error {
   constructor(readonly message: string) { super(message); }
 }
 
-// After
+// CORRECT
 class MyError extends Error {
   constructor(override readonly message: string) { super(message); }
 }
 ```
 
-**Files:**
-- `src/training/episode-learner.ts:135`
-- `src/training/loop-runner.ts:209`
-- `src/skills/library/compositional.ts` (multiple)
-- `src/learning/orchestrator.ts` (multiple)
+### StateCell Type Mismatch (TS2345)
+
+```typescript
+// WRONG - TypeScript infers narrow type
+const state = StateCell.make({ selectedId: null });
+
+// CORRECT - explicit type annotation
+const state = StateCell.make<MyState>({ selectedId: null });
+```
 
 ---
 
-## Phase 2: Null/Undefined Checks (Est. 2-3 hours)
-
-### 2.1 Possibly Undefined Invocation (43 TS2722 errors)
-
-**Pattern:** Add optional chaining or null checks before invoking.
-
-```typescript
-// Before
-callback(); // Error: callback is possibly undefined
-
-// After - Option A: Optional chaining
-callback?.();
-
-// After - Option B: Guard clause
-if (callback) { callback(); }
-```
-
-### 2.2 Possibly Null/Undefined Value (7 TS18048 + 3 TS18047 = 10 errors)
-
-**Pattern:** Add null checks or non-null assertions (only if you're certain).
-
-```typescript
-// Before
-fullConfig.maxDurationMs > 0  // Error: possibly undefined
-
-// After - Option A: Default value
-(fullConfig.maxDurationMs ?? 0) > 0
-
-// After - Option B: Non-null assertion (use sparingly)
-fullConfig.maxDurationMs! > 0
-
-// After - Option C: Early guard
-if (!fullConfig.maxDurationMs) return;
-```
-
-**Key files:**
-- `src/training/loop-runner.ts:270,275,437,447,516,517`
-- `src/cli/tbench-iterate.ts:1104,1185,1186`
-
----
-
-## Phase 3: exactOptionalPropertyTypes Fixes (Est. 3-4 hours)
-
-This project uses `exactOptionalPropertyTypes: true`. This means optional properties (`foo?: string`) cannot be assigned `undefined` explicitly.
-
-### 3.1 TS2379 Errors (46 errors)
-
-**Pattern:** When creating objects with optional properties, don't include them if the value is undefined.
-
-```typescript
-// Before - WRONG
-const obj = {
-  name: "test",
-  description: someValue ?? undefined,  // Error!
-};
-
-// After - Option A: Conditionally spread
-const obj = {
-  name: "test",
-  ...(someValue ? { description: someValue } : {}),
-};
-
-// After - Option B: Filter undefined before assignment
-const base = { name: "test" };
-if (someValue) base.description = someValue;
-```
-
-### 3.2 TS2375 Errors (27 errors)
-
-Same root cause as TS2379. The fix pattern is the same.
-
-**Key files:**
-- `src/bench/harness.ts:232`
-- `src/bench/model-adapter.ts:150,593`
-- `src/cli/tbench-iterate.ts:690,933,1016,1052`
-- `src/tasks/service.ts:399`
-- `src/training/loop-runner.ts:312`
-
----
-
-## Phase 4: Type Assignment Fixes (Est. 4-6 hours)
-
-### 4.1 TS2322 - Type Not Assignable (148 errors)
-
-Most common patterns:
-
-**A) Boolean vs String mismatch** (common in CLI args)
-```typescript
-// Before - CLI arg can be string | true
-const repo: string = args.repo;  // Error!
-
-// After
-const repo = typeof args.repo === "string" ? args.repo : undefined;
-```
-
-**B) ReadOnly array to mutable array**
-```typescript
-// Before
-const items: string[] = readonlyArray;  // Error!
-
-// After
-const items: readonly string[] = readonlyArray;
-// OR if you need mutable:
-const items = [...readonlyArray];
-```
-
-**Key files:**
-- `src/cli/tbench-sandbox.ts:130-140` - CLI arg type coercion
-- Multiple test files - mock type mismatches
-
-### 4.2 TS2345 - Argument Type Mismatch (114 errors)
-
-**Pattern:** Match function parameter types exactly.
-
-```typescript
-// Before
-someFunction({ limit: 10 });  // Error: expected SortPolicy
-
-// After - Check what the function expects
-someFunction({ sortBy: "date", limit: 10 });
-```
-
-**Key files:**
-- `src/agent/overnight.ts:620` - wrong arg type
-- `src/cli/tbench-sandbox.ts:134-136` - string vs boolean
-
----
-
-## Phase 5: Read-Only Property Fixes (Est. 1-2 hours)
-
-### 5.1 TS2540 - Cannot Assign to Read-Only (29 errors)
-
-**Pattern:** Don't mutate readonly objects. Create new objects instead.
-
-```typescript
-// Before
-task.deps = newDeps;  // Error: deps is readonly
-
-// After
-const updatedTask = { ...task, deps: newDeps };
-```
-
-**Key files:**
-- `src/storage/database.ts:408,432,557,587,667,697`
-- `src/tasks/service.ts:53` (21 errors at same line!)
-
-**Special case - src/tasks/service.ts:53:**
-This line has 21 errors. It's likely doing Object.assign() or spread on a readonly type. Consider using a type assertion or creating a proper update function.
-
----
-
-## Phase 6: Missing/Unknown Properties (Est. 2-3 hours)
-
-### 6.1 TS2339 - Property Doesn't Exist (20 errors)
-
-**Pattern:** The property was removed or renamed. Check the type definition.
-
-```typescript
-// Before
-result.blockers  // Error: 'blockers' doesn't exist
-
-// After - Check the actual type
-// If it was renamed:
-result.blockingIssues
-// If it was moved:
-result.details?.blockers
-```
-
-**Files:**
-- `src/cli/tbench-local.ts:459-460` - `blockers` property
-- `src/cli/tbench-sandbox.ts:480-481` - `blockers` property
-
-### 6.2 TS2353 - Unknown Property in Object Literal (22 errors)
-
-**Pattern:** You're adding properties that don't exist in the target type.
-
-```typescript
-// Before
-const update = { status: "closed", closedAt: new Date() };  // Error: closedAt unknown
-
-// After - Check the type definition
-// If closedAt should be there, add it to the type
-// If it shouldn't, remove it from the object
-```
-
-**Files:**
-- `src/tasks/cli.ts:1087` - `status` property unknown
-- `src/tasks/repository.test.ts:76` - `author` property
-- `src/tasks/service.ts:313,338` - `closedAt` property
-
----
-
-## Phase 7: Miscellaneous (Est. 1-2 hours)
-
-### 7.1 TS2367 - Unintentional Comparison (5 errors)
-
-**Pattern:** Comparing incompatible types (e.g., enum to string that's not in the enum).
-
-```typescript
-// Before
-if (status === "N/A")  // Error: "N/A" not in status union
-
-// After - Use a value that's actually in the type
-if (status === "skip")
-// OR update the type if "N/A" should be valid
-```
-
-**Files:**
-- `src/bench/baseline.ts:215`
-
-### 7.2 TS2304 - Cannot Find Name (1 error)
-
-```typescript
-// src/agent/orchestrator/subagent-router.test.ts:568
-// FMSettings is not imported
-import { FMSettings } from "...";
-```
-
-### 7.3 TS2554 - Wrong Number of Arguments (4 errors)
-
-Check function signatures and provide required arguments.
-
----
-
-## Recommended Fix Order
-
-1. **Phase 1** - Quick wins first (removes ~115 errors)
-2. **Phase 6.2** - Unknown properties (often reveals schema issues)
-3. **Phase 5** - Read-only fixes (systemic issue in a few files)
-4. **Phase 2** - Null checks
-5. **Phase 3** - exactOptionalPropertyTypes
-6. **Phase 4** - Type assignments (largest category)
-7. **Phase 6.1 + 7** - Remaining issues
-
-## Validation
-
-After each batch of fixes, run:
-```bash
-bun run typecheck 2>&1 | grep "error TS" | wc -l
-```
-
-Target: 0 errors
-
-## Notes for Junior Dev
-
-1. **Don't use `any` to silence errors** - fix the root cause
-2. **Don't use `@ts-ignore` or `@ts-expect-error`** - these hide problems
-3. **Test after each file** - run typecheck frequently to catch regressions
-4. **When stuck**, check the type definition (`Cmd+Click` in VS Code)
-5. **For exactOptionalPropertyTypes**, the pattern is almost always "conditionally spread"
-6. **Commit frequently** - small commits per file or error type are easier to review
-
-## Quick Reference Commands
+## Validation Commands
 
 ```bash
-# Full typecheck
-bun run typecheck
-
-# Count errors
+# Count total errors
 bun run typecheck 2>&1 | grep "error TS" | wc -l
 
-# Errors in specific file
-bun run typecheck 2>&1 | grep "src/tasks/service.ts"
-
-# Errors of specific type
-bun run typecheck 2>&1 | grep "TS6133"
+# Errors in your batch files
+bun run typecheck 2>&1 | grep "src/effuse/widgets/tb-controls"
 
 # All errors sorted by file
 bun run typecheck 2>&1 | grep "error TS" | sort
+
+# Error breakdown by type
+bun run typecheck 2>&1 | grep "error TS" | sed 's/.*error /error /' | sed 's/:.*/:/' | sort | uniq -c | sort -rn
 ```
+
+---
+
+## Rules for All Agents
+
+1. **Don't use `any`** - fix the root cause
+2. **Don't use `@ts-ignore`** - these hide problems
+3. **Run typecheck after each file** to catch regressions
+4. **Check type definitions** when stuck (`Cmd+Click` in VS Code)
+5. **Commit frequently** - small commits per file
+6. **Don't touch files outside your batch** to avoid merge conflicts
+7. **Target: 0 errors** in your batch before declaring done
