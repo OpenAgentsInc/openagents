@@ -206,7 +206,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
           <div class="rounded-xl border border-zinc-800/60 bg-zinc-950/80 shadow-xl backdrop-blur-sm">
             ${header}
             <div class="px-4 py-8 text-center text-sm text-zinc-500">
-              No trajectory selected. Click a trajectory in the sidebar to view details.
+              No trajectory selected Click a trajectory in the sidebar to view details.
             </div>
           </div>
         `
