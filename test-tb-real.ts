@@ -12,20 +12,20 @@ try {
     timeout: 600, // 10 minutes
     maxTurns: 100,
   });
-  
+
   console.log("✅ TB run started successfully!");
   console.log("Run ID:", result.runId);
   console.log("");
   console.log("⏳ Waiting 60 seconds for task to execute...");
   console.log("   (Agent should authenticate and work on the task)");
   console.log("");
-  
+
   // Wait for run to have time to execute
   await new Promise(resolve => setTimeout(resolve, 60000));
-  
+
   console.log("✅ Test complete - check results in:", `results/${result.runId}`);
 } catch (error) {
   console.error("❌ TB run failed:", error);
-  console.error("Stack:", error.stack);
+  console.error("Stack:", error instanceof Error ? error.stack : String(error));
   process.exit(1);
 }

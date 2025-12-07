@@ -148,7 +148,6 @@ describe("APMWidget", () => {
 
           yield* injectMessage({
             type: "apm_snapshot",
-            sessionId: "session-snap",
             combined: {
               apm1h: 12.5,
               apm6h: 10.1,

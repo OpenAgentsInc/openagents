@@ -249,17 +249,13 @@ const program = Effect.gen(function* () {
   }),
 );
 
-// Build the layer stack
-const mainLayer = Layer.mergeAll(
+// OpenThoughts layer depends on HFDatasetService
+const fullLayer = Layer.mergeAll(
   HFDatasetServiceLive(),
+  OpenThoughtsServiceLive,
 ).pipe(
   Layer.provideMerge(BunContext.layer),
 );
 
-// OpenThoughts layer depends on HFDatasetService
-const fullLayer = OpenThoughtsServiceLive.pipe(
-  Layer.provideMerge(mainLayer),
-);
-
 // Run
-Effect.runPromise(program.pipe(Effect.provide(fullLayer)));
+Effect.runPromise(program.pipe(Effect.provide(fullLayer)) as Effect.Effect<void, never, never>);

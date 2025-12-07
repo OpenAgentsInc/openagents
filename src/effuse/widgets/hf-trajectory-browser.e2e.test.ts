@@ -208,7 +208,11 @@ describe("HF Trajectory Browser E2E", () => {
           const { layer } = yield* makeHappyDomLayer()
           const mockService = makeMockOpenThoughtsService(150)
           const serviceLayer = Layer.succeed(OpenThoughtsService, mockService)
-          const fullLayer = Layer.mergeAll(layer, serviceLayer, FileSystem.layer)
+          const fullLayer = Layer.mergeAll(
+            layer,
+            serviceLayer,
+            Layer.succeed(FileSystem.FileSystem, {} as unknown as FileSystem.FileSystem)
+          )
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag

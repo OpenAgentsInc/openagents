@@ -41,18 +41,6 @@ class WebviewTestStateTag extends Context.Tag("effuse/testing/WebviewTestState")
 >() {}
 
 /**
- * Add a test step to be executed.
- */
-const addStep = (js: string): Effect.Effect<void, never, WebviewTestStateTag> =>
-  Effect.gen(function* () {
-    const stateRef = yield* WebviewTestStateTag
-    yield* Ref.update(stateRef, (state) => ({
-      ...state,
-      steps: [...state.steps, { js }],
-    }))
-  })
-
-/**
  * Escape string for JavaScript.
  */
 const escapeJS = (s: string): string =>
@@ -75,13 +63,10 @@ const makeWebviewBrowser = (): Effect.Effect<
 
     // Helper to add step without requiring service (context-free)
     const addStepContextFree = (js: string): Effect.Effect<void> =>
-      Effect.provide(
-        Ref.update(stateRef, (state) => ({
-          ...state,
-          steps: [...state.steps, { js }],
-        })),
-        { stateRef } as any
-      )
+      Ref.update(stateRef, (state) => ({
+        ...state,
+        steps: [...state.steps, { js }],
+      }))
 
     const browser: TestBrowser = {
       // ─────────────────────────────────────────────────────────────────

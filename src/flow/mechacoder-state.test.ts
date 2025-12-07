@@ -2,10 +2,12 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
-import { makeDatabaseLive } from "../storage/database.js";
+import { makeDatabaseLive, DatabaseService } from "../storage/database.js";
+import type { Task } from "../tasks/schema.js";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { loadMechaCoderState } from "./mechacoder-state.js";
+import { loadMechaCoderState, type MechaCoderStateError } from "./mechacoder-state.js";
+import type { MechaCoderState } from "./mechacoder-map.js";
 
 const runWithBun = <A, E>(
   program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
@@ -67,8 +69,14 @@ describe("loadMechaCoderState", () => {
           },
         ];
 
-        const tasksContent = tasks.map((t) => JSON.stringify(t)).join("\n") + "\n";
-        yield* writeFile(fs, path.join(oaDir, "tasks.jsonl"), tasksContent);
+        const dbLayer = makeDatabaseLive(path.join(root, "test.db"));
+
+        yield* Effect.gen(function* () {
+          const db = yield* DatabaseService;
+          for (const task of tasks) {
+            yield* db.insertTask(task as unknown as Task);
+          }
+        }).pipe(Effect.provide(dbLayer));
 
         const run1 = {
           id: "run-early",
@@ -113,12 +121,12 @@ describe("loadMechaCoderState", () => {
           JSON.stringify(run2, null, 2),
         );
 
-        const dbLayer = makeDatabaseLive(path.join(root, "test.db"));
+
 
         return yield* loadMechaCoderState({
           rootDir: root,
           maxRunLogs: 5,
-        }).pipe(Effect.provide(dbLayer));
+        }).pipe(Effect.provide(dbLayer))
       }),
     );
 
@@ -170,10 +178,16 @@ describe("loadMechaCoderState", () => {
           },
         ];
 
-        const tasksContent = tasks.map((t) => JSON.stringify(t)).join("\n") + "\n";
-        yield* writeFile(fs, path.join(oaDir, "tasks.jsonl"), tasksContent);
+        const dbLayer = makeDatabaseLive(path.join(root, "test.db"));
 
-        return yield* loadMechaCoderState({ rootDir: root, maxRunLogs: 3 });
+        yield* Effect.gen(function* () {
+          const db = yield* DatabaseService;
+          for (const task of tasks) {
+            yield* db.insertTask(task as unknown as Task);
+          }
+        }).pipe(Effect.provide(dbLayer));
+
+        return yield* loadMechaCoderState({ rootDir: root, maxRunLogs: 3 }).pipe(Effect.provide(dbLayer)) as Effect.Effect<MechaCoderState, MechaCoderStateError, FileSystem.FileSystem | Path.Path>;
       }),
     );
 
