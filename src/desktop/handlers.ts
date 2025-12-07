@@ -40,6 +40,7 @@ import {
 import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { readyTasks as getReadyTasks } from "../tasks/service.js";
+import { DatabaseLive } from "../storage/database.js";
 import { extractCredentialsFromKeychain } from "../sandbox/credentials.js";
 import {
   makeTrajectoryService,
@@ -440,13 +441,16 @@ export async function loadReadyTasks(limit?: number): Promise<MCTask[]> {
   console.log(`[Handler] loadReadyTasks called, path: ${tasksPath}, limit: ${limit}`);
 
   try {
-    const program = getReadyTasks(tasksPath, { limit });
+    const program = getReadyTasks(tasksPath);
     const tasks = await Effect.runPromise(
-      program.pipe(Effect.provide(BunContext.layer))
+      program.pipe(Effect.provide(Layer.mergeAll(DatabaseLive, BunContext.layer)))
     );
     console.log(`[Handler] Found ${tasks.length} ready tasks`);
 
-    return tasks.map((t) => ({
+    // Apply limit if specified
+    const limitedTasks = limit > 0 ? tasks.slice(0, limit) : tasks;
+
+    return limitedTasks.map((t) => ({
       id: t.id,
       title: t.title,
       description: t.description ?? "",

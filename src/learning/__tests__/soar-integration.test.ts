@@ -14,7 +14,6 @@ import {
 } from "../soar-hindsight.js";
 import {
   validateBatch,
-  DEFAULT_VALIDATION_CONFIG,
 } from "../soar-validation.js";
 import {
   selectGreedyDiverse,

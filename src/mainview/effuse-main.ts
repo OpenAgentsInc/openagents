@@ -12,14 +12,6 @@ import {
   DomServiceLive,
   StateServiceLive,
   SocketServiceFromClient,
-  // Widgets
-  APMWidget,
-  TrajectoryPaneWidget,
-  ContainerPanesWidget,
-  TBOutputWidget,
-  MCTasksWidget,
-  TBControlsWidget,
-  CategoryTreeWidget,
   // HF Trajectory Browser Widgets
   HFTrajectoryListWidget,
   HFTrajectoryDetailWidget,

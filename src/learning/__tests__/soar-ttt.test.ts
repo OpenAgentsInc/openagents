@@ -24,7 +24,7 @@ import {
   type TTTState,
   type TTTSkillContext,
 } from "../soar-ttt.js";
-import { createMockAttemptRecord, createMockSyntheticTaskSolution, createMockTTTState, runEffect } from "./test-helpers.js";
+import { createMockAttemptRecord, createMockSyntheticTaskSolution, runEffect } from "./test-helpers.js";
 
 describe("TTTIterationResult Schema", () => {
   test("decodes valid result", () => {

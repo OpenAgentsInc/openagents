@@ -47,7 +47,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const _handle = yield* harness.mount(TBOutputWidget)
+        yield* harness.mount(TBOutputWidget)
 
         // Widget should be hidden by default
         yield* browser.expectHidden(".fixed")
@@ -61,7 +61,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const _handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -96,7 +96,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const _handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -122,7 +122,7 @@ describe("TBOutputWidget", () => {
       Effect.gen(function* () {
         const harness = yield* TestHarnessTag
 
-        const _handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -144,7 +144,7 @@ describe("TBOutputWidget", () => {
       Effect.gen(function* () {
         const harness = yield* TestHarnessTag
 
-        const _handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,

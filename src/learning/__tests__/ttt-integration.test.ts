@@ -5,15 +5,12 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { Effect } from "effect";
 import {
   shouldContinueTTT,
   createSessionResult,
   outputsEqual,
   createTTTState,
   DEFAULT_TTT_CONFIG,
-  type TTTState,
-  type TTTIterationResult,
   type TTTConfig,
 } from "../soar-ttt.js";
 import {
@@ -27,8 +24,6 @@ import { createMockTTTState, createMockTTTIterationResult } from "./test-helpers
 
 describe("TTT + Voting Integration", () => {
   test("TTT state accumulates attempts for voting", () => {
-    let state = createTTTState();
-
     // Simulate adding attempts with outputs
     const outputs = [
       { output: 42, program: "code1", trainingAccuracy: 0.9 },

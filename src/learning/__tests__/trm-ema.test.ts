@@ -24,7 +24,7 @@ import {
   makeTRMEMAServiceLayer,
   type EMAConfig,
 } from "../trm-ema.js";
-import { createMockEMAValue, createMockTaskTypeStats, createMockSkillEMAStats, runEffect } from "./test-helpers.js";
+import { createMockEMAValue, runEffect } from "./test-helpers.js";
 
 describe("EMA Configuration", () => {
   test("default config has expected values", () => {

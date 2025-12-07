@@ -12,7 +12,7 @@
  * 5. Periodically archives and extracts skills
  */
 
-import { Effect, Context, Layer, Schedule, Fiber } from "effect";
+import { Effect, Context, Layer } from "effect";
 import {
   TrainerService,
   makeTrainerServiceLive,
@@ -127,31 +127,31 @@ export interface LoopState {
 
 export interface ITrainingLoop {
   /** Start the training loop */
-  readonly start: (config?: Partial<LoopConfig>) => Effect.Effect<LoopState, TrainingLoopError>;
+  readonly start: (config?: Partial<LoopConfig>) => Effect.Effect<LoopState, TrainingLoopError, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Run a single iteration */
-  readonly runIteration: () => Effect.Effect<LoopState, TrainingLoopError>;
+  readonly runIteration: () => Effect.Effect<LoopState, TrainingLoopError, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Run archive cycle */
-  readonly runArchive: () => Effect.Effect<ArchiveResult, TrainingLoopError>;
+  readonly runArchive: () => Effect.Effect<ArchiveResult, TrainingLoopError, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Get current state */
-  readonly getState: () => Effect.Effect<LoopState, never>;
+  readonly getState: () => Effect.Effect<LoopState, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Pause the loop */
-  readonly pause: () => Effect.Effect<void, never>;
+  readonly pause: () => Effect.Effect<void, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Resume the loop */
-  readonly resume: () => Effect.Effect<void, never>;
+  readonly resume: () => Effect.Effect<void, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Stop the loop */
-  readonly stop: () => Effect.Effect<LoopState, never>;
+  readonly stop: () => Effect.Effect<LoopState, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Check if should progress to next benchmark tier */
-  readonly shouldProgress: () => Effect.Effect<boolean, never>;
+  readonly shouldProgress: () => Effect.Effect<boolean, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Progress to next benchmark tier */
-  readonly progressTier: () => Effect.Effect<TBSubset, never>;
+  readonly progressTier: () => Effect.Effect<TBSubset, never, TrainerService | ArchivistService | SkillService | MemoryService>;
 }
 
 // --- Service Tag ---
@@ -167,7 +167,6 @@ const makeTrainingLoop = (
     const trainer = yield* TrainerService;
     const archivist = yield* ArchivistService;
     const skills = yield* SkillService;
-    const _memory = yield* MemoryService;
 
     const mapTrainerError = Effect.mapError(TrainingLoopError.from);
     const mapArchivistError = Effect.mapError(TrainingLoopError.from);

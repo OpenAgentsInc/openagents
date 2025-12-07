@@ -6,12 +6,9 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { Effect } from "effect";
 import {
-  TRMState,
   createTRMState,
   updateSolution,
-  updateReasoning,
   completeCycle,
   markStuck,
   addHypothesis,
@@ -27,7 +24,7 @@ import {
   isReliable,
   DEFAULT_EMA_CONFIG,
 } from "../trm-ema.js";
-import { createMockTRMState, createMockTaskContext, runEffect } from "./test-helpers.js";
+import { createMockTRMState, createMockTaskContext } from "./test-helpers.js";
 
 describe("TRM State Lifecycle", () => {
   test("state progresses through cycles", () => {

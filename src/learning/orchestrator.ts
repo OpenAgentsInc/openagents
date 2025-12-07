@@ -435,7 +435,7 @@ const makeLearningOrchestrator = (): Effect.Effect<
       getArchiveStats,
       getStats,
       getLoopState,
-    };
+    } as ILearningOrchestrator;
   });
 
 // --- Layer ---
