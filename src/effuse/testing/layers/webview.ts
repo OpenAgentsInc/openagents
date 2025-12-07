@@ -70,24 +70,34 @@ const makeWebviewBrowser = (): Effect.Effect<
   WebviewTestStateTag
 > =>
   Effect.gen(function* () {
+    // Capture stateRef once at creation time
+    const stateRef = yield* WebviewTestStateTag
+
+    // Helper to add step without requiring service
+    const addStepLocal = (js: string): Effect.Effect<void> =>
+      Ref.update(stateRef, (state) => ({
+        ...state,
+        steps: [...state.steps, { js }],
+      }))
+
     const browser: TestBrowser = {
       // ─────────────────────────────────────────────────────────────────
       // Queries
       // ─────────────────────────────────────────────────────────────────
 
       query: <T extends Element = Element>(selector: string) =>
-        addStep(`
+        addStepLocal(`
           const __el = $('${escapeJS(selector)}');
           if (!__el) throw new Error('Element not found: ${escapeJS(selector)}');
         `).pipe(Effect.as(null as unknown as T)),
 
       queryOption: <T extends Element = Element>(selector: string) =>
-        addStep(`$('${escapeJS(selector)}');`).pipe(
+        addStepLocal(`$('${escapeJS(selector)}');`).pipe(
           Effect.as(null as T | null)
         ),
 
       queryAll: <T extends Element = Element>(selector: string) =>
-        addStep(`$$('${escapeJS(selector)}');`).pipe(Effect.as([] as T[])),
+        addStepLocal(`$$('${escapeJS(selector)}');`).pipe(Effect.as([] as T[])),
 
       // ─────────────────────────────────────────────────────────────────
       // Actions
