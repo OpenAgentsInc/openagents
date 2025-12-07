@@ -2,12 +2,30 @@
 
 ## Summary
 
-**Initial Errors: 618** → **Current Errors: 351** (43.2% fixed)
+**Initial Errors: 834** → **Current Errors: 376** (55% fixed, 458 errors resolved)
 
 Run `bun run typecheck` to see all errors.
 
+**Session Progress:**
+- **Commit d660265fe**: Fixed 93 errors (834→741) - Database layer infrastructure
+- **Commit 1b4ae2302**: Fixed 365 errors (741→376) - Effuse, TaskService API updates
+- **Commit 5e13a354e**: Documentation update
+
+**Key Fixes Completed:**
+- ✅ Created unified test database layer (`runWithTestContext()`)
+- ✅ Added DatabaseLive to agent entry points (overnight.ts, overnight-parallel.ts)
+- ✅ Fixed Effect context propagation in webview test layer
+- ✅ Updated TaskService API calls to match SQLite migration
+- ✅ Fixed SocketService interface (property → method pattern)
+- ✅ Corrected return type property access (tasksPath → dbPath)
+- ✅ Fixed APM widget schema compliance
+
 **Batch Status:**
-- Batch 1 (TB Widget Tests): **COMPLETED** 
+- Infrastructure & Database Layer: **COMPLETED** ✓
+- TaskService API Migration: **COMPLETED** ✓
+- Effuse Test Layer Fixes: **COMPLETED** ✓
+- Widget Schema Updates: **PARTIALLY COMPLETED** (APM done, TB widgets pending)
+- Batch 1 (TB Widget Tests): **IN PROGRESS**
   - tb-widgets.test.ts: 27 → 0 errors ✓
   - tb-controls.test.ts: 57 → 7 errors (partially fixed)
   - tb-output.test.ts: 43 → 26 errors (partially fixed)
@@ -309,3 +327,66 @@ bun run typecheck 2>&1 | grep "error TS" | sed 's/.*error /error /' | sed 's/:.*
 5. **Commit frequently** - small commits per file
 6. **Don't touch files outside your batch** to avoid merge conflicts
 7. **Target: 0 errors** in your batch before declaring done
+
+---
+
+## December 7 Session Notes
+
+### Infrastructure Work Completed (Commits d660265fe, 1b4ae2302)
+
+**Test Infrastructure:**
+- Created `src/tasks/test-helpers.ts` with database test utilities:
+  - `runWithTestContext()` - provides DatabaseService + BunContext + FileSystem
+  - `runWithTestDb()` - simplified database-only context
+  - `makeTestDatabaseLayer()` - factory for test database layers
+- Updated all test files to use new helpers instead of `runWithBun()`
+
+**Files Updated for Database Context:**
+- `src/tasks/service.test.ts` - Major TaskService API updates
+- `src/tasks/repository.test.ts`
+- `src/tasks/init.test.ts`
+- `src/tasks/merge.test.ts`
+- `src/tasks/project.test.ts`
+- `src/tasks/beads.test.ts`
+
+**Entry Point Updates:**
+- `src/agent/overnight.ts` - Added DatabaseLive to liveLayer
+- `src/agent/overnight-parallel.ts` - Added DatabaseLive to combinedLayer
+
+**Effuse Test Layer Fixes:**
+- `src/effuse/testing/layers/webview.ts` - Fixed Effect context propagation
+  - Extracted `stateRef` at creation time
+  - Created `addStepContextFree()` helper to avoid context leakage
+  - Updated all browser methods to use context-free pattern
+- `src/effuse/layers/test.ts` - SocketService mock interface update
+- `src/effuse/testing/layers/happy-dom.ts` - SocketService method pattern
+- `src/effuse/testing/happy-dom.test.ts` - Updated socket.messages → socket.getMessages()
+
+**TaskService API Migration:**
+The following TaskService APIs were updated in tests to match SQLite migration:
+- `archiveTasks()`: Now takes `taskIds` array, returns `number` instead of object
+- `closeTask()`: Removed `commits` param, use `updateTask()` to set commits
+- `addComment()`: Changed to `comment: { text, author }` object parameter
+- `renameTaskPrefix()`: Changed `fromPrefix/toPrefix` → `oldPrefix/newPrefix`
+- `mergeTasksById()`: Changed `ids` → `sourceIds`, returns `Task` directly
+- `searchAllTasks()`: Added required `query` parameter
+- `getStaleTasks()`: New function for finding stale tasks
+
+**Property Access Updates:**
+- `src/cli/openagents-init.ts` - Changed `result.tasksPath` → `result.dbPath`
+
+**Widget Schema Fixes:**
+- `src/effuse/widgets/apm-widget.test.ts` - Added missing schema properties (apm1w, apm1m, totalSessions, totalActions)
+
+### Remaining Work (376 errors)
+
+**Priority Areas:**
+1. **exactOptionalPropertyTypes errors** (~150 remaining) - Use conditional spread pattern
+2. **Unused variables** (~40 remaining) - Run biome lint --write
+3. **Orchestrator tests** (~60 remaining) - Database context + API updates
+4. **Widget test schema mismatches** (~126 remaining) - Update mock data structures
+
+**Next Session Should Target:**
+- Batch 2: MC/Trajectory widget tests (~70 errors)
+- Batch 3: Learning module tests (~99 errors)
+- Continue Batch 1: Finish TB widget tests (~66 errors remaining)
