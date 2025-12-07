@@ -15,8 +15,30 @@
     }
 
   </script>
+  <!-- Test bunLog availability -->
+  <script>
+    // Log immediately to verify script execution
+    console.log("[HTML] Inline script executing")
+
+    // Test if bunLog exists
+    if (window.bunLog) {
+      window.bunLog("[HTML] bunLog is available!")
+    } else {
+      console.log("[HTML] bunLog NOT available, setting up placeholder")
+      window.bunLog = (...args) => console.log('[bunLog]', ...args)
+    }
+
+    // Log that we're about to load effuse-main.js
+    window.bunLog("[HTML] About to load effuse-main.js")
+  </script>
   <!-- Load Effuse-based mainview -->
   <script defer src="effuse-main.js"></script>
+  <script>
+    // Verify effuse-main.js loaded
+    window.addEventListener('DOMContentLoaded', () => {
+      window.bunLog("[HTML] DOMContentLoaded - checking if effuse-main.js loaded")
+    })
+  </script>
   <!-- Basecoat CSS (includes Tailwind utilities pre-compiled) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/basecoat.cdn.min.css">
   <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
