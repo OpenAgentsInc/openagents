@@ -4,11 +4,12 @@
 
 import { describe, test, expect } from "bun:test"
 import { Effect, Stream } from "effect"
-import { TBControlsWidget, initialTBControlsState, type TBControlsState, type TBSuiteInfo } from "./tb-controls.js"
+import { TBControlsWidget, initialTBControlsState, type TBControlsState, type TBControlsEvent, type TBSuiteInfo } from "./tb-controls.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"
 import { DomServiceTag } from "../services/dom.js"
+import { SocketError } from "../services/socket.js"
 import type { StartTBRunOptions } from "../services/socket.js"
 
 describe("TBControlsWidget", () => {
@@ -74,10 +75,18 @@ describe("TBControlsWidget", () => {
               selectedTaskIds: new Set(["task-001", "task-002", "task-003"]),
               loading: false,
               status: "Ready",
-              statusType: "idle",
+              statusType: "idle" as const,
               isRunning: false,
               runId: null,
               collapsed: false,
+              totalTasks: 0,
+              completedTasks: 0,
+              passedTasks: 0,
+              failedTasks: 0,
+              startedAt: null,
+              duration: null,
+              difficultyFilter: null,
+              searchFilter: "",
             }),
           }
 
@@ -116,10 +125,18 @@ describe("TBControlsWidget", () => {
               selectedTaskIds: new Set(["task-001"]),
               loading: false,
               status: "Running...",
-              statusType: "running",
+              statusType: "running" as const,
               isRunning: true,
               runId: "run-12345",
               collapsed: false,
+              totalTasks: 0,
+              completedTasks: 0,
+              passedTasks: 0,
+              failedTasks: 0,
+              startedAt: null,
+              duration: null,
+              difficultyFilter: null,
+              searchFilter: "",
             }),
           }
 
@@ -150,10 +167,18 @@ describe("TBControlsWidget", () => {
               selectedTaskIds: new Set(),
               loading: false,
               status: "Ready",
-              statusType: "idle",
+              statusType: "idle" as const,
               isRunning: false,
               runId: null,
               collapsed: true,
+              totalTasks: 0,
+              completedTasks: 0,
+              passedTasks: 0,
+              failedTasks: 0,
+              startedAt: null,
+              duration: null,
+              difficultyFilter: null,
+              searchFilter: "",
             }),
           }
 
@@ -184,10 +209,18 @@ describe("TBControlsWidget", () => {
               selectedTaskIds: new Set(),
               loading: false,
               status: "Load failed",
-              statusType: "error",
+              statusType: "error" as const,
               isRunning: false,
               runId: null,
               collapsed: false,
+              totalTasks: 0,
+              completedTasks: 0,
+              passedTasks: 0,
+              failedTasks: 0,
+              startedAt: null,
+              duration: null,
+              difficultyFilter: null,
+              searchFilter: "",
             }),
           }
 
@@ -226,10 +259,18 @@ describe("TBControlsWidget", () => {
               selectedTaskIds: new Set(),
               loading: false,
               status: "Ready",
-              statusType: "idle",
+              statusType: "idle" as const,
               isRunning: false,
               runId: null,
               collapsed: false,
+              totalTasks: 0,
+              completedTasks: 0,
+              passedTasks: 0,
+              failedTasks: 0,
+              startedAt: null,
+              duration: null,
+              difficultyFilter: null,
+              searchFilter: "",
             }),
           }
 
@@ -284,9 +325,9 @@ describe("TBControlsWidget", () => {
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
               const state = yield* stateService.cell(TBControlsWidget.initialState())
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
 
               const updated = yield* state.get
               expect(updated.suite?.name).toBe("terminal-bench-v1")
@@ -341,10 +382,10 @@ describe("TBControlsWidget", () => {
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
               const state = yield* stateService.cell(TBControlsWidget.initialState())
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
-              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "startRun" }, ctx)
 
               const updated = yield* state.get
               expect(receivedOptions?.taskIds).toEqual(mockSuite.tasks.map((task) => task.id))
@@ -397,15 +438,15 @@ describe("TBControlsWidget", () => {
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
               const state = yield* stateService.cell(TBControlsWidget.initialState())
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
               yield* state.update((s) => ({
                 ...s,
                 selectedTaskIds: new Set(["task-002"]),
               }))
 
-              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "startRun" }, ctx)
 
               const updated = yield* state.get
               expect(receivedOptions?.taskIds).toEqual(["task-002"])
@@ -457,10 +498,10 @@ describe("TBControlsWidget", () => {
                 const dom = yield* DomServiceTag
                 const container = { id: "tb-controls-test" } as Element
                 const state = yield* stateService.cell(TBControlsWidget.initialState())
-                const ctx = { state, emit: () => Effect.void, dom, container }
+                const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-                yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
-                yield* TBControlsWidget.handleEvent({ type: "startRandomTask" }, ctx)
+                yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
+                yield* TBControlsWidget.handleEvent!({ type: "startRandomTask" }, ctx)
 
                 const updated = yield* state.get
                 expect(receivedOptions?.taskIds).toEqual(["task-001"])
@@ -504,17 +545,17 @@ describe("TBControlsWidget", () => {
                 isRunning: true,
                 runId: "run-stop-me",
                 status: "Running...",
-                statusType: "running",
+                statusType: "running" as const,
                 suite: {
                   name: "terminal-bench-v1",
                   version: "1.0.0",
                   tasks: [{ id: "task-001", name: "Task 1", difficulty: "easy", category: "basics" }],
                 },
                 selectedTaskIds: new Set(["task-001"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "stopRun" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "stopRun" }, ctx)
 
               const updated = yield* state.get
               expect(stopCalls).toBe(1)
@@ -548,10 +589,10 @@ describe("TBControlsWidget", () => {
               const state = yield* stateService.cell({
                 ...TBControlsWidget.initialState(),
                 suitePath: "   ",
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
 
               const updated = yield* state.get
               expect(updated.status).toBe("No path")
@@ -593,9 +634,9 @@ describe("TBControlsWidget", () => {
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
               const state = yield* stateService.cell(TBControlsWidget.initialState())
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
 
               const updated = yield* state.get
               expect(updated.suite?.name).toBe("terminal-bench-v2")
@@ -637,11 +678,11 @@ describe("TBControlsWidget", () => {
                 ...TBControlsWidget.initialState(),
                 suite,
                 selectedTaskIds: new Set(["a"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "b" }, ctx)
-              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "a" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "toggleTask", taskId: "b" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "toggleTask", taskId: "a" }, ctx)
 
               const updated = yield* state.get
               expect(updated.selectedTaskIds.has("b")).toBe(true)
@@ -680,14 +721,14 @@ describe("TBControlsWidget", () => {
                 ...TBControlsWidget.initialState(),
                 suite,
                 selectedTaskIds: new Set(["a", "b"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "selectNone" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "selectNone" }, ctx)
               let updated = yield* state.get
               expect(updated.selectedTaskIds.size).toBe(0)
 
-              yield* TBControlsWidget.handleEvent({ type: "selectAll" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "selectAll" }, ctx)
               updated = yield* state.get
               expect(updated.selectedTaskIds.size).toBe(2)
 
@@ -726,21 +767,21 @@ describe("TBControlsWidget", () => {
                 suitePath: "/tmp/suite.json",
                 suite,
                 selectedTaskIds: new Set(["task-1"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               // Initial render reflects 1/2 selected
               let html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("1/2 selected")
 
               // Toggle second task on
-              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "task-2" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "toggleTask", taskId: "task-2" }, ctx)
 
               html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("2/2 selected")
 
               // Toggle first task off
-              yield* TBControlsWidget.handleEvent({ type: "toggleTask", taskId: "task-1" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "toggleTask", taskId: "task-1" }, ctx)
               html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("1/2 selected")
             }),
@@ -758,7 +799,7 @@ describe("TBControlsWidget", () => {
           const { layer } = yield* makeCustomTestLayer({
             socketService: {
               getMessages: () => Stream.empty,
-              loadTBSuite: () => Effect.fail(new Error("file missing")),
+              loadTBSuite: (_suitePath) => Effect.fail(new SocketError("request_failed", "file missing")),
             },
           })
 
@@ -775,10 +816,10 @@ describe("TBControlsWidget", () => {
                   tasks: [{ id: "task-keep", name: "Keep", difficulty: "easy", category: "basics" }],
                 },
                 selectedTaskIds: new Set(["task-keep"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
 
               const updated = yield* state.get
               expect(updated.suite).toBeNull()
@@ -805,9 +846,9 @@ describe("TBControlsWidget", () => {
           const { layer } = yield* makeCustomTestLayer({
             socketService: {
               getMessages: () => Stream.empty,
-              startTBRun: () => {
+              startTBRun: (_options) => {
                 startCalls++
-                return Effect.fail(new Error("runner exploded"))
+                return Effect.fail(new SocketError("request_failed", "runner exploded"))
               },
             },
           })
@@ -825,10 +866,10 @@ describe("TBControlsWidget", () => {
                   tasks: [{ id: "task-1", name: "Task 1", difficulty: "easy", category: "basics" }],
                 },
                 selectedTaskIds: new Set(["task-1"]),
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "startRun" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "startRun" }, ctx)
 
               const updated = yield* state.get
               expect(startCalls).toBe(1)
@@ -856,7 +897,15 @@ describe("TBControlsWidget", () => {
 
           yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-socket" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-socket",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-1"],
+              timestamp: new Date().toISOString(),
+            })
           yield* Effect.sleep(0)
 
           const html = (yield* getRendered(container)) ?? ""
@@ -875,10 +924,27 @@ describe("TBControlsWidget", () => {
 
           yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-complete" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-complete",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-1"],
+              timestamp: new Date().toISOString(),
+            })
           yield* Effect.sleep(0)
 
-          yield* injectMessage({ type: "tb_run_complete", runId: "run-complete" })
+          yield* injectMessage({ 
+            type: "tb_run_complete", 
+            runId: "run-complete",
+            passRate: 1.0,
+            passed: 1,
+            failed: 0,
+            timeout: 0,
+            error: 0,
+            totalDurationMs: 1000,
+          })
           yield* Effect.sleep(0)
 
           const html = (yield* getRendered(container)) ?? ""
@@ -898,10 +964,27 @@ describe("TBControlsWidget", () => {
 
           yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-active" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-active",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-1"],
+              timestamp: new Date().toISOString(),
+            })
           yield* Effect.sleep(0)
 
-          yield* injectMessage({ type: "tb_run_complete", runId: "run-other" })
+          yield* injectMessage({ 
+            type: "tb_run_complete", 
+            runId: "run-other",
+            passRate: 1.0,
+            passed: 1,
+            failed: 0,
+            timeout: 0,
+            error: 0,
+            totalDurationMs: 1000,
+          })
           yield* Effect.sleep(0)
 
           const html = (yield* getRendered(container)) ?? ""
@@ -941,10 +1024,11 @@ describe("TBControlsWidget", () => {
                 suite,
                 selectedTaskIds: new Set(["task-a"]),
                 status: "Dirty",
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+                statusType: "error" as const,
+              } as TBControlsState)
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBControlsWidget.handleEvent({ type: "loadSuite" }, ctx)
+              yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
 
               const updated = yield* state.get
               expect(updated.selectedTaskIds.size).toBe(2)
@@ -981,7 +1065,7 @@ describe("TBControlsWidget", () => {
                   tasks: [{ id: "t1", name: "Task 1", difficulty: "easy", category: "alpha" }],
                 },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
               expect(html).toContain("/abs/path/to/suite.json")
@@ -1015,7 +1099,7 @@ describe("TBControlsWidget", () => {
                 status: "7/10 tasks",
                 statusType: "running",
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
 
@@ -1140,7 +1224,7 @@ describe("TBControlsWidget", () => {
                 suite: mockSuite,
                 difficultyFilter: "easy",
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
 
@@ -1186,7 +1270,7 @@ describe("TBControlsWidget", () => {
                 suite: mockSuite,
                 searchFilter: "file",
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               const html = (yield* TBControlsWidget.render(ctx)).toString()
 
