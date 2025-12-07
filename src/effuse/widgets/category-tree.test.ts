@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { CategoryTreeWidget, type CategoryTreeState, type TBTaskData } from "./category-tree.js"
+import { CategoryTreeWidget, type CategoryTreeState, type CategoryTreeEvent, type TBTaskData } from "./category-tree.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"
@@ -286,10 +286,10 @@ describe("CategoryTreeWidget", () => {
             visible: true,
             selectedTaskId: null,
           })
-          const ctx = { state, emit: () => Effect.void, dom, container }
+          const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
           yield* Effect.provide(
-            CategoryTreeWidget.handleEvent({ type: "expandAll" }, ctx),
+            CategoryTreeWidget.handleEvent!({ type: "expandAll" }, ctx),
             layer
           )
 
@@ -311,15 +311,15 @@ describe("CategoryTreeWidget", () => {
           const dom = yield* DomServiceTag
           const container = { id: "category-tree-test" } as Element
           const tasks = new Map<string, TBTaskData>([
-            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
+            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy" as const, category: "basics", status: "pending" as const }],
           ])
           const state = yield* stateService.cell({
             tasks,
             collapsedCategories: new Set(),
             visible: true,
             selectedTaskId: null,
-          })
-          const ctx = { state, emit: () => Effect.void, dom, container }
+          } as CategoryTreeState)
+          const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
           yield* Effect.provide(
             CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx),
@@ -355,15 +355,15 @@ describe("CategoryTreeWidget", () => {
                 visible: true,
                 selectedTaskId: null,
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
               // Expand basics
-              yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              yield* CategoryTreeWidget.handleEvent!({ type: "toggleCategory", category: "basics" }, ctx)
               const expanded = yield* state.get
               expect(expanded.collapsedCategories.has("basics")).toBe(false)
 
               // Collapse again
-              yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              yield* CategoryTreeWidget.handleEvent!({ type: "toggleCategory", category: "basics" }, ctx)
               const collapsed = yield* state.get
               expect(collapsed.collapsedCategories.has("basics")).toBe(true)
             }),
@@ -395,7 +395,7 @@ describe("CategoryTreeWidget", () => {
                 visible: true,
                 selectedTaskId: null,
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
               const html = (yield* CategoryTreeWidget.render(ctx)).toString()
               expect(html).toContain("✓1")
@@ -428,10 +428,10 @@ describe("CategoryTreeWidget", () => {
             collapsedCategories: new Set(),
             visible: true,
             selectedTaskId: null,
-          })
-          const ctx = { state, emit: () => Effect.void, dom, container }
+          } as CategoryTreeState)
+          const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
+              yield* CategoryTreeWidget.handleEvent!({ type: "selectTask", taskId: "task-2" }, ctx)
           const updated = yield* state.get()
           expect(updated.selectedTaskId).toBe("task-2")
 
