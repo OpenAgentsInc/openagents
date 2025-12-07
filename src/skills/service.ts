@@ -79,7 +79,7 @@ export class SkillServiceError extends Error {
   readonly _tag = "SkillServiceError";
   constructor(
     readonly reason: string,
-    readonly override message: string,
+    override readonly message: string,
     readonly cause?: Error,
   ) {
     super(message);
