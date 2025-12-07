@@ -38,6 +38,7 @@ import {
 import { runOrchestrator } from "./orchestrator.js";
 import type { OrchestratorConfig, ClaudeCodeSettings } from "./types.js";
 import { makeReflectionService, type ReflexionConfigType } from "./reflection/index.js";
+import { DatabaseLive } from "../../storage/database.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -499,8 +500,9 @@ const runAgentInWorktree = (
 
     // Select layer based on cc-only mode
     const combinedLayer = config.ccOnly
-      ? Layer.merge(BunContext.layer, noopOpenRouterLayer)
-      : Layer.merge(
+      ? Layer.mergeAll(DatabaseLive, BunContext.layer, noopOpenRouterLayer)
+      : Layer.mergeAll(
+          DatabaseLive,
           BunContext.layer,
           Layer.provide(openRouterClientLayer, openRouterConfigLayer),
         );

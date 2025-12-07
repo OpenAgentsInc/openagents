@@ -129,3 +129,35 @@ export const runWithTestDb = <A, E>(
     Effect.provide(Path.Path),
     Effect.runPromise
   );
+
+/**
+ * A convenience helper that provides both DatabaseService and BunContext
+ * for tests that need both.
+ *
+ * Usage:
+ * ```typescript
+ * const result = await runWithTestContext(Effect.gen(function* () {
+ *   const db = yield* DatabaseService;
+ *   const fs = yield* FileSystem.FileSystem;
+ *   // ... test code ...
+ * }));
+ * ```
+ */
+export const runWithTestContext = <A, E>(
+  program: Effect.Effect<A, E, any>
+): Promise<A> =>
+  Effect.gen(function* () {
+    const { layer, cleanup } = yield* makeTestDatabaseLayer();
+
+    try {
+      return yield* program.pipe(
+        Effect.provide(layer),
+        Effect.provide(BunContext.layer)
+      );
+    } finally {
+      cleanup();
+    }
+  }).pipe(
+    Effect.provide(BunContext.layer),
+    Effect.runPromise
+  );

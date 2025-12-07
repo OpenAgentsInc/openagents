@@ -1,4 +1,3 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
@@ -21,11 +20,7 @@ import {
   mergeTasksById,
 } from "./service.js";
 import type { TaskCreate } from "./schema.js";
-
-const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
-) =>
-  Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
+import { runWithTestContext } from "./test-helpers.js";
 
 const makeTask = (title: string, overrides: Partial<TaskCreate> = {}): TaskCreate => ({
   title,
