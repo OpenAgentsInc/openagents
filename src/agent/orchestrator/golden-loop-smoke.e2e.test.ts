@@ -26,7 +26,7 @@ import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrout
 import { HUD_WS_PORT, type HudMessage, parseHudMessage } from "../../hud/protocol.js";
 import { acquireLock, releaseLock } from "./agent-lock.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 
 // Mock OpenRouter layer (not used in these tests)
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {

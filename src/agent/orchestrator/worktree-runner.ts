@@ -35,6 +35,7 @@ import {
   type MergeResult,
 } from "./git-helpers.js";
 import { getInstallSettings, installDeps } from "./install-deps.js";
+import { DatabaseLive } from "../../storage/database.js";
 
 export { getInstallSettings } from "./install-deps.js";
 export type { InstallSettings } from "./install-deps.js";
@@ -214,9 +215,10 @@ export const runInWorktree = async (
       };
 
       // Merge layers to avoid chained Effect.provide
-      const combinedLayer = Layer.merge(
+      const combinedLayer = Layer.mergeAll(
         BunContext.layer,
         Layer.provide(openRouterClientLayer, openRouterConfigLayer),
+        DatabaseLive,
       );
 
       const state = await Effect.runPromise(

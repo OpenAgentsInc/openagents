@@ -3,13 +3,9 @@ import { Effect, Layer } from "effect";
 import {
   runBestAvailableSubagent,
   shouldUseClaudeCode,
-  runFMSubagent,
-  type FMSettings,
 } from "./subagent-router.js";
 import type { SubagentResult, Subtask } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
-import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
 
 // Mock OpenRouterClient for tests
 const mockClient: OpenRouterClientShape = {

@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 import { runOrchestrator } from "./orchestrator.js";
 import { createGoldenLoopFixture } from "./golden-loop-fixture.js";
 import type { OrchestratorEvent, SubagentResult } from "./types.js";

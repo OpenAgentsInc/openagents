@@ -12,7 +12,7 @@ import type { OrchestratorEvent, SubagentResult } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 import { createGoldenLoopFixture } from "./golden-loop-fixture.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),
