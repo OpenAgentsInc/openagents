@@ -14,6 +14,8 @@ import { HFTrajectoryDetailWidget } from "./hf-trajectory-detail.js"
 import { OpenThoughtsService, type IOpenThoughtsService } from "../../huggingface/openthoughts.js"
 import type { Trajectory } from "../../atif/schema.js"
 import { HFDatasetError } from "../../huggingface/schema.js"
+import { SocketServiceTag, SocketError, type SocketService } from "../services/socket.js"
+import { Stream } from "effect"
 
 // ============================================================================
 // Mock Service
@@ -77,6 +79,29 @@ const makeMockOpenThoughtsService = (totalCount: number): IOpenThoughtsService =
   getParquetPath: () => Effect.succeed("/mock/path.parquet"),
 })
 
+const createMockSocket = (otService: IOpenThoughtsService): SocketService => ({
+  connect: () => Effect.void,
+  disconnect: () => Effect.void,
+  isConnected: () => Effect.succeed(true),
+  getMessages: () => Stream.empty,
+  loadTBSuite: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  startTBRun: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  stopTBRun: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  loadRecentTBRuns: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  loadTBRunDetails: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  loadReadyTasks: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  assignTaskToMC: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  loadUnifiedTrajectories: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  getHFTrajectoryCount: () => otService.count().pipe(
+    Effect.mapError((e: any) => new SocketError("request_failed", e.message)),
+    Effect.provideService(FileSystem.FileSystem, {} as any)
+  ),
+  getHFTrajectories: (o: number, l: number) => otService.getTrajectories(o, l).pipe(
+    Effect.mapError((e: any) => new SocketError("request_failed", e.message)),
+    Effect.provideService(FileSystem.FileSystem, {} as any)
+  ),
+})
+
 // ============================================================================
 // E2E Tests
 // ============================================================================
@@ -124,7 +149,10 @@ describe("HF Trajectory Browser E2E", () => {
             expect(state.loading).toBe(false)
             expect(state.totalCount).toBe(150)
             expect(state.trajectories.length).toBeGreaterThan(0)
-          }).pipe(Effect.provide(fullLayer))
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket(mockService)),
+            Effect.provide(fullLayer)
+          )
         })
       )
     )
