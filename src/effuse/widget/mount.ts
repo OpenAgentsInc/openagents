@@ -186,4 +186,4 @@ export const mountWidgets = (
 ): Effect.Effect<MountedWidget[], never, DomServiceTag | StateServiceTag | Scope.Scope> =>
   Effect.all(
     widgets.map(({ widget, container }) => mountWidget(widget, container))
-  ) as Effect.Effect<MountedWidget[], never, DomServiceTag | StateServiceTag | Scope.Scope>
+  ) as unknown as Effect.Effect<MountedWidget[], never, DomServiceTag | StateServiceTag | Scope.Scope>

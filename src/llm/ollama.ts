@@ -156,7 +156,7 @@ const convertResponse = (resp: OllamaResponse): ChatResponse => {
         prompt_tokens: resp.usage.prompt_tokens,
         completion_tokens: resp.usage.completion_tokens,
         total_tokens: resp.usage.total_tokens,
-      }}
+      } as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; }}
     : baseResponse;
 };
 

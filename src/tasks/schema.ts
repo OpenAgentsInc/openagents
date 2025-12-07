@@ -116,6 +116,7 @@ export const TaskUpdate = S.Struct({
   commits: S.optional(S.Array(S.String)),
   comments: S.optional(S.Array(Comment)),
   closeReason: S.optional(S.String),
+  closedAt: S.optional(S.NullOr(S.String)),
   design: S.optional(S.String),
   acceptanceCriteria: S.optional(S.String),
   notes: S.optional(S.String),
