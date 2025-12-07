@@ -45,17 +45,19 @@ export class TaskServiceError extends Error {
 const nowIso = (timestamp?: Date) => (timestamp ?? new Date()).toISOString();
 
 const applyTaskUpdate = (base: Task, update: TaskUpdate): Task => {
-  const merged: Task = { ...base };
-  type UpdateEntry = [keyof TaskUpdate, TaskUpdate[keyof TaskUpdate]];
-
-  for (const [key, value] of Object.entries(update) as UpdateEntry[]) {
+  // Create a new object with the base properties, then apply updates
+  const merged = { ...base };
+  
+  // For each property in the update, create a new object with that property updated
+  // This avoids trying to assign to readonly properties
+  let result = merged;
+  for (const [key, value] of Object.entries(update)) {
     if (value !== undefined) {
-      (merged as Task & Record<string, unknown>)[key as keyof Task] =
-        value as Task[keyof Task];
+      result = { ...result, [key]: value };
     }
   }
 
-  return merged;
+  return result as Task;
 };
 
 /**
