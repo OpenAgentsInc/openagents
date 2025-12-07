@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { makeHappyDomLayer } from "../testing/layers/happy-dom.js"
-import { TestHarnessTag, TestBrowserTag } from "../testing/index.js"
+import { TestHarnessTag } from "../testing/index.js"
 import { HFTrajectoryListWidget } from "./hf-trajectory-list.js"
 import { HFTrajectoryDetailWidget } from "./hf-trajectory-detail.js"
 import { OpenThoughtsService, type IOpenThoughtsService } from "../../huggingface/openthoughts.js"
@@ -92,7 +92,7 @@ describe("HF Trajectory Browser E2E", () => {
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag
-            const browser = yield* TestBrowserTag
+            // const browser = yield* TestBrowserTag
 
             console.log("[E2E] Mounting list widget...")
             const listHandle = yield* harness.mount(HFTrajectoryListWidget, {

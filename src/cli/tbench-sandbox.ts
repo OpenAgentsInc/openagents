@@ -24,7 +24,6 @@ import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagen
 import type { Subtask } from "../agent/orchestrator/types.js";
 import {
   loadTerminalBenchSuite,
-  toBenchmarkResults,
   type TerminalBenchTask,
   type TerminalBenchSuite,
   type TerminalBenchResults,

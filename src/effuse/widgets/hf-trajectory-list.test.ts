@@ -5,11 +5,10 @@
  */
 
 import { describe, test, expect } from "bun:test"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Layer } from "effect"
 import {
   HFTrajectoryListWidget,
   type HFTrajectoryListState,
-  type TrajectoryMetadata,
 } from "./hf-trajectory-list.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeTestLayer } from "../layers/test.js"

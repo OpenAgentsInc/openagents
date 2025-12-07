@@ -13,9 +13,6 @@ import type { Trajectory, Step } from "../../atif/schema.js"
 import {
   hasToolCalls,
   hasObservation,
-  isAgentStep,
-  isUserStep,
-  isSystemStep,
   extractStepText,
 } from "../../atif/schema.js"
 

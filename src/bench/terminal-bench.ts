@@ -14,6 +14,7 @@ import { Effect } from "effect";
 import * as S from "effect/Schema";
 import type { Task, TaskCreate } from "../tasks/schema.js";
 import { createTask } from "../tasks/service.js";
+import { DatabaseService } from "../storage/database.js";
 
 // --- Terminal-Bench Task Schema ---
 
@@ -215,7 +216,11 @@ export const importTerminalBenchSuite = (
   suite: TerminalBenchSuite,
   tasksPath: string,
   idPrefix = "tb",
-): Effect.Effect<Task[], TerminalBenchError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<
+  Task[],
+  TerminalBenchError,
+  FileSystem.FileSystem | Path.Path | DatabaseService
+> =>
   Effect.gen(function* () {
     const importedTasks: Task[] = [];
 

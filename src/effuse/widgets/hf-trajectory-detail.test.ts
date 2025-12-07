@@ -12,7 +12,7 @@ import {
 } from "./hf-trajectory-detail.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeTestLayer } from "../layers/test.js"
-import type { Trajectory, Step } from "../../atif/schema.js"
+import type { Trajectory } from "../../atif/schema.js"
 
 // ============================================================================
 // Mock Data

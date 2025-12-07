@@ -18,7 +18,6 @@ import {
   getFMContextLimit,
   createFMToolParseError,
   KNOWN_FM_TOOLS,
-  type FMToolParseError,
 } from "./model-adapter.js";
 
 // Test fixtures

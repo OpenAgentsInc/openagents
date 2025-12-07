@@ -4,7 +4,6 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync, mkdirSync } from "fs";
-import { join } from "path";
 import {
   BaselineStore,
   compareWithBaseline,

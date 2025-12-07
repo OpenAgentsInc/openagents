@@ -33,7 +33,6 @@ import {
   createModelRunner,
   parseModelString,
   type ModelRunner,
-  type ModelConfig,
   type TaskRunResult,
 } from "../bench/model-adapter.js";
 import {
@@ -43,14 +42,13 @@ import {
   type Episode,
 } from "../bench/episode-store.js";
 import { createTBEmitter, type TBEmitter } from "../tbench-hud/emit.js";
-import { loadProjectConfig, type ProjectServiceError } from "../tasks/project.js";
+import { loadProjectConfig } from "../tasks/project.js";
 import type { ProjectConfig } from "../tasks/schema.js";
 import { StreamingWriter } from "../atif/streaming-writer.js";
 import { registerATIFDiskWriter, unregisterATIFDiskWriter } from "../atif/hud-emitter.js";
 import {
   createEpisodeLearner,
   type LearningResult,
-  type LearningSummary,
 } from "../training/episode-learner.js";
 import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
 import { ArchivistService, makeArchivistServiceLive } from "../archivist/service.js";

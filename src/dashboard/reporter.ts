@@ -11,13 +11,11 @@ import type {
   DashboardMetrics,
   DashboardState,
   DisplayMode,
-  SystemHealth,
   RunRecord,
 } from "./schema.js";
 import {
   formatDuration,
   formatPercent,
-  formatNumber,
   buildProgressBar,
   getHealthColor,
   resetColor,
