@@ -295,10 +295,12 @@ export class DesktopServer {
    * Handle a HUD message: store in history, notify handlers, broadcast to UI clients.
    */
   private handleHudMessage(message: HudMessage): void {
-    // Store in history
-    this.messageHistory.push(message);
-    if (this.messageHistory.length > this.maxHistorySize) {
-      this.messageHistory.shift();
+    // Store in history (except dev_reload which would cause infinite reload loops)
+    if (message.type !== "dev_reload") {
+      this.messageHistory.push(message);
+      if (this.messageHistory.length > this.maxHistorySize) {
+        this.messageHistory.shift();
+      }
     }
 
     // Notify handlers
