@@ -121,11 +121,7 @@ const formatJSON = (obj: unknown): string => {
  * Safely get message text from step
  */
 const getMessageText = (step: Step): string => {
-  const text = extractStepText(step)
-  if (text.length > 500) {
-    return text.slice(0, 500) + "... (truncated)"
-  }
-  return text
+  return extractStepText(step)
 }
 
 // ============================================================================
@@ -333,9 +329,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                               const content = result.content
                               const contentStr =
                                 typeof content === "string"
-                                  ? content.length > 500
-                                    ? content.slice(0, 500) + "... (truncated)"
-                                    : content
+                                  ? content
                                   : formatJSON(content)
                               return html`
                                 <pre
