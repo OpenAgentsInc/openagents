@@ -18,7 +18,6 @@ import { join } from "path";
 import {
   EpisodeStore,
   type Episode,
-  type EpisodeSummary,
 } from "../bench/episode-store.js";
 import {
   type Skill,
@@ -131,7 +130,7 @@ export class EpisodeLearnerError extends Error {
       | "parse_failed"
       | "extraction_failed"
       | "storage_failed",
-    override readonly message: string,
+    readonly override message: string,
     readonly cause?: Error,
   ) {
     super(message);
@@ -284,18 +283,6 @@ export const createEpisodeLearner = (
       return "partial";
     }
     return "failure";
-  };
-
-  /**
-   * Generate a skill ID.
-   */
-  const generateSkillId = (name: string, version: string): string => {
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
-    return `skill-${slug}-${version}`;
   };
 
   /**

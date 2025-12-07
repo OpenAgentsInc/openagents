@@ -22,7 +22,7 @@ export class DatabaseError extends Error {
       | "constraint"
       | "not_found"
       | "validation",
-    override readonly message: string,
+    readonly override message: string,
     readonly cause?: unknown,
   ) {
     super(message);

@@ -649,7 +649,7 @@ const main = async (): Promise<void> => {
       : 0;
 
   // Emit run completion
-  tbEmitter.runComplete(Date.now(), {
+  tbEmitter.runComplete({
     passed,
     failed,
     timeout: timeouts,

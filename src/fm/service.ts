@@ -214,17 +214,7 @@ const makeService = (
 
       // Build retry schedule with exponential backoff
       const retrySchedule = Schedule.exponential(Duration.millis(config.retryDelayMs)).pipe(
-        Schedule.jittered,
-        Schedule.whileInput((error: FMError) => isRetryableError(error.reason)),
-        Schedule.recurs(config.maxRetries),
-        Schedule.tapOutput(() =>
-          Effect.sync(() => {
-            retryCount++;
-            if (config.enableLogging) {
-              console.log(`[FM] Retry attempt ${retryCount} for request ${requestId}`);
-            }
-          }),
-        ),
+        Schedule.recurs(config.maxRetries)
       );
 
       // Log request start
@@ -355,19 +345,7 @@ const makeService = (
 
       // Build retry schedule with exponential backoff
       const retrySchedule = Schedule.exponential(Duration.millis(config.retryDelayMs)).pipe(
-        Schedule.jittered,
-        Schedule.whileInput((error: FMError) => isRetryableError(error.reason)),
-        Schedule.recurs(config.maxRetries),
-        Schedule.tapOutput(() =>
-          Effect.sync(() => {
-            retryCount++;
-            if (config.enableLogging) {
-              console.log(
-                `[FM] Retry attempt ${retryCount} for request ${context.requestId} (session: ${context.sessionId})`,
-              );
-            }
-          }),
-        ),
+        Schedule.recurs(config.maxRetries)
       );
 
       // Log request start with context

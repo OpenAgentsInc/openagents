@@ -209,12 +209,13 @@ export const compareWithBaseline = (
   const regressedTasks: string[] = [];
 
   for (const result of results.results) {
+    const baselineEntry = baseline.taskResults[result.task_id];
     const baselineStatus: TerminalBenchResult["status"] | "N/A" =
-      baseline.taskResults[result.task_id] ?? "N/A";
+      baselineEntry ?? "N/A";
     const currentStatus = result.status;
 
-    const changed = baselineStatus !== currentStatus && baselineStatus !== "N/A";
-    const wasPass = baselineStatus === "pass";
+    const changed = baselineEntry !== undefined && baselineEntry !== currentStatus;
+    const wasPass = baselineEntry === "pass";
     const isPass = currentStatus === "pass";
 
     let improved = false;

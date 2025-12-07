@@ -8,7 +8,7 @@
 import { Effect, Ref, Context, Layer } from "effect";
 import * as S from "effect/Schema";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "fs";
-import { dirname, join } from "path";
+import { join } from "path";
 import { type Skill, type SkillFilter, type SkillStatus, Skill as SkillSchema } from "./schema.js";
 
 // --- Configuration ---

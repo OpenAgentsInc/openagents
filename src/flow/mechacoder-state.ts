@@ -2,6 +2,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
 import * as S from "effect/Schema";
+import { DatabaseService } from "../storage/database.js";
 import { listTasks } from "../tasks/service.js";
 import { defaultProjectConfig, loadProjectConfig } from "../tasks/project.js";
 import type { Task } from "../tasks/schema.js";

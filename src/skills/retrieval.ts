@@ -7,7 +7,7 @@
 
 import { Effect, Context, Layer } from "effect";
 import { SkillStore, type SkillStoreError } from "./store.js";
-import { EmbeddingService, type EmbeddingError, buildSkillText } from "./embedding.js";
+import { EmbeddingService, type EmbeddingError } from "./embedding.js";
 import {
   type Skill,
   type SkillQuery,
@@ -27,7 +27,7 @@ export class SkillRetrievalError extends Error {
   readonly _tag = "SkillRetrievalError";
   constructor(
     readonly reason: "store_error" | "embedding_error" | "no_skills_found",
-    override readonly message: string,
+    readonly override message: string,
     readonly cause?: Error,
   ) {
     super(message);

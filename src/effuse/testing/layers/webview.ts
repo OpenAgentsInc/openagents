@@ -73,12 +73,15 @@ const makeWebviewBrowser = (): Effect.Effect<
     // Capture stateRef once at creation time
     const stateRef = yield* WebviewTestStateTag
 
-    // Helper to add step without requiring service
-    const addStepLocal = (js: string): Effect.Effect<void> =>
-      Ref.update(stateRef, (state) => ({
-        ...state,
-        steps: [...state.steps, { js }],
-      }))
+    // Helper to add step without requiring service (context-free)
+    const addStepContextFree = (js: string): Effect.Effect<void> =>
+      Effect.provide(
+        Ref.update(stateRef, (state) => ({
+          ...state,
+          steps: [...state.steps, { js }],
+        })),
+        { stateRef } as any
+      )
 
     const browser: TestBrowser = {
       // ─────────────────────────────────────────────────────────────────
@@ -86,25 +89,25 @@ const makeWebviewBrowser = (): Effect.Effect<
       // ─────────────────────────────────────────────────────────────────
 
       query: <T extends Element = Element>(selector: string) =>
-        addStepLocal(`
+        addStepContextFree(`
           const __el = $('${escapeJS(selector)}');
           if (!__el) throw new Error('Element not found: ${escapeJS(selector)}');
         `).pipe(Effect.as(null as unknown as T)),
 
       queryOption: <T extends Element = Element>(selector: string) =>
-        addStepLocal(`$('${escapeJS(selector)}');`).pipe(
-          Effect.as(null as T | null)
-        ),
+      addStepContextFree(`$('${escapeJS(selector)}');`).pipe(
+        Effect.as(null as T | null)
+      ),
 
       queryAll: <T extends Element = Element>(selector: string) =>
-        addStepLocal(`$$('${escapeJS(selector)}');`).pipe(Effect.as([] as T[])),
+        addStepContextFree(`$$('${escapeJS(selector)}');`).pipe(Effect.as([] as T[])),
 
       // ─────────────────────────────────────────────────────────────────
       // Actions
       // ─────────────────────────────────────────────────────────────────
 
       click: (selector: string) =>
-        addStep(`click('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`click('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -115,7 +118,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       type: (selector: string, text: string) =>
-        addStep(`type('${escapeJS(selector)}', '${escapeJS(text)}');`).pipe(
+        addStepContextFree(`type('${escapeJS(selector)}', '${escapeJS(text)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -126,7 +129,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       clear: (selector: string) =>
-        addStep(`clear('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`clear('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -137,7 +140,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       check: (selector: string, checked = true) =>
-        addStep(`check('${escapeJS(selector)}', ${checked});`).pipe(
+        addStepContextFree(`check('${escapeJS(selector)}', ${checked});`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -152,7 +155,7 @@ const makeWebviewBrowser = (): Effect.Effect<
           typeof event === "string"
             ? `new Event('${escapeJS(event)}', { bubbles: true })`
             : `new Event('${event.type}', { bubbles: true })`
-        return addStep(`
+        return addStepContextFree(`
           const __el = $('${escapeJS(selector)}');
           if (!__el) throw new Error('Element not found: ${escapeJS(selector)}');
           __el.dispatchEvent(${eventCode});
@@ -172,7 +175,7 @@ const makeWebviewBrowser = (): Effect.Effect<
       // ─────────────────────────────────────────────────────────────────
 
       getInnerHTML: (selector: string) =>
-        addStep(`$html('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`$html('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -184,7 +187,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       getText: (selector: string) =>
-        addStep(`$text('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`$text('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -196,7 +199,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       getAttribute: (selector: string, attribute: string) =>
-        addStep(`
+        addStepContextFree(`
           const __el = $('${escapeJS(selector)}');
           if (__el) __el.getAttribute('${escapeJS(attribute)}');
         `).pipe(
@@ -211,7 +214,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       isVisible: (selector: string) =>
-        addStep(`
+        addStepContextFree(`
           const __el = $('${escapeJS(selector)}');
           if (__el) {
             const __style = getComputedStyle(__el);
@@ -220,14 +223,14 @@ const makeWebviewBrowser = (): Effect.Effect<
         `).pipe(Effect.as(true)),
 
       exists: (selector: string) =>
-        addStep(`!!$('${escapeJS(selector)}');`).pipe(Effect.as(true)),
+        addStepContextFree(`!!$('${escapeJS(selector)}');`).pipe(Effect.as(true)),
 
       // ─────────────────────────────────────────────────────────────────
       // Assertions
       // ─────────────────────────────────────────────────────────────────
 
       expectText: (selector: string, text: string) =>
-        addStep(`assert.text('${escapeJS(selector)}', '${escapeJS(text)}');`).pipe(
+        addStepContextFree(`assert.text('${escapeJS(selector)}', '${escapeJS(text)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -238,7 +241,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       expectVisible: (selector: string) =>
-        addStep(`assert.visible('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`assert.visible('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -249,7 +252,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       expectHidden: (selector: string) =>
-        addStep(`assert.hidden('${escapeJS(selector)}');`).pipe(
+        addStepContextFree(`assert.hidden('${escapeJS(selector)}');`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -260,7 +263,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       expectCount: (selector: string, count: number) =>
-        addStep(`assert.count('${escapeJS(selector)}', ${count});`).pipe(
+        addStepContextFree(`assert.count('${escapeJS(selector)}', ${count});`).pipe(
           Effect.mapError(
             () =>
               new TestError({
@@ -271,7 +274,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       expectAttribute: (selector: string, attribute: string, value: string) =>
-        addStep(
+        addStepContextFree(
           `assert.attr('${escapeJS(selector)}', '${escapeJS(attribute)}', '${escapeJS(value)}');`
         ).pipe(
           Effect.mapError(
@@ -288,7 +291,7 @@ const makeWebviewBrowser = (): Effect.Effect<
       // ─────────────────────────────────────────────────────────────────
 
       waitFor: (selector: string, options?: WaitOptions) =>
-        addStep(
+        addStepContextFree(
           `await waitFor('${escapeJS(selector)}', ${options?.timeout ?? 5000});`
         ).pipe(
           Effect.mapError(
@@ -302,7 +305,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       waitForHidden: (selector: string, options?: WaitOptions) =>
-        addStep(
+        addStepContextFree(
           `await waitForHidden('${escapeJS(selector)}', ${options?.timeout ?? 5000});`
         ).pipe(
           Effect.mapError(
@@ -315,7 +318,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
 
       waitForText: (selector: string, text: string, options?: WaitOptions) =>
-        addStep(
+        addStepContextFree(
           `await waitForText('${escapeJS(selector)}', '${escapeJS(text)}', ${options?.timeout ?? 5000});`
         ).pipe(
           Effect.mapError(
@@ -328,7 +331,7 @@ const makeWebviewBrowser = (): Effect.Effect<
         ),
     }
 
-    return browser
+    return browser as TestBrowser
   })
 
 /**

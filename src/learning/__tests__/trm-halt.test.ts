@@ -33,13 +33,17 @@ describe("Halt Configuration", () => {
 
 describe("checkMaxDepth", () => {
   test("returns null when below max depth", () => {
-    const state = createMockTRMState({ z: { depth: 10, maxDepth: 42 } });
+    const state = createMockTRMState({ 
+      z: { 
+        depth: 10 
+      } 
+    });
     const result = checkMaxDepth(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
   });
 
   test("returns halt decision at max depth", () => {
-    const state = createMockTRMState({ z: { depth: 42, maxDepth: 42 } });
+    const state = createMockTRMState({ z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 42, maxDepth: 42 } });
     const result = checkMaxDepth(state, DEFAULT_HALT_CONFIG);
 
     expect(result).not.toBeNull();
@@ -48,7 +52,7 @@ describe("checkMaxDepth", () => {
   });
 
   test("returns halt decision above max depth", () => {
-    const state = createMockTRMState({ z: { depth: 50, maxDepth: 42 } });
+    const state = createMockTRMState({ z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 50, maxDepth: 42 } });
     const result = checkMaxDepth(state, DEFAULT_HALT_CONFIG);
 
     expect(result?.shouldHalt).toBe(true);
@@ -56,7 +60,7 @@ describe("checkMaxDepth", () => {
   });
 
   test("respects config override", () => {
-    const state = createMockTRMState({ z: { depth: 10, maxDepth: 42 } });
+    const state = createMockTRMState({ z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 10, maxDepth: 42 } });
     const config: HaltConfig = { ...DEFAULT_HALT_CONFIG, maxDepthOverride: 5 };
     const result = checkMaxDepth(state, config);
 
@@ -90,7 +94,7 @@ describe("checkTestsPassed", () => {
         validationResult: { passed: true, testsRun: 10, testsPassed: 10 },
         confidence: 0.99,
       },
-      z: { depth: 5, maxDepth: 42 },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 5, maxDepth: 42 },
     });
     const result = checkTestsPassed(state);
 
@@ -105,7 +109,7 @@ describe("checkHighConfidence", () => {
   test("returns null when below threshold", () => {
     const state = createMockTRMState({
       y: { confidence: 0.5 },
-      z: { progress: { stepsCompleted: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = checkHighConfidence(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -114,7 +118,7 @@ describe("checkHighConfidence", () => {
   test("returns null when not enough steps", () => {
     const state = createMockTRMState({
       y: { confidence: 0.99 },
-      z: { progress: { stepsCompleted: 1 } },
+      z: { progress: { stepsCompleted: 1, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = checkHighConfidence(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -123,7 +127,7 @@ describe("checkHighConfidence", () => {
   test("returns halt at exact threshold with enough steps", () => {
     const state = createMockTRMState({
       y: { confidence: 0.95 },
-      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 5, maxDepth: 42 },
     });
     const result = checkHighConfidence(state, DEFAULT_HALT_CONFIG);
 
@@ -135,7 +139,7 @@ describe("checkHighConfidence", () => {
   test("returns halt above threshold", () => {
     const state = createMockTRMState({
       y: { confidence: 0.99 },
-      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 5, maxDepth: 42 },
     });
     const result = checkHighConfidence(state, DEFAULT_HALT_CONFIG);
 
@@ -148,7 +152,7 @@ describe("checkAccuracyAchieved", () => {
   test("returns null when below threshold", () => {
     const state = createMockTRMState({
       y: { trainingAccuracy: 0.8 },
-      z: { progress: { stepsCompleted: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = checkAccuracyAchieved(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -157,7 +161,7 @@ describe("checkAccuracyAchieved", () => {
   test("returns null when not enough steps", () => {
     const state = createMockTRMState({
       y: { trainingAccuracy: 1.0 },
-      z: { progress: { stepsCompleted: 1 } },
+      z: { progress: { stepsCompleted: 1, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = checkAccuracyAchieved(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -166,7 +170,7 @@ describe("checkAccuracyAchieved", () => {
   test("returns halt at exact threshold with enough steps", () => {
     const state = createMockTRMState({
       y: { trainingAccuracy: 1.0, confidence: 0.9 },
-      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 }, depth: 5, maxDepth: 42 },
     });
     const result = checkAccuracyAchieved(state, DEFAULT_HALT_CONFIG);
 
@@ -179,7 +183,7 @@ describe("checkAccuracyAchieved", () => {
 describe("checkStuck", () => {
   test("returns null when not stuck", () => {
     const state = createMockTRMState({
-      z: { progress: { isStuck: false, stuckCount: 0 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = checkStuck(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -187,7 +191,7 @@ describe("checkStuck", () => {
 
   test("returns null when stuck but below threshold", () => {
     const state = createMockTRMState({
-      z: { progress: { isStuck: true, stuckCount: 2 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: true, stuckCount: 2 } },
     });
     const result = checkStuck(state, DEFAULT_HALT_CONFIG);
     expect(result).toBeNull();
@@ -196,7 +200,7 @@ describe("checkStuck", () => {
   test("returns halt when stuck at threshold", () => {
     const state = createMockTRMState({
       y: { confidence: 0.5 },
-      z: { depth: 10, maxDepth: 42, progress: { isStuck: true, stuckCount: 3 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: true, stuckCount: 3 }, depth: 10, maxDepth: 42 },
     });
     const result = checkStuck(state, DEFAULT_HALT_CONFIG);
 
@@ -209,7 +213,7 @@ describe("checkStuck", () => {
   test("returns halt when stuck above threshold", () => {
     const state = createMockTRMState({
       y: { confidence: 0.3 },
-      z: { depth: 10, maxDepth: 42, progress: { isStuck: true, stuckCount: 5 } },
+      z: { progress: { stepsCompleted: 5, totalSteps: 42, isStuck: true, stuckCount: 5 }, depth: 10, maxDepth: 42 },
     });
     const result = checkStuck(state, DEFAULT_HALT_CONFIG);
 
@@ -222,7 +226,7 @@ describe("shouldHalt", () => {
   test("returns continue when no halt conditions met", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 0.5, confidence: 0.5 },
-      z: { depth: 5, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 5 } },
+      z: { depth: 5, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 5, totalSteps: 42 } },
     });
     const result = shouldHalt(state);
 
@@ -238,7 +242,7 @@ describe("shouldHalt", () => {
         trainingAccuracy: 1.0,
         confidence: 0.99,
       },
-      z: { depth: 42, maxDepth: 42, progress: { isStuck: true, stuckCount: 5, stepsCompleted: 10 } },
+      z: { depth: 42, maxDepth: 42, progress: { isStuck: true, stuckCount: 5, stepsCompleted: 10, totalSteps: 42 } },
     });
     const result = shouldHalt(state);
 
@@ -249,7 +253,7 @@ describe("shouldHalt", () => {
   test("prioritizes accuracy_achieved over confidence", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 1.0, confidence: 0.99 },
-      z: { depth: 5, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 5 } },
+      z: { depth: 5, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 5, totalSteps: 42 } },
     });
     const result = shouldHalt(state);
 
@@ -260,7 +264,7 @@ describe("shouldHalt", () => {
   test("prioritizes high_confidence over max_depth", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 0.8, confidence: 0.96 },
-      z: { depth: 42, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 10 } },
+      z: { depth: 42, maxDepth: 42, progress: { isStuck: false, stuckCount: 0, stepsCompleted: 10, totalSteps: 42 } },
     });
     const result = shouldHalt(state);
 
@@ -271,7 +275,7 @@ describe("shouldHalt", () => {
   test("prioritizes max_depth over stuck", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 0.3, confidence: 0.3 },
-      z: { depth: 42, maxDepth: 42, progress: { isStuck: true, stuckCount: 5, stepsCompleted: 10 } },
+      z: { depth: 42, maxDepth: 42, progress: { isStuck: true, stuckCount: 5, stepsCompleted: 10, totalSteps: 42 } },
     });
     const result = shouldHalt(state);
 
@@ -282,7 +286,7 @@ describe("shouldHalt", () => {
   test("accepts config overrides", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 0.8, confidence: 0.8 },
-      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5 } },
+      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42 } },
     });
     const result = shouldHalt(state, { ...DEFAULT_HALT_CONFIG, confidenceThreshold: 0.7 });
 
@@ -315,11 +319,11 @@ describe("detectProgress", () => {
   test("detects error resolved", () => {
     const prev = createMockTRMState({
       y: { trainingAccuracy: 0.5 },
-      z: { hypotheses: [], progress: { isStuck: true } },
+      z: { hypotheses: [], progress: { isStuck: true, stepsCompleted: 5, totalSteps: 42, stuckCount: 1 } },
     });
     const curr = createMockTRMState({
       y: { trainingAccuracy: 0.5 },
-      z: { hypotheses: [], progress: { isStuck: false } },
+      z: { hypotheses: [], progress: { isStuck: false, stepsCompleted: 5, totalSteps: 42, stuckCount: 0 } },
     });
     const result = detectProgress(prev, curr);
 
@@ -339,11 +343,11 @@ describe("detectProgress", () => {
   test("detects stalled", () => {
     const prev = createMockTRMState({
       y: { trainingAccuracy: 0.5 },
-      z: { hypotheses: ["h1"], progress: { isStuck: false } },
+      z: { hypotheses: ["h1"], progress: { isStuck: false, stepsCompleted: 5, totalSteps: 42, stuckCount: 0 } },
     });
     const curr = createMockTRMState({
       y: { trainingAccuracy: 0.5 },
-      z: { hypotheses: ["h1"], progress: { isStuck: false } },
+      z: { hypotheses: ["h1"], progress: { isStuck: false, stepsCompleted: 5, totalSteps: 42, stuckCount: 0 } },
     });
     const result = detectProgress(prev, curr);
 
@@ -359,7 +363,7 @@ describe("TRMHaltService", () => {
         const service = yield* TRMHaltService;
         const state = createMockTRMState({
           y: { validated: false, trainingAccuracy: 0.5, confidence: 0.5 },
-          z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5 } },
+          z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42 } },
         });
         return yield* service.shouldHalt(state);
       }).pipe(Effect.provide(TRMHaltServiceLive)),

@@ -1053,8 +1053,7 @@ const main = async (): Promise<void> => {
     writeFileSync(join(iterOutputDir, "report.md"), iterReport);
 
     // Create and store episode
-    const baselineEpisodeOption = baseline ?? undefined;
-    const episode = createEpisode({
+    const episodeParams: Parameters<typeof createEpisode>[0] = {
       runId,
       iteration: iter,
       model: modelName,
@@ -1072,8 +1071,11 @@ const main = async (): Promise<void> => {
         totalDurationMs: iterEndTime - iterStartTime,
       },
       resultsPath: join(iterOutputDir, "results.json"),
-      baselineEpisode: baselineEpisodeOption,
-    });
+    };
+    if (baseline) {
+      episodeParams.baselineEpisode = baseline;
+    }
+    const episode = createEpisode(episodeParams);
 
     await episodeStore.record(episode);
     episodes.push(episode);

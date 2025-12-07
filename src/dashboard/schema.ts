@@ -8,6 +8,8 @@
 import type { LoopState, LearningStats } from "../learning/index.js";
 import type { TBSubset } from "../trainer/schema.js";
 
+export type { LearningStats } from "../learning/index.js";
+
 // --- Display Types ---
 
 /**

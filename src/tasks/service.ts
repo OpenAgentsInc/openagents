@@ -628,8 +628,6 @@ export const renameTaskPrefix = ({
 
     // Update each task ID
     for (const task of tasksToRename) {
-      const newId = task.id.replace(`${oldPrefix}-`, `${newPrefix}-`);
-
       // This is a complex operation - would need custom SQL
       // For now, return error
       return yield* Effect.fail(

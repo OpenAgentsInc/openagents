@@ -6,7 +6,7 @@
  */
 
 import { Effect, Context, Layer, Ref } from "effect";
-import { FMService, type FMServiceError } from "../fm/service.js";
+import { FMService } from "../fm/service.js";
 import type { Skill } from "./schema.js";
 
 // --- Configuration ---

@@ -271,7 +271,7 @@ describe("CategoryTreeWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer } = yield* makeTestLayer()
 
           const stateService = yield* StateServiceTag
           const dom = yield* DomServiceTag
@@ -359,7 +359,7 @@ describe("CategoryTreeWidget", () => {
 
               // Expand basics
               yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
-              const expanded = yield* state.get
+              const expanded = yield* state.get()
               expect(expanded.collapsedCategories.has("basics")).toBe(false)
 
               // Collapse again
@@ -414,7 +414,7 @@ describe("CategoryTreeWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer } = yield* makeTestLayer()
+          const {  } = yield* makeTestLayer()
 
           const stateService = yield* StateServiceTag
           const dom = yield* DomServiceTag

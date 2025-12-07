@@ -448,7 +448,8 @@ export async function loadReadyTasks(limit?: number): Promise<MCTask[]> {
     console.log(`[Handler] Found ${tasks.length} ready tasks`);
 
     // Apply limit if specified
-    const limitedTasks = limit > 0 ? tasks.slice(0, limit) : tasks;
+    const limitedTasks =
+      typeof limit === "number" && limit > 0 ? tasks.slice(0, limit) : tasks;
 
     return limitedTasks.map((t) => ({
       id: t.id,
