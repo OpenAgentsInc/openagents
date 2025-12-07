@@ -422,7 +422,7 @@ export const HFTrajectoryListWidget: Widget<
           break
         }
       }
-    }),
+    }).pipe(Effect.catchAll(Effect.die)),
 
   subscriptions: (ctx) => {
     // Initial load on mount
@@ -473,7 +473,7 @@ export const HFTrajectoryListWidget: Widget<
           error: error instanceof Error ? error.message : String(error),
         }))
       }
-    })
+    }).pipe(Effect.catchAll(Effect.die))
 
     // Return as a stream that runs once
     return [Stream.make(initialLoad)]
