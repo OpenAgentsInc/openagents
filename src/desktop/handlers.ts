@@ -47,7 +47,8 @@ import {
   type TrajectoryMetadata,
 } from "../atif/service.js";
 import {
-  makeOpenThoughtsService,
+  OpenThoughtsService,
+  OpenThoughtsServiceLive,
   HFDatasetServiceLive,
 } from "../huggingface/index.js";
 import type { Trajectory } from "../atif/schema.js";
@@ -542,53 +543,63 @@ export async function loadUnifiedTrajectories(limit: number = 50): Promise<Unifi
 // ============================================================================
 
 /**
- * Create OpenThoughts service with Bun layer
+ * Build the full layer stack for OpenThoughts service
+ *
+ * Layer dependencies:
+ * - BunContext.layer provides FileSystem and Path
+ * - HFDatasetServiceLive() depends on FileSystem/Path
+ * - OpenThoughtsServiceLive depends on HFDatasetService
  */
-const getOpenThoughtsService = () => {
-  const layer = BunContext.layer.pipe(
-    Layer.provide(HFDatasetServiceLive())
+const buildOpenThoughtsLayer = () => {
+  const mainLayer = Layer.mergeAll(
+    HFDatasetServiceLive(),
+  ).pipe(
+    Layer.provideMerge(BunContext.layer),
   );
-  return makeOpenThoughtsService().pipe(Effect.provide(layer));
+
+  return OpenThoughtsServiceLive.pipe(
+    Layer.provideMerge(mainLayer),
+  );
 };
 
 /**
  * Get total count of HF trajectories
  */
 async function getHFTrajectoryCount(): Promise<{ count: number }> {
-  const service = getOpenThoughtsService();
-  const count = await Effect.runPromise(
-    Effect.gen(function* () {
-      const svc = yield* service;
-      return yield* svc.count();
-    })
-  );
-  return { count };
+  const program = Effect.gen(function* () {
+    const service = yield* OpenThoughtsService;
+    const count = yield* service.count();
+    return { count };
+  });
+
+  const layer = buildOpenThoughtsLayer();
+  return await Effect.runPromise(program.pipe(Effect.provide(layer)));
 }
 
 /**
  * Get paginated HF trajectories
  */
 async function getHFTrajectories(offset = 0, limit = 100): Promise<Trajectory[]> {
-  const service = getOpenThoughtsService();
-  return await Effect.runPromise(
-    Effect.gen(function* () {
-      const svc = yield* service;
-      return yield* svc.getTrajectories(offset, limit);
-    })
-  );
+  const program = Effect.gen(function* () {
+    const service = yield* OpenThoughtsService;
+    return yield* service.getTrajectories(offset, limit);
+  });
+
+  const layer = buildOpenThoughtsLayer();
+  return await Effect.runPromise(program.pipe(Effect.provide(layer)));
 }
 
 /**
  * Get a single HF trajectory by index
  */
 async function getHFTrajectory(index: number): Promise<Trajectory | null> {
-  const service = getOpenThoughtsService();
-  return await Effect.runPromise(
-    Effect.gen(function* () {
-      const svc = yield* service;
-      return yield* svc.getTrajectory(index);
-    })
-  );
+  const program = Effect.gen(function* () {
+    const service = yield* OpenThoughtsService;
+    return yield* service.getTrajectory(index);
+  });
+
+  const layer = buildOpenThoughtsLayer();
+  return await Effect.runPromise(program.pipe(Effect.provide(layer)));
 }
 
 // ============================================================================

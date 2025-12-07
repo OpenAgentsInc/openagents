@@ -384,6 +384,39 @@ export class SocketClient {
     return (response as Extract<SocketResponse, { type: "response:loadUnifiedTrajectories" }>).data ?? [];
   }
 
+  /**
+   * Get total count of HF trajectories
+   */
+  async getHFTrajectoryCount(): Promise<number> {
+    const response = await this.request("request:getHFTrajectoryCount", {});
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to get trajectory count");
+    }
+    return (response as Extract<SocketResponse, { type: "response:getHFTrajectoryCount" }>).data?.count ?? 0;
+  }
+
+  /**
+   * Get paginated HF trajectories
+   */
+  async getHFTrajectories(offset?: number, limit?: number): Promise<unknown[]> {
+    const response = await this.request("request:getHFTrajectories", { offset, limit });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to load trajectories");
+    }
+    return (response as Extract<SocketResponse, { type: "response:getHFTrajectories" }>).data ?? [];
+  }
+
+  /**
+   * Get a single HF trajectory by index
+   */
+  async getHFTrajectory(index: number): Promise<unknown | null> {
+    const response = await this.request("request:getHFTrajectory", { index });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to load trajectory");
+    }
+    return (response as Extract<SocketResponse, { type: "response:getHFTrajectory" }>).data ?? null;
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================
