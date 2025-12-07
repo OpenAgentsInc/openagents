@@ -219,7 +219,16 @@ export interface ArchiveConfig {
   pruneThreshold: number;
   /** Project root for file operations */
   projectRoot: string;
+  /** Optional HUD message callback for real-time UI updates */
+  onHudMessage?: (msg: ArchivistHudMessage) => void;
 }
+
+/** Archivist HUD message types (from hud/protocol.ts) */
+export type ArchivistHudMessage =
+  | { type: "archivist_run_start"; runId: string; trajectoriesToProcess: number; mode: "full" | "quick"; timestamp: string }
+  | { type: "archivist_pattern_found"; runId: string; patternName: string; patternType: "skill" | "convention" | "antipattern" | "optimization"; confidence: number }
+  | { type: "archivist_skill_promoted"; runId: string; skillId: string; skillName: string; category: string }
+  | { type: "archivist_run_complete"; runId: string; trajectoriesProcessed: number; patternsExtracted: number; skillsCreated: number; memoriesCreated: number; itemsPruned: number; durationMs: number };
 
 export const DEFAULT_ARCHIVE_CONFIG: ArchiveConfig = {
   minSuccessRate: 0.7,

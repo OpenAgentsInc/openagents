@@ -375,6 +375,57 @@ export interface HealerInvocationCompleteMessage {
 }
 
 // ============================================================================
+// Archivist (Pattern Extraction) Events
+// ============================================================================
+
+/**
+ * Archivist run started (archive cycle)
+ */
+export interface ArchivistRunStartMessage {
+  type: "archivist_run_start";
+  runId: string;
+  trajectoriesToProcess: number;
+  mode: "full" | "quick";
+  timestamp: string;
+}
+
+/**
+ * Archivist pattern found
+ */
+export interface ArchivistPatternFoundMessage {
+  type: "archivist_pattern_found";
+  runId: string;
+  patternName: string;
+  patternType: "skill" | "convention" | "antipattern" | "optimization";
+  confidence: number;
+}
+
+/**
+ * Archivist skill promoted (from pattern to skill library)
+ */
+export interface ArchivistSkillPromotedMessage {
+  type: "archivist_skill_promoted";
+  runId: string;
+  skillId: string;
+  skillName: string;
+  category: string;
+}
+
+/**
+ * Archivist run complete
+ */
+export interface ArchivistRunCompleteMessage {
+  type: "archivist_run_complete";
+  runId: string;
+  trajectoriesProcessed: number;
+  patternsExtracted: number;
+  skillsCreated: number;
+  memoriesCreated: number;
+  itemsPruned: number;
+  durationMs: number;
+}
+
+// ============================================================================
 // Terminal-Bench Events
 // ============================================================================
 
@@ -703,6 +754,10 @@ export type HudMessage =
   | HealerInvocationStartMessage
   | HealerSpellAppliedMessage
   | HealerInvocationCompleteMessage
+  | ArchivistRunStartMessage
+  | ArchivistPatternFoundMessage
+  | ArchivistSkillPromotedMessage
+  | ArchivistRunCompleteMessage
   | TBRunStartMessage
   | TBRunCompleteMessage
   | TBRunHistoryMessage
@@ -831,3 +886,23 @@ export const isContainerMessage = (msg: HudMessage): boolean =>
 
 export const isATIFStep = (msg: HudMessage): msg is ATIFStepMessage =>
   msg.type === "atif_step";
+
+// ============================================================================
+// Archivist Event Type Guards
+// ============================================================================
+
+export const isArchivistRunStart = (msg: HudMessage): msg is ArchivistRunStartMessage =>
+  msg.type === "archivist_run_start";
+
+export const isArchivistPatternFound = (msg: HudMessage): msg is ArchivistPatternFoundMessage =>
+  msg.type === "archivist_pattern_found";
+
+export const isArchivistSkillPromoted = (msg: HudMessage): msg is ArchivistSkillPromotedMessage =>
+  msg.type === "archivist_skill_promoted";
+
+export const isArchivistRunComplete = (msg: HudMessage): msg is ArchivistRunCompleteMessage =>
+  msg.type === "archivist_run_complete";
+
+/** Check if message is any archivist-related message */
+export const isArchivistMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("archivist_");
