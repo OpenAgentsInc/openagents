@@ -296,6 +296,11 @@ describe("CategoryTreeWidget", () => {
           const updated = yield* state.get()
           expect(updated.collapsedCategories.size).toBe(0)
 
+        })
+      )
+    )
+  })
+
   test("US-2.4 collapse all hides all categories", async () => {
     await Effect.runPromise(
       Effect.scoped(
@@ -778,5 +783,6 @@ describe("CategoryTreeWidget", () => {
           expect(html).toContain("H</span>")
         })
       )
+    )
   })
 })
