@@ -79,6 +79,8 @@ export const SkillCategory = S.Literal(
   "security",         // Security-related operations
   "performance",      // Optimization
   "meta",             // Skill management
+  "api",              // API interactions
+  "effect",           // Effect-TS specific skills
 );
 export type SkillCategory = S.Schema.Type<typeof SkillCategory>;
 

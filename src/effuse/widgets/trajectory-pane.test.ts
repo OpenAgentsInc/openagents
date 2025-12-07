@@ -191,7 +191,7 @@ describe("TrajectoryPaneWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "trajectory-test" } as Element
-              const state = yield* stateService.cell(TrajectoryPaneWidget.initialState())
+              const state = yield* stateService.cell<TrajectoryPaneState>(TrajectoryPaneWidget.initialState())
               const ctx = { state, emit: () => Effect.void, dom, container }
 
               yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
@@ -227,7 +227,7 @@ describe("TrajectoryPaneWidget", () => {
                 { id: "run-1", type: "tb-run", timestamp: "2024-01-01", label: "Run 1" },
                 { id: "run-2", type: "tb-run", timestamp: "2024-01-02", label: "Run 2" },
               ]
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TrajectoryPaneState>({
                 trajectories,
                 selectedId: null,
                 loading: false,
@@ -353,7 +353,7 @@ describe("TrajectoryPaneWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "trajectory-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TrajectoryPaneState>({
                 trajectories: [
                   {
                     id: "run-1",
@@ -448,7 +448,7 @@ describe("TrajectoryPaneWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "trajectory-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TrajectoryPaneState>({
                 trajectories: [
                   { id: "run-1", type: "tb-run", timestamp: "2024-12-05T11:00:00Z", label: "Run 1" },
                   { id: "run-2", type: "atif", timestamp: "2024-12-05T12:00:00Z", label: "ATIF 2" },

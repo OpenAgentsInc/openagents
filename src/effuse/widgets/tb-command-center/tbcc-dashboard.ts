@@ -154,15 +154,15 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         : html`
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               ${joinTemplates(
-                [1, 2, 3, 4].map(
-                  () => html`
+          [1, 2, 3, 4].map(
+            () => html`
                     <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4 animate-pulse">
                       <div class="h-3 bg-zinc-800 rounded w-16 mb-2"></div>
                       <div class="h-6 bg-zinc-800 rounded w-12"></div>
                     </div>
                   `
-                )
-              )}
+          )
+        )}
             </div>
           `
 
@@ -214,9 +214,9 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
                     </thead>
                     <tbody>
                       ${joinTemplates(
-                        state.recentRuns.slice(0, 10).map((run) => {
-                          const outcomeColors = run.outcome ? OUTCOME_COLORS[run.outcome] : OUTCOME_COLORS.error
-                          return html`
+            state.recentRuns.slice(0, 10).map((run) => {
+              const outcomeColors = run.outcome ? OUTCOME_COLORS[run.outcome] : OUTCOME_COLORS.error
+              return html`
                             <tr class="border-b border-zinc-800/20 hover:bg-zinc-800/30 transition-colors">
                               <td class="px-4 py-2 font-mono text-zinc-200">${run.taskName}</td>
                               <td class="px-4 py-2">
@@ -240,8 +240,8 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
                               </td>
                             </tr>
                           `
-                        })
-                      )}
+            })
+          )}
                     </tbody>
                   </table>
                 </div>
@@ -313,7 +313,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
           try {
             // Load recent runs
             const runs = yield* socket.loadRecentTBRuns(20)
-            const recentRuns: TBRunSummary[] = runs.map((r) => ({
+            const recentRuns: TBRunSummary[] = runs.map((r: any) => ({
               id: r.runId,
               source: "local" as const,
               taskId: r.taskIds?.[0] ?? "unknown",

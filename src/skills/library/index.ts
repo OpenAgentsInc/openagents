@@ -34,7 +34,8 @@ export const getSkillStats = (): {
 
   for (const skill of bootstrapSkills) {
     byCategory[skill.category] = (byCategory[skill.category] ?? 0) + 1;
-    bySource[skill.source] = (bySource[skill.source] ?? 0) + 1;
+    const source = skill.source ?? "unknown";
+    bySource[source] = (bySource[source] ?? 0) + 1;
   }
 
   return {
