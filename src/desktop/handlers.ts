@@ -30,11 +30,14 @@ import {
   isLoadReadyTasksRequest,
   isAssignTaskToMCRequest,
   isLoadUnifiedTrajectoriesRequest,
+  isGetHFTrajectoryCountRequest,
+  isGetHFTrajectoriesRequest,
+  isGetHFTrajectoryRequest,
   createSuccessResponse,
   createErrorResponse,
   type UnifiedTrajectory,
 } from "./protocol.js";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { readyTasks as getReadyTasks } from "../tasks/service.js";
 import { extractCredentialsFromKeychain } from "../sandbox/credentials.js";
@@ -43,6 +46,11 @@ import {
   DEFAULT_TRAJECTORIES_DIR,
   type TrajectoryMetadata,
 } from "../atif/service.js";
+import {
+  makeOpenThoughtsService,
+  HFDatasetServiceLive,
+} from "../huggingface/index.js";
+import type { Trajectory } from "../atif/schema.js";
 
 // ============================================================================
 // Project Root Resolution
@@ -530,6 +538,60 @@ export async function loadUnifiedTrajectories(limit: number = 50): Promise<Unifi
 }
 
 // ============================================================================
+// HuggingFace Trajectory Handlers
+// ============================================================================
+
+/**
+ * Create OpenThoughts service with Bun layer
+ */
+const getOpenThoughtsService = () => {
+  const layer = BunContext.layer.pipe(
+    Layer.provide(HFDatasetServiceLive())
+  );
+  return makeOpenThoughtsService().pipe(Effect.provide(layer));
+};
+
+/**
+ * Get total count of HF trajectories
+ */
+async function getHFTrajectoryCount(): Promise<{ count: number }> {
+  const service = getOpenThoughtsService();
+  const count = await Effect.runPromise(
+    Effect.gen(function* () {
+      const svc = yield* service;
+      return yield* svc.count();
+    })
+  );
+  return { count };
+}
+
+/**
+ * Get paginated HF trajectories
+ */
+async function getHFTrajectories(offset = 0, limit = 100): Promise<Trajectory[]> {
+  const service = getOpenThoughtsService();
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const svc = yield* service;
+      return yield* svc.getTrajectories(offset, limit);
+    })
+  );
+}
+
+/**
+ * Get a single HF trajectory by index
+ */
+async function getHFTrajectory(index: number): Promise<Trajectory | null> {
+  const service = getOpenThoughtsService();
+  return await Effect.runPromise(
+    Effect.gen(function* () {
+      const svc = yield* service;
+      return yield* svc.getTrajectory(index);
+    })
+  );
+}
+
+// ============================================================================
 // WebSocket Request Handler
 // ============================================================================
 
@@ -589,6 +651,24 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       console.log("[Handler] Received loadUnifiedTrajectories request");
       const data = await loadUnifiedTrajectories(request.limit ?? 50);
       return createSuccessResponse("response:loadUnifiedTrajectories", correlationId, data);
+    }
+
+    if (isGetHFTrajectoryCountRequest(request)) {
+      console.log("[Handler] Received getHFTrajectoryCount request");
+      const data = await getHFTrajectoryCount();
+      return createSuccessResponse("response:getHFTrajectoryCount", correlationId, data);
+    }
+
+    if (isGetHFTrajectoriesRequest(request)) {
+      console.log(`[Handler] Received getHFTrajectories request (offset=${request.offset}, limit=${request.limit})`);
+      const data = await getHFTrajectories(request.offset, request.limit);
+      return createSuccessResponse("response:getHFTrajectories", correlationId, data);
+    }
+
+    if (isGetHFTrajectoryRequest(request)) {
+      console.log(`[Handler] Received getHFTrajectory request (index=${request.index})`);
+      const data = await getHFTrajectory(request.index);
+      return createSuccessResponse("response:getHFTrajectory", correlationId, data);
     }
 
     // Unknown request type
