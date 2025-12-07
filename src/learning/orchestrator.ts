@@ -114,21 +114,21 @@ export interface ILearningOrchestrator {
   // --- System Lifecycle ---
 
   /** Initialize the learning system */
-  readonly initialize: () => Effect.Effect<void, OrchestratorError>;
+  readonly initialize: () => Effect.Effect<void, OrchestratorError, never>;
 
   /** Start the training loop */
   readonly startTraining: (
     config?: Partial<LoopConfig>,
-  ) => Effect.Effect<LoopState, OrchestratorError>;
+  ) => Effect.Effect<LoopState, OrchestratorError, never>;
 
   /** Stop the training loop */
-  readonly stopTraining: () => Effect.Effect<LoopState, OrchestratorError>;
+  readonly stopTraining: () => Effect.Effect<LoopState, OrchestratorError, never>;
 
   /** Pause the training loop */
-  readonly pauseTraining: () => Effect.Effect<void, OrchestratorError>;
+  readonly pauseTraining: () => Effect.Effect<void, OrchestratorError, never>;
 
   /** Resume the training loop */
-  readonly resumeTraining: () => Effect.Effect<void, OrchestratorError>;
+  readonly resumeTraining: () => Effect.Effect<void, OrchestratorError, never>;
 
   // --- Task Execution ---
 
@@ -310,7 +310,7 @@ const makeLearningOrchestrator = (): Effect.Effect<
       query: string,
       maxResults: number = 5,
     ): Effect.Effect<Memory[], OrchestratorError> =>
-      memory.getRelevantMemories(query, { maxResults }).pipe(mapMemoryError);
+      memory.getRelevantMemories(query, { limit: maxResults }).pipe(mapMemoryError);
 
     const recordExperience = (
       content: string,
@@ -319,11 +319,11 @@ const makeLearningOrchestrator = (): Effect.Effect<
     ): Effect.Effect<Memory, OrchestratorError> => {
       switch (type) {
         case "episodic":
-          return memory.recordTask(content, "success", { tags }).pipe(mapMemoryError);
+          return memory.recordTask(content, "success", ...(tags ? [{ tags }] : [])).pipe(mapMemoryError);
         case "semantic":
-          return memory.recordKnowledge("fact", content, { tags }).pipe(mapMemoryError);
+          return memory.recordKnowledge("pattern", content, ...(tags ? [{ tags }] : [])).pipe(mapMemoryError);
         case "procedural":
-          return memory.recordKnowledge("pattern", content, { tags }).pipe(mapMemoryError);
+          return memory.recordKnowledge("pattern", content, ...(tags ? [{ tags }] : [])).pipe(mapMemoryError);
       }
     };
 
@@ -372,7 +372,7 @@ const makeLearningOrchestrator = (): Effect.Effect<
         const loopState = yield* getLoopState();
 
         // Calculate skill stats
-        const bootstrappedSkills = allSkills.filter((s) => s.source === "builtin").length;
+        const bootstrappedSkills = allSkills.filter((s) => s.source === "bootstrap").length;
         const learnedSkills = allSkills.filter((s) => s.source === "learned").length;
         const skillsByCategory: Record<string, number> = {};
         for (const skill of allSkills) {
@@ -459,7 +459,7 @@ export const makeLearningOrchestratorLive = (
   const trainerLayer = makeTrainerServiceLive(projectRoot);
   const loopLayer = makeTrainingLoopLive(projectRoot);
 
-  return Layer.provide(
+  return Layer.merge(
     LearningOrchestratorLayer,
     Layer.mergeAll(
       skillLayer,

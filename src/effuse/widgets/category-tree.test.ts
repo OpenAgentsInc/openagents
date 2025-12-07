@@ -289,7 +289,7 @@ describe("CategoryTreeWidget", () => {
           const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
           yield* Effect.provide(
-            CategoryTreeWidget.handleEvent!({ type: "expandAll" }, ctx),
+            CategoryTreeWidget.handleEvent?.({ type: "expandAll" }, ctx) ?? Effect.succeed(undefined),
             layer
           )
 
@@ -322,13 +322,13 @@ describe("CategoryTreeWidget", () => {
           const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
           yield* Effect.provide(
-            CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx),
+            CategoryTreeWidget.handleEvent?.({ type: "collapseAll" }, ctx) ?? Effect.succeed(undefined),
             layer
           )
 
           const updated = yield* state.get()
           expect(updated.collapsedCategories.has("basics")).toBe(true)
-          const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+          const html = (yield* Effect.provide(CategoryTreeWidget.render(ctx), layer)).toString()
           expect(html).not.toContain("Task 1")
         })
       )
@@ -358,12 +358,12 @@ describe("CategoryTreeWidget", () => {
               const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
               // Expand basics
-              yield* CategoryTreeWidget.handleEvent!({ type: "toggleCategory", category: "basics" }, ctx)
+              yield* CategoryTreeWidget.handleEvent?.({ type: "toggleCategory", category: "basics" }, ctx) ?? Effect.succeed(undefined)
               const expanded = yield* state.get
               expect(expanded.collapsedCategories.has("basics")).toBe(false)
 
               // Collapse again
-              yield* CategoryTreeWidget.handleEvent!({ type: "toggleCategory", category: "basics" }, ctx)
+              yield* CategoryTreeWidget.handleEvent?.({ type: "toggleCategory", category: "basics" }, ctx) ?? Effect.succeed(undefined)
               const collapsed = yield* state.get
               expect(collapsed.collapsedCategories.has("basics")).toBe(true)
             }),
@@ -397,7 +397,7 @@ describe("CategoryTreeWidget", () => {
               })
               const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+              const html = (yield* Effect.provide(CategoryTreeWidget.render(ctx), layer)).toString()
               expect(html).toContain("✓1")
               expect(html).toContain("✗1")
               expect(html).not.toContain("Task Pass")
@@ -414,7 +414,7 @@ describe("CategoryTreeWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const {  } = yield* makeTestLayer()
+          const { getRendered } = yield* makeTestLayer()
 
           const stateService = yield* StateServiceTag
           const dom = yield* DomServiceTag
@@ -431,7 +431,7 @@ describe("CategoryTreeWidget", () => {
           } as CategoryTreeState)
           const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* CategoryTreeWidget.handleEvent!({ type: "selectTask", taskId: "task-2" }, ctx)
+              yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
           const updated = yield* state.get()
           expect(updated.selectedTaskId).toBe("task-2")
 
@@ -546,8 +546,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [{ id: "task-fail", name: "Failing task", difficulty: "hard", category: "core" }],
           })
 
@@ -555,7 +555,7 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-fail",
             taskId: "task-fail",
-            outcome: "failed",
+            outcome: "failure",
           })
 
           yield* Effect.sleep(0)
@@ -579,8 +579,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [{ id: "task-error", name: "Error task", difficulty: "medium", category: "core" }],
           })
 
@@ -612,8 +612,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "task-pass", name: "Pass task", difficulty: "easy", category: "alpha" },
               { id: "task-fail", name: "Fail task", difficulty: "hard", category: "beta" },
@@ -624,14 +624,14 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-pass",
-            outcome: "passed",
+            outcome: "success",
           })
 
           yield* injectMessage({
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-fail",
-            outcome: "failed",
+            outcome: "failure",
           })
 
           yield* Effect.sleep(0)
@@ -658,8 +658,8 @@ describe("CategoryTreeWidget", () => {
           // Load suite
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "task-1", name: "Task 1", difficulty: "easy", category: "test" },
               { id: "task-2", name: "Task 2", difficulty: "easy", category: "test" },
@@ -677,7 +677,7 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-1",
-            outcome: "passed",
+            outcome: "success",
           })
           yield* Effect.sleep(0)
 
@@ -689,7 +689,7 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-2",
-            outcome: "failed",
+            outcome: "failure",
           })
           yield* Effect.sleep(0)
 
@@ -702,7 +702,7 @@ describe("CategoryTreeWidget", () => {
             type: "tb_task_complete",
             runId: "run-1",
             taskId: "task-3",
-            outcome: "passed",
+            outcome: "success",
           })
           yield* Effect.sleep(0)
 
@@ -726,8 +726,8 @@ describe("CategoryTreeWidget", () => {
           // Load suite with tasks in different categories
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "pass-task", name: "Passed Task", difficulty: "easy", category: "alpha" },
               { id: "fail-task", name: "Failed Task", difficulty: "medium", category: "beta" },
@@ -737,8 +737,8 @@ describe("CategoryTreeWidget", () => {
           yield* Effect.sleep(0)
 
           // Complete all tasks with different outcomes
-          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "pass-task", outcome: "passed" })
-          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "fail-task", outcome: "failed" })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "pass-task", outcome: "success" })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "fail-task", outcome: "failure" })
           yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "timeout-task", outcome: "timeout" })
           yield* Effect.sleep(0)
 
@@ -771,8 +771,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "easy", name: "Easy task", difficulty: "easy", category: "alpha" },
               { id: "medium", name: "Medium task", difficulty: "medium", category: "alpha" },
