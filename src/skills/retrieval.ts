@@ -27,7 +27,7 @@ export class SkillRetrievalError extends Error {
   readonly _tag = "SkillRetrievalError";
   constructor(
     readonly reason: "store_error" | "embedding_error" | "no_skills_found",
-    message: string,
+    override readonly message: string,
     readonly cause?: Error,
   ) {
     super(message);

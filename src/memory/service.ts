@@ -36,8 +36,8 @@ export class MemoryServiceError extends Error {
   readonly _tag = "MemoryServiceError";
   constructor(
     readonly reason: string,
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "MemoryServiceError";

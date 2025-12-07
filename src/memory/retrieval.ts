@@ -30,8 +30,8 @@ export class MemoryRetrievalError extends Error {
   readonly _tag = "MemoryRetrievalError";
   constructor(
     readonly reason: "store_error" | "embedding_error" | "no_memories_found",
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "MemoryRetrievalError";

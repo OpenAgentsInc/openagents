@@ -42,8 +42,8 @@ export class OrchestratorError extends Error {
   readonly _tag = "OrchestratorError";
   constructor(
     readonly reason: string,
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "OrchestratorError";

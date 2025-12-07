@@ -57,8 +57,8 @@ export class HFDatasetError extends Error {
       | "auth_required"
       | "rate_limited"
       | "invalid_config",
-    message: string,
-    readonly cause?: unknown,
+    override readonly message: string,
+    override readonly cause?: unknown,
   ) {
     super(message);
     this.name = "HFDatasetError";

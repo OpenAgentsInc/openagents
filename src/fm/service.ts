@@ -140,10 +140,10 @@ export class FMServiceError extends Error {
   readonly _tag = "FMServiceError";
   constructor(
     readonly reason: string,
-    message: string,
+    override readonly message: string,
     readonly retryable: boolean = false,
     readonly retryCount: number = 0,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "FMServiceError";

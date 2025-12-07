@@ -131,7 +131,7 @@ export class EpisodeLearnerError extends Error {
       | "parse_failed"
       | "extraction_failed"
       | "storage_failed",
-    message: string,
+    override readonly message: string,
     readonly cause?: Error,
   ) {
     super(message);

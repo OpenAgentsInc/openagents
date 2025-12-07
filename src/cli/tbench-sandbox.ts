@@ -529,7 +529,7 @@ const runTask = async (
   // Emit task completion
   if (options.tbEmitter) {
     options.tbEmitter.taskComplete(tbTask.id, {
-      outcome: outcome === "success" ? "passed" : "failed",
+      outcome,
       durationMs,
       turns: result.turns,
       tokens,
@@ -624,7 +624,6 @@ const main = async (): Promise<void> => {
       timeout: args.timeout ?? 3600,
       maxTurns: args.maxTurns ?? 300,
       outputDir: args.output,
-      sourceRepo: undefined,
       ...(args.runId ? { runId: args.runId } : {}), // Conditional spread
       tbEmitter,
       taskIndex: i,
@@ -639,9 +638,15 @@ const main = async (): Promise<void> => {
   const failed = results.filter((r) => r.outcome === "failure").length;
   const errors = results.filter((r) => r.outcome === "error").length;
   const timeouts = results.filter((r) => r.outcome === "timeout").length;
+  const skipped = results.filter((r) => r.outcome === "skip").length;
   const passRate = tasksToRun.length > 0 ? (passed / tasksToRun.length) * 100 : 0;
   const totalDurationMs = Date.now() - startTime;
   const totalTokens = results.reduce((sum, r) => sum + r.tokens, 0);
+  const avgDurationMs = tasksToRun.length > 0 ? totalDurationMs / tasksToRun.length : 0;
+  const avgTurns =
+    tasksToRun.length > 0
+      ? results.reduce((sum, r) => sum + r.turns, 0) / tasksToRun.length
+      : 0;
 
   // Emit run completion
   tbEmitter.runComplete(Date.now(), {
@@ -655,29 +660,44 @@ const main = async (): Promise<void> => {
 
   // Write results JSON
   const benchResults: TerminalBenchResults = {
-    meta: {
-      suiteName: suite.name,
-      suiteVersion: suite.version,
-      timestamp: new Date().toISOString(),
-      passRate,
+    suite_name: suite.name,
+    suite_version: suite.version,
+    model: args.suite,
+    timestamp: new Date().toISOString(),
+    results: results.map((r) => {
+      const status:
+        | "pass"
+        | "fail"
+        | "timeout"
+        | "error" = r.outcome === "success"
+        ? "pass"
+        : r.outcome === "failure"
+        ? "fail"
+        : r.outcome === "timeout"
+        ? "timeout"
+        : "error";
+      return {
+        task_id: r.taskId,
+        status,
+        duration_ms: r.durationMs,
+        turns: r.turns,
+        tokens_used: r.tokens,
+        verification_output: r.verificationOutput,
+        error_message: r.errorMessage,
+      };
+    }),
+    summary: {
+      total: tasksToRun.length,
       passed,
       failed,
       timeout: timeouts,
       error: errors,
-      totalDurationMs,
-      totalTokens,
-      taskCount: tasksToRun.length,
+      skipped,
+      pass_rate: passRate,
+      avg_duration_ms: avgDurationMs,
+      avg_turns: avgTurns,
+      total_tokens: totalTokens,
     },
-    tasks: results.map((r) => ({
-      id: r.taskId,
-      name: tasksToRun.find((t) => t.id === r.taskId)?.name ?? r.taskId,
-      category: tasksToRun.find((t) => t.id === r.taskId)?.category ?? "",
-      difficulty: tasksToRun.find((t) => t.id === r.taskId)?.difficulty ?? "medium",
-      outcome: r.outcome,
-      durationMs: r.durationMs,
-      turns: r.turns,
-      tokens: r.tokens,
-    })),
   };
 
   writeFileSync(join(args.output, "results.json"), JSON.stringify(benchResults, null, 2));
