@@ -7,6 +7,8 @@ import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
+import { DatabaseService } from "../../storage/database.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createGoldenLoopFixture } from "./golden-loop-fixture.js";
 import type { OrchestratorEvent, SubagentResult } from "./types.js";
@@ -15,11 +17,20 @@ import { runBestAvailableSubagent } from "./subagent-router.js";
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),
 } satisfies OpenRouterClientShape);
-const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer);
 
 const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient>
-) => Effect.runPromise(program.pipe(Effect.provide(testLayer)));
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient | DatabaseService>
+): Promise<A> =>
+  Effect.gen(function* () {
+    const { layer: dbLayer, cleanup } = yield* makeTestDatabaseLayer();
+    const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer, dbLayer);
+
+    try {
+      return yield* program.pipe(Effect.provide(testLayer));
+    } finally {
+      cleanup();
+    }
+  }).pipe(Effect.runPromise);
 
 const withEnv = async <T>(env: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
   const previous: Record<string, string | undefined> = {};

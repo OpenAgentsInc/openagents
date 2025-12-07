@@ -15,15 +15,26 @@ import {
   OpenRouterClient,
   type OpenRouterClientShape,
 } from "../../llm/openrouter.js";
+import { DatabaseService } from "../../storage/database.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
 
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),
 } satisfies OpenRouterClientShape);
-const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer);
 
 const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient>
-) => Effect.runPromise(program.pipe(Effect.provide(testLayer)));
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient | DatabaseService>
+): Promise<A> =>
+  Effect.gen(function* () {
+    const { layer: dbLayer, cleanup } = yield* makeTestDatabaseLayer();
+    const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer, dbLayer);
+
+    try {
+      return yield* program.pipe(Effect.provide(testLayer));
+    } finally {
+      cleanup();
+    }
+  }).pipe(Effect.runPromise);
 
 const runEffect = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem>) =>
   Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
