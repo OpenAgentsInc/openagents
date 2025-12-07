@@ -130,6 +130,7 @@ const createHealthMonitor = (
   return Effect.forkScoped(
     healthCheck.pipe(
       Effect.repeat(schedule),
+      Effect.map(() => undefined), // Ensure the result is always void
       Effect.catchAll(() => Effect.void), // Never fail the monitor
     ),
   );

@@ -617,7 +617,7 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         maxAgents,
       );
 
-      const ready = yield* readyTasks(tasksPath, { limit: maxPerRun }).pipe(
+      const ready = yield* readyTasks(tasksPath, "oldest").pipe(
         Effect.provide(BunContext.layer),
         Effect.catchAll((e) => {
           log(`[Parallel] Failed to load ready tasks: ${e.message}`);

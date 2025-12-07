@@ -15,7 +15,6 @@ import {
   formatMemoriesForPrompt,
   buildMemoryText,
   DEFAULT_SCORING_WEIGHTS,
-  type Memory,
 } from "./schema.js";
 
 describe("Memory Schema", () => {

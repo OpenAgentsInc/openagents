@@ -352,7 +352,7 @@ export const runWebviewTest = (): Effect.Effect<
 
     // Generate test HTML
     const html = generateTestHTML({
-      widgetBundle: state.widgetBundle,
+      ...(state.widgetBundle && { widgetBundle: state.widgetBundle }),
       styles: state.styles,
       testSteps,
     })

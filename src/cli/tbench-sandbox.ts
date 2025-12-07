@@ -147,7 +147,7 @@ Examples:
     sandboxImage:
       typeof values["sandbox-image"] === "string" ? values["sandbox-image"] : undefined,
     runId: typeof values["run-id"] === "string" ? values["run-id"] : undefined,
-    help: values.help,
+    help: typeof values.help === "boolean" ? values.help : undefined,
   };
 };
 
@@ -157,7 +157,7 @@ Examples:
 
 interface TaskResult {
   taskId: string;
-  outcome: "success" | "failure" | "timeout" | "error";
+  outcome: "success" | "failure" | "timeout" | "error" | "skip";
   durationMs: number;
   turns: number;
   tokens: number;
@@ -372,7 +372,7 @@ const runTask = async (
   if (tbTask.setup?.length) {
     console.log("Running setup commands in container...");
     try {
-      await runContainerSetup(tbTask.setup, containerConfig);
+      await runContainerSetup(Array.from(tbTask.setup), containerConfig);
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       console.error(`Setup failed: ${errorMsg}`);
@@ -548,7 +548,7 @@ const runTask = async (
     turns: result.turns,
     tokens,
     verificationOutput: verificationResult.output,
-    errorMessage: outcome === "error" ? result.error : undefined,
+    errorMessage: result.error,
   };
 };
 
@@ -669,12 +669,15 @@ const main = async (): Promise<void> => {
         | "pass"
         | "fail"
         | "timeout"
-        | "error" = r.outcome === "success"
+        | "error"
+        | "skip" = r.outcome === "success"
         ? "pass"
         : r.outcome === "failure"
         ? "fail"
         : r.outcome === "timeout"
         ? "timeout"
+        : r.outcome === "skip"
+        ? "skip"
         : "error";
       return {
         task_id: r.taskId,

@@ -271,36 +271,30 @@ describe("CategoryTreeWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
+
+          const stateService = yield* StateServiceTag
+          const dom = yield* DomServiceTag
+          const container = { id: "category-tree-test" } as Element
+          const tasks = new Map<string, TBTaskData>([
+            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
+            ["task-002", { id: "task-002", name: "Task 2", difficulty: "hard", category: "advanced", status: "pending" }],
+          ])
+          const state = yield* stateService.cell({
+            tasks,
+            collapsedCategories: new Set(["basics", "advanced"]),
+            visible: true,
+            selectedTaskId: null,
+          })
+          const ctx = { state, emit: () => Effect.void, dom, container }
 
           yield* Effect.provide(
-            Effect.gen(function* () {
-              const stateService = yield* StateServiceTag
-              const dom = yield* DomServiceTag
-              const container = { id: "category-tree-test" } as Element
-              const tasks = new Map<string, TBTaskData>([
-                ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
-                ["task-002", { id: "task-002", name: "Task 2", difficulty: "hard", category: "advanced", status: "pending" }],
-              ])
-              const state = yield* stateService.cell({
-                tasks,
-                collapsedCategories: new Set(["basics", "advanced"]),
-                visible: true,
-                selectedTaskId: null,
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
-
-              yield* CategoryTreeWidget.handleEvent({ type: "expandAll" }, ctx)
-
-              const updated = yield* state.get()
-              expect(updated.collapsedCategories.size).toBe(0)
-            }),
+            CategoryTreeWidget.handleEvent({ type: "expandAll" }, ctx),
             layer
           )
-        })
-      )
-    )
-  })
+
+          const updated = yield* state.get()
+          expect(updated.collapsedCategories.size).toBe(0)
 
   test("US-2.4 collapse all hides all categories", async () => {
     await Effect.runPromise(
@@ -308,31 +302,29 @@ describe("CategoryTreeWidget", () => {
         Effect.gen(function* () {
           const { layer } = yield* makeTestLayer()
 
+          const stateService = yield* StateServiceTag
+          const dom = yield* DomServiceTag
+          const container = { id: "category-tree-test" } as Element
+          const tasks = new Map<string, TBTaskData>([
+            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
+          ])
+          const state = yield* stateService.cell({
+            tasks,
+            collapsedCategories: new Set(),
+            visible: true,
+            selectedTaskId: null,
+          })
+          const ctx = { state, emit: () => Effect.void, dom, container }
+
           yield* Effect.provide(
-            Effect.gen(function* () {
-              const stateService = yield* StateServiceTag
-              const dom = yield* DomServiceTag
-              const container = { id: "category-tree-test" } as Element
-              const tasks = new Map<string, TBTaskData>([
-                ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
-              ])
-              const state = yield* stateService.cell({
-                tasks,
-                collapsedCategories: new Set(),
-                visible: true,
-                selectedTaskId: null,
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
-
-              yield* CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx)
-
-              const updated = yield* state.get()
-              expect(updated.collapsedCategories.has("basics")).toBe(true)
-              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
-              expect(html).not.toContain("Task 1")
-            }),
+            CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx),
             layer
           )
+
+          const updated = yield* state.get()
+          expect(updated.collapsedCategories.has("basics")).toBe(true)
+          const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+          expect(html).not.toContain("Task 1")
         })
       )
     )
@@ -419,35 +411,29 @@ describe("CategoryTreeWidget", () => {
         Effect.gen(function* () {
           const { layer } = yield* makeTestLayer()
 
-          yield* Effect.provide(
-            Effect.gen(function* () {
-              const stateService = yield* StateServiceTag
-              const dom = yield* DomServiceTag
-              const container = { id: "category-tree-test" } as Element
-              const tasks = new Map<string, TBTaskData>([
-                ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "core", status: "pending" }],
-                ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium", category: "core", status: "pending" }],
-              ])
-              const state = yield* stateService.cell({
-                tasks,
-                collapsedCategories: new Set(),
-                visible: true,
-                selectedTaskId: null,
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+          const stateService = yield* StateServiceTag
+          const dom = yield* DomServiceTag
+          const container = { id: "category-tree-test" } as Element
+          const tasks = new Map<string, TBTaskData>([
+            ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "core", status: "pending" }],
+            ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium", category: "core", status: "pending" }],
+          ])
+          const state = yield* stateService.cell({
+            tasks,
+            collapsedCategories: new Set(),
+            visible: true,
+            selectedTaskId: null,
+          })
+          const ctx = { state, emit: () => Effect.void, dom, container }
 
               yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
+          const updated = yield* state.get()
+          expect(updated.selectedTaskId).toBe("task-2")
 
-              const updated = yield* state.get()
-              expect(updated.selectedTaskId).toBe("task-2")
-
-              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
-              expect(html).toContain("Task One")
-              expect(html).toContain("Task Two")
-              expect(html).toContain("bg-zinc-800/60") // Selected highlight class
-            }),
-            layer
-          )
+          const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+          expect(html).toContain("Task One")
+          expect(html).toContain("Task Two")
+          expect(html).toContain("bg-zinc-800/60") // Selected highlight class
         })
       )
     )
@@ -792,6 +778,5 @@ describe("CategoryTreeWidget", () => {
           expect(html).toContain("H</span>")
         })
       )
-    )
   })
 })

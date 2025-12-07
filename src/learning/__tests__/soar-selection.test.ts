@@ -19,7 +19,7 @@ import {
   SelectionServiceLive,
   makeSelectionServiceLayer,
 } from "../soar-selection.js";
-import { createMockSyntheticTaskSolution, createMockSyntheticBatch, runEffect } from "./test-helpers.js";
+import { runEffect } from "./test-helpers.js";
 import type { SyntheticTaskSolution } from "../soar-hindsight.js";
 
 // Helper to create synthetic with specific quality score and task

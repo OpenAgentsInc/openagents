@@ -21,7 +21,7 @@ import {
   VotingServiceLive,
   makeVotingServiceLayer,
 } from "../soar-voting.js";
-import { createMockVote, createMockVoteBatch, runEffect } from "./test-helpers.js";
+import { createMockVote, runEffect } from "./test-helpers.js";
 
 describe("Vote Schema", () => {
   test("decodes valid vote", () => {

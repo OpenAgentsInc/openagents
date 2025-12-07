@@ -7,21 +7,17 @@
 
 import { Effect, Context, Layer } from "effect";
 import { MemoryStore, makeMemoryStoreLayer, type MemoryStoreError } from "./store.js";
-import { EmbeddingService, EmbeddingServiceLive, type EmbeddingError } from "../skills/embedding.js";
 import {
   MemoryRetrievalService,
   MemoryRetrievalServiceLive,
   type MemoryRetrievalError,
 } from "./retrieval.js";
-import { FMService, makeFMServiceLayer } from "../fm/service.js";
 import {
   type Memory,
   type MemoryQuery,
   type MemoryMatch,
   type MemoryFilter,
-  type MemoryType,
   type ImportanceLevel,
-  type EpisodicContent,
   type SemanticContent,
   type ProceduralContent,
   createMemory,
@@ -377,7 +373,7 @@ const makeMemoryService = (): Effect.Effect<
       populateEmbeddings,
       pruneMemories,
       count: countFn,
-    };
+    } as IMemoryService;
   });
 
 // --- Layer ---
