@@ -38,6 +38,9 @@ export interface StartTBRunOptions {
   timeout?: number
   maxTurns?: number
   outputDir?: string
+  subset?: string
+  runAll?: boolean
+  random?: boolean
 }
 
 /**
@@ -109,4 +112,4 @@ export interface SocketService {
 export class SocketServiceTag extends Context.Tag("effuse/SocketService")<
   SocketServiceTag,
   SocketService
->() {}
+>() { }
