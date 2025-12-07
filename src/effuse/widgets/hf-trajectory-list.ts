@@ -6,7 +6,7 @@
  * and select a trajectory to view in the detail widget.
  */
 
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 import { html, joinTemplates } from "../template/html.js"
 import type { Widget } from "../widget/types.js"
 import { getSocketClient } from "../../mainview/socket-client.js"
@@ -285,8 +285,8 @@ export const HFTrajectoryListWidget: Widget<
         <div class="px-4 py-3 border-t border-zinc-800/40 flex items-center justify-between">
           <button
             class="px-3 py-1.5 rounded bg-zinc-800 text-zinc-200 text-xs transition-colors ${hasPrev
-              ? "hover:bg-zinc-700"
-              : "opacity-50 cursor-not-allowed"}"
+          ? "hover:bg-zinc-700"
+          : "opacity-50 cursor-not-allowed"}"
             data-action="prevPage"
             ${hasPrev ? "" : "disabled"}
           >
@@ -295,8 +295,8 @@ export const HFTrajectoryListWidget: Widget<
           <span class="text-xs text-zinc-500">Page ${state.currentPage + 1}</span>
           <button
             class="px-3 py-1.5 rounded bg-zinc-800 text-zinc-200 text-xs transition-colors ${hasNext
-              ? "hover:bg-zinc-700"
-              : "opacity-50 cursor-not-allowed"}"
+          ? "hover:bg-zinc-700"
+          : "opacity-50 cursor-not-allowed"}"
             data-action="nextPage"
             ${hasNext ? "" : "disabled"}
           >
@@ -477,7 +477,7 @@ export const HFTrajectoryListWidget: Widget<
     })
 
     // Return as a stream that runs once
-    return [Effect.asVoid(initialLoad)]
+    return [Stream.make(initialLoad)]
   },
 }
 
