@@ -8,6 +8,10 @@
 import { Effect, Context, Layer } from "effect";
 import { Gym, makeGymLive, type GymError } from "./gym.js";
 import { ArchivistService, makeArchivistServiceLive, type ArchivistError } from "../archivist/service.js";
+import type { SkillStoreError } from "../skills/store.js";
+import type { MemoryStoreError } from "../memory/store.js";
+import type { TrajectoryStoreError } from "../archivist/store.js";
+import type { PatternExtractorError } from "../archivist/extractor.js";
 import type {
   TrainingTask,
   TaskResult,
@@ -34,7 +38,7 @@ export class TrainerError extends Error {
   constructor(
     readonly reason: string,
     message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "TrainerError";
@@ -135,7 +139,7 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
     const store = createStore();
 
     const mapGymError = Effect.mapError(TrainerError.from);
-    const _mapArchivistError = Effect.mapError(TrainerError.from);
+    const mapArchivistError = Effect.mapError(TrainerError.from);
 
     const createTaskOp = (
       prompt: string,
@@ -275,7 +279,7 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
         });
 
         // Trigger archivist after run
-        yield* archivist.runQuickArchive().pipe(Effect.mapError(TrainerError.from));
+        yield* archivist.runQuickArchive().pipe(mapArchivistError);
 
         return run;
       });
@@ -413,12 +417,19 @@ export const TrainerServiceLayer: Layer.Layer<TrainerService, never, Gym | Archi
  */
 export const makeTrainerServiceLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<TrainerService, never, never> => {
+): Layer.Layer<
+  TrainerService,
+  SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError,
+  never
+> => {
   const gymLayer = makeGymLive(projectRoot);
   const archivistLayer = makeArchivistServiceLive(projectRoot);
 
   return Layer.provide(TrainerServiceLayer, Layer.mergeAll(gymLayer, archivistLayer));
 };
 
-export const TrainerServiceLive: Layer.Layer<TrainerService, never, never> =
-  makeTrainerServiceLive();
+export const TrainerServiceLive: Layer.Layer<
+  TrainerService,
+  SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError,
+  never
+> = makeTrainerServiceLive();

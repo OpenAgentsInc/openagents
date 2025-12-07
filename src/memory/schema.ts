@@ -59,7 +59,7 @@ export interface EpisodicContent {
   /** What task was being performed */
   taskDescription: string;
   /** What happened */
-  outcome: "success" | "failure" | "partial";
+  outcome: "success" | "failure" | "partial" | "timeout";
   /** Error message if failed */
   errorMessage?: string;
   /** Skills used (if any) */
@@ -285,7 +285,7 @@ export const createMemory = (
  */
 export const createEpisodicMemory = (
   taskDescription: string,
-  outcome: "success" | "failure" | "partial",
+  outcome: "success" | "failure" | "partial" | "timeout",
   options?: {
     errorMessage?: string;
     skillsUsed?: string[];
@@ -309,7 +309,11 @@ export const createEpisodicMemory = (
 
   // Failures are more important to remember
   const importance = options?.importance ??
-    (outcome === "failure" ? "high" : outcome === "partial" ? "medium" : "low");
+    (outcome === "failure" || outcome === "timeout"
+      ? "high"
+      : outcome === "partial"
+        ? "medium"
+        : "low");
 
   return createMemory({
     memoryType: "episodic",

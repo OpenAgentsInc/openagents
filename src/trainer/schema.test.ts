@@ -138,10 +138,10 @@ describe("Training Run Creation", () => {
 });
 
 describe("Stats Calculation", () => {
-  const makeResult = (outcome: TaskResult["outcome"], score?: number): TaskResult => ({
+const makeResult = (outcome: TaskResult["outcome"], score?: number): TaskResult => {
+  const result: TaskResult = {
     taskId: "task-1",
     outcome,
-    score,
     durationMs: 1000,
     model: "fm",
     tokens: { input: 100, output: 50, total: 150 },
@@ -149,7 +149,12 @@ describe("Stats Calculation", () => {
     usedReflexion: outcome === "failure",
     attemptNumber: 1,
     timestamp: new Date().toISOString(),
-  });
+  };
+  if (score !== undefined) {
+    result.score = score;
+  }
+  return result;
+};
 
   test("calculateStats returns zeros for empty array", () => {
     const stats = calculateStats([]);

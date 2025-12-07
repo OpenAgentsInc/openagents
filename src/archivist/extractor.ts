@@ -23,7 +23,7 @@ export class PatternExtractorError extends Error {
   constructor(
     readonly reason: "extraction_failed" | "fm_error" | "no_patterns",
     message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "PatternExtractorError";
@@ -76,46 +76,46 @@ const makePatternExtractor = (
     const fm = yield* FMService;
 
     const mapFMError = Effect.mapError(PatternExtractorError.fromFM);
+    const callFM = (prompt: string) =>
+      fm.chat({
+        messages: [{ role: "user", content: prompt }],
+      }).pipe(mapFMError);
 
     const extractPatterns = (
       trajectories: Trajectory[],
-    ): Effect.Effect<ExtractedPattern[], PatternExtractorError> =>
-      Effect.gen(function* () {
-        if (trajectories.length === 0) {
-          return [];
-        }
+    ): Effect.Effect<ExtractedPattern[], PatternExtractorError> => {
+      if (trajectories.length === 0) {
+        return Effect.succeed([]);
+      }
 
-        // Filter to trajectories within age limit
-        const cutoff = Date.now() - config.maxTrajectoryAgeDays * 24 * 60 * 60 * 1000;
-        const recentTrajectories = trajectories.filter(
-          (t) => new Date(t.timestamp).getTime() > cutoff,
-        );
+      const cutoff = Date.now() - config.maxTrajectoryAgeDays * 24 * 60 * 60 * 1000;
+      const recentTrajectories = trajectories.filter(
+        (t) => new Date(t.timestamp).getTime() > cutoff,
+      );
 
-        if (recentTrajectories.length === 0) {
-          return [];
-        }
+      if (recentTrajectories.length === 0) {
+        return Effect.succeed([]);
+      }
 
-        // Build extraction prompt
-        const prompt = buildPatternExtractionPrompt(recentTrajectories);
+      const prompt = buildPatternExtractionPrompt(recentTrajectories);
+      const sourceIds = recentTrajectories.map((t) => t.id);
 
-        // Call FM for pattern extraction
-        const response = yield* fm.generate(prompt, {}).pipe(mapFMError);
+      return callFM(prompt).pipe(
+        Effect.map((response) => {
+          const content = response.choices[0]?.message.content ?? "";
+          const patterns = parsePatternsFromResponse(content, sourceIds);
 
-        // Parse patterns from response
-        const sourceIds = recentTrajectories.map((t) => t.id);
-        const patterns = parsePatternsFromResponse(response, sourceIds);
+          for (const pattern of patterns) {
+            const sourceTrajectories = recentTrajectories.filter((t) =>
+              pattern.sourceTrajectoryIds.includes(t.id),
+            );
+            pattern.successRate = calculateSuccessRate(sourceTrajectories);
+          }
 
-        // Calculate success rate for each pattern based on source trajectories
-        for (const pattern of patterns) {
-          const sourceTrajectories = recentTrajectories.filter((t) =>
-            pattern.sourceTrajectoryIds.includes(t.id),
-          );
-          pattern.successRate = calculateSuccessRate(sourceTrajectories);
-        }
-
-        // Filter by minimum success rate
-        return patterns.filter((p) => p.successRate >= config.minSuccessRate);
-      });
+          return patterns.filter((p) => p.successRate >= config.minSuccessRate);
+        }),
+      );
+    };
 
     const extractQuickPatterns = (
       trajectories: Trajectory[],
@@ -180,35 +180,36 @@ const makePatternExtractor = (
 
     const analyzeTrajectory = (
       trajectory: Trajectory,
-    ): Effect.Effect<ExtractedPattern[], PatternExtractorError> =>
-      Effect.gen(function* () {
-        // For single trajectory analysis, use simpler prompt
-        const prompt = [
-          "Analyze this task trajectory and identify any reusable patterns.",
-          "",
-          `Task: ${trajectory.taskDescription}`,
-          `Outcome: ${trajectory.outcome}`,
-          `Duration: ${trajectory.totalDurationMs}ms`,
-          `Skills used: ${trajectory.skillsUsed.join(", ") || "none"}`,
-          "",
-          "Actions taken:",
-          ...trajectory.actions.slice(0, 15).map((a) => {
-            if (a.type === "tool_call") {
-              return `  - ${a.tool}: ${a.content.slice(0, 80)}...`;
-            }
-            return `  - ${a.type}: ${a.content.slice(0, 80)}...`;
-          }),
-          "",
-          "If this trajectory contains a reusable pattern, output as JSON:",
-          "{ name, type, description, content, triggerContext, category }",
-          "",
-          "If no clear pattern, output: []",
-        ].join("\n");
+    ): Effect.Effect<ExtractedPattern[], PatternExtractorError> => {
+      const prompt = [
+        "Analyze this task trajectory and identify any reusable patterns.",
+        "",
+        `Task: ${trajectory.taskDescription}`,
+        `Outcome: ${trajectory.outcome}`,
+        `Duration: ${trajectory.totalDurationMs}ms`,
+        `Skills used: ${trajectory.skillsUsed.join(", ") || "none"}`,
+        "",
+        "Actions taken:",
+        ...trajectory.actions.slice(0, 15).map((a) => {
+          if (a.type === "tool_call") {
+            return `  - ${a.tool}: ${a.content.slice(0, 80)}...`;
+          }
+          return `  - ${a.type}: ${a.content.slice(0, 80)}...`;
+        }),
+        "",
+        "If this trajectory contains a reusable pattern, output as JSON:",
+        "{ name, type, description, content, triggerContext, category }",
+        "",
+        "If no clear pattern, output: []",
+      ].join("\n");
 
-        const response = yield* fm.generate(prompt, {}).pipe(mapFMError);
-
-        return parsePatternsFromResponse(response, [trajectory.id]);
-      });
+      return callFM(prompt).pipe(
+        Effect.map((response) => {
+          const content = response.choices[0]?.message.content ?? "";
+          return parsePatternsFromResponse(content, [trajectory.id]);
+        }),
+      );
+    };
 
     const filterByQuality = (
       patterns: ExtractedPattern[],
