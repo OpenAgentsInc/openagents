@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import {
   runBestAvailableSubagent,
   shouldUseClaudeCode,
+  type FMSettings,
 } from "./subagent-router.js";
 import type { SubagentResult, Subtask } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
