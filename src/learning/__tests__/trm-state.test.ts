@@ -340,7 +340,7 @@ describe("State Update Functions", () => {
     });
 
     test("keeps only last 10 steps", () => {
-      let state = createMockTRMState({ z: { history: [], depth: 0, progress: { stepsCompleted: 0 } } });
+      let state = createMockTRMState({ z: { history: [], depth: 0, progress: { stepsCompleted: 0, totalSteps: 42, isStuck: false, stuckCount: 0 } } });
 
       // Add 15 steps
       for (let i = 0; i < 15; i++) {
@@ -353,7 +353,7 @@ describe("State Update Functions", () => {
     });
 
     test("increments stepsCompleted", () => {
-      const state = createMockTRMState({ z: { progress: { stepsCompleted: 0 } } });
+      const state = createMockTRMState({ z: { progress: { stepsCompleted: 0, totalSteps: 42, isStuck: false, stuckCount: 0 } } });
       const updated = addReasoningStep(state, "test");
 
       expect(updated.z.progress.stepsCompleted).toBe(1);
@@ -362,14 +362,14 @@ describe("State Update Functions", () => {
 
   describe("markStuck", () => {
     test("sets isStuck to true", () => {
-      const state = createMockTRMState({ z: { progress: { isStuck: false, stuckCount: 0 } } });
+      const state = createMockTRMState({ z: { progress: { stepsCompleted: 0, totalSteps: 42, isStuck: false, stuckCount: 0 } } });
       const updated = markStuck(state, "error pattern");
 
       expect(updated.z.progress.isStuck).toBe(true);
     });
 
     test("increments stuckCount", () => {
-      const state = createMockTRMState({ z: { progress: { stuckCount: 2 } } });
+      const state = createMockTRMState({ z: { progress: { stepsCompleted: 0, totalSteps: 42, isStuck: false, stuckCount: 2 } } });
       const updated = markStuck(state, "error pattern");
 
       expect(updated.z.progress.stuckCount).toBe(3);
@@ -444,7 +444,7 @@ describe("State Update Functions", () => {
 
   describe("detachState", () => {
     test("clears isStuck", () => {
-      const state = createMockTRMState({ z: { progress: { isStuck: true } } });
+      const state = createMockTRMState({ z: { progress: { stepsCompleted: 0, totalSteps: 42, isStuck: true, stuckCount: 0 } } });
       const detached = detachState(state);
 
       expect(detached.z.progress.isStuck).toBe(false);
