@@ -30,7 +30,7 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { Effect, Layer } from "effect";
-import { DatabaseLive } from "../storage/database.js";
+import { makeDatabaseLive } from "../storage/database.js";
 import * as nodePath from "node:path";
 import { createHash } from "node:crypto";
 import {
@@ -1937,11 +1937,15 @@ Examples:
 `);
 };
 
-// Combined layer with DatabaseService and BunContext
-const cliLayer = Layer.mergeAll(DatabaseLive, BunContext.layer);
+// Helper to create CLI layer with correct database path
+const makeCliLayer = (rootDir: string) => {
+  const dbPath = nodePath.join(rootDir, OPENAGENTS_DIR, "openagents.db");
+  return Layer.mergeAll(makeDatabaseLive(dbPath), BunContext.layer);
+};
 
 const main = async () => {
   const { command, options } = parseArgs(process.argv.slice(2));
+  const cliLayer = makeCliLayer(options.rootDir);
 
   switch (command) {
     case "init":
