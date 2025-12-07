@@ -194,7 +194,9 @@ describe("TrajectoryPaneWidget", () => {
               const state = yield* stateService.cell<TrajectoryPaneState>(TrajectoryPaneWidget.initialState())
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+              if (TrajectoryPaneWidget.handleEvent) {
+                yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+              }
 
               const html = (yield* TrajectoryPaneWidget.render(ctx)).toString()
               expect(html).toContain("run-aaaa")
@@ -236,7 +238,9 @@ describe("TrajectoryPaneWidget", () => {
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* TrajectoryPaneWidget.handleEvent({ type: "select", trajectoryId: "run-2" }, ctx)
+              if (TrajectoryPaneWidget.handleEvent) {
+                yield* TrajectoryPaneWidget.handleEvent({ type: "select", trajectoryId: "run-2" }, ctx)
+              }
 
               const updated = yield* state.get
               expect(updated.selectedId).toBe("run-2")
@@ -280,7 +284,9 @@ describe("TrajectoryPaneWidget", () => {
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+              if (TrajectoryPaneWidget.handleEvent) {
+                yield* TrajectoryPaneWidget.handleEvent({ type: "load" }, ctx)
+              }
 
               const updated = yield* state.get
               expect(updated.loading).toBe(false)
@@ -373,7 +379,9 @@ describe("TrajectoryPaneWidget", () => {
               expect(expanded).toContain("Run 1")
               expect(expanded).toContain("- Trajectories")
 
-              yield* TrajectoryPaneWidget.handleEvent({ type: "toggleCollapse" }, ctx)
+              if (TrajectoryPaneWidget.handleEvent) {
+                yield* TrajectoryPaneWidget.handleEvent({ type: "toggleCollapse" }, ctx)
+              }
 
               const collapsed = yield* state.get
               expect(collapsed.collapsed).toBe(true)
@@ -460,7 +468,9 @@ describe("TrajectoryPaneWidget", () => {
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* TrajectoryPaneWidget.handleEvent({ type: "clear" }, ctx)
+              if (TrajectoryPaneWidget.handleEvent) {
+                yield* TrajectoryPaneWidget.handleEvent({ type: "clear" }, ctx)
+              }
 
               const updated = yield* state.get
               expect(updated.trajectories).toHaveLength(0)
