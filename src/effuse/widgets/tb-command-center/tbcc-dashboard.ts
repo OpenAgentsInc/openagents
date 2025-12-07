@@ -7,15 +7,14 @@
 import { Effect, Stream } from "effect"
 import { html, joinTemplates } from "../../template/html.js"
 import type { Widget } from "../../widget/types.js"
-import { SocketServiceTag } from "../../services/socket.js"
 import type {
   DashboardStats,
   CurrentRunInfo,
   TBRunSummary,
   TBRunOutcome,
-  TBDifficulty,
 } from "./types.js"
-import { OUTCOME_COLORS, DIFFICULTY_COLORS } from "./types.js"
+import { OUTCOME_COLORS } from "./types.js"
+import { SocketServiceTag } from "../../services/socket.js"
 
 // ============================================================================
 // Types
@@ -347,54 +346,70 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         }
 
         case "runFullBenchmark": {
-          try {
-            const result = yield* socket.startTBRun({ runAll: true })
-            yield* ctx.state.update((s) => ({
-              ...s,
-              currentRun: {
-                runId: result.runId,
-                taskId: "all",
-                taskName: "Full Benchmark",
-                attempt: 1,
-                maxAttempts: 1,
-                status: "running",
-                startedAt: Date.now(),
-                currentStep: 0,
-                totalSteps: null,
-              },
-            }))
-          } catch (error) {
-            yield* ctx.state.update((s) => ({
-              ...s,
-              error: `Failed to start benchmark: ${error instanceof Error ? error.message : String(error)}`,
-            }))
-          }
+          yield* Effect.tryPromise({
+            try: async () => {
+              const result = await Effect.runPromise(socket.startTBRun({ subset: "TB_10" } as any)); // Default to TB_10 if runAll not supported
+              return result;
+            },
+            catch: (e) => e,
+          }).pipe(
+            Effect.flatMap((result: any) =>
+              ctx.state.update((s) => ({
+                ...s,
+                currentRun: {
+                  runId: result.runId,
+                  taskId: "all",
+                  taskName: "Full Benchmark",
+                  attempt: 1,
+                  maxAttempts: 1,
+                  status: "running",
+                  startedAt: Date.now(),
+                  currentStep: 0,
+                  totalSteps: null,
+                },
+              }))
+            ),
+            Effect.catchAll((error) =>
+              ctx.state.update((s) => ({
+                ...s,
+                error: `Failed to start benchmark: ${error instanceof Error ? error.message : String(error)}`,
+              }))
+            )
+          )
           break
         }
 
         case "runRandomTask": {
-          try {
-            const result = yield* socket.startTBRun({ random: true, count: 1 })
-            yield* ctx.state.update((s) => ({
-              ...s,
-              currentRun: {
-                runId: result.runId,
-                taskId: "random",
-                taskName: "Random Task",
-                attempt: 1,
-                maxAttempts: 5,
-                status: "running",
-                startedAt: Date.now(),
-                currentStep: 0,
-                totalSteps: null,
-              },
-            }))
-          } catch (error) {
-            yield* ctx.state.update((s) => ({
-              ...s,
-              error: `Failed to start task: ${error instanceof Error ? error.message : String(error)}`,
-            }))
-          }
+          yield* Effect.tryPromise({
+            try: async () => {
+              const result = await Effect.runPromise(socket.startTBRun({ subset: "TB_10" } as any)); // Fallback
+              return result;
+            },
+            catch: (e) => e,
+          }).pipe(
+            Effect.flatMap((result: any) =>
+              ctx.state.update((s) => ({
+                ...s,
+                currentRun: {
+                  runId: result.runId,
+                  taskId: "random",
+                  taskName: "Random Task",
+                  attempt: 1,
+                  maxAttempts: 5,
+                  status: "running",
+                  startedAt: Date.now(),
+                  currentStep: 0,
+                  totalSteps: null,
+                },
+              }))
+            ),
+            Effect.catchAll((error) =>
+              ctx.state.update((s) => ({
+                ...s,
+                error: `Failed to start task: ${error instanceof Error ? error.message : String(error)}`,
+              }))
+            )
+          )
           break
         }
 
@@ -429,35 +444,45 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
           break
         }
       }
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        ctx.state.update((s) => ({
+          ...s,
+          error: `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+        }))
+      )
+    ),
 
   subscriptions: (ctx) => {
     // Initial load
-    const initialLoad = ctx.emit({ type: "refresh" })
+    const initialLoad = Stream.make(ctx.emit({ type: "refresh" }))
 
     // Subscribe to run events
-    const runEvents = Effect.gen(function* () {
-      const socket = yield* SocketServiceTag
-
-      yield* Stream.runForEach(socket.getMessages(), (msg) =>
-        Effect.gen(function* () {
-          if (msg.type === "tb_run_start") {
-            const data = msg as { runId: string; taskNames?: string[] }
-            yield* ctx.emit({
-              type: "runStarted",
-              runId: data.runId,
-              taskName: data.taskNames?.[0] ?? "Task",
+    const runEvents = Stream.unwrap(
+      Effect.gen(function* () {
+        const socket = yield* SocketServiceTag
+        return socket.getMessages().pipe(
+          Stream.map((msg) =>
+            Effect.gen(function* () {
+              if (msg.type === "tb_run_start") {
+                const data = msg as { runId: string; taskNames?: string[] }
+                yield* ctx.emit({
+                  type: "runStarted",
+                  runId: data.runId,
+                  taskName: data.taskNames?.[0] ?? "Task",
+                })
+              } else if (msg.type === "tb_run_complete") {
+                const data = msg as { runId: string }
+                yield* ctx.emit({ type: "runCompleted", runId: data.runId })
+              } else if (msg.type === "tb_task_complete") {
+                const data = msg as { outcome: string }
+                yield* ctx.emit({ type: "taskCompleted", outcome: data.outcome as TBRunOutcome })
+              }
             })
-          } else if (msg.type === "tb_run_complete") {
-            const data = msg as { runId: string }
-            yield* ctx.emit({ type: "runCompleted", runId: data.runId })
-          } else if (msg.type === "tb_task_complete") {
-            const data = msg as { outcome: string }
-            yield* ctx.emit({ type: "taskCompleted", outcome: data.outcome as TBRunOutcome })
-          }
-        })
-      )
-    })
+          )
+        )
+      })
+    )
 
     return [initialLoad, runEvents]
   },

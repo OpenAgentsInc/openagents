@@ -290,9 +290,11 @@ describe("CategoryTreeWidget", () => {
               })
               const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* CategoryTreeWidget.handleEvent?.({ type: "expandAll" }, ctx) ?? Effect.succeed(undefined)
+              if (CategoryTreeWidget.handleEvent) {
+                yield* CategoryTreeWidget.handleEvent({ type: "expandAll" }, ctx)
+              }
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.collapsedCategories.size).toBe(0)
             }),
             layer
@@ -321,12 +323,14 @@ describe("CategoryTreeWidget", () => {
                 collapsedCategories: new Set(),
                 visible: true,
                 selectedTaskId: null,
-              } as CategoryTreeState)
+              })
               const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* CategoryTreeWidget.handleEvent?.({ type: "collapseAll" }, ctx) ?? Effect.succeed(undefined)
+              if (CategoryTreeWidget.handleEvent) {
+                yield* CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx)
+              }
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.collapsedCategories.has("basics")).toBe(true)
               const html = (yield* CategoryTreeWidget.render(ctx)).toString()
               expect(html).not.toContain("Task 1")
@@ -361,12 +365,16 @@ describe("CategoryTreeWidget", () => {
               const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
               // Expand basics
-              yield* CategoryTreeWidget.handleEvent?.({ type: "toggleCategory", category: "basics" }, ctx) ?? Effect.succeed(undefined)
+              if (CategoryTreeWidget.handleEvent) {
+                yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              }
               const expanded = yield* state.get
               expect(expanded.collapsedCategories.has("basics")).toBe(false)
 
               // Collapse again
-              yield* CategoryTreeWidget.handleEvent?.({ type: "toggleCategory", category: "basics" }, ctx) ?? Effect.succeed(undefined)
+              if (CategoryTreeWidget.handleEvent) {
+                yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
+              }
               const collapsed = yield* state.get
               expect(collapsed.collapsedCategories.has("basics")).toBe(true)
             }),
@@ -434,8 +442,10 @@ describe("CategoryTreeWidget", () => {
           } as CategoryTreeState)
           const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
-          const updated = yield* state.get()
+          if (CategoryTreeWidget.handleEvent) {
+            yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
+          }
+          const updated = yield* state.get
           expect(updated.selectedTaskId).toBe("task-2")
 
           const html = (yield* CategoryTreeWidget.render(ctx)).toString()
