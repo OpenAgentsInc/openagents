@@ -47,7 +47,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        yield* harness.mount(TBOutputWidget)
+        const handle = yield* harness.mount(TBOutputWidget)
 
         // Widget should be hidden by default
         yield* browser.expectHidden(".fixed")
@@ -61,7 +61,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        yield* harness.mount(TBOutputWidget, {
+        const handle = yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -96,7 +96,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        yield* harness.mount(TBOutputWidget, {
+        const handle = yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -122,7 +122,7 @@ describe("TBOutputWidget", () => {
       Effect.gen(function* () {
         const harness = yield* TestHarnessTag
 
-        yield* harness.mount(TBOutputWidget, {
+        const handle = yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -144,7 +144,7 @@ describe("TBOutputWidget", () => {
       Effect.gen(function* () {
         const harness = yield* TestHarnessTag
 
-        yield* harness.mount(TBOutputWidget, {
+        const handle = yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -176,7 +176,7 @@ describe("TBControlsWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        yield* harness.mount(TBControlsWidget)
+        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
 
         // Should show header
         yield* browser.expectText(".rounded-xl", "Terminal-Bench")
@@ -199,7 +199,7 @@ describe("TBControlsWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        yield* harness.mount(TBControlsWidget)
+        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
 
         // Should have start/stop/random buttons
         yield* browser.expectVisible("[data-action='startRun']")
@@ -513,10 +513,10 @@ describe("TB UI Integration", () => {
         const browser = yield* TestBrowserTag
 
         // Mount all three widgets
-        yield* harness.mount(TBOutputWidget, {
+        const handle = yield* harness.mount(TBOutputWidget, {
           initialState: { ...TBOutputWidget.initialState(), visible: true },
         })
-        yield* harness.mount(TBControlsWidget)
+        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
         yield* harness.mount(CategoryTreeWidget, {
           initialState: { ...CategoryTreeWidget.initialState(), visible: true },
         })
