@@ -48,6 +48,22 @@ const MAINVIEW_DIR = join(PROJECT_ROOT, "src/mainview");
 log("Desktop", `Project root: ${PROJECT_ROOT}`);
 log("Desktop", `Mainview dir: ${MAINVIEW_DIR}`);
 
+// Kill any existing process on port 8080 to avoid EADDRINUSE
+try {
+  const result = Bun.spawnSync(["lsof", "-ti", `:${DESKTOP_HTTP_PORT}`]);
+  const pids = result.stdout.toString().trim().split("\n").filter(Boolean);
+  for (const pid of pids) {
+    log("Desktop", `Killing existing process on port ${DESKTOP_HTTP_PORT}: PID ${pid}`);
+    Bun.spawnSync(["kill", "-9", pid]);
+  }
+  if (pids.length > 0) {
+    // Give OS time to release the port
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+} catch {
+  // lsof might fail if no process is using the port - that's fine
+}
+
 showChangelogOnStart({
   settingsManager: new SettingsManager(),
   log: (line) => log("Desktop", line),
