@@ -359,7 +359,7 @@ describe("CategoryTreeWidget", () => {
 
               // Expand basics
               yield* CategoryTreeWidget.handleEvent({ type: "toggleCategory", category: "basics" }, ctx)
-              const expanded = yield* state.get()
+              const expanded = yield* state.get
               expect(expanded.collapsedCategories.has("basics")).toBe(false)
 
               // Collapse again
