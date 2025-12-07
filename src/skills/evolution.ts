@@ -51,7 +51,7 @@ export class SkillEvolutionError extends Error {
   readonly _tag = "SkillEvolutionError";
   constructor(
     readonly reason: "store_error" | "config_error" | "evolution_failed",
-    readonly override message: string,
+    override readonly message: string,
     readonly cause?: Error,
   ) {
     super(message);
