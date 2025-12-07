@@ -381,7 +381,7 @@ export const makeTrainingLoopLayer = (
 export const makeTrainingLoopLive = (
   projectRoot: string = process.cwd(),
   config: Partial<LoopConfig> = {},
-): Layer.Layer<TrainingLoop, never, never> => {
+): Layer.Layer<TrainingLoop, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError, never> => {
   const trainerLayer = makeTrainerServiceLive(projectRoot);
   const archivistLayer = makeArchivistServiceLive(projectRoot);
   const skillLayer = makeSkillServiceLive(projectRoot);
@@ -392,4 +392,4 @@ export const makeTrainingLoopLive = (
   );
 };
 
-export const TrainingLoopLive: Layer.Layer<TrainingLoop, never, never> = makeTrainingLoopLive();
+export const TrainingLoopLive: Layer.Layer<TrainingLoop, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError, never> = makeTrainingLoopLive();
