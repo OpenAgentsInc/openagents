@@ -28802,8 +28802,13 @@ ${endStackCall}`;
       return String(obj);
     }
   };
+  var collapseWhitespace = (text) => {
+    return text.replace(/\n{3,}/g, `
+
+`).trim();
+  };
   var getMessageText = (step4) => {
-    return extractStepText(step4);
+    return collapseWhitespace(extractStepText(step4));
   };
   var HFTrajectoryDetailWidget = {
     id: "hf-trajectory-detail",
@@ -28945,7 +28950,7 @@ ${endStackCall}`;
                           <div class="text-xs font-mono text-zinc-400 mb-1">Reasoning:</div>
                           <pre
                             class="text-xs font-mono text-zinc-300 bg-zinc-950/60 p-2 rounded border border-zinc-800/40 overflow-x-auto whitespace-pre-wrap"
-                          >${step4.reasoning_content}</pre>
+                          >${collapseWhitespace(step4.reasoning_content)}</pre>
                         </div>
                       ` : ""}
                   ${hasToolCalls(step4) ? html`
@@ -28966,7 +28971,7 @@ ${endStackCall}`;
                           <div class="text-xs font-mono text-zinc-400 mb-1">Observation:</div>
                           ${joinTemplates(step4.observation.results.map((result) => {
           const content = result.content;
-          const contentStr = typeof content === "string" ? content : formatJSON(content);
+          const contentStr = typeof content === "string" ? collapseWhitespace(content) : formatJSON(content);
           return html`
                                 <pre
                                   class="text-xs font-mono text-emerald-300 bg-zinc-950/60 p-2 rounded border border-zinc-800/40 overflow-x-auto mb-2 whitespace-pre-wrap"

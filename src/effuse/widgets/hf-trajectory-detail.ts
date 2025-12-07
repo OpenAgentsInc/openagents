@@ -118,10 +118,17 @@ const formatJSON = (obj: unknown): string => {
 }
 
 /**
+ * Collapse multiple consecutive newlines to single newline
+ */
+const collapseWhitespace = (text: string): string => {
+  return text.replace(/\n{3,}/g, "\n\n").trim()
+}
+
+/**
  * Safely get message text from step
  */
 const getMessageText = (step: Step): string => {
-  return extractStepText(step)
+  return collapseWhitespace(extractStepText(step))
 }
 
 // ============================================================================
@@ -297,7 +304,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                           <div class="text-xs font-mono text-zinc-400 mb-1">Reasoning:</div>
                           <pre
                             class="text-xs font-mono text-zinc-300 bg-zinc-950/60 p-2 rounded border border-zinc-800/40 overflow-x-auto whitespace-pre-wrap"
-                          >${step.reasoning_content}</pre>
+                          >${collapseWhitespace(step.reasoning_content)}</pre>
                         </div>
                       `
                     : ""}
@@ -329,7 +336,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                               const content = result.content
                               const contentStr =
                                 typeof content === "string"
-                                  ? content
+                                  ? collapseWhitespace(content)
                                   : formatJSON(content)
                               return html`
                                 <pre
