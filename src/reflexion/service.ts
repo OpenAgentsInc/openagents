@@ -371,14 +371,17 @@ const makeReflexionService = (): Effect.Effect<
 
         const successfulReflection = reflections.find((r) => r.ledToSuccess);
 
-        return {
+        const baseHistory = {
           taskDescription,
           failures,
           reflections,
           succeeded: !!successfulReflection,
           totalAttempts: failures.length,
-          successfulReflectionId: successfulReflection?.id,
         };
+
+        return successfulReflection
+          ? { ...baseHistory, successfulReflectionId: successfulReflection.id }
+          : baseHistory;
       });
 
     const getStats = (): Effect.Effect<

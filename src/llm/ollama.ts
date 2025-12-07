@@ -10,6 +10,7 @@
  */
 
 import { Effect, Context, Layer } from "effect";
+import * as JSONSchema from "effect/JSONSchema";
 import type { ChatRequest, ChatResponse, ChatMessage, ChatToolCall } from "./openrouter-types.js";
 import type { Tool } from "../tools/schema.js";
 
@@ -127,7 +128,7 @@ const convertTool = (tool: Tool<unknown>): OllamaTool => ({
   function: {
     name: tool.name,
     description: tool.description,
-    parameters: tool.parameters as Record<string, unknown>,
+    parameters: JSONSchema.make(tool.schema) as unknown as Record<string, unknown>,
   },
 });
 
@@ -139,7 +140,7 @@ const convertResponse = (resp: OllamaResponse): ChatResponse => {
     arguments: tc.function.arguments,
   }));
 
-  return {
+  const baseResponse = {
     id: resp.id,
     choices: [{
       message: {
@@ -148,12 +149,15 @@ const convertResponse = (resp: OllamaResponse): ChatResponse => {
         ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
       },
     }],
-    usage: resp.usage ? {
-      prompt_tokens: resp.usage.prompt_tokens,
-      completion_tokens: resp.usage.completion_tokens,
-      total_tokens: resp.usage.total_tokens,
-    } : undefined,
   };
+
+  return resp.usage
+    ? { ...baseResponse, usage: {
+        prompt_tokens: resp.usage.prompt_tokens,
+        completion_tokens: resp.usage.completion_tokens,
+        total_tokens: resp.usage.total_tokens,
+      }}
+    : baseResponse;
 };
 
 // --- Client Implementation ---

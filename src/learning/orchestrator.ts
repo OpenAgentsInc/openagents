@@ -239,12 +239,16 @@ const makeLearningOrchestrator = (): Effect.Effect<
     const mapTrainerError = Effect.mapError(OrchestratorError.from);
     const mapLoopError = Effect.mapError(OrchestratorError.from);
 
-    const initialize = (): Effect.Effect<void, OrchestratorError> =>
+    const initialize = (): Effect.Effect<void, OrchestratorError, SkillService> =>
       Effect.gen(function* () {
         // Bootstrap skills if needed
         const allSkills = yield* skills.getAllSkills().pipe(mapSkillError);
         if (allSkills.length === 0) {
-          yield* skills.bootstrapSkills().pipe(mapSkillError);
+          // Import and register bootstrap skills
+          const { bootstrapSkills } = yield* Effect.promise(() => import("../skills/library/index.js"));
+          for (const skill of bootstrapSkills) {
+            yield* skills.registerSkill(skill).pipe(mapSkillError);
+          }
         }
       });
 
@@ -282,13 +286,25 @@ const makeLearningOrchestrator = (): Effect.Effect<
       query: string,
       maxResults: number = 5,
     ): Effect.Effect<Skill[], OrchestratorError> =>
-      skills.searchSkills(query, { maxResults }).pipe(mapSkillError);
+      skills.query({ query, topK: maxResults }).pipe(
+        Effect.map(matches => matches.map(m => m.skill)),
+        mapSkillError
+      );
 
     const getAllSkills = (): Effect.Effect<Skill[], OrchestratorError> =>
       skills.getAllSkills().pipe(mapSkillError);
 
     const bootstrapSkills = (): Effect.Effect<number, OrchestratorError> =>
-      skills.bootstrapSkills().pipe(mapSkillError);
+      Effect.gen(function* () {
+        // Import and register bootstrap skills
+        const { bootstrapSkills } = yield* Effect.promise(() => import("../skills/library/index.js"));
+        let count = 0;
+        for (const skill of bootstrapSkills) {
+          yield* skills.registerSkill(skill).pipe(mapSkillError);
+          count++;
+        }
+        return count;
+      });
 
     const findMemories = (
       query: string,
@@ -384,9 +400,9 @@ const makeLearningOrchestrator = (): Effect.Effect<
           },
           memories: {
             total: memoryStats.totalMemories,
-            episodic: memoryStats.episodicCount,
-            semantic: memoryStats.semanticCount,
-            procedural: memoryStats.proceduralCount,
+            episodic: memoryStats.byType.episodic ?? 0,
+            semantic: memoryStats.byType.semantic ?? 0,
+            procedural: memoryStats.byType.procedural ?? 0,
           },
           reflexion: reflexionStats,
           archivist: archivistStats,

@@ -198,7 +198,7 @@ const resolveRunLogDir = (
 
 export const loadMechaCoderState = (
   options?: LoadMechaCoderStateOptions,
-): Effect.Effect<MechaCoderState, MechaCoderStateError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<MechaCoderState, MechaCoderStateError, DatabaseService | FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
     const rootDir = options?.rootDir ?? ".";

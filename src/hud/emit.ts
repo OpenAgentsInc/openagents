@@ -143,9 +143,14 @@ export const orchestratorEventToHudMessage = (event: OrchestratorEvent): HudMess
         success: event.result.success,
         filesModified: event.result.filesModified,
         turns: event.result.turns,
-        ...(event.result.agent ? { agent: event.result.agent } : {}),
-        ...(event.result.error ? { error: event.result.error } : {}),
       };
+      
+      if (event.result.agent !== undefined) {
+        result.agent = event.result.agent;
+      }
+      if (event.result.error !== undefined) {
+        result.error = event.result.error;
+      }
       return { type: "subtask_complete", subtask, result };
     }
 

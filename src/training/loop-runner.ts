@@ -308,7 +308,7 @@ export const createLoopRunner = (
       );
     }).pipe(Effect.provide(BunContext.layer));
 
-  const loadState = (): Effect.Effect<LoopRunnerState | null, LoopRunnerError> =>
+  const loadState = (): Effect.Effect<LoopRunnerState | null, LoopRunnerError, FileSystem.FileSystem> =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const statePath = `${fullConfig.projectRoot}/${fullConfig.stateFilePath}`;

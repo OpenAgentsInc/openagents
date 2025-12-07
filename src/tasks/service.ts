@@ -412,7 +412,7 @@ export const listComments = ({
       );
     }
 
-    return task.comments ?? [];
+    return [...(task.comments ?? [])];
   });
 
 /**

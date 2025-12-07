@@ -108,7 +108,7 @@ const createHealthMonitor = (
       lastStatus: status,
       checkCount: state.checkCount + 1,
       consecutiveFailures: status.available ? 0 : state.consecutiveFailures + 1,
-    }));
+    }), Effect.void);
 
     // Notify on status change
     if (statusChanged && config.onHealthChange) {
@@ -120,6 +120,9 @@ const createHealthMonitor = (
       yield* Effect.logWarning("[FM] Server went down, attempting restart...");
       yield* service.ensureRunning().pipe(Effect.catchAll(() => Effect.void));
     }
+    
+    // Always return void
+    yield* Effect.void;
   });
 
   const schedule = Schedule.spaced(Duration.millis(config.healthCheckIntervalMs));
