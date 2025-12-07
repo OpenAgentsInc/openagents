@@ -62,6 +62,10 @@ export interface TBControlsState {
   startedAt: number | null
   /** Run timer - duration when run completed (milliseconds) */
   duration: number | null
+  /** Filter by difficulty (null = show all) */
+  difficultyFilter: string | null
+  /** Search/filter by task name or ID */
+  searchFilter: string
 }
 
 /** Widget events */
@@ -75,6 +79,8 @@ export type TBControlsEvent =
   | { type: "selectNone" }
   | { type: "toggleTask"; taskId: string }
   | { type: "toggleCollapse" }
+  | { type: "setDifficultyFilter"; difficulty: string | null }
+  | { type: "setSearchFilter"; search: string }
 
 // ============================================================================
 // Helpers
@@ -173,6 +179,8 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
     failedTasks: 0,
     startedAt: null,
     duration: null,
+    difficultyFilter: null,
+    searchFilter: "",
   }),
 
   render: (ctx) =>
@@ -332,9 +340,40 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
                   </button>
                 </div>
               </div>
+              <div class="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/40 bg-zinc-900/20">
+                <input
+                  type="text"
+                  class="flex-1 bg-zinc-900/60 border border-zinc-700/50 rounded px-2 py-1 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:border-zinc-600/60 focus:outline-none"
+                  placeholder="Search tasks..."
+                  value="${state.searchFilter}"
+                  data-input="searchFilter"
+                />
+                <select
+                  class="bg-zinc-900/60 border border-zinc-700/50 rounded px-2 py-1 text-xs font-mono text-zinc-200 focus:border-zinc-600/60 focus:outline-none"
+                  data-input="difficultyFilter"
+                >
+                  <option value="" ${!state.difficultyFilter ? "selected" : ""}>All Difficulties</option>
+                  <option value="easy" ${state.difficultyFilter === "easy" ? "selected" : ""}>Easy</option>
+                  <option value="medium" ${state.difficultyFilter === "medium" ? "selected" : ""}>Medium</option>
+                  <option value="hard" ${state.difficultyFilter === "hard" ? "selected" : ""}>Hard</option>
+                </select>
+              </div>
               <div class="max-h-60 overflow-y-auto">
                 ${joinTemplates(
-                  state.suite.tasks.map((task) => {
+                  state.suite.tasks
+                    .filter((task) => {
+                      // Apply difficulty filter
+                      if (state.difficultyFilter && task.difficulty.toLowerCase() !== state.difficultyFilter.toLowerCase()) {
+                        return false
+                      }
+                      // Apply search filter
+                      if (state.searchFilter) {
+                        const search = state.searchFilter.toLowerCase()
+                        return task.name.toLowerCase().includes(search) || task.id.toLowerCase().includes(search)
+                      }
+                      return true
+                    })
+                    .map((task) => {
                     const isSelected = state.selectedTaskIds.has(task.id)
                     const diffClass = getDifficultyClass(task.difficulty)
 
@@ -410,11 +449,15 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
 
       // Handle input changes
       yield* ctx.dom.delegate(ctx.container, "[data-input]", "input", (_e, target) => {
-        const el = target as HTMLInputElement
+        const el = target as HTMLInputElement | HTMLSelectElement
         const inputType = el.dataset.input
 
         if (inputType === "suitePath") {
           Effect.runFork(ctx.emit({ type: "setSuitePath", path: el.value }))
+        } else if (inputType === "searchFilter") {
+          Effect.runFork(ctx.emit({ type: "setSearchFilter", search: el.value }))
+        } else if (inputType === "difficultyFilter") {
+          Effect.runFork(ctx.emit({ type: "setDifficultyFilter", difficulty: el.value || null }))
         }
       })
     }),
@@ -601,6 +644,14 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
           })
           break
         }
+
+        case "setDifficultyFilter":
+          yield* ctx.state.update((s) => ({ ...s, difficultyFilter: event.difficulty }))
+          break
+
+        case "setSearchFilter":
+          yield* ctx.state.update((s) => ({ ...s, searchFilter: event.search }))
+          break
 
         case "toggleCollapse":
           yield* ctx.state.update((s) => ({ ...s, collapsed: !s.collapsed }))

@@ -1113,4 +1113,96 @@ describe("TBControlsWidget", () => {
       )
     )
   })
+
+  test("US-2.5 filters tasks by difficulty", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const mockSuite: TBSuiteInfo = {
+                name: "test-suite",
+                version: "1.0.0",
+                tasks: [
+                  { id: "task-001", name: "Easy task 1", difficulty: "easy", category: "basics" },
+                  { id: "task-002", name: "Easy task 2", difficulty: "easy", category: "basics" },
+                  { id: "task-003", name: "Medium task", difficulty: "medium", category: "core" },
+                  { id: "task-004", name: "Hard task", difficulty: "hard", category: "advanced" },
+                ],
+              }
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite: mockSuite,
+                difficultyFilter: "easy",
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+
+              // Should show easy tasks
+              expect(html).toContain("Easy task 1")
+              expect(html).toContain("Easy task 2")
+              // Should not show medium/hard tasks
+              expect(html).not.toContain("Medium task")
+              expect(html).not.toContain("Hard task")
+              // Should show filter dropdown with "easy" selected
+              expect(html).toContain('value="easy"')
+              expect(html).toContain("selected")
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
+
+  test("US-2.7 searches tasks by name or ID", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeTestLayer()
+
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-controls-test" } as Element
+              const mockSuite: TBSuiteInfo = {
+                name: "test-suite",
+                version: "1.0.0",
+                tasks: [
+                  { id: "task-001", name: "Create file", difficulty: "easy", category: "basics" },
+                  { id: "task-002", name: "Delete file", difficulty: "easy", category: "basics" },
+                  { id: "task-003", name: "List directory", difficulty: "medium", category: "core" },
+                ],
+              }
+              const state = yield* stateService.cell({
+                ...TBControlsWidget.initialState(),
+                suite: mockSuite,
+                searchFilter: "file",
+              })
+              const ctx = { state, emit: () => Effect.void, dom, container }
+
+              const html = (yield* TBControlsWidget.render(ctx)).toString()
+
+              // Should show tasks with "file" in name
+              expect(html).toContain("Create file")
+              expect(html).toContain("Delete file")
+              // Should not show unmatched task
+              expect(html).not.toContain("List directory")
+              // Should show search input with value
+              expect(html).toContain('placeholder="Search tasks..."')
+              expect(html).toContain('value="file"')
+            }),
+            layer
+          )
+        })
+      )
+    )
+  })
 })
