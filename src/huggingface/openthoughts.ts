@@ -31,25 +31,25 @@ import {
 
 export interface IOpenThoughtsService {
   /** Ensure dataset is downloaded, return local path */
-  ensureDownloaded(): Effect.Effect<string, HFDatasetError>;
+  ensureDownloaded(): Effect.Effect<string, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get total count of trajectories */
   count(): Effect.Effect<number, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get a single trajectory by index */
-  getTrajectory(index: number): Effect.Effect<Trajectory | null, HFDatasetError>;
+  getTrajectory(index: number): Effect.Effect<Trajectory | null, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get a trajectory by run_id */
-  getTrajectoryByRunId(runId: string): Effect.Effect<Trajectory | null, HFDatasetError>;
+  getTrajectoryByRunId(runId: string): Effect.Effect<Trajectory | null, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get multiple trajectories with pagination */
   getTrajectories(
     offset?: number,
     limit?: number,
-  ): Effect.Effect<Trajectory[], HFDatasetError>;
+  ): Effect.Effect<Trajectory[], HFDatasetError, FileSystem.FileSystem>;
 
   /** Stream all trajectories (memory efficient) */
-  streamTrajectories(): Effect.Effect<AsyncIterable<Trajectory>, HFDatasetError>;
+  streamTrajectories(): Effect.Effect<AsyncIterable<Trajectory>, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get the parquet file path */
   getParquetPath(): Effect.Effect<string | null, HFDatasetError>;
@@ -62,7 +62,7 @@ export interface IOpenThoughtsService {
 export class OpenThoughtsService extends Context.Tag("OpenThoughtsService")<
   OpenThoughtsService,
   IOpenThoughtsService
->() {}
+>() { }
 
 // ============================================================================
 // Conversion: SFT Row -> ATIF Trajectory

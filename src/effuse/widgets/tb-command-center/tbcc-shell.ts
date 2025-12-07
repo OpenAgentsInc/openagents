@@ -108,8 +108,8 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
             <!-- Header -->
             <div class="px-4 py-4 border-b border-zinc-800/60">
               ${state.sidebarCollapsed
-                ? html`<span class="text-lg font-bold font-mono text-zinc-100">TB</span>`
-                : html`
+          ? html`<span class="text-lg font-bold font-mono text-zinc-100">TB</span>`
+          : html`
                     <h1 class="text-lg font-bold font-mono text-zinc-100">TerminalBench</h1>
                     <span class="text-xs text-zinc-500">Command Center</span>
                   `}
@@ -237,6 +237,6 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
       )
     })
 
-    return [socketSub]
+    return [Stream.make(socketSub)]
   },
 }

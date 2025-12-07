@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { Effect, Layer } from "effect"
+import * as FileSystem from "@effect/platform/FileSystem"
 import { makeHappyDomLayer } from "../testing/layers/happy-dom.js"
 import { TestHarnessTag } from "../testing/index.js"
 import { HFTrajectoryListWidget } from "./hf-trajectory-list.js"
@@ -19,7 +20,7 @@ import { HFDatasetError } from "../../huggingface/schema.js"
 // ============================================================================
 
 const createMockTrajectory = (index: number): Trajectory => ({
-  schema_version: "1.0",
+  schema_version: "ATIF-v1.4",
   session_id: `session-${index}`,
   agent: {
     name: `agent-${index % 3}`,
@@ -40,7 +41,7 @@ const createMockTrajectory = (index: number): Trajectory => ({
       message: "Agent response",
       tool_calls: [
         {
-          id: "call-1",
+          tool_call_id: "call-1",
           function_name: "testTool",
           arguments: { arg: "value" },
         },
@@ -72,7 +73,7 @@ const makeMockOpenThoughtsService = (totalCount: number): IOpenThoughtsService =
     return Effect.succeed(trajectories)
   },
   streamTrajectories: () =>
-    Effect.fail(new HFDatasetError("not_implemented", "Mock: streaming not implemented")),
+    Effect.fail(new HFDatasetError("invalid_config", "Mock: streaming not implemented")),
   getParquetPath: () => Effect.succeed("/mock/path.parquet"),
 })
 
@@ -88,7 +89,8 @@ describe("HF Trajectory Browser E2E", () => {
           const { layer } = yield* makeHappyDomLayer()
           const mockService = makeMockOpenThoughtsService(150)
           const serviceLayer = Layer.succeed(OpenThoughtsService, mockService)
-          const fullLayer = Layer.merge(layer, serviceLayer)
+          const fsLayer = Layer.succeed(FileSystem.FileSystem, {} as any)
+          const fullLayer = Layer.mergeAll(layer, serviceLayer, fsLayer)
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag
@@ -135,7 +137,8 @@ describe("HF Trajectory Browser E2E", () => {
           const { layer } = yield* makeHappyDomLayer()
           const mockService = makeMockOpenThoughtsService(150)
           const serviceLayer = Layer.succeed(OpenThoughtsService, mockService)
-          const fullLayer = Layer.merge(layer, serviceLayer)
+          const fsLayer = Layer.succeed(FileSystem.FileSystem, {} as any)
+          const fullLayer = Layer.mergeAll(layer, serviceLayer, fsLayer)
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag
@@ -205,7 +208,7 @@ describe("HF Trajectory Browser E2E", () => {
           const { layer } = yield* makeHappyDomLayer()
           const mockService = makeMockOpenThoughtsService(150)
           const serviceLayer = Layer.succeed(OpenThoughtsService, mockService)
-          const fullLayer = Layer.merge(layer, serviceLayer)
+          const fullLayer = Layer.mergeAll(layer, serviceLayer, FileSystem.layer)
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag

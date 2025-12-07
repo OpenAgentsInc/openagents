@@ -132,7 +132,7 @@ export interface FMSessionMetrics {
 
 // --- Service Tag ---
 
-export class FMService extends Context.Tag("FMService")<FMService, IFMService>() {}
+export class FMService extends Context.Tag("FMService")<FMService, IFMService>() { }
 
 // --- Error Types ---
 
@@ -214,7 +214,8 @@ const makeService = (
 
       // Build retry schedule with exponential backoff
       const retrySchedule = Schedule.exponential(Duration.millis(config.retryDelayMs)).pipe(
-        Schedule.recurs(config.maxRetries)
+        Schedule.intersect(Schedule.recurs(config.maxRetries)),
+        Schedule.map(([duration]) => duration)
       );
 
       // Log request start
@@ -345,7 +346,8 @@ const makeService = (
 
       // Build retry schedule with exponential backoff
       const retrySchedule = Schedule.exponential(Duration.millis(config.retryDelayMs)).pipe(
-        Schedule.recurs(config.maxRetries)
+        Schedule.intersect(Schedule.recurs(config.maxRetries)),
+        Schedule.map(([duration]) => duration)
       );
 
       // Log request start with context

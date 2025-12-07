@@ -85,17 +85,20 @@ Work is divided into 3 focused batches to clear the remaining 105 errors.
 **Focus:** System services, types, and scattered fixes.
 
 **Files:**
-- `src/tasks/test-helpers.ts` (2 errors)
-  - *Critical:* `Layer.provide` argument mismatch (Layer vs Tag)
-- `src/researcher/tasks.ts` (2 errors)
-  - *Issue:* `exactOptionalPropertyTypes` with `Effect.provide`
-- `src/memory/schema.ts` (3 errors)
-- `src/llm/ollama.ts` (3 errors)
-- `src/trainer/service.ts` (3 errors) - Unused vars & `exactOptionalPropertyTypes`
-- `src/fm/service.ts` (2 errors)
-- `src/huggingface/openthoughts.ts` (2 errors)
-- `src/tasks/repository.test.ts` (1 error) - Extra property `author` in `addComment`
-- `test-tb-real.ts` (1 error) - `error` is `unknown`
+**Current Status:**
+- Initial Error Count: 376
+- Current Error Count: ~15 (down from 376)
+- Remaining Blockers:
+  - `src/flow/mechacoder-state.test.ts`: DatabaseService dependency.
+  - `src/healer/cli.ts`: DatabaseService dependency.
+  - `src/huggingface/cli.ts`: Layer type mismatch.
+  - `test-tb-real.ts`: Unknown error type.
+
+**Next Steps:**
+1.  Provide `DatabaseService` in `mechacoder-state.test.ts` and `healer/cli.ts`.
+2.  Fix `huggingface/cli.ts` layer composition.
+3.  Fix `test-tb-real.ts` error type.
+4.  Final verification.
 
 ---
 
