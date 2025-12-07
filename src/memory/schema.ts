@@ -313,7 +313,7 @@ export const createEpisodicMemory = (
     taskDescription,
     outcome,
   };
-  
+
   const content: EpisodicContent = {
     ...baseContent,
     ...(options?.errorMessage && { errorMessage: options.errorMessage }),
@@ -336,8 +336,8 @@ export const createEpisodicMemory = (
     content,
     importance,
     tags: options?.tags ?? [outcome],
-    projectId: options?.projectId,
-    sessionId: options?.sessionId,
+    ...(options?.projectId ? { projectId: options.projectId } : {}),
+    ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     source: "task",
   });
 };
@@ -361,7 +361,7 @@ export const createSemanticMemory = (
     category,
     knowledge,
   };
-  
+
   const content: SemanticContent = {
     ...baseContent,
     ...(options?.context && { context: options.context }),
@@ -374,7 +374,7 @@ export const createSemanticMemory = (
     content,
     importance: options?.importance ?? "medium",
     tags: options?.tags ?? [category],
-    projectId: options?.projectId,
+    ...(options?.projectId && { projectId: options.projectId }),
     source: "reflection",
   });
 };
@@ -398,7 +398,7 @@ export const createProceduralMemory = (
     skillId,
     triggerPatterns,
   };
-  
+
   const content: ProceduralContent = {
     ...baseContent,
     ...(options?.successRate && { successRate: options.successRate }),
@@ -411,7 +411,7 @@ export const createProceduralMemory = (
     content,
     importance: options?.importance ?? "medium",
     tags: options?.tags ?? ["skill", skillId],
-    projectId: options?.projectId,
+    ...(options?.projectId ? { projectId: options.projectId } : {}),
     source: "system",
   });
 };

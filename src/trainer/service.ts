@@ -14,11 +14,9 @@ import type { TrajectoryStoreError } from "../archivist/store.js";
 import type { PatternExtractorError } from "../archivist/extractor.js";
 import type {
   TrainingTask,
-  TaskResult,
   TrainingConfig,
   TrainingRun,
   TrainingStats,
-  BenchmarkSuite,
   BenchmarkResult,
   TBSubset,
 } from "./schema.js";
@@ -114,7 +112,7 @@ export interface ITrainerService {
 export class TrainerService extends Context.Tag("TrainerService")<
   TrainerService,
   ITrainerService
->() {}
+>() { }
 
 // --- In-Memory Storage ---
 
@@ -151,10 +149,10 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
     ): Effect.Effect<TrainingTask, never> =>
       Effect.succeed(
         createTask(prompt, {
-          expectedBehavior: options?.expectedBehavior,
-          difficulty: options?.difficulty,
-          category: options?.category,
-          tags: options?.tags,
+          ...(options?.expectedBehavior ? { expectedBehavior: options.expectedBehavior } : {}),
+          ...(options?.difficulty ? { difficulty: options.difficulty } : {}),
+          ...(options?.category ? { category: options.category } : {}),
+          ...(options?.tags ? { tags: options.tags } : {}),
         }),
       );
 
