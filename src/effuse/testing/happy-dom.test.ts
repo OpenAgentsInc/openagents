@@ -405,7 +405,7 @@ describe("Happy-DOM Test Layer", () => {
               const socket = yield* SocketServiceTag
 
               // Create widget with socket messages stream
-              const MessageWidget = makeMessageWidget(socket.messages)
+              const MessageWidget = makeMessageWidget(socket.getMessages())
               const handle = yield* harness.mount(MessageWidget)
 
               // Inject a message
@@ -434,7 +434,7 @@ describe("Happy-DOM Test Layer", () => {
               const socket = yield* SocketServiceTag
 
               // Create widget with socket messages stream
-              const MessageWidget = makeMessageWidget(socket.messages)
+              const MessageWidget = makeMessageWidget(socket.getMessages())
               const handle = yield* harness.mount(MessageWidget)
 
               // Inject sequence

@@ -21,13 +21,14 @@ export const makeTestDatabase = (): Effect.Effect<
   DatabaseError,
   FileSystem.FileSystem | Path.Path
 > =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const pathService = yield* Path.Path;
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
 
-    // Create temporary directory for test database
-    const tmpDir = yield* fs.makeTempDirectoryScoped({ prefix: "test-db-" });
-    const dbPath = path.join(tmpDir, "test.db");
+      // Create temporary directory for test database
+      const tmpDir = yield* fs.makeTempDirectoryScoped({ prefix: "test-db-" });
+      const dbPath = path.join(tmpDir, "test.db");
 
     // Create database
     const db = new Database(dbPath);
@@ -36,20 +37,21 @@ export const makeTestDatabase = (): Effect.Effect<
     const migrationsDir = path.join(process.cwd(), ".openagents", "migrations");
     yield* runMigrations(db, migrationsDir);
 
-    // Return database handle and cleanup function
-    return {
-      db,
-      dbPath,
-      cleanup: () => {
-        try {
-          db.close();
-        } catch (e) {
-          // Database might already be closed
-          console.error("Error closing test database:", e);
+      // Return database handle and cleanup function
+      return {
+        db,
+        dbPath,
+        cleanup: () => {
+          try {
+            db.close();
+          } catch (e) {
+            // Database might already be closed
+            console.error("Error closing test database:", e);
+          }
         }
-      }
-    };
-  });
+      };
+    })
+  );
 
 /**
  * Creates a DatabaseService layer from a database path

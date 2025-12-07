@@ -86,7 +86,6 @@ const makeMockSocketService = (
     connect: () => Effect.void,
     disconnect: () => Effect.void,
     isConnected: () => Effect.succeed(true),
-    messages,
     getMessages: () => messages,
 
     // All requests fail in test mode by default

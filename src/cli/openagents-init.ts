@@ -32,7 +32,7 @@ const initCommand = Command.make(
       yield* Console.log("Initialized .openagents:");
       yield* Console.log(`  projectId: ${result.projectId}`);
       yield* Console.log(`  project.json: ${result.projectPath}`);
-      yield* Console.log(`  tasks.jsonl: ${result.tasksPath}`);
+      yield* Console.log(`  database: ${result.dbPath}`);
     }),
 );
 
