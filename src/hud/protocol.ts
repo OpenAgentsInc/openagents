@@ -646,6 +646,118 @@ export interface TBRunHistoryMessage {
 }
 
 // ============================================================================
+// Trainer Events
+// ============================================================================
+
+/**
+ * Trainer run started
+ */
+export interface TrainerRunStartMessage {
+  type: "trainer_run_start";
+  runId: string;
+  totalTasks: number;
+  config: {
+    model: string;
+    maxRetries: number;
+    useSkills: boolean;
+    useMemory: boolean;
+    useReflection: boolean;
+  };
+  timestamp: string;
+}
+
+/**
+ * Trainer task started
+ */
+export interface TrainerTaskStartMessage {
+  type: "trainer_task_start";
+  runId: string;
+  taskId: string;
+  taskPrompt: string;
+  taskIndex: number;
+  totalTasks: number;
+}
+
+/**
+ * Trainer task completed
+ */
+export interface TrainerTaskCompleteMessage {
+  type: "trainer_task_complete";
+  runId: string;
+  taskId: string;
+  outcome: "success" | "failure" | "timeout";
+  durationMs: number;
+  turns: number;
+  tokens: number;
+  retriesUsed: number;
+}
+
+/**
+ * Trainer run completed
+ */
+export interface TrainerRunCompleteMessage {
+  type: "trainer_run_complete";
+  runId: string;
+  stats: {
+    totalTasks: number;
+    successRate: number;
+    averageDurationMs: number;
+    totalTokens: number;
+  };
+  durationMs: number;
+}
+
+/**
+ * Evolution generation started
+ */
+export interface TrainerEvolutionGenerationStartMessage {
+  type: "trainer_evolution_generation_start";
+  runId: string;
+  generation: number;
+  populationSize: number;
+  topPerformers: string[];
+}
+
+/**
+ * Evolution profile evaluated
+ */
+export interface TrainerEvolutionProfileEvaluatedMessage {
+  type: "trainer_evolution_profile_evaluated";
+  runId: string;
+  profileId: string;
+  profileName: string;
+  generation: number;
+  fitness: number;
+  successRate: number;
+}
+
+/**
+ * Evolution A/B comparison result
+ */
+export interface TrainerEvolutionABResultMessage {
+  type: "trainer_evolution_ab_result";
+  runId: string;
+  profileA: string;
+  profileB: string;
+  winner: "A" | "B" | "tie";
+  effectSize: number;
+  confidence: number;
+}
+
+/**
+ * Evolution run complete
+ */
+export interface TrainerEvolutionCompleteMessage {
+  type: "trainer_evolution_complete";
+  runId: string;
+  generations: number;
+  bestProfileId: string;
+  bestProfileName: string;
+  bestFitness: number;
+  fitnessImprovement: number;
+}
+
+// ============================================================================
 // Container Execution Events
 // ============================================================================
 
@@ -773,7 +885,15 @@ export type HudMessage =
   | ContainerStartMessage
   | ContainerOutputMessage
   | ContainerCompleteMessage
-  | ContainerErrorMessage;
+  | ContainerErrorMessage
+  | TrainerRunStartMessage
+  | TrainerTaskStartMessage
+  | TrainerTaskCompleteMessage
+  | TrainerRunCompleteMessage
+  | TrainerEvolutionGenerationStartMessage
+  | TrainerEvolutionProfileEvaluatedMessage
+  | TrainerEvolutionABResultMessage
+  | TrainerEvolutionCompleteMessage;
 
 /**
  * Status stream payloads (headless RPC-compatible)
@@ -906,3 +1026,35 @@ export const isArchivistRunComplete = (msg: HudMessage): msg is ArchivistRunComp
 /** Check if message is any archivist-related message */
 export const isArchivistMessage = (msg: HudMessage): boolean =>
   msg.type.startsWith("archivist_");
+
+// ============================================================================
+// Trainer Event Type Guards
+// ============================================================================
+
+export const isTrainerRunStart = (msg: HudMessage): msg is TrainerRunStartMessage =>
+  msg.type === "trainer_run_start";
+
+export const isTrainerTaskStart = (msg: HudMessage): msg is TrainerTaskStartMessage =>
+  msg.type === "trainer_task_start";
+
+export const isTrainerTaskComplete = (msg: HudMessage): msg is TrainerTaskCompleteMessage =>
+  msg.type === "trainer_task_complete";
+
+export const isTrainerRunComplete = (msg: HudMessage): msg is TrainerRunCompleteMessage =>
+  msg.type === "trainer_run_complete";
+
+export const isTrainerEvolutionGenerationStart = (msg: HudMessage): msg is TrainerEvolutionGenerationStartMessage =>
+  msg.type === "trainer_evolution_generation_start";
+
+export const isTrainerEvolutionProfileEvaluated = (msg: HudMessage): msg is TrainerEvolutionProfileEvaluatedMessage =>
+  msg.type === "trainer_evolution_profile_evaluated";
+
+export const isTrainerEvolutionABResult = (msg: HudMessage): msg is TrainerEvolutionABResultMessage =>
+  msg.type === "trainer_evolution_ab_result";
+
+export const isTrainerEvolutionComplete = (msg: HudMessage): msg is TrainerEvolutionCompleteMessage =>
+  msg.type === "trainer_evolution_complete";
+
+/** Check if message is any trainer-related message */
+export const isTrainerMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("trainer_");

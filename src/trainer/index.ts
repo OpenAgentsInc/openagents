@@ -24,6 +24,7 @@ export {
   type BenchmarkSuite,
   type BenchmarkResult,
   type TBSubset,
+  type TrainerHudMessage,
   DEFAULT_TRAINING_CONFIG,
   TB_SUBSETS,
   generateRunId,

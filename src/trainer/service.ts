@@ -192,13 +192,30 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
       config?: Partial<TrainingConfig>,
     ): Effect.Effect<TrainingRun, TrainerError> =>
       Effect.gen(function* () {
+        const startTime = Date.now();
         const fullConfig = { ...DEFAULT_TRAINING_CONFIG, ...config };
         const run = createTrainingRun(fullConfig);
         run.tasks = tasks.slice(0, fullConfig.maxTasks);
 
         store.runs.set(run.id, run);
 
+        // Emit run start HUD message
+        fullConfig.onHudMessage?.({
+          type: "trainer_run_start",
+          runId: run.id,
+          totalTasks: run.tasks.length,
+          config: {
+            model: fullConfig.model,
+            maxRetries: fullConfig.maxRetries,
+            useSkills: fullConfig.useSkills,
+            useMemory: fullConfig.useMemory,
+            useReflection: fullConfig.useReflexion,
+          },
+          timestamp: new Date().toISOString(),
+        });
+
         // Execute tasks
+        let taskIndex = 0;
         for (const task of run.tasks) {
           // Apply filters
           if (fullConfig.difficultyFilter !== undefined && task.difficulty !== fullConfig.difficultyFilter) {
@@ -208,11 +225,34 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
             continue;
           }
 
+          // Emit task start HUD message
+          fullConfig.onHudMessage?.({
+            type: "trainer_task_start",
+            runId: run.id,
+            taskId: task.id,
+            taskPrompt: task.prompt.slice(0, 200),
+            taskIndex,
+            totalTasks: run.tasks.length,
+          });
+
           const result = yield* gym.executeWithRetry(task, fullConfig).pipe(mapGymError);
           run.results.push(result);
 
+          // Emit task complete HUD message
+          fullConfig.onHudMessage?.({
+            type: "trainer_task_complete",
+            runId: run.id,
+            taskId: task.id,
+            outcome: result.outcome === "partial" ? "failure" : result.outcome,
+            durationMs: result.durationMs,
+            turns: 1, // Gym doesn't track turns currently
+            tokens: result.tokens.total,
+            retriesUsed: result.attemptNumber - 1,
+          });
+
           // Update stats after each task
           run.stats = calculateStats(run.results);
+          taskIndex++;
         }
 
         run.status = "completed";
@@ -220,6 +260,19 @@ const makeTrainerService = (): Effect.Effect<ITrainerService, never, Gym | Archi
         run.stats = calculateStats(run.results);
 
         store.runs.set(run.id, run);
+
+        // Emit run complete HUD message
+        fullConfig.onHudMessage?.({
+          type: "trainer_run_complete",
+          runId: run.id,
+          stats: {
+            totalTasks: run.stats.totalTasks,
+            successRate: run.stats.successRate,
+            averageDurationMs: run.stats.averageDurationMs,
+            totalTokens: run.stats.totalTokens,
+          },
+          durationMs: Date.now() - startTime,
+        });
 
         // Trigger archivist after run
         yield* archivist.runQuickArchive().pipe(Effect.mapError(TrainerError.from));
