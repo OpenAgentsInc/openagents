@@ -5,7 +5,7 @@ Your agent command center. (wip)
 ## Tech stack
 
 - [Effect](https://effect.website/)
-- [Effuse](./src/effuse/README.md)
+- [Effuse](docs/effuse/README.md)
 - [Tailwind](https://tailwindcss.com/)
 - [webview-bun](https://github.com/tr1ckydev/webview-bun)
 
