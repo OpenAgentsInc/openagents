@@ -140,16 +140,16 @@ export interface ITrainingLoop {
   readonly runArchive: () => Effect.Effect<ArchiveResult, TrainingLoopError, TrainerService | ArchivistService | SkillService | MemoryService>;
 
   /** Get current state */
-  readonly getState: () => Effect.Effect<LoopState, never, TrainerService | ArchivistService | SkillService | MemoryService>;
+  readonly getState: () => Effect.Effect<LoopState, never, never>;
 
   /** Pause the loop */
-  readonly pause: () => Effect.Effect<void, never, TrainerService | ArchivistService | SkillService | MemoryService>;
+  readonly pause: () => Effect.Effect<void, never, never>;
 
   /** Resume the loop */
-  readonly resume: () => Effect.Effect<void, never, TrainerService | ArchivistService | SkillService | MemoryService>;
+  readonly resume: () => Effect.Effect<void, never, never>;
 
   /** Stop the loop */
-  readonly stop: () => Effect.Effect<LoopState, never, TrainerService | ArchivistService | SkillService | MemoryService>;
+  readonly stop: () => Effect.Effect<LoopState, never, never>;
 
   /** Check if should progress to next benchmark tier */
   readonly shouldProgress: () => Effect.Effect<boolean, never, TrainerService | ArchivistService | SkillService | MemoryService>;
@@ -160,7 +160,7 @@ export interface ITrainingLoop {
 
 // --- Service Tag ---
 
-export class TrainingLoop extends Context.Tag("TrainingLoop")<TrainingLoop, ITrainingLoop>() {}
+export class TrainingLoop extends Context.Tag("TrainingLoop")<TrainingLoop, ITrainingLoop>() { }
 
 // --- Implementation ---
 

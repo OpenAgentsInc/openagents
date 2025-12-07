@@ -38,6 +38,7 @@ const importStatement = \`import { \${symbolName} } from "\${sourcePath}";\`;
 await $\`bun tsc --noEmit \${errorFile}\`;`,
   examples: [
     {
+      description: "Fix missing Effect import",
       input: { error: "TS2304: Cannot find name 'Effect'" },
       output: "import { Effect } from 'effect';",
     },

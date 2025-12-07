@@ -35,6 +35,10 @@ import type { Memory } from "../memory/schema.js";
 import type { Reflection } from "../reflexion/schema.js";
 import type { TrainingTask, TrainingRun, TBSubset } from "../trainer/schema.js";
 import type { ArchiveResult } from "../archivist/schema.js";
+import type { SkillStoreError } from "../skills/store.js";
+import type { MemoryStoreError } from "../memory/store.js";
+import type { TrajectoryStoreError } from "../archivist/store.js";
+import type { PatternExtractorError } from "../archivist/extractor.js";
 
 // --- Error Types ---
 
@@ -215,7 +219,7 @@ export interface ILearningOrchestrator {
 export class LearningOrchestrator extends Context.Tag("LearningOrchestrator")<
   LearningOrchestrator,
   ILearningOrchestrator
->() {}
+>() { }
 
 // --- Implementation ---
 
@@ -451,7 +455,7 @@ export const LearningOrchestratorLayer: Layer.Layer<
  */
 export const makeLearningOrchestratorLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<LearningOrchestrator, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError, never> => {
+): Layer.Layer<LearningOrchestrator, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError | TrainerError, never> => {
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
   const reflexionLayer = makeReflexionServiceLive(projectRoot);
@@ -468,8 +472,8 @@ export const makeLearningOrchestratorLive = (
       trainerLayer,
       loopLayer,
     ))
-  );
+  ) as Layer.Layer<LearningOrchestrator, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError | TrainerError, never>;
 };
 
-export const LearningOrchestratorLive: Layer.Layer<LearningOrchestrator, never, never> =
+export const LearningOrchestratorLive: Layer.Layer<LearningOrchestrator, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError | TrainerError, never> =
   makeLearningOrchestratorLive();
