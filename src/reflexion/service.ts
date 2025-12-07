@@ -30,8 +30,8 @@ export class ReflexionServiceError extends Error {
   readonly _tag = "ReflexionServiceError";
   constructor(
     readonly reason: string,
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "ReflexionServiceError";

@@ -105,7 +105,8 @@ describe("TBOutputWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer } = yield* makeTestLayer()
+          // const { getRendered } = yield* makeTestLayer()
           const container = { id: "tb-output-test" } as Element
 
           yield* Effect.provide(

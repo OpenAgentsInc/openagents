@@ -13,7 +13,7 @@
  * Or let the tests auto-start it (requires Xcode/Swift installed).
  */
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll } from "bun:test";
 import { Effect, Duration } from "effect";
 import {
   FMService,
@@ -21,13 +21,10 @@ import {
   makeFMServiceLayer,
   fmChat,
   fmCheckHealth,
-  fmGetMetrics,
   fmListModels,
 } from "./service.js";
 import {
   makeFMLayerWithMonitor,
-  makeFMLayerWithAutoStart,
-  makeFMLayerComplete,
 } from "./layer.js";
 import {
   checkFMHealth,

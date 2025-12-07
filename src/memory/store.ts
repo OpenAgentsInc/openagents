@@ -24,8 +24,8 @@ export class MemoryStoreError extends Error {
   readonly _tag = "MemoryStoreError";
   constructor(
     readonly reason: "file_error" | "parse_error" | "not_found" | "duplicate",
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "MemoryStoreError";

@@ -47,7 +47,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const handle = yield* harness.mount(TBOutputWidget)
+        const _handle = yield* harness.mount(TBOutputWidget)
 
         // Widget should be hidden by default
         yield* browser.expectHidden(".fixed")

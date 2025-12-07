@@ -42,8 +42,8 @@ export class TrainingLoopError extends Error {
   readonly _tag = "TrainingLoopError";
   constructor(
     readonly reason: string,
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "TrainingLoopError";

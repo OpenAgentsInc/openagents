@@ -2,13 +2,12 @@
  * Foundation Models Service Tests
  */
 
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { Effect, Layer, Ref } from "effect";
+import { describe, test, expect } from "bun:test";
+import { Effect } from "effect";
 import {
   FMService,
   FMServiceError,
   makeFMServiceLayer,
-  fmChat,
   fmCheckHealth,
   fmGetMetrics,
   fmListModels,

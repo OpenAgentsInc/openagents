@@ -66,8 +66,8 @@ export class CodeIndexError extends Error {
   readonly _tag = "CodeIndexError";
   constructor(
     readonly reason: "file_not_found" | "parse_error" | "chunk_not_found",
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "CodeIndexError";

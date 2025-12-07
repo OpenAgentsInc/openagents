@@ -91,7 +91,7 @@ export class SkillServiceError extends Error {
   readonly _tag = "SkillServiceError";
   constructor(
     readonly reason: string,
-    message: string,
+    override readonly message: string,
     readonly cause?: Error,
   ) {
     super(message);

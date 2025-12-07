@@ -20,8 +20,8 @@ export class EmbeddingError extends Error {
   readonly _tag = "EmbeddingError";
   constructor(
     readonly reason: "generation_failed" | "invalid_response" | "cache_error",
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "EmbeddingError";

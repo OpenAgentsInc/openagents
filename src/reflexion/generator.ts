@@ -23,8 +23,8 @@ export class ReflectionGeneratorError extends Error {
   readonly _tag = "ReflectionGeneratorError";
   constructor(
     readonly reason: "fm_error" | "parse_error" | "generation_failed",
-    message: string,
-    readonly cause?: Error,
+    override readonly message: string,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "ReflectionGeneratorError";
