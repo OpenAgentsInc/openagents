@@ -61,14 +61,14 @@ const makeMockDomService = (
     _event: K,
     _handler: (e: HTMLElementEventMap[K]) => void,
     _options?: AddEventListenerOptions
-  ) => Effect.succeed(() => {}),
+  ) => Effect.succeed(() => { }),
 
   delegate: <K extends keyof HTMLElementEventMap>(
     _container: Element,
     _selector: string,
     _event: K,
     _handler: (e: HTMLElementEventMap[K], target: Element) => void
-  ) => Effect.succeed(() => {}),
+  ) => Effect.succeed(() => { }),
 
   createFragment: (_content: TemplateResult) =>
     Effect.fail(new DomError("render_failed", "Mock DOM: fragments not supported")),
@@ -105,6 +105,10 @@ const makeMockSocketService = (
       Effect.fail(new SocketError("request_failed", "Mock: assignTaskToMC not implemented")),
     loadUnifiedTrajectories: (_limit) =>
       Effect.fail(new SocketError("request_failed", "Mock: loadUnifiedTrajectories not implemented")),
+    getHFTrajectoryCount: () =>
+      Effect.fail(new SocketError("request_failed", "Mock: getHFTrajectoryCount not implemented")),
+    getHFTrajectories: (_offset, _limit) =>
+      Effect.fail(new SocketError("request_failed", "Mock: getHFTrajectories not implemented")),
   }
 }
 

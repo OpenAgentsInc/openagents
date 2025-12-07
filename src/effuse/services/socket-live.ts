@@ -11,6 +11,7 @@ import {
   type SocketService,
   type StartTBRunOptions,
 } from "./socket.js"
+import type { Trajectory } from "../../atif/schema.js"
 import { SocketClient, type SocketClientOptions } from "../../mainview/socket-client.js"
 import type { HudMessage } from "../../hud/protocol.js"
 
@@ -91,6 +92,11 @@ const makeSocketService = (client: SocketClient): SocketService => {
     // Trajectory Operations
     loadUnifiedTrajectories: (limit) =>
       wrapRequest(() => client.loadUnifiedTrajectories(limit)),
+
+    getHFTrajectoryCount: () => wrapRequest(() => client.getHFTrajectoryCount()),
+
+    getHFTrajectories: (offset, limit) =>
+      wrapRequest<Trajectory[]>(() => client.getHFTrajectories(offset, limit) as Promise<Trajectory[]>),
   }
 }
 
