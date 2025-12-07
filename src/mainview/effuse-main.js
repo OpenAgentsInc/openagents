@@ -42705,20 +42705,29 @@ var formatDate2 = (iso) => {
 };
 var HFTrajectoryListWidget = {
   id: "hf-trajectory-list",
-  initialState: () => ({
-    trajectories: [],
-    filteredTrajectories: [],
-    selectedSessionId: null,
-    searchQuery: "",
-    currentPage: 0,
-    pageSize: 100,
-    totalCount: 0,
-    loading: true,
-    error: null,
-    collapsed: false
-  }),
+  initialState: () => {
+    console.log("[HFTrajectoryList] Creating initial state");
+    return {
+      trajectories: [],
+      filteredTrajectories: [],
+      selectedSessionId: null,
+      searchQuery: "",
+      currentPage: 0,
+      pageSize: 100,
+      totalCount: 0,
+      loading: true,
+      error: null,
+      collapsed: false
+    };
+  },
   render: (ctx) => exports_Effect.gen(function* () {
     const state = yield* ctx.state.get;
+    console.log("[HFTrajectoryList] Rendering, state:", {
+      loading: state.loading,
+      totalCount: state.totalCount,
+      trajectoriesLength: state.trajectories.length,
+      error: state.error
+    });
     const header = html`
         <div
           class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 cursor-pointer bg-zinc-900/40"
@@ -42930,10 +42939,15 @@ var HFTrajectoryListWidget = {
   }),
   subscriptions: (ctx) => {
     const initialLoad = exports_Effect.gen(function* () {
+      console.log("[HFTrajectoryList] Starting initial load...");
       const service3 = yield* OpenThoughtsService;
       try {
+        console.log("[HFTrajectoryList] Getting trajectory count...");
         const totalCount = yield* service3.count();
+        console.log("[HFTrajectoryList] Total count:", totalCount);
+        console.log("[HFTrajectoryList] Loading first page...");
         const trajectories = yield* service3.getTrajectories(0, 100);
+        console.log("[HFTrajectoryList] Loaded trajectories:", trajectories.length);
         const metadata = trajectories.map((t, i) => extractMetadata(t, i));
         yield* ctx.state.update((s) => ({
           ...s,
@@ -42942,7 +42956,9 @@ var HFTrajectoryListWidget = {
           totalCount,
           loading: false
         }));
+        console.log("[HFTrajectoryList] Initial load complete");
       } catch (error) {
+        console.error("[HFTrajectoryList] Initial load failed:", error);
         yield* ctx.state.update((s) => ({
           ...s,
           loading: false,
@@ -43009,15 +43025,18 @@ var getMessageText = (step4) => {
 };
 var HFTrajectoryDetailWidget = {
   id: "hf-trajectory-detail",
-  initialState: () => ({
-    trajectory: null,
-    sessionId: null,
-    loading: false,
-    error: null,
-    collapsed: false,
-    expandedStepId: null,
-    viewMode: "formatted"
-  }),
+  initialState: () => {
+    console.log("[HFTrajectoryDetail] Creating initial state");
+    return {
+      trajectory: null,
+      sessionId: null,
+      loading: false,
+      error: null,
+      collapsed: false,
+      expandedStepId: null,
+      viewMode: "formatted"
+    };
+  },
   render: (ctx) => exports_Effect.gen(function* () {
     const state = yield* ctx.state.get;
     const header = html`

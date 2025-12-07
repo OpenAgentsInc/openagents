@@ -135,15 +135,18 @@ const getMessageText = (step: Step): string => {
 export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTrajectoryDetailEvent> = {
   id: "hf-trajectory-detail",
 
-  initialState: () => ({
-    trajectory: null,
-    sessionId: null,
-    loading: false,
-    error: null,
-    collapsed: false,
-    expandedStepId: null,
-    viewMode: "formatted",
-  }),
+  initialState: () => {
+    console.log("[HFTrajectoryDetail] Creating initial state")
+    return {
+      trajectory: null,
+      sessionId: null,
+      loading: false,
+      error: null,
+      collapsed: false,
+      expandedStepId: null,
+      viewMode: "formatted",
+    }
+  },
 
   render: (ctx) =>
     Effect.gen(function* () {

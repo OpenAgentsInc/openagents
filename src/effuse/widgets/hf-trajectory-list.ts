@@ -135,22 +135,31 @@ export const HFTrajectoryListWidget: Widget<
 > = {
   id: "hf-trajectory-list",
 
-  initialState: () => ({
-    trajectories: [],
-    filteredTrajectories: [],
-    selectedSessionId: null,
-    searchQuery: "",
-    currentPage: 0,
-    pageSize: 100,
-    totalCount: 0,
-    loading: true,
-    error: null,
-    collapsed: false,
-  }),
+  initialState: () => {
+    console.log("[HFTrajectoryList] Creating initial state")
+    return {
+      trajectories: [],
+      filteredTrajectories: [],
+      selectedSessionId: null,
+      searchQuery: "",
+      currentPage: 0,
+      pageSize: 100,
+      totalCount: 0,
+      loading: true,
+      error: null,
+      collapsed: false,
+    }
+  },
 
   render: (ctx) =>
     Effect.gen(function* () {
       const state = yield* ctx.state.get
+      console.log("[HFTrajectoryList] Rendering, state:", {
+        loading: state.loading,
+        totalCount: state.totalCount,
+        trajectoriesLength: state.trajectories.length,
+        error: state.error,
+      })
 
       // Header
       const header = html`
@@ -418,14 +427,20 @@ export const HFTrajectoryListWidget: Widget<
   subscriptions: (ctx) => {
     // Initial load on mount
     const initialLoad = Effect.gen(function* () {
+      console.log("[HFTrajectoryList] Starting initial load...")
       const service = yield* OpenThoughtsService
 
       try {
         // Get total count
+        console.log("[HFTrajectoryList] Getting trajectory count...")
         const totalCount = yield* service.count()
+        console.log("[HFTrajectoryList] Total count:", totalCount)
 
         // Load first page
+        console.log("[HFTrajectoryList] Loading first page...")
         const trajectories = yield* service.getTrajectories(0, 100)
+        console.log("[HFTrajectoryList] Loaded trajectories:", trajectories.length)
+
         const metadata = trajectories.map((t, i) => extractMetadata(t, i))
 
         yield* ctx.state.update((s) => ({
@@ -435,7 +450,9 @@ export const HFTrajectoryListWidget: Widget<
           totalCount,
           loading: false,
         }))
+        console.log("[HFTrajectoryList] Initial load complete")
       } catch (error) {
+        console.error("[HFTrajectoryList] Initial load failed:", error)
         yield* ctx.state.update((s) => ({
           ...s,
           loading: false,
