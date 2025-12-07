@@ -59,7 +59,7 @@ export interface IMemoryService {
   /** Create and add an episodic memory from a task result */
   readonly recordTask: (
     taskDescription: string,
-    outcome: "success" | "failure" | "partial",
+    outcome: "success" | "failure" | "partial" | "timeout",
     options?: {
       errorMessage?: string;
       skillsUsed?: string[];
@@ -206,12 +206,12 @@ const makeMemoryService = (): Effect.Effect<
         sessionId?: string;
         tags?: string[];
       },
-    ): Effect.Effect<Memory, MemoryServiceError> =>
-      Effect.gen(function* () {
-        const memory = createEpisodicMemory(taskDescription, outcome, options);
-        yield* store.add(memory).pipe(mapStoreError);
-        return memory;
-      });
+  ): Effect.Effect<Memory, MemoryServiceError> =>
+    Effect.gen(function* () {
+      const memory = createEpisodicMemory(taskDescription, outcome, options);
+      yield* store.add(memory).pipe(mapStoreError);
+      return memory;
+    });
 
     const recordKnowledge = (
       category: SemanticContent["category"],

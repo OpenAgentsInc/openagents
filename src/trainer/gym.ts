@@ -7,7 +7,9 @@
 
 import { Effect, Context, Layer } from "effect";
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
+import type { SkillStoreError } from "../skills/store.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
+import type { MemoryStoreError } from "../memory/store.js";
 import {
   ReflexionService,
   makeReflexionServiceLive,
@@ -18,9 +20,12 @@ import {
   makeArchivistServiceLive,
   type ArchivistError,
 } from "../archivist/service.js";
+import type { TrajectoryStoreError } from "../archivist/store.js";
 import { FMService, makeFMServiceLayer, type FMServiceError } from "../fm/service.js";
+import type { PatternExtractorError } from "../archivist/extractor.js";
 import type { TrainingTask, TaskResult, TrainingConfig } from "./schema.js";
 import { DEFAULT_TRAINING_CONFIG, createTaskResult } from "./schema.js";
+type TaskResultData = Parameters<typeof createTaskResult>[1];
 import type { TrajectoryAction } from "../archivist/schema.js";
 
 // --- Error Types ---
@@ -29,7 +34,7 @@ export class GymError extends Error {
   readonly _tag = "GymError";
   constructor(
     override readonly message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "GymError";
@@ -255,9 +260,10 @@ const makeGym = (
             ),
           );
 
-          response = chatResult.message.content;
-          inputTokens = chatResult.usage?.inputTokens ?? Math.ceil(fullPrompt.length / 4);
-          outputTokens = chatResult.usage?.outputTokens ?? Math.ceil(response.length / 4);
+          const choiceContent = chatResult.choices[0]?.message.content ?? "";
+          response = typeof choiceContent === "string" ? choiceContent : "";
+          inputTokens = chatResult.usage?.prompt_tokens ?? Math.ceil(fullPrompt.length / 4);
+          outputTokens = chatResult.usage?.completion_tokens ?? Math.ceil(response.length / 4);
 
           actions.push({
             type: "output",
@@ -358,17 +364,25 @@ const makeGym = (
                 yield* reflexion.markSuccess(r.id).pipe(mapReflexionError);
               }
             }
-            const finalResult = createTaskResult(result.taskId, {
+            const successData: TaskResultData = {
               outcome: result.outcome,
-              score: result.score,
-              output: result.output,
               durationMs: result.durationMs,
               model: result.model,
               tokens: result.tokens,
               skillsUsed: result.skillsUsed,
               usedReflexion: result.usedReflexion,
               attemptNumber: attempt,
-            });
+            };
+            if (result.score !== undefined) {
+              successData.score = result.score;
+            }
+            if (result.output !== undefined) {
+              successData.output = result.output;
+            }
+            if (result.errorMessage !== undefined) {
+              successData.errorMessage = result.errorMessage;
+            }
+            const finalResult = createTaskResult(result.taskId, successData);
             return finalResult;
           }
 
@@ -390,18 +404,25 @@ const makeGym = (
         }
 
         // Return last result with attempt count
-        const finalResult = createTaskResult(lastResult!.taskId, {
+        const finalData: TaskResultData = {
           outcome: lastResult!.outcome,
-          score: lastResult!.score,
-          errorMessage: lastResult!.errorMessage,
-          output: lastResult!.output,
           durationMs: lastResult!.durationMs,
           model: lastResult!.model,
           tokens: lastResult!.tokens,
           skillsUsed: lastResult!.skillsUsed,
           usedReflexion: lastResult!.usedReflexion,
           attemptNumber: taskConfig.maxRetries + 1,
-        });
+        };
+        if (lastResult!.score !== undefined) {
+          finalData.score = lastResult!.score;
+        }
+        if (lastResult!.output !== undefined) {
+          finalData.output = lastResult!.output;
+        }
+        if (lastResult!.errorMessage !== undefined) {
+          finalData.errorMessage = lastResult!.errorMessage;
+        }
+        const finalResult = createTaskResult(lastResult!.taskId, finalData);
         return finalResult;
       });
 
@@ -497,7 +518,11 @@ export const makeGymLayer = (
  */
 export const makeGymLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<Gym, never, never> => {
+): Layer.Layer<
+  Gym,
+  SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError,
+  never
+> => {
   const fmLayer = makeFMServiceLayer({ autoStart: false, enableLogging: false });
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
@@ -510,4 +535,8 @@ export const makeGymLive = (
   );
 };
 
-export const GymLive: Layer.Layer<Gym, never, never> = makeGymLive();
+export const GymLive: Layer.Layer<
+  Gym,
+  SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError,
+  never
+> = makeGymLive();

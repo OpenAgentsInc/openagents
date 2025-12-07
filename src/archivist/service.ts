@@ -5,7 +5,7 @@
  * Reviews trajectories, extracts patterns, and manages the skill/memory library.
  */
 
-import { Effect, Context, Layer, Schedule } from "effect";
+import { Effect, Context, Layer } from "effect";
 import { TrajectoryStore, makeTrajectoryStoreLive, type TrajectoryStoreError } from "./store.js";
 import {
   PatternExtractor,
@@ -13,9 +13,11 @@ import {
   type PatternExtractorError,
 } from "./extractor.js";
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
+import type { SkillStoreError } from "../skills/store.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
-import { FMService, makeFMServiceLayer } from "../fm/service.js";
-import type { Trajectory, ExtractedPattern, ArchiveResult, ArchiveConfig, ArchivistHudMessage } from "./schema.js";
+import type { MemoryStoreError } from "../memory/store.js";
+import { makeFMServiceLayer } from "../fm/service.js";
+import type { Trajectory, ExtractedPattern, ArchiveResult, ArchiveConfig } from "./schema.js";
 import { DEFAULT_ARCHIVE_CONFIG, generateArchiveId, createTrajectory } from "./schema.js";
 import { createSkill } from "../skills/schema.js";
 
@@ -26,7 +28,7 @@ export class ArchivistError extends Error {
   constructor(
     readonly reason: string,
     message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "ArchivistError";
@@ -84,7 +86,10 @@ export interface IArchivistService {
   ) => Effect.Effect<ExtractedPattern[], ArchivistError>;
 
   /** Convert patterns to skills and register them */
-  readonly promotePatterns: (patterns: ExtractedPattern[]) => Effect.Effect<string[], ArchivistError>;
+  readonly promotePatterns: (
+    patterns: ExtractedPattern[],
+    runId?: string,
+  ) => Effect.Effect<string[], ArchivistError>;
 
   // --- Pruning ---
 
@@ -168,15 +173,35 @@ const makeArchivistService = (
         yield* store.save(trajectory).pipe(mapStoreError);
 
         // Also record in episodic memory
+        const memoryOptions: {
+          durationMs: number;
+          importance: "medium" | "high";
+          tags: string[];
+          errorMessage?: string;
+          skillsUsed?: string[];
+          filesModified?: string[];
+          projectId?: string;
+        } = {
+          durationMs: data.totalDurationMs,
+          importance: data.outcome === "success" ? "medium" : "high",
+          tags: ["trajectory", data.outcome],
+        };
+
+        if (data.errorMessage) {
+          memoryOptions.errorMessage = data.errorMessage;
+        }
+        if (data.skillsUsed) {
+          memoryOptions.skillsUsed = data.skillsUsed;
+        }
+        if (data.filesModified) {
+          memoryOptions.filesModified = data.filesModified;
+        }
+        if (data.projectId) {
+          memoryOptions.projectId = data.projectId;
+        }
+
         yield* memory
-          .recordTask(taskDescription, data.outcome, {
-            filesModified: data.filesModified,
-            skillsUsed: data.skillsUsed,
-            durationMs: data.totalDurationMs,
-            projectId: data.projectId,
-            importance: data.outcome === "success" ? "medium" : "high",
-            tags: ["trajectory", data.outcome],
-          })
+          .recordTask(taskDescription, data.outcome, memoryOptions)
           .pipe(mapMemoryError);
 
         return trajectory;
@@ -198,9 +223,10 @@ const makeArchivistService = (
 
     const promotePatterns = (
       patterns: ExtractedPattern[],
-      runId: string,
+      runId?: string,
     ): Effect.Effect<string[], ArchivistError> =>
       Effect.gen(function* () {
+        const runIdentifier = runId ?? generateArchiveId();
         const skillIds: string[] = [];
 
         for (const pattern of patterns) {
@@ -234,7 +260,7 @@ const makeArchivistService = (
           // Emit HUD message for skill promotion
           config.onHudMessage?.({
             type: "archivist_skill_promoted",
-            runId,
+            runId: runIdentifier,
             skillId: skill.id,
             skillName: skill.name,
             category: skill.category,
@@ -445,8 +471,9 @@ const makeArchivistService = (
 
         let pruned = 0;
         for (const skill of allSkills) {
+          const usageCount = skill.usageCount ?? 0;
           // Check if skill has low usage
-          if (skill.usageCount < 2 && skill.source === "learned") {
+          if (usageCount < 2 && skill.source === "learned") {
             // Calculate age
             const age = Date.now() - new Date(skill.createdAt).getTime();
             const ageDays = age / (24 * 60 * 60 * 1000);
@@ -513,7 +540,11 @@ export const ArchivistServiceLayer: Layer.Layer<
  */
 export const makeArchivistServiceLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<ArchivistService, never, never> => {
+): Layer.Layer<
+  ArchivistService,
+  TrajectoryStoreError | PatternExtractorError | SkillStoreError | MemoryStoreError,
+  never
+> => {
   const fmLayer = makeFMServiceLayer({ autoStart: false, enableLogging: false });
   const storeLayer = makeTrajectoryStoreLive(projectRoot);
   const extractorLayer = Layer.provide(PatternExtractorLive, fmLayer);
@@ -529,5 +560,8 @@ export const makeArchivistServiceLive = (
 /**
  * Default ArchivistService layer.
  */
-export const ArchivistServiceLive: Layer.Layer<ArchivistService, never, never> =
-  makeArchivistServiceLive();
+export const ArchivistServiceLive: Layer.Layer<
+  ArchivistService,
+  TrajectoryStoreError | PatternExtractorError | SkillStoreError | MemoryStoreError,
+  never
+> = makeArchivistServiceLive();

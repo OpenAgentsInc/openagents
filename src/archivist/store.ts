@@ -18,7 +18,7 @@ export class TrajectoryStoreError extends Error {
   constructor(
     readonly reason: "io_error" | "parse_error" | "not_found",
     message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "TrajectoryStoreError";
@@ -258,7 +258,7 @@ export class LessonStoreError extends Error {
   constructor(
     readonly reason: "io_error" | "parse_error" | "not_found",
     message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "LessonStoreError";

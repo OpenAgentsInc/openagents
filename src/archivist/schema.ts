@@ -67,7 +67,7 @@ export interface Trajectory {
   /** Timestamp */
   timestamp: string;
   /** Project ID */
-  projectId?: string;
+  projectId?: string | undefined;
   /** Whether this trajectory has been archived (processed by Archivist) */
   archived: boolean;
 }
@@ -291,7 +291,7 @@ export const createTrajectory = (
   taskDescription,
   actions: data.actions,
   outcome: data.outcome,
-  errorMessage: data.errorMessage,
+  ...(data.errorMessage ? { errorMessage: data.errorMessage } : {}),
   skillsUsed: data.skillsUsed ?? [],
   filesModified: data.filesModified ?? [],
   totalDurationMs: data.totalDurationMs,
