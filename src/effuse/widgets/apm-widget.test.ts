@@ -149,7 +149,16 @@ describe("APMWidget", () => {
           yield* injectMessage({
             type: "apm_snapshot",
             sessionId: "session-snap",
-            combined: { apm1h: 12.5, apm6h: 10.1, apm1d: 8.5, apmLifetime: 9.9 },
+            combined: {
+              apm1h: 12.5,
+              apm6h: 10.1,
+              apm1d: 8.5,
+              apm1w: 7.2,
+              apm1m: 6.5,
+              apmLifetime: 9.9,
+              totalSessions: 150,
+              totalActions: 1337
+            },
             comparison: { claudeCodeAPM: 14.2, mechaCoderAPM: 18.4, efficiencyRatio: 1.8 },
           })
 

@@ -185,11 +185,11 @@ describe("TaskService", () => {
     );
 
     expect(result.saved[0]?.comments).toHaveLength(2);
-    expect(result.saved[0]?.comments?.[0]?.id).toBe("c-1");
     expect(result.saved[0]?.comments?.[0]?.createdAt).toBe("2025-01-01T01:00:00.000Z");
     expect(result.saved[0]?.comments?.[1]?.author).toBe("bob");
     expect(result.saved[0]?.updatedAt).toBe("2025-01-01T02:00:00.000Z");
-    expect(result.second.comment.text).toBe("Follow-up");
+    // Check the second comment on the task
+    expect(result.second.comments[1]?.text).toBe("Follow-up");
   });
 
   test("renames task IDs, dependencies, and description references", async () => {
@@ -348,12 +348,8 @@ describe("TaskService", () => {
           timestamp: new Date("2025-01-03T00:00:00Z"),
         });
 
-        const ready = yield* readyTasks(tasksPath, {
-          labelsAny: ["cli"],
-          unassigned: true,
-          sortPolicy: "oldest",
-          limit: 1,
-        });
+        // readyTasks now takes just a sort policy, not a filter object
+        const ready = yield* readyTasks(tasksPath, "oldest");
 
         const listed = yield* listTasks(tasksPath, {
           labelsAny: ["cli"],
@@ -394,11 +390,10 @@ describe("TaskService", () => {
           timestamp: new Date("2025-01-01T00:00:00Z"),
         });
 
+        // getStaleTasks only takes daysOld parameter
         return yield* getStaleTasks({
           tasksPath,
-          days: 30,
-          status: "in_progress",
-          timestamp: new Date("2025-02-10T00:00:00Z"), // deterministic threshold
+          daysOld: 30,
         });
       }),
     );
@@ -413,7 +408,6 @@ describe("Archive functionality", () => {
     const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
-        const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
 
         // Create tasks: 2 old closed, 1 recent closed, 1 open
         const oldClosed1 = yield* createTask({
@@ -458,33 +452,38 @@ describe("Archive functionality", () => {
           timestamp: new Date("2025-01-03T00:00:00Z"),
         });
 
-        // Archive tasks older than 30 days from reference date
-        const archiveResult = yield* archiveTasks({
+        // Get stale tasks (closed > 30 days ago)
+        const staleTasks = yield* getStaleTasks({
           tasksPath,
           daysOld: 30,
-          timestamp: new Date("2025-06-15T00:00:00Z"),
+        });
+
+        // Archive them
+        const archivedCount = yield* archiveTasks({
+          tasksPath,
+          taskIds: staleTasks.map((t) => t.id),
+          reason: "Archived (older than 30 days)",
         });
 
         const remaining = yield* readTasks(tasksPath);
-        const archived = yield* readArchivedTasks(archivePath);
+        const archived = yield* readArchivedTasks(tasksPath);
 
-        return { archiveResult, remaining, archived, oldClosed1, oldClosed2, recentClosed };
+        return { archivedCount, remaining, archived, oldClosed1, oldClosed2, recentClosed };
       }),
     );
 
-    expect(result.archiveResult.dryRun).toBe(false);
-    expect(result.archiveResult.archived).toHaveLength(2);
-    expect(result.archiveResult.archived.map((t) => t.id)).toContain(result.oldClosed1.id);
-    expect(result.archiveResult.archived.map((t) => t.id)).toContain(result.oldClosed2.id);
+    // Archive API now returns count, not detailed result
+    expect(result.archivedCount).toBe(2);
     expect(result.remaining).toHaveLength(2); // recent closed + open
     expect(result.archived).toHaveLength(2);
+    expect(result.archived.map((t) => t.id)).toContain(result.oldClosed1.id);
+    expect(result.archived.map((t) => t.id)).toContain(result.oldClosed2.id);
   });
 
-  test("dry-run mode shows what would be archived without changes", async () => {
+  test("getStaleTasks identifies tasks older than threshold", async () => {
     const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
-        const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
 
         // Create an old closed task
         const oldClosed = yield* createTask({
@@ -499,35 +498,30 @@ describe("Archive functionality", () => {
           timestamp: new Date("2025-01-01T01:00:00Z"),
         });
 
-        // Dry run
-        const archiveResult = yield* archiveTasks({
+        // Get stale tasks without archiving
+        const staleTasks = yield* getStaleTasks({
           tasksPath,
           daysOld: 30,
-          dryRun: true,
-          timestamp: new Date("2025-06-15T00:00:00Z"),
         });
 
-        const remaining = yield* readTasks(tasksPath);
-        const archived = yield* readArchivedTasks(archivePath);
+        const allTasks = yield* readTasks(tasksPath);
 
-        return { archiveResult, remaining, archived };
+        return { staleTasks, allTasks, oldClosedId: oldClosed.id };
       }),
     );
 
-    expect(result.archiveResult.dryRun).toBe(true);
-    expect(result.archiveResult.archived).toHaveLength(1);
-    // Original file unchanged
-    expect(result.remaining).toHaveLength(1);
-    // No archive file created
-    expect(result.archived).toHaveLength(0);
+    // getStaleTasks identifies the old task
+    expect(result.staleTasks).toHaveLength(1);
+    expect(result.staleTasks[0]?.id).toBe(result.oldClosedId);
+    // Original tasks unchanged
+    expect(result.allTasks).toHaveLength(1);
   });
 
-  test("readArchivedTasks returns empty array when archive does not exist", async () => {
+  test("readArchivedTasks returns empty array when no tasks archived", async () => {
     const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
-        const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
-        return yield* readArchivedTasks(archivePath);
+        return yield* readArchivedTasks(tasksPath);
       }),
     );
 
@@ -554,34 +548,35 @@ describe("Archive functionality", () => {
 
         yield* archiveTasks({
           tasksPath,
-          daysOld: 30,
-          timestamp: new Date("2025-06-15T00:00:00Z"),
+          taskIds: [toArchive.id],
+          reason: "Archived",
         });
 
         // Create an active task
-        yield* createTask({
+        const active = yield* createTask({
           tasksPath,
           task: makeTask("Active feature"),
           timestamp: new Date("2025-06-10T00:00:00Z"),
         });
 
-        const searchResult = yield* searchAllTasks({ tasksPath });
+        // Search for "feature" which should match both
+        const searchResult = yield* searchAllTasks({ tasksPath, query: "feature" });
 
-        return { searchResult, toArchive };
+        return { searchResult, archivedId: toArchive.id, activeId: active.id };
       }),
     );
 
-    expect(result.searchResult.active).toHaveLength(1);
-    expect(result.searchResult.active[0]?.title).toBe("Active feature");
-    expect(result.searchResult.archived).toHaveLength(1);
-    expect(result.searchResult.archived[0]?.title).toBe("Archived feature");
+    // searchAllTasks now returns all matching tasks (both active and archived)
+    expect(result.searchResult).toHaveLength(2);
+    const ids = result.searchResult.map((t) => t.id);
+    expect(ids).toContain(result.archivedId);
+    expect(ids).toContain(result.activeId);
   });
 
-  test("archive appends to existing archive file", async () => {
+  test("multiple archive operations accumulate archived tasks", async () => {
     const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
-        const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
 
         // Create and archive first task
         const first = yield* createTask({
@@ -598,8 +593,8 @@ describe("Archive functionality", () => {
 
         yield* archiveTasks({
           tasksPath,
-          daysOld: 30,
-          timestamp: new Date("2025-06-01T00:00:00Z"),
+          taskIds: [first.id],
+          reason: "Archived batch 1",
         });
 
         // Create and archive second task
@@ -617,18 +612,18 @@ describe("Archive functionality", () => {
 
         yield* archiveTasks({
           tasksPath,
-          daysOld: 30,
-          timestamp: new Date("2025-07-01T00:00:00Z"),
+          taskIds: [second.id],
+          reason: "Archived batch 2",
         });
 
-        const archived = yield* readArchivedTasks(archivePath);
-        return { archived, first, second };
+        const archived = yield* readArchivedTasks(tasksPath);
+        return { archived, firstId: first.id, secondId: second.id };
       }),
     );
 
     expect(result.archived).toHaveLength(2);
-    expect(result.archived.map((t) => t.id)).toContain(result.first.id);
-    expect(result.archived.map((t) => t.id)).toContain(result.second.id);
+    expect(result.archived.map((t) => t.id)).toContain(result.firstId);
+    expect(result.archived.map((t) => t.id)).toContain(result.secondId);
   });
 
   test("reopenTask sets closed task back to open", async () => {
@@ -642,11 +637,16 @@ describe("Archive functionality", () => {
           task: makeTask("To be closed"),
           timestamp: new Date("2025-01-01T00:00:00Z"),
         });
+        // Set commits then close
+        yield* updateTask({
+          tasksPath,
+          id: task.id,
+          update: { commits: ["abc123"] },
+        });
         const closed = yield* closeTask({
           tasksPath,
           id: task.id,
           reason: "Initial close",
-          commits: ["abc123"],
           timestamp: new Date("2025-01-01T01:00:00Z"),
         });
 

@@ -130,7 +130,7 @@ const makeSocketService = (
   connect: () => Effect.void,
   disconnect: () => Effect.void,
   isConnected: () => Effect.succeed(true),
-  messages: Stream.fromQueue(messageQueue),
+  getMessages: () => Stream.fromQueue(messageQueue),
   loadTBSuite: (_) =>
     Effect.fail(new SocketError("request_failed", "Mock: loadTBSuite")),
   startTBRun: (_) =>
