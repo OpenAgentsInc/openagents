@@ -255,16 +255,16 @@ const makeLearningOrchestrator = (): Effect.Effect<
     const startTraining = (
       config?: Partial<LoopConfig>,
     ): Effect.Effect<LoopState, OrchestratorError> =>
-      loop.start(config).pipe(mapLoopError);
+      loop.start(config).pipe(mapLoopError) as Effect.Effect<LoopState, OrchestratorError>;
 
     const stopTraining = (): Effect.Effect<LoopState, OrchestratorError> =>
-      loop.stop().pipe(Effect.mapError(OrchestratorError.from));
+      loop.stop().pipe(Effect.mapError(OrchestratorError.from)) as Effect.Effect<LoopState, OrchestratorError>;
 
     const pauseTraining = (): Effect.Effect<void, OrchestratorError> =>
-      loop.pause().pipe(Effect.mapError(OrchestratorError.from));
+      loop.pause().pipe(Effect.mapError(OrchestratorError.from)) as Effect.Effect<void, OrchestratorError>;
 
     const resumeTraining = (): Effect.Effect<void, OrchestratorError> =>
-      loop.resume().pipe(Effect.mapError(OrchestratorError.from));
+      loop.resume().pipe(Effect.mapError(OrchestratorError.from)) as Effect.Effect<void, OrchestratorError>;
 
     const executeTask = (task: TrainingTask): Effect.Effect<TrainingRun, OrchestratorError> =>
       Effect.gen(function* () {
@@ -359,7 +359,7 @@ const makeLearningOrchestrator = (): Effect.Effect<
     > => archivist.getStats().pipe(mapArchivistError);
 
     const getLoopState = (): Effect.Effect<LoopState | null, OrchestratorError> =>
-      loop.getState().pipe(Effect.map((s) => (s.status === "stopped" ? null : s)));
+      loop.getState().pipe(Effect.map((s) => (s.status === "stopped" ? null : s))) as Effect.Effect<LoopState | null, OrchestratorError>;
 
     const getStats = (): Effect.Effect<LearningStats, OrchestratorError> =>
       Effect.gen(function* () {
@@ -451,7 +451,7 @@ export const LearningOrchestratorLayer: Layer.Layer<
  */
 export const makeLearningOrchestratorLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<LearningOrchestrator, never, never> => {
+): Layer.Layer<LearningOrchestrator, SkillStoreError | MemoryStoreError | TrajectoryStoreError | PatternExtractorError, never> => {
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
   const reflexionLayer = makeReflexionServiceLive(projectRoot);
@@ -459,16 +459,15 @@ export const makeLearningOrchestratorLive = (
   const trainerLayer = makeTrainerServiceLive(projectRoot);
   const loopLayer = makeTrainingLoopLive(projectRoot);
 
-  return Layer.merge(
-    LearningOrchestratorLayer,
-    Layer.mergeAll(
+  return LearningOrchestratorLayer.pipe(
+    Layer.provide(Layer.mergeAll(
       skillLayer,
       memoryLayer,
       reflexionLayer,
       archivistLayer,
       trainerLayer,
       loopLayer,
-    ),
+    ))
   );
 };
 
