@@ -107,6 +107,30 @@ export interface LoadUnifiedTrajectoriesRequest extends BaseRequest {
 }
 
 /**
+ * Get total count of HF trajectories
+ */
+export interface GetHFTrajectoryCountRequest extends BaseRequest {
+  type: "request:getHFTrajectoryCount";
+}
+
+/**
+ * Get paginated HF trajectories
+ */
+export interface GetHFTrajectoriesRequest extends BaseRequest {
+  type: "request:getHFTrajectories";
+  offset?: number;
+  limit?: number;
+}
+
+/**
+ * Get a single HF trajectory by index
+ */
+export interface GetHFTrajectoryRequest extends BaseRequest {
+  type: "request:getHFTrajectory";
+  index: number;
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -117,7 +141,10 @@ export type SocketRequest =
   | LoadTBRunDetailsRequest
   | LoadReadyTasksRequest
   | AssignTaskToMCRequest
-  | LoadUnifiedTrajectoriesRequest;
+  | LoadUnifiedTrajectoriesRequest
+  | GetHFTrajectoryCountRequest
+  | GetHFTrajectoriesRequest
+  | GetHFTrajectoryRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -296,6 +323,31 @@ export interface LoadUnifiedTrajectoriesResponse extends BaseResponse {
 }
 
 /**
+ * Response to GetHFTrajectoryCountRequest
+ */
+export interface GetHFTrajectoryCountResponse extends BaseResponse {
+  type: "response:getHFTrajectoryCount";
+  data?: { count: number };
+}
+
+/**
+ * Response to GetHFTrajectoriesRequest
+ * Note: Trajectory type from @openagents/atif
+ */
+export interface GetHFTrajectoriesResponse extends BaseResponse {
+  type: "response:getHFTrajectories";
+  data?: unknown[]; // Trajectory[] from atif/schema.js
+}
+
+/**
+ * Response to GetHFTrajectoryRequest
+ */
+export interface GetHFTrajectoryResponse extends BaseResponse {
+  type: "response:getHFTrajectory";
+  data?: unknown | null; // Trajectory from atif/schema.js
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -306,7 +358,10 @@ export type SocketResponse =
   | LoadTBRunDetailsResponse
   | LoadReadyTasksResponse
   | AssignTaskToMCResponse
-  | LoadUnifiedTrajectoriesResponse;
+  | LoadUnifiedTrajectoriesResponse
+  | GetHFTrajectoryCountResponse
+  | GetHFTrajectoriesResponse
+  | GetHFTrajectoryResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -380,6 +435,15 @@ export const isAssignTaskToMCRequest = (msg: SocketRequest): msg is AssignTaskTo
 
 export const isLoadUnifiedTrajectoriesRequest = (msg: SocketRequest): msg is LoadUnifiedTrajectoriesRequest =>
   msg.type === "request:loadUnifiedTrajectories";
+
+export const isGetHFTrajectoryCountRequest = (msg: SocketRequest): msg is GetHFTrajectoryCountRequest =>
+  msg.type === "request:getHFTrajectoryCount";
+
+export const isGetHFTrajectoriesRequest = (msg: SocketRequest): msg is GetHFTrajectoriesRequest =>
+  msg.type === "request:getHFTrajectories";
+
+export const isGetHFTrajectoryRequest = (msg: SocketRequest): msg is GetHFTrajectoryRequest =>
+  msg.type === "request:getHFTrajectory";
 
 // ============================================================================
 // Serialization Helpers

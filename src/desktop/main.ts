@@ -72,12 +72,22 @@ log("Desktop", "Server worker started");
 
 const webview = new Webview();
 
+// Debug: bind bunLog BEFORE init to avoid race conditions
+webview.bind("bunLog", (...args: unknown[]) => {
+  log("Webview", ...args);
+});
+
 // Debug: inject error handler and HUD event listener
 webview.init(`
-  // Mark: VERSION-2025-12-06-02 (stub bunLog to prevent race conditions)
+  // Mark: VERSION-2025-12-06-03 (bind before init, test bunLog immediately)
 
-  // Stub bunLog immediately to prevent race conditions
-  window.bunLog = window.bunLog || function() {};
+  // bunLog should already be bound by webview.bind() above
+  // Test it immediately
+  if (window.bunLog) {
+    window.bunLog('[Webview] bunLog available in init!');
+  } else {
+    console.error('[Webview] ERROR: bunLog NOT available in init!');
+  }
 
   console.log = function(...args) {
     if (window.bunLog) window.bunLog(...args);
@@ -93,14 +103,9 @@ webview.init(`
   };
 
   if (window.bunLog) {
-    window.bunLog('[Webview] Initialized VERSION-2025-12-06-02');
+    window.bunLog('[Webview] Initialized VERSION-2025-12-06-03');
   }
 `);
-
-// Debug: bind a function to get logs from webview
-webview.bind("bunLog", (...args: unknown[]) => {
-  log("Webview", ...args);
-});
 
 webview.title = "OpenAgents";
 // Launch near-fullscreen on typical laptop resolutions

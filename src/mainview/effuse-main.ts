@@ -6,6 +6,7 @@
  */
 
 import { Effect, Layer, Stream } from "effect"
+import { BunContext } from "@effect/platform-bun"
 import { getSocketClient } from "./socket-client.js"
 import {
   mountWidgetById,
@@ -25,7 +26,13 @@ import {
   HFTrajectoryListWidget,
   HFTrajectoryDetailWidget,
 } from "../effuse/index.js"
-import { OpenThoughtsServiceLive, OpenThoughtsService } from "../huggingface/openthoughts.js"
+import {
+  OpenThoughtsService,
+  type IOpenThoughtsService,
+  sftRowToTrajectory,
+} from "../huggingface/index.js"
+import type { Trajectory } from "../atif/schema.js"
+import { HFDatasetError } from "../huggingface/schema.js"
 
 console.log("[Effuse] Loading mainview...")
 if ((window as any).bunLog) {
@@ -75,9 +82,11 @@ const createEffuseLayer = () => {
   const socketClient = getSocketClient()
 
   return Layer.mergeAll(
+    BunContext.layer,
     DomServiceLive,
     StateServiceLive,
     SocketServiceFromClient(socketClient),
+    HFDatasetServiceLive(),
     OpenThoughtsServiceLive
   )
 }
@@ -257,7 +266,18 @@ const initEffuse = () => {
       Effect.provide(layer),
       Effect.scoped,
       Effect.catchAllDefect((defect) => {
-        console.error("[Effuse] Defect:", defect)
+        console.error("[Effuse] Defect caught:", defect)
+        console.error("[Effuse] Defect type:", typeof defect)
+        console.error("[Effuse] Defect constructor:", defect?.constructor?.name)
+        if (defect instanceof Error) {
+          console.error("[Effuse] Error message:", defect.message)
+          console.error("[Effuse] Error stack:", defect.stack)
+        }
+        try {
+          console.error("[Effuse] Defect stringified:", JSON.stringify(defect, null, 2))
+        } catch {
+          console.error("[Effuse] Could not stringify defect")
+        }
         return Effect.void
       })
     )
