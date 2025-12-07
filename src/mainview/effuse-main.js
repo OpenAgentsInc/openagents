@@ -42706,7 +42706,9 @@ var formatDate2 = (iso) => {
 var HFTrajectoryListWidget = {
   id: "hf-trajectory-list",
   initialState: () => {
-    console.log("[HFTrajectoryList] Creating initial state");
+    if (window.bunLog) {
+      window.bunLog("[HFTrajectoryList] Creating initial state");
+    }
     return {
       trajectories: [],
       filteredTrajectories: [],
@@ -42722,12 +42724,9 @@ var HFTrajectoryListWidget = {
   },
   render: (ctx) => exports_Effect.gen(function* () {
     const state = yield* ctx.state.get;
-    console.log("[HFTrajectoryList] Rendering, state:", {
-      loading: state.loading,
-      totalCount: state.totalCount,
-      trajectoriesLength: state.trajectories.length,
-      error: state.error
-    });
+    if (window.bunLog) {
+      window.bunLog(`[HFTrajectoryList] Rendering, loading=${state.loading}, totalCount=${state.totalCount}, trajectories=${state.trajectories.length}, error=${state.error}`);
+    }
     const header = html`
         <div
           class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 cursor-pointer bg-zinc-900/40"
@@ -42939,15 +42938,25 @@ var HFTrajectoryListWidget = {
   }),
   subscriptions: (ctx) => {
     const initialLoad = exports_Effect.gen(function* () {
-      console.log("[HFTrajectoryList] Starting initial load...");
+      if (window.bunLog) {
+        window.bunLog("[HFTrajectoryList] Starting initial load...");
+      }
       const service3 = yield* OpenThoughtsService;
       try {
-        console.log("[HFTrajectoryList] Getting trajectory count...");
+        if (window.bunLog) {
+          window.bunLog("[HFTrajectoryList] Getting trajectory count...");
+        }
         const totalCount = yield* service3.count();
-        console.log("[HFTrajectoryList] Total count:", totalCount);
-        console.log("[HFTrajectoryList] Loading first page...");
+        if (window.bunLog) {
+          window.bunLog(`[HFTrajectoryList] Total count: ${totalCount}`);
+        }
+        if (window.bunLog) {
+          window.bunLog("[HFTrajectoryList] Loading first page...");
+        }
         const trajectories = yield* service3.getTrajectories(0, 100);
-        console.log("[HFTrajectoryList] Loaded trajectories:", trajectories.length);
+        if (window.bunLog) {
+          window.bunLog(`[HFTrajectoryList] Loaded trajectories: ${trajectories.length}`);
+        }
         const metadata = trajectories.map((t, i) => extractMetadata(t, i));
         yield* ctx.state.update((s) => ({
           ...s,
@@ -42956,9 +42965,13 @@ var HFTrajectoryListWidget = {
           totalCount,
           loading: false
         }));
-        console.log("[HFTrajectoryList] Initial load complete");
+        if (window.bunLog) {
+          window.bunLog("[HFTrajectoryList] Initial load complete");
+        }
       } catch (error) {
-        console.error("[HFTrajectoryList] Initial load failed:", error);
+        if (window.bunLog) {
+          window.bunLog(`[HFTrajectoryList] Initial load failed: ${error}`);
+        }
         yield* ctx.state.update((s) => ({
           ...s,
           loading: false,
@@ -43026,7 +43039,9 @@ var getMessageText = (step4) => {
 var HFTrajectoryDetailWidget = {
   id: "hf-trajectory-detail",
   initialState: () => {
-    console.log("[HFTrajectoryDetail] Creating initial state");
+    if (window.bunLog) {
+      window.bunLog("[HFTrajectoryDetail] Creating initial state");
+    }
     return {
       trajectory: null,
       sessionId: null,

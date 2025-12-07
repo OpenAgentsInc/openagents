@@ -136,7 +136,9 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
   id: "hf-trajectory-detail",
 
   initialState: () => {
-    console.log("[HFTrajectoryDetail] Creating initial state")
+    if ((window as any).bunLog) {
+      (window as any).bunLog("[HFTrajectoryDetail] Creating initial state")
+    }
     return {
       trajectory: null,
       sessionId: null,
