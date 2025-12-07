@@ -16,9 +16,9 @@
 
 import { Effect, Context, Layer, Schedule } from "effect";
 import type { ChatRequest, ChatResponse, ChatMessage, ChatToolCall } from "./openrouter-types.js";
-import { existsSync } from "fs";
+import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 
 // --- Configuration ---
 
@@ -44,6 +44,76 @@ const DEFAULT_BRIDGE_PATHS = [
   "/usr/local/bin/foundation-bridge",
   "/opt/homebrew/bin/foundation-bridge",
 ];
+
+// Lock file for singleton server access
+const FM_LOCK_FILE = join(tmpdir(), "fm-bridge.lock");
+const LOCK_TIMEOUT_MS = 30000; // 30 seconds max wait for lock
+const LOCK_STALE_MS = 60000; // Consider lock stale after 60 seconds
+
+/**
+ * Acquire exclusive lock for FM bridge operations.
+ * Returns true if lock acquired, false if timeout.
+ */
+const acquireLock = (): Effect.Effect<boolean, never> =>
+  Effect.gen(function* () {
+    const startTime = Date.now();
+    const pid = process.pid;
+
+    while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
+      // Check if lock exists
+      if (existsSync(FM_LOCK_FILE)) {
+        // Read lock to check if stale
+        try {
+          const lockData = readFileSync(FM_LOCK_FILE, "utf-8");
+          const lockInfo = JSON.parse(lockData) as { pid: number; timestamp: number };
+
+          // Check if lock is stale (older than LOCK_STALE_MS)
+          if (Date.now() - lockInfo.timestamp > LOCK_STALE_MS) {
+            // Stale lock, remove it
+            try {
+              unlinkSync(FM_LOCK_FILE);
+            } catch {
+              // Ignore removal errors
+            }
+          } else {
+            // Lock is held, wait and retry
+            yield* Effect.sleep("100 millis");
+            continue;
+          }
+        } catch {
+          // Invalid lock file, remove it
+          try {
+            unlinkSync(FM_LOCK_FILE);
+          } catch {
+            // Ignore removal errors
+          }
+        }
+      }
+
+      // Try to create lock
+      try {
+        writeFileSync(FM_LOCK_FILE, JSON.stringify({ pid, timestamp: Date.now() }), { flag: "wx" });
+        return true;
+      } catch {
+        // Lock creation failed (race condition), retry
+        yield* Effect.sleep("100 millis");
+      }
+    }
+
+    return false; // Timeout
+  });
+
+/**
+ * Release the FM bridge lock.
+ */
+const releaseLock = (): Effect.Effect<void, never> =>
+  Effect.sync(() => {
+    try {
+      unlinkSync(FM_LOCK_FILE);
+    } catch {
+      // Ignore errors (lock may not exist or be owned by another process)
+    }
+  });
 
 // --- Error Types ---
 
@@ -211,6 +281,7 @@ export const checkFMHealth = (
 /**
  * Ensure the Foundation Models server is running.
  * If not running, attempts to start it using the bridge binary.
+ * Uses file-based locking to prevent concurrent server starts.
  */
 export const ensureServerRunning = (
   config: Partial<FMConfig> = {},
@@ -218,18 +289,45 @@ export const ensureServerRunning = (
   Effect.gen(function* () {
     const port = config.port ?? DEFAULT_FM_PORT;
 
-    // Check if already running
+    // Quick check before acquiring lock (optimization)
+    const quickHealth = yield* checkFMHealth(port).pipe(
+      Effect.catchAll(() => Effect.succeed({ available: false, serverRunning: false, modelAvailable: false } as FMHealthResult)),
+    );
+
+    if (quickHealth.serverRunning) {
+      return;
+    }
+
+    // Acquire exclusive lock to prevent concurrent server starts
+    const lockAcquired = yield* acquireLock();
+    if (!lockAcquired) {
+      // Timeout waiting for lock - another process may be starting the server
+      // Check if server is now running (started by another process)
+      const retryHealth = yield* checkFMHealth(port).pipe(
+        Effect.catchAll(() => Effect.succeed({ available: false, serverRunning: false, modelAvailable: false } as FMHealthResult)),
+      );
+      if (retryHealth.serverRunning) {
+        return;
+      }
+      return yield* Effect.fail(
+        new FMError("timeout", "Timeout waiting for FM bridge lock - another process may be stuck"),
+      );
+    }
+
+    // Re-check after acquiring lock (another process may have started it)
     const health = yield* checkFMHealth(port).pipe(
       Effect.catchAll(() => Effect.succeed({ available: false, serverRunning: false, modelAvailable: false } as FMHealthResult)),
     );
 
     if (health.serverRunning) {
+      yield* releaseLock();
       return;
     }
 
     // Find bridge binary
     const bridgePath = config.bridgePath ?? findBridgePath();
     if (!bridgePath) {
+      yield* releaseLock();
       return yield* Effect.fail(
         new FMError(
           "bridge_not_found",
@@ -250,7 +348,7 @@ export const ensureServerRunning = (
       Schedule.addDelay(() => "500 millis"),
     );
 
-    yield* Effect.retry(
+    const startResult = yield* Effect.retry(
       checkFMHealth(port).pipe(
         Effect.flatMap((h) =>
           h.serverRunning
@@ -260,12 +358,18 @@ export const ensureServerRunning = (
       ),
       schedule,
     ).pipe(
-      Effect.catchAll(() =>
-        Effect.fail(
-          new FMError("server_not_running", `Server failed to start after 5 seconds`),
-        ),
-      ),
+      Effect.map(() => true),
+      Effect.catchAll(() => Effect.succeed(false)),
     );
+
+    // Release lock after server startup (or failure)
+    yield* releaseLock();
+
+    if (!startResult) {
+      return yield* Effect.fail(
+        new FMError("server_not_running", `Server failed to start after 5 seconds`),
+      );
+    }
 
     console.log("Foundation Models server started successfully");
   });
