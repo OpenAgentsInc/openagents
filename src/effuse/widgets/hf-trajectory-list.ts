@@ -9,7 +9,7 @@
 import { Effect, Stream } from "effect"
 import { html, joinTemplates } from "../template/html.js"
 import type { Widget } from "../widget/types.js"
-import { getSocketClient } from "../../mainview/socket-client.js"
+import { SocketServiceTag } from "../services/socket.js"
 import type { Trajectory } from "../../atif/schema.js"
 
 // ============================================================================
@@ -130,12 +130,13 @@ const formatDate = (iso: string): string => {
 
 export const HFTrajectoryListWidget: Widget<
   HFTrajectoryListState,
-  HFTrajectoryListEvent
+  HFTrajectoryListEvent,
+  SocketServiceTag
 > = {
   id: "hf-trajectory-list",
 
   initialState: () => {
-    if ((window as any).bunLog) {
+    if (typeof window !== "undefined" && (window as any).bunLog) {
       (window as any).bunLog("[HFTrajectoryList] Creating initial state")
     }
     return {
@@ -155,7 +156,7 @@ export const HFTrajectoryListWidget: Widget<
   render: (ctx) =>
     Effect.gen(function* () {
       const state = yield* ctx.state.get
-      if ((window as any).bunLog) {
+      if (typeof window !== "undefined" && (window as any).bunLog) {
         (window as any).bunLog(`[HFTrajectoryList] Rendering, loading=${state.loading}, totalCount=${state.totalCount}, trajectories=${state.trajectories.length}, error=${state.error}`)
       }
 
@@ -347,7 +348,7 @@ export const HFTrajectoryListWidget: Widget<
 
   handleEvent: (event, ctx) =>
     Effect.gen(function* () {
-      const socketClient = getSocketClient()
+      const socket = yield* SocketServiceTag
 
       switch (event.type) {
         case "loadPage": {
@@ -371,9 +372,7 @@ export const HFTrajectoryListWidget: Widget<
           try {
             // Load page via RPC
             const offset = newPage * state.pageSize
-            const trajectories = yield* Effect.promise(() =>
-              socketClient.getHFTrajectories(offset, state.pageSize)
-            )
+            const trajectories = yield* socket.getHFTrajectories(offset, state.pageSize)
 
             const metadata = (trajectories as Trajectory[]).map((t, i) => extractMetadata(t, offset + i))
 
@@ -428,27 +427,27 @@ export const HFTrajectoryListWidget: Widget<
   subscriptions: (ctx) => {
     // Initial load on mount
     const initialLoad = Effect.gen(function* () {
-      if ((window as any).bunLog) {
+      if (typeof window !== "undefined" && (window as any).bunLog) {
         (window as any).bunLog("[HFTrajectoryList] Starting initial load...")
       }
-      const socketClient = getSocketClient()
+      const socket = yield* SocketServiceTag
 
       try {
         // Get total count via RPC
-        if ((window as any).bunLog) {
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog("[HFTrajectoryList] Getting trajectory count...")
         }
-        const totalCount = yield* Effect.promise(() => socketClient.getHFTrajectoryCount())
-        if ((window as any).bunLog) {
+        const totalCount = yield* socket.getHFTrajectoryCount()
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog(`[HFTrajectoryList] Total count: ${totalCount}`)
         }
 
         // Load first page via RPC
-        if ((window as any).bunLog) {
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog("[HFTrajectoryList] Loading first page...")
         }
-        const trajectories = yield* Effect.promise(() => socketClient.getHFTrajectories(0, 100))
-        if ((window as any).bunLog) {
+        const trajectories = yield* socket.getHFTrajectories(0, 100)
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog(`[HFTrajectoryList] Loaded trajectories: ${trajectories.length}`)
         }
 
@@ -461,11 +460,11 @@ export const HFTrajectoryListWidget: Widget<
           totalCount,
           loading: false,
         }))
-        if ((window as any).bunLog) {
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog("[HFTrajectoryList] Initial load complete")
         }
       } catch (error) {
-        if ((window as any).bunLog) {
+        if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog(`[HFTrajectoryList] Initial load failed: ${error}`)
         }
         yield* ctx.state.update((s) => ({

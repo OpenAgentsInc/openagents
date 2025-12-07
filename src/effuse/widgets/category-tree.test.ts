@@ -425,7 +425,7 @@ describe("CategoryTreeWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer } = yield* makeTestLayer()
 
           yield* Effect.provide(
             Effect.gen(function* () {

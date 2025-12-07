@@ -8,6 +8,7 @@ import type {
   Status,
   DeletionEntry,
 } from "../tasks/schema.js";
+import { INITIAL_SCHEMA_SQL } from "./migrations.js";
 
 /**
  * DatabaseError - Error type for all database operations
@@ -117,7 +118,7 @@ export class DatabaseService extends Context.Tag("DatabaseService")<
       effect: Effect.Effect<A, E>,
     ) => Effect.Effect<A, E | DatabaseError>;
   }
->() {}
+>() { }
 
 /**
  * Helper: Convert DB row to Task object
@@ -145,10 +146,10 @@ const rowToTask = (row: any): Task => ({
   pendingCommit: row.pending_commit ? JSON.parse(row.pending_commit) : undefined,
   source: row.source_repo || row.source_discovered_from || row.source_external_ref
     ? {
-        repo: row.source_repo ?? undefined,
-        discoveredFrom: row.source_discovered_from ?? undefined,
-        externalRef: row.source_external_ref ?? undefined,
-      }
+      repo: row.source_repo ?? undefined,
+      discoveredFrom: row.source_discovered_from ?? undefined,
+      externalRef: row.source_external_ref ?? undefined,
+    }
     : undefined,
 });
 
@@ -745,9 +746,28 @@ export const makeDatabaseLive = (
           });
         });
 
-      // Migrate (placeholder - will be implemented in migrations.ts)
+
+
+      // Migrate
       const migrate = (): Effect.Effect<void, DatabaseError> =>
-        Effect.succeed(undefined);
+        Effect.try({
+          try: () => {
+            const tableExists = db
+              .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_version'",
+              )
+              .get();
+
+            if (!tableExists) {
+              db.exec(INITIAL_SCHEMA_SQL);
+            }
+          },
+          catch: (e) =>
+            new DatabaseError("migration", `Failed to initialize schema: ${e}`),
+        });
+
+      // Run migration on startup
+      yield* migrate();
 
       return {
         db,

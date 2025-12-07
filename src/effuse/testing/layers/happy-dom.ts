@@ -147,6 +147,8 @@ const makeSocketService = (
     Effect.fail(new SocketError("request_failed", "Mock: assignTaskToMC")),
   loadUnifiedTrajectories: (_) =>
     Effect.fail(new SocketError("request_failed", "Mock: loadUnifiedTrajectories")),
+  getHFTrajectoryCount: () => Effect.succeed(0),
+  getHFTrajectories: (_, __) => Effect.succeed([]),
 })
 
 /**
@@ -209,7 +211,7 @@ const makeTestBrowser = (document: HappyDocument): TestBrowser => {
             new TestError({ reason: "element_not_found", message: `Click target not found: ${selector}` })
           )
         }
-        ;(el as unknown as HTMLElement).click()
+        ; (el as unknown as HTMLElement).click()
       }),
 
     type: (selector: string, text: string) =>

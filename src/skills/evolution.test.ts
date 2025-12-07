@@ -42,7 +42,7 @@ const createTestSkill = (
   successRate?: number,
   usageCount?: number,
 ): Skill => {
-  const skill = createSkill({
+  const baseSkill = createSkill({
     name,
     description: `Test skill: ${name}`,
     code: `// ${name} code`,
@@ -50,13 +50,12 @@ const createTestSkill = (
     status,
     source: "manual",
   });
-  if (successRate !== undefined) {
-    (skill as any).successRate = successRate;
-  }
-  if (usageCount !== undefined) {
-    (skill as any).usageCount = usageCount;
-  }
-  return skill;
+
+  return {
+    ...baseSkill,
+    ...(successRate !== undefined ? { successRate } : {}),
+    ...(usageCount !== undefined ? { usageCount } : {}),
+  };
 };
 
 describe("Skill Evolution Configuration", () => {

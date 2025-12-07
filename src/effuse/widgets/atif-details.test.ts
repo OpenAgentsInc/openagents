@@ -138,7 +138,7 @@ describe("ATIFDetailsWidget", () => {
                 },
               ]
 
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<ATIFDetailsState>({
                 sessionId: "session-xyz",
                 agentName: "minimal",
                 steps: mockSteps,

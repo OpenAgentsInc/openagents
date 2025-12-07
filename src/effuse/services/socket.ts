@@ -13,6 +13,7 @@ import type {
   MCTask,
   UnifiedTrajectory,
 } from "../../desktop/protocol.js"
+import type { Trajectory } from "../../atif/schema.js"
 
 /**
  * Error types for socket operations
@@ -104,6 +105,12 @@ export interface SocketService {
 
   /** Load unified trajectories */
   readonly loadUnifiedTrajectories: (limit?: number) => Effect.Effect<UnifiedTrajectory[], SocketError>
+
+  /** Get total count of HF trajectories */
+  readonly getHFTrajectoryCount: () => Effect.Effect<number, SocketError>
+
+  /** Get page of HF trajectories */
+  readonly getHFTrajectories: (offset: number, limit: number) => Effect.Effect<Trajectory[], SocketError>
 }
 
 /**
