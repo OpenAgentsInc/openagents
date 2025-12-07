@@ -280,7 +280,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
               }
 
               const expandedContent = html`
-                <div class="px-4 py-3 bg-zinc-900/20 space-y-3">
+                <div class="px-4 py-2 bg-zinc-900/20 space-y-2">
                   ${step.message
                     ? html`
                         <div>
