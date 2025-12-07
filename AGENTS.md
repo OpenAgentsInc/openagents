@@ -10,12 +10,17 @@ Before you make any code changes in this repo, do the following:
    - `docs/mechacoder/GOLDEN-LOOP-v2.md`
    - `docs/mechacoder/spec.md`
 
-2. **Inspect project/task config:**
+2. **If working on frontend/UI code**, also read:
+   - `docs/effuse/README.md` - Effuse framework intro (required)
+   - `docs/effuse/ARCHITECTURE.md` - Deep dive (if modifying framework)
+   - `docs/effuse/TESTING.md` - Testing guide (if writing widget tests)
+
+3. **Inspect project/task config:**
    - Read `.openagents/project.json` to understand:
      - `defaultBranch`, `testCommands`, `e2eCommands`, `allowPush`, etc.
    - Skim `.openagents/tasks.jsonl` to see how work is structured.
 
-3. **Start a work log:**
+4. **Start a work log:**
    - Use the `DAY`/`TS` snippet under "Work Logs".
    - Note the task ID you're about to work on and your intent for this session.
 
@@ -538,3 +543,41 @@ bun run mechacoder:parallel --max-agents 4 --max-tasks 50 --cc-only
 - `--sandbox` - Force sandbox enabled (override project config)
 - `--no-sandbox` - Force sandbox disabled (override project config)
 - `--dry-run` - Preview without executing
+
+### Effuse UI Framework
+
+Effuse is our custom Effect-native UI framework for the mainview desktop HUD. **If you're touching any frontend code (`src/effuse/`, `src/mainview/`, or widget-related files), read the Effuse docs first.**
+
+**Documentation:** [`docs/effuse/`](docs/effuse/)
+- [README.md](docs/effuse/README.md) - Quick intro, core concepts, examples
+- [ARCHITECTURE.md](docs/effuse/ARCHITECTURE.md) - Lifecycle, services, internals
+- [TESTING.md](docs/effuse/TESTING.md) - Three-layer testing pyramid
+
+**Key concepts:**
+- **Widget** = Effect-native UI component with typed state (`S`), events (`E`), and service requirements (`R`)
+- **StateCell<A>** = Reactive state primitive (Effect.Ref + Queue), triggers re-renders on change
+- **html\`\`** = Tagged template with automatic XSS escaping
+- **Services** = DomService, StateService, SocketService (all Effect Context.Tags)
+- **Layers** = `EffuseLive` (production), `makeTestLayer()` (mock), `makeHappyDomLayer()` (real DOM)
+
+**File structure:**
+```
+src/effuse/
+├── index.ts           # Public exports
+├── widget/            # Widget interface + mount
+├── state/             # StateCell
+├── template/          # html`` system
+├── services/          # DOM, State, Socket
+├── layers/            # Live + Test layers
+├── widgets/           # Implemented widgets (APM, TB*, MC*, etc.)
+└── testing/           # TestHarness, TestBrowser, Happy-DOM
+```
+
+**Rules:**
+- ✅ Use `html\`\`` for all templates (auto-escapes)
+- ✅ Use `Effect.runFork(ctx.emit(...))` in DOM callbacks (they're sync)
+- ✅ Use `data-action` attributes + `delegate()` for event handling
+- ✅ Test widgets with `makeTestLayer()` or `makeHappyDomLayer()`
+- ❌ Do NOT use innerHTML directly - use `ctx.dom.render()`
+- ❌ Do NOT mutate state - use `state.update(s => ({ ...s, ... }))`
+- ❌ Do NOT forget `Effect.scoped` when mounting widgets
