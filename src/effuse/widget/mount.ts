@@ -39,7 +39,7 @@ import { StateServiceTag } from "../services/state.js"
 export const mountWidget = <S, E, R>(
   widget: Widget<S, E, R>,
   container: Element
-): Effect.Effect<MountedWidget, never, R | DomServiceTag | StateServiceTag | Scope.Scope> =>
+): Effect.Effect<MountedWidget<E>, never, R | DomServiceTag | StateServiceTag | Scope.Scope> =>
   Effect.gen(function* () {
     const dom = yield* DomServiceTag
     const stateService = yield* StateServiceTag
@@ -53,13 +53,16 @@ export const mountWidget = <S, E, R>(
       (queue) => Queue.shutdown(queue)
     )
 
+    // Create emit function
+    const emit = (event: E) =>
+      Queue.offer(eventQueue, event).pipe(
+        Effect.catchAll(() => Effect.void) // Silently ignore queue full/shutdown
+      )
+
     // Build context
     const ctx: WidgetContext<S, E> = {
       state,
-      emit: (event) =>
-        Queue.offer(eventQueue, event).pipe(
-          Effect.catchAll(() => Effect.void) // Silently ignore queue full/shutdown
-        ),
+      emit,
       dom,
       container,
     }
@@ -119,9 +122,11 @@ export const mountWidget = <S, E, R>(
       }
     }
 
-    // Return handle for manual unmount if needed
-    const mounted: MountedWidget = {
+    // Return handle for manual unmount and event access
+    const mounted: MountedWidget<E> = {
       unmount: Effect.void, // Unmount happens via scope
+      events: Stream.fromQueue(eventQueue),
+      emit,
     }
 
     return mounted
@@ -135,7 +140,7 @@ export const mountWidget = <S, E, R>(
 export const mountWidgetById = <S, E, R>(
   widget: Widget<S, E, R>,
   containerId: string
-): Effect.Effect<MountedWidget, never, R | DomServiceTag | StateServiceTag | Scope.Scope> =>
+): Effect.Effect<MountedWidget<E>, never, R | DomServiceTag | StateServiceTag | Scope.Scope> =>
   Effect.gen(function* () {
     const dom = yield* DomServiceTag
     const container = yield* dom.queryId(containerId)
@@ -143,7 +148,12 @@ export const mountWidgetById = <S, E, R>(
   }).pipe(
     Effect.catchAll((error) => {
       console.error(`[Effuse] Failed to mount widget "${widget.id}":`, error)
-      return Effect.succeed({ unmount: Effect.void })
+      // Return a dummy mounted widget with empty streams
+      return Effect.succeed({
+        unmount: Effect.void,
+        events: Stream.empty,
+        emit: () => Effect.void,
+      })
     })
   )
 
