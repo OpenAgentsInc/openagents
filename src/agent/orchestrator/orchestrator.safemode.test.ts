@@ -40,7 +40,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 /**
  * Creates a test git repository with OpenAgents task configuration

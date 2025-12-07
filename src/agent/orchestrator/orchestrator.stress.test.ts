@@ -30,7 +30,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 const withEnv = async <T>(env: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
   const previous: Record<string, string | undefined> = {};

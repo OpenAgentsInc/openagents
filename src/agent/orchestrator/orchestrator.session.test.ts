@@ -28,7 +28,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 const writeTasksFile = (dir: string, taskId: string, labels: string[] = []) => {
   const now = new Date().toISOString();

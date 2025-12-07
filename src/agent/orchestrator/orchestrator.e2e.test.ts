@@ -30,7 +30,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 const readTasks = (tasksPath: string) =>
   fs.readFileSync(tasksPath, "utf-8").trim().split("\n").map((line) => JSON.parse(line));
