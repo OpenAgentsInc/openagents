@@ -69,17 +69,17 @@ export interface TaskRunResult {
   tokens: number;
   durationMs: number;
   output: string;
-  error?: string;
+  error?: string | undefined;
   model: string;
   sessionMetadata?: {
-    toolsUsed?: Record<string, number>;
+    toolsUsed?: Record<string, number> | undefined;
     usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-    };
+      inputTokens?: number | undefined;
+      outputTokens?: number | undefined;
+    } | undefined;
     /** Skills injected into the system prompt (Voyager-style) */
-    skillsUsed?: string[];
-  };
+    skillsUsed?: string[] | undefined;
+  } | undefined;
 }
 
 export interface RunTaskOptions {
@@ -563,7 +563,7 @@ export interface FMToolParseError {
   /** ISO timestamp of the error */
   timestamp: string;
   /** Optional additional context */
-  details?: string;
+  details?: string | undefined;
 }
 
 /**

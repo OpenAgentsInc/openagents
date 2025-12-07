@@ -292,7 +292,7 @@ describe("CategoryTreeWidget", () => {
 
               yield* CategoryTreeWidget.handleEvent({ type: "expandAll" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.collapsedCategories.size).toBe(0)
             }),
             layer
@@ -326,7 +326,7 @@ describe("CategoryTreeWidget", () => {
 
               yield* CategoryTreeWidget.handleEvent({ type: "collapseAll" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.collapsedCategories.has("basics")).toBe(true)
               const html = (yield* CategoryTreeWidget.render(ctx)).toString()
               expect(html).not.toContain("Task 1")
@@ -438,7 +438,7 @@ describe("CategoryTreeWidget", () => {
 
               yield* CategoryTreeWidget.handleEvent({ type: "selectTask", taskId: "task-2" }, ctx)
 
-              const updated = yield* state.get
+              const updated = yield* state.get()
               expect(updated.selectedTaskId).toBe("task-2")
 
               const html = (yield* CategoryTreeWidget.render(ctx)).toString()

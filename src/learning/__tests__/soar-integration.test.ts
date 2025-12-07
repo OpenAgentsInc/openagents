@@ -6,16 +6,14 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { Effect, Option } from "effect";
+import { Option } from "effect";
 import {
   relabelBatch,
   relabelAttempt,
-  DEFAULT_HINDSIGHT_CONFIG,
   type AttemptRecord,
 } from "../soar-hindsight.js";
 import {
   validateBatch,
-  validateSynthetic,
   DEFAULT_VALIDATION_CONFIG,
 } from "../soar-validation.js";
 import {

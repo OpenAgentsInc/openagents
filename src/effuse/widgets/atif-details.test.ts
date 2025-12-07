@@ -42,8 +42,6 @@ describe("ATIFDetailsWidget", () => {
               timestamp: "2024-12-06T10:00:00Z",
               source: "user",
               message: "List all files",
-              toolCalls: undefined,
-              observation: undefined,
             },
             {
               stepId: 2,
