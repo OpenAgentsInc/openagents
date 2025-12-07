@@ -70,7 +70,7 @@ export const createMockReasoningTrace = (
 });
 
 export const createMockTRMState = (
-  overrides: Partial<TRMState> & {
+  overrides: {
     x?: Partial<TaskContext>;
     y?: Partial<CandidateSolution>;
     z?: Partial<ReasoningTrace> & { progress?: Partial<ReasoningTrace["progress"]> };
@@ -87,10 +87,21 @@ export const createMockTRMState = (
     ? { ...baseZ.progress, ...overrides.z.progress }
     : baseZ.progress;
 
+  // Build z with proper type narrowing
+  const z: ReasoningTrace = {
+    hypotheses: overrides.z?.hypotheses ?? baseZ.hypotheses,
+    errorPatterns: overrides.z?.errorPatterns ?? baseZ.errorPatterns,
+    ruledOut: overrides.z?.ruledOut ?? baseZ.ruledOut,
+    progress: zProgress,
+    history: overrides.z?.history ?? baseZ.history,
+    depth: overrides.z?.depth ?? baseZ.depth,
+    maxDepth: overrides.z?.maxDepth ?? baseZ.maxDepth,
+  };
+
   return {
     x: { ...baseX, ...overrides.x },
     y: { ...baseY, ...overrides.y },
-    z: { ...baseZ, ...overrides.z, progress: zProgress },
+    z,
     meta: {
       createdAt: now,
       updatedAt: now,

@@ -114,7 +114,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
 
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [{ text: "line 1", source: "system" as const, timestamp: Date.now() }],
                 maxLines: 500,
                 visible: true,
@@ -154,7 +154,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [],
               maxLines: 500,
               visible: false,
@@ -447,7 +447,7 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-complete" })
+          yield* injectMessage({ type: "tb_run_start", runId: "run-complete", suiteName: "test-suite", suiteVersion: "1.0.0", totalTasks: 1, taskIds: ["task-1"], timestamp: "2025-01-01T00:00:00Z" })
           yield* injectMessage({
             type: "tb_task_output",
             runId: "run-complete",
@@ -455,7 +455,7 @@ describe("TBOutputWidget", () => {
             text: "Finished line",
             source: "system",
           })
-          yield* injectMessage({ type: "tb_run_complete", runId: "run-complete" })
+          yield* injectMessage({ type: "tb_run_complete", runId: "run-complete", passRate: 100, passed: 1, failed: 0, timeout: 0, error: 0, totalDurationMs: 1000 })
 
           yield* Effect.sleep(0)
 
@@ -477,7 +477,7 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-verify" })
+          yield* injectMessage({ type: "tb_run_start", runId: "run-verify", suiteName: "verification-suite", suiteVersion: "1.0.0", totalTasks: 1, taskIds: ["task-verify"], timestamp: "2025-01-01T00:00:00Z" })
           yield* injectMessage({
             type: "tb_task_output",
             runId: "run-verify",
@@ -507,7 +507,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [
                   { text: "keep?", source: "agent", timestamp: Date.now() },
                   { text: "another", source: "system", timestamp: Date.now() },
@@ -562,7 +562,7 @@ describe("TBOutputWidget", () => {
                 const stateService = yield* StateServiceTag
                 const dom = yield* DomServiceTag
                 const container = { id: "tb-output-test" } as Element
-                const state = yield* stateService.cell({
+                const state = yield* stateService.cell<TBOutputState>({
                   outputLines: [
                     { text: "line one", source: "agent", timestamp: Date.now() },
                     { text: "line two", source: "verification", timestamp: Date.now() },
@@ -609,7 +609,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [
                   { text: "agent only", source: "agent", timestamp: Date.now() },
                   { text: "verify line", source: "verification", timestamp: Date.now() },
@@ -660,7 +660,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [
                   { text: "first line", source: "agent", timestamp: Date.now() },
                   { text: "second line", source: "system", timestamp: Date.now() },
@@ -712,7 +712,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [{ text: "line one", source: "agent", timestamp: Date.now() }],
                 maxLines: 500,
                 visible: true,
@@ -752,7 +752,7 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-atif" })
+          yield* injectMessage({ type: "tb_run_start", runId: "run-atif", suiteName: "atif-suite", suiteVersion: "1.0.0", totalTasks: 1, taskIds: ["task-atif"], timestamp: "2025-01-01T00:00:00Z" })
           yield* injectMessage({
             type: "atif_step",
             runId: "run-atif",
@@ -792,7 +792,7 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-obs" })
+          yield* injectMessage({ type: "tb_run_start", runId: "run-obs", suiteName: "obs-suite", suiteVersion: "1.0.0", totalTasks: 1, taskIds: ["task-obs"], timestamp: "2025-01-01T00:00:00Z" })
           yield* injectMessage({
             type: "atif_step",
             runId: "run-obs",
@@ -832,7 +832,7 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-current" })
+          yield* injectMessage({ type: "tb_run_start", runId: "run-current", suiteName: "current-suite", suiteVersion: "1.0.0", totalTasks: 1, taskIds: ["task-current"], timestamp: "2025-01-01T00:00:00Z" })
           yield* injectMessage({
             type: "atif_step",
             runId: "run-other",
@@ -872,7 +872,7 @@ describe("TBOutputWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-output-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBOutputState>({
                 outputLines: [
                   { text: "→ read_file(path=\"/test.ts\")", source: "tool", timestamp: Date.now() },
                   { text: "Agent message", source: "agent", timestamp: Date.now() },

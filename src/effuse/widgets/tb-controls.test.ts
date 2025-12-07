@@ -324,7 +324,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const state = yield* stateService.cell<TBControlsState>(TBControlsWidget.initialState())
               const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
@@ -381,7 +381,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const state = yield* stateService.cell<TBControlsState>(TBControlsWidget.initialState())
               const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
@@ -437,7 +437,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const state = yield* stateService.cell<TBControlsState>(TBControlsWidget.initialState())
               const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
@@ -497,7 +497,7 @@ describe("TBControlsWidget", () => {
                 const stateService = yield* StateServiceTag
                 const dom = yield* DomServiceTag
                 const container = { id: "tb-controls-test" } as Element
-                const state = yield* stateService.cell(TBControlsWidget.initialState())
+                const state = yield* stateService.cell<TBControlsState>(TBControlsWidget.initialState())
                 const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
                 yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
@@ -540,7 +540,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 isRunning: true,
                 runId: "run-stop-me",
@@ -586,7 +586,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suitePath: "   ",
               } as TBControlsState)
@@ -633,7 +633,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell(TBControlsWidget.initialState())
+              const state = yield* stateService.cell<TBControlsState>(TBControlsWidget.initialState())
               const ctx = { state, emit: (_event: TBControlsEvent) => Effect.succeed(undefined), dom, container }
 
               yield* TBControlsWidget.handleEvent!({ type: "loadSuite" }, ctx)
@@ -674,7 +674,7 @@ describe("TBControlsWidget", () => {
                   { id: "b", name: "B", difficulty: "hard", category: "c" },
                 ],
               }
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite,
                 selectedTaskIds: new Set(["a"]),
@@ -717,7 +717,7 @@ describe("TBControlsWidget", () => {
                   { id: "b", name: "B", difficulty: "hard", category: "c" },
                 ],
               }
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite,
                 selectedTaskIds: new Set(["a", "b"]),
@@ -762,7 +762,7 @@ describe("TBControlsWidget", () => {
                 ],
               }
 
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...initialTBControlsState,
                 suitePath: "/tmp/suite.json",
                 suite,
@@ -808,7 +808,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite: {
                   name: "previous-suite",
@@ -858,7 +858,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite: {
                   name: "terminal-bench-v1",
@@ -1019,7 +1019,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite,
                 selectedTaskIds: new Set(["task-a"]),
@@ -1056,7 +1056,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suitePath: "/abs/path/to/suite.json",
                 suite: {
@@ -1089,7 +1089,7 @@ describe("TBControlsWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "tb-controls-test" } as Element
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 isRunning: true,
                 totalTasks: 10,
@@ -1140,7 +1140,7 @@ describe("TBControlsWidget", () => {
 
               // Test 1: Timer during active run
               const startTime = Date.now() - (3 * 60 + 45) * 1000 // 3:45 ago
-              const runningState = yield* stateService.cell({
+              const runningState = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 isRunning: true,
                 totalTasks: 10,
@@ -1160,7 +1160,7 @@ describe("TBControlsWidget", () => {
               expect(runningHtml).toContain("⏱") // Timer icon
 
               // Test 2: Duration after run completes
-              const completedState = yield* stateService.cell({
+              const completedState = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 isRunning: false,
                 totalTasks: 10,
@@ -1180,7 +1180,7 @@ describe("TBControlsWidget", () => {
               expect(completedHtml).toContain("⏱") // Timer icon
 
               // Test 3: No timer when not running and no duration
-              const idleState = yield* stateService.cell({
+              const idleState = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 isRunning: false,
                 startedAt: null,
@@ -1219,7 +1219,7 @@ describe("TBControlsWidget", () => {
                   { id: "task-004", name: "Hard task", difficulty: "hard", category: "advanced" },
                 ],
               }
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite: mockSuite,
                 difficultyFilter: "easy",
@@ -1265,7 +1265,7 @@ describe("TBControlsWidget", () => {
                   { id: "task-003", name: "List directory", difficulty: "medium", category: "core" },
                 ],
               }
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<TBControlsState>({
                 ...TBControlsWidget.initialState(),
                 suite: mockSuite,
                 searchFilter: "file",

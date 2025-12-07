@@ -247,8 +247,8 @@ describe("CategoryTreeWidget", () => {
           // Inject suite info
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "task-001", name: "Task One", difficulty: "easy", category: "basics" },
               { id: "task-002", name: "Task Two", difficulty: "hard", category: "advanced" },
@@ -280,7 +280,7 @@ describe("CategoryTreeWidget", () => {
             ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
             ["task-002", { id: "task-002", name: "Task 2", difficulty: "hard", category: "advanced", status: "pending" }],
           ])
-          const state = yield* stateService.cell({
+          const state = yield* stateService.cell<CategoryTreeState>({
             tasks,
             collapsedCategories: new Set(["basics", "advanced"]),
             visible: true,
@@ -313,7 +313,7 @@ describe("CategoryTreeWidget", () => {
           const tasks = new Map<string, TBTaskData>([
             ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy" as const, category: "basics", status: "pending" as const }],
           ])
-          const state = yield* stateService.cell({
+          const state = yield* stateService.cell<CategoryTreeState>({
             tasks,
             collapsedCategories: new Set(),
             visible: true,
@@ -349,7 +349,7 @@ describe("CategoryTreeWidget", () => {
               const tasks = new Map<string, TBTaskData>([
                 ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
               ])
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<CategoryTreeState>({
                 tasks,
                 collapsedCategories: new Set(["basics"]),
                 visible: true,
@@ -389,7 +389,7 @@ describe("CategoryTreeWidget", () => {
                 ["task-pass", { id: "task-pass", name: "Task Pass", difficulty: "easy", category: "core", status: "passed" }],
                 ["task-fail", { id: "task-fail", name: "Task Fail", difficulty: "medium", category: "core", status: "failed" }],
               ])
-              const state = yield* stateService.cell({
+              const state = yield* stateService.cell<CategoryTreeState>({
                 tasks,
                 collapsedCategories: new Set(["core"]),
                 visible: true,
@@ -423,7 +423,7 @@ describe("CategoryTreeWidget", () => {
             ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "core", status: "pending" }],
             ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium", category: "core", status: "pending" }],
           ])
-          const state = yield* stateService.cell({
+          const state = yield* stateService.cell<CategoryTreeState>({
             tasks,
             collapsedCategories: new Set(),
             visible: true,
@@ -455,8 +455,8 @@ describe("CategoryTreeWidget", () => {
 
           yield* injectMessage({
             type: "tb_suite_info",
-            suiteName: "terminal-bench-v1",
-            suiteVersion: "1.0.0",
+            name: "terminal-bench-v1",
+            version: "1.0.0",
             tasks: [
               { id: "task-001", name: "First", difficulty: "easy", category: "basics" },
               { id: "task-002", name: "Second", difficulty: "hard", category: "advanced" },
@@ -472,6 +472,8 @@ describe("CategoryTreeWidget", () => {
             taskName: "First",
             difficulty: "easy",
             category: "basics",
+            taskIndex: 1,
+            totalTasks: 2,
           })
 
           yield* Effect.sleep(10)

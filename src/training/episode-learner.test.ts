@@ -13,7 +13,7 @@ import {
   EpisodeLearnerError,
   DEFAULT_LEARNER_CONFIG,
 } from "./episode-learner.js";
-import { EpisodeStore, createEpisode } from "../bench/episode-store.js";
+import { createEpisode, generateRunId } from "../bench/episode-store.js";
 
 const TEST_PROJECT_ROOT = "/tmp/episode-learner-test";
 const TEST_GYM_DIR = join(TEST_PROJECT_ROOT, ".openagents", "gym");

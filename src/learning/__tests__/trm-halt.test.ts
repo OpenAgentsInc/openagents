@@ -286,7 +286,7 @@ describe("shouldHalt", () => {
   test("accepts config overrides", () => {
     const state = createMockTRMState({
       y: { validated: false, trainingAccuracy: 0.8, confidence: 0.8 },
-      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42 } },
+      z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
     });
     const result = shouldHalt(state, { ...DEFAULT_HALT_CONFIG, confidenceThreshold: 0.7 });
 
@@ -363,7 +363,7 @@ describe("TRMHaltService", () => {
         const service = yield* TRMHaltService;
         const state = createMockTRMState({
           y: { validated: false, trainingAccuracy: 0.5, confidence: 0.5 },
-          z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42 } },
+          z: { depth: 5, maxDepth: 42, progress: { stepsCompleted: 5, totalSteps: 42, isStuck: false, stuckCount: 0 } },
         });
         return yield* service.shouldHalt(state);
       }).pipe(Effect.provide(TRMHaltServiceLive)),
