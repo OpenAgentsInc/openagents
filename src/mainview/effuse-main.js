@@ -28931,7 +28931,7 @@ ${endStackCall}`;
           return stepHeader;
         }
         const expandedContent = html`
-                <div class="px-4 py-3 bg-zinc-900/20 space-y-3">
+                <div class="px-4 py-2 bg-zinc-900/20 space-y-2">
                   ${step4.message ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Message:</div>
