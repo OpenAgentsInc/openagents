@@ -16,7 +16,6 @@ import { DatabaseService, type SortPolicy } from "../storage/database.js";
 import {
   decodeTaskCreate,
   decodeTaskUpdate,
-  isTaskReady,
   type Comment,
   type DeletionEntry,
   type Task,
@@ -24,13 +23,7 @@ import {
   type TaskFilter,
   type TaskUpdate,
 } from "./schema.js";
-import {
-  canHaveChildren,
-  findNextChildNumber,
-  generateChildId,
-  generateHashId,
-  generateRandomId,
-} from "./id.js";
+import { generateHashId, generateRandomId } from "./id.js";
 
 export class TaskServiceError extends Error {
   readonly _tag = "TaskServiceError";
@@ -50,6 +43,20 @@ export class TaskServiceError extends Error {
 }
 
 const nowIso = (timestamp?: Date) => (timestamp ?? new Date()).toISOString();
+
+const applyTaskUpdate = (base: Task, update: TaskUpdate): Task => {
+  const merged: Task = { ...base };
+  type UpdateEntry = [keyof TaskUpdate, TaskUpdate[keyof TaskUpdate]];
+
+  for (const [key, value] of Object.entries(update) as UpdateEntry[]) {
+    if (value !== undefined) {
+      (merged as Task & Record<string, unknown>)[key as keyof Task] =
+        value as Task[keyof Task];
+    }
+  }
+
+  return merged;
+};
 
 /**
  * Read all tasks from database
@@ -165,7 +172,7 @@ export const createTask = ({
 
     const now = nowIso(timestamp);
 
-    const task: Task = {
+    const task = {
       id: id!,
       title: validated.title,
       description: validated.description,
@@ -187,7 +194,7 @@ export const createTask = ({
       estimatedMinutes: validated.estimatedMinutes,
       source: validated.source,
       pendingCommit: undefined,
-    };
+    } satisfies Task;
 
     yield* db.insertTask(task).pipe(
       Effect.mapError(
@@ -244,11 +251,11 @@ export const updateTask = ({
     }
 
     // Merge updates
-    const updatedTask: Task = {
-      ...existing,
-      ...validated,
+    const mergedTask = applyTaskUpdate(existing, validated);
+    const updatedTask = {
+      ...mergedTask,
       updatedAt: nowIso(timestamp),
-    };
+    } satisfies Task;
 
     yield* db.updateTask(id, validated).pipe(
       Effect.mapError(
@@ -298,7 +305,7 @@ export const closeTask = ({
     }
 
     return yield* updateTask({
-      tasksPath,
+      ...(tasksPath ? { tasksPath } : {}),
       id,
       update: {
         status: "closed",
@@ -306,7 +313,7 @@ export const closeTask = ({
         closedAt: nowIso(timestamp),
         ...(mergedCommits ? { commits: mergedCommits } : {}),
       },
-      timestamp,
+      ...(timestamp ? { timestamp } : {}),
     });
   });
 
@@ -323,14 +330,14 @@ export const reopenTask = ({
   timestamp?: Date;
 }): Effect.Effect<Task, TaskServiceError, DatabaseService> =>
   updateTask({
-    tasksPath,
+    ...(tasksPath ? { tasksPath } : {}),
     id,
     update: {
       status: "open",
       closeReason: undefined,
       closedAt: undefined,
     },
-    timestamp,
+    ...(timestamp ? { timestamp } : {}),
   });
 
 /**
@@ -372,10 +379,10 @@ export const addComment = ({
     const updatedComments = [...(task.comments ?? []), newComment];
 
     return yield* updateTask({
-      tasksPath,
+      ...(tasksPath ? { tasksPath } : {}),
       id: taskId,
       update: { comments: updatedComments },
-      timestamp,
+      ...(timestamp ? { timestamp } : {}),
     });
   });
 
@@ -697,7 +704,7 @@ export const mergeTasksById = ({
 
     // Update target task
     const updated = yield* updateTask({
-      tasksPath,
+      ...(tasksPath ? { tasksPath } : {}),
       id: targetId,
       update: {
         comments: mergedComments,

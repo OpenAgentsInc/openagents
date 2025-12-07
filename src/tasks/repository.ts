@@ -1,4 +1,5 @@
 import * as nodePath from "node:path";
+import { Effect } from "effect";
 import {
   addComment,
   closeTask,
@@ -10,7 +11,7 @@ import {
   reopenTask,
   updateTask,
 } from "./service.js";
-import type { TaskCreate, TaskFilter, TaskUpdate } from "./schema.js";
+import type { Task, TaskCreate, TaskFilter, TaskUpdate } from "./schema.js";
 
 type CreateTaskOptions = Parameters<typeof createTask>[0];
 type UpdateTaskOptions = Parameters<typeof updateTask>[0];
@@ -90,7 +91,43 @@ export const createTaskRepository = (
   return {
     paths,
     list: (filter) => listTasks(paths.tasksPath, filter),
-    ready: (filter) => readyTasks(paths.tasksPath, filter),
+    ready: (filter) =>
+      readyTasks(paths.tasksPath, filter?.sortPolicy).pipe(
+        Effect.map((tasks) => {
+          if (!filter) return tasks;
+          const matchesFilter = (task: Task): boolean => {
+            if (filter.status && task.status !== filter.status) return false;
+            if (filter.priority !== undefined && task.priority !== filter.priority)
+              return false;
+            if (filter.type && task.type !== filter.type) return false;
+
+            if (filter.unassigned) {
+              if (task.assignee && task.assignee.trim().length > 0) return false;
+            } else if (filter.assignee && task.assignee !== filter.assignee) {
+              return false;
+            }
+
+            if (filter.labels && filter.labels.length > 0) {
+              if (!filter.labels.every((label) => task.labels?.includes(label)))
+                return false;
+            }
+
+            if (filter.labelsAny && filter.labelsAny.length > 0) {
+              if (!task.labels?.some((label) => filter.labelsAny?.includes(label)))
+                return false;
+            }
+
+            return true;
+          };
+
+          const filtered = tasks.filter(matchesFilter);
+          if (filter.limit !== undefined) {
+            return filtered.slice(0, filter.limit);
+          }
+
+          return filtered;
+        }),
+      ),
     pickNext: (filter) => pickNextTask(paths.tasksPath, filter),
     create: (task, opts) => createTask({ tasksPath: paths.tasksPath, task, ...opts }),
     update: ({ id, ...update }, opts) =>

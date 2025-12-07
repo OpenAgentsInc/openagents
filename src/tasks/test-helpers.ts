@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Path from "@effect/platform/Path";
 import {
   DatabaseService,
   DatabaseError,
@@ -63,7 +65,9 @@ const withTestLayer = <A, E>(program: Effect.Effect<A, E, DatabaseService>) =>
       const { layer, cleanup } = createTestLayer();
 
       try {
-        return yield* program.pipe(Effect.provide(Layer.mergeAll(layer, BunContext.layer)));
+        return yield* program.pipe(
+          Effect.provide(Layer.mergeAll(layer, BunContext.layer)),
+        );
       } finally {
         cleanup();
       }
@@ -74,5 +78,25 @@ export const runWithTestDb = <A, E>(program: Effect.Effect<A, E, DatabaseService
   withTestLayer(program).pipe(Effect.runPromise);
 
 export const runWithTestContext = <A, E>(
-  program: Effect.Effect<A, E, DatabaseService>,
-): Promise<A> => runWithTestDb(program);
+  program: Effect.Effect<A, E, DatabaseService | FileSystem.FileSystem | Path.Path>,
+): Promise<A> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { layer, cleanup } = createTestLayer();
+
+      try {
+        return yield* program.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              layer,
+              BunContext.layer,
+              FileSystem.FileSystem,
+              Path.Path,
+            ),
+          ),
+        );
+      } finally {
+        cleanup();
+      }
+    }),
+  ).pipe(Effect.runPromise);
