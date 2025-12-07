@@ -24,6 +24,7 @@ import { editTool } from "../tools/edit.js";
 import { bashTool } from "../tools/bash.js";
 import { writeTool } from "../tools/write.js";
 import { openRouterLive } from "../llm/openrouter.js";
+import { DatabaseLive } from "../storage/database.js";
 import {
   createRunMetadata,
   writeRunLog,
@@ -835,6 +836,17 @@ const doOneTaskOrchestrator = (config: Config) =>
         revertTrackedFiles: true,
         deleteUntrackedFiles: false,
       },
+      tbench: {
+        defaultModel: "claude-code",
+        defaultTimeout: 3600,
+        defaultMaxTurns: 300,
+        defaultLearning: {
+          skills: true,
+          memory: false,
+          reflexion: false,
+          learn: false,
+        },
+      },
     };
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(
       Effect.catchAll(() => Effect.succeed(null))
@@ -1041,7 +1053,7 @@ const doOneTaskOrchestrator = (config: Config) =>
 // Main
 const config = parseArgs();
 
-const liveLayer = Layer.mergeAll(openRouterLive, BunContext.layer);
+const liveLayer = Layer.mergeAll(DatabaseLive, openRouterLive, BunContext.layer);
 
 // Route based on --legacy flag
 const program = config.legacy

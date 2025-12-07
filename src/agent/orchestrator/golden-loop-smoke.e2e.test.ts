@@ -25,19 +25,28 @@ import type { OrchestratorEvent, SubagentResult } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 import { HUD_WS_PORT, type HudMessage, parseHudMessage } from "../../hud/protocol.js";
 import { acquireLock, releaseLock } from "./agent-lock.js";
+import { DatabaseService } from "../../storage/database.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
 
 // Mock OpenRouter layer (not used in these tests)
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),
 } satisfies OpenRouterClientShape);
-const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer);
 
 const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient>
-) =>
-  Effect.runPromise(
-    program.pipe(Effect.provide(testLayer))
-  );
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | OpenRouterClient | DatabaseService>
+): Promise<A> =>
+  Effect.gen(function* () {
+    // Create a test database for this test run
+    const { layer: dbLayer, cleanup } = yield* makeTestDatabaseLayer();
+    const testLayer = Layer.mergeAll(BunContext.layer, mockOpenRouterLayer, dbLayer);
+
+    try {
+      return yield* program.pipe(Effect.provide(testLayer));
+    } finally {
+      cleanup();
+    }
+  }).pipe(Effect.runPromise);
 
 /**
  * Mock HUD Server for testing

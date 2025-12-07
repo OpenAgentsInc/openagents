@@ -29,7 +29,8 @@
  */
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+import { DatabaseLive } from "../storage/database.js";
 import * as nodePath from "node:path";
 import { createHash } from "node:crypto";
 import {
@@ -1936,13 +1937,16 @@ Examples:
 `);
 };
 
+// Combined layer with DatabaseService and BunContext
+const cliLayer = Layer.mergeAll(DatabaseLive, BunContext.layer);
+
 const main = async () => {
   const { command, options } = parseArgs(process.argv.slice(2));
 
   switch (command) {
     case "init":
       try {
-        await Effect.runPromise(cmdInit(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdInit(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -1954,7 +1958,7 @@ const main = async () => {
       break;
     case "list":
       try {
-        await Effect.runPromise(cmdList(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdList(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -1966,7 +1970,7 @@ const main = async () => {
       break;
     case "ready":
       try {
-        await Effect.runPromise(cmdReady(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdReady(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -1978,7 +1982,7 @@ const main = async () => {
       break;
     case "next":
       try {
-        await Effect.runPromise(cmdNext(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdNext(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -1990,7 +1994,7 @@ const main = async () => {
       break;
     case "create":
       try {
-        await Effect.runPromise(cmdCreate(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdCreate(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2002,7 +2006,7 @@ const main = async () => {
       break;
     case "update":
       try {
-        await Effect.runPromise(cmdUpdate(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdUpdate(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2014,7 +2018,7 @@ const main = async () => {
       break;
     case "close":
       try {
-        await Effect.runPromise(cmdClose(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdClose(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2026,7 +2030,7 @@ const main = async () => {
       break;
     case "reopen":
       try {
-        await Effect.runPromise(cmdReopen(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdReopen(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2038,7 +2042,7 @@ const main = async () => {
       break;
     case "show":
       try {
-        await Effect.runPromise(cmdShow(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdShow(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2050,7 +2054,7 @@ const main = async () => {
       break;
     case "comment:add":
       try {
-        await Effect.runPromise(cmdCommentAdd(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdCommentAdd(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2062,7 +2066,7 @@ const main = async () => {
       break;
     case "comment:list":
       try {
-        await Effect.runPromise(cmdCommentList(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdCommentList(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2074,7 +2078,7 @@ const main = async () => {
       break;
     case "rename-prefix":
       try {
-        await Effect.runPromise(cmdRenamePrefix(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdRenamePrefix(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2086,7 +2090,7 @@ const main = async () => {
       break;
     case "stats":
       try {
-        await Effect.runPromise(cmdStats(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdStats(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2098,7 +2102,7 @@ const main = async () => {
       break;
     case "stale":
       try {
-        await Effect.runPromise(cmdStale(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdStale(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2110,7 +2114,7 @@ const main = async () => {
       break;
     case "archive":
       try {
-        await Effect.runPromise(cmdArchive(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdArchive(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2122,7 +2126,7 @@ const main = async () => {
       break;
     case "compact":
       try {
-        await Effect.runPromise(cmdCompact(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdCompact(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2135,7 +2139,7 @@ const main = async () => {
     case "hooks:install":
       try {
         const result = await Effect.runPromise(
-          cmdHooksInstall(options).pipe(Effect.provide(BunContext.layer)),
+          cmdHooksInstall(options).pipe(Effect.provide(cliLayer)),
         );
         if (result && !result.success) {
           process.exitCode = 1;
@@ -2152,7 +2156,7 @@ const main = async () => {
     case "hooks:uninstall":
       try {
         const result = await Effect.runPromise(
-          cmdHooksUninstall(options).pipe(Effect.provide(BunContext.layer)),
+          cmdHooksUninstall(options).pipe(Effect.provide(cliLayer)),
         );
         if (result && !result.success) {
           process.exitCode = 1;
@@ -2168,7 +2172,7 @@ const main = async () => {
       break;
     case "search":
       try {
-        await Effect.runPromise(cmdSearch(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdSearch(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ error: String(err) }));
@@ -2181,7 +2185,7 @@ const main = async () => {
     case "validate":
       try {
         const result = await Effect.runPromise(
-          cmdValidate(options).pipe(Effect.provide(BunContext.layer)),
+          cmdValidate(options).pipe(Effect.provide(cliLayer)),
         );
         if (result && result.ok === false) {
           process.exitCode = 1;
@@ -2199,7 +2203,7 @@ const main = async () => {
     case "doctor":
       try {
         const result = await Effect.runPromise(
-          cmdDoctor(options).pipe(Effect.provide(BunContext.layer)),
+          cmdDoctor(options).pipe(Effect.provide(cliLayer)),
         );
         if (result && result.ok === false) {
           process.exitCode = 1;
@@ -2217,7 +2221,7 @@ const main = async () => {
     case "repair-deps":
       try {
         const result = await Effect.runPromise(
-          cmdRepairDeps(options).pipe(Effect.provide(BunContext.layer)),
+          cmdRepairDeps(options).pipe(Effect.provide(cliLayer)),
         );
         if (result && result.ok === false) {
           process.exitCode = 1;
@@ -2235,7 +2239,7 @@ const main = async () => {
     case "duplicates":
       try {
         const result = await Effect.runPromise(
-          cmdDuplicates(options).pipe(Effect.provide(BunContext.layer)),
+          cmdDuplicates(options).pipe(Effect.provide(cliLayer)),
         );
         const hasGroups = (value: any): value is { groups: any[] } =>
           value && Array.isArray(value.groups);
@@ -2254,7 +2258,7 @@ const main = async () => {
       break;
     case "config:list":
       try {
-        await Effect.runPromise(cmdConfigList(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdConfigList(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
@@ -2266,7 +2270,7 @@ const main = async () => {
       break;
     case "config:get":
       try {
-        await Effect.runPromise(cmdConfigGet(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdConfigGet(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
@@ -2278,7 +2282,7 @@ const main = async () => {
       break;
     case "config:set":
       try {
-        await Effect.runPromise(cmdConfigSet(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdConfigSet(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
@@ -2290,7 +2294,7 @@ const main = async () => {
       break;
     case "cleanup":
       try {
-        await Effect.runPromise(cmdCleanup(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdCleanup(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
@@ -2302,7 +2306,7 @@ const main = async () => {
       break;
     case "delete":
       try {
-        await Effect.runPromise(cmdDelete(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdDelete(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         if (options.json) {
           console.log(JSON.stringify({ ok: false, error: String(err) }));
@@ -2314,7 +2318,7 @@ const main = async () => {
       break;
     case "merge":
       try {
-        await Effect.runPromise(cmdMerge(options).pipe(Effect.provide(BunContext.layer)));
+        await Effect.runPromise(cmdMerge(options).pipe(Effect.provide(cliLayer)));
       } catch (err) {
         const payload =
           err instanceof TaskMergeError

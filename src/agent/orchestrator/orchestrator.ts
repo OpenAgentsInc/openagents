@@ -15,6 +15,7 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect, Option } from "effect";
 import { createTaskRepository, type Task } from "../../tasks/index.js";
+import { DatabaseService } from "../../storage/database.js";
 import {
   createCommit,
   getCurrentBranch,
@@ -143,7 +144,7 @@ export const runOrchestrator = (
   config: OrchestratorConfig,
   emit: (event: OrchestratorEvent) => void = () => {},
   deps?: { runSubagent?: typeof runBestAvailableSubagent }
-): Effect.Effect<OrchestratorState, Error, FileSystem.FileSystem | Path.Path | OpenRouterClient> =>
+): Effect.Effect<OrchestratorState, Error, FileSystem.FileSystem | Path.Path | OpenRouterClient | DatabaseService> =>
   Effect.gen(function* () {
     let sessionId = generateSessionId();
     const now = new Date().toISOString();
