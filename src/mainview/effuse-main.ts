@@ -5,7 +5,7 @@
  * This replaces the monolithic index.ts with a clean Effect-based architecture.
  */
 
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { getSocketClient } from "./socket-client.js"
 import {
   mountWidgetById,
@@ -21,7 +21,11 @@ import {
   MCTasksWidget,
   TBControlsWidget,
   CategoryTreeWidget,
+  // HF Trajectory Browser Widgets
+  HFTrajectoryListWidget,
+  HFTrajectoryDetailWidget,
 } from "../effuse/index.js"
+import { OpenThoughtsServiceLive, OpenThoughtsService } from "../huggingface/openthoughts.js"
 
 console.log("[Effuse] Loading mainview...")
 
@@ -70,7 +74,8 @@ const createEffuseLayer = () => {
   return Layer.mergeAll(
     DomServiceLive,
     StateServiceLive,
-    SocketServiceFromClient(socketClient)
+    SocketServiceFromClient(socketClient),
+    OpenThoughtsServiceLive
   )
 }
 
@@ -80,10 +85,9 @@ const createEffuseLayer = () => {
 
 /**
  * Mount all widgets to their respective containers
- * CURRENTLY DISABLED - using simple SidebarLayout
  */
 const mountAllWidgets = Effect.gen(function* () {
-  console.log("[Effuse] Widget mounting disabled - using SidebarLayout")
+  console.log("[Effuse] Mounting HF Trajectory Browser widgets...")
 
   // Connect to desktop server WebSocket first
   const socket = yield* SocketServiceTag
@@ -95,7 +99,60 @@ const mountAllWidgets = Effect.gen(function* () {
     })
   )
 
-  /* WIDGETS DISABLED FOR SIMPLE LAYOUT
+  // Get OpenThoughts service for event forwarding
+  const openThoughtsService = yield* OpenThoughtsService
+
+  // Mount HF Trajectory List Widget (sidebar)
+  const listWidget = yield* mountWidgetById(HFTrajectoryListWidget, "hf-trajectory-list-widget").pipe(
+    Effect.tap(() => console.log("[Effuse] HF Trajectory List widget mounted")),
+    Effect.catchAll((e) => {
+      console.error("[Effuse] Failed to mount HF Trajectory List widget:", e)
+      return Effect.die(e)
+    })
+  )
+
+  // Mount HF Trajectory Detail Widget (main area)
+  const detailWidget = yield* mountWidgetById(HFTrajectoryDetailWidget, "hf-trajectory-detail-widget").pipe(
+    Effect.tap(() => console.log("[Effuse] HF Trajectory Detail widget mounted")),
+    Effect.catchAll((e) => {
+      console.error("[Effuse] Failed to mount HF Trajectory Detail widget:", e)
+      return Effect.die(e)
+    })
+  )
+
+  // Wire up event forwarding: List selection -> Detail load
+  // When user selects a trajectory in the list, fetch full trajectory and send to detail widget
+  yield* Stream.runForEach(listWidget.events, (event) =>
+    Effect.gen(function* () {
+      if (event.type === "select") {
+        console.log("[Effuse] Loading trajectory:", event.sessionId, "at index:", event.index)
+
+        // Set detail widget to loading state
+        yield* detailWidget.emit({ type: "clear" })
+
+        try {
+          // Fetch full trajectory from service
+          const trajectory = yield* openThoughtsService.getTrajectory(event.index)
+
+          // Send to detail widget
+          yield* detailWidget.emit({
+            type: "load",
+            sessionId: event.sessionId,
+            trajectory,
+          })
+
+          console.log("[Effuse] Trajectory loaded successfully")
+        } catch (error) {
+          console.error("[Effuse] Failed to load trajectory:", error)
+          // Detail widget will show error state
+        }
+      }
+    })
+  ).pipe(Effect.forkScoped)
+
+  console.log("[Effuse] HF Trajectory Browser ready")
+
+  /* OLD WIDGETS DISABLED FOR SIMPLE LAYOUT
   // Mount APM Widget (bottom-right corner)
   yield* mountWidgetById(APMWidget, "apm-widget").pipe(
     Effect.catchAll((e) => {
@@ -152,8 +209,6 @@ const mountAllWidgets = Effect.gen(function* () {
     })
   )
   */
-
-  console.log("[Effuse] Simple layout ready")
 })
 
 // ============================================================================
