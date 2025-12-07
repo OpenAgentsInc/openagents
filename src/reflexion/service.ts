@@ -9,6 +9,8 @@ import { Effect, Context, Layer } from "effect";
 import { ReflectionGenerator, ReflectionGeneratorLive, type ReflectionGeneratorError } from "./generator.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
+import { createSkill } from "../skills/schema.js";
+import { makeFMServiceLayer, type FMServiceError } from "../fm/service.js";
 import {
   type FailureContext,
   type Reflection,
@@ -208,11 +210,11 @@ const makeReflexionService = (): Effect.Effect<
         // Also record as episodic memory
         yield* memory
           .recordTask(taskDescription, "failure", {
-            errorMessage,
-            filesModified: options?.filesInvolved,
-            skillsUsed: options?.skillsUsed,
-            durationMs: options?.durationMs,
-            projectId: options?.projectId,
+            errorMessage: errorMessage,
+            ...(options?.filesInvolved ? { filesModified: options.filesInvolved } : {}),
+            ...(options?.skillsUsed ? { skillsUsed: options.skillsUsed } : {}),
+            ...(options?.durationMs ? { durationMs: options.durationMs } : {}),
+            ...(options?.projectId ? { projectId: options.projectId } : {}),
             importance: "high",
             tags: ["failure", failure.errorType],
           })
@@ -243,9 +245,9 @@ const makeReflexionService = (): Effect.Effect<
         for (const lesson of reflection.lessonsLearned) {
           yield* memory
             .recordKnowledge("pattern", lesson, {
-              context: `Learned from failure: ${failure.errorType}`,
+              ...(failure.projectId ? { context: `Learned from failure: ${failure.errorType}` } : {}),
+              ...(failure.projectId ? { projectId: failure.projectId } : {}),
               importance: "medium",
-              projectId: failure.projectId,
               tags: ["lesson", "reflection", failure.errorType],
             })
             .pipe(mapMemoryError);
@@ -344,7 +346,7 @@ const makeReflexionService = (): Effect.Effect<
         // Link skill to memory
         yield* memory
           .linkSkill(skill.id, pattern.errorPatterns, {
-            projectId: failure.projectId,
+            ...(failure.projectId ? { projectId: failure.projectId } : {}),
             importance: "high",
             tags: ["learned-skill"],
           })

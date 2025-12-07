@@ -38,7 +38,7 @@ const importStatement = \`import { \${symbolName} } from "\${sourcePath}";\`;
 await $\`bun tsc --noEmit \${errorFile}\`;`,
   examples: [
     {
-      input: "TS2304: Cannot find name 'Effect'",
+      input: { error: "TS2304: Cannot find name 'Effect'" },
       output: "import { Effect } from 'effect';",
     },
   ],
@@ -416,7 +416,7 @@ const convertToEffect = createSkill({
 const generateTypeFromJson = createSkill({
   name: "Generate Type from JSON",
   description: "Generate TypeScript type definitions from JSON data samples",
-  category: "code_generation",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["typescript", "types", "json"],
   parameters: [
@@ -451,7 +451,7 @@ console.log(typeDef);`,
 const scaffoldComponent = createSkill({
   name: "Scaffold React Component",
   description: "Create a new React component with proper TypeScript types, tests, and story files",
-  category: "code_generation",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["react", "component", "scaffold"],
   parameters: [
@@ -502,7 +502,7 @@ await Bun.write(\`\${dir}/index.ts\`, \`export * from './\${componentName}';\`);
 const generateApiClient = createSkill({
   name: "Generate API Client",
   description: "Generate a type-safe API client from OpenAPI spec or endpoint definitions",
-  category: "code_generation",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["api", "typescript", "client"],
   parameters: [
@@ -713,7 +713,7 @@ const safePath = (path: string): string => {
 const setupBunProject = createSkill({
   name: "Setup Bun Project",
   description: "Initialize a new Bun project with TypeScript, testing, and common configurations",
-  category: "build",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["bun", "setup", "project"],
   parameters: [
@@ -749,7 +749,7 @@ await Bun.write("src/index.ts", 'console.log("Hello from Bun!");');
 const createDockerfile = createSkill({
   name: "Create Dockerfile",
   description: "Generate an optimized Dockerfile for Bun applications",
-  category: "build",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["docker", "deployment"],
   code: `const dockerfile = \`
@@ -790,7 +790,7 @@ await Bun.write(".dockerignore", dockerignore);`,
 const createEffectService = createSkill({
   name: "Create Effect Service",
   description: "Create an Effect-TS service with proper Context.Tag, interface, implementation, and Layer",
-  category: "effect",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["effect", "service", "dependency-injection"],
   parameters: [
@@ -850,7 +850,7 @@ await Bun.write(\`src/\${serviceName.toLowerCase()}.ts\`, serviceTemplate);`,
 const handleEffectError = createSkill({
   name: "Handle Effect Error",
   description: "Add proper error handling and recovery to Effect-TS code",
-  category: "effect",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["effect", "error-handling"],
   code: `// Effect error handling patterns:
@@ -889,7 +889,7 @@ Effect.ensuring(cleanup());`,
 const createDatabaseMigration = createSkill({
   name: "Create Database Migration",
   description: "Create a database migration file with up and down functions",
-  category: "database",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["database", "migration", "sqlite"],
   parameters: [
@@ -1159,7 +1159,7 @@ await $\`git commit -m "Revert: reason for reverting"\`;`,
 const handleApiErrors = createSkill({
   name: "Handle API Errors",
   description: "Implement proper error handling for API endpoints with status codes",
-  category: "api",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["api", "error-handling", "http"],
   code: `// API Error handling pattern
@@ -1202,7 +1202,7 @@ try {
 const validateApiInput = createSkill({
   name: "Validate API Input",
   description: "Validate request body, query params, and headers for API endpoints",
-  category: "api",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["api", "validation", "security"],
   code: `// API Input validation pattern
@@ -1242,7 +1242,7 @@ function validateBody<T>(
 const implementRateLimit = createSkill({
   name: "Implement Rate Limiting",
   description: "Add rate limiting to API endpoints to prevent abuse",
-  category: "api",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["api", "security", "rate-limit"],
   code: `// Simple in-memory rate limiter
@@ -1347,7 +1347,7 @@ await $\`bun tsc --noEmit\`;`,
 const parseCliArgs = createSkill({
   name: "Parse CLI Arguments",
   description: "Parse command line arguments with flags, options, and positional args",
-  category: "cli",
+  category: "shell",
   source: "bootstrap",
   tags: ["cli", "args", "parsing"],
   code: `// Simple CLI argument parser
@@ -1388,7 +1388,7 @@ const { flags, options, positional } = parseArgs(Bun.argv.slice(2));`,
 const createCliCommand = createSkill({
   name: "Create CLI Command",
   description: "Create a new CLI command with help text and argument validation",
-  category: "cli",
+  category: "shell",
   source: "bootstrap",
   tags: ["cli", "command"],
   parameters: [
@@ -1433,7 +1433,7 @@ if (!input) {
 const handleWebSocket = createSkill({
   name: "Handle WebSocket Connection",
   description: "Implement WebSocket connection handling with message routing",
-  category: "networking",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["websocket", "realtime"],
   code: `// WebSocket handling with Bun.serve
@@ -1478,7 +1478,7 @@ Bun.serve({
 const loadConfig = createSkill({
   name: "Load Configuration",
   description: "Load configuration from environment, files, and defaults with validation",
-  category: "configuration",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["config", "environment"],
   code: `// Configuration loading pattern
@@ -1532,7 +1532,7 @@ const loadConfig = (): Config => {
 const structuredLogging = createSkill({
   name: "Structured Logging",
   description: "Implement structured JSON logging for production applications",
-  category: "observability",
+  category: "file_operations",
   source: "bootstrap",
   tags: ["logging", "observability"],
   code: `// Structured logging helper
