@@ -43293,6 +43293,9 @@ var HFTrajectoryDetailWidget = {
 var initialHFTrajectoryDetailState = HFTrajectoryDetailWidget.initialState();
 // src/mainview/effuse-main.ts
 console.log("[Effuse] Loading mainview...");
+if (window.bunLog) {
+  window.bunLog("[Effuse] ========== EFFUSE-MAIN.TS IS EXECUTING ==========");
+}
 var showError = (msg) => {
   document.body.innerHTML = `<div style="padding:20px;color:red;font-family:monospace;background:#1a1a1a;">
     <h2>Effuse Error</h2>
@@ -43324,6 +43327,9 @@ var createEffuseLayer = () => {
 };
 var mountAllWidgets = exports_Effect.gen(function* () {
   console.log("[Effuse] Mounting HF Trajectory Browser widgets...");
+  if (window.bunLog) {
+    window.bunLog("[Effuse] ========== MOUNTING HF TRAJECTORY WIDGETS ==========");
+  }
   const socket = yield* SocketServiceTag;
   yield* socket.connect().pipe(exports_Effect.tap(() => console.log("[Effuse] Socket connected")), exports_Effect.catchAll((e) => {
     console.warn("[Effuse] Socket connection failed:", e);
@@ -43359,6 +43365,9 @@ var mountAllWidgets = exports_Effect.gen(function* () {
 });
 var initEffuse = () => {
   console.log("[Effuse] Creating layer...");
+  if (window.bunLog) {
+    window.bunLog("[Effuse] ========== INIT EFFUSE CALLED ==========");
+  }
   let layer2;
   try {
     layer2 = createEffuseLayer();
@@ -43379,19 +43388,37 @@ var initEffuse = () => {
   })));
   console.log("[Effuse] Mainview initialized");
 };
+if (window.bunLog) {
+  window.bunLog(`[Effuse] document.readyState = ${document.readyState}`);
+}
 if (document.readyState === "loading") {
+  if (window.bunLog) {
+    window.bunLog("[Effuse] Waiting for DOMContentLoaded...");
+  }
   document.addEventListener("DOMContentLoaded", () => {
+    if (window.bunLog) {
+      window.bunLog("[Effuse] DOMContentLoaded fired!");
+    }
     try {
       initEffuse();
     } catch (e) {
       console.error("[Effuse] Init error:", e);
+      if (window.bunLog) {
+        window.bunLog(`[Effuse] Init error: ${e}`);
+      }
     }
   });
 } else {
+  if (window.bunLog) {
+    window.bunLog("[Effuse] DOM already ready, initializing immediately");
+  }
   try {
     initEffuse();
   } catch (e) {
     console.error("[Effuse] Init error:", e);
+    if (window.bunLog) {
+      window.bunLog(`[Effuse] Init error: ${e}`);
+    }
   }
 }
 export {
