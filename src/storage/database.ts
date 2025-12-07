@@ -686,7 +686,7 @@ export const makeDatabaseLive = (
 
           const rows = stmt.all(query);
           return rows.map((row: any) => {
-            const task = rowToTask(row);
+            const taskBase = rowToTask(row);
 
             // Load dependencies
             const depStmt = db.prepare(`
@@ -694,9 +694,9 @@ export const makeDatabaseLive = (
               FROM task_dependencies
               WHERE task_id = ?
             `);
-            task.deps = depStmt.all(task.id) as Dependency[];
+            const deps = depStmt.all(taskBase.id) as Dependency[];
 
-            return task;
+            return { ...taskBase, deps } as Task;
           });
         });
 
