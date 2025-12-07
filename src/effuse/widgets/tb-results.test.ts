@@ -13,7 +13,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -31,7 +31,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -125,7 +125,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -267,7 +267,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
@@ -336,7 +336,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
@@ -405,7 +405,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered } = yield* makeTestLayer()
+          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {

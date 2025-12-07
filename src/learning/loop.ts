@@ -387,9 +387,8 @@ export const makeTrainingLoopLive = (
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
 
-  return Layer.merge(
-    makeTrainingLoopLayer({ ...config, projectRoot }),
-    Layer.mergeAll(trainerLayer, archivistLayer, skillLayer, memoryLayer),
+  return makeTrainingLoopLayer({ ...config, projectRoot }).pipe(
+    Layer.provide(Layer.mergeAll(trainerLayer, archivistLayer, skillLayer, memoryLayer))
   );
 };
 
