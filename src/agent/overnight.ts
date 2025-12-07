@@ -551,6 +551,17 @@ const overnightLoopOrchestrator = (config: OvernightConfig) =>
         revertTrackedFiles: true,
         deleteUntrackedFiles: false,
       },
+      tbench: {
+        defaultModel: "claude-code",
+        defaultTimeout: 3600,
+        defaultMaxTurns: 300,
+        defaultLearning: {
+          skills: true,
+          memory: false,
+          reflexion: false,
+          learn: false,
+        },
+      },
     };
     // Note: loadProjectConfig expects the root dir, not the .openagents dir
     const loadedConfig = yield* loadProjectConfig(config.workDir).pipe(

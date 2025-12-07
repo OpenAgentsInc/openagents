@@ -98,8 +98,8 @@ describe("overnight-parallel task closing", () => {
             status: "closed",
             closeReason: "Completed by MechaCoder parallel agent",
             pendingCommit: null,
+            commits: ["def456"],
           },
-          appendCommits: ["def456"],
         }).pipe(Effect.provide(BunContext.layer)),
       );
 
@@ -139,8 +139,8 @@ describe("overnight-parallel task closing", () => {
             status: "closed",
             closeReason: "Completed",
             pendingCommit: null,
+            commits: ["earlier-commit", "merge-sha-456"],
           },
-          appendCommits: ["merge-sha-456"],
         }).pipe(Effect.provide(BunContext.layer)),
       );
 
@@ -171,8 +171,8 @@ describe("overnight-parallel task closing", () => {
           update: {
             status: "closed",
             closeReason: "New reason",
+            commits: ["existing-sha", "new-sha"],
           },
-          appendCommits: ["new-sha"],
         }).pipe(Effect.provide(BunContext.layer)),
       );
 
@@ -238,8 +238,8 @@ describe("overnight-parallel task closing", () => {
             status: "closed",
             closeReason: "Completed by MechaCoder parallel agent",
             pendingCommit: null,
+            commits: [mergeSha],
           },
-          appendCommits: [mergeSha],
         }).pipe(Effect.provide(BunContext.layer)),
       );
 
@@ -277,16 +277,16 @@ describe("overnight-parallel task closing", () => {
       // Close first two tasks (simulating parallel agent batch)
       for (const taskId of ["oa-batch-001", "oa-batch-002"]) {
         await Effect.runPromise(
-          updateTask({
-            tasksPath,
-            id: taskId,
-            update: {
-              status: "closed",
-              closeReason: "Batch closed",
-              pendingCommit: null,
-            },
-            appendCommits: [`sha-${taskId}`],
-          }).pipe(Effect.provide(BunContext.layer)),
+        updateTask({
+          tasksPath,
+          id: taskId,
+          update: {
+            status: "closed",
+            closeReason: "Batch closed",
+            pendingCommit: null,
+            commits: [`sha-${taskId}`],
+          },
+        }).pipe(Effect.provide(BunContext.layer)),
         );
       }
 

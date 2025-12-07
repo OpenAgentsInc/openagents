@@ -9,13 +9,14 @@ import {
   readyTasks,
   reopenTask,
   updateTask,
-  type AddCommentOptions,
-  type CloseTaskOptions,
-  type CreateTaskOptions,
-  type ReopenTaskOptions,
-  type UpdateTaskOptions,
 } from "./service.js";
 import type { TaskCreate, TaskFilter, TaskUpdate } from "./schema.js";
+
+type CreateTaskOptions = Parameters<typeof createTask>[0];
+type UpdateTaskOptions = Parameters<typeof updateTask>[0];
+type CloseTaskOptions = Parameters<typeof closeTask>[0];
+type ReopenTaskOptions = Parameters<typeof reopenTask>[0];
+type AddCommentOptions = Parameters<typeof addComment>[0];
 
 export interface TaskRepositoryPaths {
   /** Absolute path to the repo root (or provided rootDir) */

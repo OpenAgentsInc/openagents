@@ -1193,15 +1193,13 @@ After fixing, verify with \`bun run typecheck\` that it passes before proceeding
 
       // Phase 8: Update Task - Complete the two-phase commit
       state.phase = "updating_task";
-      yield* taskRepository.update(
-        {
-          id: taskResult.id,
-          status: "closed",
-          closeReason: "Completed by MechaCoder orchestrator",
-          pendingCommit: null, // Clear the pending commit
-        },
-        { appendCommits: [sha] },
-      ).pipe(Effect.catchAll(() => Effect.void));
+      yield* taskRepository.update({
+        id: taskResult.id,
+        status: "closed",
+        closeReason: "Completed by MechaCoder orchestrator",
+        pendingCommit: null, // Clear the pending commit
+        commits: [...taskResult.commits, sha],
+      }).pipe(Effect.catchAll(() => Effect.void));
 
       if (currentCheckpoint) {
         const nextPhase = advancePhase(currentCheckpoint.phase, "updating_task");

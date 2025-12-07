@@ -271,21 +271,43 @@ export const closeTask = ({
   id,
   reason = "Completed",
   timestamp,
+  commits,
 }: {
   tasksPath?: string;
   id: string;
   reason?: string;
   timestamp?: Date;
+  commits?: string[];
 }): Effect.Effect<Task, TaskServiceError, DatabaseService> =>
-  updateTask({
-    tasksPath,
-    id,
-    update: {
-      status: "closed",
-      closeReason: reason,
-      closedAt: nowIso(timestamp),
-    },
-    timestamp,
+  Effect.gen(function* () {
+    let mergedCommits: string[] | undefined;
+    if (commits && commits.length > 0) {
+      const db = yield* DatabaseService;
+      const existing = yield* db.getTask(id).pipe(
+        Effect.mapError(
+          (e) =>
+            new TaskServiceError("read_error", `Failed to get task: ${e.message}`),
+        ),
+      );
+      if (!existing) {
+        return yield* Effect.fail(
+          new TaskServiceError("not_found", `Task ${id} not found`),
+        );
+      }
+      mergedCommits = [...(existing.commits ?? []), ...commits];
+    }
+
+    return yield* updateTask({
+      tasksPath,
+      id,
+      update: {
+        status: "closed",
+        closeReason: reason,
+        closedAt: nowIso(timestamp),
+        ...(mergedCommits ? { commits: mergedCommits } : {}),
+      },
+      timestamp,
+    });
   });
 
 /**

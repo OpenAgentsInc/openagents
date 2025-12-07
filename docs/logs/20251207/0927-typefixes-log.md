@@ -1,0 +1,1 @@
+- Typecheck rerun: still many failures (DatabaseService context mismatches, archivist and trainer type mismatches, CLI/task service sorts). Prioritizing DatabaseService exposures and type refactors next.

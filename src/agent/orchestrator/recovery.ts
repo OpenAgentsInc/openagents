@@ -102,8 +102,8 @@ const recoverTask = (
             status: "closed",
             closeReason: "Completed by MechaCoder orchestrator (recovered)",
             pendingCommit: null,
+            commits: [...task.commits, pending.sha],
           },
-          appendCommits: [pending.sha],
         });
 
         emit?.({ type: "task_closed", taskId: task.id, sha: pending.sha });
