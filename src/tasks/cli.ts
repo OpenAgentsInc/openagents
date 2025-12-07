@@ -685,10 +685,9 @@ const cmdReopen = (options: CliOptions) =>
 const cmdArchive = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
-    const result = yield* archiveTasks({
+    const staleTasks = yield* getStaleTasks({
       tasksPath,
       daysOld: options.days ?? 30,
-      dryRun: options.dryRun ?? false,
     }).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
@@ -696,16 +695,44 @@ const cmdArchive = (options: CliOptions) =>
       }),
     );
 
-    if (!result) {
+    if (!staleTasks) {
+      return null;
+    }
+
+    const taskIds = staleTasks.map((task) => task.id);
+
+    if (taskIds.length === 0) {
+      const summary = { archived: 0, dryRun: Boolean(options.dryRun), taskIds: [] };
+      output(summary, options.json);
+      return summary;
+    }
+
+    if (options.dryRun) {
+      const summary = {
+        archived: 0,
+        dryRun: true,
+        taskIds,
+      };
+      output(summary, options.json);
+      return summary;
+    }
+
+    const archivedCount = yield* archiveTasks({ taskIds }).pipe(
+      Effect.catchAll((e) => {
+        output({ error: e.message }, options.json);
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (archivedCount === null) {
       return null;
     }
 
     const summary = {
-      archivedCount: result.archived.length,
-      remainingCount: result.remaining.length,
-      archivePath: result.archivePath,
-      dryRun: result.dryRun,
-      archivedIds: result.archived.map((t) => t.id),
+      archived: archivedCount,
+      staleTasks: taskIds.length,
+      taskIds,
+      dryRun: false,
     };
 
     output(summary, options.json);
@@ -718,7 +745,7 @@ const cmdCompact = (options: CliOptions) =>
     const result = yield* compactTasks({
       tasksPath,
       daysOld: options.days ?? 90,
-      dryRun: options.dryRun ?? true, // Default to analyze mode
+      preview: options.dryRun ?? true, // Default to analyze mode
     }).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
@@ -731,14 +758,8 @@ const cmdCompact = (options: CliOptions) =>
     }
 
     const summary = {
-      totalOldTasks: result.stats.totalOldTasks,
-      spaceSavedPercent: result.stats.spaceSavedPercent,
-      originalSizeBytes: result.stats.originalSize,
-      compactedSizeBytes: result.stats.compactedSize,
-      spaceSavedBytes: result.stats.originalSize - result.stats.compactedSize,
-      dryRun: result.dryRun,
-      ...(result.dryRun ? {} : { message: `Compacted ${result.compacted.length} tasks` }),
-      compactedIds: result.compacted.slice(0, 10).map((t) => t.id), // Sample of IDs
+      compacted: result.compacted,
+      dryRun: options.dryRun ?? true,
     };
 
     output(summary, options.json);
@@ -802,20 +823,14 @@ const cmdHooksUninstall = (options: CliOptions) =>
 const cmdSearch = (options: CliOptions) =>
   Effect.gen(function* () {
     const tasksPath = getTasksPath(options.rootDir);
-    const filter: TaskFilter = {
-      status: options.status as TaskFilter["status"],
-      priority: options.priority,
-      type: options.type as TaskFilter["type"],
-      labelsAny: options.labels && options.labels.length > 0 ? options.labels : undefined,
-      assignee: options.assignee,
-      unassigned: options.unassigned,
-      limit: options.limit,
-    };
+    if (!options.query) {
+      output({ error: "Missing required --query <text>" }, options.json);
+      return null;
+    }
 
     const result = yield* searchAllTasks({
       tasksPath,
-      filter,
-      includeArchived: options.includeArchived ?? true,
+      query: options.query,
     }).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
@@ -827,27 +842,10 @@ const cmdSearch = (options: CliOptions) =>
       return null;
     }
 
-    // If a query string is provided, filter by title/description containing it
-    let { active, archived } = result;
-    if (options.query) {
-      const q = options.query.toLowerCase();
-      active = active.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          (t.description && t.description.toLowerCase().includes(q)),
-      );
-      archived = archived.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          (t.description && t.description.toLowerCase().includes(q)),
-      );
-    }
-
     const summary = {
-      activeCount: active.length,
-      archivedCount: archived.length,
-      active,
-      archived,
+      query: options.query,
+      total: result.length,
+      tasks: result,
     };
 
     output(summary, options.json);
@@ -1458,9 +1456,8 @@ const cmdMerge = (options: CliOptions) =>
       const tasksPath = getTasksPath(options.rootDir);
       const result = yield* mergeTasksById({
         tasksPath,
-        ids: options.ids,
         targetId: options.into,
-        dryRun: options.dryRun ?? false,
+        sourceIds: options.ids,
       }).pipe(
         Effect.catchAll((e) => {
           output({ ok: false, error: e.message }, options.json);
@@ -1473,9 +1470,7 @@ const cmdMerge = (options: CliOptions) =>
       }
 
       if (!options.json) {
-        console.log(
-          `${result.dryRun ? "[dry-run] " : ""}Merged ${result.mergedIds.length} task(s) into ${result.targetId}; deps updated: ${result.depsUpdated}`,
-        );
+        console.log(`Merged ${options.ids.length} task(s) into ${result.id}`);
       } else {
         output(result, true);
       }
@@ -1612,10 +1607,10 @@ const cmdShow = (options: CliOptions) =>
       return null;
     }
 
-    const { task, blockedBy, blocking } = result;
+    const task = result;
 
     if (options.json) {
-      output({ task, blockedBy, blocking }, true);
+      output(task, true);
     } else {
       const priorityLabel = ["P0 (Critical)", "P1 (High)", "P2 (Medium)", "P3 (Low)", "P4 (Backlog)"][task.priority] || `P${task.priority}`;
 
@@ -1639,21 +1634,11 @@ const cmdShow = (options: CliOptions) =>
         console.log(task.description);
       }
 
-      if (blockedBy.length > 0) {
+      if (task.deps && task.deps.length > 0) {
         console.log();
-        console.log(`Blocked by (${blockedBy.length}):`);
-        for (const t of blockedBy) {
-          const statusIcon = t.status === "closed" ? "[x]" : "[ ]";
-          console.log(`  ${statusIcon} ${t.id}: ${t.title}`);
-        }
-      }
-
-      if (blocking.length > 0) {
-        console.log();
-        console.log(`Blocking (${blocking.length}):`);
-        for (const t of blocking) {
-          const statusIcon = t.status === "closed" ? "[x]" : "[ ]";
-          console.log(`  ${statusIcon} ${t.id}: ${t.title}`);
+        console.log(`Dependencies (${task.deps.length}):`);
+        for (const dep of task.deps) {
+          console.log(`  - ${dep.id} (${dep.type})`);
         }
       }
     }
@@ -1678,9 +1663,10 @@ const cmdCommentAdd = (options: CliOptions) =>
 
     const addOptions = {
       taskId: options.id,
-      text: options.text,
-      author,
-      ...(options.commentId ? { commentId: options.commentId } : {}),
+      comment: {
+        text: options.text,
+        author,
+      },
     };
 
     const result = yield* repo.addComment(addOptions).pipe(
@@ -1697,8 +1683,9 @@ const cmdCommentAdd = (options: CliOptions) =>
     if (options.json) {
       output(result, true);
     } else {
+      const newComment = result.comments?.[result.comments.length - 1];
       console.log(
-        `Added comment ${result.comment.id} by ${result.comment.author} to task ${options.id}`,
+        `Added comment ${newComment?.id ?? "unknown"} by ${newComment?.author ?? author} to task ${options.id}`,
       );
     }
 
@@ -1752,9 +1739,8 @@ const cmdRenamePrefix = (options: CliOptions) =>
 
     const result = yield* renameTaskPrefix({
       tasksPath,
-      fromPrefix: options.fromPrefix,
-      toPrefix: options.toPrefix,
-      dryRun: options.dryRun ?? false,
+      oldPrefix: options.fromPrefix,
+      newPrefix: options.toPrefix,
     }).pipe(
       Effect.catchAll((e) => {
         output({ error: e.message }, options.json);
@@ -1770,16 +1756,8 @@ const cmdRenamePrefix = (options: CliOptions) =>
       output(result, true);
     } else {
       console.log(
-        `${result.dryRun ? "[dry-run] " : ""}Renamed ${result.renamed} task(s), deps updated: ${result.depsUpdated}, descriptions updated: ${result.descriptionsUpdated}`,
+        `Renamed ${result.renamed} task(s) from ${options.fromPrefix} to ${options.toPrefix}`,
       );
-      if (Object.keys(result.mapping).length > 0) {
-        console.log("Mapping:");
-        for (const [oldId, newId] of Object.entries(result.mapping)) {
-          console.log(`  ${oldId} -> ${newId}`);
-        }
-      } else {
-        console.log("No tasks matched the provided prefix.");
-      }
     }
 
     return result;
