@@ -166,10 +166,10 @@ export const createTask = ({
         }
       }
     } else if (idMethod === "random") {
-      id = `${idPrefix}-${generateRandomId()}`;
+      id = yield* generateRandomId(idPrefix);
     } else {
       // child method - requires parentId (handled by caller)
-      id = `${idPrefix}-${generateRandomId()}`;
+      id = yield* generateRandomId(idPrefix);
     }
 
     const now = nowIso(timestamp);
@@ -259,7 +259,15 @@ export const updateTask = ({
       updatedAt: nowIso(timestamp),
     } satisfies Task;
 
-    yield* db.updateTask(id, validated).pipe(
+    // Convert TaskUpdate to Partial<Task> properly for the database
+    const dbUpdate: Partial<Task> = {};
+    for (const [key, value] of Object.entries(validated)) {
+      if (value !== undefined) {
+        (dbUpdate as Record<string, unknown>)[key] = value;
+      }
+    }
+
+    yield* db.updateTask(id, dbUpdate).pipe(
       Effect.mapError(
         (e) =>
           new TaskServiceError(
@@ -629,7 +637,7 @@ export const renameTaskPrefix = ({
     );
 
     // Update each task ID
-    for (const task of tasksToRename) {
+    for (const _task of tasksToRename) {
       // This is a complex operation - would need custom SQL
       // For now, return error
       return yield* Effect.fail(
