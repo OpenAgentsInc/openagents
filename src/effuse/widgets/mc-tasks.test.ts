@@ -132,7 +132,7 @@ describe("MCTasksWidget", () => {
               status: "open",
               priority: 1,
               type: "task",
-              labels: [],
+              labels: [] as string[],
               createdAt: "2024-12-05T10:00:00Z",
               updatedAt: "2024-12-05T10:00:00Z",
             },
@@ -177,7 +177,7 @@ describe("MCTasksWidget", () => {
               status: "open",
               priority: 1,
               type: "task",
-              labels: [],
+              labels: [] as string[],
               createdAt: "2024-12-05T10:00:00Z",
               updatedAt: "2024-12-05T10:00:00Z",
             },
@@ -262,7 +262,7 @@ describe("MCTasksWidget", () => {
                   status: "open",
                   priority: 0,
                   type: "bug",
-                  labels: [],
+                  labels: [] as string[],
                   createdAt: "2024-12-01",
                   updatedAt: "2024-12-01",
                 },
@@ -273,7 +273,7 @@ describe("MCTasksWidget", () => {
                   status: "open",
                   priority: 3,
                   type: "task",
-                  labels: [],
+                  labels: [] as string[],
                   createdAt: "2024-12-02",
                   updatedAt: "2024-12-02",
                 },
@@ -356,7 +356,7 @@ describe("MCTasksWidget", () => {
                   status: "open",
                   priority: 1,
                   type: "bug",
-                  labels: [],
+                  labels: [] as string[],
                   createdAt: "2024-12-03",
                   updatedAt: "2024-12-03",
                 },
@@ -367,7 +367,7 @@ describe("MCTasksWidget", () => {
                   status: "open",
                   priority: 2,
                   type: "feature",
-                  labels: [],
+                  labels: [] as string[],
                   createdAt: "2024-12-03",
                   updatedAt: "2024-12-03",
                 },
@@ -409,7 +409,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 1,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-04",
                     updatedAt: "2024-12-04",
                   },
@@ -426,9 +426,9 @@ describe("MCTasksWidget", () => {
               const state = yield* stateService.cell(MCTasksWidget.initialState())
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
+              if (MCTasksWidget.handleEvent) yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.loading).toBe(false)
               expect(updated.tasks).toHaveLength(1)
               expect(updated.tasks[0]?.id).toBe("oa-new")
@@ -493,9 +493,9 @@ describe("MCTasksWidget", () => {
               const state = yield* stateService.cell(MCTasksWidget.initialState())
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
+              if (MCTasksWidget.handleEvent) yield* MCTasksWidget.handleEvent({ type: "load" }, ctx)
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.loading).toBe(false)
               expect(updated.tasks).toHaveLength(2)
 
@@ -548,7 +548,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 1,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-01",
                     updatedAt: "2024-12-01",
                   },
@@ -559,7 +559,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 2,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-02",
                     updatedAt: "2024-12-02",
                   },
@@ -567,9 +567,9 @@ describe("MCTasksWidget", () => {
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-assign" }, ctx)
+              if (MCTasksWidget.handleEvent) yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-assign" }, ctx)
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.assigningId).toBeNull()
               expect(updated.tasks.map((t) => t.id)).toEqual(["oa-stay"])
 
@@ -608,7 +608,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 1,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-01",
                     updatedAt: "2024-12-01",
                   },
@@ -620,7 +620,7 @@ describe("MCTasksWidget", () => {
               expect(expandedHtml).toContain("Task")
               expect(expandedHtml).toContain("Ready Tasks (1)")
 
-              yield* MCTasksWidget.handleEvent({ type: "toggleCollapse" }, ctx)
+              if (MCTasksWidget.handleEvent) yield* MCTasksWidget.handleEvent({ type: "toggleCollapse" }, ctx)
 
               const collapsed = yield* state.get
               expect(collapsed.collapsed).toBe(true)
@@ -658,7 +658,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 1,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-01",
                     updatedAt: "2024-12-01",
                   },
@@ -669,7 +669,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 2,
                     type: "bug",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-02",
                     updatedAt: "2024-12-02",
                   },
@@ -720,7 +720,7 @@ describe("MCTasksWidget", () => {
                     status: "open",
                     priority: 2,
                     type: "task",
-                    labels: [],
+                    labels: [] as string[],
                     createdAt: "2024-12-03",
                     updatedAt: "2024-12-03",
                   },
@@ -728,9 +728,9 @@ describe("MCTasksWidget", () => {
               })
               const ctx = { state, emit: () => Effect.void, dom, container }
 
-              yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-sandbox" }, ctx)
+              if (MCTasksWidget.handleEvent) yield* MCTasksWidget.handleEvent({ type: "assign", taskId: "oa-sandbox" }, ctx)
 
-              const updated = yield* state.get()
+              const updated = yield* state.get
               expect(updated.tasks).toHaveLength(0)
             }),
             layer

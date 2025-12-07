@@ -19,7 +19,7 @@
  * ```
  */
 
-import { Effect, Ref, Duration } from "effect";
+import { Effect, Duration } from "effect";
 import * as S from "effect/Schema";
 import { FileSystem } from "@effect/platform";
 import { BunContext } from "@effect/platform-bun";
@@ -206,7 +206,7 @@ export class LoopRunnerError extends Error {
       | "time_limit_exceeded"
       | "iteration_limit_exceeded",
     override readonly message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "LoopRunnerError";
@@ -225,7 +225,7 @@ export const createLoopRunner = (
   const runId = `loop-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   // State reference (mutable)
-  let state = createInitialState(runId, fullConfig.startSubset);
+  let state = createInitialState(runId, fullConfig.startSubset as TBSubset);
   let episodeStore: EpisodeStore | null = null;
 
   const getEpisodeStore = (): EpisodeStore => {
@@ -291,7 +291,7 @@ export const createLoopRunner = (
       return nextSubset;
     });
 
-  const saveState = (): Effect.Effect<void, LoopRunnerError> =>
+  const saveState = (): Effect.Effect<void, LoopRunnerError, never> =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const stateJson = JSON.stringify(state, null, 2);
@@ -306,9 +306,16 @@ export const createLoopRunner = (
           (e) => new LoopRunnerError("state_save_failed", `Failed to save state: ${e.message}`),
         ),
       );
-    }).pipe(Effect.provide(BunContext.layer));
+    }).pipe(
+      Effect.mapError((e) =>
+        e instanceof LoopRunnerError
+          ? e
+          : new LoopRunnerError("state_save_failed", `Unexpected error: ${String(e)}`),
+      ),
+      Effect.provide(BunContext.layer),
+    );
 
-  const loadState = (): Effect.Effect<LoopRunnerState | null, LoopRunnerError, FileSystem.FileSystem> =>
+  const loadState = (): Effect.Effect<LoopRunnerState | null, LoopRunnerError, never> =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const statePath = `${fullConfig.projectRoot}/${fullConfig.stateFilePath}`;
@@ -330,7 +337,14 @@ export const createLoopRunner = (
           new LoopRunnerError("state_load_failed", `Invalid state JSON: ${e}`),
         );
       }
-    }).pipe(Effect.provide(BunContext.layer));
+    }).pipe(
+      Effect.mapError((e) =>
+        e instanceof LoopRunnerError
+          ? e
+          : new LoopRunnerError("state_load_failed", `Unexpected error: ${String(e)}`),
+      ),
+      Effect.provide(BunContext.layer),
+    );
 
   const resume = (): Effect.Effect<void, LoopRunnerError> =>
     Effect.gen(function* () {

@@ -26,7 +26,6 @@ import {
 } from "../skills/schema.js";
 import type { TaskResult } from "../trainer/schema.js";
 import type {
-  Trajectory,
   ExtractedPattern,
 } from "../archivist/schema.js";
 
@@ -131,7 +130,7 @@ export class EpisodeLearnerError extends Error {
       | "extraction_failed"
       | "storage_failed",
     override readonly message: string,
-    readonly cause?: Error,
+    override readonly cause?: Error,
   ) {
     super(message);
     this.name = "EpisodeLearnerError";
