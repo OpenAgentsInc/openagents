@@ -6,13 +6,12 @@
  * commit_pending status.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { Effect } from "effect";
-import * as BunContext from "@effect/platform-bun/BunContext";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 import { updateTask, readTasks } from "../tasks/service.js";
+import { runWithTestDb } from "../tasks/test-helpers.js";
 import type { Task } from "../tasks/schema.js";
 
 // Helper to create a temporary directory
@@ -90,7 +89,7 @@ describe("overnight-parallel task closing", () => {
       fs.writeFileSync(tasksPath, JSON.stringify(task) + "\n");
 
       // Close the task (simulating what closeTaskAfterMerge does)
-      await Effect.runPromise(
+      await runWithTestDb(
         updateTask({
           tasksPath,
           id: "oa-test-001",
@@ -100,13 +99,11 @@ describe("overnight-parallel task closing", () => {
             pendingCommit: null,
             commits: ["def456"],
           },
-        }).pipe(Effect.provide(BunContext.layer)),
+        }),
       );
 
       // Verify the task is closed
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       expect(tasks.length).toBe(1);
       expect(tasks[0].status).toBe("closed");
@@ -131,7 +128,7 @@ describe("overnight-parallel task closing", () => {
       fs.writeFileSync(tasksPath, JSON.stringify(task) + "\n");
 
       // Close with the merge SHA
-      await Effect.runPromise(
+      await runWithTestDb(
         updateTask({
           tasksPath,
           id: "oa-test-002",
@@ -141,12 +138,10 @@ describe("overnight-parallel task closing", () => {
             pendingCommit: null,
             commits: ["earlier-commit", "merge-sha-456"],
           },
-        }).pipe(Effect.provide(BunContext.layer)),
+        }),
       );
 
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       expect(tasks[0].commits).toContain("earlier-commit");
       expect(tasks[0].commits).toContain("merge-sha-456");
@@ -164,7 +159,7 @@ describe("overnight-parallel task closing", () => {
       fs.writeFileSync(tasksPath, JSON.stringify(task) + "\n");
 
       // Try to close again - should succeed but not change status
-      await Effect.runPromise(
+      await runWithTestDb(
         updateTask({
           tasksPath,
           id: "oa-test-003",
@@ -173,12 +168,10 @@ describe("overnight-parallel task closing", () => {
             closeReason: "New reason",
             commits: ["existing-sha", "new-sha"],
           },
-        }).pipe(Effect.provide(BunContext.layer)),
+        }),
       );
 
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       expect(tasks[0].status).toBe("closed");
       expect(tasks[0].closeReason).toBe("New reason");
@@ -204,9 +197,7 @@ describe("overnight-parallel task closing", () => {
       fs.writeFileSync(tasksPath, JSON.stringify(task) + "\n");
 
       // Read and verify pendingCommit has SHA
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       expect(tasks[0].pendingCommit).toBeDefined();
       expect(tasks[0].pendingCommit?.sha).toBe("recoverable-sha-789");
@@ -230,7 +221,7 @@ describe("overnight-parallel task closing", () => {
 
       // Simulate what parallel runner does after merge
       const mergeSha = "main-merge-sha-222";
-      await Effect.runPromise(
+      await runWithTestDb(
         updateTask({
           tasksPath,
           id: "oa-merge-001",
@@ -240,12 +231,10 @@ describe("overnight-parallel task closing", () => {
             pendingCommit: null,
             commits: [mergeSha],
           },
-        }).pipe(Effect.provide(BunContext.layer)),
+        }),
       );
 
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       // The merge SHA should be in commits, not necessarily the worktree SHA
       expect(tasks[0].commits).toContain("main-merge-sha-222");
@@ -276,23 +265,21 @@ describe("overnight-parallel task closing", () => {
 
       // Close first two tasks (simulating parallel agent batch)
       for (const taskId of ["oa-batch-001", "oa-batch-002"]) {
-        await Effect.runPromise(
-        updateTask({
-          tasksPath,
-          id: taskId,
-          update: {
-            status: "closed",
-            closeReason: "Batch closed",
-            pendingCommit: null,
-            commits: [`sha-${taskId}`],
-          },
-        }).pipe(Effect.provide(BunContext.layer)),
+        await runWithTestDb(
+          updateTask({
+            tasksPath,
+            id: taskId,
+            update: {
+              status: "closed",
+              closeReason: "Batch closed",
+              pendingCommit: null,
+              commits: [`sha-${taskId}`],
+            },
+          }),
         );
       }
 
-      const tasks = await Effect.runPromise(
-        readTasks(tasksPath).pipe(Effect.provide(BunContext.layer)),
-      );
+      const tasks = await runWithTestDb(readTasks(tasksPath));
 
       const closed = tasks.filter((t) => t.status === "closed");
       const open = tasks.filter((t) => t.status === "open");
