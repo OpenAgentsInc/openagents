@@ -187,3 +187,4 @@ export {
   type HFTrajectoryDetailEvent,
   initialHFTrajectoryDetailState,
 } from "./widgets/hf-trajectory-detail.js"
+export * from "./widgets/tb-command-center/index.js"

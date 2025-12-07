@@ -26286,7 +26286,9 @@ ${endStackCall}`;
       loadTBRunDetails: (runId) => wrapRequest(() => client.loadTBRunDetails(runId)),
       loadReadyTasks: (limit) => wrapRequest(() => client.loadReadyTasks(limit)),
       assignTaskToMC: (taskId, options) => wrapRequest(() => client.assignTaskToMC(taskId, options)),
-      loadUnifiedTrajectories: (limit) => wrapRequest(() => client.loadUnifiedTrajectories(limit))
+      loadUnifiedTrajectories: (limit) => wrapRequest(() => client.loadUnifiedTrajectories(limit)),
+      getHFTrajectoryCount: () => wrapRequest(() => client.getHFTrajectoryCount()),
+      getHFTrajectories: (offset, limit) => wrapRequest(() => client.getHFTrajectories(offset, limit))
     };
   };
   var SocketServiceLive = (options) => exports_Layer.succeed(SocketServiceTag, makeSocketService(new SocketClient(options)));
@@ -28069,7 +28071,7 @@ ${endStackCall}`;
             yield* ctx.state.update((s) => {
               if (s.runId !== msg.runId)
                 return s;
-              const isPassed = msg.outcome === "passed";
+              const isPassed = msg.outcome === "success";
               return {
                 ...s,
                 completedTasks: s.completedTasks + 1,
@@ -28409,7 +28411,7 @@ ${endStackCall}`;
   var HFTrajectoryListWidget = {
     id: "hf-trajectory-list",
     initialState: () => {
-      if (window.bunLog) {
+      if (typeof window !== "undefined" && window.bunLog) {
         window.bunLog("[HFTrajectoryList] Creating initial state");
       }
       return {
@@ -28427,7 +28429,7 @@ ${endStackCall}`;
     },
     render: (ctx) => exports_Effect.gen(function* () {
       const state = yield* ctx.state.get;
-      if (window.bunLog) {
+      if (typeof window !== "undefined" && window.bunLog) {
         window.bunLog(`[HFTrajectoryList] Rendering, loading=${state.loading}, totalCount=${state.totalCount}, trajectories=${state.trajectories.length}, error=${state.error}`);
       }
       const header = html`
@@ -28580,7 +28582,7 @@ ${endStackCall}`;
       });
     }),
     handleEvent: (event, ctx) => exports_Effect.gen(function* () {
-      const socketClient = getSocketClient();
+      const socket = yield* SocketServiceTag;
       switch (event.type) {
         case "loadPage": {
           const state = yield* ctx.state.get;
@@ -28596,7 +28598,7 @@ ${endStackCall}`;
           yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }));
           try {
             const offset = newPage * state.pageSize;
-            const trajectories = yield* exports_Effect.promise(() => socketClient.getHFTrajectories(offset, state.pageSize));
+            const trajectories = yield* socket.getHFTrajectories(offset, state.pageSize);
             const metadata = trajectories.map((t, i) => extractMetadata(t, offset + i));
             yield* ctx.state.update((s) => ({
               ...s,
@@ -28638,26 +28640,26 @@ ${endStackCall}`;
           break;
         }
       }
-    }),
+    }).pipe(exports_Effect.catchAll(exports_Effect.die)),
     subscriptions: (ctx) => {
       const initialLoad = exports_Effect.gen(function* () {
-        if (window.bunLog) {
+        if (typeof window !== "undefined" && window.bunLog) {
           window.bunLog("[HFTrajectoryList] Starting initial load...");
         }
-        const socketClient = getSocketClient();
+        const socket = yield* SocketServiceTag;
         try {
-          if (window.bunLog) {
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog("[HFTrajectoryList] Getting trajectory count...");
           }
-          const totalCount = yield* exports_Effect.promise(() => socketClient.getHFTrajectoryCount());
-          if (window.bunLog) {
+          const totalCount = yield* socket.getHFTrajectoryCount();
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog(`[HFTrajectoryList] Total count: ${totalCount}`);
           }
-          if (window.bunLog) {
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog("[HFTrajectoryList] Loading first page...");
           }
-          const trajectories = yield* exports_Effect.promise(() => socketClient.getHFTrajectories(0, 100));
-          if (window.bunLog) {
+          const trajectories = yield* socket.getHFTrajectories(0, 100);
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog(`[HFTrajectoryList] Loaded trajectories: ${trajectories.length}`);
           }
           const metadata = trajectories.map((t, i) => extractMetadata(t, i));
@@ -28668,11 +28670,11 @@ ${endStackCall}`;
             totalCount,
             loading: false
           }));
-          if (window.bunLog) {
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog("[HFTrajectoryList] Initial load complete");
           }
         } catch (error) {
-          if (window.bunLog) {
+          if (typeof window !== "undefined" && window.bunLog) {
             window.bunLog(`[HFTrajectoryList] Initial load failed: ${error}`);
           }
           yield* ctx.state.update((s) => ({
@@ -28681,8 +28683,8 @@ ${endStackCall}`;
             error: error instanceof Error ? error.message : String(error)
           }));
         }
-      });
-      return [exports_Effect.asVoid(initialLoad)];
+      }).pipe(exports_Effect.catchAll(exports_Effect.die));
+      return [exports_Stream.make(initialLoad)];
     }
   };
   var initialHFTrajectoryListState = HFTrajectoryListWidget.initialState();
@@ -28851,7 +28853,7 @@ ${endStackCall}`;
   var HFTrajectoryDetailWidget = {
     id: "hf-trajectory-detail",
     initialState: () => {
-      if (window.bunLog) {
+      if (typeof window !== "undefined" && window.bunLog) {
         window.bunLog("[HFTrajectoryDetail] Creating initial state");
       }
       return {
@@ -29108,6 +29110,1495 @@ ${endStackCall}`;
     subscriptions: () => []
   };
   var initialHFTrajectoryDetailState = HFTrajectoryDetailWidget.initialState();
+  // src/effuse/widgets/tb-command-center/types.ts
+  var TABS = [
+    { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
+    { id: "tasks", label: "Tasks", icon: "list-checks" },
+    { id: "runs", label: "Runs", icon: "play-circle" },
+    { id: "settings", label: "Settings", icon: "settings" }
+  ];
+  var DEFAULT_EXECUTION_SETTINGS = {
+    maxAttempts: 5,
+    maxStepsPerRun: 50,
+    timeoutSeconds: 300,
+    deepComputeEnabled: false,
+    recursionLimitN: 3,
+    innerIterationsT: 5,
+    earlyStopOnHighConfidence: true
+  };
+  var DEFAULT_LOGGING_SETTINGS = {
+    saveTrajectories: true,
+    saveTerminalOutput: true,
+    saveAtifTraces: true,
+    autoPruneDays: 30
+  };
+  var DIFFICULTY_COLORS = {
+    easy: { bg: "bg-emerald-900/40", text: "text-emerald-300", border: "border-emerald-700/50" },
+    medium: { bg: "bg-yellow-900/40", text: "text-yellow-300", border: "border-yellow-700/50" },
+    hard: { bg: "bg-orange-900/40", text: "text-orange-300", border: "border-orange-700/50" },
+    expert: { bg: "bg-red-900/40", text: "text-red-300", border: "border-red-700/50" },
+    unknown: { bg: "bg-zinc-800/40", text: "text-zinc-400", border: "border-zinc-700/50" }
+  };
+  var OUTCOME_COLORS = {
+    success: { bg: "bg-emerald-900/40", text: "text-emerald-300", border: "border-emerald-700/50" },
+    failure: { bg: "bg-red-900/40", text: "text-red-300", border: "border-red-700/50" },
+    timeout: { bg: "bg-yellow-900/40", text: "text-yellow-300", border: "border-yellow-700/50" },
+    error: { bg: "bg-red-900/40", text: "text-red-300", border: "border-red-700/50" },
+    aborted: { bg: "bg-zinc-800/40", text: "text-zinc-400", border: "border-zinc-700/50" }
+  };
+  // src/effuse/widgets/tb-command-center/tbcc-shell.ts
+  var renderTabIcon = (icon) => {
+    const iconMap = {
+      "layout-dashboard": "&#9635;",
+      "list-checks": "&#9744;",
+      "play-circle": "&#9654;",
+      settings: "&#9881;"
+    };
+    return iconMap[icon] ?? "&#8226;";
+  };
+  var TBCCShellWidget = {
+    id: "tbcc-shell",
+    initialState: () => ({
+      activeTab: "dashboard",
+      sidebarCollapsed: false,
+      currentRun: null,
+      connected: false
+    }),
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      const tabItems = joinTemplates(TABS.map((tab) => {
+        const isActive2 = tab.id === state.activeTab;
+        const baseClasses = "flex items-center gap-3 px-4 py-3 text-sm font-mono transition-colors cursor-pointer";
+        const activeClasses = isActive2 ? "bg-zinc-800/60 text-zinc-100 border-l-2 border-emerald-500" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-l-2 border-transparent";
+        return html`
+            <button class="${baseClasses} ${activeClasses}" data-action="changeTab" data-tab="${tab.id}">
+              <span class="text-lg">${renderTabIcon(tab.icon)}</span>
+              ${state.sidebarCollapsed ? "" : html`<span>${tab.label}</span>`}
+            </button>
+          `;
+      }));
+      const statusDot = state.currentRun ? html`<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>` : state.connected ? html`<span class="w-2 h-2 rounded-full bg-emerald-500"></span>` : html`<span class="w-2 h-2 rounded-full bg-zinc-600"></span>`;
+      const statusText = state.currentRun ? html`<span class="text-xs text-blue-300 truncate">${state.currentRun.taskName}</span>` : state.connected ? html`<span class="text-xs text-zinc-500">Ready</span>` : html`<span class="text-xs text-zinc-600">Disconnected</span>`;
+      const sidebarWidth = state.sidebarCollapsed ? "w-16" : "w-[260px]";
+      return html`
+        <div class="flex h-full">
+          <!-- Sidebar -->
+          <aside class="${sidebarWidth} flex-shrink-0 bg-zinc-950 border-r border-zinc-800/60 flex flex-col transition-all duration-200">
+            <!-- Header -->
+            <div class="px-4 py-4 border-b border-zinc-800/60">
+              ${state.sidebarCollapsed ? html`<span class="text-lg font-bold font-mono text-zinc-100">TB</span>` : html`
+                    <h1 class="text-lg font-bold font-mono text-zinc-100">TerminalBench</h1>
+                    <span class="text-xs text-zinc-500">Command Center</span>
+                  `}
+            </div>
+
+            <!-- Tab Navigation -->
+            <nav class="flex-1 py-2 flex flex-col">${tabItems}</nav>
+
+            <!-- Collapse Toggle -->
+            <button
+              class="px-4 py-2 text-xs text-zinc-500 hover:text-zinc-300 border-t border-zinc-800/60 transition-colors"
+              data-action="toggleSidebar"
+            >
+              ${state.sidebarCollapsed ? "→" : "← Collapse"}
+            </button>
+
+            <!-- Status Bar -->
+            <div class="px-4 py-3 border-t border-zinc-800/60 flex items-center gap-2">
+              ${statusDot} ${state.sidebarCollapsed ? "" : statusText}
+            </div>
+          </aside>
+
+          <!-- Main Content Area -->
+          <main class="flex-1 bg-zinc-950 overflow-hidden">
+            <!-- Tab Content Containers -->
+            <div id="tbcc-tab-dashboard" class="${state.activeTab === "dashboard" ? "" : "hidden"} h-full"></div>
+            <div id="tbcc-tab-tasks" class="${state.activeTab === "tasks" ? "" : "hidden"} h-full"></div>
+            <div id="tbcc-tab-runs" class="${state.activeTab === "runs" ? "" : "hidden"} h-full"></div>
+            <div id="tbcc-tab-settings" class="${state.activeTab === "settings" ? "" : "hidden"} h-full"></div>
+          </main>
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "[data-action='changeTab']", "click", (_e, target) => {
+        const tab = target.dataset.tab;
+        if (tab) {
+          exports_Effect.runFork(ctx.emit({ type: "changeTab", tab }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='toggleSidebar']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "toggleSidebar" }));
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      switch (event.type) {
+        case "changeTab": {
+          yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }));
+          break;
+        }
+        case "toggleSidebar": {
+          yield* ctx.state.update((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed }));
+          break;
+        }
+        case "runStarted": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            currentRun: {
+              runId: event.runId,
+              taskId: event.taskId,
+              taskName: event.taskName,
+              attempt: 1,
+              maxAttempts: 5,
+              status: "running",
+              startedAt: Date.now(),
+              currentStep: 0,
+              totalSteps: null
+            }
+          }));
+          break;
+        }
+        case "runCompleted": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            currentRun: null
+          }));
+          break;
+        }
+        case "connectionChange": {
+          yield* ctx.state.update((s) => ({ ...s, connected: event.connected }));
+          break;
+        }
+      }
+    }),
+    subscriptions: (ctx) => {
+      const socketSub = exports_Effect.gen(function* () {
+        const socket = yield* SocketServiceTag;
+        yield* ctx.emit({ type: "connectionChange", connected: true });
+        yield* exports_Stream.runForEach(socket.getMessages(), (msg) => exports_Effect.gen(function* () {
+          if (msg.type === "tb_run_start") {
+            const data = msg;
+            yield* ctx.emit({
+              type: "runStarted",
+              runId: data.runId,
+              taskId: data.taskIds[0] ?? "unknown",
+              taskName: data.taskIds[0] ?? "Task"
+            });
+          } else if (msg.type === "tb_run_complete") {
+            const data = msg;
+            yield* ctx.emit({
+              type: "runCompleted",
+              runId: data.runId,
+              outcome: data.passRate >= 0.5 ? "success" : "failure"
+            });
+          }
+        }));
+      });
+      return [exports_Stream.make(socketSub)];
+    }
+  };
+  // src/effuse/widgets/tb-command-center/tbcc-dashboard.ts
+  var formatDuration4 = (ms) => {
+    if (ms === null)
+      return "-";
+    const seconds2 = Math.floor(ms / 1000);
+    if (seconds2 < 60)
+      return `${seconds2}s`;
+    const minutes2 = Math.floor(seconds2 / 60);
+    const remainingSeconds = seconds2 % 60;
+    return `${minutes2}m ${remainingSeconds}s`;
+  };
+  var formatDate4 = (iso) => {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch {
+      return iso.slice(0, 10);
+    }
+  };
+  var formatPercent = (value) => {
+    return `${(value * 100).toFixed(1)}%`;
+  };
+  var TBCCDashboardWidget = {
+    id: "tbcc-dashboard",
+    initialState: () => ({
+      stats: null,
+      recentRuns: [],
+      currentRun: null,
+      loading: true,
+      error: null
+    }),
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      const currentRunCard = state.currentRun ? html`
+            <div class="bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 mb-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
+                  <div>
+                    <div class="text-sm font-mono text-blue-200">${state.currentRun.taskName}</div>
+                    <div class="text-xs text-blue-400">
+                      Step ${state.currentRun.currentStep}${state.currentRun.totalSteps ? ` / ${state.currentRun.totalSteps}` : ""} · Attempt
+                      ${state.currentRun.attempt}/${state.currentRun.maxAttempts}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  class="px-3 py-1.5 text-xs font-mono rounded border border-red-700 text-red-300 bg-red-900/40 hover:bg-red-900/60 transition-colors"
+                  data-action="stopRun"
+                >
+                  Stop
+                </button>
+              </div>
+            </div>
+          ` : "";
+      const kpiCards = state.stats ? html`
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <!-- Overall Success Rate -->
+              <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4">
+                <div class="text-xs text-zinc-500 mb-1">Success Rate</div>
+                <div class="text-2xl font-mono font-bold text-emerald-400">${formatPercent(state.stats.overallSuccessRate)}</div>
+                <div class="text-xs text-zinc-500 mt-1">Last 50: ${formatPercent(state.stats.last50SuccessRate)}</div>
+              </div>
+
+              <!-- Average Steps -->
+              <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4">
+                <div class="text-xs text-zinc-500 mb-1">Avg Steps</div>
+                <div class="text-2xl font-mono font-bold text-zinc-200">${state.stats.avgStepsPerRun.toFixed(1)}</div>
+                <div class="text-xs text-zinc-500 mt-1">per run</div>
+              </div>
+
+              <!-- Average Duration -->
+              <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4">
+                <div class="text-xs text-zinc-500 mb-1">Avg Duration</div>
+                <div class="text-2xl font-mono font-bold text-zinc-200">${formatDuration4(state.stats.avgDurationSeconds * 1000)}</div>
+                <div class="text-xs text-zinc-500 mt-1">per run</div>
+              </div>
+
+              <!-- Total Runs -->
+              <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4">
+                <div class="text-xs text-zinc-500 mb-1">Total Runs</div>
+                <div class="text-2xl font-mono font-bold text-zinc-200">${state.stats.totalRuns}</div>
+                <div class="text-xs text-zinc-500 mt-1">all time</div>
+              </div>
+            </div>
+          ` : html`
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              ${joinTemplates([1, 2, 3, 4].map(() => html`
+                    <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-4 animate-pulse">
+                      <div class="h-3 bg-zinc-800 rounded w-16 mb-2"></div>
+                      <div class="h-6 bg-zinc-800 rounded w-12"></div>
+                    </div>
+                  `))}
+            </div>
+          `;
+      const quickActions = html`
+        <div class="flex gap-3 mb-6">
+          <button
+            class="px-4 py-2 text-xs font-mono uppercase rounded border border-emerald-700 text-emerald-300 bg-emerald-900/40 hover:bg-emerald-900/60 transition-colors"
+            data-action="runFullBenchmark"
+            ${state.currentRun ? "disabled" : ""}
+          >
+            ▶ Run Full Benchmark
+          </button>
+          <button
+            class="px-4 py-2 text-xs font-mono uppercase rounded border border-zinc-700 text-zinc-200 bg-zinc-900/80 hover:bg-zinc-900/95 transition-colors"
+            data-action="runRandomTask"
+            ${state.currentRun ? "disabled" : ""}
+          >
+            🎲 Random Task
+          </button>
+          <button
+            class="px-4 py-2 text-xs font-mono uppercase rounded border border-zinc-700 text-zinc-200 bg-zinc-900/80 hover:bg-zinc-900/95 transition-colors"
+            data-action="refresh"
+          >
+            ↻ Refresh
+          </button>
+        </div>
+      `;
+      const recentRunsTable = state.recentRuns.length > 0 ? html`
+              <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-zinc-800/40">
+                  <h3 class="text-sm font-bold font-mono text-zinc-200">Recent Runs</h3>
+                </div>
+                <div class="max-h-80 overflow-y-auto">
+                  <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-zinc-900/80 border-b border-zinc-800/40 text-left text-zinc-400 text-xs font-mono">
+                      <tr>
+                        <th class="px-4 py-2">Task</th>
+                        <th class="px-4 py-2">Outcome</th>
+                        <th class="px-4 py-2">Steps</th>
+                        <th class="px-4 py-2">Duration</th>
+                        <th class="px-4 py-2">Date</th>
+                        <th class="px-4 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${joinTemplates(state.recentRuns.slice(0, 10).map((run5) => {
+        const outcomeColors = run5.outcome ? OUTCOME_COLORS[run5.outcome] : OUTCOME_COLORS.error;
+        return html`
+                            <tr class="border-b border-zinc-800/20 hover:bg-zinc-800/30 transition-colors">
+                              <td class="px-4 py-2 font-mono text-zinc-200">${run5.taskName}</td>
+                              <td class="px-4 py-2">
+                                <span
+                                  class="px-2 py-0.5 rounded text-xs font-mono ${outcomeColors.bg} ${outcomeColors.text} border ${outcomeColors.border}"
+                                >
+                                  ${run5.outcome ?? "running"}
+                                </span>
+                              </td>
+                              <td class="px-4 py-2 text-zinc-400">${run5.stepsCount}</td>
+                              <td class="px-4 py-2 text-zinc-400">${formatDuration4(run5.durationMs)}</td>
+                              <td class="px-4 py-2 text-zinc-500 text-xs">${formatDate4(run5.startedAt)}</td>
+                              <td class="px-4 py-2">
+                                <button
+                                  class="text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+                                  data-action="viewRun"
+                                  data-run-id="${run5.id}"
+                                >
+                                  View →
+                                </button>
+                              </td>
+                            </tr>
+                          `;
+      }))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ` : state.loading ? html`
+                <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-8 text-center">
+                  <div class="text-zinc-500">Loading recent runs...</div>
+                </div>
+              ` : html`
+                <div class="bg-zinc-900/60 border border-zinc-800/40 rounded-lg p-8 text-center">
+                  <div class="text-zinc-500 mb-2">No runs yet</div>
+                  <div class="text-xs text-zinc-600">Run a benchmark to see results here</div>
+                </div>
+              `;
+      const errorBanner = state.error ? html`
+            <div class="bg-red-900/20 border border-red-800/50 rounded-lg p-4 mb-4">
+              <div class="text-sm text-red-300">${state.error}</div>
+              <button
+                class="mt-2 text-xs text-red-400 hover:text-red-300 transition-colors"
+                data-action="refresh"
+              >
+                Retry
+              </button>
+            </div>
+          ` : "";
+      return html`
+        <div class="h-full overflow-y-auto p-6">
+          <h2 class="text-xl font-bold font-mono text-zinc-100 mb-6">Dashboard</h2>
+          ${errorBanner} ${currentRunCard} ${kpiCards} ${quickActions} ${recentRunsTable}
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", (_e, target) => {
+        const action = target.dataset.action;
+        const runId = target.dataset.runId;
+        if (action === "refresh") {
+          exports_Effect.runFork(ctx.emit({ type: "refresh" }));
+        } else if (action === "runFullBenchmark") {
+          exports_Effect.runFork(ctx.emit({ type: "runFullBenchmark" }));
+        } else if (action === "runRandomTask") {
+          exports_Effect.runFork(ctx.emit({ type: "runRandomTask" }));
+        } else if (action === "viewRun" && runId) {
+          exports_Effect.runFork(ctx.emit({ type: "viewRun", runId }));
+        }
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      const socket = yield* SocketServiceTag;
+      switch (event.type) {
+        case "refresh": {
+          yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }));
+          try {
+            const runs = yield* socket.loadRecentTBRuns(20);
+            const recentRuns = runs.map((r) => ({
+              id: r.runId,
+              source: "local",
+              taskId: r.taskIds?.[0] ?? "unknown",
+              taskName: r.taskNames?.[0] ?? r.runId,
+              outcome: r.outcome,
+              status: r.status,
+              startedAt: r.startedAt,
+              finishedAt: r.finishedAt ?? null,
+              durationMs: r.durationMs ?? null,
+              stepsCount: r.stepsCount ?? 0,
+              tokensUsed: r.tokensUsed ?? null
+            }));
+            const stats = computeStats(recentRuns);
+            yield* ctx.state.update((s) => ({
+              ...s,
+              recentRuns,
+              stats,
+              loading: false
+            }));
+          } catch (error) {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              loading: false,
+              error: error instanceof Error ? error.message : String(error)
+            }));
+          }
+          break;
+        }
+        case "runFullBenchmark": {
+          yield* exports_Effect.tryPromise({
+            try: async () => {
+              const result = await exports_Effect.runPromise(socket.startTBRun({ suitePath: "default.json", subset: "TB_10" }));
+              return result;
+            },
+            catch: (e) => e
+          }).pipe(exports_Effect.flatMap((result) => ctx.state.update((s) => ({
+            ...s,
+            currentRun: {
+              runId: result.runId,
+              taskId: "all",
+              taskName: "Full Benchmark",
+              attempt: 1,
+              maxAttempts: 1,
+              status: "running",
+              startedAt: Date.now(),
+              currentStep: 0,
+              totalSteps: null
+            }
+          }))), exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+            ...s,
+            error: `Failed to start benchmark: ${error instanceof Error ? error.message : String(error)}`
+          }))));
+          break;
+        }
+        case "runRandomTask": {
+          yield* exports_Effect.tryPromise({
+            try: async () => {
+              const result = await exports_Effect.runPromise(socket.startTBRun({ subset: "TB_10" }));
+              return result;
+            },
+            catch: (e) => e
+          }).pipe(exports_Effect.flatMap((result) => ctx.state.update((s) => ({
+            ...s,
+            currentRun: {
+              runId: result.runId,
+              taskId: "random",
+              taskName: "Random Task",
+              attempt: 1,
+              maxAttempts: 5,
+              status: "running",
+              startedAt: Date.now(),
+              currentStep: 0,
+              totalSteps: null
+            }
+          }))), exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+            ...s,
+            error: `Failed to start task: ${error instanceof Error ? error.message : String(error)}`
+          }))));
+          break;
+        }
+        case "runStarted": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            currentRun: {
+              runId: event.runId,
+              taskId: "unknown",
+              taskName: event.taskName,
+              attempt: 1,
+              maxAttempts: 5,
+              status: "running",
+              startedAt: Date.now(),
+              currentStep: 0,
+              totalSteps: null
+            }
+          }));
+          break;
+        }
+        case "runCompleted": {
+          yield* ctx.state.update((s) => ({ ...s, currentRun: null }));
+          yield* ctx.emit({ type: "refresh" });
+          break;
+        }
+        case "viewRun": {
+          console.log("[Dashboard] View run:", event.runId);
+          break;
+        }
+      }
+    }).pipe(exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+      ...s,
+      error: `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+    })))),
+    subscriptions: (ctx) => {
+      const initialLoad = exports_Stream.make(ctx.emit({ type: "refresh" }));
+      const runEvents = exports_Stream.unwrap(exports_Effect.gen(function* () {
+        const socket = yield* SocketServiceTag;
+        return socket.getMessages().pipe(exports_Stream.map((msg) => exports_Effect.gen(function* () {
+          if (msg.type === "tb_run_start") {
+            const data = msg;
+            yield* ctx.emit({
+              type: "runStarted",
+              runId: data.runId,
+              taskName: data.taskNames?.[0] ?? "Task"
+            });
+          } else if (msg.type === "tb_run_complete") {
+            const data = msg;
+            yield* ctx.emit({ type: "runCompleted", runId: data.runId });
+          } else if (msg.type === "tb_task_complete") {
+            const data = msg;
+            yield* ctx.emit({ type: "taskCompleted", outcome: data.outcome });
+          }
+        })));
+      }));
+      return [initialLoad, runEvents];
+    }
+  };
+  function computeStats(runs) {
+    if (runs.length === 0) {
+      return {
+        overallSuccessRate: 0,
+        last50SuccessRate: 0,
+        avgStepsPerRun: 0,
+        avgDurationSeconds: 0,
+        totalRuns: 0,
+        byDifficulty: {
+          easy: { passed: 0, total: 0 },
+          medium: { passed: 0, total: 0 },
+          hard: { passed: 0, total: 0 },
+          expert: { passed: 0, total: 0 },
+          unknown: { passed: 0, total: 0 }
+        }
+      };
+    }
+    const completedRuns = runs.filter((r) => r.outcome !== null);
+    const passedRuns = completedRuns.filter((r) => r.outcome === "success");
+    const last50 = completedRuns.slice(0, 50);
+    const last50Passed = last50.filter((r) => r.outcome === "success");
+    const totalSteps = completedRuns.reduce((sum3, r) => sum3 + r.stepsCount, 0);
+    const totalDuration = completedRuns.reduce((sum3, r) => sum3 + (r.durationMs ?? 0), 0);
+    return {
+      overallSuccessRate: completedRuns.length > 0 ? passedRuns.length / completedRuns.length : 0,
+      last50SuccessRate: last50.length > 0 ? last50Passed.length / last50.length : 0,
+      avgStepsPerRun: completedRuns.length > 0 ? totalSteps / completedRuns.length : 0,
+      avgDurationSeconds: completedRuns.length > 0 ? totalDuration / completedRuns.length / 1000 : 0,
+      totalRuns: runs.length,
+      byDifficulty: {
+        easy: { passed: 0, total: 0 },
+        medium: { passed: 0, total: 0 },
+        hard: { passed: 0, total: 0 },
+        expert: { passed: 0, total: 0 },
+        unknown: { passed: 0, total: 0 }
+      }
+    };
+  }
+  // src/effuse/widgets/tb-command-center/tbcc-task-browser.ts
+  var TBCCTaskBrowserWidget = {
+    id: "tbcc-task-browser",
+    initialState: () => ({
+      tasks: [],
+      selectedTaskId: null,
+      searchQuery: "",
+      difficultyFilter: "all",
+      loading: true,
+      error: null
+    }),
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      const filteredTasks = state.tasks.filter((task) => {
+        const matchesSearch = state.searchQuery === "" || task.name.toLowerCase().includes(state.searchQuery.toLowerCase()) || task.category.toLowerCase().includes(state.searchQuery.toLowerCase());
+        const matchesDifficulty = state.difficultyFilter === "all" || task.difficulty === state.difficultyFilter;
+        return matchesSearch && matchesDifficulty;
+      });
+      const selectedTask = state.selectedTaskId ? state.tasks.find((t) => t.id === state.selectedTaskId) : null;
+      const taskList = html`
+        <div class="flex flex-col h-full border-r border-zinc-800/60 bg-zinc-900/20 w-1/3 min-w-[300px]">
+          <!-- Filters -->
+          <div class="p-4 border-b border-zinc-800/60 space-y-3">
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+              value="${state.searchQuery}"
+              data-action="search"
+            />
+            <div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              ${joinTemplates(["all", "easy", "medium", "hard", "expert"].map((diff8) => {
+        const isActive2 = state.difficultyFilter === diff8;
+        const classes = isActive2 ? "bg-zinc-700 text-zinc-100 border-zinc-600" : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700";
+        return html`
+                    <button
+                      class="px-2.5 py-1 text-xs rounded border ${classes} whitespace-nowrap capitalize transition-colors"
+                      data-action="filter"
+                      data-difficulty="${diff8}"
+                    >
+                      ${diff8}
+                    </button>
+                  `;
+      }))}
+            </div>
+          </div>
+
+          <!-- List -->
+          <div class="flex-1 overflow-y-auto">
+            ${state.loading ? html`<div class="p-8 text-center text-zinc-500 text-sm">Loading tasks...</div>` : filteredTasks.length === 0 ? html`<div class="p-8 text-center text-zinc-500 text-sm">No tasks found</div>` : html`
+                    <div class="divide-y divide-zinc-800/40">
+                      ${joinTemplates(filteredTasks.map((task) => {
+        const isSelected = task.id === state.selectedTaskId;
+        const diffColor = DIFFICULTY_COLORS[task.difficulty];
+        const bgClass = isSelected ? "bg-zinc-800/60" : "hover:bg-zinc-800/30";
+        return html`
+                            <div
+                              class="p-4 cursor-pointer transition-colors ${bgClass}"
+                              data-action="selectTask"
+                              data-task-id="${task.id}"
+                            >
+                              <div class="flex items-start justify-between gap-2 mb-1">
+                                <div class="font-mono text-sm text-zinc-200 truncate" title="${task.name}">
+                                  ${task.name}
+                                </div>
+                                <span
+                                  class="px-1.5 py-0.5 text-[10px] uppercase rounded border ${diffColor.bg} ${diffColor.text} ${diffColor.border}"
+                                >
+                                  ${task.difficulty}
+                                </span>
+                              </div>
+                              <div class="text-xs text-zinc-500 truncate">${task.category}</div>
+                            </div>
+                          `;
+      }))}
+                    </div>
+                  `}
+          </div>
+        </div>
+      `;
+      const taskDetail = selectedTask ? html`
+            <div class="flex-1 h-full overflow-y-auto p-6">
+              <div class="max-w-3xl mx-auto">
+                <div class="flex items-start justify-between mb-6">
+                  <div>
+                    <h2 class="text-xl font-bold font-mono text-zinc-100 mb-2">${selectedTask.name}</h2>
+                    <div class="flex items-center gap-3 text-sm">
+                      <span class="text-zinc-400">${selectedTask.category}</span>
+                      <span class="text-zinc-600">•</span>
+                      <span class="${DIFFICULTY_COLORS[selectedTask.difficulty].text} capitalize">
+                        ${selectedTask.difficulty}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                    data-action="runTask"
+                    data-task-id="${selectedTask.id}"
+                  >
+                    <span>▶ Run Task</span>
+                  </button>
+                </div>
+
+                <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-6">
+                  <h3 class="text-sm font-bold text-zinc-300 mb-3">Description</h3>
+                  <div class="prose prose-invert prose-sm max-w-none text-zinc-400">
+                    ${selectedTask.description}
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                  <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-4">
+                    <div class="text-xs text-zinc-500 mb-1">Timeout</div>
+                    <div class="text-lg font-mono text-zinc-200">${selectedTask.timeoutSeconds}s</div>
+                  </div>
+                  <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-4">
+                    <div class="text-xs text-zinc-500 mb-1">Max Turns</div>
+                    <div class="text-lg font-mono text-zinc-200">${selectedTask.maxTurns}</div>
+                  </div>
+                </div>
+
+                ${selectedTask.tags.length > 0 ? html`
+                      <div class="mb-6">
+                        <h3 class="text-xs font-bold text-zinc-500 uppercase mb-2">Tags</h3>
+                        <div class="flex flex-wrap gap-2">
+                          ${joinTemplates(selectedTask.tags.map((tag) => html`
+                                <span class="px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded border border-zinc-700">
+                                  ${tag}
+                                </span>
+                              `))}
+                        </div>
+                      </div>
+                    ` : ""}
+              </div>
+            </div>
+          ` : html`
+            <div class="flex-1 h-full flex items-center justify-center text-zinc-500 bg-zinc-950/50">
+              <div class="text-center">
+                <div class="text-4xl mb-4 opacity-20">←</div>
+                <div>Select a task to view details</div>
+              </div>
+            </div>
+          `;
+      return html`
+        <div class="flex h-full overflow-hidden">
+          ${taskList} ${taskDetail}
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "[data-action='search']", "input", (_e, target) => {
+        const query = target.value;
+        exports_Effect.runFork(ctx.emit({ type: "updateSearch", query }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='filter']", "click", (_e, target) => {
+        const difficulty = target.dataset.difficulty;
+        if (difficulty) {
+          exports_Effect.runFork(ctx.emit({ type: "updateFilter", difficulty }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='selectTask']", "click", (_e, target) => {
+        const taskId = target.dataset.taskId;
+        if (taskId) {
+          exports_Effect.runFork(ctx.emit({ type: "selectTask", taskId }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='runTask']", "click", (_e, target) => {
+        const taskId = target.dataset.taskId;
+        if (taskId) {
+          exports_Effect.runFork(ctx.emit({ type: "runTask", taskId }));
+        }
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      const socket = yield* SocketServiceTag;
+      switch (event.type) {
+        case "loadTasks": {
+          yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }));
+          try {
+            const suite = yield* socket.loadTBSuite("tasks/terminal-bench-2.json");
+            const tasks = suite.tasks.map((t) => ({
+              id: t.id,
+              name: t.name,
+              slug: t.name.toLowerCase().replace(/\s+/g, "-"),
+              description: t.description,
+              difficulty: t.difficulty || "unknown",
+              category: t.category || "General",
+              tags: t.tags || [],
+              timeoutSeconds: t.timeout || 300,
+              maxTurns: t.max_turns || 50,
+              status: "unattempted",
+              lastRunId: null,
+              attemptCount: 0,
+              passCount: 0
+            }));
+            yield* ctx.state.update((s) => ({
+              ...s,
+              tasks,
+              loading: false
+            }));
+          } catch (error) {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              loading: false,
+              error: error instanceof Error ? error.message : String(error)
+            }));
+          }
+          break;
+        }
+        case "selectTask": {
+          yield* ctx.state.update((s) => ({ ...s, selectedTaskId: event.taskId }));
+          break;
+        }
+        case "updateSearch": {
+          yield* ctx.state.update((s) => ({ ...s, searchQuery: event.query }));
+          break;
+        }
+        case "updateFilter": {
+          yield* ctx.state.update((s) => ({ ...s, difficultyFilter: event.difficulty }));
+          break;
+        }
+        case "runTask": {
+          yield* socket.startTBRun({
+            suitePath: "tasks/terminal-bench-2.json",
+            taskIds: [event.taskId]
+          });
+          break;
+        }
+      }
+    }),
+    subscriptions: (ctx) => {
+      return [exports_Stream.make(ctx.emit({ type: "loadTasks" }))];
+    }
+  };
+  // src/effuse/widgets/tb-command-center/tbcc-run-browser.ts
+  var formatDate5 = (iso) => {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch {
+      return iso.slice(0, 10);
+    }
+  };
+  var formatDuration5 = (ms) => {
+    if (ms === null)
+      return "-";
+    const seconds2 = Math.floor(ms / 1000);
+    if (seconds2 < 60)
+      return `${seconds2}s`;
+    const minutes2 = Math.floor(seconds2 / 60);
+    const remainingSeconds = seconds2 % 60;
+    return `${minutes2}m ${remainingSeconds}s`;
+  };
+  var TBCCRunBrowserWidget = {
+    id: "tbcc-run-browser",
+    initialState: () => ({
+      runs: [],
+      selectedRunId: null,
+      selectedRunDetail: null,
+      dataSource: "all",
+      loading: true,
+      loadingDetail: false,
+      error: null,
+      page: 0,
+      pageSize: 50,
+      hasMore: true
+    }),
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      const filteredRuns = state.runs.filter((run5) => {
+        if (state.dataSource === "all")
+          return true;
+        return run5.source === state.dataSource;
+      });
+      const runList = html`
+        <div class="flex flex-col h-full border-r border-zinc-800/60 bg-zinc-900/20 w-1/3 min-w-[350px]">
+          <!-- Controls -->
+          <div class="p-4 border-b border-zinc-800/60 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold font-mono text-zinc-200">Run History</h3>
+              <button
+                class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                data-action="refresh"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+
+            <!-- Source Filter -->
+            <div class="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+              ${joinTemplates(["all", "local", "hf"].map((source) => {
+        const isActive2 = state.dataSource === source;
+        const classes = isActive2 ? "bg-zinc-700 text-zinc-100 shadow-sm" : "text-zinc-500 hover:text-zinc-300";
+        const labels = { all: "All", local: "Local", hf: "HuggingFace" };
+        return html`
+                    <button
+                      class="flex-1 py-1 text-xs font-medium rounded transition-all ${classes}"
+                      data-action="changeSource"
+                      data-source="${source}"
+                    >
+                      ${labels[source]}
+                    </button>
+                  `;
+      }))}
+            </div>
+          </div>
+
+          <!-- List -->
+          <div class="flex-1 overflow-y-auto">
+            ${state.loading && state.page === 0 ? html`<div class="p-8 text-center text-zinc-500 text-sm">Loading runs...</div>` : filteredRuns.length === 0 ? html`<div class="p-8 text-center text-zinc-500 text-sm">No runs found</div>` : html`
+                    <div class="divide-y divide-zinc-800/40">
+                      ${joinTemplates(filteredRuns.map((run5) => {
+        const isSelected = run5.id === state.selectedRunId;
+        const outcomeColors = run5.outcome ? OUTCOME_COLORS[run5.outcome] : OUTCOME_COLORS.aborted;
+        const bgClass = isSelected ? "bg-zinc-800/60" : "hover:bg-zinc-800/30";
+        return html`
+                            <div
+                              class="p-4 cursor-pointer transition-colors ${bgClass}"
+                              data-action="selectRun"
+                              data-run-id="${run5.id}"
+                              data-source="${run5.source}"
+                            >
+                              <div class="flex items-start justify-between gap-2 mb-1">
+                                <div class="font-mono text-sm text-zinc-200 truncate" title="${run5.taskName}">
+                                  ${run5.taskName}
+                                </div>
+                                <span
+                                  class="px-1.5 py-0.5 text-[10px] uppercase rounded border ${outcomeColors.bg} ${outcomeColors.text} ${outcomeColors.border}"
+                                >
+                                  ${run5.outcome ?? "running"}
+                                </span>
+                              </div>
+                              <div class="flex items-center justify-between text-xs text-zinc-500">
+                                <span>${formatDate5(run5.startedAt)}</span>
+                                <div class="flex gap-3">
+                                  <span>${run5.stepsCount} steps</span>
+                                  <span>${formatDuration5(run5.durationMs)}</span>
+                                </div>
+                              </div>
+                              ${run5.source === "hf" ? html`
+                                    <div class="mt-1 text-[10px] text-zinc-600 flex items-center gap-1">
+                                      <span class="w-1.5 h-1.5 rounded-full bg-yellow-600/50"></span>
+                                      HF: ${run5.agentName}
+                                    </div>
+                                  ` : html`
+                                    <div class="mt-1 text-[10px] text-zinc-600 flex items-center gap-1">
+                                      <span class="w-1.5 h-1.5 rounded-full bg-blue-600/50"></span>
+                                      Local Run
+                                    </div>
+                                  `}
+                            </div>
+                          `;
+      }))}
+                      ${state.hasMore ? html`
+                            <div class="p-4 text-center">
+                              <button
+                                class="text-xs text-zinc-400 hover:text-zinc-200"
+                                data-action="loadMore"
+                              >
+                                Load More ↓
+                              </button>
+                            </div>
+                          ` : ""}
+                    </div>
+                  `}
+          </div>
+        </div>
+      `;
+      const detailPanel = state.selectedRunDetail ? html`
+            <div class="flex-1 h-full overflow-y-auto bg-zinc-950">
+              <!-- Header -->
+              <div class="px-6 py-4 border-b border-zinc-800/60 bg-zinc-900/20">
+                <div class="flex items-center justify-between mb-2">
+                  <h2 class="text-lg font-bold font-mono text-zinc-100">${state.selectedRunDetail.taskName}</h2>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-zinc-500 font-mono">${state.selectedRunDetail.id}</span>
+                    ${state.selectedRunDetail.source === "hf" ? html`<span class="px-2 py-0.5 rounded text-xs bg-yellow-900/30 text-yellow-500 border border-yellow-800/50">HuggingFace</span>` : html`<span class="px-2 py-0.5 rounded text-xs bg-blue-900/30 text-blue-400 border border-blue-800/50">Local</span>`}
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-6 text-sm text-zinc-400">
+                  <div>
+                    <span class="text-zinc-600">Status:</span>
+                    <span class="${state.selectedRunDetail.outcome === "success" ? "text-emerald-400" : "text-red-400"} capitalize">
+                      ${state.selectedRunDetail.outcome ?? "Unknown"}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="text-zinc-600">Steps:</span>
+                    <span class="text-zinc-200">${state.selectedRunDetail.stepsCount}</span>
+                  </div>
+                  <div>
+                    <span class="text-zinc-600">Duration:</span>
+                    <span class="text-zinc-200">${formatDuration5(state.selectedRunDetail.durationMs)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Steps -->
+              <div class="p-6">
+                <h3 class="text-sm font-bold text-zinc-500 uppercase mb-4">Execution Steps</h3>
+                <div class="space-y-4">
+                  ${joinTemplates(state.selectedRunDetail.steps.map((step4) => {
+        const statusColor = step4.success ? "border-emerald-900/30" : "border-red-900/30";
+        return html`
+                        <div class="bg-zinc-900/40 border ${statusColor} rounded-lg overflow-hidden">
+                          <div class="px-4 py-2 bg-zinc-900/60 border-b border-zinc-800/40 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                              <span class="text-xs font-mono text-zinc-500">#${step4.index}</span>
+                              <span class="text-sm font-mono text-zinc-200">${step4.actionLabel}</span>
+                            </div>
+                            <span class="text-xs text-zinc-500">${formatDuration5(step4.durationMs)}</span>
+                          </div>
+
+                          <div class="p-4 space-y-3">
+                            ${step4.shortReason ? html`
+                                  <div class="text-sm text-zinc-400 italic">
+                                    "${step4.shortReason}"
+                                  </div>
+                                ` : ""}
+
+                            ${step4.toolCall ? html`
+                                  <div class="bg-zinc-950/50 rounded border border-zinc-800/40 p-3">
+                                    <div class="text-xs text-violet-400 font-mono mb-1">Tool Call: ${step4.toolCall.functionName}</div>
+                                    <pre class="text-xs text-zinc-400 overflow-x-auto whitespace-pre-wrap font-mono">${JSON.stringify(step4.toolCall.arguments, null, 2)}</pre>
+                                  </div>
+                                ` : ""}
+
+                            ${step4.observation ? html`
+                                  <div class="bg-zinc-950/50 rounded border border-zinc-800/40 p-3">
+                                    <div class="text-xs text-emerald-400 font-mono mb-1">Observation</div>
+                                    <pre class="text-xs text-zinc-400 overflow-x-auto whitespace-pre-wrap font-mono">${typeof step4.observation.content === "string" ? step4.observation.content : JSON.stringify(step4.observation.content, null, 2)}</pre>
+                                  </div>
+                                ` : ""}
+                          </div>
+                        </div>
+                      `;
+      }))}
+                </div>
+              </div>
+            </div>
+          ` : state.loadingDetail ? html`
+              <div class="flex-1 h-full flex items-center justify-center text-zinc-500">
+                Loading details...
+              </div>
+            ` : html`
+              <div class="flex-1 h-full flex items-center justify-center text-zinc-500 bg-zinc-950/50">
+                <div class="text-center">
+                  <div class="text-4xl mb-4 opacity-20">←</div>
+                  <div>Select a run to view details</div>
+                </div>
+              </div>
+            `;
+      return html`
+        <div class="flex h-full overflow-hidden">
+          ${runList} ${detailPanel}
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "[data-action='changeSource']", "click", (_e, target) => {
+        const source = target.dataset.source;
+        if (source) {
+          exports_Effect.runFork(ctx.emit({ type: "changeSource", source }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='selectRun']", "click", (_e, target) => {
+        const runId = target.dataset.runId;
+        const source = target.dataset.source;
+        if (runId && source) {
+          exports_Effect.runFork(ctx.emit({ type: "selectRun", runId, source }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='refresh']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "refresh" }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='loadMore']", "click", () => {
+        exports_Effect.runFork(ctx.state.update((s) => ({ ...s, page: s.page + 1 })).pipe(exports_Effect.flatMap(() => ctx.emit({ type: "loadRuns", page: -1 }))));
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      const socket = yield* SocketServiceTag;
+      switch (event.type) {
+        case "loadRuns": {
+          yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }));
+          const state = yield* ctx.state.get;
+          try {
+            const localRunsRaw = yield* socket.loadRecentTBRuns(20);
+            const localRuns = localRunsRaw.map((r) => ({
+              id: r.runId,
+              source: "local",
+              taskId: r.taskIds?.[0] ?? "unknown",
+              taskName: r.taskNames?.[0] ?? r.runId,
+              outcome: r.outcome,
+              status: r.status,
+              startedAt: r.startedAt,
+              finishedAt: r.finishedAt ?? null,
+              durationMs: r.durationMs ?? null,
+              stepsCount: r.stepsCount ?? 0,
+              tokensUsed: r.tokensUsed ?? null
+            }));
+            const hfRunsRaw = yield* socket.getHFTrajectories(0, 20);
+            const hfRuns = hfRunsRaw.map((t) => {
+              const extra = t.extra;
+              return {
+                id: t.session_id,
+                source: "hf",
+                taskId: extra?.task ?? "unknown",
+                taskName: extra?.task ?? "unknown",
+                outcome: "success",
+                status: "completed",
+                startedAt: extra?.date ?? t.steps[0]?.timestamp ?? new Date().toISOString(),
+                finishedAt: null,
+                durationMs: null,
+                stepsCount: t.steps.length,
+                tokensUsed: null,
+                agentName: t.agent?.name,
+                modelName: t.agent?.model_name,
+                episode: extra?.episode
+              };
+            });
+            const allRuns = [...localRuns, ...hfRuns].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+            yield* ctx.state.update((s) => ({
+              ...s,
+              runs: allRuns,
+              loading: false
+            }));
+          } catch (error) {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              loading: false,
+              error: error instanceof Error ? error.message : String(error)
+            }));
+          }
+          break;
+        }
+        case "changeSource": {
+          yield* ctx.state.update((s) => ({ ...s, dataSource: event.source }));
+          break;
+        }
+        case "selectRun": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            selectedRunId: event.runId,
+            loadingDetail: true,
+            selectedRunDetail: null
+          }));
+          try {
+            let detail = null;
+            if (event.source === "local") {
+              const runData = yield* socket.loadTBRunDetails(event.runId);
+              if (runData) {
+                const firstTask = runData.tasks[0];
+                detail = {
+                  id: runData.meta.runId,
+                  source: "local",
+                  taskId: firstTask?.id ?? "unknown",
+                  taskName: firstTask?.name ?? runData.meta.suiteName,
+                  outcome: firstTask?.outcome ?? "unknown",
+                  status: "completed",
+                  startedAt: runData.meta.timestamp,
+                  finishedAt: null,
+                  durationMs: runData.meta.totalDurationMs,
+                  stepsCount: firstTask?.turns ?? 0,
+                  tokensUsed: runData.meta.totalTokens,
+                  steps: [],
+                  terminalOutput: { stdout: [], stderr: [] }
+                };
+              }
+            } else {
+              const hfRunsRaw = yield* socket.getHFTrajectories(0, 100);
+              const t = hfRunsRaw.find((t2) => t2.session_id === event.runId);
+              if (t) {
+                const extra = t.extra;
+                detail = {
+                  id: t.session_id,
+                  source: "hf",
+                  taskId: extra?.task ?? "unknown",
+                  taskName: extra?.task ?? "unknown",
+                  outcome: "success",
+                  status: "completed",
+                  startedAt: extra?.date ?? t.steps[0]?.timestamp ?? new Date().toISOString(),
+                  finishedAt: null,
+                  durationMs: null,
+                  stepsCount: t.steps.length,
+                  tokensUsed: null,
+                  agentName: t.agent?.name,
+                  modelName: t.agent?.model_name,
+                  episode: extra?.episode,
+                  steps: t.steps.map((s, i) => ({
+                    id: s.step_id.toString(),
+                    index: i + 1,
+                    actionType: "CUSTOM",
+                    actionLabel: s.tool_calls?.[0]?.function_name ?? "Thought",
+                    shortReason: s.reasoning_content ?? (typeof s.message === "string" ? s.message : "") ?? "",
+                    details: null,
+                    timestamp: s.timestamp,
+                    success: !s.error,
+                    durationMs: null,
+                    toolCall: s.tool_calls?.[0] ? {
+                      functionName: s.tool_calls[0].function_name,
+                      arguments: s.tool_calls[0].arguments
+                    } : undefined,
+                    observation: s.observation ? {
+                      content: s.observation.results[0]?.content,
+                      truncated: false
+                    } : undefined
+                  })),
+                  terminalOutput: { stdout: [], stderr: [] }
+                };
+              }
+            }
+            yield* ctx.state.update((s) => ({
+              ...s,
+              selectedRunDetail: detail,
+              loadingDetail: false
+            }));
+          } catch (error) {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              loadingDetail: false,
+              error: error instanceof Error ? error.message : String(error)
+            }));
+          }
+          break;
+        }
+        case "refresh": {
+          yield* ctx.emit({ type: "loadRuns", page: 0 });
+          break;
+        }
+      }
+    }),
+    subscriptions: (ctx) => {
+      return [exports_Stream.make(ctx.emit({ type: "loadRuns", page: 0 }))];
+    }
+  };
+  // src/effuse/widgets/tb-command-center/tbcc-settings.ts
+  var STORAGE_KEY = "tbcc_settings";
+  var loadSettings = () => {
+    if (typeof localStorage === "undefined") {
+      return { execution: DEFAULT_EXECUTION_SETTINGS, logging: DEFAULT_LOGGING_SETTINGS };
+    }
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Failed to load settings", e);
+    }
+    return { execution: DEFAULT_EXECUTION_SETTINGS, logging: DEFAULT_LOGGING_SETTINGS };
+  };
+  var saveSettings = (execution, logging) => {
+    if (typeof localStorage === "undefined")
+      return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ execution, logging }));
+    } catch (e) {
+      console.error("Failed to save settings", e);
+    }
+  };
+  var TBCCSettingsWidget = {
+    id: "tbcc-settings",
+    initialState: () => {
+      const { execution, logging } = loadSettings();
+      return {
+        execution,
+        logging,
+        saved: false
+      };
+    },
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      const inputClass = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none";
+      const checkboxClass = "w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-zinc-900";
+      const labelClass = "block text-xs font-medium text-zinc-400 mb-1";
+      return html`
+        <div class="h-full overflow-y-auto p-8">
+          <div class="max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8">
+              <h2 class="text-xl font-bold font-mono text-zinc-100">Settings</h2>
+              ${state.saved ? html`<span class="text-sm text-emerald-400 animate-fade-out">Settings saved!</span>` : ""}
+            </div>
+
+            <!-- Execution Settings -->
+            <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-6">
+              <h3 class="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
+                <span class="text-lg">⚡</span> Execution
+              </h3>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="${labelClass}">Max Attempts</label>
+                  <input
+                    type="number"
+                    class="${inputClass}"
+                    value="${state.execution.maxAttempts}"
+                    data-action="updateExecution"
+                    data-key="maxAttempts"
+                  />
+                  <p class="text-[10px] text-zinc-500 mt-1">Retries per task</p>
+                </div>
+
+                <div>
+                  <label class="${labelClass}">Max Steps per Run</label>
+                  <input
+                    type="number"
+                    class="${inputClass}"
+                    value="${state.execution.maxStepsPerRun}"
+                    data-action="updateExecution"
+                    data-key="maxStepsPerRun"
+                  />
+                  <p class="text-[10px] text-zinc-500 mt-1">Limit to prevent infinite loops</p>
+                </div>
+
+                <div>
+                  <label class="${labelClass}">Timeout (seconds)</label>
+                  <input
+                    type="number"
+                    class="${inputClass}"
+                    value="${state.execution.timeoutSeconds}"
+                    data-action="updateExecution"
+                    data-key="timeoutSeconds"
+                  />
+                </div>
+
+                <div>
+                  <label class="${labelClass}">Recursion Limit</label>
+                  <input
+                    type="number"
+                    class="${inputClass}"
+                    value="${state.execution.recursionLimitN}"
+                    data-action="updateExecution"
+                    data-key="recursionLimitN"
+                  />
+                </div>
+              </div>
+
+              <div class="mt-6 space-y-3">
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="${checkboxClass}"
+                    ${state.execution.deepComputeEnabled ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="deepComputeEnabled"
+                  />
+                  <span class="text-sm text-zinc-300">Enable Deep Compute (Tree Search)</span>
+                </label>
+
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="${checkboxClass}"
+                    ${state.execution.earlyStopOnHighConfidence ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="earlyStopOnHighConfidence"
+                  />
+                  <span class="text-sm text-zinc-300">Early stop on high confidence</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Logging Settings -->
+            <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-8">
+              <h3 class="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
+                <span class="text-lg">📝</span> Logging & Storage
+              </h3>
+
+              <div class="space-y-3">
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="${checkboxClass}"
+                    ${state.logging.saveTrajectories ? "checked" : ""}
+                    data-action="updateLogging"
+                    data-key="saveTrajectories"
+                  />
+                  <span class="text-sm text-zinc-300">Save full trajectories (JSON)</span>
+                </label>
+
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="${checkboxClass}"
+                    ${state.logging.saveTerminalOutput ? "checked" : ""}
+                    data-action="updateLogging"
+                    data-key="saveTerminalOutput"
+                  />
+                  <span class="text-sm text-zinc-300">Save terminal output logs</span>
+                </label>
+
+                <label class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    class="${checkboxClass}"
+                    ${state.logging.saveAtifTraces ? "checked" : ""}
+                    data-action="updateLogging"
+                    data-key="saveAtifTraces"
+                  />
+                  <span class="text-sm text-zinc-300">Save ATIF traces</span>
+                </label>
+              </div>
+
+              <div class="mt-6">
+                <label class="${labelClass}">Auto-prune logs older than (days)</label>
+                <input
+                  type="number"
+                  class="${inputClass} w-32"
+                  value="${state.logging.autoPruneDays ?? ""}"
+                  placeholder="Never"
+                  data-action="updateLogging"
+                  data-key="autoPruneDays"
+                />
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center justify-end gap-4">
+              <button
+                class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+                data-action="reset"
+              >
+                Reset to Defaults
+              </button>
+              <button
+                class="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors shadow-lg shadow-emerald-900/20"
+                data-action="save"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "input", "change", (_e, target) => {
+        const el = target;
+        const action = el.dataset.action;
+        const key = el.dataset.key;
+        if (!action || !key)
+          return;
+        let value;
+        if (el.type === "checkbox") {
+          value = el.checked;
+        } else if (el.type === "number") {
+          value = el.value === "" ? null : Number(el.value);
+        } else {
+          value = el.value;
+        }
+        if (action === "updateExecution") {
+          exports_Effect.runFork(ctx.emit({ type: "updateExecution", key, value }));
+        } else if (action === "updateLogging") {
+          exports_Effect.runFork(ctx.emit({ type: "updateLogging", key, value }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "button[data-action='save']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "save" }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "button[data-action='reset']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "reset" }));
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      switch (event.type) {
+        case "updateExecution": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            execution: { ...s.execution, [event.key]: event.value },
+            saved: false
+          }));
+          break;
+        }
+        case "updateLogging": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            logging: { ...s.logging, [event.key]: event.value },
+            saved: false
+          }));
+          break;
+        }
+        case "save": {
+          const state = yield* ctx.state.get;
+          saveSettings(state.execution, state.logging);
+          yield* ctx.state.update((s) => ({ ...s, saved: true }));
+          yield* exports_Effect.sleep("2 seconds");
+          yield* ctx.state.update((s) => ({ ...s, saved: false }));
+          break;
+        }
+        case "reset": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            execution: DEFAULT_EXECUTION_SETTINGS,
+            logging: DEFAULT_LOGGING_SETTINGS,
+            saved: false
+          }));
+          break;
+        }
+      }
+    })
+  };
   // src/mainview/effuse-main.ts
   console.log("[Effuse] Loading mainview...");
   if (window.bunLog) {
@@ -29143,41 +30634,26 @@ ${event.reason?.stack || event.reason}`);
     return exports_Layer.mergeAll(DomServiceLive, StateServiceLive, SocketServiceFromClient(socketClient));
   };
   var mountAllWidgets = exports_Effect.gen(function* () {
-    console.log("[Effuse] Mounting HF Trajectory Browser widgets...");
+    console.log("[Effuse] Mounting TB Command Center...");
     if (window.bunLog) {
-      window.bunLog("[Effuse] ========== MOUNTING HF TRAJECTORY WIDGETS ==========");
+      window.bunLog("[Effuse] ========== MOUNTING TBCC WIDGETS ==========");
     }
-    const listWidget = yield* mountWidgetById(HFTrajectoryListWidget, "hf-trajectory-list-widget").pipe(exports_Effect.tap(() => console.log("[Effuse] HF Trajectory List widget mounted")), exports_Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount HF Trajectory List widget:", e);
+    const shellWidget = yield* mountWidgetById(TBCCShellWidget, "tbcc-shell-widget").pipe(exports_Effect.tap(() => console.log("[Effuse] Shell mounted")), exports_Effect.catchAll((e) => {
+      console.error("[Effuse] Failed to mount Shell widget:", e);
       return exports_Effect.die(e);
     }));
-    const detailWidget = yield* mountWidgetById(HFTrajectoryDetailWidget, "hf-trajectory-detail-widget").pipe(exports_Effect.tap(() => console.log("[Effuse] HF Trajectory Detail widget mounted")), exports_Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount HF Trajectory Detail widget:", e);
-      return exports_Effect.die(e);
-    }));
-    yield* exports_Stream.runForEach(listWidget.events, (event) => exports_Effect.gen(function* () {
-      if (event.type === "select") {
-        console.log("[Effuse] Loading trajectory:", event.sessionId, "at index:", event.index);
-        yield* detailWidget.emit({ type: "clear" });
-        try {
-          const socketClient = getSocketClient();
-          const trajectory = yield* exports_Effect.promise(() => socketClient.getHFTrajectory(event.index));
-          if (trajectory) {
-            yield* detailWidget.emit({
-              type: "load",
-              sessionId: event.sessionId,
-              trajectory
-            });
-            console.log("[Effuse] Trajectory loaded successfully");
-          } else {
-            console.warn("[Effuse] Trajectory not found at index:", event.index);
-          }
-        } catch (error) {
-          console.error("[Effuse] Failed to load trajectory:", error);
-        }
+    const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard");
+    const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks");
+    const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs");
+    const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings");
+    console.log("[Effuse] Child widgets mounted");
+    yield* exports_Stream.runForEach(dashboardWidget.events, (event) => exports_Effect.gen(function* () {
+      if (event.type === "viewRun") {
+        yield* shellWidget.emit({ type: "changeTab", tab: "runs" });
+        yield* runBrowserWidget.emit({ type: "selectRun", runId: event.runId, source: "local" });
       }
     })).pipe(exports_Effect.forkScoped);
-    console.log("[Effuse] HF Trajectory Browser ready");
+    console.log("[Effuse] TB Command Center ready");
   });
   var initEffuse = () => {
     console.log("[Effuse] Creating layer...");
