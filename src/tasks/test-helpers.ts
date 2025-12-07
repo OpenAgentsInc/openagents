@@ -4,10 +4,11 @@
 
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
+import { BunContext } from "@effect/platform-bun";
 import { Effect, Context, Layer } from "effect";
 import { Database } from "bun:sqlite";
 import { runMigrations } from "../storage/migrations.js";
-import { DatabaseService, type DatabaseError } from "../storage/database.js";
+import { DatabaseService, type DatabaseError, makeDatabaseLive } from "../storage/database.js";
 import * as path from "node:path";
 
 /**
@@ -60,8 +61,6 @@ export const makeTestDatabase = (): Effect.Effect<
  * @returns Layer providing DatabaseService
  */
 export const makeDatabaseLayerFromPath = (dbPath: string): Layer.Layer<DatabaseService> => {
-  // Import makeDatabaseLive from the storage module
-  const { makeDatabaseLive } = require("../storage/database.js");
   return makeDatabaseLive(dbPath);
 };
 
