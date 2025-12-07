@@ -8,11 +8,12 @@
  */
 
 import { describe, test, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, type Scope } from "effect"
 import { makeHappyDomLayer } from "../testing/layers/happy-dom.js"
 import { TestBrowserTag } from "../testing/browser.js"
 import { TestHarnessTag } from "../testing/harness.js"
 import { SocketServiceTag } from "../services/socket.js"
+import { StateServiceTag } from "../services/state.js"
 
 // Import TB widgets
 import { TBOutputWidget } from "./tb-output.js"
@@ -24,7 +25,7 @@ import { CategoryTreeWidget } from "./category-tree.js"
 // ============================================================================
 
 const runWithLayer = <A, E>(
-  effect: Effect.Effect<A, E, TestBrowserTag | TestHarnessTag | SocketServiceTag>
+  effect: Effect.Effect<A, E, TestBrowserTag | TestHarnessTag | SocketServiceTag | StateServiceTag | Scope.Scope>
 ): Promise<A> =>
   Effect.runPromise(
     Effect.scoped(
@@ -47,7 +48,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const handle = yield* harness.mount(TBOutputWidget)
+        yield* harness.mount(TBOutputWidget)
 
         // Widget should be hidden by default
         yield* browser.expectHidden(".fixed")
@@ -61,7 +62,7 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
@@ -96,13 +97,13 @@ describe("TBOutputWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: {
             ...TBOutputWidget.initialState(),
             visible: true,
             outputLines: [
-              { text: "Agent output line", source: "agent", timestamp: Date.now() },
-              { text: "Verification output", source: "verification", timestamp: Date.now() },
+              { text: "Agent output line", source: "agent" as const, timestamp: Date.now() },
+              { text: "Verification output", source: "verification" as const, timestamp: Date.now() },
             ],
           },
         })
@@ -149,7 +150,7 @@ describe("TBOutputWidget", () => {
             ...TBOutputWidget.initialState(),
             visible: true,
             outputLines: [
-              { text: "Line 1", source: "agent", timestamp: Date.now() },
+              { text: "Line 1", source: "agent" as const, timestamp: Date.now() },
             ],
           },
         })
@@ -176,7 +177,7 @@ describe("TBControlsWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
+        yield* harness.mount(TBControlsWidget)
 
         // Should show header
         yield* browser.expectText(".rounded-xl", "Terminal-Bench")
@@ -199,7 +200,7 @@ describe("TBControlsWidget", () => {
         const harness = yield* TestHarnessTag
         const browser = yield* TestBrowserTag
 
-        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
+        yield* harness.mount(TBControlsWidget)
 
         // Should have start/stop/random buttons
         yield* browser.expectVisible("[data-action='startRun']")
@@ -222,8 +223,8 @@ describe("TBControlsWidget", () => {
               name: "Test Suite",
               version: "1.0.0",
               tasks: [
-                { id: "task-1", name: "Task One", difficulty: "easy", category: "cat-a" },
-                { id: "task-2", name: "Task Two", difficulty: "medium", category: "cat-b" },
+                { id: "task-1", name: "Task One", difficulty: "easy" as const, category: "cat-a" },
+                { id: "task-2", name: "Task Two", difficulty: "medium" as const, category: "cat-b" },
               ],
             },
             selectedTaskIds: new Set(["task-1", "task-2"]),
@@ -357,9 +358,9 @@ describe("CategoryTreeWidget", () => {
         const browser = yield* TestBrowserTag
 
         const tasks = new Map([
-          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "Category A", status: "pending" as const }],
-          ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium", category: "Category A", status: "passed" as const }],
-          ["task-3", { id: "task-3", name: "Task Three", difficulty: "hard", category: "Category B", status: "failed" as const }],
+          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy" as const, category: "Category A", status: "pending" as const }],
+          ["task-2", { id: "task-2", name: "Task Two", difficulty: "medium" as const, category: "Category A", status: "passed" as const }],
+          ["task-3", { id: "task-3", name: "Task Three", difficulty: "hard" as const, category: "Category B", status: "failed" as const }],
         ])
 
         yield* harness.mount(CategoryTreeWidget, {
@@ -414,7 +415,7 @@ describe("CategoryTreeWidget", () => {
         const harness = yield* TestHarnessTag
 
         const tasks = new Map([
-          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "Category A", status: "pending" as const }],
+          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy" as const, category: "Category A", status: "pending" as const }],
         ])
 
         const handle = yield* harness.mount(CategoryTreeWidget, {
@@ -452,8 +453,8 @@ describe("CategoryTreeWidget", () => {
         const harness = yield* TestHarnessTag
 
         const tasks = new Map([
-          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy", category: "Cat A", status: "pending" as const }],
-          ["task-2", { id: "task-2", name: "Task Two", difficulty: "easy", category: "Cat B", status: "pending" as const }],
+          ["task-1", { id: "task-1", name: "Task One", difficulty: "easy" as const, category: "Cat A", status: "pending" as const }],
+          ["task-2", { id: "task-2", name: "Task Two", difficulty: "easy" as const, category: "Cat B", status: "pending" as const }],
         ])
 
         const handle = yield* harness.mount(CategoryTreeWidget, {
@@ -513,10 +514,10 @@ describe("TB UI Integration", () => {
         const browser = yield* TestBrowserTag
 
         // Mount all three widgets
-        const handle = yield* harness.mount(TBOutputWidget, {
+        yield* harness.mount(TBOutputWidget, {
           initialState: { ...TBOutputWidget.initialState(), visible: true },
         })
-        const tbControlsHandle = yield* harness.mount(TBControlsWidget)
+        yield* harness.mount(TBControlsWidget)
         yield* harness.mount(CategoryTreeWidget, {
           initialState: { ...CategoryTreeWidget.initialState(), visible: true },
         })

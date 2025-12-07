@@ -2,9 +2,12 @@
 
 ## Summary
 
-**Initial Errors: 618** → **Current Errors: 490** (20.7% fixed)
+**Initial Errors: 618** → **Current Errors: 479** (22.5% fixed)
 
 Run `bun run typecheck` to see all errors.
+
+**Batch Status:**
+- Batch 1 (TB Widget Tests): **COMPLETED** (57→27→7 errors left)
 
 ## Error Breakdown by Type (Updated)
 
