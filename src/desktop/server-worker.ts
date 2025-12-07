@@ -5,6 +5,9 @@
  * get blocked by webview.run() in the main thread.
  */
 
+// Debug: log immediately to see if worker starts at all
+console.log("[Worker] ===== SERVER WORKER STARTING =====");
+
 import { createDesktopServer } from "./server.js";
 import { log } from "./logger.js";
 import { isTBRunComplete, type TBRunHistoryMessage, type DevReloadMessage } from "../hud/protocol.js";
@@ -13,17 +16,39 @@ import { setATIFHudSender } from "../atif/hud-emitter.js";
 import { watch } from "node:fs";
 import { join, dirname } from "node:path";
 
+console.log("[Worker] Imports complete");
+
+// Wrap everything in try-catch to see startup errors
+try {
+  log("Worker", "Starting server worker...");
+} catch (e) {
+  console.error("[Worker] Failed to log:", e);
+}
+
 // Get config from parent thread
-const staticDir = process.env.STATIC_DIR!;
+const staticDir = process.env.STATIC_DIR;
 const httpPort = parseInt(process.env.HTTP_PORT || "8080", 10);
 
-const server = createDesktopServer({
-  staticDir,
-  httpPort,
-  verbose: true,
-});
+console.log("[Worker] staticDir:", staticDir);
+console.log("[Worker] httpPort:", httpPort);
 
-log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
+if (!staticDir) {
+  console.error("[Worker] STATIC_DIR not set!");
+  throw new Error("STATIC_DIR environment variable not set");
+}
+
+let server: ReturnType<typeof createDesktopServer>;
+try {
+  server = createDesktopServer({
+    staticDir,
+    httpPort,
+    verbose: true,
+  });
+  log("Worker", `Server running on http://localhost:${server.getHttpPort()}`);
+} catch (e) {
+  console.error("[Worker] Failed to create server:", e);
+  throw e;
+}
 
 // Wire ATIF HUD emitter to desktop server WebSocket
 setATIFHudSender((message) => {

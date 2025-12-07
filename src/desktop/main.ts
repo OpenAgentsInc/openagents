@@ -62,6 +62,15 @@ const worker = new Worker(workerPath, {
   },
 });
 
+// Handle worker errors
+worker.onerror = (event) => {
+  log("Desktop", `Worker error: ${event.message}`);
+};
+
+worker.onmessageerror = (event) => {
+  log("Desktop", `Worker message error: ${event}`);
+};
+
 // Give worker time to start
 await new Promise((resolve) => setTimeout(resolve, 500));
 log("Desktop", "Server worker started");
