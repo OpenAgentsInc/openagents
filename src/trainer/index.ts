@@ -54,3 +54,27 @@ export {
   makeTrainerServiceLive,
   type ITrainerService,
 } from "./service.js";
+
+// Evolution exports
+export {
+  type EvolutionProfile,
+  type PromptModifiers,
+  type MutationConfig,
+  type ABComparisonResult,
+  type EvolutionPopulation,
+  DEFAULT_MUTATION_CONFIG,
+  generateProfileId,
+  createSeedProfile,
+  mutateConfig,
+  mutatePromptModifiers,
+  mutateProfile,
+  crossoverProfiles,
+  calculateFitness,
+  updateProfileFitness,
+  compareProfiles,
+  createPopulation,
+  selectTopProfiles,
+  evolvePopulation,
+  applyPromptModifiers,
+  runEvolution,
+} from "./evolution.js";
