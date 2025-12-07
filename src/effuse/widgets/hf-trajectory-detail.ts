@@ -422,7 +422,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
             sessionId: event.sessionId,
             loading: false,
             error: null,
-            expandedStepIds: new Set(),  // Reset expanded steps on new load
+            expandedStepIds: new Set(event.trajectory.steps.map(step => step.step_id)),  // Start with all steps expanded
           }))
           break
         }

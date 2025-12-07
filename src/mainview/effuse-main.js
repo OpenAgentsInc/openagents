@@ -29035,7 +29035,7 @@ ${endStackCall}`;
             sessionId: event.sessionId,
             loading: false,
             error: null,
-            expandedStepIds: new Set
+            expandedStepIds: new Set(event.trajectory.steps.map((step4) => step4.step_id))
           }));
           break;
         }
