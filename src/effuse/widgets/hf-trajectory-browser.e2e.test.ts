@@ -108,7 +108,7 @@ describe("HF Trajectory Browser E2E", () => {
             console.log("[E2E] List HTML length:", listHTML.length)
             console.log("[E2E] List HTML sample:", listHTML.slice(0, 500))
 
-            expect(listHTML).toContain("HuggingFace Trajectories")
+            expect(listHTML).toContain("Trajectories")
 
             // Check that trajectories are showing
             const state = yield* listHandle.getState

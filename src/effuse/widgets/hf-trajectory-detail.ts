@@ -37,8 +37,8 @@ export interface HFTrajectoryDetailState {
   error: string | null
   /** Collapsed state */
   collapsed: boolean
-  /** Currently expanded step ID (accordion - one at a time) */
-  expandedStepId: number | null
+  /** Currently expanded step IDs (multiple steps can be expanded) */
+  expandedStepIds: Set<number>
   /** View mode (for future: toggle between formatted/JSON) */
   viewMode: "formatted" | "json"
 }
@@ -145,7 +145,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
       loading: false,
       error: null,
       collapsed: false,
-      expandedStepId: null,
+      expandedStepIds: new Set<number>(),
       viewMode: "formatted",
     }
   },
@@ -160,7 +160,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
           class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 cursor-pointer bg-zinc-900/40"
           data-action="toggleCollapse"
         >
-          <h3 class="text-sm font-bold font-mono text-zinc-100">HF Trajectory Details</h3>
+          <h3 class="text-sm font-bold font-mono text-zinc-100">Trajectory Details</h3>
           <span class="text-zinc-500">${state.collapsed ? "▼" : "▲"}</span>
         </div>
       `
@@ -250,7 +250,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
         <div class="max-h-[calc(100vh-20rem)] overflow-y-auto">
           ${joinTemplates(
             traj.steps.map((step) => {
-              const isExpanded = state.expandedStepId === step.step_id
+              const isExpanded = state.expandedStepIds.has(step.step_id)
               const source = step.source ?? "system"
               const sourceClass = getSourceClass(source)
               const toolCallCount = hasToolCalls(step) ? step.tool_calls!.length : 0
@@ -422,7 +422,7 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
             sessionId: event.sessionId,
             loading: false,
             error: null,
-            expandedStepId: null,  // Reset expanded step on new load
+            expandedStepIds: new Set(),  // Reset expanded steps on new load
           }))
           break
         }
@@ -432,10 +432,15 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
           break
 
         case "toggleStep": {
-          yield* ctx.state.update((s) => ({
-            ...s,
-            expandedStepId: s.expandedStepId === event.stepId ? null : event.stepId,
-          }))
+          yield* ctx.state.update((s) => {
+            const newExpanded = new Set(s.expandedStepIds)
+            if (newExpanded.has(event.stepId)) {
+              newExpanded.delete(event.stepId)
+            } else {
+              newExpanded.add(event.stepId)
+            }
+            return { ...s, expandedStepIds: newExpanded }
+          })
           break
         }
 

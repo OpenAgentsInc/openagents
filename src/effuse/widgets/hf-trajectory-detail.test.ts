@@ -98,7 +98,7 @@ describe("HFTrajectoryDetailWidget", () => {
 
           const html = yield* getRendered(container)
           expect(html).toBeDefined()
-          expect(html).toContain("HF Trajectory Details")
+          expect(html).toContain("Trajectory Details")
           expect(html).toContain("No trajectory selected")
         })
       )
@@ -288,7 +288,7 @@ describe("HFTrajectoryDetailWidget", () => {
           yield* Effect.sleep(50)
 
           const html = yield* getRendered(container)
-          expect(html).toContain("HF Trajectory Details")
+          expect(html).toContain("Trajectory Details")
           expect(html).toContain("▼") // Collapsed indicator
         })
       )

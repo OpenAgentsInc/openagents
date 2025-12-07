@@ -28398,7 +28398,7 @@ ${endStackCall}`;
           data-action="toggleCollapse"
         >
           <div class="flex items-center gap-2">
-            <h3 class="text-sm font-bold font-mono text-zinc-100">HuggingFace Trajectories</h3>
+            <h3 class="text-sm font-bold font-mono text-zinc-100">Trajectories</h3>
             ${state.totalCount > 0 ? html`<span class="text-xs text-zinc-400">(${state.totalCount})</span>` : ""}
           </div>
           <span class="text-zinc-500">${state.collapsed ? "▼" : "▲"}</span>
@@ -28821,7 +28821,7 @@ ${endStackCall}`;
         loading: false,
         error: null,
         collapsed: false,
-        expandedStepId: null,
+        expandedStepIds: new Set,
         viewMode: "formatted"
       };
     },
@@ -28832,7 +28832,7 @@ ${endStackCall}`;
           class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 cursor-pointer bg-zinc-900/40"
           data-action="toggleCollapse"
         >
-          <h3 class="text-sm font-bold font-mono text-zinc-100">HF Trajectory Details</h3>
+          <h3 class="text-sm font-bold font-mono text-zinc-100">Trajectory Details</h3>
           <span class="text-zinc-500">${state.collapsed ? "▼" : "▲"}</span>
         </div>
       `;
@@ -28908,7 +28908,7 @@ ${endStackCall}`;
       const stepsList = html`
         <div class="max-h-[calc(100vh-20rem)] overflow-y-auto">
           ${joinTemplates(traj.steps.map((step4) => {
-        const isExpanded = state.expandedStepId === step4.step_id;
+        const isExpanded = state.expandedStepIds.has(step4.step_id);
         const source = step4.source ?? "system";
         const sourceClass = getSourceClass(source);
         const toolCallCount = hasToolCalls(step4) ? step4.tool_calls.length : 0;
@@ -29035,7 +29035,7 @@ ${endStackCall}`;
             sessionId: event.sessionId,
             loading: false,
             error: null,
-            expandedStepId: null
+            expandedStepIds: new Set
           }));
           break;
         }
@@ -29043,10 +29043,15 @@ ${endStackCall}`;
           yield* ctx.state.update((s) => ({ ...s, collapsed: !s.collapsed }));
           break;
         case "toggleStep": {
-          yield* ctx.state.update((s) => ({
-            ...s,
-            expandedStepId: s.expandedStepId === event.stepId ? null : event.stepId
-          }));
+          yield* ctx.state.update((s) => {
+            const newExpanded = new Set(s.expandedStepIds);
+            if (newExpanded.has(event.stepId)) {
+              newExpanded.delete(event.stepId);
+            } else {
+              newExpanded.add(event.stepId);
+            }
+            return { ...s, expandedStepIds: newExpanded };
+          });
           break;
         }
         case "clear":

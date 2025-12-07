@@ -92,7 +92,7 @@ describe("HFTrajectoryListWidget", () => {
           // Initial state should show loading
           const html = yield* getRendered(container)
           expect(html).toBeDefined()
-          expect(html).toContain("HuggingFace Trajectories")
+          expect(html).toContain("Trajectories")
         })
       )
     )
@@ -242,7 +242,7 @@ describe("HFTrajectoryListWidget", () => {
           yield* Effect.sleep(50)
 
           const html = yield* getRendered(container)
-          expect(html).toContain("HuggingFace Trajectories")
+          expect(html).toContain("Trajectories")
           expect(html).toContain("▼") // Collapsed indicator
         })
       )
