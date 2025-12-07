@@ -166,7 +166,7 @@ export const HFTrajectoryListWidget: Widget<
           data-action="toggleCollapse"
         >
           <div class="flex items-center gap-2">
-            <h3 class="text-sm font-bold font-mono text-zinc-100">HuggingFace Trajectories</h3>
+            <h3 class="text-sm font-bold font-mono text-zinc-100">Trajectories</h3>
             ${state.totalCount > 0 ? html`<span class="text-xs text-zinc-400">(${state.totalCount})</span>` : ""}
           </div>
           <span class="text-zinc-500">${state.collapsed ? "▼" : "▲"}</span>
