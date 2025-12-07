@@ -1,18 +1,16 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
+
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { importBeadsIssues } from "./beads.js";
+import { runWithTestContext } from "./test-helpers.js";
 import { readTasks } from "./service.js";
 
-const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
-) => Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 describe("importBeadsIssues", () => {
   test("converts beads issues.jsonl into .openagents/tasks.jsonl", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -67,14 +65,15 @@ describe("importBeadsIssues", () => {
     expect(result.importResult.count).toBe(2);
     expect(result.tasks).toHaveLength(2);
     const child = result.tasks.find((t) => t.id === "oa-1.1");
+    // Duplicate dependencies are deduplicated - we keep only the first one
     expect(child?.deps).toEqual([
       { id: "oa-1", type: "parent-child" },
-      { id: "oa-1", type: "blocks" },
     ]);
     expect(child?.acceptanceCriteria).toBe("ac");
     expect(child?.notes).toBe("note");
     expect(child?.estimatedMinutes).toBe(30);
     expect(child?.closeReason).toBe("done");
-    expect(child?.closedAt).toBeNull();
+    // SQLite returns undefined for NULL values
+    expect(child?.closedAt).toBeUndefined();
   });
 });

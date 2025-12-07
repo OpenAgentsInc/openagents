@@ -212,6 +212,14 @@ export const makeDatabaseLive = (
   Layer.effect(
     DatabaseService,
     Effect.gen(function* () {
+      // Ensure parent directory exists
+      const path = require("node:path");
+      const dir = path.dirname(dbPath);
+      if (dir !== ".") {
+        const fs = require("node:fs");
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
       // Open database connection
       const db = yield* Effect.try({
         try: () => new Database(dbPath),

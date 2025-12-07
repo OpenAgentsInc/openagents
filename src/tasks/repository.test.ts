@@ -1,4 +1,3 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
@@ -8,9 +7,7 @@ import * as os from "node:os";
 import * as nodePath from "node:path";
 import { createTaskRepository, resolveTaskRepositoryPaths } from "./repository.js";
 import type { TaskCreate } from "./schema.js";
-
-const runWithBun = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) =>
-  Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
+import { runWithTestContext } from "./test-helpers.js";
 
 const makeTask = (title: string, overrides: Partial<TaskCreate> = {}): TaskCreate => ({
   title,
@@ -34,7 +31,7 @@ describe("TaskRepository", () => {
   });
 
   test("delegates ready/pick/update through shared tasksPath and accepts string config", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fsSvc = yield* FileSystem.FileSystem;
         const pathSvc = yield* Path.Path;
@@ -67,7 +64,7 @@ describe("TaskRepository", () => {
   });
 
   test("addComment and listComments work with options config", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fsSvc = yield* FileSystem.FileSystem;
         const pathSvc = yield* Path.Path;

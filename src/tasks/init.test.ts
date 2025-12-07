@@ -1,17 +1,13 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { initOpenAgentsProject } from "./init.js";
-
-const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
-) => Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
+import { runWithTestContext } from "./test-helpers.js";
 
 describe("initOpenAgentsProject", () => {
   test("creates .openagents with default projectId and empty tasks", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -19,12 +15,14 @@ describe("initOpenAgentsProject", () => {
 
         const initResult = yield* initOpenAgentsProject({ rootDir: dir });
         const projectContent = yield* fs.readFileString(initResult.projectPath);
-        const tasksContent = yield* fs.readFileString(initResult.tasksPath);
+        // Note: dbPath is now a SQLite database, not a text file
+        // We can check if it exists but can't read it as text
+        const dbExists = yield* fs.exists(initResult.dbPath);
 
         return {
           initResult,
           projectJson: JSON.parse(projectContent),
-          tasksContent,
+          dbExists,
           base: path.basename(dir),
         };
       }),
@@ -32,11 +30,11 @@ describe("initOpenAgentsProject", () => {
 
     expect(result.initResult.projectId).toBe(result.base);
     expect(result.projectJson.projectId).toBe(result.base);
-    expect(result.tasksContent.trim()).toBe("");
+    expect(result.dbExists).toBe(true);
   });
 
   test("allows custom projectId", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectory({ prefix: "init-openagents-custom" });
@@ -50,7 +48,7 @@ describe("initOpenAgentsProject", () => {
   });
 
   test("fails if project already exists without allowExisting", async () => {
-    const error = await runWithBun(
+    const error = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectory({ prefix: "init-openagents-exists" });

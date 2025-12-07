@@ -1,14 +1,12 @@
-import * as BunContext from "@effect/platform-bun/BunContext";
+
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { mergeTasks, mergeTaskFiles, ensureMergeDriverConfig } from "./merge.js";
+import { runWithTestContext } from "./test-helpers.js";
 import type { Task } from "./schema.js";
 
-const runWithBun = <A, E>(
-  program: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
-) => Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));
 
 const toJsonl = (tasks: Task[]): string => tasks.map((t) => JSON.stringify(t)).join("\n") + "\n";
 
@@ -95,7 +93,7 @@ describe("mergeTasks", () => {
 
 describe("mergeTaskFiles", () => {
   test("writes merged content to output file", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectory({ prefix: "merge-files" });
@@ -134,7 +132,7 @@ describe("mergeTaskFiles", () => {
 
 describe("ensureMergeDriverConfig", () => {
   test("creates .gitattributes and appends merge driver config when .git exists", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;

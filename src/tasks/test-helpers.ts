@@ -146,18 +146,20 @@ export const runWithTestDb = <A, E>(
 export const runWithTestContext = <A, E>(
   program: Effect.Effect<A, E, any>
 ): Promise<A> =>
-  Effect.gen(function* () {
-    const { layer, cleanup } = yield* makeTestDatabaseLayer();
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { layer, cleanup } = yield* makeTestDatabaseLayer();
 
-    try {
-      return yield* program.pipe(
-        Effect.provide(layer),
-        Effect.provide(BunContext.layer)
-      );
-    } finally {
-      cleanup();
-    }
-  }).pipe(
+      try {
+        return yield* program.pipe(
+          Effect.provide(layer),
+          Effect.provide(BunContext.layer)
+        );
+      } finally {
+        cleanup();
+      }
+    })
+  ).pipe(
     Effect.provide(BunContext.layer),
     Effect.runPromise
   );

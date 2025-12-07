@@ -45,7 +45,7 @@ const setup = () =>
 
 describe("TaskService", () => {
   test("creates and persists a task with defaults", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const created = yield* createTask({
@@ -68,7 +68,7 @@ describe("TaskService", () => {
   });
 
   test("computes ready tasks with hybrid priority/age sorting", async () => {
-    const ready = await runWithBun(
+    const ready = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const closedDep = yield* createTask({
@@ -110,7 +110,7 @@ describe("TaskService", () => {
   });
 
   test("updates, closes, and appends commits", async () => {
-    const finalTask = await runWithBun(
+    const finalTask = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const created = yield* createTask({
@@ -126,11 +126,17 @@ describe("TaskService", () => {
           timestamp: new Date("2025-01-01T01:00:00Z"),
         });
 
+        // Close the task and set commits via updateTask
+        yield* updateTask({
+          tasksPath,
+          id: created.id,
+          update: { commits: ["abc123"] },
+        });
+
         return yield* closeTask({
           tasksPath,
           id: created.id,
           reason: "Completed",
-          commits: ["abc123"],
           timestamp: new Date("2025-01-01T02:00:00Z"),
         });
       }),
@@ -144,7 +150,7 @@ describe("TaskService", () => {
   });
 
   test("appends comments with generated metadata", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const created = yield* createTask({
@@ -185,7 +191,7 @@ describe("TaskService", () => {
   });
 
   test("renames task IDs, dependencies, and description references", async () => {
-    const renamed = await runWithBun(
+    const renamed = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const first = yield* createTask({
@@ -241,7 +247,7 @@ describe("TaskService", () => {
   });
 
   test("merges duplicate tasks into a target and rewrites deps", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const sourceA = yield* createTask({
@@ -284,7 +290,7 @@ describe("TaskService", () => {
   });
 
   test("lists tasks with filters, sort policy, and picks next ready", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const first = yield* createTask({
@@ -315,7 +321,7 @@ describe("TaskService", () => {
   });
 
   test("applies labelsAny/unassigned filters, limits, and sortPolicy oldest", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         yield* createTask({
@@ -368,7 +374,7 @@ describe("TaskService", () => {
   });
 
   test("finds stale in-progress tasks older than threshold", async () => {
-    const stale = await runWithBun(
+    const stale = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         // Stale in_progress updated 40 days before the reference timestamp
@@ -406,7 +412,7 @@ describe("TaskService", () => {
 
 describe("Archive functionality", () => {
   test("archives old closed tasks and preserves active tasks", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
@@ -477,7 +483,7 @@ describe("Archive functionality", () => {
   });
 
   test("dry-run mode shows what would be archived without changes", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
@@ -519,7 +525,7 @@ describe("Archive functionality", () => {
   });
 
   test("readArchivedTasks returns empty array when archive does not exist", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
@@ -531,7 +537,7 @@ describe("Archive functionality", () => {
   });
 
   test("searchAllTasks searches both active and archived tasks", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
 
@@ -574,7 +580,7 @@ describe("Archive functionality", () => {
   });
 
   test("archive appends to existing archive file", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
         const archivePath = tasksPath.replace("tasks.jsonl", "tasks-archive.jsonl");
@@ -628,7 +634,7 @@ describe("Archive functionality", () => {
   });
 
   test("reopenTask sets closed task back to open", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
 
@@ -675,7 +681,7 @@ describe("Archive functionality", () => {
   });
 
   test("reopenTask fails on non-existent task", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
 
@@ -694,7 +700,7 @@ describe("Archive functionality", () => {
   });
 
   test("reopenTask fails on non-closed task", async () => {
-    const result = await runWithBun(
+    const result = await runWithTestContext(
       Effect.gen(function* () {
         const { tasksPath } = yield* setup();
 
@@ -720,7 +726,7 @@ describe("Archive functionality", () => {
 
   test("readTasks fails when conflict markers are present", async () => {
     await expect(
-      runWithBun(
+      runWithTestContext(
         Effect.gen(function* () {
           const { tasksPath } = yield* setup();
           const fs = yield* FileSystem.FileSystem;

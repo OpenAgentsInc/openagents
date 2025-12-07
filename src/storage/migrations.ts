@@ -5,6 +5,109 @@ import { Effect } from "effect";
 import { DatabaseError } from "./database.js";
 
 /**
+ * Initial schema SQL - used for new database initialization
+ */
+export const INITIAL_SCHEMA_SQL = `-- Schema version tracking
+CREATE TABLE _schema_version (
+  version TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO _schema_version (version) VALUES ('1.0.0');
+
+-- Tasks table (matches Task schema)
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'blocked', 'closed', 'commit_pending')),
+  priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 4),
+  type TEXT NOT NULL CHECK (type IN ('bug', 'feature', 'task', 'epic', 'chore')),
+  assignee TEXT,
+  close_reason TEXT,
+
+  -- JSON fields
+  labels JSON,
+  commits JSON,
+  comments JSON,
+  pending_commit JSON,
+
+  -- Extended fields
+  design TEXT,
+  acceptance_criteria TEXT,
+  notes TEXT,
+  estimated_minutes REAL,
+
+  -- Source tracking
+  source_repo TEXT,
+  source_discovered_from TEXT,
+  source_external_ref TEXT,
+
+  -- Timestamps
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at TEXT,
+  deleted_at TEXT
+);
+
+-- Dependencies (many-to-many)
+CREATE TABLE task_dependencies (
+  task_id TEXT NOT NULL,
+  depends_on_task_id TEXT NOT NULL,
+  dependency_type TEXT NOT NULL CHECK (
+    dependency_type IN ('blocks', 'related', 'parent-child', 'discovered-from')
+  ),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+  PRIMARY KEY (task_id, depends_on_task_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Deletion tombstones
+CREATE TABLE task_deletions (
+  task_id TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL,
+  deleted_by TEXT,
+  reason TEXT
+);
+
+-- Indexes for performance
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_priority ON tasks(priority);
+CREATE INDEX idx_tasks_status_priority ON tasks(status, priority);
+CREATE INDEX idx_tasks_created_at ON tasks(created_at);
+CREATE INDEX idx_tasks_deleted_at ON tasks(deleted_at);
+
+-- Composite index for ready task query (CRITICAL)
+CREATE INDEX idx_tasks_ready ON tasks(status, priority, created_at)
+  WHERE deleted_at IS NULL;
+
+-- Full-text search
+CREATE VIRTUAL TABLE tasks_fts USING fts5(
+  id UNINDEXED,
+  title,
+  description,
+  content=tasks,
+  content_rowid=rowid
+);
+
+-- FTS sync triggers
+CREATE TRIGGER tasks_fts_insert AFTER INSERT ON tasks BEGIN
+  INSERT INTO tasks_fts(rowid, id, title, description)
+  VALUES (NEW.rowid, NEW.id, NEW.title, NEW.description);
+END;
+
+CREATE TRIGGER tasks_fts_update AFTER UPDATE ON tasks BEGIN
+  UPDATE tasks_fts SET title = NEW.title, description = NEW.description
+  WHERE rowid = NEW.rowid;
+END;
+
+CREATE TRIGGER tasks_fts_delete AFTER DELETE ON tasks BEGIN
+  DELETE FROM tasks_fts WHERE rowid = OLD.rowid;
+END;
+`;
+
+/**
  * Migration metadata
  */
 export interface Migration {
