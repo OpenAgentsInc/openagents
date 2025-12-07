@@ -1,6 +1,8 @@
+
 import * as BunContext from "@effect/platform-bun/BunContext";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
+import { makeDatabaseLive } from "../storage/database.js";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { loadMechaCoderState } from "./mechacoder-state.js";
@@ -111,10 +113,12 @@ describe("loadMechaCoderState", () => {
           JSON.stringify(run2, null, 2),
         );
 
+        const dbLayer = makeDatabaseLive(path.join(root, "test.db"));
+
         return yield* loadMechaCoderState({
           rootDir: root,
           maxRunLogs: 5,
-        });
+        }).pipe(Effect.provide(dbLayer));
       }),
     );
 

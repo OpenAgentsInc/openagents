@@ -57,6 +57,9 @@ export interface StartTBRunRequest extends BaseRequest {
   sandbox?: boolean;
   sandboxBackend?: "docker" | "macos-container";
   sandboxImage?: string;
+  subset?: string;
+  runAll?: boolean;
+  random?: boolean;
 }
 
 /**

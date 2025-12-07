@@ -12,6 +12,7 @@ import { parseArgs } from "util";
 import { Effect } from "effect";
 import { FileSystem, Path } from "@effect/platform";
 import { BunContext } from "@effect/platform-bun";
+import { makeDatabaseLive, DatabaseService } from "../storage/database.js";
 import { listTasks } from "../tasks/service.js";
 import {
   detectStuck,
@@ -21,8 +22,20 @@ import {
 import type { Subtask } from "../agent/orchestrator/types.js";
 
 const runEffect = <A, E>(
-  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
-) => Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | DatabaseService>
+) => {
+  const projectRoot = process.cwd();
+  const openagentsDir = `${projectRoot}/.openagents`;
+  const dbPath = `${openagentsDir}/data.db`;
+  const dbLayer = makeDatabaseLive(dbPath);
+
+  return Effect.runPromise(
+    effect.pipe(
+      Effect.provide(dbLayer),
+      Effect.provide(BunContext.layer)
+    )
+  );
+};
 
 // ============================================================================
 // CLI Argument Parsing

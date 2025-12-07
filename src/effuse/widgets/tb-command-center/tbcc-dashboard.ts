@@ -348,7 +348,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         case "runFullBenchmark": {
           yield* Effect.tryPromise({
             try: async () => {
-              const result = await Effect.runPromise(socket.startTBRun({ subset: "TB_10" } as any)); // Default to TB_10 if runAll not supported
+              const result = await Effect.runPromise(socket.startTBRun({ suitePath: "default.json", subset: "TB_10" })); // Default to TB_10 if runAll not supported
               return result;
             },
             catch: (e) => e,
