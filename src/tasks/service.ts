@@ -129,7 +129,12 @@ export const createTask = ({
         ),
       );
       const existingIds = existingTasks.map((t) => t.id);
-      const hash = generateHashId(validated.title);
+      const hash = yield* generateHashId(
+        idPrefix,
+        validated.title,
+        validated.description,
+        timestamp || new Date(),
+      );
 
       // Find unique ID
       for (let length = 6; length <= hash.length; length++) {
