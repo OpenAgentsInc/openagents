@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { TBOutputWidget, type TBOutputState, type TBOutputLine } from "./tb-output.js"
+import { TBOutputWidget, type TBOutputState, type TBOutputEvent, type TBOutputLine } from "./tb-output.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeCustomTestLayer, makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"
@@ -35,9 +35,9 @@ describe("TBOutputWidget", () => {
           const container = { id: "tb-output-test" } as Element
 
           const mockLines: TBOutputLine[] = [
-            { text: "Starting test...", source: "system", timestamp: Date.now() },
-            { text: "Running verification", source: "verification", timestamp: Date.now() },
-            { text: "Agent response here", source: "agent", timestamp: Date.now() },
+            { text: "Starting test...", source: "system" as const, timestamp: Date.now() },
+            { text: "Running verification", source: "verification" as const, timestamp: Date.now() },
+            { text: "Agent response here", source: "agent" as const, timestamp: Date.now() },
           ]
 
           const customWidget = {
@@ -115,7 +115,7 @@ describe("TBOutputWidget", () => {
               const dom = yield* DomServiceTag
 
               const state = yield* stateService.cell({
-                outputLines: [{ text: "line 1", source: "system", timestamp: Date.now() }],
+                outputLines: [{ text: "line 1", source: "system" as const, timestamp: Date.now() }],
                 maxLines: 500,
                 visible: true,
                 runId: "run-123",
@@ -124,14 +124,14 @@ describe("TBOutputWidget", () => {
                 showLineNumbers: true,
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
-              })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              } as TBOutputState)
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               const htmlVisible = (yield* TBOutputWidget.render(ctx)).toString()
               expect(htmlVisible).toContain("line 1")
               expect(htmlVisible).toContain("TB Output")
 
-              yield* TBOutputWidget.handleEvent({ type: "close" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "close" }, ctx)
 
               const htmlHidden = (yield* TBOutputWidget.render(ctx)).toString()
               expect(htmlHidden).toContain("hidden")
@@ -165,12 +165,12 @@ describe("TBOutputWidget", () => {
               selectedLine: null,
               visibleSources: { agent: true, verification: true, system: true, tool: true },
             })
-            const ctx = { state, emit: () => Effect.void, dom, container }
+            const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               let html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain("hidden")
 
-              yield* TBOutputWidget.handleEvent({ type: "open" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "open" }, ctx)
               html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain("TB Output")
             }),
@@ -294,7 +294,15 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-live" })
+          yield* injectMessage({ 
+              type: "tb_run_start",
+              runId: "run-live",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-001"],
+              timestamp: new Date().toISOString(),
+            })
           yield* injectMessage({
             type: "tb_task_output",
             runId: "run-live",
@@ -322,7 +330,15 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-12345678" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-12345678",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-xyz"],
+              timestamp: new Date().toISOString(),
+            })
           yield* injectMessage({
             type: "tb_task_output",
             runId: "run-12345678",
@@ -351,7 +367,15 @@ describe("TBOutputWidget", () => {
 
           yield* mountWidget(TBOutputWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-active" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-active",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-1"],
+              timestamp: new Date().toISOString(),
+            })
           yield* injectMessage({
             type: "tb_task_output",
             runId: "run-other",
@@ -380,18 +404,29 @@ describe("TBOutputWidget", () => {
           const prefilledWidget = {
             ...TBOutputWidget,
             initialState: (): TBOutputState => ({
-              outputLines: [{ text: "Old line", source: "agent", timestamp: Date.now() }],
+              outputLines: [{ text: "Old line", source: "agent" as const, timestamp: Date.now() }],
               maxLines: 500,
               visible: false,
               runId: "run-old",
               taskId: "task-old",
               autoScroll: true,
+              showLineNumbers: true,
+              selectedLine: null,
+              visibleSources: { agent: true, verification: true, system: true, tool: true },
             }),
           }
 
           yield* mountWidget(prefilledWidget, container).pipe(Effect.provide(layer))
 
-          yield* injectMessage({ type: "tb_run_start", runId: "run-fresh" })
+          yield* injectMessage({ 
+              type: "tb_run_start", 
+              runId: "run-fresh",
+              suiteName: "test-suite",
+              suiteVersion: "1.0.0",
+              totalTasks: 1,
+              taskIds: ["task-1"],
+              timestamp: new Date().toISOString(),
+            })
           yield* Effect.sleep(0)
 
           const html = (yield* getRendered(container)) ?? ""
@@ -486,9 +521,9 @@ describe("TBOutputWidget", () => {
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
-              yield* TBOutputWidget.handleEvent({ type: "clear" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "clear" }, ctx)
 
               const updated = yield* state.get
               expect(updated.outputLines.length).toBe(0)
@@ -541,9 +576,9 @@ describe("TBOutputWidget", () => {
                   selectedLine: null,
                   visibleSources: { agent: true, verification: true, system: true, tool: true },
                 })
-                const ctx = { state, emit: () => Effect.void, dom, container }
+                const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
-                yield* TBOutputWidget.handleEvent({ type: "copy" }, ctx)
+                yield* TBOutputWidget.handleEvent!({ type: "copy" }, ctx)
 
                 expect(copied).toContain("[agent] line one")
                 expect(copied).toContain("[verification] line two")
@@ -589,7 +624,7 @@ describe("TBOutputWidget", () => {
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               let html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain("AGT")
@@ -597,7 +632,7 @@ describe("TBOutputWidget", () => {
               expect(html).toContain("SYS")
               expect(html).toContain("3 lines")
 
-              yield* TBOutputWidget.handleEvent({ type: "toggleSource", source: "agent" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "toggleSource", source: "agent" }, ctx)
               html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).not.toContain("agent only")
               expect(html).toContain("VRF")
@@ -639,18 +674,18 @@ describe("TBOutputWidget", () => {
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               let html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain('data-line="1"')
               expect(html).toContain('data-line="2"')
 
-              yield* TBOutputWidget.handleEvent({ type: "selectLine", lineNumber: 2 }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "selectLine", lineNumber: 2 }, ctx)
               html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain('data-line="2"')
               expect(html).toContain("bg-zinc-800/80")
 
-              yield* TBOutputWidget.handleEvent({ type: "toggleLineNumbers" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "toggleLineNumbers" }, ctx)
               const updated = yield* state.get
               expect(updated.showLineNumbers).toBe(false)
               expect(updated.selectedLine).toBeNull()
@@ -688,12 +723,12 @@ describe("TBOutputWidget", () => {
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               const initialHtml = (yield* TBOutputWidget.render(ctx)).toString()
               expect(initialHtml).toContain('data-autoscroll="true"')
 
-              yield* TBOutputWidget.handleEvent({ type: "toggleAutoScroll" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "toggleAutoScroll" }, ctx)
 
               const updated = yield* state.get
               expect(updated.autoScroll).toBe(false)
@@ -851,14 +886,14 @@ describe("TBOutputWidget", () => {
                 selectedLine: null,
                 visibleSources: { agent: true, verification: true, system: true, tool: true },
               })
-              const ctx = { state, emit: () => Effect.void, dom, container }
+              const ctx = { state, emit: (_event: TBOutputEvent) => Effect.succeed(undefined), dom, container }
 
               let html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).toContain("TL")
               expect(html).toContain("read_file")
               expect(html).toContain("2 lines")
 
-              yield* TBOutputWidget.handleEvent({ type: "toggleSource", source: "tool" }, ctx)
+              yield* TBOutputWidget.handleEvent!({ type: "toggleSource", source: "tool" }, ctx)
               html = (yield* TBOutputWidget.render(ctx)).toString()
               expect(html).not.toContain("read_file")
               expect(html).toContain("1 lines")
