@@ -9,7 +9,7 @@
 import { Effect } from "effect"
 import { html, joinTemplates } from "../template/html.js"
 import type { Widget } from "../widget/types.js"
-import { OpenThoughtsService } from "../../huggingface/openthoughts.js"
+import { getSocketClient } from "../../mainview/socket-client.js"
 import type { Trajectory } from "../../atif/schema.js"
 
 // ============================================================================
@@ -130,8 +130,7 @@ const formatDate = (iso: string): string => {
 
 export const HFTrajectoryListWidget: Widget<
   HFTrajectoryListState,
-  HFTrajectoryListEvent,
-  OpenThoughtsService
+  HFTrajectoryListEvent
 > = {
   id: "hf-trajectory-list",
 
@@ -348,7 +347,7 @@ export const HFTrajectoryListWidget: Widget<
 
   handleEvent: (event, ctx) =>
     Effect.gen(function* () {
-      const service = yield* OpenThoughtsService
+      const socketClient = getSocketClient()
 
       switch (event.type) {
         case "loadPage": {
@@ -370,10 +369,13 @@ export const HFTrajectoryListWidget: Widget<
           yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }))
 
           try {
-            // Load page from service
+            // Load page via RPC
             const offset = newPage * state.pageSize
-            const trajectories = yield* service.getTrajectories(offset, state.pageSize)
-            const metadata = trajectories.map((t, i) => extractMetadata(t, offset + i))
+            const trajectories = yield* Effect.promise(() =>
+              socketClient.getHFTrajectories(offset, state.pageSize)
+            )
+
+            const metadata = (trajectories as Trajectory[]).map((t, i) => extractMetadata(t, offset + i))
 
             // Update state
             yield* ctx.state.update((s) => ({
@@ -429,28 +431,28 @@ export const HFTrajectoryListWidget: Widget<
       if ((window as any).bunLog) {
         (window as any).bunLog("[HFTrajectoryList] Starting initial load...")
       }
-      const service = yield* OpenThoughtsService
+      const socketClient = getSocketClient()
 
       try {
-        // Get total count
+        // Get total count via RPC
         if ((window as any).bunLog) {
           (window as any).bunLog("[HFTrajectoryList] Getting trajectory count...")
         }
-        const totalCount = yield* service.count()
+        const totalCount = yield* Effect.promise(() => socketClient.getHFTrajectoryCount())
         if ((window as any).bunLog) {
           (window as any).bunLog(`[HFTrajectoryList] Total count: ${totalCount}`)
         }
 
-        // Load first page
+        // Load first page via RPC
         if ((window as any).bunLog) {
           (window as any).bunLog("[HFTrajectoryList] Loading first page...")
         }
-        const trajectories = yield* service.getTrajectories(0, 100)
+        const trajectories = yield* Effect.promise(() => socketClient.getHFTrajectories(0, 100))
         if ((window as any).bunLog) {
           (window as any).bunLog(`[HFTrajectoryList] Loaded trajectories: ${trajectories.length}`)
         }
 
-        const metadata = trajectories.map((t, i) => extractMetadata(t, i))
+        const metadata = (trajectories as Trajectory[]).map((t, i) => extractMetadata(t, i))
 
         yield* ctx.state.update((s) => ({
           ...s,

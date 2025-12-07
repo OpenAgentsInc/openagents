@@ -6,14 +6,12 @@
  */
 
 import { Effect, Layer, Stream } from "effect"
-import { BunContext } from "@effect/platform-bun"
 import { getSocketClient } from "./socket-client.js"
 import {
   mountWidgetById,
   DomServiceLive,
   StateServiceLive,
   SocketServiceFromClient,
-  SocketServiceTag,
   // Widgets
   APMWidget,
   TrajectoryPaneWidget,
@@ -26,13 +24,7 @@ import {
   HFTrajectoryListWidget,
   HFTrajectoryDetailWidget,
 } from "../effuse/index.js"
-import {
-  OpenThoughtsService,
-  type IOpenThoughtsService,
-  sftRowToTrajectory,
-} from "../huggingface/index.js"
 import type { Trajectory } from "../atif/schema.js"
-import { HFDatasetError } from "../huggingface/schema.js"
 
 console.log("[Effuse] Loading mainview...")
 if ((window as any).bunLog) {
@@ -82,12 +74,9 @@ const createEffuseLayer = () => {
   const socketClient = getSocketClient()
 
   return Layer.mergeAll(
-    BunContext.layer,
     DomServiceLive,
     StateServiceLive,
-    SocketServiceFromClient(socketClient),
-    HFDatasetServiceLive(),
-    OpenThoughtsServiceLive
+    SocketServiceFromClient(socketClient)
   )
 }
 
@@ -103,19 +92,6 @@ const mountAllWidgets = Effect.gen(function* () {
   if ((window as any).bunLog) {
     (window as any).bunLog("[Effuse] ========== MOUNTING HF TRAJECTORY WIDGETS ==========")
   }
-
-  // Connect to desktop server WebSocket first
-  const socket = yield* SocketServiceTag
-  yield* socket.connect().pipe(
-    Effect.tap(() => console.log("[Effuse] Socket connected")),
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] Socket connection failed:", e)
-      return Effect.void
-    })
-  )
-
-  // Get OpenThoughts service for event forwarding
-  const openThoughtsService = yield* OpenThoughtsService
 
   // Mount HF Trajectory List Widget (sidebar)
   const listWidget = yield* mountWidgetById(HFTrajectoryListWidget, "hf-trajectory-list-widget").pipe(
@@ -136,7 +112,7 @@ const mountAllWidgets = Effect.gen(function* () {
   )
 
   // Wire up event forwarding: List selection -> Detail load
-  // When user selects a trajectory in the list, fetch full trajectory and send to detail widget
+  // When user selects a trajectory in the list, fetch full trajectory via RPC and send to detail widget
   yield* Stream.runForEach(listWidget.events, (event) =>
     Effect.gen(function* () {
       if (event.type === "select") {
@@ -146,17 +122,23 @@ const mountAllWidgets = Effect.gen(function* () {
         yield* detailWidget.emit({ type: "clear" })
 
         try {
-          // Fetch full trajectory from service
-          const trajectory = yield* openThoughtsService.getTrajectory(event.index)
+          // Fetch full trajectory via RPC using socket client
+          const socketClient = getSocketClient()
+          const trajectory = (yield* Effect.promise(() =>
+            socketClient.getHFTrajectory(event.index)
+          )) as Trajectory | null
 
-          // Send to detail widget
-          yield* detailWidget.emit({
-            type: "load",
-            sessionId: event.sessionId,
-            trajectory,
-          })
-
-          console.log("[Effuse] Trajectory loaded successfully")
+          if (trajectory) {
+            // Send to detail widget
+            yield* detailWidget.emit({
+              type: "load",
+              sessionId: event.sessionId,
+              trajectory,
+            })
+            console.log("[Effuse] Trajectory loaded successfully")
+          } else {
+            console.warn("[Effuse] Trajectory not found at index:", event.index)
+          }
         } catch (error) {
           console.error("[Effuse] Failed to load trajectory:", error)
           // Detail widget will show error state
