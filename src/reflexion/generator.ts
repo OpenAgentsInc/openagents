@@ -227,7 +227,7 @@ const makeReflectionGenerator = (): Effect.Effect<
           })
           .pipe(Effect.mapError(ReflectionGeneratorError.fromFMError));
 
-        const content = response.message.content;
+        const content = response.choices[0]?.message?.content;
         if (!content) {
           // Fall back to heuristic if FM returns empty
           return generateHeuristicReflection(failure);
@@ -283,7 +283,7 @@ const makeReflectionGenerator = (): Effect.Effect<
           })
           .pipe(Effect.mapError(ReflectionGeneratorError.fromFMError));
 
-        const content = response.message.content;
+        const content = response.choices[0]?.message?.content;
         if (!content) {
           return null;
         }

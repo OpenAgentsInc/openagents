@@ -259,24 +259,35 @@ export const createMemory = (
   partial: Partial<Memory> & Pick<Memory, "memoryType" | "description" | "content">,
 ): Memory => {
   const now = new Date().toISOString();
-  return {
+  const baseMemory = {
     id: partial.id ?? generateMemoryId(partial.memoryType),
     memoryType: partial.memoryType,
-    scope: partial.scope ?? "project",
-    status: partial.status ?? "active",
+    scope: (partial.scope ?? "project") as Memory["scope"],
+    status: (partial.status ?? "active") as Memory["status"],
     description: partial.description,
     content: partial.content,
-    importance: partial.importance ?? "medium",
-    tags: partial.tags ?? [],
-    embedding: partial.embedding,
-    accessCount: partial.accessCount ?? 0,
-    lastAccessedAt: partial.lastAccessedAt ?? now,
-    createdAt: partial.createdAt ?? now,
-    updatedAt: partial.updatedAt ?? now,
-    projectId: partial.projectId,
-    sessionId: partial.sessionId,
-    relatedMemories: partial.relatedMemories,
-    source: partial.source ?? "system",
+    importance: "medium" as const,
+    tags: [] as string[],
+    accessCount: 0,
+    lastAccessedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    source: "system" as Memory["source"],
+  };
+
+  return {
+    ...baseMemory,
+    ...(partial.importance && { importance: partial.importance }),
+    ...(partial.tags && { tags: partial.tags }),
+    ...(partial.embedding && { embedding: partial.embedding }),
+    ...(partial.accessCount && { accessCount: partial.accessCount }),
+    ...(partial.lastAccessedAt && { lastAccessedAt: partial.lastAccessedAt }),
+    ...(partial.createdAt && { createdAt: partial.createdAt }),
+    ...(partial.updatedAt && { updatedAt: partial.updatedAt }),
+    ...(partial.projectId && { projectId: partial.projectId }),
+    ...(partial.sessionId && { sessionId: partial.sessionId }),
+    ...(partial.relatedMemories && { relatedMemories: partial.relatedMemories }),
+    ...(partial.source && { source: partial.source }),
   };
 };
 
@@ -297,14 +308,18 @@ export const createEpisodicMemory = (
     tags?: string[];
   },
 ): Memory => {
-  const content: EpisodicContent = {
+  const baseContent: EpisodicContent = {
     type: "episodic",
     taskDescription,
     outcome,
-    errorMessage: options?.errorMessage,
-    skillsUsed: options?.skillsUsed,
-    filesModified: options?.filesModified,
-    durationMs: options?.durationMs,
+  };
+  
+  const content: EpisodicContent = {
+    ...baseContent,
+    ...(options?.errorMessage && { errorMessage: options.errorMessage }),
+    ...(options?.skillsUsed && { skillsUsed: options.skillsUsed }),
+    ...(options?.filesModified && { filesModified: options.filesModified }),
+    ...(options?.durationMs && { durationMs: options.durationMs }),
   };
 
   // Failures are more important to remember
@@ -341,12 +356,16 @@ export const createSemanticMemory = (
     tags?: string[];
   },
 ): Memory => {
-  const content: SemanticContent = {
+  const baseContent: SemanticContent = {
     type: "semantic",
     category,
     knowledge,
-    context: options?.context,
-    examples: options?.examples,
+  };
+  
+  const content: SemanticContent = {
+    ...baseContent,
+    ...(options?.context && { context: options.context }),
+    ...(options?.examples && { examples: options.examples }),
   };
 
   return createMemory({
@@ -374,12 +393,16 @@ export const createProceduralMemory = (
     tags?: string[];
   },
 ): Memory => {
-  const content: ProceduralContent = {
+  const baseContent: ProceduralContent = {
     type: "procedural",
     skillId,
     triggerPatterns,
-    successRate: options?.successRate,
-    examples: options?.examples,
+  };
+  
+  const content: ProceduralContent = {
+    ...baseContent,
+    ...(options?.successRate && { successRate: options.successRate }),
+    ...(options?.examples && { examples: options.examples }),
   };
 
   return createMemory({

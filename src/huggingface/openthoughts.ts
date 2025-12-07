@@ -34,7 +34,7 @@ export interface IOpenThoughtsService {
   ensureDownloaded(): Effect.Effect<string, HFDatasetError>;
 
   /** Get total count of trajectories */
-  count(): Effect.Effect<number, HFDatasetError>;
+  count(): Effect.Effect<number, HFDatasetError, FileSystem.FileSystem>;
 
   /** Get a single trajectory by index */
   getTrajectory(index: number): Effect.Effect<Trajectory | null, HFDatasetError>;

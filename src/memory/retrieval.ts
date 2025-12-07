@@ -130,12 +130,12 @@ const makeRetrievalService = (): Effect.Effect<
 
         // Build filter from query
         const filter: MemoryFilter = {
-          types: q.types,
-          scopes: q.scopes,
+          ...(q.types && { types: q.types }),
+          ...(q.scopes && { scopes: q.scopes }),
           status: q.status ?? ["active"],
-          tags: q.tags,
-          projectId: q.projectId,
-          sessionId: q.sessionId,
+          ...(q.tags && { tags: q.tags }),
+          ...(q.projectId && { projectId: q.projectId }),
+          ...(q.sessionId && { sessionId: q.sessionId }),
         };
 
         // Get all matching memories

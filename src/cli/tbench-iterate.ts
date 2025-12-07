@@ -952,6 +952,9 @@ const main = async (): Promise<void> => {
     // Post-run learning
     learn: args.learn,
   };
+  if (!state) {
+    throw new Error("Failed to initialize run state");
+  }
   saveState(outputDir, state);
 
   // Initialize episode store
@@ -1018,7 +1021,7 @@ const main = async (): Promise<void> => {
         outputDir: iterOutputDir,
         timeout: args.timeout,
         maxTurns: args.maxTurns,
-        sourceRepo: suite.source_repo,
+        ...(suite.source_repo && { sourceRepo: suite.source_repo }),
         runId,
         tbEmitter,
         taskIndex: i,
@@ -1096,13 +1099,14 @@ const main = async (): Promise<void> => {
           )
         );
 
-        if (learningResult?.skillsExtracted.length > 0) {
-          console.log(`    [Learning] Extracted ${learningResult.skillsExtracted.length} skills`);
+        const skillsExtracted = learningResult?.skillsExtracted ?? [];
+        if (skillsExtracted.length > 0) {
+          console.log(`    [Learning] Extracted ${skillsExtracted.length} skills`);
           // Register skills with SkillService
           try {
             const skillProgram = Effect.gen(function* () {
               const service = yield* SkillService;
-              for (const skill of learningResult.skillsExtracted) {
+              for (const skill of skillsExtracted) {
                 yield* service.registerSkill(skill);
               }
             });
@@ -1116,8 +1120,9 @@ const main = async (): Promise<void> => {
             // Skill registration is best-effort
           }
         }
-        if (learningResult.reflectionsGenerated.length > 0) {
-          console.log(`    [Learning] Generated ${learningResult.reflectionsGenerated.length} reflections`);
+        const reflectionsGenerated = learningResult?.reflectionsGenerated ?? [];
+        if (reflectionsGenerated.length > 0) {
+          console.log(`    [Learning] Generated ${reflectionsGenerated.length} reflections`);
         }
       } catch (e) {
         console.log(`    [Learning] Error: ${e instanceof Error ? e.message : String(e)}`);
@@ -1183,6 +1188,9 @@ const main = async (): Promise<void> => {
     }
 
     // Update state
+    if (!state) {
+      throw new Error("Run state missing");
+    }
     state.completedIterations = iter;
     state.lastUpdatedAt = new Date().toISOString();
     saveState(outputDir, state);

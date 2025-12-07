@@ -304,7 +304,7 @@ const makeTrainingLoop = (
 
     const start = (
       configOverrides?: Partial<LoopConfig>,
-    ): Effect.Effect<LoopState, TrainingLoopError> =>
+    ): Effect.Effect<LoopState, TrainingLoopError, TrainerService | ArchivistService | SkillService | MemoryService> =>
       Effect.gen(function* () {
         const config = { ...loopConfig, ...configOverrides };
 
@@ -320,7 +320,11 @@ const makeTrainingLoop = (
         // Bootstrap skills if needed
         const allSkills = yield* skills.getAllSkills().pipe(mapSkillError);
         if (allSkills.length === 0) {
-          yield* skills.bootstrapSkills().pipe(mapSkillError);
+          // Import and register bootstrap skills
+          const { bootstrapSkills } = yield* Effect.promise(() => import("../skills/library/index.js"));
+          for (const skill of bootstrapSkills) {
+            yield* skills.registerSkill(skill).pipe(mapSkillError);
+          }
         }
 
         // Run iterations

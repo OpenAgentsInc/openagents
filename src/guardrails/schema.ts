@@ -271,15 +271,23 @@ export const createResult = (
     action?: string;
     context?: Record<string, unknown>;
   },
-): GuardrailResult => ({
-  ruleId,
-  passed,
-  severity: options?.severity,
-  message,
-  action: options?.action,
-  context: options?.context,
-  timestamp: new Date().toISOString(),
-});
+): GuardrailResult => {
+  const baseResult = {
+    ruleId,
+    passed,
+    message,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (!options) return baseResult;
+
+  return {
+    ...baseResult,
+    ...(options.severity && { severity: options.severity }),
+    ...(options.action && { action: options.action }),
+    ...(options.context && { context: options.context }),
+  };
+};
 
 /**
  * Aggregate multiple results into a status.

@@ -271,8 +271,8 @@ describe("TrajectoryPaneWidget", () => {
               const stateService = yield* StateServiceTag
               const dom = yield* DomServiceTag
               const container = { id: "trajectory-test" } as Element
-              const state = yield* stateService.cell({
-                trajectories: [],
+              const state = yield* stateService.cell<TrajectoryPaneState>({
+                trajectories: [] as UnifiedTrajectory[],
                 selectedId: null,
                 loading: false,
                 error: null,

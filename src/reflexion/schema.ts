@@ -318,20 +318,26 @@ export const createFailureContext = (
     durationMs?: number;
     projectId?: string;
   },
-): FailureContext => ({
-  id: generateFailureId(),
-  taskDescription,
-  attemptDescription: options?.attemptDescription ?? taskDescription,
-  errorMessage,
-  errorType: classifyError(errorMessage),
-  filesInvolved: options?.filesInvolved ?? [],
-  codeWritten: options?.codeWritten,
-  skillsUsed: options?.skillsUsed,
-  attemptNumber: options?.attemptNumber ?? 1,
-  durationMs: options?.durationMs,
-  timestamp: new Date().toISOString(),
-  projectId: options?.projectId,
-});
+): FailureContext => {
+  const baseContext = {
+    id: generateFailureId(),
+    taskDescription,
+    attemptDescription: options?.attemptDescription ?? taskDescription,
+    errorMessage,
+    errorType: classifyError(errorMessage),
+    filesInvolved: options?.filesInvolved ?? [],
+    attemptNumber: options?.attemptNumber ?? 1,
+    timestamp: new Date().toISOString(),
+  };
+
+  return {
+    ...baseContext,
+    ...(options?.codeWritten && { codeWritten: options.codeWritten }),
+    ...(options?.skillsUsed && { skillsUsed: options.skillsUsed }),
+    ...(options?.durationMs && { durationMs: options.durationMs }),
+    ...(options?.projectId && { projectId: options.projectId }),
+  };
+};
 
 /**
  * Create a reflection from structured data.
@@ -346,14 +352,26 @@ export const createReflection = (
     lessonsLearned?: string[];
     confidence?: number;
   },
-): Reflection => ({
-  id: generateReflectionId(),
-  failureId,
-  whatWentWrong: data.whatWentWrong,
-  whyItWentWrong: data.whyItWentWrong,
-  whatToTryNext: data.whatToTryNext,
-  suggestedFix: data.suggestedFix,
-  lessonsLearned: data.lessonsLearned ?? [],
-  confidence: data.confidence ?? 0.7,
-  timestamp: new Date().toISOString(),
-});
+): Reflection => {
+  const baseReflection = {
+    id: generateReflectionId(),
+    failureId,
+    whatWentWrong: data.whatWentWrong,
+    whyItWentWrong: data.whyItWentWrong,
+    whatToTryNext: data.whatToTryNext,
+    confidence: 0.7,
+    timestamp: new Date().toISOString(),
+  };
+
+  const result = { ...baseReflection };
+  if (data.confidence !== undefined) {
+    result.confidence = data.confidence;
+  }
+  if (data.suggestedFix) {
+    result.suggestedFix = data.suggestedFix;
+  }
+  if (data.lessonsLearned) {
+    result.lessonsLearned = data.lessonsLearned;
+  }
+  return result;
+};
