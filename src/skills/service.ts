@@ -19,6 +19,11 @@ import {
   type SkillFilter,
   createSkill,
 } from "./schema.js";
+import {
+  EmbeddingError,
+  EmbeddingServiceLive,
+} from "./embedding.js";
+import { makeFMServiceLayer } from "../fm/service.js";
 
 // --- Deduplication Helpers ---
 
@@ -397,7 +402,7 @@ export const makeSkillServiceLive = (
     SkillRetrievalServiceLive,
     Layer.merge(storeLayer, embeddingLayer),
   );
-  return Layer.provide(SkillServiceLayer, Layer.merge(storeLayer, retrievalLayer));
+  return Layer.provide(SkillServiceLayer, Layer.merge(storeLayer, retrievalLayer)) as Layer.Layer<SkillService, SkillStoreError, never>;
 };
 
 /**
