@@ -28,11 +28,15 @@ import {
   makeSkillServiceLive,
   type SkillServiceError,
 } from "../skills/service.js";
+import type { SkillStoreError } from "../skills/store.js";
 import {
   MemoryService,
   makeMemoryServiceLive,
   type MemoryServiceError,
 } from "../memory/service.js";
+import type { MemoryStoreError } from "../memory/store.js";
+import type { TrajectoryStoreError } from "../archivist/store.js";
+import type { PatternExtractorError } from "../archivist/extractor.js";
 import type { TrainingRun, TrainingConfig, TBSubset } from "../trainer/schema.js";
 import type { ArchiveResult } from "../archivist/schema.js";
 
@@ -381,7 +385,7 @@ export const makeTrainingLoopLayer = (
 export const makeTrainingLoopLive = (
   projectRoot: string = process.cwd(),
   config: Partial<LoopConfig> = {},
-): Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, TrainerService | ArchivistService | SkillService | MemoryService> => {
+): Layer.Layer<TrainingLoop, SkillStoreError | MemoryStoreError | TrainerError | ArchivistError | TrajectoryStoreError | PatternExtractorError, TrainerService | ArchivistService | SkillService | MemoryService> => {
   const trainerLayer = makeTrainerServiceLive(projectRoot);
   const archivistLayer = makeArchivistServiceLive(projectRoot);
   const skillLayer = makeSkillServiceLive(projectRoot);
@@ -396,4 +400,4 @@ export const makeTrainingLoopLive = (
   );
 };
 
-export const TrainingLoopLive: Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, TrainerService | ArchivistService | SkillService | MemoryService> = makeTrainingLoopLive();
+export const TrainingLoopLive: Layer.Layer<TrainingLoop, SkillStoreError | MemoryStoreError | TrainerError | ArchivistError | TrajectoryStoreError | PatternExtractorError, TrainerService | ArchivistService | SkillService | MemoryService> = makeTrainingLoopLive();
