@@ -5,10 +5,9 @@
 import * as BunContext from "@effect/platform-bun/BunContext";
 import { Effect } from "effect";
 import { initOpenAgentsProject, createTask, type TaskCreate } from "../src/tasks/index.js";
-import * as nodePath from "node:path";
+import { DatabaseLive } from "../src/storage/database.js";
 
 const OPENAGENTS_ROOT = "/Users/christopherdavid/code/openagents";
-const TASKS_PATH = nodePath.join(OPENAGENTS_ROOT, ".openagents", "tasks.jsonl");
 
 const initialTasks: TaskCreate[] = [
   {
@@ -99,23 +98,27 @@ const bootstrap = Effect.gen(function* () {
   
   console.log(`Created project: ${result.projectId}`);
   console.log(`Project path: ${result.projectPath}`);
-  console.log(`Tasks path: ${result.tasksPath}`);
-  
+  console.log(`Database path: ${result.dbPath}`);
+
   console.log("\nCreating initial tasks...");
-  
+
   for (const taskData of initialTasks) {
     const task = yield* createTask({
-      tasksPath: TASKS_PATH,
       task: taskData,
       idPrefix: "oa",
     });
     console.log(`Created: ${task.id} - ${task.title.slice(0, 50)}...`);
   }
-  
+
   console.log("\nBootstrap complete!");
 });
 
-Effect.runPromise(bootstrap.pipe(Effect.provide(BunContext.layer)))
+Effect.runPromise(
+  bootstrap.pipe(
+    Effect.provide(DatabaseLive),
+    Effect.provide(BunContext.layer)
+  )
+)
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Bootstrap failed:", err);

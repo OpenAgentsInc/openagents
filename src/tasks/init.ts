@@ -1,9 +1,9 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
+import { Database } from "bun:sqlite";
 import { defaultProjectConfig, saveProjectConfig } from "./project.js";
-import { ensureMergeDriverConfig } from "./merge.js";
-import { writeTasks } from "./service.js";
+import { runMigrations } from "../storage/migrations.js";
 
 export class InitProjectError extends Error {
   readonly _tag = "InitProjectError";
@@ -33,7 +33,7 @@ export const initOpenAgentsProject = ({
   projectId,
   allowExisting = false,
 }: InitProjectOptions): Effect.Effect<
-  { projectId: string; projectPath: string; tasksPath: string },
+  { projectId: string; projectPath: string; dbPath: string },
   InitProjectError,
   FileSystem.FileSystem | Path.Path
 > =>
@@ -43,7 +43,8 @@ export const initOpenAgentsProject = ({
     const resolvedRoot = path.resolve(rootDir);
     const openagentsDir = path.join(resolvedRoot, ".openagents");
     const projectPath = path.join(openagentsDir, "project.json");
-    const tasksPath = path.join(openagentsDir, "tasks.jsonl");
+    const dbPath = path.join(openagentsDir, "openagents.db");
+    const migrationsDir = path.join(openagentsDir, "migrations");
     const sessionsDir = path.join(openagentsDir, "sessions");
     const runLogsDir = path.join(openagentsDir, "run-logs");
     const gitignorePath = path.join(openagentsDir, ".gitignore");
@@ -78,6 +79,17 @@ export const initOpenAgentsProject = ({
       ),
     );
 
+    // Create migrations directory
+    yield* fs.makeDirectory(migrationsDir, { recursive: true }).pipe(
+      Effect.mapError(
+        (e) =>
+          new InitProjectError(
+            "write_error",
+            `Failed to create migrations directory: ${e.message}`,
+          ),
+      ),
+    );
+
     // Create sessions directory
     yield* fs.makeDirectory(sessionsDir, { recursive: true }).pipe(
       Effect.mapError(
@@ -103,6 +115,7 @@ export const initOpenAgentsProject = ({
     const id = projectId ?? path.basename(resolvedRoot);
     const config = defaultProjectConfig(id);
 
+    // Save project config (stays as JSON)
     yield* saveProjectConfig(resolvedRoot, config).pipe(
       Effect.mapError(
         (e) =>
@@ -113,15 +126,27 @@ export const initOpenAgentsProject = ({
       ),
     );
 
-    yield* writeTasks(tasksPath, []).pipe(
-      Effect.mapError(
-        (e) =>
-          new InitProjectError(
-            "write_error",
-            `Failed to write tasks.jsonl: ${e.message}`,
-          ),
-      ),
-    );
+    // Create SQLite database and run migrations
+    yield* Effect.try({
+      try: () => {
+        const db = new Database(dbPath);
+
+        // Run migrations to set up schema
+        Effect.runSync(runMigrations(db, migrationsDir).pipe(
+          Effect.provide({
+            FileSystem: fs,
+            Path: path,
+          } as any),
+        ));
+
+        db.close();
+      },
+      catch: (e) =>
+        new InitProjectError(
+          "write_error",
+          `Failed to create database: ${e}`,
+        ),
+    });
 
     // Create .gitignore for sessions and run-logs
     yield* fs.writeFile(gitignorePath, new TextEncoder().encode(OPENAGENTS_GITIGNORE)).pipe(
@@ -134,16 +159,5 @@ export const initOpenAgentsProject = ({
       ),
     );
 
-    // Configure git merge driver for tasks.jsonl if a git repo is present
-    yield* ensureMergeDriverConfig(resolvedRoot).pipe(
-      Effect.mapError(
-        (e) =>
-          new InitProjectError(
-            "write_error",
-            `Failed to configure merge driver: ${e.message}`,
-          ),
-      ),
-    );
-
-    return { projectId: id, projectPath, tasksPath };
+    return { projectId: id, projectPath, dbPath };
   });
