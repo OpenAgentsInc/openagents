@@ -28,6 +28,9 @@ import {
 import { OpenThoughtsServiceLive, OpenThoughtsService } from "../huggingface/openthoughts.js"
 
 console.log("[Effuse] Loading mainview...")
+if ((window as any).bunLog) {
+  (window as any).bunLog("[Effuse] ========== EFFUSE-MAIN.TS IS EXECUTING ==========")
+}
 
 // Add visible error display
 const showError = (msg: string) => {
@@ -88,6 +91,9 @@ const createEffuseLayer = () => {
  */
 const mountAllWidgets = Effect.gen(function* () {
   console.log("[Effuse] Mounting HF Trajectory Browser widgets...")
+  if ((window as any).bunLog) {
+    (window as any).bunLog("[Effuse] ========== MOUNTING HF TRAJECTORY WIDGETS ==========")
+  }
 
   // Connect to desktop server WebSocket first
   const socket = yield* SocketServiceTag
@@ -223,6 +229,9 @@ const mountAllWidgets = Effect.gen(function* () {
  */
 const initEffuse = () => {
   console.log("[Effuse] Creating layer...")
+  if ((window as any).bunLog) {
+    (window as any).bunLog("[Effuse] ========== INIT EFFUSE CALLED ==========")
+  }
 
   let layer
   try {
@@ -258,19 +267,38 @@ const initEffuse = () => {
 }
 
 // Initialize when DOM is ready
+if ((window as any).bunLog) {
+  (window as any).bunLog(`[Effuse] document.readyState = ${document.readyState}`)
+}
+
 if (document.readyState === "loading") {
+  if ((window as any).bunLog) {
+    (window as any).bunLog("[Effuse] Waiting for DOMContentLoaded...")
+  }
   document.addEventListener("DOMContentLoaded", () => {
+    if ((window as any).bunLog) {
+      (window as any).bunLog("[Effuse] DOMContentLoaded fired!")
+    }
     try {
       initEffuse()
     } catch (e) {
       console.error("[Effuse] Init error:", e)
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[Effuse] Init error: ${e}`)
+      }
     }
   })
 } else {
+  if ((window as any).bunLog) {
+    (window as any).bunLog("[Effuse] DOM already ready, initializing immediately")
+  }
   try {
     initEffuse()
   } catch (e) {
     console.error("[Effuse] Init error:", e)
+    if ((window as any).bunLog) {
+      (window as any).bunLog(`[Effuse] Init error: ${e}`)
+    }
   }
 }
 
