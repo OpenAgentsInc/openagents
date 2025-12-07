@@ -15,7 +15,7 @@ import {
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
 import { FMService, makeFMServiceLayer } from "../fm/service.js";
-import type { Trajectory, ExtractedPattern, ArchiveResult, ArchiveConfig } from "./schema.js";
+import type { Trajectory, ExtractedPattern, ArchiveResult, ArchiveConfig, ArchivistHudMessage } from "./schema.js";
 import { DEFAULT_ARCHIVE_CONFIG, generateArchiveId, createTrajectory } from "./schema.js";
 import { createSkill } from "../skills/schema.js";
 
@@ -198,6 +198,7 @@ const makeArchivistService = (
 
     const promotePatterns = (
       patterns: ExtractedPattern[],
+      runId: string,
     ): Effect.Effect<string[], ArchivistError> =>
       Effect.gen(function* () {
         const skillIds: string[] = [];
@@ -229,6 +230,15 @@ const makeArchivistService = (
 
           skillIds.push(skill.id);
           stats.skillsCreated++;
+
+          // Emit HUD message for skill promotion
+          config.onHudMessage?.({
+            type: "archivist_skill_promoted",
+            runId,
+            skillId: skill.id,
+            skillName: skill.name,
+            category: skill.category,
+          });
         }
 
         stats.patternsExtracted += patterns.length;
@@ -238,13 +248,23 @@ const makeArchivistService = (
     const runArchive = (): Effect.Effect<ArchiveResult, ArchivistError> =>
       Effect.gen(function* () {
         const startTime = Date.now();
+        const runId = generateArchiveId();
 
         // Get unarchived trajectories
         const trajectories = yield* getUnarchivedTrajectories();
 
+        // Emit run start message
+        config.onHudMessage?.({
+          type: "archivist_run_start",
+          runId,
+          trajectoriesToProcess: trajectories.length,
+          mode: "full",
+          timestamp: new Date().toISOString(),
+        });
+
         if (trajectories.length === 0) {
-          return {
-            id: generateArchiveId(),
+          const result = {
+            id: runId,
             trajectoriesProcessed: 0,
             patternsExtracted: 0,
             skillsCreated: 0,
@@ -253,10 +273,33 @@ const makeArchivistService = (
             durationMs: Date.now() - startTime,
             timestamp: new Date().toISOString(),
           };
+          // Emit run complete message
+          config.onHudMessage?.({
+            type: "archivist_run_complete",
+            runId,
+            trajectoriesProcessed: 0,
+            patternsExtracted: 0,
+            skillsCreated: 0,
+            memoriesCreated: 0,
+            itemsPruned: 0,
+            durationMs: result.durationMs,
+          });
+          return result;
         }
 
         // Extract patterns
         const patterns = yield* extractPatternsOp(trajectories);
+
+        // Emit pattern found messages
+        for (const pattern of patterns) {
+          config.onHudMessage?.({
+            type: "archivist_pattern_found",
+            runId,
+            patternName: pattern.name,
+            patternType: pattern.type,
+            confidence: pattern.confidence,
+          });
+        }
 
         // Filter by quality
         const qualityPatterns = yield* extractor.filterByQuality(
@@ -265,8 +308,8 @@ const makeArchivistService = (
           config.minOccurrences,
         );
 
-        // Promote to skills
-        const skillIds = yield* promotePatterns(qualityPatterns);
+        // Promote to skills (passes runId for HUD messages)
+        const skillIds = yield* promotePatterns(qualityPatterns, runId);
 
         // Mark trajectories as archived
         yield* store.markArchived(trajectories.map((t) => t.id)).pipe(mapStoreError);
@@ -277,8 +320,8 @@ const makeArchivistService = (
           itemsPruned = yield* store.prune(config.maxTrajectoryAgeDays).pipe(mapStoreError);
         }
 
-        return {
-          id: generateArchiveId(),
+        const result = {
+          id: runId,
           trajectoriesProcessed: trajectories.length,
           patternsExtracted: patterns.length,
           skillsCreated: skillIds.length,
@@ -287,18 +330,42 @@ const makeArchivistService = (
           durationMs: Date.now() - startTime,
           timestamp: new Date().toISOString(),
         };
+
+        // Emit run complete message
+        config.onHudMessage?.({
+          type: "archivist_run_complete",
+          runId,
+          trajectoriesProcessed: result.trajectoriesProcessed,
+          patternsExtracted: result.patternsExtracted,
+          skillsCreated: result.skillsCreated,
+          memoriesCreated: result.memoriesCreated,
+          itemsPruned: result.itemsPruned,
+          durationMs: result.durationMs,
+        });
+
+        return result;
       });
 
     const runQuickArchive = (): Effect.Effect<ArchiveResult, ArchivistError> =>
       Effect.gen(function* () {
         const startTime = Date.now();
+        const runId = generateArchiveId();
 
         // Get unarchived trajectories
         const trajectories = yield* getUnarchivedTrajectories();
 
+        // Emit run start message
+        config.onHudMessage?.({
+          type: "archivist_run_start",
+          runId,
+          trajectoriesToProcess: trajectories.length,
+          mode: "quick",
+          timestamp: new Date().toISOString(),
+        });
+
         if (trajectories.length === 0) {
-          return {
-            id: generateArchiveId(),
+          const result = {
+            id: runId,
             trajectoriesProcessed: 0,
             patternsExtracted: 0,
             skillsCreated: 0,
@@ -307,19 +374,42 @@ const makeArchivistService = (
             durationMs: Date.now() - startTime,
             timestamp: new Date().toISOString(),
           };
+          // Emit run complete message
+          config.onHudMessage?.({
+            type: "archivist_run_complete",
+            runId,
+            trajectoriesProcessed: 0,
+            patternsExtracted: 0,
+            skillsCreated: 0,
+            memoriesCreated: 0,
+            itemsPruned: 0,
+            durationMs: result.durationMs,
+          });
+          return result;
         }
 
         // Extract patterns using heuristics
         const patterns = yield* extractor.extractQuickPatterns(trajectories);
 
-        // Promote to skills
-        const skillIds = yield* promotePatterns(patterns);
+        // Emit pattern found messages
+        for (const pattern of patterns) {
+          config.onHudMessage?.({
+            type: "archivist_pattern_found",
+            runId,
+            patternName: pattern.name,
+            patternType: pattern.type,
+            confidence: pattern.confidence,
+          });
+        }
+
+        // Promote to skills (passes runId for HUD messages)
+        const skillIds = yield* promotePatterns(patterns, runId);
 
         // Mark trajectories as archived
         yield* store.markArchived(trajectories.map((t) => t.id)).pipe(mapStoreError);
 
-        return {
-          id: generateArchiveId(),
+        const result = {
+          id: runId,
           trajectoriesProcessed: trajectories.length,
           patternsExtracted: patterns.length,
           skillsCreated: skillIds.length,
@@ -328,6 +418,20 @@ const makeArchivistService = (
           durationMs: Date.now() - startTime,
           timestamp: new Date().toISOString(),
         };
+
+        // Emit run complete message
+        config.onHudMessage?.({
+          type: "archivist_run_complete",
+          runId,
+          trajectoriesProcessed: result.trajectoriesProcessed,
+          patternsExtracted: result.patternsExtracted,
+          skillsCreated: result.skillsCreated,
+          memoriesCreated: result.memoriesCreated,
+          itemsPruned: 0,
+          durationMs: result.durationMs,
+        });
+
+        return result;
       });
 
     const pruneTrajectories = (
