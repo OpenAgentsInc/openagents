@@ -3,9 +3,10 @@
  *
  * Creates and closes tasks in .openagents/tasks.jsonl for paper research work.
  */
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { createTask, closeTask as closeTaskService } from "../tasks/service.js";
+import { makeDatabaseLive } from "../storage/database.js";
 import type { PaperRecord } from "./registry.js";
 
 // ============================================================================
@@ -40,7 +41,11 @@ export const createResearchTask = async (
 
   try {
     return await Effect.runPromise(
-      program.pipe(Effect.provide(BunContext.layer))
+      program.pipe(
+        Effect.provide(
+          Layer.mergeAll(BunContext.layer, makeDatabaseLive(tasksPath))
+        )
+      )
     );
   } catch (error) {
     console.error("Failed to create research task:", error);
@@ -113,7 +118,11 @@ export const closeResearchTask = async (
 
   try {
     return await Effect.runPromise(
-      program.pipe(Effect.provide(BunContext.layer))
+      program.pipe(
+        Effect.provide(
+          Layer.mergeAll(BunContext.layer, makeDatabaseLive(tasksPath))
+        )
+      )
     );
   } catch (error) {
     console.error("Failed to close research task:", error);

@@ -90,8 +90,6 @@ export const runWithTestContext = <A, E>(
             Layer.mergeAll(
               layer,
               BunContext.layer,
-              FileSystem.FileSystem,
-              Path.Path,
             ),
           ),
         );

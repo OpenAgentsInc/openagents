@@ -51,10 +51,10 @@ const createTestSkill = (
     source: "manual",
   });
   if (successRate !== undefined) {
-    skill.successRate = successRate;
+    (skill as any).successRate = successRate;
   }
   if (usageCount !== undefined) {
-    skill.usageCount = usageCount;
+    (skill as any).usageCount = usageCount;
   }
   return skill;
 };
@@ -75,14 +75,14 @@ describe("Skill Evolution Service", () => {
   beforeEach(() => {
     try {
       rmSync(TEST_PROJECT_ROOT, { recursive: true, force: true });
-    } catch {}
+    } catch { }
     mkdirSync(TEST_SKILLS_DIR, { recursive: true });
   });
 
   afterEach(() => {
     try {
       rmSync(TEST_PROJECT_ROOT, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   });
 
   describe("Skill Promotion", () => {
