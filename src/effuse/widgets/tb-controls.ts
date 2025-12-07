@@ -58,6 +58,10 @@ export interface TBControlsState {
   passedTasks: number
   /** Progress tracking - failed tasks */
   failedTasks: number
+  /** Run timer - timestamp when run started (milliseconds) */
+  startedAt: number | null
+  /** Run timer - duration when run completed (milliseconds) */
+  duration: number | null
 }
 
 /** Widget events */
@@ -110,6 +114,18 @@ const getStatusColorClass = (statusType: TBControlsState["statusType"]): string 
   }
 }
 
+/**
+ * Format duration in milliseconds as HH:MM:SS
+ */
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+}
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -155,6 +171,8 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
     completedTasks: 0,
     passedTasks: 0,
     failedTasks: 0,
+    startedAt: null,
+    duration: null,
   }),
 
   render: (ctx) =>
@@ -253,12 +271,20 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
       const progressPercent = state.totalTasks > 0 ? Math.round((state.completedTasks / state.totalTasks) * 100) : 0
       const passPercent = state.totalTasks > 0 ? Math.round((state.passedTasks / state.totalTasks) * 100) : 0
       const failPercent = state.totalTasks > 0 ? Math.round((state.failedTasks / state.totalTasks) * 100) : 0
+
+      // Duration timer (US-4.6: calculate elapsed time)
+      const elapsedMs = state.startedAt ? (state.duration ?? (Date.now() - state.startedAt)) : (state.duration ?? 0)
+      const durationDisplay = elapsedMs > 0 ? formatDuration(elapsedMs) : null
+
       const progressBar = (state.isRunning || state.completedTasks > 0) ? html`
         <div class="px-4 py-2 border-b border-zinc-800/40" data-testid="progress-bar">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-mono text-zinc-400">
-              Progress: ${state.completedTasks}/${state.totalTasks} (${progressPercent}%)
-            </span>
+            <div class="flex items-center gap-3">
+              <span class="text-xs font-mono text-zinc-400">
+                Progress: ${state.completedTasks}/${state.totalTasks} (${progressPercent}%)
+              </span>
+              ${durationDisplay ? html`<span class="text-xs font-mono text-zinc-500" data-testid="run-duration">⏱ ${durationDisplay}</span>` : ""}
+            </div>
             <span class="text-xs font-mono">
               <span class="text-emerald-400">✓${state.passedTasks}</span>
               <span class="text-zinc-500 mx-1">|</span>
@@ -453,6 +479,8 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
             completedTasks: 0,
             passedTasks: 0,
             failedTasks: 0,
+            startedAt: Date.now(),
+            duration: null,
           }))
 
           const result = yield* socket.startTBRun({
@@ -499,6 +527,8 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
             completedTasks: 0,
             passedTasks: 0,
             failedTasks: 0,
+            startedAt: Date.now(),
+            duration: null,
           }))
 
           const result = yield* socket.startTBRun({
@@ -615,12 +645,15 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
               yield* ctx.state.update((s) => {
                 if (s.runId !== msg.runId) return s
                 const passRate = s.totalTasks > 0 ? Math.round((s.passedTasks / s.totalTasks) * 100) : 0
+                const duration = s.startedAt ? Date.now() - s.startedAt : 0
                 return {
                   ...s,
                   isRunning: false,
                   runId: null,
                   status: `Complete: ${passRate}% (${s.passedTasks}/${s.totalTasks})`,
                   statusType: "success" as const,
+                  duration,
+                  startedAt: null,
                 }
               })
             }
