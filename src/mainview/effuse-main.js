@@ -26691,9 +26691,10 @@ var mountWidget = (widget, container) => exports_Effect.gen(function* () {
   const stateService = yield* StateServiceTag;
   const state = yield* stateService.cell(widget.initialState());
   const eventQueue = yield* exports_Effect.acquireRelease(exports_Queue.unbounded(), (queue) => exports_Queue.shutdown(queue));
+  const emit2 = (event) => exports_Queue.offer(eventQueue, event).pipe(exports_Effect.catchAll(() => exports_Effect.void));
   const ctx = {
     state,
-    emit: (event) => exports_Queue.offer(eventQueue, event).pipe(exports_Effect.catchAll(() => exports_Effect.void)),
+    emit: emit2,
     dom,
     container
   };
@@ -26722,7 +26723,9 @@ var mountWidget = (widget, container) => exports_Effect.gen(function* () {
     }
   }
   const mounted = {
-    unmount: exports_Effect.void
+    unmount: exports_Effect.void,
+    events: exports_Stream.fromQueue(eventQueue),
+    emit: emit2
   };
   return mounted;
 });
@@ -26732,7 +26735,11 @@ var mountWidgetById = (widget, containerId) => exports_Effect.gen(function* () {
   return yield* mountWidget(widget, container);
 }).pipe(exports_Effect.catchAll((error) => {
   console.error(`[Effuse] Failed to mount widget "${widget.id}":`, error);
-  return exports_Effect.succeed({ unmount: exports_Effect.void });
+  return exports_Effect.succeed({
+    unmount: exports_Effect.void,
+    events: exports_Stream.empty,
+    emit: () => exports_Effect.void
+  });
 }));
 // src/effuse/layers/live.ts
 var EffuseLive = exports_Layer.mergeAll(DomServiceLive, StateServiceLive, SocketServiceDefault);

@@ -108,11 +108,17 @@ export interface Widget<S, E, R = never> {
 /**
  * Mounted widget handle.
  *
- * Returned by mountWidget, allows unmounting.
+ * Returned by mountWidget, allows unmounting and accessing widget events.
  */
-export interface MountedWidget {
+export interface MountedWidget<E = never> {
   /** Unmount the widget and clean up resources */
   readonly unmount: Effect.Effect<void, never>
+
+  /** Stream of events emitted by this widget */
+  readonly events: Stream.Stream<E, never>
+
+  /** Emit an event to this widget */
+  readonly emit: (event: E) => Effect.Effect<void, never>
 }
 
 /**
