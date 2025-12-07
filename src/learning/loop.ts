@@ -381,15 +381,19 @@ export const makeTrainingLoopLayer = (
 export const makeTrainingLoopLive = (
   projectRoot: string = process.cwd(),
   config: Partial<LoopConfig> = {},
-): Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, never> => {
+): Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, TrainerService | ArchivistService | SkillService | MemoryService> => {
   const trainerLayer = makeTrainerServiceLive(projectRoot);
   const archivistLayer = makeArchivistServiceLive(projectRoot);
   const skillLayer = makeSkillServiceLive(projectRoot);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
 
-  return makeTrainingLoopLayer({ ...config, projectRoot }).pipe(
-    Layer.provide(Layer.mergeAll(trainerLayer, archivistLayer, skillLayer, memoryLayer))
+  return Layer.mergeAll(
+    makeTrainingLoopLayer({ ...config, projectRoot }),
+    trainerLayer,
+    archivistLayer,
+    skillLayer,
+    memoryLayer
   );
 };
 
-export const TrainingLoopLive: Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, never> = makeTrainingLoopLive();
+export const TrainingLoopLive: Layer.Layer<TrainingLoop, SkillServiceError | MemoryServiceError | TrainerError | ArchivistError, TrainerService | ArchivistService | SkillService | MemoryService> = makeTrainingLoopLive();
