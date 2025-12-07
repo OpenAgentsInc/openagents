@@ -12,11 +12,13 @@ import {
   DomServiceLive,
   StateServiceLive,
   SocketServiceFromClient,
-  // HF Trajectory Browser Widgets
-  HFTrajectoryListWidget,
-  HFTrajectoryDetailWidget,
+  // TBCC Widgets
+  TBCCShellWidget,
+  TBCCDashboardWidget,
+  TBCCTaskBrowserWidget,
+  TBCCRunBrowserWidget,
+  TBCCSettingsWidget,
 } from "../effuse/index.js"
-import type { Trajectory } from "../atif/schema.js"
 
 console.log("[Effuse] Loading mainview...")
 if ((window as any).bunLog) {
@@ -80,124 +82,46 @@ const createEffuseLayer = () => {
  * Mount all widgets to their respective containers
  */
 const mountAllWidgets = Effect.gen(function* () {
-  console.log("[Effuse] Mounting HF Trajectory Browser widgets...")
+  console.log("[Effuse] Mounting TB Command Center...")
   if ((window as any).bunLog) {
-    (window as any).bunLog("[Effuse] ========== MOUNTING HF TRAJECTORY WIDGETS ==========")
+    (window as any).bunLog("[Effuse] ========== MOUNTING TBCC WIDGETS ==========")
   }
 
-  // Mount HF Trajectory List Widget (sidebar)
-  const listWidget = yield* mountWidgetById(HFTrajectoryListWidget, "hf-trajectory-list-widget").pipe(
-    Effect.tap(() => console.log("[Effuse] HF Trajectory List widget mounted")),
+  // 1. Mount Shell
+  const shellWidget = yield* mountWidgetById(TBCCShellWidget, "tbcc-shell-widget").pipe(
+    Effect.tap(() => console.log("[Effuse] Shell mounted")),
     Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount HF Trajectory List widget:", e)
+      console.error("[Effuse] Failed to mount Shell widget:", e)
       return Effect.die(e)
     })
   )
 
-  // Mount HF Trajectory Detail Widget (main area)
-  const detailWidget = yield* mountWidgetById(HFTrajectoryDetailWidget, "hf-trajectory-detail-widget").pipe(
-    Effect.tap(() => console.log("[Effuse] HF Trajectory Detail widget mounted")),
-    Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount HF Trajectory Detail widget:", e)
-      return Effect.die(e)
-    })
-  )
+  // 2. Mount Child Widgets
+  const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard")
+  const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks")
+  const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs")
+  const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings")
 
-  // Wire up event forwarding: List selection -> Detail load
-  // When user selects a trajectory in the list, fetch full trajectory via RPC and send to detail widget
-  yield* Stream.runForEach(listWidget.events, (event) =>
+  console.log("[Effuse] Child widgets mounted")
+
+  // 3. Wire up events
+
+  // Dashboard "View Run" -> Switch to Runs tab & Select Run
+  yield* Stream.runForEach(dashboardWidget.events, (event) =>
     Effect.gen(function* () {
-      if (event.type === "select") {
-        console.log("[Effuse] Loading trajectory:", event.sessionId, "at index:", event.index)
-
-        // Set detail widget to loading state
-        yield* detailWidget.emit({ type: "clear" })
-
-        try {
-          // Fetch full trajectory via RPC using socket client
-          const socketClient = getSocketClient()
-          const trajectory = (yield* Effect.promise(() =>
-            socketClient.getHFTrajectory(event.index)
-          )) as Trajectory | null
-
-          if (trajectory) {
-            // Send to detail widget
-            yield* detailWidget.emit({
-              type: "load",
-              sessionId: event.sessionId,
-              trajectory,
-            })
-            console.log("[Effuse] Trajectory loaded successfully")
-          } else {
-            console.warn("[Effuse] Trajectory not found at index:", event.index)
-          }
-        } catch (error) {
-          console.error("[Effuse] Failed to load trajectory:", error)
-          // Detail widget will show error state
-        }
+      if (event.type === "viewRun") {
+        // Switch to Runs tab
+        yield* shellWidget.emit({ type: "changeTab", tab: "runs" })
+        // Select the run in Run Browser
+        // We assume local source for now if coming from dashboard recent runs,
+        // but dashboard should probably pass source too.
+        // For now, let's try local first.
+        yield* runBrowserWidget.emit({ type: "selectRun", runId: event.runId, source: "local" })
       }
     })
   ).pipe(Effect.forkScoped)
 
-  console.log("[Effuse] HF Trajectory Browser ready")
-
-  /* OLD WIDGETS DISABLED FOR SIMPLE LAYOUT
-  // Mount APM Widget (bottom-right corner)
-  yield* mountWidgetById(APMWidget, "apm-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] APM widget container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount Trajectory Pane (left sidebar)
-  yield* mountWidgetById(TrajectoryPaneWidget, "trajectory-pane-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] Trajectory pane container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount Container Panes (execution output grid)
-  yield* mountWidgetById(ContainerPanesWidget, "container-panes-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] Container panes container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount TB Output (streaming output viewer)
-  yield* mountWidgetById(TBOutputWidget, "tb-output-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] TB output container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount MC Tasks (ready tasks list)
-  yield* mountWidgetById(MCTasksWidget, "mc-tasks-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] MC tasks container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount TB Controls (suite loading, run control)
-  yield* mountWidgetById(TBControlsWidget, "tb-controls-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] TB controls container not found:", e)
-      return Effect.void
-    })
-  )
-
-  // Mount Category Tree (task categories)
-  yield* mountWidgetById(CategoryTreeWidget, "category-tree-widget").pipe(
-    Effect.catchAll((e) => {
-      console.warn("[Effuse] Category tree container not found:", e)
-      return Effect.void
-    })
-  )
-  */
+  console.log("[Effuse] TB Command Center ready")
 })
 
 // ============================================================================
