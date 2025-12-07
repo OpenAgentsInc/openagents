@@ -171,3 +171,92 @@ export const defaultFMServiceConfig: FMServiceConfig = {
   enableMetrics: true,
   enableLogging: true,
 };
+
+// --- Request Isolation Types ---
+
+/**
+ * Request context for isolation and tracing.
+ * Each request carries this context for proper routing and logging.
+ */
+export interface FMRequestContext {
+  /** Unique request ID for correlation */
+  requestId: string;
+  /** Session ID for grouping related requests */
+  sessionId: string;
+  /** Parent request ID for nested calls */
+  parentRequestId?: string;
+  /** Task ID if part of a training task */
+  taskId?: string;
+  /** Timestamp when request was created */
+  createdAt: number;
+}
+
+/**
+ * Session configuration for request isolation.
+ */
+export interface FMSessionConfig {
+  /** Unique session identifier */
+  sessionId: string;
+  /** Maximum concurrent requests per session (default: 1 for serial execution) */
+  maxConcurrentRequests: number;
+  /** Request timeout override for this session (uses service default if not set) */
+  timeoutMs?: number;
+  /** Priority level for queue ordering (higher = more priority) */
+  priority: number;
+}
+
+/**
+ * Default session configuration.
+ */
+export const defaultFMSessionConfig: Omit<FMSessionConfig, "sessionId"> = {
+  maxConcurrentRequests: 1,
+  priority: 0,
+};
+
+/**
+ * Generate a unique request ID.
+ */
+export const generateRequestId = (): string =>
+  `fm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Generate a unique session ID.
+ */
+export const generateSessionId = (): string =>
+  `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+/**
+ * Create a request context.
+ */
+export const createRequestContext = (
+  sessionId: string,
+  options?: {
+    parentRequestId?: string;
+    taskId?: string;
+  },
+): FMRequestContext => {
+  const ctx: FMRequestContext = {
+    requestId: generateRequestId(),
+    sessionId,
+    createdAt: Date.now(),
+  };
+  if (options?.parentRequestId) {
+    ctx.parentRequestId = options.parentRequestId;
+  }
+  if (options?.taskId) {
+    ctx.taskId = options.taskId;
+  }
+  return ctx;
+};
+
+/**
+ * Create a session configuration.
+ */
+export const createSessionConfig = (
+  options?: Partial<FMSessionConfig>,
+): FMSessionConfig => ({
+  sessionId: options?.sessionId ?? generateSessionId(),
+  maxConcurrentRequests: options?.maxConcurrentRequests ?? defaultFMSessionConfig.maxConcurrentRequests,
+  priority: options?.priority ?? defaultFMSessionConfig.priority,
+  ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+});

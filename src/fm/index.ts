@@ -21,10 +21,20 @@ export {
   FMModelsResult,
   defaultFMServiceConfig,
   isRetryableError,
+  // Request isolation exports
+  defaultFMSessionConfig,
+  generateRequestId,
+  generateSessionId,
+  createRequestContext,
+  createSessionConfig,
 } from "./schema.js";
 
 // Schema exports - types (interfaces must use export type)
-export type { FMServiceConfig } from "./schema.js";
+export type {
+  FMServiceConfig,
+  FMRequestContext,
+  FMSessionConfig,
+} from "./schema.js";
 
 // Service exports
 export {
@@ -37,6 +47,8 @@ export {
   fmGetMetrics,
   fmListModels,
   type IFMService,
+  type FMSessionHandle,
+  type FMSessionMetrics,
 } from "./service.js";
 
 // Layer composition exports
