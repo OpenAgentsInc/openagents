@@ -846,7 +846,7 @@ const parallelOvernightLoop = async (config: ParallelConfig) => {
   // Load ready tasks
   const allTasks = await Effect.runPromise(
     readTasks(tasksPath).pipe(
-      Effect.provide(BunContext.layer),
+      Effect.provide(Layer.mergeAll(DatabaseLive, BunContext.layer)),
       Effect.catchAll(() => Effect.succeed([] as Task[])),
     ),
   );

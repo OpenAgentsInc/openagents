@@ -22,7 +22,7 @@ import {
 import { createTask, updateTask, readTasks } from "../../tasks/service.js";
 import type { PendingCommit, TaskCreate } from "../../tasks/schema.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 
 const runWithBun = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | DatabaseService>,

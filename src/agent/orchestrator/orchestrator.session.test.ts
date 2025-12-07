@@ -10,7 +10,7 @@ import { runOrchestrator } from "./orchestrator.js";
 import type { SubagentResult } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),

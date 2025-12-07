@@ -14,9 +14,8 @@
  * @module agent/orchestrator/recovery
  */
 
-import * as FileSystem from "@effect/platform/FileSystem";
-import * as Path from "@effect/platform/Path";
 import { Effect } from "effect";
+import { DatabaseService } from "../../storage/database.js";
 import { findTasksWithPendingCommit, updateTask, type TaskServiceError } from "../../tasks/service.js";
 import type { Task, PendingCommit } from "../../tasks/schema.js";
 
@@ -81,7 +80,7 @@ const recoverTask = (
 ): Effect.Effect<
   { action: "closed" | "reset"; task: Task },
   TaskServiceError | Error,
-  FileSystem.FileSystem | Path.Path
+  DatabaseService
 > =>
   Effect.gen(function* () {
     const { tasksPath, cwd, emit } = options;
@@ -139,7 +138,7 @@ const recoverTask = (
  */
 export const recoverPendingCommits = (
   options: RecoveryOptions,
-): Effect.Effect<RecoveryResult, TaskServiceError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<RecoveryResult, TaskServiceError, DatabaseService> =>
   Effect.gen(function* () {
     const { tasksPath, emit } = options;
 
@@ -192,7 +191,7 @@ export const recoverPendingCommits = (
  */
 export const hasPendingRecovery = (
   tasksPath: string,
-): Effect.Effect<boolean, TaskServiceError, FileSystem.FileSystem> =>
+): Effect.Effect<boolean, TaskServiceError, DatabaseService> =>
   findTasksWithPendingCommit(tasksPath).pipe(
     Effect.map((tasks) => tasks.length > 0),
   );

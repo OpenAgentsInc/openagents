@@ -21,7 +21,7 @@ import type { OrchestratorEvent, SubagentResult, Subtask } from "./types.js";
 import { OpenRouterClient, type OpenRouterClientShape } from "../../llm/openrouter.js";
 import type { Task } from "../../tasks/index.js";
 import { DatabaseService } from "../../storage/database.js";
-import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.ts";
 
 const mockOpenRouterLayer = Layer.succeed(OpenRouterClient, {
   chat: () => Effect.fail(new Error("not used")),

@@ -11,7 +11,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 import { updateTask, readTasks } from "../tasks/service.js";
-import { runWithTestDb } from "../tasks/test-helpers.js";
+import { runWithTestDb } from "../tasks/test-helpers.ts";
 import type { Task } from "../tasks/schema.js";
 
 // Helper to create a temporary directory
