@@ -164,3 +164,16 @@ export {
   type TBTaskStatus,
   initialCategoryTreeState,
 } from "./widgets/category-tree.js"
+export {
+  HFTrajectoryListWidget,
+  type HFTrajectoryListState,
+  type HFTrajectoryListEvent,
+  type TrajectoryMetadata,
+  initialHFTrajectoryListState,
+} from "./widgets/hf-trajectory-list.js"
+export {
+  HFTrajectoryDetailWidget,
+  type HFTrajectoryDetailState,
+  type HFTrajectoryDetailEvent,
+  initialHFTrajectoryDetailState,
+} from "./widgets/hf-trajectory-detail.js"
