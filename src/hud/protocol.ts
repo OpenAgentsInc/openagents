@@ -834,6 +834,20 @@ export interface ContainerErrorMessage {
 }
 
 // ============================================================================
+// Development Hot Reload Events
+// ============================================================================
+
+/**
+ * Development hot reload signal
+ * Sent by server when source files change to trigger UI reload
+ */
+export interface DevReloadMessage {
+  type: "dev_reload"
+  /** Path of the file that changed (for logging) */
+  changedFile?: string
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -893,7 +907,8 @@ export type HudMessage =
   | TrainerEvolutionGenerationStartMessage
   | TrainerEvolutionProfileEvaluatedMessage
   | TrainerEvolutionABResultMessage
-  | TrainerEvolutionCompleteMessage;
+  | TrainerEvolutionCompleteMessage
+  | DevReloadMessage;
 
 /**
  * Status stream payloads (headless RPC-compatible)
@@ -1058,3 +1073,10 @@ export const isTrainerEvolutionComplete = (msg: HudMessage): msg is TrainerEvolu
 /** Check if message is any trainer-related message */
 export const isTrainerMessage = (msg: HudMessage): boolean =>
   msg.type.startsWith("trainer_");
+
+// ============================================================================
+// Development Event Type Guards
+// ============================================================================
+
+export const isDevReload = (msg: HudMessage): msg is DevReloadMessage =>
+  msg.type === "dev_reload";
