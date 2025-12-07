@@ -273,29 +273,30 @@ describe("CategoryTreeWidget", () => {
         Effect.gen(function* () {
           const { layer } = yield* makeTestLayer()
 
-          const stateService = yield* StateServiceTag
-          const dom = yield* DomServiceTag
-          const container = { id: "category-tree-test" } as Element
-          const tasks = new Map<string, TBTaskData>([
-            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" }],
-            ["task-002", { id: "task-002", name: "Task 2", difficulty: "hard", category: "advanced", status: "pending" }],
-          ])
-          const state = yield* stateService.cell<CategoryTreeState>({
-            tasks,
-            collapsedCategories: new Set(["basics", "advanced"]),
-            visible: true,
-            selectedTaskId: null,
-          })
-          const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
+          return yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "category-tree-test" } as Element
+              const tasks = new Map<string, TBTaskData>([
+                ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy", category: "basics", status: "pending" as const }],
+                ["task-002", { id: "task-002", name: "Task 2", difficulty: "hard", category: "advanced", status: "pending" as const }],
+              ])
+              const state = yield* stateService.cell<CategoryTreeState>({
+                tasks,
+                collapsedCategories: new Set(["basics", "advanced"]),
+                visible: true,
+                selectedTaskId: null,
+              })
+              const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-          yield* Effect.provide(
-            CategoryTreeWidget.handleEvent?.({ type: "expandAll" }, ctx) ?? Effect.succeed(undefined),
+              yield* CategoryTreeWidget.handleEvent?.({ type: "expandAll" }, ctx) ?? Effect.succeed(undefined)
+
+              const updated = yield* state.get()
+              expect(updated.collapsedCategories.size).toBe(0)
+            }),
             layer
           )
-
-          const updated = yield* state.get()
-          expect(updated.collapsedCategories.size).toBe(0)
-
         })
       )
     )
@@ -307,29 +308,31 @@ describe("CategoryTreeWidget", () => {
         Effect.gen(function* () {
           const { layer } = yield* makeTestLayer()
 
-          const stateService = yield* StateServiceTag
-          const dom = yield* DomServiceTag
-          const container = { id: "category-tree-test" } as Element
-          const tasks = new Map<string, TBTaskData>([
-            ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy" as const, category: "basics", status: "pending" as const }],
-          ])
-          const state = yield* stateService.cell<CategoryTreeState>({
-            tasks,
-            collapsedCategories: new Set(),
-            visible: true,
-            selectedTaskId: null,
-          } as CategoryTreeState)
-          const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
+          return yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "category-tree-test" } as Element
+              const tasks = new Map<string, TBTaskData>([
+                ["task-001", { id: "task-001", name: "Task 1", difficulty: "easy" as const, category: "basics", status: "pending" as const }],
+              ])
+              const state = yield* stateService.cell<CategoryTreeState>({
+                tasks,
+                collapsedCategories: new Set(),
+                visible: true,
+                selectedTaskId: null,
+              } as CategoryTreeState)
+              const ctx = { state, emit: (_event: CategoryTreeEvent) => Effect.succeed(undefined), dom, container }
 
-          yield* Effect.provide(
-            CategoryTreeWidget.handleEvent?.({ type: "collapseAll" }, ctx) ?? Effect.succeed(undefined),
+              yield* CategoryTreeWidget.handleEvent?.({ type: "collapseAll" }, ctx) ?? Effect.succeed(undefined)
+
+              const updated = yield* state.get()
+              expect(updated.collapsedCategories.has("basics")).toBe(true)
+              const html = (yield* CategoryTreeWidget.render(ctx)).toString()
+              expect(html).not.toContain("Task 1")
+            }),
             layer
           )
-
-          const updated = yield* state.get()
-          expect(updated.collapsedCategories.has("basics")).toBe(true)
-          const html = (yield* Effect.provide(CategoryTreeWidget.render(ctx), layer)).toString()
-          expect(html).not.toContain("Task 1")
         })
       )
     )
@@ -486,6 +489,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-001",
             outcome: "success",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
 
           yield* Effect.sleep(10)
@@ -556,6 +562,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-fail",
             taskId: "task-fail",
             outcome: "failure",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
 
           yield* Effect.sleep(0)
@@ -589,6 +598,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-error",
             taskId: "task-error",
             outcome: "error",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
 
           yield* Effect.sleep(0)
@@ -625,6 +637,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-pass",
             outcome: "success",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
 
           yield* injectMessage({
@@ -632,6 +647,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-fail",
             outcome: "failure",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
 
           yield* Effect.sleep(0)
@@ -678,6 +696,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-1",
             outcome: "success",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
           yield* Effect.sleep(0)
 
@@ -690,6 +711,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-2",
             outcome: "failure",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
           yield* Effect.sleep(0)
 
@@ -703,6 +727,9 @@ describe("CategoryTreeWidget", () => {
             runId: "run-1",
             taskId: "task-3",
             outcome: "success",
+            durationMs: 1000,
+            turns: 10,
+            tokens: 100,
           })
           yield* Effect.sleep(0)
 
@@ -737,9 +764,9 @@ describe("CategoryTreeWidget", () => {
           yield* Effect.sleep(0)
 
           // Complete all tasks with different outcomes
-          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "pass-task", outcome: "success" })
-          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "fail-task", outcome: "failure" })
-          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "timeout-task", outcome: "timeout" })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "pass-task", outcome: "success", durationMs: 1000, turns: 10, tokens: 100 })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "fail-task", outcome: "failure", durationMs: 1000, turns: 10, tokens: 100 })
+          yield* injectMessage({ type: "tb_task_complete", runId: "run-1", taskId: "timeout-task", outcome: "timeout", durationMs: 5000, turns: 0, tokens: 0 })
           yield* Effect.sleep(0)
 
           const html = (yield* getRendered(container)) ?? ""

@@ -681,7 +681,7 @@ export const TBControlsWidget: Widget<TBControlsState, TBControlsEvent, SocketSe
             if (isTBTaskComplete(msg)) {
               yield* ctx.state.update((s) => {
                 if (s.runId !== msg.runId) return s
-                const isPassed = msg.outcome === "passed"
+                const isPassed = msg.outcome === "success"
                 return {
                   ...s,
                   completedTasks: s.completedTasks + 1,

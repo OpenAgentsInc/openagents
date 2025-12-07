@@ -7,13 +7,15 @@ import { Effect } from "effect"
 import { TBResultsWidget } from "./tb-results.js"
 import { mountWidget } from "../widget/mount.js"
 import { makeTestLayer } from "../layers/test.js"
+import { StateServiceTag } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
 
 describe("TBResultsWidget", () => {
   test("renders empty state", async () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
@@ -267,18 +269,21 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
-          const container = { id: "tb-results-test" } as Element
+          const { layer } = yield* makeTestLayer()
 
-          const customWidget = {
-            ...TBResultsWidget,
-            initialState: () => {
-              const baseState = TBResultsWidget.initialState()
-              return {
-                ...baseState,
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-results-test" } as Element
+              const state = yield* stateService.cell(TBResultsWidget.initialState())
+              
+              // Pre-populate state with filter and result
+              yield* state.update(() => ({
+                ...TBResultsWidget.initialState(),
                 currentResult: {
                   runId: "run-789",
-                  suiteName: "test",
+                  suiteName: "test", 
                   suiteVersion: "1.0.0",
                   passRate: 0.5,
                   passed: 1,
@@ -313,20 +318,21 @@ describe("TBResultsWidget", () => {
                   timestamp: "2024-12-06T10:00:00Z",
                 },
                 outcomeFilter: "success" as const,
-              }
-            },
-          }
+              }))
+              
+              const ctx = { state, emit: () => Effect.void, dom, container }
+              yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
+              const html = (yield* TBResultsWidget.render(ctx)).toString()
 
-          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
-
-          const html = yield* getRendered(container)
-
-          // Should show success task
-          expect(html).toContain("Success Task")
-          // Should not show failed task when filtered to success
-          expect(html).not.toContain("Failed Task")
-          // Should show filter dropdown
-          expect(html).toContain("All Outcomes")
+              // Should show success task
+              expect(html).toContain("Success Task")
+              // Should not show failed task when filtered to success
+              expect(html).not.toContain("Failed Task")
+              // Should show filter dropdown
+              expect(html).toContain("All Outcomes")
+            }),
+            layer
+          )
         })
       )
     )
@@ -336,15 +342,18 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
-          const container = { id: "tb-results-test" } as Element
+          const { layer } = yield* makeTestLayer()
 
-          const customWidget = {
-            ...TBResultsWidget,
-            initialState: () => {
-              const baseState = TBResultsWidget.initialState()
-              return {
-                ...baseState,
+          yield* Effect.provide(
+            Effect.gen(function* () {
+              const stateService = yield* StateServiceTag
+              const dom = yield* DomServiceTag
+              const container = { id: "tb-results-test" } as Element
+              const state = yield* stateService.cell(TBResultsWidget.initialState())
+              
+              // Pre-populate state with sort settings and result
+              yield* state.update(() => ({
+                ...TBResultsWidget.initialState(),
                 currentResult: {
                   runId: "run-sort",
                   suiteName: "test",
@@ -383,19 +392,20 @@ describe("TBResultsWidget", () => {
                 },
                 sortBy: "duration" as const,
                 sortDir: "desc" as const,
-              }
-            },
-          }
+              }))
+              
+              const ctx = { state, emit: () => Effect.void, dom, container }
+              yield* mountWidget(TBResultsWidget, container).pipe(Effect.provide(layer))
+              const html = (yield* TBResultsWidget.render(ctx)).toString()
 
-          yield* mountWidget(customWidget, container).pipe(Effect.provide(layer))
-
-          const html = yield* getRendered(container)
-
-          // Verify sort indicator shown on duration column
-          expect(html).toContain("Duration ▼")
-          // Tasks should be present
-          expect(html).toContain("Fast Task")
-          expect(html).toContain("Slow Task")
+              // Verify sort indicator shown on duration column
+              expect(html).toContain("Duration ▼")
+              // Tasks should be present
+              expect(html).toContain("Fast Task")
+              expect(html).toContain("Slow Task")
+            }),
+            layer
+          )
         })
       )
     )
@@ -405,7 +415,7 @@ describe("TBResultsWidget", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, getRendered, injectMessage } = yield* makeTestLayer()
+          const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "tb-results-test" } as Element
 
           const customWidget = {
