@@ -9,6 +9,9 @@ import { Effect, Context, Layer } from "effect";
 import { ReflectionGenerator, ReflectionGeneratorLive, type ReflectionGeneratorError } from "./generator.js";
 import { MemoryService, makeMemoryServiceLive, type MemoryServiceError } from "../memory/service.js";
 import { SkillService, makeSkillServiceLive, type SkillServiceError } from "../skills/service.js";
+import type { SkillStoreError } from "../skills/store.js";
+import type { MemoryStoreError } from "../memory/store.js";
+import type { PatternExtractorError } from "../archivist/extractor.js";
 import { createSkill } from "../skills/schema.js";
 import { makeFMServiceLayer, type FMServiceError } from "../fm/service.js";
 import {
@@ -130,7 +133,7 @@ export interface IReflexionService {
 export class ReflexionService extends Context.Tag("ReflexionService")<
   ReflexionService,
   IReflexionService
->() {}
+>() { }
 
 // --- In-Memory Storage ---
 
@@ -438,7 +441,11 @@ export const ReflexionServiceLayer: Layer.Layer<
  */
 export const makeReflexionServiceLive = (
   projectRoot: string = process.cwd(),
-): Layer.Layer<ReflexionService, never, never> => {
+): Layer.Layer<
+  ReflexionService,
+  SkillStoreError | MemoryStoreError | PatternExtractorError,
+  never
+> => {
   const fmLayer = makeFMServiceLayer({ autoStart: false, enableLogging: false });
   const generatorLayer = Layer.provide(ReflectionGeneratorLive, fmLayer);
   const memoryLayer = makeMemoryServiceLive(projectRoot);
@@ -453,5 +460,8 @@ export const makeReflexionServiceLive = (
 /**
  * Default ReflexionService layer.
  */
-export const ReflexionServiceLive: Layer.Layer<ReflexionService, never, never> =
-  makeReflexionServiceLive();
+export const ReflexionServiceLive: Layer.Layer<
+  ReflexionService,
+  SkillStoreError | MemoryStoreError | PatternExtractorError,
+  never
+> = makeReflexionServiceLive();

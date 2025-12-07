@@ -65,7 +65,7 @@ const makeMockOpenThoughtsService = (totalCount: number): IOpenThoughtsService =
     return Effect.succeed(trajectories)
   },
   streamTrajectories: () =>
-    Effect.fail(new HFDatasetError("not_implemented", "Mock: streaming not implemented")),
+    Effect.fail(new HFDatasetError("invalid_config", "Mock: streaming not implemented")),
   getParquetPath: () => Effect.succeed("/mock/path.parquet"),
 })
 

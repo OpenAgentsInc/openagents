@@ -144,7 +144,7 @@ const convertResponse = (resp: OllamaResponse): ChatResponse => {
     id: resp.id,
     choices: [{
       message: {
-        role: "assistant",
+        role: "assistant" as const,
         content: choice?.message.content ?? null,
         ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
       },
@@ -152,11 +152,13 @@ const convertResponse = (resp: OllamaResponse): ChatResponse => {
   };
 
   return resp.usage
-    ? { ...baseResponse, usage: {
+    ? {
+      ...baseResponse, usage: {
         prompt_tokens: resp.usage.prompt_tokens,
         completion_tokens: resp.usage.completion_tokens,
         total_tokens: resp.usage.total_tokens,
-      } as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; }}
+      } as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; }
+    }
     : baseResponse;
 };
 
@@ -170,7 +172,7 @@ export interface OllamaClient {
 export class OllamaClientTag extends Context.Tag("OllamaClient")<
   OllamaClientTag,
   OllamaClient
->() {}
+>() { }
 
 /**
  * Create an Ollama client for chat completions.
@@ -262,7 +264,7 @@ export const createOllamaClient = (config: OllamaConfig): OllamaClient => {
 /**
  * Create a Layer that provides OllamaClient from config.
  */
-export const ollamaClientLayer = (config: OllamaConfig): Layer.Layer<OllamaClient> =>
+export const ollamaClientLayer = (config: OllamaConfig): Layer.Layer<OllamaClientTag> =>
   Layer.succeed(OllamaClientTag, createOllamaClient(config));
 
 // --- Health Check ---
