@@ -75,6 +75,8 @@ export interface HealerServiceOptions {
   onHudMessage?: (msg: HealerInvocationStartMessage | HealerSpellAppliedMessage | HealerInvocationCompleteMessage) => void;
   /** Override spell execution (useful for testing) */
   spellRunner?: SpellSequenceRunner;
+  /** Callback to archive Healer outcomes (wires to Archivist) */
+  onArchive?: (outcome: HealerOutcome, context: HealerContext) => void;
 }
 
 /**
@@ -284,6 +286,9 @@ export const createHealerService = (options: HealerServiceOptions = {}) => {
 
       counters.healingAttempts.set(keyInfo.key, attempt);
       yield* persistHealingAttempts(counters, baseDir, statePath);
+
+      // Invoke Archivist to record the healing trajectory
+      options.onArchive?.(outcome, ctx);
 
       return outcome;
     });
