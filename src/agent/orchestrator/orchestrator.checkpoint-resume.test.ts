@@ -34,7 +34,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 const runEffect = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem>) =>
   Effect.runPromise(program.pipe(Effect.provide(BunContext.layer)));

@@ -46,7 +46,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 /**
  * Mock HUD Server for testing

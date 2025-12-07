@@ -39,7 +39,10 @@ const runWithBun = <A, E>(
     } finally {
       cleanup();
     }
-  }).pipe(Effect.runPromise);
+  }).pipe(
+    Effect.provide(BunContext.layer),  // Provide services for makeTestDatabaseLayer
+    Effect.runPromise
+  );
 
 const createTestRepo = (name: string, options?: { extraTasks?: Task[] }) => {
   const dir = fs.mkdtempSync(path.join(tmpdir(), `parallel-test-${name}-`));
