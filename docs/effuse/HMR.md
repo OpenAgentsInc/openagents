@@ -20,13 +20,15 @@ File change (src/effuse/*.ts or src/mainview/*.ts)
     ↓
 server-worker.ts (fs.watch with 100ms debounce)
     ↓
+Bun.build() rebuilds effuse-main.js (~50-100ms)
+    ↓
 WebSocket broadcast: { type: "dev_reload" }
     ↓
 effuse-main.ts receives message
     ↓
 location.reload()
     ↓
-Server rebuilds effuse-main.js on-demand
+Browser loads freshly rebuilt effuse-main.js
     ↓
 mountWidget() checks window.__EFFUSE_HMR__ for preserved state
     ↓

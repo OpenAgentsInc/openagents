@@ -252,15 +252,15 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
       const stepsList = html`
         <div class="max-h-[calc(100vh-20rem)] overflow-y-auto">
           ${joinTemplates(
-            traj.steps.map((step) => {
-              const isExpanded = state.expandedStepIds.has(step.step_id)
-              const source = step.source ?? "system"
-              const sourceClass = getSourceClass(source)
-              const toolCallCount = hasToolCalls(step) ? step.tool_calls!.length : 0
-              const hasObs = hasObservation(step)
+        traj.steps.map((step) => {
+          const isExpanded = state.expandedStepIds.has(step.step_id)
+          const source = step.source ?? "system"
+          const sourceClass = getSourceClass(source)
+          const toolCallCount = hasToolCalls(step) ? step.tool_calls!.length : 0
+          const hasObs = hasObservation(step)
 
-              // Step header
-              const stepHeader = html`
+          // Step header
+          const stepHeader = html`
                 <div
                   class="flex items-center justify-between px-4 py-2 hover:bg-zinc-900/40 cursor-pointer transition-colors border-b border-zinc-800/40"
                   data-action="toggleStep"
@@ -273,23 +273,23 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                     </span>
                     <span class="text-xs text-zinc-400 font-mono">${formatTimestamp(step.timestamp)}</span>
                     ${toolCallCount > 0
-                      ? html`<span class="text-xs text-violet-400">🔧 ${toolCallCount} tool${toolCallCount > 1 ? "s" : ""}</span>`
-                      : ""}
+              ? html`<span class="text-xs text-violet-400">🔧 ${toolCallCount} tool${toolCallCount > 1 ? "s" : ""}</span>`
+              : ""}
                     ${hasObs ? html`<span class="text-xs text-emerald-400">✓ obs</span>` : ""}
                   </div>
                   <span class="text-zinc-500">${isExpanded ? "▲" : "▼"}</span>
                 </div>
               `
 
-              // Expanded content
-              if (!isExpanded) {
-                return stepHeader
-              }
+          // Expanded content
+          if (!isExpanded) {
+            return stepHeader
+          }
 
-              const expandedContent = html`
+          const expandedContent = html`
                 <div class="px-4 py-2 bg-zinc-900/20 space-y-2">
                   ${step.message
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Message:</div>
                           <pre
@@ -297,9 +297,9 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                           >${getMessageText(step)}</pre>
                         </div>
                       `
-                    : ""}
+              : ""}
                   ${step.reasoning_content
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Reasoning:</div>
                           <pre
@@ -307,14 +307,14 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                           >${collapseWhitespace(step.reasoning_content)}</pre>
                         </div>
                       `
-                    : ""}
+              : ""}
                   ${hasToolCalls(step)
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Tool Calls:</div>
                           ${joinTemplates(
-                            step.tool_calls!.map(
-                              (tc) => html`
+                step.tool_calls!.map(
+                  (tc) => html`
                                 <div class="bg-zinc-950/60 p-2 rounded border border-zinc-800/40 mb-2">
                                   <div class="text-xs font-mono text-violet-300 mb-1">${tc.function_name}</div>
                                   <pre
@@ -322,52 +322,52 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                                   >${formatJSON(tc.arguments)}</pre>
                                 </div>
                               `
-                            )
-                          )}
+                )
+              )}
                         </div>
                       `
-                    : ""}
+              : ""}
                   ${hasObservation(step)
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Observation:</div>
                           ${joinTemplates(
-                            step.observation!.results.map((result) => {
-                              const content = result.content
-                              const contentStr =
-                                typeof content === "string"
-                                  ? collapseWhitespace(content)
-                                  : formatJSON(content)
-                              return html`
+                step.observation!.results.map((result) => {
+                  const content = result.content
+                  const contentStr =
+                    typeof content === "string"
+                      ? collapseWhitespace(content)
+                      : formatJSON(content)
+                  return html`
                                 <pre
                                   class="text-xs font-mono text-emerald-300 bg-zinc-950/60 p-2 rounded border border-zinc-800/40 overflow-x-auto mb-2 whitespace-pre-wrap"
                                 >${contentStr}</pre>
                               `
-                            })
-                          )}
+                })
+              )}
                         </div>
                       `
-                    : ""}
+              : ""}
                   ${step.metrics
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-zinc-400 mb-1">Metrics:</div>
                           <div class="text-xs text-zinc-300 space-x-3">
                             ${step.metrics.prompt_tokens
-                              ? html`<span>${step.metrics.prompt_tokens} prompt tokens</span>`
-                              : ""}
+                  ? html`<span>${step.metrics.prompt_tokens} prompt tokens</span>`
+                  : ""}
                             ${step.metrics.completion_tokens
-                              ? html`<span>• ${step.metrics.completion_tokens} completion tokens</span>`
-                              : ""}
+                  ? html`<span>• ${step.metrics.completion_tokens} completion tokens</span>`
+                  : ""}
                             ${step.metrics.cost_usd
-                              ? html`<span>• $${step.metrics.cost_usd.toFixed(4)}</span>`
-                              : ""}
+                  ? html`<span>• $${step.metrics.cost_usd.toFixed(4)}</span>`
+                  : ""}
                           </div>
                         </div>
                       `
-                    : ""}
+              : ""}
                   ${step.error
-                    ? html`
+              ? html`
                         <div>
                           <div class="text-xs font-mono text-red-400 mb-1">Error:</div>
                           <pre
@@ -375,18 +375,18 @@ export const HFTrajectoryDetailWidget: Widget<HFTrajectoryDetailState, HFTraject
                           >${step.error}</pre>
                         </div>
                       `
-                    : ""}
+              : ""}
                 </div>
               `
 
-              return html`
+          return html`
                 <div class="border-b border-zinc-800/40">
                   ${stepHeader}
                   ${expandedContent}
                 </div>
               `
-            })
-          )}
+        })
+      )}
         </div>
       `
 

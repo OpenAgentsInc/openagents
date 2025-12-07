@@ -55,14 +55,47 @@ void broadcastRunHistory();
 // ============================================================================
 
 let reloadTimeout: ReturnType<typeof setTimeout> | null = null;
+let isRebuilding = false;
 
 const triggerReload = (changedFile: string) => {
   if (reloadTimeout) clearTimeout(reloadTimeout);
-  reloadTimeout = setTimeout(() => {
-    log("Worker", `File changed: ${changedFile}, sending reload signal`);
-    const message: DevReloadMessage = { type: "dev_reload", changedFile };
-    server.sendHudMessage(message);
-    reloadTimeout = null;
+  reloadTimeout = setTimeout(async () => {
+    if (isRebuilding) return; // Skip if already rebuilding
+    isRebuilding = true;
+
+    try {
+      log("Worker", `HMR: File changed: ${changedFile}`);
+      log("Worker", `HMR: Rebuilding effuse-main.js...`);
+
+      // Rebuild the frontend bundle
+      const entrypoint = join(staticDir, "effuse-main.ts");
+      const outfile = join(staticDir, "effuse-main.js");
+
+      const result = await Bun.build({
+        entrypoints: [entrypoint],
+        outdir: staticDir,
+        target: "browser",
+        format: "iife",
+        minify: false,
+      });
+
+      if (!result.success) {
+        log("Worker", `HMR: Build failed:`);
+        for (const msg of result.logs) {
+          log("Worker", `  ${msg}`);
+        }
+        return;
+      }
+
+      log("Worker", `HMR: Rebuild complete, sending reload signal`);
+      const message: DevReloadMessage = { type: "dev_reload", changedFile };
+      server.sendHudMessage(message);
+    } catch (err) {
+      log("Worker", `HMR: Rebuild error: ${err}`);
+    } finally {
+      isRebuilding = false;
+      reloadTimeout = null;
+    }
   }, 100); // 100ms debounce
 };
 
