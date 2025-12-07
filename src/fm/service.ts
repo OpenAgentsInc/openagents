@@ -37,8 +37,13 @@ import {
   type FMRequestMetrics,
   type FMAggregateMetrics,
   type FMHealthStatus,
+  type FMRequestContext,
+  type FMSessionConfig,
   defaultFMServiceConfig,
   isRetryableError,
+  generateRequestId,
+  createRequestContext,
+  createSessionConfig,
 } from "./schema.js";
 
 // --- Service Interface ---
@@ -51,6 +56,23 @@ export interface IFMService {
    * Send a chat completion request with automatic retry and metrics.
    */
   readonly chat: (request: ChatRequest) => Effect.Effect<ChatResponse, FMServiceError>;
+
+  /**
+   * Send a chat request with explicit context for isolation and tracing.
+   * The context includes request ID, session ID, and optional parent/task correlation.
+   */
+  readonly chatWithContext: (
+    request: ChatRequest,
+    context: FMRequestContext,
+  ) => Effect.Effect<ChatResponse, FMServiceError>;
+
+  /**
+   * Create an isolated session for a sequence of related requests.
+   * Returns a session-scoped service that ensures request isolation.
+   */
+  readonly createSession: (
+    config?: Partial<FMSessionConfig>,
+  ) => Effect.Effect<FMSessionHandle, never>;
 
   /**
    * Check server health and model availability.
@@ -81,6 +103,31 @@ export interface IFMService {
    * List available models from the FM bridge.
    */
   readonly listModels: () => Effect.Effect<FMModelsResult, FMServiceError>;
+}
+
+/**
+ * Handle for an isolated FM session.
+ * Provides session-scoped chat with automatic context propagation.
+ */
+export interface FMSessionHandle {
+  /** Session configuration */
+  readonly config: FMSessionConfig;
+  /** Send a chat request within this session */
+  readonly chat: (request: ChatRequest, taskId?: string) => Effect.Effect<ChatResponse, FMServiceError>;
+  /** Get metrics for this session only */
+  readonly getSessionMetrics: () => Effect.Effect<FMSessionMetrics, never>;
+}
+
+/**
+ * Metrics for a specific session.
+ */
+export interface FMSessionMetrics {
+  sessionId: string;
+  requestCount: number;
+  successfulRequests: number;
+  failedRequests: number;
+  totalTokens: number;
+  totalLatencyMs: number;
 }
 
 // --- Service Tag ---
@@ -146,8 +193,6 @@ const makeService = (
   client: FMClient,
   metricsRef: Ref.Ref<MetricsState>,
 ): IFMService => {
-  const generateRequestId = () => `fm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
   const recordMetrics = (metrics: FMRequestMetrics) =>
     Ref.update(metricsRef, (state) => ({
       requests: [...state.requests.slice(-99), metrics], // Keep last 100 requests
@@ -298,8 +343,164 @@ const makeService = (
   const listModelsImpl = (): Effect.Effect<FMModelsResult, FMServiceError> =>
     client.listModels().pipe(Effect.mapError((e) => FMServiceError.fromFMError(e)));
 
+  // --- Request Isolation Implementation ---
+
+  const chatWithContext = (
+    request: ChatRequest,
+    context: FMRequestContext,
+  ): Effect.Effect<ChatResponse, FMServiceError> =>
+    Effect.gen(function* () {
+      const startTime = Date.now();
+      let retryCount = 0;
+
+      // Build retry schedule with exponential backoff
+      const retrySchedule = Schedule.exponential(Duration.millis(config.retryDelayMs)).pipe(
+        Schedule.jittered,
+        Schedule.whileInput((error: FMError) => isRetryableError(error.reason)),
+        Schedule.recurs(config.maxRetries),
+        Schedule.tapOutput(() =>
+          Effect.sync(() => {
+            retryCount++;
+            if (config.enableLogging) {
+              console.log(
+                `[FM] Retry attempt ${retryCount} for request ${context.requestId} (session: ${context.sessionId})`,
+              );
+            }
+          }),
+        ),
+      );
+
+      // Log request start with context
+      if (config.enableLogging) {
+        const parentInfo = context.parentRequestId ? ` parent:${context.parentRequestId}` : "";
+        const taskInfo = context.taskId ? ` task:${context.taskId}` : "";
+        yield* Effect.log(
+          `[FM] Starting chat request ${context.requestId} (session: ${context.sessionId}${parentInfo}${taskInfo})`,
+        );
+      }
+
+      // Execute with retry
+      const result = yield* client.chat(request).pipe(
+        Effect.retry(retrySchedule),
+        Effect.mapError((error) => FMServiceError.fromFMError(error, retryCount)),
+      );
+
+      const endTime = Date.now();
+      const latencyMs = endTime - startTime;
+
+      // Record metrics with context
+      if (config.enableMetrics) {
+        yield* recordMetrics({
+          requestId: context.requestId,
+          startTime,
+          endTime,
+          latencyMs,
+          promptTokens: result.usage?.prompt_tokens ?? 0,
+          completionTokens: result.usage?.completion_tokens ?? 0,
+          totalTokens: result.usage?.total_tokens ?? 0,
+          success: true,
+          retryCount,
+        });
+      }
+
+      // Log success with context
+      if (config.enableLogging) {
+        yield* Effect.log(
+          `[FM] Request ${context.requestId} (session: ${context.sessionId}) completed in ${latencyMs}ms`,
+        );
+      }
+
+      return result;
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          if (config.enableMetrics && error instanceof FMServiceError) {
+            yield* recordMetrics({
+              requestId: context.requestId,
+              startTime: Date.now(),
+              endTime: Date.now(),
+              latencyMs: 0,
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+              success: false,
+              retryCount: error.retryCount,
+              errorType: error.reason,
+            });
+          }
+
+          if (config.enableLogging) {
+            yield* Effect.logError(
+              `[FM] Request ${context.requestId} (session: ${context.sessionId}) failed: ${error.message}`,
+            );
+          }
+
+          return yield* Effect.fail(error);
+        }),
+      ),
+    );
+
+  const createSessionImpl = (
+    sessionConfig?: Partial<FMSessionConfig>,
+  ): Effect.Effect<FMSessionHandle, never> =>
+    Effect.gen(function* () {
+      const cfg = createSessionConfig(sessionConfig);
+      const sessionMetricsRef = yield* Ref.make<FMSessionMetrics>({
+        sessionId: cfg.sessionId,
+        requestCount: 0,
+        successfulRequests: 0,
+        failedRequests: 0,
+        totalTokens: 0,
+        totalLatencyMs: 0,
+      });
+
+      const sessionChat = (
+        request: ChatRequest,
+        taskId?: string,
+      ): Effect.Effect<ChatResponse, FMServiceError> =>
+        Effect.gen(function* () {
+          const context = createRequestContext(cfg.sessionId, taskId ? { taskId } : undefined);
+          const startTime = Date.now();
+
+          const result = yield* chatWithContext(request, context);
+
+          // Update session-specific metrics
+          yield* Ref.update(sessionMetricsRef, (m) => ({
+            ...m,
+            requestCount: m.requestCount + 1,
+            successfulRequests: m.successfulRequests + 1,
+            totalTokens: m.totalTokens + (result.usage?.total_tokens ?? 0),
+            totalLatencyMs: m.totalLatencyMs + (Date.now() - startTime),
+          }));
+
+          return result;
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Ref.update(sessionMetricsRef, (m) => ({
+                ...m,
+                requestCount: m.requestCount + 1,
+                failedRequests: m.failedRequests + 1,
+              }));
+              return yield* Effect.fail(error);
+            }),
+          ),
+        );
+
+      const getSessionMetricsImpl = (): Effect.Effect<FMSessionMetrics, never> =>
+        Ref.get(sessionMetricsRef);
+
+      return {
+        config: cfg,
+        chat: sessionChat,
+        getSessionMetrics: getSessionMetricsImpl,
+      };
+    });
+
   return {
     chat,
+    chatWithContext,
+    createSession: createSessionImpl,
     checkHealth: checkHealthImpl,
     ensureRunning: ensureRunningImpl,
     getMetrics: getMetricsImpl,
@@ -324,12 +525,15 @@ export const makeFMServiceLayer = (
         ...defaultFMServiceConfig,
         ...config,
       };
-      const client = createFMClient({
+      const clientConfig: Parameters<typeof createFMClient>[0] = {
         port: fullConfig.port,
-        bridgePath: fullConfig.bridgePath,
         timeoutMs: fullConfig.timeoutMs,
         autoStart: fullConfig.autoStart,
-      });
+      };
+      if (fullConfig.bridgePath) {
+        clientConfig.bridgePath = fullConfig.bridgePath;
+      }
+      const client = createFMClient(clientConfig);
       const metricsRef = yield* Ref.make(initialMetricsState);
       return makeService(fullConfig, client, metricsRef);
     }),
