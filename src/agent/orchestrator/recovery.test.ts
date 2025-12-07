@@ -12,7 +12,7 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import {
   recoverPendingCommits,
@@ -21,11 +21,25 @@ import {
 } from "./recovery.js";
 import { createTask, updateTask, readTasks } from "../../tasks/service.js";
 import type { PendingCommit, TaskCreate } from "../../tasks/schema.js";
+import { DatabaseService } from "../../storage/database.js";
+import { makeTestDatabaseLayer } from "../../tasks/test-helpers.js";
 
 const runWithBun = <A, E>(
-  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | DatabaseService>,
 ): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(BunContext.layer)));
+  Effect.gen(function* () {
+    const { layer: dbLayer, cleanup } = yield* makeTestDatabaseLayer();
+    const testLayer = Layer.mergeAll(BunContext.layer, dbLayer);
+
+    try {
+      return yield* effect.pipe(Effect.provide(testLayer));
+    } finally {
+      cleanup();
+    }
+  }).pipe(
+    Effect.provide(BunContext.layer),
+    Effect.runPromise
+  );
 
 const makeTask = (task: Partial<TaskCreate>): TaskCreate => ({
   title: "Test task",
