@@ -580,7 +580,7 @@ describe("MCTasksWidget", () => {
             layer
           )
 
-          expect(lastAssignTask).toBe("oa-assign")
+          expect(lastAssignTask!).toBe("oa-assign")
           expect(lastAssignSandbox).toBe(true)
         })
       )
