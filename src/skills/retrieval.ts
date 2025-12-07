@@ -185,17 +185,20 @@ const makeRetrievalService = (): Effect.Effect<
         filter?: SkillFilter;
       },
     ): Effect.Effect<Skill[], SkillRetrievalError> =>
-      const queryObject: SkillQuery = {
-        query: taskDescription,
-        topK: options?.topK ?? DEFAULT_TOP_K,
-        minSimilarity: options?.minSimilarity ?? DEFAULT_MIN_SIMILARITY,
-      };
-      
-      if (options?.filter) {
-        queryObject.filter = options.filter;
-      }
-      
-      return query(queryObject).pipe(Effect.map((matches) => matches.map((m) => m.skill)));
+      Effect.gen(function* () {
+        const queryObject: SkillQuery = {
+          query: taskDescription,
+          topK: options?.topK ?? DEFAULT_TOP_K,
+          minSimilarity: options?.minSimilarity ?? DEFAULT_MIN_SIMILARITY,
+        };
+        
+        if (options?.filter) {
+          queryObject.filter = options.filter;
+        }
+        
+        const matches = yield* query(queryObject);
+        return matches.map((m) => m.skill);
+      });
 
     const formatForPromptFn = (
       taskDescription: string,
