@@ -94,7 +94,6 @@ const triggerReload = (changedFile: string) => {
 
       // Rebuild the frontend bundle
       const entrypoint = join(staticDir, "effuse-main.ts");
-      const outfile = join(staticDir, "effuse-main.js");
 
       const result = await Bun.build({
         entrypoints: [entrypoint],

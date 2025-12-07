@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 // Test port to avoid conflicts
 const TEST_PORT = 18080;
-const TEST_WS_URL = `ws://localhost:${TEST_PORT}/ws`;
+// const TEST_WS_URL = `ws://localhost:${TEST_PORT}/ws`;
 
 describe("DesktopServer", () => {
   let server: DesktopServer;

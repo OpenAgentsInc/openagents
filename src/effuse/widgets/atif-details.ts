@@ -9,7 +9,7 @@ import { Effect } from "effect"
 import { html, joinTemplates } from "../template/html.js"
 import type { Widget } from "../widget/types.js"
 import { SocketServiceTag } from "../services/socket.js"
-import type { ATIFStepMessage } from "../../hud/protocol.js"
+// import type { ATIFStepMessage } from "../../hud/protocol.js"
 
 // ============================================================================
 // Types
@@ -274,7 +274,7 @@ export const ATIFDetailsWidget: Widget<ATIFDetailsState, ATIFDetailsEvent, Socke
 
   handleEvent: (event, ctx) =>
     Effect.gen(function* () {
-      const socket = yield* SocketServiceTag
+      // const socket = yield* SocketServiceTag
 
       switch (event.type) {
         case "load": {

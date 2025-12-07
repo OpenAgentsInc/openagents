@@ -17,8 +17,7 @@
 import { parseArgs } from "util";
 import { join } from "path";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
-import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagent.js";
-import type { Subtask } from "../agent/orchestrator/types.js";
+// import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagent.js";
 import {
   loadTerminalBenchSuite,
   toBenchmarkResults,
@@ -350,12 +349,15 @@ const runTask = async (
   }
 
   // Create subtask for Claude Code
+  // TODO: Use this subtask to track Claude Code execution (need Subtask type)
+  /*
   const subtask: Subtask = {
     id: tbTask.id,
     description: tbTask.description,
     status: "in_progress",
     startedAt: new Date().toISOString(),
   };
+  */
 
   // Track output
   let outputText = "";
