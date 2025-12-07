@@ -5567,9 +5567,9 @@ ${prefix}}`;
           if (typeof stack2 === "string") {
             const locationMatchAll = stack2.matchAll(locationRegex);
             let match6 = false;
-            for (const [, location] of locationMatchAll) {
+            for (const [, location2] of locationMatchAll) {
               match6 = true;
-              out.push(`    at ${current.name} (${location})`);
+              out.push(`    at ${current.name} (${location2})`);
             }
             if (!match6) {
               out.push(`    at ${current.name} (${stack2.replace(/^at /, "")})`);
@@ -26292,11 +26292,48 @@ ${endStackCall}`;
   var SocketServiceLive = (options) => exports_Layer.succeed(SocketServiceTag, makeSocketService(new SocketClient(options)));
   var SocketServiceFromClient = (client) => exports_Layer.succeed(SocketServiceTag, makeSocketService(client));
   var SocketServiceDefault = SocketServiceLive();
+  // src/effuse/hmr/registry.ts
+  var isBrowser = typeof window !== "undefined";
+  var getRegistry = () => {
+    if (!isBrowser)
+      return null;
+    if (!window.__EFFUSE_HMR__) {
+      window.__EFFUSE_HMR__ = {
+        widgets: new Map,
+        version: 0
+      };
+    }
+    return window.__EFFUSE_HMR__;
+  };
+  var saveWidgetState = (widgetId, state) => {
+    const registry = getRegistry();
+    if (!registry)
+      return;
+    try {
+      registry.widgets.set(widgetId, structuredClone(state));
+    } catch (e) {
+      console.warn(`[Effuse HMR] Could not save state for "${widgetId}":`, e);
+    }
+  };
+  var loadWidgetState = (widgetId) => {
+    const registry = getRegistry();
+    if (!registry)
+      return;
+    const state = registry.widgets.get(widgetId);
+    if (state !== undefined) {
+      registry.widgets.delete(widgetId);
+      console.log(`[Effuse HMR] Restored state for "${widgetId}"`);
+    }
+    return state;
+  };
+
   // src/effuse/widget/mount.ts
   var mountWidget = (widget, container) => exports_Effect.gen(function* () {
     const dom = yield* DomServiceTag;
     const stateService = yield* StateServiceTag;
-    const state = yield* stateService.cell(widget.initialState());
+    const preservedState = loadWidgetState(widget.id);
+    const initialState = preservedState ?? widget.initialState();
+    const state = yield* stateService.cell(initialState);
     const eventQueue = yield* exports_Effect.acquireRelease(exports_Queue.unbounded(), (queue) => exports_Queue.shutdown(queue));
     const emit2 = (event) => exports_Queue.offer(eventQueue, event).pipe(exports_Effect.catchAll(() => exports_Effect.void));
     const ctx = {
@@ -26313,6 +26350,7 @@ ${endStackCall}`;
     if (widget.setupEvents) {
       yield* widget.setupEvents(ctx);
     }
+    yield* pipe(state.changes, exports_Stream.tap((s) => exports_Effect.sync(() => saveWidgetState(widget.id, s))), exports_Stream.runDrain, exports_Effect.forkScoped);
     yield* pipe(state.changes, exports_Stream.tap(() => exports_Effect.gen(function* () {
       const content = yield* widget.render(ctx);
       yield* dom.render(container, content).pipe(exports_Effect.catchAll((error) => {
@@ -29146,6 +29184,17 @@ ${event.reason?.stack || event.reason}`);
     if (window.bunLog) {
       window.bunLog("[Effuse] ========== INIT EFFUSE CALLED ==========");
     }
+    const socketClient = getSocketClient();
+    socketClient.onMessage((message) => {
+      if (message.type === "dev_reload") {
+        console.log("[Effuse] HMR: Reload triggered by", message.changedFile);
+        if (window.bunLog) {
+          window.bunLog(`[Effuse] HMR: Reloading due to ${message.changedFile}`);
+        }
+        location.reload();
+      }
+    });
+    console.log("[Effuse] HMR handler registered");
     let layer;
     try {
       layer = createEffuseLayer();

@@ -8,6 +8,7 @@ import { Effect, Queue, Stream, Scope, pipe } from "effect"
 import type { Widget, WidgetContext, MountedWidget } from "./types.js"
 import { DomServiceTag } from "../services/dom.js"
 import { StateServiceTag } from "../services/state.js"
+import { loadWidgetState, saveWidgetState } from "../hmr/registry.js"
 
 /**
  * Mount a widget to a DOM container.
@@ -44,8 +45,12 @@ export const mountWidget = <S, E, R>(
     const dom = yield* DomServiceTag
     const stateService = yield* StateServiceTag
 
-    // Create state cell
-    const state = yield* stateService.cell(widget.initialState())
+    // Check for HMR preserved state, otherwise use initialState
+    const preservedState = loadWidgetState<S>(widget.id)
+    const initialState = preservedState ?? widget.initialState()
+
+    // Create state cell with initial or preserved state
+    const state = yield* stateService.cell(initialState)
 
     // Create event queue
     const eventQueue = yield* Effect.acquireRelease(
@@ -80,6 +85,14 @@ export const mountWidget = <S, E, R>(
     if (widget.setupEvents) {
       yield* widget.setupEvents(ctx)
     }
+
+    // HMR: Continuously snapshot state for preservation across reloads
+    yield* pipe(
+      state.changes,
+      Stream.tap((s) => Effect.sync(() => saveWidgetState(widget.id, s))),
+      Stream.runDrain,
+      Effect.forkScoped
+    )
 
     // Re-render on state changes
     yield* pipe(

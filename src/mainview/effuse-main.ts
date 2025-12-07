@@ -224,6 +224,19 @@ const initEffuse = () => {
     (window as any).bunLog("[Effuse] ========== INIT EFFUSE CALLED ==========")
   }
 
+  // Set up HMR reload handler (before widget mounting)
+  const socketClient = getSocketClient()
+  socketClient.onMessage((message) => {
+    if (message.type === "dev_reload") {
+      console.log("[Effuse] HMR: Reload triggered by", (message as any).changedFile)
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[Effuse] HMR: Reloading due to ${(message as any).changedFile}`)
+      }
+      location.reload()
+    }
+  })
+  console.log("[Effuse] HMR handler registered")
+
   let layer
   try {
     layer = createEffuseLayer()

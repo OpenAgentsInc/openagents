@@ -115,6 +115,16 @@ export { mountWidget, mountWidgetById, mountWidgets } from "./widget/mount.js"
 export { EffuseLive, EffuseLiveNoSocket } from "./layers/live.js"
 export { makeTestLayer, makeCustomTestLayer, type TestLayerResult } from "./layers/test.js"
 
+// HMR (Hot Module Replacement)
+export {
+  saveWidgetState,
+  loadWidgetState,
+  hasWidgetState,
+  clearAllState,
+  getHMRVersion,
+  bumpHMRVersion,
+} from "./hmr/index.js"
+
 // Widgets
 export { APMWidget, type APMState, type APMEvent, initialAPMState } from "./widgets/apm-widget.js"
 export {
