@@ -938,11 +938,11 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
   const port = fmConfig.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
   // Micro-task mode is the default - uses supervisor/worker architecture
-  // that fits within FM's ~200 char context limit
+  // FM has 4096 tokens (~16K chars) context - plenty of room for skills
   const useMicroTask = fmConfig.useMicroTask ?? true;
-  // Disable skills/memory/reflection by default for FM due to tight context limits
-  // These can be enabled explicitly but will reduce available space for task description
-  const useSkills = fmConfig.useSkills ?? false;
+  // Enable skills by default - FM has 4096 tokens (~16K chars) context
+  // Skills provide Voyager-style domain knowledge injection
+  const useSkills = fmConfig.useSkills ?? true;
   const useMemory = fmConfig.useMemory ?? false;
   const useReflection = fmConfig.useReflection ?? false;
   const maxReflectionRetries = fmConfig.maxReflectionRetries ?? 2;
@@ -1267,6 +1267,12 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       if (useMicroTask) {
         log(`[FM] Using micro-task supervisor architecture`);
 
+        // Retrieve relevant skills for this task (Voyager-style)
+        const { skills, ids: skillIds } = await getRelevantSkills(task.description);
+        if (skills.length > 0) {
+          log(`[Skills] Injected ${skills.length} relevant skills: ${skills.map(s => s.name).join(", ")}`);
+        }
+
         // Create plan for this task
         const plan = createPlan(task.id, task.description);
         log(`[FM] Created plan with ${plan.steps.length} steps:`);
@@ -1280,8 +1286,12 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           timeout: task.timeout_seconds ?? options.timeout,
           maxTurns: task.max_turns ?? options.maxTurns,
           taskDescription: task.description,
+          skills,
           onOutput: options.onOutput,
         });
+
+        // Record skill usage for tracking
+        await recordSkillUsage(skillIds, result.success);
 
         return {
           success: result.success,
@@ -1291,6 +1301,9 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           output: result.output,
           error: result.error,
           model: "fm:micro-task",
+          sessionMetadata: {
+            skillsUsed: skillIds,
+          },
         };
       }
 

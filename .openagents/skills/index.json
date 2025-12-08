@@ -1,0 +1,621 @@
+{
+  "version": 1,
+  "count": 70,
+  "byId": {
+    "skill-read-file-v1": 0,
+    "skill-write-file-v1": 1,
+    "skill-edit-file-v1": 2,
+    "skill-glob-files-v1": 3,
+    "skill-create-directory-v1": 4,
+    "skill-delete-file-v1": 5,
+    "skill-copy-file-v1": 6,
+    "skill-list-directory-v1": 7,
+    "skill-grep-code-v1": 8,
+    "skill-find-file-v1": 9,
+    "skill-find-definition-v1": 10,
+    "skill-search-code-v1": 11,
+    "skill-run-tests-v1": 12,
+    "skill-run-typecheck-v1": 13,
+    "skill-run-lint-v1": 14,
+    "skill-git-status-v1": 15,
+    "skill-git-diff-v1": 16,
+    "skill-git-add-v1": 17,
+    "skill-git-commit-v1": 18,
+    "skill-git-log-v1": 19,
+    "skill-git-branch-v1": 20,
+    "skill-analyze-error-v1": 21,
+    "skill-fix-import-error-v1": 22,
+    "skill-fix-syntax-error-v1": 23,
+    "skill-execute-command-v1": 24,
+    "skill-check-command-output-v1": 25,
+    "skill-install-dependency-v1": 26,
+    "skill-fix-typescript-import-error-v1": 27,
+    "skill-fix-typescript-type-error-v1": 28,
+    "skill-add-test-for-function-v1": 29,
+    "skill-run-tests-with-coverage-v1": 30,
+    "skill-fix-failing-test-v1": 31,
+    "skill-mock-dependency-v1": 32,
+    "skill-write-integration-test-v1": 33,
+    "skill-write-snapshot-test-v1": 34,
+    "skill-create-feature-branch-v1": 35,
+    "skill-create-pull-request-v1": 36,
+    "skill-resolve-git-conflict-v1": 37,
+    "skill-cherry-pick-commit-v1": 38,
+    "skill-git-bisect-bug-v1": 39,
+    "skill-revert-commit-v1": 40,
+    "skill-extract-function-v1": 41,
+    "skill-rename-symbol-v1": 42,
+    "skill-convert-to-effect-v1": 43,
+    "skill-split-large-file-v1": 44,
+    "skill-inline-abstraction-v1": 45,
+    "skill-generate-type-from-json-v1": 46,
+    "skill-scaffold-react-component-v1": 47,
+    "skill-generate-api-client-v1": 48,
+    "skill-profile-code-performance-v1": 49,
+    "skill-optimize-imports-v1": 50,
+    "skill-implement-cache-v1": 51,
+    "skill-generate-jsdoc-v1": 52,
+    "skill-audit-dependencies-v1": 53,
+    "skill-sanitize-user-input-v1": 54,
+    "skill-setup-bun-project-v1": 55,
+    "skill-create-dockerfile-v1": 56,
+    "skill-create-effect-service-v1": 57,
+    "skill-handle-effect-error-v1": 58,
+    "skill-create-database-migration-v1": 59,
+    "skill-debug-async-issue-v1": 60,
+    "skill-trace-memory-leak-v1": 61,
+    "skill-handle-api-errors-v1": 62,
+    "skill-validate-api-input-v1": 63,
+    "skill-implement-rate-limiting-v1": 64,
+    "skill-parse-cli-arguments-v1": 65,
+    "skill-create-cli-command-v1": 66,
+    "skill-handle-websocket-connection-v1": 67,
+    "skill-load-configuration-v1": 68,
+    "skill-structured-logging-v1": 69
+  },
+  "byCategory": {
+    "file_operations": [
+      "skill-read-file-v1",
+      "skill-write-file-v1",
+      "skill-edit-file-v1",
+      "skill-glob-files-v1",
+      "skill-create-directory-v1",
+      "skill-delete-file-v1",
+      "skill-copy-file-v1",
+      "skill-list-directory-v1",
+      "skill-generate-type-from-json-v1",
+      "skill-scaffold-react-component-v1",
+      "skill-generate-api-client-v1",
+      "skill-setup-bun-project-v1",
+      "skill-create-dockerfile-v1",
+      "skill-create-effect-service-v1",
+      "skill-handle-effect-error-v1",
+      "skill-create-database-migration-v1",
+      "skill-handle-api-errors-v1",
+      "skill-validate-api-input-v1",
+      "skill-implement-rate-limiting-v1",
+      "skill-handle-websocket-connection-v1",
+      "skill-load-configuration-v1",
+      "skill-structured-logging-v1"
+    ],
+    "search": [
+      "skill-grep-code-v1",
+      "skill-find-file-v1",
+      "skill-find-definition-v1",
+      "skill-search-code-v1"
+    ],
+    "testing": [
+      "skill-run-tests-v1",
+      "skill-run-typecheck-v1",
+      "skill-run-lint-v1",
+      "skill-add-test-for-function-v1",
+      "skill-run-tests-with-coverage-v1",
+      "skill-fix-failing-test-v1",
+      "skill-mock-dependency-v1",
+      "skill-write-integration-test-v1",
+      "skill-write-snapshot-test-v1"
+    ],
+    "git": [
+      "skill-git-status-v1",
+      "skill-git-diff-v1",
+      "skill-git-add-v1",
+      "skill-git-commit-v1",
+      "skill-git-log-v1",
+      "skill-git-branch-v1",
+      "skill-create-feature-branch-v1",
+      "skill-create-pull-request-v1",
+      "skill-resolve-git-conflict-v1",
+      "skill-cherry-pick-commit-v1",
+      "skill-git-bisect-bug-v1",
+      "skill-revert-commit-v1"
+    ],
+    "debugging": [
+      "skill-analyze-error-v1",
+      "skill-fix-import-error-v1",
+      "skill-fix-syntax-error-v1",
+      "skill-fix-typescript-import-error-v1",
+      "skill-fix-typescript-type-error-v1",
+      "skill-profile-code-performance-v1",
+      "skill-debug-async-issue-v1",
+      "skill-trace-memory-leak-v1"
+    ],
+    "shell": [
+      "skill-execute-command-v1",
+      "skill-check-command-output-v1",
+      "skill-install-dependency-v1",
+      "skill-parse-cli-arguments-v1",
+      "skill-create-cli-command-v1"
+    ],
+    "refactoring": [
+      "skill-extract-function-v1",
+      "skill-rename-symbol-v1",
+      "skill-convert-to-effect-v1",
+      "skill-split-large-file-v1",
+      "skill-inline-abstraction-v1",
+      "skill-optimize-imports-v1"
+    ],
+    "performance": [
+      "skill-implement-cache-v1"
+    ],
+    "documentation": [
+      "skill-generate-jsdoc-v1"
+    ],
+    "security": [
+      "skill-audit-dependencies-v1",
+      "skill-sanitize-user-input-v1"
+    ]
+  },
+  "byTag": {
+    "file": [
+      "skill-read-file-v1",
+      "skill-write-file-v1",
+      "skill-edit-file-v1",
+      "skill-glob-files-v1",
+      "skill-create-directory-v1",
+      "skill-delete-file-v1",
+      "skill-copy-file-v1",
+      "skill-list-directory-v1",
+      "skill-find-file-v1"
+    ],
+    "read": [
+      "skill-read-file-v1"
+    ],
+    "input": [
+      "skill-read-file-v1",
+      "skill-sanitize-user-input-v1"
+    ],
+    "write": [
+      "skill-write-file-v1"
+    ],
+    "output": [
+      "skill-write-file-v1",
+      "skill-check-command-output-v1"
+    ],
+    "create": [
+      "skill-write-file-v1",
+      "skill-create-directory-v1"
+    ],
+    "edit": [
+      "skill-edit-file-v1"
+    ],
+    "modify": [
+      "skill-edit-file-v1"
+    ],
+    "replace": [
+      "skill-edit-file-v1"
+    ],
+    "search": [
+      "skill-glob-files-v1",
+      "skill-grep-code-v1",
+      "skill-find-file-v1",
+      "skill-find-definition-v1",
+      "skill-search-code-v1"
+    ],
+    "glob": [
+      "skill-glob-files-v1"
+    ],
+    "find": [
+      "skill-glob-files-v1",
+      "skill-grep-code-v1",
+      "skill-find-file-v1"
+    ],
+    "directory": [
+      "skill-create-directory-v1",
+      "skill-list-directory-v1"
+    ],
+    "delete": [
+      "skill-delete-file-v1"
+    ],
+    "remove": [
+      "skill-delete-file-v1"
+    ],
+    "copy": [
+      "skill-copy-file-v1"
+    ],
+    "duplicate": [
+      "skill-copy-file-v1"
+    ],
+    "list": [
+      "skill-list-directory-v1"
+    ],
+    "explore": [
+      "skill-list-directory-v1"
+    ],
+    "grep": [
+      "skill-grep-code-v1"
+    ],
+    "pattern": [
+      "skill-grep-code-v1",
+      "skill-search-code-v1"
+    ],
+    "definition": [
+      "skill-find-definition-v1"
+    ],
+    "code": [
+      "skill-find-definition-v1",
+      "skill-search-code-v1"
+    ],
+    "navigate": [
+      "skill-find-definition-v1"
+    ],
+    "test": [
+      "skill-run-tests-v1",
+      "skill-add-test-for-function-v1",
+      "skill-run-tests-with-coverage-v1",
+      "skill-fix-failing-test-v1",
+      "skill-mock-dependency-v1",
+      "skill-write-integration-test-v1",
+      "skill-write-snapshot-test-v1"
+    ],
+    "verify": [
+      "skill-run-tests-v1",
+      "skill-run-typecheck-v1",
+      "skill-check-command-output-v1"
+    ],
+    "quality": [
+      "skill-run-tests-v1",
+      "skill-run-lint-v1"
+    ],
+    "typecheck": [
+      "skill-run-typecheck-v1"
+    ],
+    "typescript": [
+      "skill-run-typecheck-v1",
+      "skill-fix-import-error-v1",
+      "skill-fix-typescript-import-error-v1",
+      "skill-fix-typescript-type-error-v1",
+      "skill-generate-type-from-json-v1",
+      "skill-generate-api-client-v1"
+    ],
+    "types": [
+      "skill-run-typecheck-v1",
+      "skill-fix-typescript-type-error-v1",
+      "skill-generate-type-from-json-v1"
+    ],
+    "lint": [
+      "skill-run-lint-v1"
+    ],
+    "style": [
+      "skill-run-lint-v1"
+    ],
+    "git": [
+      "skill-git-status-v1",
+      "skill-git-diff-v1",
+      "skill-git-add-v1",
+      "skill-git-commit-v1",
+      "skill-git-log-v1",
+      "skill-git-branch-v1",
+      "skill-create-feature-branch-v1",
+      "skill-create-pull-request-v1",
+      "skill-resolve-git-conflict-v1",
+      "skill-cherry-pick-commit-v1",
+      "skill-git-bisect-bug-v1",
+      "skill-revert-commit-v1"
+    ],
+    "status": [
+      "skill-git-status-v1"
+    ],
+    "changes": [
+      "skill-git-status-v1",
+      "skill-git-diff-v1"
+    ],
+    "diff": [
+      "skill-git-diff-v1"
+    ],
+    "add": [
+      "skill-git-add-v1"
+    ],
+    "stage": [
+      "skill-git-add-v1"
+    ],
+    "commit": [
+      "skill-git-commit-v1"
+    ],
+    "save": [
+      "skill-git-commit-v1"
+    ],
+    "log": [
+      "skill-git-log-v1"
+    ],
+    "history": [
+      "skill-git-log-v1"
+    ],
+    "branch": [
+      "skill-git-branch-v1",
+      "skill-create-feature-branch-v1"
+    ],
+    "version-control": [
+      "skill-git-branch-v1"
+    ],
+    "debug": [
+      "skill-analyze-error-v1",
+      "skill-fix-import-error-v1"
+    ],
+    "error": [
+      "skill-analyze-error-v1"
+    ],
+    "analyze": [
+      "skill-analyze-error-v1"
+    ],
+    "diagnose": [
+      "skill-analyze-error-v1"
+    ],
+    "import": [
+      "skill-fix-import-error-v1",
+      "skill-fix-typescript-import-error-v1"
+    ],
+    "fix": [
+      "skill-fix-import-error-v1"
+    ],
+    "syntax": [
+      "skill-fix-syntax-error-v1"
+    ],
+    "error-fix": [
+      "skill-fix-syntax-error-v1",
+      "skill-fix-typescript-import-error-v1",
+      "skill-fix-typescript-type-error-v1"
+    ],
+    "shell": [
+      "skill-execute-command-v1",
+      "skill-check-command-output-v1"
+    ],
+    "command": [
+      "skill-execute-command-v1",
+      "skill-create-cli-command-v1"
+    ],
+    "execute": [
+      "skill-execute-command-v1"
+    ],
+    "npm": [
+      "skill-install-dependency-v1"
+    ],
+    "install": [
+      "skill-install-dependency-v1"
+    ],
+    "dependency": [
+      "skill-install-dependency-v1"
+    ],
+    "package": [
+      "skill-install-dependency-v1"
+    ],
+    "bun": [
+      "skill-add-test-for-function-v1",
+      "skill-setup-bun-project-v1"
+    ],
+    "vitest": [
+      "skill-add-test-for-function-v1"
+    ],
+    "coverage": [
+      "skill-run-tests-with-coverage-v1"
+    ],
+    "debugging": [
+      "skill-fix-failing-test-v1",
+      "skill-git-bisect-bug-v1",
+      "skill-debug-async-issue-v1",
+      "skill-trace-memory-leak-v1"
+    ],
+    "mock": [
+      "skill-mock-dependency-v1"
+    ],
+    "stub": [
+      "skill-mock-dependency-v1"
+    ],
+    "integration": [
+      "skill-write-integration-test-v1"
+    ],
+    "snapshot": [
+      "skill-write-snapshot-test-v1"
+    ],
+    "workflow": [
+      "skill-create-feature-branch-v1"
+    ],
+    "github": [
+      "skill-create-pull-request-v1"
+    ],
+    "pr": [
+      "skill-create-pull-request-v1"
+    ],
+    "merge": [
+      "skill-resolve-git-conflict-v1"
+    ],
+    "conflict": [
+      "skill-resolve-git-conflict-v1"
+    ],
+    "cherry-pick": [
+      "skill-cherry-pick-commit-v1"
+    ],
+    "bisect": [
+      "skill-git-bisect-bug-v1"
+    ],
+    "revert": [
+      "skill-revert-commit-v1"
+    ],
+    "refactor": [
+      "skill-extract-function-v1",
+      "skill-rename-symbol-v1",
+      "skill-convert-to-effect-v1",
+      "skill-split-large-file-v1",
+      "skill-inline-abstraction-v1"
+    ],
+    "function": [
+      "skill-extract-function-v1"
+    ],
+    "code-quality": [
+      "skill-extract-function-v1"
+    ],
+    "rename": [
+      "skill-rename-symbol-v1"
+    ],
+    "effect": [
+      "skill-convert-to-effect-v1",
+      "skill-create-effect-service-v1",
+      "skill-handle-effect-error-v1"
+    ],
+    "async": [
+      "skill-convert-to-effect-v1",
+      "skill-debug-async-issue-v1"
+    ],
+    "modules": [
+      "skill-split-large-file-v1"
+    ],
+    "organization": [
+      "skill-split-large-file-v1"
+    ],
+    "simplify": [
+      "skill-inline-abstraction-v1"
+    ],
+    "json": [
+      "skill-generate-type-from-json-v1"
+    ],
+    "react": [
+      "skill-scaffold-react-component-v1"
+    ],
+    "component": [
+      "skill-scaffold-react-component-v1"
+    ],
+    "scaffold": [
+      "skill-scaffold-react-component-v1"
+    ],
+    "api": [
+      "skill-generate-api-client-v1",
+      "skill-handle-api-errors-v1",
+      "skill-validate-api-input-v1",
+      "skill-implement-rate-limiting-v1"
+    ],
+    "client": [
+      "skill-generate-api-client-v1"
+    ],
+    "performance": [
+      "skill-profile-code-performance-v1",
+      "skill-optimize-imports-v1",
+      "skill-implement-cache-v1",
+      "skill-trace-memory-leak-v1"
+    ],
+    "profiling": [
+      "skill-profile-code-performance-v1"
+    ],
+    "imports": [
+      "skill-optimize-imports-v1"
+    ],
+    "cleanup": [
+      "skill-optimize-imports-v1"
+    ],
+    "cache": [
+      "skill-implement-cache-v1"
+    ],
+    "jsdoc": [
+      "skill-generate-jsdoc-v1"
+    ],
+    "documentation": [
+      "skill-generate-jsdoc-v1"
+    ],
+    "security": [
+      "skill-audit-dependencies-v1",
+      "skill-sanitize-user-input-v1",
+      "skill-validate-api-input-v1",
+      "skill-implement-rate-limiting-v1"
+    ],
+    "dependencies": [
+      "skill-audit-dependencies-v1"
+    ],
+    "audit": [
+      "skill-audit-dependencies-v1"
+    ],
+    "validation": [
+      "skill-sanitize-user-input-v1",
+      "skill-validate-api-input-v1"
+    ],
+    "setup": [
+      "skill-setup-bun-project-v1"
+    ],
+    "project": [
+      "skill-setup-bun-project-v1"
+    ],
+    "docker": [
+      "skill-create-dockerfile-v1"
+    ],
+    "deployment": [
+      "skill-create-dockerfile-v1"
+    ],
+    "service": [
+      "skill-create-effect-service-v1"
+    ],
+    "dependency-injection": [
+      "skill-create-effect-service-v1"
+    ],
+    "error-handling": [
+      "skill-handle-effect-error-v1",
+      "skill-handle-api-errors-v1"
+    ],
+    "database": [
+      "skill-create-database-migration-v1"
+    ],
+    "migration": [
+      "skill-create-database-migration-v1"
+    ],
+    "sqlite": [
+      "skill-create-database-migration-v1"
+    ],
+    "promises": [
+      "skill-debug-async-issue-v1"
+    ],
+    "memory": [
+      "skill-trace-memory-leak-v1"
+    ],
+    "http": [
+      "skill-handle-api-errors-v1"
+    ],
+    "rate-limit": [
+      "skill-implement-rate-limiting-v1"
+    ],
+    "cli": [
+      "skill-parse-cli-arguments-v1",
+      "skill-create-cli-command-v1"
+    ],
+    "args": [
+      "skill-parse-cli-arguments-v1"
+    ],
+    "parsing": [
+      "skill-parse-cli-arguments-v1"
+    ],
+    "websocket": [
+      "skill-handle-websocket-connection-v1"
+    ],
+    "realtime": [
+      "skill-handle-websocket-connection-v1"
+    ],
+    "config": [
+      "skill-load-configuration-v1"
+    ],
+    "environment": [
+      "skill-load-configuration-v1"
+    ],
+    "logging": [
+      "skill-structured-logging-v1"
+    ],
+    "observability": [
+      "skill-structured-logging-v1"
+    ]
+  },
+  "lastUpdated": "2025-12-08T06:03:51.056Z"
+}
