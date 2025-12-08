@@ -48,6 +48,163 @@ struct TestGenerationResult: Codable {
     var tests: [GeneratedTest]
 }
 
+// MARK: - Environment-Aware Test Generation Schema
+
+/// Language runtime information.
+@Generable(description: "Programming language runtime info")
+struct LanguageInfo: Codable {
+    @Guide(description: "Language name (python, node, r, rust, go, java)")
+    var name: String
+
+    @Guide(description: "Version string (e.g., 3.11.4)")
+    var version: String
+
+    @Guide(description: "Installed packages with versions")
+    var packages: [String]
+}
+
+/// File system entry information.
+@Generable(description: "File system entry")
+struct FileInfo: Codable {
+    @Guide(description: "File name")
+    var name: String
+
+    @Guide(description: "Full path")
+    var path: String
+
+    @Guide(description: "Entry type", .anyOf(["file", "directory", "symlink"]))
+    var fileType: String
+
+    @Guide(description: "Size in bytes")
+    var size: Int
+
+    @Guide(description: "Permissions string (e.g., -rw-r--r--)")
+    var permissions: String
+}
+
+/// File content preview with structure extraction.
+@Generable(description: "File content preview")
+struct FilePreviewInfo: Codable {
+    @Guide(description: "File path")
+    var path: String
+
+    @Guide(description: "File extension")
+    var fileExtension: String
+
+    @Guide(description: "Total line count")
+    var lineCount: Int
+
+    @Guide(description: "Preview content (first 50 lines)")
+    var preview: String
+
+    @Guide(description: "Detected file type", .anyOf([
+        "python_script", "r_script", "stan_model", "json", "csv",
+        "yaml", "toml", "dockerfile", "makefile", "shell_script",
+        "c_source", "cpp_source", "rust_source", "go_source", "unknown"
+    ]))
+    var detectedType: String
+
+    @Guide(description: "Variable names found in file")
+    var variables: [String]
+
+    @Guide(description: "Function names found in file")
+    var functions: [String]
+
+    @Guide(description: "Parameter names found (for config/model files)")
+    var parameters: [String]
+}
+
+/// Available tool information.
+@Generable(description: "System tool info")
+struct ToolInfoEntry: Codable {
+    @Guide(description: "Tool name (e.g., git, curl)")
+    var name: String
+
+    @Guide(description: "Path to executable")
+    var path: String
+
+    @Guide(description: "Version if available")
+    var version: String?
+}
+
+/// Prohibited tool (anti-cheat).
+@Generable(description: "Tool that should NOT be present")
+struct ProhibitedToolInfo: Codable {
+    @Guide(description: "Tool name (e.g., R, Rscript)")
+    var name: String
+
+    @Guide(description: "Why this tool should be prohibited")
+    var reason: String
+
+    @Guide(description: "Whether the tool was found (should be false)")
+    var found: Bool
+}
+
+/// Complete environment context for test generation.
+@Generable(description: "Execution environment context")
+struct EnvironmentContext: Codable {
+    @Guide(description: "Platform type", .anyOf(["docker", "container", "local"]))
+    var platform: String
+
+    @Guide(description: "Container image name if applicable")
+    var containerImage: String?
+
+    @Guide(description: "OS distribution (e.g., ubuntu, debian)")
+    var osDistro: String?
+
+    @Guide(description: "Available programming languages")
+    var languages: [LanguageInfo]
+
+    @Guide(description: "Available system tools")
+    var availableTools: [ToolInfoEntry]
+
+    @Guide(description: "Tools that should NOT be present (anti-cheat)")
+    var prohibitedTools: [ProhibitedToolInfo]
+
+    @Guide(description: "Working directory")
+    var workdir: String
+
+    @Guide(description: "Files in workspace")
+    var files: [FileInfo]
+
+    @Guide(description: "Previews of key files")
+    var filePreviews: [FilePreviewInfo]
+
+    @Guide(description: "Memory limit in MB")
+    var memoryLimitMB: Int?
+
+    @Guide(description: "CPU count")
+    var cpuCount: Int?
+}
+
+/// Environment-aware test generation result with categorized tests.
+@Generable(description: "Environment-aware test suite")
+struct EnvironmentAwareTestResult: Codable {
+    @Guide(description: "Requirements extracted from task description")
+    var descriptionRequirements: [String]
+
+    @Guide(description: "Requirements inferred from environment")
+    var environmentRequirements: [String]
+
+    @Guide(description: "Anti-cheat tests verifying prohibited tools/patterns NOT used")
+    var antiCheatTests: [GeneratedTest]
+
+    @Guide(description: "File existence and structure tests")
+    var existenceTests: [GeneratedTest]
+
+    @Guide(description: "Correctness tests from description")
+    var correctnessTests: [GeneratedTest]
+
+    @Guide(description: "Boundary tests from environment constraints")
+    var boundaryTests: [GeneratedTest]
+
+    @Guide(description: "Integration tests for system-level behavior")
+    var integrationTests: [GeneratedTest]
+
+    @Guide(description: "Uncertainties and assumptions made")
+    var uncertainties: [String]
+}
+
 // Note: Dynamic JSON schema types removed to avoid recursive struct issues.
 // Using pre-defined Generable types (TestGenerationResult) for guided generation.
 // For custom schemas, use DynamicGenerationSchema from FoundationModels framework.

@@ -106,6 +106,15 @@ actor ChatHandler {
                 // Extract the generated content from the response
                 return encodeToJSON(response.content)
 
+            case "environment_aware_test_generation":
+                // Use the Generable EnvironmentAwareTestResult type
+                // Prompt should include environment context for anti-cheat and parameter discovery
+                let response = try await session.respond(
+                    to: prompt,
+                    generating: EnvironmentAwareTestResult.self
+                )
+                return encodeToJSON(response.content)
+
             default:
                 throw FMError.invalidRequest("Unknown schema type: \(schemaType)")
             }
