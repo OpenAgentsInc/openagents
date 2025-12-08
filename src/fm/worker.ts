@@ -44,7 +44,8 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
                           taskLower.includes("exact content") ||
                           taskLower.includes("copy it exactly") ||
                           (taskLower.includes("read") && taskLower.includes("create") && taskLower.includes("same content")));
-  const needsReadFirst = !needsWordCount && !needsExactCopy && (
+  const needsAppend = taskLower.includes("append") && !taskLower.includes("exact");
+  const needsReadFirst = !needsWordCount && !needsExactCopy && !needsAppend && (
                          taskLower.includes("count") || 
                          taskLower.includes("number of") ||
                          taskLower.includes("read") && taskLower.includes("write"));
@@ -52,6 +53,9 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   // For exact copy tasks, ALWAYS show the cp hint (FM tends to ignore it otherwise)
   if (needsExactCopy) {
     hint = "\nIMPORTANT: Use run_command to copy the file: cp source.txt echo.txt";
+  } else if (needsAppend) {
+    // Append tasks - use shell append operator to preserve existing content
+    hint = "\nIMPORTANT: To append text to a file, use run_command with: echo 'TEXT' >> filename";
   } else if (input.previous && input.previous !== "none") {
     if (input.previous.includes(" contains:")) {
       // Just read a file - hint to use the content with exact preservation
