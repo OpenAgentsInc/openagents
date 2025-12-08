@@ -197,6 +197,13 @@ export async function executeTool(
         }
       }
 
+      case "task_complete":
+        return {
+          success: true,
+          output: "Task marked as complete",
+          condensed: "TASK_COMPLETE",
+        };
+
       default:
         return {
           success: false,
@@ -362,6 +369,18 @@ export async function runMicroTaskPlan(
       } else {
         lastActionSignature = actionSignature;
         repeatCount = 1;
+      }
+
+      // Check if FM signaled task complete
+      if (workerOutput.toolName === "task_complete") {
+        log(`\n[Orchestrator] FM signaled task complete`);
+        return {
+          success: hadAnySuccess,
+          turns,
+          tokens: state.totalTokens,
+          durationMs: Date.now() - state.startTime,
+          output: outputText,
+        };
       }
 
       const result = await executeTool(
