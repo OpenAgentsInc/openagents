@@ -257,27 +257,284 @@ Real TB tasks need Docker environments with specific tools installed.
 
 ---
 
-## Conclusion
+## Part 7: The Voyager Pattern - Skill Libraries Change Everything
 
-**My original claim was premature.**
+After reading `docs/research/paper-summaries/voyager-summary.md`, I realize I missed the most important architectural pattern.
 
-I said FM can't do real TB tasks based on:
-- FM's cognitive limitations (can't count, can't reason)
-- Task complexity (long descriptions, domain knowledge)
-- Environment requirements (Docker, tools)
+### Voyager's Key Insight
 
-But I failed to account for:
-- **FM + Shell = arbitrary computation**
-- **Orchestrator handles state and iteration**
-- **Hints can encode domain knowledge**
-- **Error feedback enables debugging**
+VOYAGER is an LLM-powered agent that:
+1. **Stores successful solutions as executable code** in a skill library
+2. **Retrieves relevant skills by semantic similarity** when facing new tasks
+3. **Composes complex skills from simpler ones**
+4. **Iterates with feedback** until success
 
-The question is not "Can FM understand path-tracing?"
-The question is "Can FM write C code that compiles, run it, and iterate until it works?"
+**Result**: VOYAGER unlocks diamond tools in Minecraft - something no other LLM agent achieved.
 
-With sufficient hint engineering and proper Docker setup, **FM might be able to do more TB tasks than I assumed.**
+### How This Applies to FM
 
-**Recommended action**: Actually try FM on real TB tasks before concluding it can't work.
+The skill library **solves the domain knowledge problem**.
+
+When FM sees a task like "video processing":
+1. FM doesn't need to know OpenCV
+2. FM queries skill library: "video frame extraction"
+3. Library returns: `ffmpeg -i input.mp4 -vf "select=eq(n\,0)" frame_%04d.png`
+4. FM uses this as a starting point
+
+When FM sees "regex for log parsing":
+1. FM queries: "regex date pattern IPv4"
+2. Library returns: working Python code with re.findall patterns
+3. FM adapts to the specific task
+
+### The Architecture We Should Build
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     FM + SKILL LIBRARY                          │
+│                                                                  │
+│  ┌──────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
+│  │  Task Input  │───▶│  Skill Retrieval │───▶│  FM Orchestrator│ │
+│  │              │    │  (embeddings)    │    │                 │ │
+│  └──────────────┘    └─────────────────┘    └─────────────────┘ │
+│                              │                       │          │
+│                              ▼                       ▼          │
+│                      ┌─────────────┐         ┌─────────────┐    │
+│                      │ Skill Library│         │  Execute +  │    │
+│                      │ (code + desc)│         │  Iterate    │    │
+│                      └─────────────┘         └─────────────┘    │
+│                              ▲                       │          │
+│                              │                       │          │
+│                      ┌───────┴───────────────────────┘          │
+│                      │  On Success: Add to Library              │
+│                      └──────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### What Skills Would Contain
+
+| Task Type | Skill Content |
+|-----------|---------------|
+| Video Processing | ffmpeg commands, opencv patterns, frame analysis code |
+| Regex | Common patterns, Python re module usage, lookahead/lookbehind |
+| Compilation | gcc flags, Makefile patterns, linking options |
+| Git Operations | Branch manipulation, merge strategies, history rewriting |
+| File Formats | CSV parsing, JSON manipulation, XML handling |
+| Testing | pytest patterns, assertion styles, fixture setup |
+
+### Why This Works for Small Models Like FM
+
+1. **FM doesn't need domain knowledge** - skills provide it
+2. **FM just needs to recognize task type** - "this looks like video processing"
+3. **FM retrieves and adapts** - not generates from scratch
+4. **Iteration handles edge cases** - feedback loop fixes mistakes
+
+### The Voyager Results Are Proof
+
+- VOYAGER with skill library: **63 unique items**, diamond tools
+- VOYAGER without skill library: **plateaus**, no diamond tools
+- AutoGPT with VOYAGER's skill library: **significant improvement**
+
+**The skill library is the differentiator, not the base model.**
+
+---
+
+## Revised Conclusion
+
+**My original claim was not just premature - it was fundamentally wrong.**
+
+I focused on FM's cognitive limitations and assumed those were blocking. But:
+
+1. **FM + Shell = arbitrary computation** - FM orchestrates, tools compute
+2. **FM + Skill Library = domain knowledge** - FM retrieves, skills provide expertise
+3. **FM + Iteration = debugging** - FM tries, feedback guides fixes
+4. **FM + Orchestrator = memory** - external state management
+
+**The question isn't "Is FM smart enough?"**
+**The question is "Do we have the right skills in the library?"**
+
+With a well-populated skill library:
+- Video processing → retrieve ffmpeg/opencv skills
+- Path tracing → retrieve ray tracing algorithm skills
+- COBOL → retrieve conversion pattern skills
+- DNA assembly → retrieve bioinformatics tool skills
+
+**FM becomes a skill router + adapter, not a reasoning engine.**
+
+### Updated Recommended Actions
+
+1. **Build skill library infrastructure** (embeddings + retrieval)
+2. **Seed with common TB task patterns** (file ops, compilation, testing)
+3. **Run FM on real TB with skill injection**
+4. **On success: auto-add new skills**
+5. **On failure: analyze and add missing skills**
+
+This is exactly the Voyager pattern applied to Terminal-Bench.
+
+---
+
+## Part 8: Odyssey - Pre-Built Skills Beat Learning From Scratch
+
+After reading `docs/research/paper-summaries/odyssey-summary.md`, another critical insight emerges.
+
+### Odyssey's Key Contribution
+
+While Voyager learns skills from scratch through exploration, Odyssey takes a different approach:
+
+**Bootstrap with pre-built skills instead of learning everything.**
+
+| Component | Size |
+|-----------|------|
+| Primitive Skills | 40 (movement, mining, combat, crafting) |
+| Compositional Skills | 183 (multi-step sequences) |
+| Domain Knowledge | 390k+ Minecraft Wiki Q&A pairs |
+| Total Skills | 223 ready-to-use |
+
+### The Critical Result
+
+> "ODYSSEY with MineMA-8B matches Voyager with GPT-4o-mini on autonomous exploration"
+
+**An 8B parameter model with good skills matches GPT-4o-mini.**
+
+This is huge for FM. FM is small, but with the right skill library, it could punch above its weight.
+
+### Odyssey's Multi-Agent Pattern
+
+| Agent | Role | FM Equivalent |
+|-------|------|---------------|
+| Action Agent | Execute skills | FM worker (tool calls) |
+| Curriculum Agent | Plan tasks | Orchestrator (step planning) |
+| Critic Agent | Evaluate success | Verification script |
+| Comment Agent | Provide feedback | Error messages in Previous field |
+
+We already have this pattern in our FM architecture!
+
+### What Odyssey Adds to Our Understanding
+
+1. **Pre-built > Learned from scratch** for cost-effectiveness
+2. **Domain-specific fine-tuning** (MineMA) reduces need for expensive models
+3. **Hierarchical composition** - primitives compose into complex behaviors
+4. **223 skills is enough** to enable diverse gameplay
+
+### Applied to Terminal-Bench
+
+If we pre-build skills for common TB patterns:
+
+| Category | Primitive Skills | Compositional Skills |
+|----------|-----------------|---------------------|
+| File Ops | read, write, copy, move, delete | backup-and-edit, safe-overwrite |
+| Shell | run_command, pipe, redirect | grep-sed-awk chains, find-exec |
+| Git | status, add, commit, push | feature-branch-workflow, rebase-squash |
+| Python | run script, pip install | pytest-with-coverage, virtualenv-setup |
+| Compilation | gcc, make, cmake | build-test-install, debug-symbols |
+| Regex | re.match, re.findall | log-parsing, data-extraction |
+
+**With 50-100 pre-built skills, FM could handle most TB task categories.**
+
+### The Odyssey Formula for FM
+
+```
+FM Capability = Base Model + Skill Library + Domain Knowledge + Iteration
+
+Where:
+- Base Model: FM (small but functional)
+- Skill Library: Pre-built TB task patterns (our job to create)
+- Domain Knowledge: Hints about tools/commands (injected per task)
+- Iteration: Error feedback loop (already implemented)
+```
+
+### Cost Comparison (from Odyssey)
+
+| Approach | Model | Cost |
+|----------|-------|------|
+| Voyager | GPT-4 | $$$ |
+| Voyager | GPT-4o-mini | $$ |
+| Odyssey | MineMA-8B | $ |
+| **FM + Skills** | **Local FM** | **Free** |
+
+**FM with a good skill library could be the cheapest viable option.**
+
+---
+
+## Part 9: Synthesis - The FM + Skills Architecture
+
+Combining Voyager and Odyssey insights:
+
+### What We Need to Build
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FM TERMINAL-BENCH AGENT                          │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                     SKILL LIBRARY                                ││
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           ││
+│  │  │  Primitive   │  │ Compositional│  │   Domain     │           ││
+│  │  │  Skills (40) │  │  Skills (60) │  │  Knowledge   │           ││
+│  │  │  file_ops    │  │  workflows   │  │  tool docs   │           ││
+│  │  │  shell_cmds  │  │  patterns    │  │  API refs    │           ││
+│  │  └──────────────┘  └──────────────┘  └──────────────┘           ││
+│  └─────────────────────────────────────────────────────────────────┘│
+│                              │                                       │
+│                              ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                    ORCHESTRATOR                                  ││
+│  │  1. Parse task description                                       ││
+│  │  2. Query skill library (embedding similarity)                   ││
+│  │  3. Inject relevant skills into FM prompt                        ││
+│  │  4. FM selects/adapts skill                                      ││
+│  │  5. Execute and collect feedback                                 ││
+│  │  6. Iterate until success or max turns                           ││
+│  │  7. On success: optionally add new skill                         ││
+│  └─────────────────────────────────────────────────────────────────┘│
+│                              │                                       │
+│                              ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                    FM WORKER                                     ││
+│  │  - Receives: task + relevant skills + previous feedback          ││
+│  │  - Outputs: single tool call                                     ││
+│  │  - Doesn't need to understand - just pattern match and adapt     ││
+│  └─────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Will Work
+
+1. **Voyager proved**: Skill libraries enable complex tasks
+2. **Odyssey proved**: Pre-built skills + small models = competitive performance
+3. **FM-mini proved**: FM can execute tool calls and iterate
+4. **Shell tools**: Provide arbitrary computation capability
+
+### The Only Remaining Question
+
+**Do we have the skills?**
+
+Not "Is FM smart enough?" - we've established FM + tools is sufficient.
+Not "Can FM iterate?" - we've proven this works.
+Not "Is this architecture valid?" - Voyager and Odyssey validate it.
+
+The question is purely: **Have we built the right skill library?**
+
+### Action Plan
+
+1. **Create TB Skill Library** (~100 skills)
+   - Seed from successful Claude Code TB runs
+   - Extract patterns from TB task solutions
+   - Index by task type embeddings
+
+2. **Integrate into FM Orchestrator**
+   - Add skill retrieval before FM prompt
+   - Inject top-k relevant skills
+   - Track which skills led to success
+
+3. **Run on Real TB**
+   - Start with "easy" tasks
+   - Measure pass rate vs. baseline (no skills)
+   - Identify missing skill categories
+
+4. **Iterate on Library**
+   - Add skills for failed task types
+   - Refine skill descriptions for better retrieval
+   - Build compositional skills from primitives
 
 ---
 

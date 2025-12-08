@@ -26230,7 +26230,13 @@ ${endStackCall}`;
     }),
     delegate: (container, selector, event, handler) => exports_Effect.sync(() => {
       const listener = (e) => {
-        const target = e.target?.closest(selector);
+        let element = null;
+        if (e.target instanceof Element) {
+          element = e.target;
+        } else if (e.target instanceof Node && e.target.parentElement) {
+          element = e.target.parentElement;
+        }
+        const target = element?.closest(selector);
         if (target && container.contains(target)) {
           handler(e, target);
         }
@@ -29148,15 +29154,6 @@ ${endStackCall}`;
     aborted: { bg: "bg-zinc-800/40", text: "text-zinc-400", border: "border-zinc-700/50" }
   };
   // src/effuse/widgets/tb-command-center/tbcc-shell.ts
-  var renderTabIcon = (icon) => {
-    const iconMap = {
-      "layout-dashboard": "\uD83D\uDCCA",
-      "list-checks": "\uD83D\uDCCB",
-      "play-circle": "▶️",
-      settings: "⚙️"
-    };
-    return iconMap[icon] ?? "•";
-  };
   var TBCCShellWidget = {
     id: "tbcc-shell",
     initialState: () => ({
@@ -29173,7 +29170,6 @@ ${endStackCall}`;
         const activeClasses = isActive2 ? "bg-zinc-800/60 text-zinc-100 border-l-2 border-emerald-500" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-l-2 border-transparent";
         return html`
             <button class="${baseClasses} ${activeClasses}" data-action="changeTab" data-tab="${tab.id}">
-              <span class="text-lg">${renderTabIcon(tab.icon)}</span>
               ${state.sidebarCollapsed ? "" : html`<span>${tab.label}</span>`}
             </button>
           `;
