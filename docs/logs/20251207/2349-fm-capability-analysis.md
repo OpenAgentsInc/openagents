@@ -372,6 +372,82 @@ This is exactly the Voyager pattern applied to Terminal-Bench.
 
 ---
 
+## Part 7.5: WE ALREADY HAVE THE SKILLS LIBRARY
+
+After searching the codebase, I found we already have a complete Voyager-style skill system:
+
+### What Exists
+
+**Location:** `src/skills/`
+
+**Primitive Skills (28):** `src/skills/library/primitives.ts`
+- File ops: read, write, edit, glob, createDirectory, deleteFile, copyFile, listDirectory
+- Search: grep, findFile, findDefinition, searchCode  
+- Testing: runTest, runTypecheck, runLint
+- Git: status, diff, add, commit, log, branch
+- Debugging: analyzeError, fixImportError, fixSyntaxError
+- Shell: executeCommand, checkOutput, installDependency
+
+**Compositional Skills (43):** `src/skills/library/compositional.ts`
+- Error fixing: fixTypescriptImportError, fixTypescriptTypeError, fixSyntaxError
+- Testing: addTestForFunction, runTestsWithCoverage, fixFailingTest, mockDependency, writeIntegrationTest, writeSnapshotTest
+- Git: createFeatureBranch, createPullRequest, resolveGitConflict, cherryPickCommit, bisectBug, revertCommit
+- Refactoring: extractFunction, renameSymbol, convertToEffect, splitLargeFile, inlineAbstraction
+- Code generation: generateTypeFromJson, scaffoldComponent, generateApiClient
+- Performance: profileCode, optimizeImports, implementCache
+- API: handleApiErrors, validateApiInput, implementRateLimit
+- Effect-TS: createEffectService, handleEffectError
+- And more...
+
+**Total: 71 pre-built skills!**
+
+### Retrieval System: `src/skills/retrieval.ts`
+
+```typescript
+// Already implemented:
+selectSkills(taskDescription, { topK: 5 }) → Skill[]
+formatForPrompt(taskDescription) → string (ready for injection)
+recordUsage(skillId, success) → tracks success rates
+```
+
+Features:
+- Embedding-based semantic search
+- EMA success rate tracking
+- Deduplication on registration
+- Category filtering
+
+### The Gap: FM Doesn't Use Skills Yet!
+
+```bash
+$ grep -r "SkillService\|selectSkills" src/fm/
+# No matches found
+```
+
+**The skill library exists but FM isn't connected to it.**
+
+### The Fix (5 lines of code)
+
+In `src/fm/worker.ts`, before building the prompt:
+
+```typescript
+import { SkillService } from "../skills/service.js";
+
+// In buildWorkerPrompt:
+const skills = yield* SkillService.pipe(
+  Effect.flatMap(s => s.formatForPrompt(input.taskDescription, { topK: 3 })),
+  Effect.orElseSucceed(() => "")
+);
+
+// Add to prompt:
+const prompt = `...
+${skills}
+...`;
+```
+
+**That's it. The infrastructure is ready.**
+
+---
+
 ## Part 8: Odyssey - Pre-Built Skills Beat Learning From Scratch
 
 After reading `docs/research/paper-summaries/odyssey-summary.md`, another critical insight emerges.
