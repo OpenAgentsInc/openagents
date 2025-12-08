@@ -66,6 +66,10 @@ tasks-cli-*/
 .openagents/agent.lock
 .openagents/locks/
 
+# SQLite databases (local only)
+.openagents/*.db
+.openagents/*.db-*
+
 # Terminal-Bench run history (local only)
 .openagents/tb-runs/
 
