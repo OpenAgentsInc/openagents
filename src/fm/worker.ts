@@ -17,6 +17,12 @@ import type { Skill } from "../skills/schema.js";
 const WORKER_SYSTEM = `You are a coding assistant. Respond ONLY with a tool call in this exact format:
 <tool_call>{"name":"TOOL","arguments":{"key":"value"}}</tool_call>
 
+PATH RULES:
+- Your workspace is the current directory (.)
+- When the task mentions "/app/foo", use "foo" or "./foo" (relative path)
+- Never use absolute /app/ paths in commands or file operations
+- Example: "/app/output.txt" → "output.txt" or "./output.txt"
+
 Available tools:
 - write_file: {"name":"write_file","arguments":{"path":"file.txt","content":"text"}}
 - read_file: {"name":"read_file","arguments":{"path":"file.txt"}}
@@ -24,63 +30,44 @@ Available tools:
 - edit_file: {"name":"edit_file","arguments":{"path":"file.txt","old_text":"old","new_text":"new"}}
 - task_complete: {"name":"task_complete","arguments":{}} - Call this when the task is finished
 
+IMPORTANT: The ONLY tools you may call are:
+- write_file
+- read_file
+- run_command
+- edit_file
+- task_complete
+
+If you put any other name in the "name" field, it will fail. Skills/approaches listed above are for inspiration only - they are NOT callable tools.
+
 IMPORTANT: Output ONLY the tool call, nothing else. Call task_complete when done.`;
 
 export interface WorkerPromptInput extends WorkerInput {
   taskDescription?: string | undefined;
   skills?: Skill[] | undefined;
+  hint?: string | undefined;
 }
 
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
-  const taskSection = input.taskDescription 
+  const taskSection = input.taskDescription
     ? `Original Task: ${input.taskDescription}\n\nCurrent Step: ${input.action}`
     : `Task: ${input.action}`;
-  
-  // Add workflow hints based on previous actions and task type
-  let hint = "";
-  
-  // Check if task requires special handling
-  const taskLower = (input.taskDescription ?? "").toLowerCase();
-  const needsWordCount = taskLower.includes("count") && taskLower.includes("word");
-  const needsExactCopy = (taskLower.includes("exact same content") || 
-                          taskLower.includes("exact content") ||
-                          taskLower.includes("copy it exactly") ||
-                          (taskLower.includes("read") && taskLower.includes("create") && taskLower.includes("same content")));
-  const needsAppend = taskLower.includes("append") && !taskLower.includes("exact");
-  const needsReadFirst = !needsWordCount && !needsExactCopy && !needsAppend && (
-                         taskLower.includes("count") || 
-                         taskLower.includes("number of") ||
-                         taskLower.includes("read") && taskLower.includes("write"));
-  
-  // For exact copy tasks, ALWAYS show the cp hint (FM tends to ignore it otherwise)
-  if (needsExactCopy) {
-    hint = "\nIMPORTANT: Use run_command to copy the file: cp source.txt echo.txt";
-  } else if (needsAppend) {
-    // Append tasks - use shell append operator to preserve existing content
-    hint = "\nIMPORTANT: To append text to a file, use run_command with: echo 'TEXT' >> filename";
-  } else if (input.previous && input.previous !== "none") {
-    if (input.previous.includes(" contains:")) {
-      // Just read a file - hint to use the content with exact preservation
-      hint = "\nHint: You just read file content. Write it EXACTLY to the target file, preserving all newlines (use \\n).";
-    } else if (input.previous.includes("Command output:")) {
-      // Just ran a command - hint to save the output
-      hint = "\nHint: You have command output. Save it to a file if needed.";
-    }
-  } else if (needsWordCount) {
-    // Word counting task - use wc command
-    hint = "\nHint: To count words, use run_command with: wc -w filename.txt | awk '{print $1}'";
-  } else if (needsReadFirst) {
-    // First turn and task needs reading - hint to read first
-    hint = "\nHint: This task requires reading a file first. Use read_file before writing.";
-  }
-  
-  // Format skills section if provided
+
+  // Use suite-aware hint if provided (from orchestrator)
+  const hint = input.hint ? `\n${input.hint}` : "";
+
+  // Format skills section if provided (clearly not callable)
   let skillsSection = "";
   if (input.skills && input.skills.length > 0) {
-    const skillLines = input.skills.map(s => 
-      `- ${s.name}: ${s.description.slice(0, 100)}${s.description.length > 100 ? "..." : ""}`
-    ).join("\n");
-    skillsSection = `\nRelevant Skills:\n${skillLines}\n`;
+    const approaches = input.skills.map(s => {
+      // Use description only, without the skill name
+      const desc = s.description.slice(0, 80);
+      return `  • ${desc}`;
+    }).join("\n");
+
+    skillsSection = `
+Example approaches (for reference only, NOT callable tools):
+${approaches}
+`;
   }
 
   return `${WORKER_SYSTEM}

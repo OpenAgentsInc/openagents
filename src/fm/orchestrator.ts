@@ -25,6 +25,12 @@ import {
   MAX_HISTORY_ENTRY_CHARS,
 } from "./micro-task-types.js";
 import { callFMWorker, type FMClientLike } from "./worker.js";
+import { buildHint, type SuiteMode } from "./hints.js";
+import {
+  summarizeToolResult,
+  buildPreviousField,
+  type StepSummary
+} from "./step-summary.js";
 
 // --- State Management ---
 
@@ -178,10 +184,10 @@ export async function executeTool(
 
         if (exitCode === 0) {
           // Include stdout in condensed so FM can use the output (500 char limit)
-          const preview = stdout.trim().length > 500 
-            ? stdout.trim().slice(0, 500) + "..." 
+          const preview = stdout.trim().length > 500
+            ? stdout.trim().slice(0, 500) + "..."
             : stdout.trim();
-          const condensed = preview 
+          const condensed = preview
             ? `Command output: ${preview}`
             : "Command succeeded (no output)";
           return {
@@ -264,6 +270,9 @@ export interface OrchestratorOptions {
   taskDescription?: string | undefined;
   skills?: import("../skills/schema.js").Skill[] | undefined;
   onOutput?: ((text: string) => void) | undefined;
+  suiteMode?: SuiteMode;
+  verifyTask?: () => Promise<boolean>;
+  maxRetryAfterFailedVerify?: number; // Default: 2
 }
 
 export interface OrchestratorResult {
@@ -289,6 +298,13 @@ export async function runMicroTaskPlan(
   let repeatCount = 0;
   const MAX_CONSECUTIVE_FAILURES = 3;
   const MAX_REPEAT_ACTIONS = 3; // Stop if same action repeated this many times
+  // Track tool names for hint system
+  const toolHistory: string[] = [];
+  // Track step summaries for context management
+  const stepHistory: StepSummary[] = [];
+  // Track verification retry count
+  let verifyRetryCount = 0;
+  const maxVerifyRetries = options.maxRetryAfterFailedVerify ?? 2;
 
   const log = (text: string): void => {
     outputText += text + "\n";
@@ -329,20 +345,26 @@ export async function runMicroTaskPlan(
     turns++;
     log(`\n--- Turn ${turns} ---`);
 
-    // Build worker input with context from previous actions (keep last 5 for more context)
-    const previous = state.history.length > 0
-      ? state.history.slice(-5).join("; ")
-      : "none";
-    
+    // Build previous field from step summaries (keeps last 3 entries)
+    const previous = buildPreviousField(stepHistory);
+
+    // Build hint using tool names (not full outputs)
+    const hint = buildHint(
+      options.taskDescription ?? "",
+      toolHistory,
+      options.suiteMode ?? "unknown"
+    );
+
     const workerInputWithTask = {
       action: "Complete the task using the appropriate tool",
       context: hadAnySuccess ? "Previous action succeeded" : "Start or continue the task",
       previous,
       taskDescription: options.taskDescription,
       skills: options.skills,
+      hint,
     };
 
-    log(`[Worker] Previous: ${previous.slice(0, 100)}`);
+    log(`[Worker] Previous: ${previous}`);
 
     try {
       const workerOutput = await callFMWorker(client, workerInputWithTask, log);
@@ -350,6 +372,13 @@ export async function runMicroTaskPlan(
 
       if (!workerOutput.toolName) {
         log(`[Worker] No tool call parsed, raw: ${workerOutput.raw.slice(0, 100)}`);
+        // Add summary for failed tool call parsing
+        stepHistory.push({
+          step: turns,
+          tool: "parse_error",
+          success: false,
+          message: "No tool call parsed - retrying",
+        });
         state.history.push(truncate("No tool call - retrying", MAX_HISTORY_ENTRY_CHARS));
         consecutiveFailures++;
         continue;
@@ -361,24 +390,15 @@ export async function runMicroTaskPlan(
       const actionSignature = (workerOutput.toolName === "write_file" || workerOutput.toolName === "edit_file")
         ? `${workerOutput.toolName}:${toolPath}`
         : `${workerOutput.toolName}:${JSON.stringify(workerOutput.toolArgs)}`;
-      
+
       if (actionSignature === lastActionSignature) {
         repeatCount++;
-        if (repeatCount >= MAX_REPEAT_ACTIONS) {
-          log(`\n[Orchestrator] Same action repeated ${repeatCount} times - task complete`);
-          return {
-            success: hadAnySuccess,
-            turns,
-            tokens: state.totalTokens,
-            durationMs: Date.now() - state.startTime,
-            output: outputText,
-          };
-        }
+        // Don't return here - let the verification check below handle it
       } else {
         lastActionSignature = actionSignature;
         repeatCount = 1;
       }
-      
+
       // Safety: exit after too many turns with success (task likely done)
       if (hadAnySuccess && turns > 10) {
         log(`\n[Orchestrator] ${turns} turns after success - assuming complete`);
@@ -391,9 +411,57 @@ export async function runMicroTaskPlan(
         };
       }
 
-      // Check if FM signaled task complete
-      if (workerOutput.toolName === "task_complete") {
-        log(`\n[Orchestrator] FM signaled task complete`);
+      // Check if FM signaled task complete OR repeated same action too many times
+      if (workerOutput.toolName === "task_complete" || repeatCount >= MAX_REPEAT_ACTIONS) {
+        // If we have a verifier, use it
+        if (options.verifyTask) {
+          log(`\n[Orchestrator] ${workerOutput.toolName === "task_complete" ? "FM signaled task complete" : "Same action repeated too many times"} - running verification`);
+          const passed = await options.verifyTask();
+
+          if (passed) {
+            log(`\n[Orchestrator] Verification passed`);
+            return {
+              success: true,
+              turns,
+              tokens: state.totalTokens,
+              durationMs: Date.now() - state.startTime,
+              output: outputText,
+            };
+          }
+
+          // Verification failed
+          verifyRetryCount++;
+          log(`\n[Orchestrator] Verification failed (attempt ${verifyRetryCount}/${maxVerifyRetries})`);
+
+          if (verifyRetryCount >= maxVerifyRetries) {
+            log(`\n[Orchestrator] Verification failed after ${verifyRetryCount} attempts`);
+            return {
+              success: false,
+              turns,
+              tokens: state.totalTokens,
+              durationMs: Date.now() - state.startTime,
+              output: outputText,
+              error: `Verification failed after ${verifyRetryCount} attempts`,
+            };
+          }
+
+          // Add feedback to history and continue
+          stepHistory.push(summarizeToolResult(
+            turns,
+            "verification",
+            false,
+            "Verification failed: your output does not meet the spec. Fix and try again.",
+            {}
+          ));
+
+          // Reset repeat counter since we're giving FM another chance
+          repeatCount = 0;
+          lastActionSignature = ""; // Reset to allow different actions
+          continue; // Don't exit the loop
+        }
+
+        // No verifier: trust the completion signal (backward compat)
+        log(`\n[Orchestrator] ${workerOutput.toolName === "task_complete" ? "FM signaled task complete" : "Same action repeated too many times"} - no verification`);
         return {
           success: hadAnySuccess,
           turns,
@@ -410,6 +478,22 @@ export async function runMicroTaskPlan(
       );
       log(`[Tool] ${workerOutput.toolName}: ${result.success ? "success" : "failed"} - ${result.condensed}`);
 
+      // Track tool name for hint system
+      toolHistory.push(workerOutput.toolName);
+
+      // Create step summary with tool-aware summarization
+      // IMPORTANT: Pass toolCall.arguments (the parsed args from FM's response)
+      // to summarizeToolResult so it can generate tool-aware summaries.
+      const summary = summarizeToolResult(
+        turns,
+        workerOutput.toolName,
+        result.success,
+        result.output,
+        workerOutput.toolArgs  // The args FM provided (path, command, content, etc.)
+      );
+      stepHistory.push(summary);
+
+      // Also keep old history for backward compatibility (if needed elsewhere)
       state.history.push(truncate(result.condensed, MAX_HISTORY_ENTRY_CHARS));
 
       if (result.success) {
@@ -422,13 +506,20 @@ export async function runMicroTaskPlan(
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       log(`[Orchestrator] Error: ${errMsg}`);
+      // Add error summary
+      stepHistory.push({
+        step: turns,
+        tool: "error",
+        success: false,
+        message: `Error: ${condenseError(errMsg)}`,
+      });
       state.history.push(truncate(`Error: ${condenseError(errMsg)}`, MAX_HISTORY_ENTRY_CHARS));
       consecutiveFailures++;
     }
   }
 
   log(`\n[Orchestrator] Max turns reached`);
-  
+
   const result: OrchestratorResult = {
     success: hadAnySuccess,
     turns,

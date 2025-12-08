@@ -295,6 +295,7 @@ const runTask = async (
     taskIndex?: number;
     totalTasks?: number;
     modelRunner: ModelRunner;
+    suitePath?: string; // Suite path for suite-aware features
   }
 ): Promise<TaskResult> => {
   const startTime = Date.now();
@@ -400,6 +401,7 @@ const runTask = async (
       maxTurns: tbTask.max_turns ?? options.maxTurns,
       runId: options.runId,
       onOutput,
+      suitePath: options.suitePath,
     });
 
     // Convert TaskRunResult to the expected format
@@ -783,6 +785,7 @@ const main = async (): Promise<void> => {
       tbEmitter,
       taskIndex: i,
       totalTasks: tasksToRun.length,
+      suitePath: args.suite, // Pass suite path for suite-aware features
     });
     results.push(result);
 
