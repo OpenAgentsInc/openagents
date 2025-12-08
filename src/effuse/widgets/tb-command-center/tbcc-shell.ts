@@ -39,14 +39,14 @@ export type TBCCShellEvent =
 // ============================================================================
 
 const renderTabIcon = (icon: string): string => {
-  // Simple emoji/text fallback icons
+  // Unicode icons (not HTML entities - those get escaped)
   const iconMap: Record<string, string> = {
-    "layout-dashboard": "&#9635;", // ▣
-    "list-checks": "&#9744;", // ☐
-    "play-circle": "&#9654;", // ▶
-    "settings": "&#9881;", // ⚙
+    "layout-dashboard": "📊",
+    "list-checks": "📋",
+    "play-circle": "▶️",
+    "settings": "⚙️",
   }
-  return iconMap[icon] ?? "&#8226;" // •
+  return iconMap[icon] ?? "•"
 }
 
 // ============================================================================
