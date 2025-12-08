@@ -35,18 +35,23 @@ describe("truncateMessagesForFM", () => {
     expect(result[1].content).toBe("Short user message");
   });
 
-  test("keeps system and last message, drops middle", () => {
+  test("keeps system and recent message pairs, drops older history", () => {
     const messages: Message[] = [
-      { role: "system", content: "A".repeat(300) },
-      { role: "user", content: "B".repeat(300) },
-      { role: "assistant", content: "C".repeat(300) },
-      { role: "user", content: "D".repeat(300) },
+      { role: "system", content: "A".repeat(100) },
+      { role: "user", content: "B".repeat(100) },
+      { role: "assistant", content: "C".repeat(100) },
+      { role: "user", content: "D".repeat(100) },
+      { role: "assistant", content: "E".repeat(100) },
+      { role: "user", content: "F".repeat(100) },
     ];
-    // Total: ~1200 chars, over 1100 limit
-    const result = truncateMessagesForFM(messages, 600);
-    // Should keep system (first) and last message
-    expect(result.length).toBeLessThanOrEqual(2);
+    // Total: ~600 chars, over 400 limit
+    const result = truncateMessagesForFM(messages, 400);
+    // Should keep system (first) and recent message pairs (last 2-3 pairs)
+    expect(result.length).toBeGreaterThan(2); // Should preserve recent pairs
     expect(result[0].role).toBe("system");
+    // Last message should be preserved (may be truncated but should contain "F")
+    const lastContent = result[result.length - 1].content;
+    expect(lastContent.includes("F") || lastContent.includes("...[truncated]")).toBe(true);
   });
 
   test("truncates system message if too long", () => {
