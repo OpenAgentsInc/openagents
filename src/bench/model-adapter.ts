@@ -1259,6 +1259,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           workspace: options.workspace,
           timeout: task.timeout_seconds ?? options.timeout,
           maxTurns: task.max_turns ?? options.maxTurns,
+          taskDescription: task.description,
           onOutput: options.onOutput,
         });
 

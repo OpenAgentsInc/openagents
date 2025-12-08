@@ -37,14 +37,10 @@ actor ChatHandler {
         // Build prompt from messages
         let prompt = buildPrompt(from: request.messages)
 
-        // Create or reuse session
-        if session == nil {
-            session = LanguageModelSession()
-        }
-
-        guard let session = session else {
-            throw FMError.serverError("Failed to create language model session")
-        }
+        // ALWAYS create a fresh session to avoid context accumulation
+        // The LanguageModelSession accumulates context across respond() calls,
+        // which causes "Exceeded model context window size" errors after a few calls.
+        let session = LanguageModelSession()
 
         // Generate response
         let startTime = Date()
