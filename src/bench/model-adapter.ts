@@ -1286,7 +1286,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       // Be VERY aggressive: target 90% of budget to leave room for response
       // FM's actual limit appears to be ~500-600 chars total including JSON overhead
       const targetBudget = Math.floor(FM_CONTEXT_BUDGET * 0.9);
-      
+
       if (totalInitialChars > targetBudget) {
         log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds target (${targetBudget} chars). System: ${systemPrompt.length}, User: ${userMessage.length}, JSON overhead: ${jsonOverhead}`);
         // Further truncate user message to fit within target budget
@@ -1298,7 +1298,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       // Final check - log final sizes with JSON overhead
       const finalTotal = systemPrompt.length + finalUserMessage.length + jsonOverhead;
       log(`[Context] Final context: ${finalTotal} chars (System: ${systemPrompt.length}, User: ${finalUserMessage.length}, JSON overhead: ${jsonOverhead})`);
-      
+
       // If still too large, be even more aggressive
       if (finalTotal > FM_CONTEXT_BUDGET) {
         log(`[Context] CRITICAL: Still exceeds budget! Reducing to absolute minimum...`);
@@ -1416,7 +1416,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
               if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
                 log(`[Context] Hit context limit, retrying with minimal context`);
                 const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS_DEFAULT / 2);
-                
+
                 // Log minimal messages
                 log(`[FM Request] Minimal context retry (turn ${turns}):`);
                 log(`[FM Request] Total messages: ${minimalMessages.length}`);
@@ -1431,7 +1431,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
                 log(`[FM Request] Minimal content chars: ${minimalContentChars}`);
                 log(`[FM Request] Minimal JSON size: ${minimalJsonSize} chars`);
                 log(`[FM Request] Full minimal JSON: ${JSON.stringify(minimalMessages, null, 2)}`);
-                
+
                 try {
                   response = await Effect.runPromise(
                     client.chat({ messages: minimalMessages }),

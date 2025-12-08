@@ -27,7 +27,7 @@ Error: Foundation Models request failed: Exceeded model context window size
 
 **Example 1: path-tracing (Turn 1)**
 - System: 123 chars
-- User: 113 chars  
+- User: 113 chars
 - Total content: 236 chars
 - JSON size: 305 chars
 - **Result**: FAILED - "Exceeded model context window size"
@@ -200,7 +200,7 @@ Most Terminal-Bench tasks require:
 
 ### Solution 2: Investigate FM Bridge Overhead
 
-**Approach**: 
+**Approach**:
 - Check what the FM bridge actually sends
 - Measure actual request size vs our estimates
 - Find where overhead is coming from
@@ -261,4 +261,3 @@ Most Terminal-Bench tasks require:
 ---
 
 **Status**: Critical - FM model runner is non-functional for Terminal-Bench tasks. Need to either fix the context limit issue or accept FM's limitations and redesign the approach.
-
