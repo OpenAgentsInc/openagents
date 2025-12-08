@@ -206,5 +206,5 @@ That's not just engineering. That's epistemology.
 
 ---
 
-**Status:** Commentary complete
-**Next:** Run `testgen:evolve` and see if the theory holds up
+- **Status:** Commentary complete
+- **Next:** Run `testgen:evolve` and see if the theory holds up

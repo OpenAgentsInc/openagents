@@ -5,24 +5,25 @@
  * Runs test generation sessions, analyzes results, and evolves configs.
  */
 
-import { Effect } from "effect";
-import { BunContext } from "@effect/platform-bun";
-import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
-import { runTestGenWithStreaming, type TestGenEmitter } from "./testgen-service.js";
-import { TestGenStore, TestGenStoreLive } from "./testgen-store.js";
-import { DatabaseService, DatabaseLive } from "../storage/database.js";
-import { analyzeTestGenRun } from "./testgen-analyzer.js";
-import { computeOverallScore } from "./testgen-scoring.js";
+import { Effect } from "effect"
+import { BunContext } from "@effect/platform-bun"
 import {
-  proposeTestGenConfigChange,
-  applyConfigChange,
-} from "./testgen-meta-reasoner.js";
+    loadTerminalBenchSuite, TerminalBenchTask, type
+} from "../bench/terminal-bench.js"
+import { DatabaseLive, DatabaseService } from "../storage/database.js"
+import { log, logError } from "./logger.js"
+import { analyzeTestGenRun } from "./testgen-analyzer.js"
 import {
-  generateTestGenRunId,
-  type TestGenConfig,
-  type TestGenRunInput,
-} from "./testgen-types.js";
-import { log, logError } from "./logger.js";
+    applyConfigChange, proposeTestGenConfigChange
+} from "./testgen-meta-reasoner.js"
+import { computeOverallScore } from "./testgen-scoring.js"
+import {
+    runTestGenWithStreaming, TestGenEmitter, type
+} from "./testgen-service.js"
+import { TestGenStore, TestGenStoreLive } from "./testgen-store.js"
+import {
+    generateTestGenRunId, TestGenConfig, TestGenRunInput, type
+} from "./testgen-types.js"
 
 // ============================================================================
 // Types
@@ -202,7 +203,10 @@ const runSingleIteration = async (
       }
     );
 
-    // 4. Get trajectory and analyze
+    // 4. Wait a bit for trajectory to be saved (async operation)
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // 5. Get trajectory and analyze
     const trajectory = await getTrajectory(sessionId);
     const analysis = analyzeTestGenRun({
       sessionId,
@@ -232,7 +236,7 @@ const runSingleIteration = async (
 
     log(`[TestGenRunner] Analysis: score=${score}, balance=${analysis.categoryBalance.toFixed(2)}, anti-cheat=${analysis.antiCheatCoverage.toFixed(2)}, efficiency=${analysis.tokenEfficiency.toFixed(2)}`);
 
-    // 5. Save run with analysis
+    // 6. Save run with analysis
     const run = await Effect.runPromise(
       TestGenStore.pipe(
         Effect.flatMap((store) =>
@@ -258,7 +262,7 @@ const runSingleIteration = async (
       )
     );
 
-    // 6. Get recent runs for meta-reasoning
+    // 7. Get recent runs for meta-reasoning
     const recentRuns = await Effect.runPromise(
       TestGenStore.pipe(
         Effect.flatMap((store) => store.getRecentRuns(10)),
@@ -266,7 +270,7 @@ const runSingleIteration = async (
       )
     );
 
-    // 7. Meta-reason about improvements
+    // 8. Meta-reason about improvements
     const taskType = options.taskType || inferTaskType(taskId, "");
     const change = await Effect.runPromise(
       proposeTestGenConfigChange(
@@ -282,7 +286,7 @@ const runSingleIteration = async (
 
     log(`[TestGenRunner] Meta-reasoner proposed: ${change.type}`);
 
-    // 8. Apply config change if proposed
+    // 9. Apply config change if proposed
     if (change.type !== "keep" && change.changes) {
       const newConfigInput = applyConfigChange(config, change);
       const newConfig = await Effect.runPromise(
@@ -301,7 +305,7 @@ const runSingleIteration = async (
       log(`[TestGenRunner] Created new config v${newConfig.version} (id: ${newConfig.id})`);
     }
 
-    // 9. Update best config if this is better
+    // 10. Update best config if this is better
     const bestConfig = await Effect.runPromise(
       TestGenStore.pipe(
         Effect.flatMap((store) => store.getBestConfig(taskType)),
@@ -321,7 +325,7 @@ const runSingleIteration = async (
       log(`[TestGenRunner] Updated best config for ${taskType} (score: ${score})`);
     }
 
-    // 10. Log progress
+    // 11. Log progress
     log(`[TestGenRunner] Run ${state.totalRuns + 1} complete: score=${score}, change=${change.type}`);
   } catch (error) {
     logError(`[TestGenRunner] Run ${state.totalRuns + 1} failed`, error);

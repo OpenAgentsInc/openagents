@@ -252,6 +252,9 @@ export const applyMigration = (
       try: () => {
         db.transaction(() => {
           db.exec(migration.sql);
+          // Record migration version
+          const stmt = db.prepare("INSERT INTO _schema_version (version) VALUES (?)");
+          stmt.run(migration.version);
         })();
       },
       catch: (e) =>
