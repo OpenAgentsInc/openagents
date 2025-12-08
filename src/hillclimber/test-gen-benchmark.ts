@@ -11,20 +11,19 @@
  *   bun run src/hillclimber/test-gen-benchmark.ts --sample 10 --verbose
  */
 
-import { parseArgs } from "util";
-import { Effect } from "effect";
-import { BunContext } from "@effect/platform-bun";
-import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
+import { Effect } from "effect"
+import { parseArgs } from "util"
+import { BunContext } from "@effect/platform-bun"
 import {
-  generateTestsFromDescription,
-  summarizeCategories,
-  type TestGeneratorOptions,
-  type TestGenerationResult,
-} from "./test-generator.js";
+  loadTerminalBenchSuite, TerminalBenchTask, type
+} from "../bench/terminal-bench.js"
 import {
-  evaluateTestGeneration,
-  type TestGenerationScore,
-} from "./test-gen-evaluator.js";
+  evaluateTestGeneration, TestGenerationScore, type
+} from "./test-gen-evaluator.js"
+import {
+  generateTestsFromDescription, TestGenerationResult, TestGeneratorOptions,
+  type
+} from "./test-generator.js"
 
 // ============================================================================
 // CLI Arguments
@@ -133,7 +132,7 @@ async function main() {
       process.exit(1);
     }
   } else if (values.all) {
-    tasksToRun = suite.tasks;
+    tasksToRun = [...suite.tasks];
   } else if (values.sample) {
     const sampleSize = parseInt(values.sample as string, 10);
     const shuffled = [...suite.tasks].sort(() => Math.random() - 0.5);
