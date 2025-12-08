@@ -47,6 +47,8 @@ Options:
   --sleep, -s <ms>      Sleep between runs in ms (default: ${DEFAULT_SLEEP_MS})
   --suite <path>        Path to TB suite JSON (default: ${DEFAULT_SUITE_PATH})
   --model, -m <model>   Override model to use (default: uses FREE_MODELS[0])
+  --map                 Use new MAP orchestrator (iterative verification)
+  --verbose, -v         Enable verbose logging
   --stats               Show current stats and exit
   --export              Export learned hints and exit
   --export-code         Generate TypeScript code for hints
@@ -57,11 +59,11 @@ Examples:
   # Run overnight on default tasks
   bun run hillclimber --max-runs 500 --sleep 30000
 
-  # Optimize a single task
-  bun run hillclimber --task regex-log --max-runs 50
+  # Optimize a single task with MAP architecture
+  bun run hillclimber --task regex-log --max-runs 50 --map
 
-  # Multiple tasks
-  bun run hillclimber --task regex-log --task word-count
+  # Multiple tasks with verbose output
+  bun run hillclimber --task regex-log --task word-count --map --verbose
 
   # Check progress
   bun run hillclimber --stats
@@ -121,6 +123,15 @@ const parseCliArgs = (): {
         type: "boolean",
         default: false,
       },
+      map: {
+        type: "boolean",
+        default: false,
+      },
+      verbose: {
+        type: "boolean",
+        short: "v",
+        default: false,
+      },
       help: {
         type: "boolean",
         short: "h",
@@ -144,6 +155,8 @@ const parseCliArgs = (): {
       dryRun: values["dry-run"] as boolean,
       showStats: false,
       exportHints: false,
+      useMAP: values.map as boolean,
+      verbose: values.verbose as boolean,
     },
     showStatsOnly: values.stats as boolean,
     exportOnly: values.export as boolean,

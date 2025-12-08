@@ -13,11 +13,12 @@ import {
   proposeHeuristicChange,
   applyConfigChange,
 } from "./meta-reasoner.js";
-import { formatRunSummary, isBetterScore } from "./scoring.js";
+import { formatRunSummary, isBetterScore, scoreResult } from "./scoring.js";
 import { exportTaskHint } from "./exporter.js";
-import type { HillClimberOptions, HillClimberRunInput } from "./types.js";
+import type { HillClimberOptions, HillClimberRunInput, TaskRunResult } from "./types.js";
 import { generateRunId as genRunId } from "./types.js";
 import { log, logError } from "./logger.js";
+import { runTaskWithMAP } from "./map-orchestrator.js";
 
 // ============================================================================
 // Types
@@ -139,28 +140,62 @@ const runSingleIteration = async (
       return;
     }
 
-    // Run the task
-    log(`[HillClimber] Executing task...`);
-    const execution = yield* Effect.promise(() =>
-      runTask(taskId, config, {
-        suitePath: options.suitePath,
-        workspaceBase,
-        timeout: 120, // 2 minutes per task
-        onOutput: (text) => {
-          // Only log important lines
-          if (
-            text.includes("[FM]") ||
-            text.includes("[Executor]") ||
-            text.includes("PASSED") ||
-            text.includes("FAILED")
-          ) {
+    // Run the task with either legacy executor or MAP orchestrator
+    log(`[HillClimber] Executing task... (${options.useMAP ? "MAP" : "legacy"} mode)`);
+
+    let result: TaskRunResult;
+    let score: number;
+
+    if (options.useMAP) {
+      // Use new MAP orchestrator
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const workspace = path.join(workspaceBase, taskId);
+      fs.mkdirSync(workspace, { recursive: true });
+
+      const mapResult = yield* Effect.promise(() =>
+        runTaskWithMAP(task, config, workspace, 120, config.maxTurnsOverride, (text) => {
+          if (options.verbose || text.includes("[MAP]") || text.includes("PASSED") || text.includes("FAILED")) {
             process.stdout.write(text);
           }
-        },
-      }),
-    );
+        }),
+      );
 
-    const { result, score } = execution;
+      result = {
+        passed: mapResult.passed,
+        turns: mapResult.turns,
+        durationMs: mapResult.durationMs,
+        stepSummary: [],
+        errorMessage: mapResult.error ?? null,
+        output: "",
+      };
+      score = scoreResult(mapResult.passed, mapResult.turns);
+
+      log(`[HillClimber] MAP progress: ${(mapResult.progress * 100).toFixed(1)}%`);
+    } else {
+      // Use legacy executor
+      const execution = yield* Effect.promise(() =>
+        runTask(taskId, config, {
+          suitePath: options.suitePath,
+          workspaceBase,
+          timeout: 120, // 2 minutes per task
+          onOutput: (text) => {
+            // Only log important lines
+            if (
+              text.includes("[FM]") ||
+              text.includes("[Executor]") ||
+              text.includes("PASSED") ||
+              text.includes("FAILED")
+            ) {
+              process.stdout.write(text);
+            }
+          },
+        }),
+      );
+
+      result = execution.result;
+      score = execution.score;
+    }
     log(`\n[HillClimber] ${formatRunSummary(result.passed, result.turns, score)}`);
 
     // Propose config change

@@ -211,6 +211,15 @@ export async function executeTool(
           condensed: "TASK_COMPLETE",
         };
 
+      case "verify_progress":
+        // This tool allows FM to check verification status mid-execution
+        // The actual verification will be handled by the orchestrator loop
+        return {
+          success: true,
+          output: "Verification requested",
+          condensed: "VERIFY_PROGRESS_REQUESTED",
+        };
+
       default:
         return {
           success: false,
@@ -391,6 +400,8 @@ export async function runMicroTaskPlan(
   const maxVerifyRetries = options.maxRetryAfterFailedVerify ?? 2;
   // Track parse errors for metrics
   let parseErrorCount = 0;
+  // Track verification feedback for next turn (MAP architecture key feature)
+  let lastVerificationFeedback: string | undefined;
 
   const log = (text: string): void => {
     outputText += text + "\n";
@@ -473,6 +484,7 @@ export async function runMicroTaskPlan(
       taskDescription: options.taskDescription,
       skills: options.skills,
       hint,
+      verificationFeedback: lastVerificationFeedback,
     };
 
     log(`[Worker] Previous: ${previous}`);
@@ -586,6 +598,20 @@ export async function runMicroTaskPlan(
         options.workspace,
       );
       log(`[Tool] ${workerOutput.toolName}: ${result.success ? "success" : "failed"} - ${result.condensed}`);
+
+      // Handle verify_progress tool - run verification and store feedback
+      if (workerOutput.toolName === "verify_progress" && options.verifyTask) {
+        try {
+          const passed = await options.verifyTask();
+          // Format verification feedback for next turn
+          lastVerificationFeedback = passed
+            ? "All tests passing! You can call task_complete."
+            : "Tests failing. Review the output above and fix the issues.";
+          log(`[Orchestrator] Verification: ${passed ? "PASSED" : "FAILED"}`);
+        } catch (e) {
+          lastVerificationFeedback = `Verification error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
 
       // Track tool name for hint system
       toolHistory.push(workerOutput.toolName);

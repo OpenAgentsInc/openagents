@@ -160,6 +160,8 @@ export interface HillClimberOptions {
   exportHints: boolean;      // Export best hints to hints.ts
   suitePath: string;         // Path to Terminal-Bench suite
   modelOverride?: string;    // Optional model override (from CLI)
+  useMAP: boolean;           // Use MAP orchestrator (new architecture)
+  verbose: boolean;          // Enable verbose logging
 }
 
 // ============================================================================
