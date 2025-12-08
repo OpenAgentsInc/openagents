@@ -43,10 +43,8 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     } else if (input.previous.includes("Command output:")) {
       // Just ran a command - hint to save the output
       hint = "\nHint: You have command output. Save it to a file if needed.";
-    } else if (input.previous.includes("Created ") || input.previous.includes("Edited ")) {
-      // Just wrote/edited - might be done
-      hint = "\nHint: File operation succeeded. If task is complete, call task_complete.";
     }
+    // Note: Removed "call task_complete" hint after write/edit - it caused early exit on multi-step tasks
   }
   
   return `${WORKER_SYSTEM}
