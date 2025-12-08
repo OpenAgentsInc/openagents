@@ -104,13 +104,19 @@ const formatPercent = (value: number): string => {
 export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent, SocketServiceTag> = {
   id: "tbcc-dashboard",
 
-  initialState: () => ({
-    stats: null,
-    recentRuns: [],
-    currentRun: null,
-    loading: true,
-    error: null,
-  }),
+  initialState: () => {
+    const bunLog = typeof window !== "undefined" ? (window as any).bunLog : null
+    if (bunLog) {
+      bunLog("[TBCCDashboard] Creating initial state")
+    }
+    return {
+      stats: null,
+      recentRuns: [],
+      currentRun: null,
+      loading: true,
+      error: null,
+    }
+  },
 
   render: (ctx) =>
     Effect.gen(function* () {
@@ -310,46 +316,62 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
 
   setupEvents: (ctx) =>
     Effect.gen(function* () {
-      if (typeof window !== "undefined" && (window as any).bunLog) {
-        (window as any).bunLog("[TBCCDashboard] Setting up event handlers")
+      const bunLog = typeof window !== "undefined" ? (window as any).bunLog : null
+      if (bunLog) {
+        bunLog("[TBCCDashboard] setupEvents called")
+        bunLog(`[TBCCDashboard] Container:`, ctx.container.id || ctx.container.className || "no id/class")
+        bunLog(`[TBCCDashboard] Container element:`, ctx.container.tagName)
       }
 
-      // Quick action buttons
-      yield* ctx.dom.delegate(ctx.container, "button[data-action]", "click", (e, target) => {
-        const button = target as HTMLButtonElement
-        const action = button.dataset.action
+      // Try multiple event types to catch the click
+      const setupClickHandler = (eventType: "click" | "mousedown" | "pointerdown") => {
+        return ctx.dom.delegate(ctx.container, "button[data-action]", eventType, (e, target) => {
+          const button = target as HTMLButtonElement
+          const action = button.dataset.action
 
-        if (typeof window !== "undefined" && (window as any).bunLog) {
-          (window as any).bunLog(`[TBCCDashboard] Click detected on button with action="${action}", disabled=${button.disabled}`)
-        }
-
-        // Ignore clicks on disabled buttons
-        if (button.disabled) {
-          if (typeof window !== "undefined" && (window as any).bunLog) {
-            (window as any).bunLog(`[TBCCDashboard] Button is disabled, ignoring click`)
+          if (bunLog) {
+            bunLog(`[TBCCDashboard] ${eventType} event on button, action="${action}", disabled=${button.disabled}, target=`, button)
           }
-          return
-        }
 
-        const runId = button.dataset.runId
-
-        if (typeof window !== "undefined" && (window as any).bunLog) {
-          (window as any).bunLog(`[TBCCDashboard] Processing action="${action}"`)
-        }
-
-        if (action === "refresh") {
-          Effect.runFork(ctx.emit({ type: "refresh" }))
-        } else if (action === "runFullBenchmark") {
-          if (typeof window !== "undefined" && (window as any).bunLog) {
-            (window as any).bunLog(`[TBCCDashboard] Emitting runFullBenchmark event`)
+          // Ignore clicks on disabled buttons
+          if (button.disabled) {
+            if (bunLog) {
+              bunLog(`[TBCCDashboard] Button is disabled, ignoring ${eventType}`)
+            }
+            return
           }
-          Effect.runFork(ctx.emit({ type: "runFullBenchmark" }))
-        } else if (action === "runRandomTask") {
-          Effect.runFork(ctx.emit({ type: "runRandomTask" }))
-        } else if (action === "viewRun" && runId) {
-          Effect.runFork(ctx.emit({ type: "viewRun", runId }))
-        }
-      })
+
+          // For mousedown/pointerdown, prevent default to avoid double-firing
+          if (eventType !== "click") {
+            e.preventDefault()
+          }
+
+          const runId = button.dataset.runId
+
+          if (bunLog) {
+            bunLog(`[TBCCDashboard] Processing ${eventType} for action="${action}"`)
+          }
+
+          if (action === "refresh") {
+            Effect.runFork(ctx.emit({ type: "refresh" }))
+          } else if (action === "runFullBenchmark") {
+            if (bunLog) {
+              bunLog(`[TBCCDashboard] Emitting runFullBenchmark event from ${eventType}`)
+            }
+            Effect.runFork(ctx.emit({ type: "runFullBenchmark" }))
+          } else if (action === "runRandomTask") {
+            Effect.runFork(ctx.emit({ type: "runRandomTask" }))
+          } else if (action === "viewRun" && runId) {
+            Effect.runFork(ctx.emit({ type: "viewRun", runId }))
+          }
+        })
+      }
+
+      // Set up click handler (primary)
+      yield* setupClickHandler("click")
+
+      // Also set up mousedown as backup (fires earlier in the event chain)
+      yield* setupClickHandler("mousedown")
     }),
 
   handleEvent: (event, ctx) =>

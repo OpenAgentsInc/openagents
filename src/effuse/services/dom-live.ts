@@ -72,7 +72,16 @@ const makeDomService = (root: Document | Element = document): DomService => ({
     handler: (e: HTMLElementEventMap[K], target: Element) => void
   ) =>
     Effect.sync(() => {
+      const bunLog = typeof window !== "undefined" ? (window as any).bunLog : null
+      if (bunLog) {
+        bunLog(`[DomService] Setting up delegate for "${event}" on container "${container.id || container.className || container.tagName}", selector="${selector}"`)
+      }
+
       const listener = (e: Event) => {
+        if (bunLog && selector.includes("runFullBenchmark")) {
+          bunLog(`[DomService] ${event} event received, target:`, e.target)
+        }
+
         // Handle text nodes - get the parent element if target is a text node
         let element: Element | null = null
         if (e.target instanceof Element) {
@@ -80,8 +89,21 @@ const makeDomService = (root: Document | Element = document): DomService => ({
         } else if (e.target instanceof Node && e.target.parentElement) {
           element = e.target.parentElement
         }
+
+        if (bunLog && selector.includes("runFullBenchmark") && element) {
+          bunLog(`[DomService] Resolved element:`, element.tagName, element.className)
+        }
+
         const target = element?.closest(selector)
+
+        if (bunLog && selector.includes("runFullBenchmark")) {
+          bunLog(`[DomService] closest("${selector}") result:`, target, `container.contains:`, target ? container.contains(target) : false)
+        }
+
         if (target && container.contains(target)) {
+          if (bunLog && selector.includes("runFullBenchmark")) {
+            bunLog(`[DomService] Calling handler for ${event}`)
+          }
           handler(e as HTMLElementEventMap[K], target)
         }
       }
