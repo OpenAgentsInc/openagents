@@ -310,6 +310,9 @@ export class SocketClient {
     timeout?: number;
     maxTurns?: number;
     outputDir?: string;
+    model?: "fm" | "claude-code" | string;
+    sandbox?: boolean;
+    random?: boolean;
   }): Promise<{ runId: string }> {
     const response = await this.request("request:startTBRun", options);
     if (!response.success) {
