@@ -8,16 +8,18 @@
  *   bun run src/llm/openrouter-inference-demo.ts
  */
 
-import { Effect, Console, Layer } from "effect";
-import { OpenRouterInference, OpenRouterInferenceLive } from "./openrouter-inference.js";
-import { openRouterLive } from "./openrouter-http.js";
-import { InferenceStore, InferenceStoreLive } from "./inference-store.js";
-import * as FileSystem from "@effect/platform/FileSystem";
-import * as Path from "@effect/platform/Path";
-import * as BunContext from "@effect/platform-bun/BunContext";
-import * as DefaultServices from "effect/DefaultServices";
-import { runMigrations } from "../storage/migrations.js";
-import { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite"
+import { Console, Effect, Layer } from "effect"
+import * as DefaultServices from "effect/DefaultServices"
+import * as BunContext from "@effect/platform-bun/BunContext"
+import * as FileSystem from "@effect/platform/FileSystem"
+import * as Path from "@effect/platform/Path"
+import { runMigrations } from "../storage/migrations.js"
+import { InferenceStore, InferenceStoreLive } from "./inference-store.js"
+import { openRouterLive } from "./openrouter-http.js"
+import {
+    OpenRouterInference, OpenRouterInferenceLive
+} from "./openrouter-inference.js"
 
 const program = Effect.gen(function* () {
   // Ensure migrations are run
