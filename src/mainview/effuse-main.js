@@ -26229,15 +26229,31 @@ ${endStackCall}`;
       return () => element.removeEventListener(event, listener, options);
     }),
     delegate: (container, selector, event, handler) => exports_Effect.sync(() => {
+      const bunLog = typeof window !== "undefined" ? window.bunLog : null;
+      if (bunLog) {
+        bunLog(`[DomService] Setting up delegate for "${event}" on container "${container.id || container.className || container.tagName}", selector="${selector}"`);
+      }
       const listener = (e) => {
+        if (bunLog && selector.includes("runFullBenchmark")) {
+          bunLog(`[DomService] ${event} event received, target:`, e.target);
+        }
         let element = null;
         if (e.target instanceof Element) {
           element = e.target;
         } else if (e.target instanceof Node && e.target.parentElement) {
           element = e.target.parentElement;
         }
+        if (bunLog && selector.includes("runFullBenchmark") && element) {
+          bunLog(`[DomService] Resolved element:`, element.tagName, element.className);
+        }
         const target = element?.closest(selector);
+        if (bunLog && selector.includes("runFullBenchmark")) {
+          bunLog(`[DomService] closest("${selector}") result:`, target, `container.contains:`, target ? container.contains(target) : false);
+        }
         if (target && container.contains(target)) {
+          if (bunLog && selector.includes("runFullBenchmark")) {
+            bunLog(`[DomService] Calling handler for ${event}`);
+          }
           handler(e, target);
         }
       };
@@ -29337,13 +29353,19 @@ ${endStackCall}`;
   };
   var TBCCDashboardWidget = {
     id: "tbcc-dashboard",
-    initialState: () => ({
-      stats: null,
-      recentRuns: [],
-      currentRun: null,
-      loading: true,
-      error: null
-    }),
+    initialState: () => {
+      const bunLog = typeof window !== "undefined" ? window.bunLog : null;
+      if (bunLog) {
+        bunLog("[TBCCDashboard] Creating initial state");
+      }
+      return {
+        stats: null,
+        recentRuns: [],
+        currentRun: null,
+        loading: true,
+        error: null
+      };
+    },
     render: (ctx) => exports_Effect.gen(function* () {
       const state = yield* ctx.state.get;
       const currentRunCard = state.currentRun ? html`
@@ -29411,6 +29433,7 @@ ${endStackCall}`;
       const quickActions = html`
         <div class="flex gap-3 mb-6">
           <button
+            type="button"
             class="px-4 py-2 text-xs font-mono uppercase rounded border border-emerald-700 text-emerald-300 bg-emerald-900/40 hover:bg-emerald-900/60 transition-colors"
             data-action="runFullBenchmark"
             ${state.currentRun ? "disabled" : ""}
@@ -29510,19 +29533,48 @@ ${endStackCall}`;
       `;
     }),
     setupEvents: (ctx) => exports_Effect.gen(function* () {
-      yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", (_e, target) => {
-        const action = target.dataset.action;
-        const runId = target.dataset.runId;
-        if (action === "refresh") {
-          exports_Effect.runFork(ctx.emit({ type: "refresh" }));
-        } else if (action === "runFullBenchmark") {
-          exports_Effect.runFork(ctx.emit({ type: "runFullBenchmark" }));
-        } else if (action === "runRandomTask") {
-          exports_Effect.runFork(ctx.emit({ type: "runRandomTask" }));
-        } else if (action === "viewRun" && runId) {
-          exports_Effect.runFork(ctx.emit({ type: "viewRun", runId }));
-        }
-      });
+      const bunLog = typeof window !== "undefined" ? window.bunLog : null;
+      if (bunLog) {
+        bunLog("[TBCCDashboard] setupEvents called");
+        bunLog(`[TBCCDashboard] Container:`, ctx.container.id || ctx.container.className || "no id/class");
+        bunLog(`[TBCCDashboard] Container element:`, ctx.container.tagName);
+      }
+      const setupClickHandler = (eventType) => {
+        return ctx.dom.delegate(ctx.container, "button[data-action]", eventType, (e, target) => {
+          const button = target;
+          const action = button.dataset.action;
+          if (bunLog) {
+            bunLog(`[TBCCDashboard] ${eventType} event on button, action="${action}", disabled=${button.disabled}, target=`, button);
+          }
+          if (button.disabled) {
+            if (bunLog) {
+              bunLog(`[TBCCDashboard] Button is disabled, ignoring ${eventType}`);
+            }
+            return;
+          }
+          if (eventType !== "click") {
+            e.preventDefault();
+          }
+          const runId = button.dataset.runId;
+          if (bunLog) {
+            bunLog(`[TBCCDashboard] Processing ${eventType} for action="${action}"`);
+          }
+          if (action === "refresh") {
+            exports_Effect.runFork(ctx.emit({ type: "refresh" }));
+          } else if (action === "runFullBenchmark") {
+            if (bunLog) {
+              bunLog(`[TBCCDashboard] Emitting runFullBenchmark event from ${eventType}`);
+            }
+            exports_Effect.runFork(ctx.emit({ type: "runFullBenchmark" }));
+          } else if (action === "runRandomTask") {
+            exports_Effect.runFork(ctx.emit({ type: "runRandomTask" }));
+          } else if (action === "viewRun" && runId) {
+            exports_Effect.runFork(ctx.emit({ type: "viewRun", runId }));
+          }
+        });
+      };
+      yield* setupClickHandler("click");
+      yield* setupClickHandler("mousedown");
     }),
     handleEvent: (event, ctx) => exports_Effect.gen(function* () {
       const socket = yield* SocketServiceTag;
@@ -29561,14 +29613,20 @@ ${endStackCall}`;
           break;
         }
         case "runFullBenchmark": {
+          if (typeof window !== "undefined" && window.bunLog) {
+            window.bunLog(`[TBCCDashboard] handleEvent: runFullBenchmark received`);
+          }
           const settings = getSettings();
-          console.log("[Dashboard] Starting run with settings:", settings);
-          console.log("[Dashboard] Model:", settings.model);
+          if (typeof window !== "undefined" && window.bunLog) {
+            window.bunLog(`[TBCCDashboard] Settings:`, JSON.stringify(settings));
+          }
           const runOptions = {
             suitePath: DEFAULT_SUITE_PATH,
             model: settings.model
           };
-          console.log("[Dashboard] Run options:", JSON.stringify(runOptions));
+          if (typeof window !== "undefined" && window.bunLog) {
+            window.bunLog(`[TBCCDashboard] Starting run with options:`, JSON.stringify(runOptions));
+          }
           yield* exports_Effect.tryPromise({
             try: async () => {
               const result = await exports_Effect.runPromise(socket.startTBRun(runOptions));

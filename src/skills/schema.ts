@@ -256,6 +256,16 @@ export const createSkill = (
     source: partial.source ?? "manual",
     tags: partial.tags ?? [],
     examples: partial.examples ?? [],
+    // Include optional fields if provided
+    ...(partial.successRate !== undefined && { successRate: partial.successRate }),
+    ...(partial.usageCount !== undefined && { usageCount: partial.usageCount }),
+    ...(partial.lastUsed !== undefined && { lastUsed: partial.lastUsed }),
+    ...(partial.prerequisites !== undefined && { prerequisites: partial.prerequisites }),
+    ...(partial.postconditions !== undefined && { postconditions: partial.postconditions }),
+    ...(partial.languages !== undefined && { languages: partial.languages }),
+    ...(partial.frameworks !== undefined && { frameworks: partial.frameworks }),
+    ...(partial.learnedFrom !== undefined && { learnedFrom: partial.learnedFrom }),
+    ...(partial.embedding !== undefined && { embedding: partial.embedding }),
   };
 };
 
@@ -274,7 +284,7 @@ export const formatSkillForPrompt = (skill: Skill): string => {
   return `### ${skill.name} (${skill.id})
 Category: ${skill.category}
 Description: ${skill.description}
-${skill.successRate !== undefined ? `Success Rate: ${(skill.successRate * 100).toFixed(0)}%` : ""}
+${skill.successRate !== undefined ? `Success Rate: ${(skill.successRate * 100).toFixed(0)}%\n` : ""}
 ${params ? `Parameters:\n${params}` : ""}
 ${examples ? `\n${examples}` : ""}
 Code:
