@@ -740,6 +740,8 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
         {
           onStart: (msg) => hudMessageSender!(msg),
           onTest: (msg) => hudMessageSender!(msg),
+          onProgress: (msg) => hudMessageSender!(msg),
+          onReflection: (msg) => hudMessageSender!(msg),
           onComplete: (msg) => hudMessageSender!(msg),
           onError: (msg) => hudMessageSender!(msg),
         },

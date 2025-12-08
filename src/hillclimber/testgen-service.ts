@@ -8,16 +8,18 @@
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
-import { generateTestsFromEnvironment } from "./test-generator.js";
+import { generateTestsIteratively } from "./test-generator-iterative.js";
 import { emptyEnvironmentInfo, inferProhibitedTools, detectFileType } from "./environment-info.js";
 import type { EnvironmentInfo, FilePreview } from "./environment-info.js";
-import type { GeneratedTest } from "./test-generator.js";
 import type {
   TestGenStartMessage,
   TestGenTestMessage,
   TestGenCompleteMessage,
   TestGenErrorMessage,
+  TestGenProgressMessage,
+  TestGenReflectionMessage,
 } from "../hud/protocol.js";
+import type { IterativeTestGenEmitter } from "./test-generator-iterative.js";
 
 // ============================================================================
 // Types
@@ -32,6 +34,12 @@ export interface TestGenEmitter {
 
   /** Called for each test generated (streamed one at a time) */
   onTest: (msg: TestGenTestMessage) => void;
+
+  /** Called for progress updates */
+  onProgress: (msg: TestGenProgressMessage) => void;
+
+  /** Called for reflection/gap analysis */
+  onReflection: (msg: TestGenReflectionMessage) => void;
 
   /** Called when test generation completes successfully */
   onComplete: (msg: TestGenCompleteMessage) => void;
@@ -71,7 +79,6 @@ export async function runTestGenWithStreaming(
   emitter: TestGenEmitter,
   options: TestGenOptions,
 ): Promise<void> {
-  const startTime = Date.now();
 
   try {
     // Load TB suite
@@ -121,60 +128,26 @@ export async function runTestGenWithStreaming(
       },
     });
 
-    // Generate tests
-    const result = await generateTestsFromEnvironment(
+    // Generate tests iteratively (streams tests as they're generated)
+    const iterativeEmitter: IterativeTestGenEmitter = {
+      onStart: (msg) => emitter.onStart({ ...msg, sessionId }),
+      onTest: (msg) => emitter.onTest({ ...msg, sessionId }),
+      onProgress: (msg) => emitter.onProgress({ ...msg, sessionId }),
+      onReflection: (msg) => emitter.onReflection({ ...msg, sessionId }),
+      onComplete: (msg) => emitter.onComplete({ ...msg, sessionId }),
+      onError: (msg) => emitter.onError({ ...msg, sessionId }),
+    };
+
+    await generateTestsIteratively(
       task.description,
       task.id,
       env,
+      iterativeEmitter,
       {
         model: options.model,
         verbose: false,
       }
     );
-
-    // Emit tests one at a time (by category) with streaming delay
-    const emitTestsForCategory = async (tests: GeneratedTest[], category: string) => {
-      for (const test of tests) {
-        emitter.onTest({
-          type: "testgen_test",
-          sessionId,
-          test: {
-            id: test.id,
-            category,
-            input: test.input,
-            expectedOutput: test.expectedOutput ?? null,
-            reasoning: test.reasoning,
-            confidence: test.confidence,
-          },
-        });
-        // Add small delay between tests for streaming effect (50ms per test)
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    };
-
-    await emitTestsForCategory(result.antiCheatTests, "anti_cheat");
-    await emitTestsForCategory(result.existenceTests, "existence");
-    await emitTestsForCategory(result.correctnessTests, "correctness");
-    await emitTestsForCategory(result.boundaryTests, "boundary");
-    await emitTestsForCategory(result.integrationTests, "integration");
-
-    // Calculate total tests
-    const totalTests =
-      result.antiCheatTests.length +
-      result.existenceTests.length +
-      result.correctnessTests.length +
-      result.boundaryTests.length +
-      result.integrationTests.length;
-
-    // Emit complete message
-    const durationMs = Date.now() - startTime;
-    emitter.onComplete({
-      type: "testgen_complete",
-      sessionId,
-      totalTests,
-      durationMs,
-      uncertainties: result.uncertainties,
-    });
   } catch (error) {
     // Emit error message
     emitter.onError({
