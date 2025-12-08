@@ -7,7 +7,7 @@
 import { Effect, Stream } from "effect"
 import { html, joinTemplates } from "../../template/html.js"
 import type { Widget } from "../../widget/types.js"
-import type { TBTask, TBDifficulty, TBTaskStatus } from "./types.js"
+import type { TBTask, TBDifficulty } from "./types.js"
 import { DIFFICULTY_COLORS } from "./types.js"
 import { SocketServiceTag } from "../../services/socket.js"
 
@@ -319,12 +319,26 @@ export const TBCCTaskBrowserWidget: Widget<TBCCTaskBrowserState, TBCCTaskBrowser
           yield* socket.startTBRun({
             suitePath: "tasks/terminal-bench-2.json",
             taskIds: [event.taskId],
-          })
+          }).pipe(
+            Effect.catchAll((error) =>
+              ctx.state.update((s) => ({
+                ...s,
+                error: `Failed to start run: ${error instanceof Error ? error.message : String(error)}`,
+              }))
+            )
+          )
           // Note: The shell will handle the runStarted event via subscription
           break
         }
       }
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        ctx.state.update((s) => ({
+          ...s,
+          error: `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+        }))
+      )
+    ),
 
   subscriptions: (ctx) => {
     // Initial load

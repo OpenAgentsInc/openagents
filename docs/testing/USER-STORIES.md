@@ -458,6 +458,51 @@ Multi-agent parallel task execution with git worktrees.
 
 ---
 
+## 9. TerminalBench Command Center (TBCC)
+
+The TBCC is a unified interface for managing and visualizing TerminalBench runs.
+
+### 9.1 Dashboard
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| TBCC-001 | P0 | As a user, I can see the TBCC dashboard | Dashboard displays KPIs and recent runs |
+| TBCC-002 | P1 | As a user, I can see key performance indicators | Pass rate, total runs, and average duration displayed |
+| TBCC-003 | P1 | As a user, I can see a list of recent runs | Table shows run ID, status, task, and duration |
+| TBCC-004 | P1 | As a user, I can quickly start a benchmark run | "Run Full Benchmark" button initiates a run |
+| TBCC-005 | P2 | As a user, I can navigate to a run from the dashboard | Clicking a recent run switches to Run Browser and selects it |
+
+### 9.2 Task Browser
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| TBCC-010 | P0 | As a user, I can browse available tasks | List of tasks from suite file displayed |
+| TBCC-011 | P1 | As a user, I can filter tasks by difficulty | Filter buttons (Easy, Medium, Hard) update the list |
+| TBCC-012 | P1 | As a user, I can search tasks by name | Search input filters the task list in real-time |
+| TBCC-013 | P0 | As a user, I can view task details | Selecting a task shows description, timeout, and tags |
+| TBCC-014 | P0 | As a user, I can run a specific task | "Run Task" button in details view initiates execution |
+
+### 9.3 Run Browser
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| TBCC-020 | P0 | As a user, I can view local run history | List of local runs displayed with status indicators |
+| TBCC-021 | P1 | As a user, I can view HuggingFace trajectories | Toggle/Tab to switch to HF dataset view |
+| TBCC-022 | P0 | As a user, I can view run details | Selecting a run shows step-by-step execution details |
+| TBCC-023 | P1 | As a user, I can see terminal output for a run | Terminal output tab/section in details view |
+| TBCC-024 | P2 | As a user, I can filter runs by status | Filter by passed/failed/running |
+
+### 9.4 Settings
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| TBCC-030 | P1 | As a user, I can configure execution settings | Max attempts, timeout, and recursion limit settings |
+| TBCC-031 | P1 | As a user, I can configure logging settings | Toggle save trajectories, terminal output, traces |
+| TBCC-032 | P0 | As a user, settings are persisted | Settings saved to local storage and restored on load |
+| TBCC-033 | P2 | As a user, I can reset settings to default | "Reset Defaults" button restores original values |
+
+---
+
 ## Testing Coverage Summary
 
 ### By Priority
