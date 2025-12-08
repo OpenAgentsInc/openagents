@@ -121,6 +121,8 @@ export interface TBRunOptions {
   sandbox?: boolean;
   sandboxBackend?: "docker" | "macos-container";
   sandboxImage?: string;
+  /** Model to use: "fm" (Foundation Model), "claude-code", or ollama:<model> */
+  model?: "fm" | "claude-code" | string;
 }
 
 export async function startTBRun(options: TBRunOptions): Promise<{ runId: string }> {
@@ -166,6 +168,11 @@ export async function startTBRun(options: TBRunOptions): Promise<{ runId: string
     if (options.sandboxImage) {
       args.push("--sandbox-image", options.sandboxImage);
     }
+  }
+
+  // Add model option (default: claude-code, can be "fm" for Foundation Model)
+  if (options.model) {
+    args.push("--model", options.model);
   }
 
   console.log(`[TB] Starting run ${runId}:`, args.join(" "));

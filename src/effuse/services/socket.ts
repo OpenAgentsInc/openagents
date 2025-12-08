@@ -42,6 +42,10 @@ export interface StartTBRunOptions {
   subset?: string
   runAll?: boolean
   random?: boolean
+  /** Model to use: "fm" (Foundation Model), "claude-code", or ollama:<model> */
+  model?: "fm" | "claude-code" | string
+  /** Enable sandbox mode */
+  sandbox?: boolean
 }
 
 /**

@@ -18,6 +18,8 @@ import {
   TBCCTaskBrowserWidget,
   TBCCRunBrowserWidget,
   TBCCSettingsWidget,
+  // Streaming output widget (fixed overlay)
+  TBOutputWidget,
 } from "../effuse/index.js"
 
 console.log("[Effuse] Loading mainview...")
