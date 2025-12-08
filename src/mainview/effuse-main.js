@@ -29266,7 +29266,35 @@ ${endStackCall}`;
           if (window.bunLog) {
             window.bunLog(`[TBCCShell] Changing tab to: ${event.tab}`);
           }
-          yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }));
+          const TABS2 = ["dashboard", "tasks", "runs", "testgen", "settings"];
+          for (const tabId of TABS2) {
+            const container = yield* ctx.dom.queryOption(`#tbcc-tab-${tabId}`);
+            if (container) {
+              if (tabId === event.tab) {
+                container.classList.remove("hidden");
+                if (window.bunLog) {
+                  window.bunLog(`[TBCCShell] Showing tab: ${tabId}, container.innerHTML.length=${container.innerHTML.length}`);
+                }
+              } else {
+                container.classList.add("hidden");
+              }
+            } else {
+              if (window.bunLog) {
+                window.bunLog(`[TBCCShell] WARNING: Tab container #tbcc-tab-${tabId} not found!`);
+              }
+            }
+          }
+          const allButtons = ctx.container.querySelectorAll(`[data-action='changeTab']`);
+          for (const btn of Array.from(allButtons)) {
+            const btnTab = btn.dataset.tab;
+            if (btnTab === event.tab) {
+              btn.classList.remove("text-zinc-400", "hover:text-zinc-200", "hover:bg-zinc-900/40", "border-transparent");
+              btn.classList.add("bg-zinc-800/60", "text-zinc-100", "border-emerald-500");
+            } else {
+              btn.classList.remove("bg-zinc-800/60", "text-zinc-100", "border-emerald-500");
+              btn.classList.add("text-zinc-400", "hover:text-zinc-200", "hover:bg-zinc-900/40", "border-transparent");
+            }
+          }
           break;
         }
         case "toggleSidebar": {

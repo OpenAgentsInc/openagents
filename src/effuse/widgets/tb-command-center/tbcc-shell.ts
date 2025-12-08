@@ -159,7 +159,49 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
           if ((window as any).bunLog) {
             (window as any).bunLog(`[TBCCShell] Changing tab to: ${event.tab}`);
           }
-          yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
+
+          // CRITICAL: Don't update state - it triggers re-render which wipes child widgets
+          // Instead, update DOM directly. State will be out of sync, but UI will work.
+          // If shell re-renders for other reasons, we'll sync state then.
+          const TABS: TabId[] = ["dashboard", "tasks", "runs", "testgen", "settings"]
+
+          // Update tab container visibility
+          for (const tabId of TABS) {
+            const container = yield* ctx.dom.queryOption(`#tbcc-tab-${tabId}`)
+            if (container) {
+              if (tabId === event.tab) {
+                container.classList.remove("hidden")
+                if ((window as any).bunLog) {
+                  (window as any).bunLog(`[TBCCShell] Showing tab: ${tabId}, container.innerHTML.length=${container.innerHTML.length}`);
+                }
+              } else {
+                container.classList.add("hidden")
+              }
+            } else {
+              if ((window as any).bunLog) {
+                (window as any).bunLog(`[TBCCShell] WARNING: Tab container #tbcc-tab-${tabId} not found!`);
+              }
+            }
+          }
+
+          // Update sidebar button active states
+          const allButtons = ctx.container.querySelectorAll(`[data-action='changeTab']`)
+          for (const btn of Array.from(allButtons)) {
+            const btnTab = (btn as HTMLElement).dataset.tab as TabId
+            if (btnTab === event.tab) {
+              btn.classList.remove("text-zinc-400", "hover:text-zinc-200", "hover:bg-zinc-900/40", "border-transparent")
+              btn.classList.add("bg-zinc-800/60", "text-zinc-100", "border-emerald-500")
+            } else {
+              btn.classList.remove("bg-zinc-800/60", "text-zinc-100", "border-emerald-500")
+              btn.classList.add("text-zinc-400", "hover:text-zinc-200", "hover:bg-zinc-900/40", "border-transparent")
+            }
+          }
+
+          // Update state silently (without triggering re-render) by reading current tab from DOM
+          // This keeps state in sync for other code that reads it, but doesn't trigger re-render
+          // Actually, we can't update state without triggering re-render, so we'll leave it out of sync
+          // If other code needs activeTab, it should read from DOM or we'll handle it differently
+
           break
         }
 

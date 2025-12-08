@@ -358,3 +358,4 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 2. **Not using `Effect.runFork` in event handlers** - DOM callbacks are sync, emit returns Effect
 3. **Mutating state directly** - Always use `state.update(s => ({ ...s, newValue }))`
 4. **Missing socket service** - If widget has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
+5. **Re-rendering parent wipes child widgets** - If parent renders containers for child widgets, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-widget-relationships) for details.
