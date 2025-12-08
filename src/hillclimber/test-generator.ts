@@ -309,6 +309,7 @@ export const generateTestsWithClaude = (
 
 /**
  * Generate tests using local Foundation Model (Apple FM).
+ * Uses guided generation for guaranteed valid output structure.
  */
 export const generateTestsWithLocalFM = (
   taskDescription: string,
@@ -327,14 +328,21 @@ export const generateTestsWithLocalFM = (
     if (options.verbose) {
       log(`[TestGen] Generating tests with local FM for task: ${taskId}`);
       log(`[TestGen] Prompt length: ${prompt.length} chars`);
+      log(`[TestGen] Using guided generation with test_generation schema`);
     }
 
+    // Use guided generation with the pre-defined test_generation schema
+    // This constrains the model to output valid TestGenerationResult structure
     const response = yield* fm.chat({
       messages: [
         { role: "user", content: prompt },
       ],
       temperature: options.temperature ?? 0.3,
       maxTokens: 4096,
+      responseFormat: {
+        type: "json_schema",
+        schema_type: "test_generation",
+      },
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -364,7 +372,7 @@ export const generateTestsWithLocalFM = (
       requirements: parsed.requirements,
       assumptions: parsed.assumptions,
       uncertainties: parsed.uncertainties,
-      model: "local-fm",
+      model: "local-fm-guided",
       durationMs: Date.now() - startTime,
     };
   }).pipe(

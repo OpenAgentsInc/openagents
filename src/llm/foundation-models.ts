@@ -484,6 +484,7 @@ export const createFMClient = (config: Partial<FMConfig> = {}): FMClient => {
         stream: false,
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
         ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+        ...(request.responseFormat !== undefined ? { response_format: request.responseFormat } : {}),
       };
 
       const controller = new AbortController();

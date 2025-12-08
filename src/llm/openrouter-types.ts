@@ -13,6 +13,23 @@ export interface ChatMessage {
   name?: string;
 }
 
+/**
+ * Response format for structured output.
+ * Supports both OpenAI-style json_schema and FM-specific schema_type.
+ */
+export interface ResponseFormat {
+  /** Format type: "text", "json_object", or "json_schema" */
+  type: "text" | "json_object" | "json_schema";
+  /** Pre-defined schema type for FM guided generation (e.g., "test_generation") */
+  schema_type?: string;
+  /** Custom JSON schema specification */
+  json_schema?: {
+    name?: string;
+    description?: string;
+    schema?: Record<string, unknown>;
+  };
+}
+
 export interface ChatRequest {
   model?: string;
   messages: ChatMessage[];
@@ -20,6 +37,8 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   toolChoice?: "auto" | "required" | { type: "function"; function: { name: string } };
+  /** Response format for structured output / guided generation */
+  responseFormat?: ResponseFormat;
   baseUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
