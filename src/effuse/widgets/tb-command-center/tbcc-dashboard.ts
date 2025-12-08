@@ -313,16 +313,16 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
       if (typeof window !== "undefined" && (window as any).bunLog) {
         (window as any).bunLog("[TBCCDashboard] Setting up event handlers")
       }
-      
+
       // Quick action buttons
       yield* ctx.dom.delegate(ctx.container, "button[data-action]", "click", (e, target) => {
         const button = target as HTMLButtonElement
         const action = button.dataset.action
-        
+
         if (typeof window !== "undefined" && (window as any).bunLog) {
           (window as any).bunLog(`[TBCCDashboard] Click detected on button with action="${action}", disabled=${button.disabled}`)
         }
-        
+
         // Ignore clicks on disabled buttons
         if (button.disabled) {
           if (typeof window !== "undefined" && (window as any).bunLog) {
@@ -330,7 +330,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
           }
           return
         }
-        
+
         const runId = button.dataset.runId
 
         if (typeof window !== "undefined" && (window as any).bunLog) {
@@ -400,18 +400,18 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
           if (typeof window !== "undefined" && (window as any).bunLog) {
             (window as any).bunLog(`[TBCCDashboard] handleEvent: runFullBenchmark received`)
           }
-          
+
           // Read model preference from settings
           const settings = getSettings()
           if (typeof window !== "undefined" && (window as any).bunLog) {
             (window as any).bunLog(`[TBCCDashboard] Settings:`, JSON.stringify(settings))
           }
-          
+
           const runOptions = {
             suitePath: DEFAULT_SUITE_PATH,
             model: settings.model,
           }
-          
+
           if (typeof window !== "undefined" && (window as any).bunLog) {
             (window as any).bunLog(`[TBCCDashboard] Starting run with options:`, JSON.stringify(runOptions))
           }
