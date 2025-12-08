@@ -94,3 +94,6 @@ openagents
 
 openagents.d
 .hillclimber-workspaces/
+
+# Test generation benchmark outputs (local only)
+logs/test-gen-*.json
