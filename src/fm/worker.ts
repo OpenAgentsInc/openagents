@@ -21,8 +21,9 @@ Available tools:
 - read_file: {"name":"read_file","arguments":{"path":"file.txt"}}
 - run_command: {"name":"run_command","arguments":{"command":"ls -la"}}
 - edit_file: {"name":"edit_file","arguments":{"path":"file.txt","old_text":"old","new_text":"new"}}
+- task_complete: {"name":"task_complete","arguments":{}} - Call this when the task is finished
 
-IMPORTANT: Output ONLY the tool call, nothing else.`;
+IMPORTANT: Output ONLY the tool call, nothing else. Call task_complete when done.`;
 
 export interface WorkerPromptInput extends WorkerInput {
   taskDescription?: string | undefined;
