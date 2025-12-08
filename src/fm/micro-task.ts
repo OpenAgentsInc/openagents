@@ -14,10 +14,15 @@ import type { Skill } from "../skills/schema.js";
 
 /**
  * FM context budget (chars). Keep VERY conservative to leave room for response.
- * Based on empirical testing, FM's actual safe limit is ~800-900 chars total.
- * We use 700 to be safe and leave room for response generation.
+ * 
+ * Based on empirical testing:
+ * - Even 555 chars of content fails with "Exceeded model context window size"
+ * - JSON serialization adds ~50-100 chars overhead (roles, structure)
+ * - Need to leave room for response generation
+ * 
+ * Using 400 chars as the absolute maximum content size to be safe.
  */
-export const FM_CONTEXT_BUDGET = 700; // Conservative limit to avoid context errors
+export const FM_CONTEXT_BUDGET = 400; // Very conservative - actual limit appears to be ~500-600 total
 
 /**
  * Maximum chars for skills section.
@@ -168,10 +173,13 @@ Done: TASK_COMPLETE`;
  */
 export function getUserMessageBudget(systemPrompt: string): number {
   const used = systemPrompt.length;
-  // Reserve 80 chars for message overhead (roles, formatting, etc.)
-  // Be conservative to avoid hitting the limit
-  const remaining = FM_CONTEXT_BUDGET - used - 80;
-  return Math.max(50, remaining); // At least 50 chars for task (very minimal)
+  // Reserve 120 chars for:
+  // - JSON structure overhead (~50 chars: {"role":"system","content":"..."} + outer structure)
+  // - Message formatting (~20 chars)
+  // - Response generation buffer (~50 chars)
+  // Be VERY conservative to avoid hitting the limit
+  const remaining = FM_CONTEXT_BUDGET - used - 120;
+  return Math.max(30, remaining); // At least 30 chars for task (extremely minimal)
 }
 
 /**
