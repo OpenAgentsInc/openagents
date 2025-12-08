@@ -877,4 +877,82 @@ describe("TB Command Center E2E", () => {
       )
     )
   })
+
+  // =========================================================================
+  // Phase 4: Complete Core Coverage
+  // =========================================================================
+
+  it("TBCC-033: Reset settings to defaults", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, window } = yield* makeHappyDomLayer()
+
+          // Mock localStorage
+          const storage: Record<string, string> = {}
+          const mockLocalStorage = {
+            getItem: (key: string) => storage[key] || null,
+            setItem: (key: string, value: string) => { storage[key] = value },
+            removeItem: (key: string) => { delete storage[key] },
+            clear: () => { Object.keys(storage).forEach(k => delete storage[k]) },
+            length: 0,
+            key: () => null,
+          }
+
+          // Override both window.localStorage and global localStorage
+          Object.defineProperty(window, 'localStorage', {
+            value: mockLocalStorage,
+            writable: true,
+            configurable: true,
+          })
+
+          Object.defineProperty(globalThis, 'localStorage', {
+            value: mockLocalStorage,
+            writable: true,
+            configurable: true,
+          })
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const settingsHandle = yield* harness.mount(TBCCSettingsWidget, {
+              containerId: "tbcc-tab-settings",
+            })
+
+            // Change multiple settings
+            yield* settingsHandle.emit({ type: "updateExecution", key: "maxAttempts", value: 10 })
+            yield* settingsHandle.emit({ type: "updateExecution", key: "timeoutSeconds", value: 600 })
+            yield* settingsHandle.emit({ type: "updateLogging", key: "saveTrajectories", value: false })
+
+            // Wait for state updates
+            yield* settingsHandle.waitForState((s) => s.execution.maxAttempts === 10)
+            yield* settingsHandle.waitForState((s) => s.execution.timeoutSeconds === 600)
+            yield* settingsHandle.waitForState((s) => s.logging.saveTrajectories === false)
+
+            // Verify settings changed
+            let state = yield* settingsHandle.getState
+            expect(state.execution.maxAttempts).toBe(10)
+            expect(state.execution.timeoutSeconds).toBe(600)
+            expect(state.logging.saveTrajectories).toBe(false)
+
+            // Reset settings
+            yield* settingsHandle.emit({ type: "reset" })
+
+            // Wait for reset
+            yield* Effect.sleep("50 millis")
+
+            // Verify all settings returned to defaults
+            state = yield* settingsHandle.getState
+            expect(state.execution.maxAttempts).toBe(5) // Default
+            expect(state.execution.timeoutSeconds).toBe(300) // Default
+            expect(state.logging.saveTrajectories).toBe(true) // Default
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
 })

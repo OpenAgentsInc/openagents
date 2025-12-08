@@ -30188,7 +30188,6 @@ ${endStackCall}`;
       switch (event.type) {
         case "loadRuns": {
           yield* ctx.state.update((s) => ({ ...s, loading: true, error: null }));
-          const state = yield* ctx.state.get;
           try {
             const localRunsRaw = yield* socket.loadRecentTBRuns(20);
             const localRuns = localRunsRaw.map((r) => ({
@@ -30292,24 +30291,28 @@ ${endStackCall}`;
                   agentName: t.agent?.name,
                   modelName: t.agent?.model_name,
                   episode: extra?.episode,
-                  steps: t.steps.map((s, i) => ({
-                    id: s.step_id.toString(),
-                    index: i + 1,
+                  steps: (t.steps || []).map((s, idx) => ({
+                    id: `step-${idx}`,
+                    index: idx,
                     actionType: "CUSTOM",
-                    actionLabel: s.tool_calls?.[0]?.function_name ?? "Thought",
-                    shortReason: s.reasoning_content ?? (typeof s.message === "string" ? s.message : "") ?? "",
+                    actionLabel: s.action || "Unknown",
+                    shortReason: s.observation?.slice(0, 100) || "",
                     details: null,
-                    timestamp: s.timestamp,
-                    success: !s.error,
+                    timestamp: new Date().toISOString(),
+                    success: true,
                     durationMs: null,
-                    toolCall: s.tool_calls?.[0] ? {
-                      functionName: s.tool_calls[0].function_name,
-                      arguments: s.tool_calls[0].arguments
-                    } : undefined,
-                    observation: s.observation ? {
-                      content: s.observation.results[0]?.content,
-                      truncated: false
-                    } : undefined
+                    ...s.tool_call ? {
+                      toolCall: {
+                        functionName: s.tool_call.function || "unknown",
+                        arguments: s.tool_call.arguments || {}
+                      }
+                    } : {},
+                    ...s.observation ? {
+                      observation: {
+                        content: s.observation,
+                        truncated: false
+                      }
+                    } : {}
                   })),
                   terminalOutput: { stdout: [], stderr: [] }
                 };
@@ -30334,7 +30337,12 @@ ${endStackCall}`;
           break;
         }
       }
-    }),
+    }).pipe(exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+      ...s,
+      loading: false,
+      loadingDetail: false,
+      error: error instanceof Error ? error.message : String(error)
+    })))),
     subscriptions: (ctx) => {
       return [exports_Stream.make(ctx.emit({ type: "loadRuns", page: 0 }))];
     }
