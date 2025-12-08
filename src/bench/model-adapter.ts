@@ -568,7 +568,7 @@ const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
 /**
  * Normalize /app/ paths in shell commands to relative paths.
  * Only used for FM runner - other models may have real /app paths.
- * 
+ *
  * Exported for testing.
  */
 export function normalizeCommand(command: string): string {
@@ -773,7 +773,7 @@ const buildFMSystemPrompt = (options?: {
  * - {"response":"Using write_file tool with arguments: path=X, content=Y"}
  *
  * Exported for testing.
- * 
+ *
  * TODO: Improve robustness for malformed JSON.
  * Occasionally FM produces malformed JSON like:
  *   <tool_call>{"name":"write_file", ... "content":"""\n...
