@@ -111,18 +111,25 @@ Import and use in orchestrator:
 import { buildHint, type SuiteMode } from "./hints.js";
 
 // In the execution loop, when building worker input:
+// IMPORTANT: Pass tool names only (not raw outputs) as previousActions
 const hint = buildHint(
   task.description,
-  history.map(h => h.tool),
+  history.map(h => h.tool), // ["read_file", "write_file", ...] - just tool names
   options.suiteMode ?? "unknown"
 );
 ```
+
+**Note:** The `previousActions` parameter expects an array of tool names (strings), not full outputs. Use `history.map(h => h.tool)` where `history` is your `StepSummary[]` array.
 
 ### 1.3 Update `src/bench/model-adapter.ts`
 
 Pass suite mode when calling FM:
 ```typescript
 import { getSuiteMode } from "../fm/hints.js";
+
+// The suitePath comes from TB CLI options (the --suite flag value).
+// In tbench-local.ts, this is already available as the suite path argument.
+// Plumb it through to model-adapter if not already present in options.
 
 // In runMicroTaskPlan or wherever FM is invoked:
 const suiteMode = getSuiteMode(options.suitePath);
@@ -132,6 +139,8 @@ await orchestrator.run(task, {
   suiteMode,
 });
 ```
+
+**Important:** The `suitePath` is the same value passed to `--suite` in the TB CLI (e.g., `tasks/terminal-bench-2.json`). If it's not already in the options passed to the FM runner, you'll need to thread it through from `tbench-local.ts`.
 
 ### 1.4 Tests
 
@@ -316,12 +325,14 @@ import {
 const history: StepSummary[] = [];
 
 // After each tool execution:
+// IMPORTANT: Pass toolCall.arguments (the parsed args from FM's response)
+// to summarizeToolResult so it can generate tool-aware summaries.
 const summary = summarizeToolResult(
   currentStep,
-  result.tool,
+  toolCall.name,           // The tool name from parsed tool call
   result.success,
   result.output,
-  result.args // Pass args for tool-aware summaries
+  toolCall.arguments       // The args FM provided (path, command, content, etc.)
 );
 history.push(summary);
 
@@ -329,6 +340,8 @@ history.push(summary);
 const previous = buildPreviousField(history);
 // Use `previous` in the WorkerPromptInput
 ```
+
+**Important:** The `args` parameter is critical for tool-aware summaries. Without it, you get generic truncated output instead of `"Wrote 123 bytes to foo.txt"`. The args come from the parsed tool call (`toolCall.arguments`), not from the execution result.
 
 ### 2.3 Update `src/fm/worker.ts`
 
@@ -487,18 +500,20 @@ if (toolCall.name === "task_complete" || repeatedSameAction >= 3) {
 Wire verification from TB runner:
 
 ```typescript
-// Import verification utilities
-import { runVerificationScript } from "./verification.js"; // or wherever this lives
+// Use the EXISTING TB verification mechanism - the same script TB runs at the
+// end of a task. Don't create a new verification.js; reuse what's already there.
+// Look in tbench-local.ts for how verification is currently run.
 
 // In the function that runs FM for a task:
 async function runFMTask(task: TBTask, workspace: string, options: RunOptions) {
   const suiteMode = getSuiteMode(options.suitePath);
   
-  // Create verification callback
+  // Create verification callback that wraps existing TB verification
   const verifyTask = async (): Promise<boolean> => {
     if (!task.verify) return true; // No verification script = pass
     
     try {
+      // Reuse existing verification runner from TB harness
       const result = await runVerificationScript(task.verify, workspace);
       return result.exitCode === 0;
     } catch {
@@ -514,6 +529,11 @@ async function runFMTask(task: TBTask, workspace: string, options: RunOptions) {
   });
 }
 ```
+
+**Important notes:**
+1. **Reuse existing verification:** Don't create a new verification system. The TB harness already runs verification scripts at task end - just wrap that in a `verifyTask` callback.
+2. **Only on "done" signals:** Verification is only called when FM uses `task_complete` OR when `repeatedSameAction >= 3`. NOT on every turn (that would be slow and noisy).
+3. **Reset repeat counter:** After failed verification, reset `repeatedSameAction = 0` so FM gets fresh chances.
 
 ### 3.3 Tests
 
@@ -578,13 +598,16 @@ Available tools:
 ...`;
 ```
 
-### 4.2 Add Command Normalization in Tool Executor
+### 4.2 Add Command Normalization in FM Tool Executor
 
-In the file that executes `run_command` (likely `src/fm/tools.ts` or similar):
+**Scope:** Apply `normalizeCommand()` ONLY in the FM runner's `run_command` executor, NOT globally for all models. Ollama/Claude Code may run in Docker where `/app` is real.
+
+In the FM runner's tool execution (likely in `src/bench/model-adapter.ts` where FM tools are executed, near `Working directory: ${workspace}` log):
 
 ```typescript
 /**
  * Normalize /app/ paths in shell commands to relative paths.
+ * Only used for FM runner - other models may have real /app paths.
  */
 function normalizeCommand(command: string): string {
   let cmd = command;
@@ -601,12 +624,14 @@ function normalizeCommand(command: string): string {
   return cmd;
 }
 
-// In run_command executor:
+// In FM runner's run_command executor (NOT in Ollama/Claude Code paths):
 async function executeRunCommand(args: { command: string }, workspace: string) {
   const normalizedCommand = normalizeCommand(args.command);
   // ... execute normalizedCommand in workspace
 }
 ```
+
+**Important:** Keep this normalization specific to the FM runner. The Ollama/Claude Code paths may be used in Docker environments where `/app` is a real path.
 
 ### 4.3 Tests
 
@@ -678,25 +703,40 @@ IMPORTANT: The ONLY tools you may call are:
 - edit_file
 - task_complete
 
-Any other name in the tool call will fail. Skills/approaches listed above are for inspiration only.
+If you put any other name in the "name" field, it will fail. Skills/approaches listed above are for inspiration only - they are NOT callable tools.
 
 ...`;
 ```
 
+**Safety net:** This explicit warning stops FM from trying to call skill names like `"Setup Bun Project"` as tools. The key phrase is "If you put any other name... it will fail."
+
 ### 5.3 Suite-Aware Skills Toggle
 
-In `src/bench/model-adapter.ts`:
+In the FM runner (where `getRelevantSkills()` is called):
 
 ```typescript
 // For TB2, disable skills initially until we stabilize other fixes
 const useSkills = suiteMode === "fm-mini"; // TB2 gets false
 
+// IMPORTANT: Only call getRelevantSkills when useSkills is true
+// This prevents skill retrieval overhead and avoids injecting potentially
+// confusing skill text into TB2 prompts
+let skills: Skill[] | undefined = undefined;
+if (useSkills) {
+  skills = await getRelevantSkills(task.description);
+}
+
 await orchestrator.run(task, {
   ...options,
   suiteMode,
-  useSkills, // Pass through to worker
+  skills, // undefined for TB2, populated for fm-mini
 });
 ```
+
+**Important:** The key is to skip the `getRelevantSkills()` call entirely for TB2, not just pass `useSkills: false` and filter later. This:
+1. Avoids embedding lookup overhead
+2. Ensures no skill text appears in the prompt
+3. Gives you a clean baseline to measure FM without skills
 
 ---
 
@@ -733,6 +773,7 @@ Check logs for:
 - [ ] Previous field is <300 chars
 - [ ] FM gets "verification failed" feedback when task_complete is premature
 - [ ] No `/app/` path errors in run_command
+- [ ] No `Exceeded model context window size` errors (especially on dna-assembly, sqlite-with-gcov)
 
 ---
 
@@ -749,10 +790,10 @@ Check logs for:
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `src/fm/worker.ts` | System prompt updates, skills formatting, use buildHint() |
-| `src/fm/orchestrator.ts` | StepSummary integration, verification-gated completion, suiteMode |
-| `src/bench/model-adapter.ts` | Wire suiteMode, verifyTask, useSkills toggle |
-| Tool executor (varies) | normalizeCommand() for /app/ paths |
+| `src/fm/worker.ts` | System prompt updates (path rules, explicit tool list), skills formatting |
+| `src/fm/orchestrator.ts` | StepSummary integration, verification-gated completion, suiteMode, buildHint() |
+| `src/bench/model-adapter.ts` | Wire suiteMode, suitePath, verifyTask callback, skills toggle, normalizeCommand() |
+| `src/cli/tbench-local.ts` | Thread suitePath to FM runner options (if not already there) |
 
 ---
 
@@ -764,6 +805,26 @@ Check logs for:
 
 3. **Check existing code first**: Read the current `worker.ts` and `orchestrator.ts` to understand exact structure before editing.
 
-4. **StepSummary args**: Make sure the tool executor passes `args` to `summarizeToolResult` so tool-aware summaries work.
+4. **StepSummary args**: The `args` come from `toolCall.arguments` (the parsed tool call from FM), not from execution results. Pass them explicitly.
 
-5. **Verification script path**: The TB task schema has a `verify` field - check how it's currently used and wire `verifyTask` appropriately.
+5. **Verification script path**: The TB task schema has a `verify` field - look at `tbench-local.ts` for how verification is currently run and reuse that mechanism.
+
+6. **suitePath threading**: If `suitePath` isn't already in the options passed to the FM runner, you'll need to thread it through from `tbench-local.ts` where the `--suite` CLI arg is parsed.
+
+---
+
+## Future Work (Not in Scope)
+
+### TODO: parseToolCalls Robustness
+
+Occasionally FM produces malformed JSON like:
+```
+No tool call parsed, raw: <tool_call>{"name":"write_file", ... "content":"""\n...
+```
+
+That's FM mixing triple-quote style which breaks JSON parsing. A future improvement (separate issue) would be to make `parseToolCalls` more forgiving:
+- Find the first `{` after `<tool_call>`
+- Try to parse up to various closing `}` positions
+- Strip trailing junk until JSON parses
+
+**Not required for this batch** - just leave a TODO comment in `parseToolCalls` so you remember it's a known sharp edge.
