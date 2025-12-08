@@ -568,8 +568,10 @@ const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
 /**
  * Normalize /app/ paths in shell commands to relative paths.
  * Only used for FM runner - other models may have real /app paths.
+ * 
+ * Exported for testing.
  */
-function normalizeCommand(command: string): string {
+export function normalizeCommand(command: string): string {
   let cmd = command;
 
   // Replace /app/ with ./
@@ -771,6 +773,15 @@ const buildFMSystemPrompt = (options?: {
  * - {"response":"Using write_file tool with arguments: path=X, content=Y"}
  *
  * Exported for testing.
+ * 
+ * TODO: Improve robustness for malformed JSON.
+ * Occasionally FM produces malformed JSON like:
+ *   <tool_call>{"name":"write_file", ... "content":"""\n...
+ * That's FM mixing triple-quote style which breaks JSON parsing.
+ * Future improvement: make parseToolCalls more forgiving:
+ * - Find the first `{` after `<tool_call>`
+ * - Try to parse up to various closing `}` positions
+ * - Strip trailing junk until JSON parses
  */
 export const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
