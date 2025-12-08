@@ -34,17 +34,26 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     ? `Original Task: ${input.taskDescription}\n\nCurrent Step: ${input.action}`
     : `Task: ${input.action}`;
   
-  // Add workflow hints based on previous actions
+  // Add workflow hints based on previous actions and task type
   let hint = "";
+  
+  // Check if task requires reading first (counting, analyzing, etc.)
+  const taskLower = (input.taskDescription ?? "").toLowerCase();
+  const needsReadFirst = taskLower.includes("count") || 
+                         taskLower.includes("number of") ||
+                         taskLower.includes("read") && taskLower.includes("write");
+  
   if (input.previous && input.previous !== "none") {
     if (input.previous.includes(" contains:")) {
-      // Just read a file - hint to use the content
-      hint = "\nHint: You just read file content. Now write it to the target file or use it.";
+      // Just read a file - hint to use the content with exact preservation
+      hint = "\nHint: You just read file content. Write it EXACTLY to the target file, preserving all newlines (use \\n).";
     } else if (input.previous.includes("Command output:")) {
       // Just ran a command - hint to save the output
       hint = "\nHint: You have command output. Save it to a file if needed.";
     }
-    // Note: Removed "call task_complete" hint after write/edit - it caused early exit on multi-step tasks
+  } else if (needsReadFirst) {
+    // First turn and task needs reading - hint to read first
+    hint = "\nHint: This task requires reading a file first. Use read_file before writing.";
   }
   
   return `${WORKER_SYSTEM}
