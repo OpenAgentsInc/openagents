@@ -14,7 +14,7 @@
 import { Effect } from "effect"
 import { BunContext } from "@effect/platform-bun"
 import {
-  loadTerminalBenchSuite, TerminalBenchTask, type
+    loadTerminalBenchSuite, type TerminalBenchTask
 } from "../bench/terminal-bench.js"
 
 import type { GeneratedTest, TestCategory, TestGenerationResult } from "./test-generator.js";

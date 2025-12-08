@@ -15,14 +15,13 @@ import { Effect } from "effect"
 import { parseArgs } from "util"
 import { BunContext } from "@effect/platform-bun"
 import {
-  loadTerminalBenchSuite, TerminalBenchTask, type
+    loadTerminalBenchSuite, type TerminalBenchTask
 } from "../bench/terminal-bench.js"
 import {
-  evaluateTestGeneration, TestGenerationScore, type
+    evaluateTestGeneration, type TestGenerationScore
 } from "./test-gen-evaluator.js"
 import {
-  generateTestsFromDescription, TestGenerationResult, TestGeneratorOptions,
-  type
+    generateTestsFromDescription, type TestGenerationResult, type TestGeneratorOptions
 } from "./test-generator.js"
 
 // ============================================================================

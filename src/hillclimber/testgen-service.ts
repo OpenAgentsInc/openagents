@@ -132,8 +132,8 @@ export async function runTestGenWithStreaming(
       }
     );
 
-    // Emit tests one at a time (by category)
-    const emitTestsForCategory = (tests: GeneratedTest[], category: string) => {
+    // Emit tests one at a time (by category) with streaming delay
+    const emitTestsForCategory = async (tests: GeneratedTest[], category: string) => {
       for (const test of tests) {
         emitter.onTest({
           type: "testgen_test",
@@ -147,14 +147,16 @@ export async function runTestGenWithStreaming(
             confidence: test.confidence,
           },
         });
+        // Add small delay between tests for streaming effect (50ms per test)
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     };
 
-    emitTestsForCategory(result.antiCheatTests, "anti_cheat");
-    emitTestsForCategory(result.existenceTests, "existence");
-    emitTestsForCategory(result.correctnessTests, "correctness");
-    emitTestsForCategory(result.boundaryTests, "boundary");
-    emitTestsForCategory(result.integrationTests, "integration");
+    await emitTestsForCategory(result.antiCheatTests, "anti_cheat");
+    await emitTestsForCategory(result.existenceTests, "existence");
+    await emitTestsForCategory(result.correctnessTests, "correctness");
+    await emitTestsForCategory(result.boundaryTests, "boundary");
+    await emitTestsForCategory(result.integrationTests, "integration");
 
     // Calculate total tests
     const totalTests =

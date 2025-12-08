@@ -343,7 +343,9 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
       `;
 
       if ((window as any).bunLog) {
-        (window as any).bunLog(`[TBTestGen] render output length=${result.toString().length}, hasEmptyState=${emptyState !== ""}, hasControls=${controls !== ""}`);
+        const emptyStateStr = emptyState.toString();
+        const controlsStr = controls.toString();
+        (window as any).bunLog(`[TBTestGen] render output length=${result.toString().length}, hasEmptyState=${emptyStateStr !== ""}, hasControls=${controlsStr !== ""}`);
       }
 
       return result;
