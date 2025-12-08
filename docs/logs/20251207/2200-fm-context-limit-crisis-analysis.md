@@ -261,3 +261,4 @@ Most Terminal-Bench tasks require:
 ---
 
 **Status**: Critical - FM model runner is non-functional for Terminal-Bench tasks. Need to either fix the context limit issue or accept FM's limitations and redesign the approach.
+

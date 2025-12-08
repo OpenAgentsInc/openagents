@@ -80,7 +80,7 @@ export const MAX_CONTEXT_CHARS = 200;
 export const MAX_PREVIOUS_CHARS = 200;
 export const MAX_RESULT_SUMMARY_CHARS = 100;
 export const MAX_ERROR_SUMMARY_CHARS = 100;
-export const MAX_HISTORY_ENTRY_CHARS = 120; // Cap each history entry to prevent bloat
+export const MAX_HISTORY_ENTRY_CHARS = 500; // Match the command output preview limit
 
 // --- Helpers ---
 
