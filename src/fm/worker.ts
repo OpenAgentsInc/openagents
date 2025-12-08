@@ -34,11 +34,26 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     ? `Original Task: ${input.taskDescription}\n\nCurrent Step: ${input.action}`
     : `Task: ${input.action}`;
   
+  // Add workflow hints based on previous actions
+  let hint = "";
+  if (input.previous && input.previous !== "none") {
+    if (input.previous.includes(" contains:")) {
+      // Just read a file - hint to use the content
+      hint = "\nHint: You just read file content. Now write it to the target file or use it.";
+    } else if (input.previous.includes("Command output:")) {
+      // Just ran a command - hint to save the output
+      hint = "\nHint: You have command output. Save it to a file if needed.";
+    } else if (input.previous.includes("Created ") || input.previous.includes("Edited ")) {
+      // Just wrote/edited - might be done
+      hint = "\nHint: File operation succeeded. If task is complete, call task_complete.";
+    }
+  }
+  
   return `${WORKER_SYSTEM}
 
 ${taskSection}
 Context: ${input.context}
-${input.previous !== "none" ? `Previous: ${input.previous}` : ""}
+${input.previous !== "none" ? `Previous: ${input.previous}` : ""}${hint}
 
 Respond with a single tool call:`;
 }

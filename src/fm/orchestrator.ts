@@ -110,7 +110,7 @@ export async function executeTool(
           content = lines.slice(start - 1, end).join("\n");
         }
         // Include actual content in condensed so FM can use it (truncate if long)
-        const preview = content.length > 200 ? content.slice(0, 200) + "..." : content;
+        const preview = content.length > 500 ? content.slice(0, 500) + "..." : content;
         return {
           success: true,
           output: content,
@@ -327,9 +327,9 @@ export async function runMicroTaskPlan(
     turns++;
     log(`\n--- Turn ${turns} ---`);
 
-    // Build worker input with context from previous actions
+    // Build worker input with context from previous actions (keep last 5 for more context)
     const previous = state.history.length > 0
-      ? state.history.slice(-3).join("; ")
+      ? state.history.slice(-5).join("; ")
       : "none";
     
     const workerInputWithTask = {
