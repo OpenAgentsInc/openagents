@@ -122,6 +122,7 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
             <div id="tbcc-tab-dashboard" class="${state.activeTab === "dashboard" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-tasks" class="${state.activeTab === "tasks" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-runs" class="${state.activeTab === "runs" ? "" : "hidden"} h-full"></div>
+            <div id="tbcc-tab-testgen" class="${state.activeTab === "testgen" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-settings" class="${state.activeTab === "settings" ? "" : "hidden"} h-full"></div>
           </main>
         </div>

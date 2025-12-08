@@ -127,6 +127,16 @@ export interface GetHFTrajectoryRequest extends BaseRequest {
 }
 
 /**
+ * Start test generation for a TB task
+ */
+export interface StartTestGenRequest extends BaseRequest {
+  type: "request:startTestGen";
+  suitePath: string;
+  taskId?: string;
+  model?: "local" | "claude";
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -140,7 +150,8 @@ export type SocketRequest =
   | LoadUnifiedTrajectoriesRequest
   | GetHFTrajectoryCountRequest
   | GetHFTrajectoriesRequest
-  | GetHFTrajectoryRequest;
+  | GetHFTrajectoryRequest
+  | StartTestGenRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -293,6 +304,14 @@ export interface GetHFTrajectoryResponse extends BaseResponse {
 }
 
 /**
+ * Response to StartTestGenRequest
+ */
+export interface StartTestGenResponse extends BaseResponse {
+  type: "response:startTestGen";
+  data?: { sessionId: string };
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -306,7 +325,8 @@ export type SocketResponse =
   | LoadUnifiedTrajectoriesResponse
   | GetHFTrajectoryCountResponse
   | GetHFTrajectoriesResponse
-  | GetHFTrajectoryResponse;
+  | GetHFTrajectoryResponse
+  | StartTestGenResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -389,6 +409,9 @@ export const isGetHFTrajectoriesRequest = (msg: SocketRequest): msg is GetHFTraj
 
 export const isGetHFTrajectoryRequest = (msg: SocketRequest): msg is GetHFTrajectoryRequest =>
   msg.type === "request:getHFTrajectory";
+
+export const isStartTestGenRequest = (msg: SocketRequest): msg is StartTestGenRequest =>
+  msg.type === "request:startTestGen";
 
 // ============================================================================
 // Serialization Helpers

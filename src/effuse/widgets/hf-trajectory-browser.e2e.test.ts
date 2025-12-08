@@ -100,6 +100,7 @@ const createMockSocket = (otService: IOpenThoughtsService): SocketService => ({
     Effect.mapError((e: any) => new SocketError("request_failed", e.message)),
     Effect.provideService(FileSystem.FileSystem, {} as any)
   ),
+  startTestGen: () => Effect.fail(new SocketError("request_failed", "Mock")),
 })
 
 // ============================================================================

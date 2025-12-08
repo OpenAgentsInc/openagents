@@ -11,7 +11,7 @@ console.log("[Worker] ===== SERVER WORKER STARTING =====");
 import { createDesktopServer } from "./server.js";
 import { log } from "./logger.js";
 import { isTBRunComplete, type TBRunHistoryMessage, type DevReloadMessage } from "../hud/protocol.js";
-import { loadRecentTBRuns } from "./handlers.js";
+import { loadRecentTBRuns, setTestGenHudSender } from "./handlers.js";
 import { setATIFHudSender } from "../atif/hud-emitter.js";
 import { watch } from "node:fs";
 import { join, dirname } from "node:path";
@@ -55,6 +55,12 @@ setATIFHudSender((message) => {
   server.sendHudMessage(message);
 });
 log("Worker", "ATIF HUD emitter initialized");
+
+// Wire TestGen HUD emitter to desktop server WebSocket
+setTestGenHudSender((message) => {
+  server.sendHudMessage(message);
+});
+log("Worker", "TestGen HUD emitter initialized");
 
 const broadcastRunHistory = async (): Promise<void> => {
   const runs = await loadRecentTBRuns(20);

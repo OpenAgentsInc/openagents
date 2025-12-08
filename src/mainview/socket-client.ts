@@ -415,6 +415,21 @@ export class SocketClient {
     return (response as Extract<SocketResponse, { type: "response:getHFTrajectory" }>).data ?? null;
   }
 
+  /**
+   * Start test generation for a TB task
+   */
+  async startTestGen(
+    suitePath: string,
+    taskId?: string,
+    model?: "local" | "claude"
+  ): Promise<{ sessionId: string }> {
+    const response = await this.request("request:startTestGen", { suitePath, taskId, model });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to start test generation");
+    }
+    return (response as Extract<SocketResponse, { type: "response:startTestGen" }>).data!;
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================

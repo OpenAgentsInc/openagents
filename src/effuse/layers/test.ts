@@ -109,6 +109,8 @@ const makeMockSocketService = (
       Effect.fail(new SocketError("request_failed", "Mock: getHFTrajectoryCount not implemented")),
     getHFTrajectories: (_offset, _limit) =>
       Effect.fail(new SocketError("request_failed", "Mock: getHFTrajectories not implemented")),
+    startTestGen: (_suitePath, _taskId, _model) =>
+      Effect.fail(new SocketError("request_failed", "Mock: startTestGen not implemented")),
   }
 }
 

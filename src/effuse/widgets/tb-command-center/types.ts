@@ -8,7 +8,7 @@
 // Navigation
 // ============================================================================
 
-export type TabId = "dashboard" | "tasks" | "runs" | "settings"
+export type TabId = "dashboard" | "tasks" | "runs" | "testgen" | "settings"
 
 export interface TabConfig {
   id: TabId
@@ -20,6 +20,7 @@ export const TABS: TabConfig[] = [
   { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
   { id: "tasks", label: "Tasks", icon: "list-checks" },
   { id: "runs", label: "Runs", icon: "play-circle" },
+  { id: "testgen", label: "TestGen", icon: "flask-conical" },
   { id: "settings", label: "Settings", icon: "settings" },
 ]
 

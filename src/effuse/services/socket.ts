@@ -104,6 +104,17 @@ export interface SocketService {
 
   /** Get page of HF trajectories */
   readonly getHFTrajectories: (offset: number, limit: number) => Effect.Effect<Trajectory[], SocketError>
+
+  // ============================================================================
+  // Test Generation Operations
+  // ============================================================================
+
+  /** Start test generation for a TB task */
+  readonly startTestGen: (
+    suitePath: string,
+    taskId?: string,
+    model?: "local" | "claude"
+  ) => Effect.Effect<{ sessionId: string }, SocketError>
 }
 
 /**
