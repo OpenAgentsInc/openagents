@@ -38,7 +38,7 @@ Done
 
 ### Original Task (807 chars - TOO LARGE)
 ```
-I've put an image at /app/image.ppm that I rendered programmatically. 
+I've put an image at /app/image.ppm that I rendered programmatically.
 Write a c program image.c that I can run with:
   gcc -static -o image image.c -lm && ./image
 that reads /app/image.ppm and outputs the same image to stdout in PPM format.
@@ -93,7 +93,7 @@ Output: <tool_call>{"name":"read_file","arguments":{"path":"/app/image.ppm","sta
 </tool_call>
 ```
 
-**Orchestrator**: 
+**Orchestrator**:
 - Executes tool: `read_file("/app/image.ppm", 1, 20)`
 - Gets result: "P3\n800 600\n255\n..."
 - Stores in state: `{ppmHeader: "P3\n800 600\n255\n...", step: 1, status: "complete"}`
@@ -203,7 +203,7 @@ Output: <tool_call>{"name":"run_command","arguments":{"command":"gcc -static -o 
 </tool_call>
 ```
 
-**Orchestrator**: 
+**Orchestrator**:
 - Executes: `gcc -static -o image image.c -lm`
 - Result: Success (exit 0) or failure (exit 1, stderr)
 - If failure: Creates new micro-task "Fix compile error: [error message]"
@@ -399,7 +399,7 @@ Output: <tool_call>..."
 Worker FM Output:
 <tool_call>{"name":"read_file","arguments":{"path":"/app/image.ppm","start":1,"end":20}}</tool_call>
 
-Orchestrator: 
+Orchestrator:
 - Executes: read_file("/app/image.ppm", 1, 20)
 - Result: "P3\n800 600\n255\n..."
 - Stores: files["/app/image.ppm"] = "P3\n800 600\n255\n..."
@@ -583,9 +583,8 @@ Result: Exit 1, stderr: "image.c:5: error: expected ';' before '}'"
 
 **Status**: Design complete. Ready for implementation.
 
-**Next Steps**: 
+**Next Steps**:
 1. Implement supervisor FM
 2. Implement worker FM
 3. Build orchestrator
 4. Test with path-tracing task
-
