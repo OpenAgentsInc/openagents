@@ -165,4 +165,3 @@ CREATE INDEX IF NOT EXISTS idx_tg_evolution_created ON testgen_evolution(created
 -- - testgen_trajectories: Links runs to full trajectory data
 -- - InferenceStore: Tracks meta-reasoning LLM calls
 -- - HillClimber: Can use evolved testgen configs for blind verification
-

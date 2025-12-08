@@ -161,11 +161,16 @@ export const calculateCategoryBalance = (
  */
 export const analyzeAntiCheatCoverage = (
   tests: GeneratedTest[],
-  environment: EnvironmentInfo,
+  environment: EnvironmentInfo | unknown,
   taskDescription: string,
 ): number => {
   // Extract prohibited tools from environment
-  const prohibitedTools = environment.tools.prohibited || [];
+  const env = environment as EnvironmentInfo;
+  if (!env || !env.tools) {
+    // No environment info = can't check anti-cheat coverage
+    return 0.0;
+  }
+  const prohibitedTools = env.tools.prohibited || [];
   if (prohibitedTools.length === 0) {
     // No prohibited tools = no anti-cheat needed = perfect coverage
     return 1.0;
@@ -207,10 +212,15 @@ export const analyzeAntiCheatCoverage = (
  */
 export const analyzeParameterDiscovery = (
   tests: GeneratedTest[],
-  environment: EnvironmentInfo,
+  environment: EnvironmentInfo | unknown,
 ): number => {
   // Extract parameters from file previews
-  const filePreviews = environment.files.taskFiles || [];
+  const env = environment as EnvironmentInfo;
+  if (!env || !env.files) {
+    // No environment info = can't check parameter discovery
+    return 0.0;
+  }
+  const filePreviews = env.files.taskFiles || [];
   const discoveredParams = new Set<string>();
 
   // Simple heuristic: look for function parameters, variable names, etc. in previews

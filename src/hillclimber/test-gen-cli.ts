@@ -11,17 +11,18 @@
  *   bun run src/hillclimber/test-gen-cli.ts:stats
  */
 
-import { parseArgs } from "util";
-import { Effect } from "effect";
-import { BunContext } from "@effect/platform-bun";
-import { loadTerminalBenchSuite } from "../bench/terminal-bench.js";
+import { Effect } from "effect"
+import { parseArgs } from "util"
+import { BunContext } from "@effect/platform-bun"
+import { loadTerminalBenchSuite } from "../bench/terminal-bench.js"
 import {
-  generateTestsFromDescription,
-  summarizeCategories,
-  type TestGeneratorOptions,
-} from "./test-generator.js";
-import { runTestGenEvolution, type TestGenRunnerOptions } from "./testgen-runner.js";
-import { TestGenStore, TestGenStoreLive } from "./testgen-store.js";
+    generateTestsFromDescription, summarizeCategories, TestGeneratorOptions,
+    type
+} from "./test-generator.js"
+import {
+    runTestGenEvolution, TestGenRunnerOptions, type
+} from "./testgen-runner.js"
+import { TestGenStore, TestGenStoreLive } from "./testgen-store.js"
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -45,30 +46,8 @@ const { values, positionals } = parseArgs({
   },
 });
 
-// Check for evolution command
-if ((positionals as string[]).includes("evolve") || values.evolve) {
-  const maxRuns = parseInt(values["max-runs"] as string, 10);
-  const sleepMs = parseInt(values.sleep as string, 10);
-  const suitePath = "tasks/terminal-bench-2.json";
 
-  const options: TestGenRunnerOptions = {
-    maxRuns,
-    sleepMs,
-    suitePath,
-    dryRun: values["dry-run"] as boolean,
-  };
-  if (values.task) options.taskId = values.task as string;
-  if (values["task-type"]) options.taskType = values["task-type"] as string;
-  if (values["model-override"]) options.modelOverride = values["model-override"] as string;
-
-  runTestGenEvolution(options).catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
-  process.exit(0);
-}
-
-// Check for stats command
+// Check for stats command first
 if ((positionals as string[]).includes("stats") || values.stats) {
   Effect.runPromise(
     TestGenStore.pipe(
@@ -91,14 +70,40 @@ if ((positionals as string[]).includes("stats") || values.stats) {
       ),
       Effect.provide(TestGenStoreLive),
     )
-  ).catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
-  process.exit(0);
-}
+  )
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  // Don't continue - wait for promise
+} else if ((positionals as string[]).includes("evolve") || values.evolve) {
+  const maxRuns = parseInt(values["max-runs"] as string, 10);
+  const sleepMs = parseInt(values.sleep as string, 10);
+  const suitePath = "tasks/terminal-bench-2.json";
 
-if (values.help || !values.task) {
+  const options: TestGenRunnerOptions = {
+    maxRuns,
+    sleepMs,
+    suitePath,
+    dryRun: values["dry-run"] as boolean,
+  };
+  if (values.task) options.taskId = values.task as string;
+  if (values["task-type"]) options.taskType = values["task-type"] as string;
+  if (values["model-override"]) options.modelOverride = values["model-override"] as string;
+
+  runTestGenEvolution(options)
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  // Don't continue - wait for promise
+} else if (values.help) {
   console.log(`
 Test Generator CLI - Generate test cases from task descriptions
 
@@ -140,6 +145,10 @@ Examples:
   bun run src/hillclimber/test-gen-cli.ts:stats
 `);
   process.exit(0);
+} else if (!values.task) {
+  console.error("Error: --task is required for test generation");
+  console.log("Use --help for usage information");
+  process.exit(1);
 }
 
 async function main() {
@@ -236,7 +245,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+// Only run main() if not in evolve or stats mode
+if (!values.evolve && !values.stats && !(positionals as string[]).includes("evolve") && !(positionals as string[]).includes("stats")) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
