@@ -1,3 +1,5 @@
+_EDITOR'S NOTE: this is not a TerminalBench run, just a mini-benchmark to prepare for TB_
+
 ➜  openagents git:(main) bun run tbench:fm-mini
 $ bun src/cli/tbench-local.ts --suite tasks/fm-mini-suite.json --output .openagents/tb-runs/fm-mini-$(date +%Y%m%d-%H%M%S) --model fm
 Loading suite from tasks/fm-mini-suite.json...
