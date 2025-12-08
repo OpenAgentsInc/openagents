@@ -17,6 +17,7 @@ import type {
   TestGenCompleteMessage,
   TestGenErrorMessage,
 } from "../../../hud/protocol.js";
+import { renderThreadContainer, type ThreadItem } from "../../components/atif-thread.js";
 
 // ============================================================================
 // Types
@@ -48,15 +49,11 @@ export interface TBTestGenState {
     filePreviews: number;
   } | null;
 
-  /** Generated tests (streamed in one at a time) */
-  tests: Array<{
-    id: string;
-    category: string;
-    input: string;
-    expectedOutput: string | null;
-    reasoning: string;
-    confidence: number;
-  }>;
+  /** Unified chronological thread (progress, tests, reflections, complete, error) */
+  threadItems: ThreadItem[];
+
+  /** Accordion expansion state (which item is expanded) */
+  expandedItemId: string | null;
 
   /** Completion summary */
   totalTests: number;
@@ -68,11 +65,6 @@ export interface TBTestGenState {
   currentCategory: string | null;
   currentRound: number;
   progressStatus: string | null;
-  reflections: Array<{
-    category: string | null;
-    text: string;
-    action: "refining" | "assessing" | "complete";
-  }>;
 
   /** Final stats */
   totalRounds: number;
@@ -89,7 +81,8 @@ export type TBTestGenEvent =
   | { type: "selectTask"; taskId: string | null }
   | { type: "generate" }
   | { type: "clear" }
-  | { type: "cancel" };
+  | { type: "cancel" }
+  | { type: "toggleItem"; itemId: string };
 
 // ============================================================================
 // Widget Definition
@@ -108,7 +101,8 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
       taskId: null,
       taskDescription: null,
       environment: null,
-      tests: [],
+      threadItems: [],
+      expandedItemId: null,
       totalTests: 0,
       durationMs: 0,
       uncertainties: [],
@@ -116,7 +110,6 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
       currentCategory: null,
       currentRound: 0,
       progressStatus: null,
-      reflections: [],
       totalRounds: 0,
       categoryRounds: null,
       comprehensivenessScore: null,
@@ -277,92 +270,17 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             `
           : "";
 
-      // Reflection panel (now inside scrollable content area)
-      const reflectionPanel =
-        state.reflections.length > 0
+      // Thread view (chronological display of all items)
+      const threadView =
+        state.threadItems.length > 0
           ? html`
-              <div class="p-4 bg-blue-900/20 border-b border-blue-800/50">
-                <h4 class="text-sm font-mono text-blue-300 mb-2">Reflections:</h4>
-                <div class="space-y-2 max-h-32 overflow-y-auto">
-                  ${joinTemplates(
-            state.reflections.slice(-3).map(
-              (r) => html`
-                          <div class="text-xs text-blue-200 font-mono">
-                            ${r.category ? `[${r.category}] ` : ""}${r.text}
-                          </div>
-                        `
-            )
-          )}
-                </div>
-              </div>
-            `
-          : "";
-
-      // Test cards (streaming in one at a time)
-      const testCards =
-        state.tests.length > 0
-          ? html`
-              <div class="p-4 space-y-3">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="text-sm font-mono text-zinc-400">Generated Tests (${state.tests.length})</h3>
-                  ${state.status === "complete"
-              ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s | ${state.totalRounds} rounds</span>`
-              : ""}
-                </div>
-                ${joinTemplates(
-            state.tests.map((test) => {
-              const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
-                anti_cheat: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/50" },
-                existence: { bg: "bg-blue-900/30", text: "text-blue-300", border: "border-blue-700/50" },
-                correctness: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/50" },
-                boundary: { bg: "bg-yellow-900/30", text: "text-yellow-300", border: "border-yellow-700/50" },
-                integration: { bg: "bg-purple-900/30", text: "text-purple-300", border: "border-purple-700/50" },
-              };
-              const colors = categoryColors[test.category] ?? { bg: "bg-zinc-800/30", text: "text-zinc-300", border: "border-zinc-700/50" };
-
-              return html`
-                        <div class="p-3 bg-zinc-900 border ${colors.border} rounded">
-                          <div class="flex items-start justify-between mb-2">
-                            <span class="px-2 py-1 ${colors.bg} ${colors.text} text-xs font-mono rounded uppercase">${test.category}</span>
-                            <div class="flex items-center gap-2">
-                              <span class="text-xs text-zinc-500 font-mono">${(test.confidence * 100).toFixed(0)}%</span>
-                              <div class="w-16 h-1.5 bg-zinc-800 rounded overflow-hidden">
-                                <div class="h-full ${colors.bg}" style="width: ${test.confidence * 100}%"></div>
-                              </div>
-                            </div>
-                          </div>
-                          <div class="space-y-2">
-                            <div>
-                              <span class="text-xs text-zinc-500 font-mono">Input:</span>
-                              <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.input}</pre>
-                            </div>
-                            ${test.expectedOutput
-                  ? html`
-                                  <div>
-                                    <span class="text-xs text-zinc-500 font-mono">Expected:</span>
-                                    <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.expectedOutput}</pre>
-                                  </div>
-                                `
-                  : ""}
-                            <div>
-                              <span class="text-xs text-zinc-500 font-mono">Reasoning:</span>
-                              <p class="mt-1 text-xs text-zinc-400 leading-relaxed">${test.reasoning}</p>
-                            </div>
-                          </div>
-                        </div>
-                      `;
-            })
-          )}
-              </div>
-            `
-          : "";
-
-      // Scrollable content area (reflections + test cards)
-      const scrollableContent =
-        state.reflections.length > 0 || state.tests.length > 0
-          ? html`
-              <div class="flex-1 overflow-y-auto">
-                ${reflectionPanel} ${testCards}
+              <div class="flex-1 overflow-y-auto p-4">
+                ${renderThreadContainer(state.threadItems, {
+                  expandedItemId: state.expandedItemId,
+                  onToggle: (itemId) => {
+                    Effect.runFork(ctx.emit({ type: "toggleItem", itemId }));
+                  },
+                })}
               </div>
             `
           : "";
@@ -412,7 +330,7 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
 
       // Empty state
       const emptyState =
-        state.status === "idle" && state.tests.length === 0
+        state.status === "idle" && state.threadItems.length === 0
           ? html`
               <div class="flex-1 flex items-center justify-center text-center p-8">
                 <div>
@@ -426,7 +344,7 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
 
       // Loading state
       const loadingState =
-        state.status === "generating" && state.tests.length === 0
+        state.status === "generating" && state.threadItems.length === 0
           ? html`
               <div class="flex-1 flex items-center justify-center text-center p-8">
                 <div>
@@ -440,7 +358,7 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
 
       const result = html`
         <div class="h-full flex flex-col bg-zinc-950">
-          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${errorPanel} ${emptyState} ${loadingState} ${scrollableContent} ${completionSummary}
+          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${errorPanel} ${emptyState} ${loadingState} ${threadView} ${completionSummary}
         </div>
       `;
 
@@ -474,6 +392,14 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
       // Cancel button (during generation)
       yield* ctx.dom.delegate(ctx.container, "[data-action='cancel']", "click", () => {
         Effect.runFork(ctx.emit({ type: "cancel" }));
+      });
+
+      // Toggle thread item (accordion)
+      yield* ctx.dom.delegate(ctx.container, "[data-action='toggleItem']", "click", (_e, target) => {
+        const itemId = (target as HTMLElement).dataset.itemId;
+        if (itemId) {
+          Effect.runFork(ctx.emit({ type: "toggleItem", itemId }));
+        }
       });
     }),
 
@@ -526,7 +452,8 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             taskId: null,
             taskDescription: null,
             environment: null,
-            tests: [],
+            threadItems: [],
+            expandedItemId: null,
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
@@ -534,7 +461,6 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             currentCategory: null,
             currentRound: 0,
             progressStatus: null,
-            reflections: [],
             totalRounds: 0,
             categoryRounds: null,
             comprehensivenessScore: null,
@@ -572,7 +498,8 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             taskId: null,
             taskDescription: null,
             environment: null,
-            tests: [],
+            threadItems: [],
+            expandedItemId: null,
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
@@ -580,7 +507,6 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             currentCategory: null,
             currentRound: 0,
             progressStatus: null,
-            reflections: [],
             totalRounds: 0,
             categoryRounds: null,
             comprehensivenessScore: null,
@@ -598,6 +524,14 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             status: "idle",
             sessionId: null, // Clear sessionId so we ignore future messages
             error: null,
+          }));
+          break;
+        }
+
+        case "toggleItem": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            expandedItemId: s.expandedItemId === event.itemId ? null : event.itemId,
           }));
           break;
         }
@@ -636,6 +570,19 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             const data = msg as TestGenProgressMessage;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "progress",
+                  timestamp: Date.now(),
+                  data: {
+                    phase: data.phase,
+                    category: data.currentCategory ?? null,
+                    round: data.roundNumber,
+                    status: data.status,
+                  },
+                },
+              ],
               currentPhase: data.phase,
               currentCategory: data.currentCategory ?? null,
               currentRound: data.roundNumber,
@@ -645,12 +592,16 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             const data = msg as TestGenReflectionMessage;
             yield* ctx.state.update((s) => ({
               ...s,
-              reflections: [
-                ...s.reflections,
+              threadItems: [
+                ...s.threadItems,
                 {
-                  category: data.category ?? null,
-                  text: data.reflectionText,
-                  action: data.action,
+                  type: "reflection",
+                  timestamp: Date.now(),
+                  data: {
+                    category: data.category ?? null,
+                    text: data.reflectionText,
+                    action: data.action,
+                  },
                 },
               ],
             }));
@@ -658,12 +609,34 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             const data = msg as TestGenTestMessage;
             yield* ctx.state.update((s) => ({
               ...s,
-              tests: [...s.tests, data.test],
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "test",
+                  timestamp: Date.now(),
+                  data: data.test,
+                },
+              ],
             }));
           } else if (msg.type === "testgen_complete") {
             const data = msg as TestGenCompleteMessage;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "complete",
+                  timestamp: Date.now(),
+                  data: {
+                    totalTests: data.totalTests,
+                    totalRounds: data.totalRounds,
+                    comprehensivenessScore: data.comprehensivenessScore,
+                    totalTokensUsed: data.totalTokensUsed,
+                    durationMs: data.durationMs,
+                    uncertainties: data.uncertainties,
+                  },
+                },
+              ],
               status: "complete",
               currentPhase: "complete",
               totalTests: data.totalTests,
@@ -678,6 +651,16 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             const data = msg as TestGenErrorMessage;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "error",
+                  timestamp: Date.now(),
+                  data: {
+                    error: data.error,
+                  },
+                },
+              ],
               status: "error",
               error: data.error,
             }));
