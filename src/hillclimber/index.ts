@@ -47,7 +47,8 @@ export {
   proposeConfigChange,
   proposeHeuristicChange,
   applyConfigChange,
-  FREE_MODEL,
+  FREE_MODELS,
+  BLOCKLIST,
   AUTO_MODEL,
   AUTO_MODEL_FREQUENCY,
 } from "./meta-reasoner.js";

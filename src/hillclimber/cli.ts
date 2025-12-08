@@ -46,6 +46,7 @@ Options:
   --max-runs, -n <num>  Maximum number of runs (default: ${DEFAULT_MAX_RUNS})
   --sleep, -s <ms>      Sleep between runs in ms (default: ${DEFAULT_SLEEP_MS})
   --suite <path>        Path to TB suite JSON (default: ${DEFAULT_SUITE_PATH})
+  --model, -m <model>   Override model to use (default: uses FREE_MODELS[0])
   --stats               Show current stats and exit
   --export              Export learned hints and exit
   --export-code         Generate TypeScript code for hints
@@ -99,6 +100,11 @@ const parseCliArgs = (): {
         type: "string",
         default: DEFAULT_SUITE_PATH,
       },
+      model: {
+        type: "string",
+        short: "m",
+        default: "",
+      },
       stats: {
         type: "boolean",
         default: false,
@@ -127,12 +133,14 @@ const parseCliArgs = (): {
   // Handle positional args as task IDs
   const tasks = [...(values.task as string[]), ...positionals];
 
+  const modelOverride = values.model as string;
   return {
     options: {
       tasks,
       maxRuns: parseInt(values["max-runs"] as string, 10),
       sleepMs: parseInt(values.sleep as string, 10),
       suitePath: values.suite as string,
+      ...(modelOverride ? { modelOverride } : {}),
       dryRun: values["dry-run"] as boolean,
       showStats: false,
       exportHints: false,
