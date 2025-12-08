@@ -154,6 +154,9 @@ export interface CurrentRunInfo {
 // Settings Types
 // ============================================================================
 
+/** Model options for TB execution */
+export type TBModelOption = "fm" | "claude-code"
+
 export interface ExecutionSettings {
   maxAttempts: number
   maxStepsPerRun: number
@@ -162,6 +165,8 @@ export interface ExecutionSettings {
   recursionLimitN: number
   innerIterationsT: number
   earlyStopOnHighConfidence: boolean
+  /** Model to use: "fm" (Foundation Model - default) or "claude-code" */
+  model: TBModelOption
 }
 
 export interface LoggingSettings {
@@ -183,6 +188,7 @@ export const DEFAULT_EXECUTION_SETTINGS: ExecutionSettings = {
   recursionLimitN: 3,
   innerIterationsT: 5,
   earlyStopOnHighConfidence: true,
+  model: "fm", // Foundation Model is the default
 }
 
 export const DEFAULT_LOGGING_SETTINGS: LoggingSettings = {

@@ -104,6 +104,17 @@ const mountAllWidgets = Effect.gen(function* () {
   const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs")
   const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings")
 
+  // 3. Mount TBOutputWidget (fixed overlay for streaming output)
+  // Create container dynamically - widget renders as fixed position overlay
+  let outputContainer = document.getElementById("tb-output-widget")
+  if (!outputContainer) {
+    outputContainer = document.createElement("div")
+    outputContainer.id = "tb-output-widget"
+    document.body.appendChild(outputContainer)
+  }
+  const tbOutputWidget = yield* mountWidgetById(TBOutputWidget, "tb-output-widget")
+  void tbOutputWidget
+
   // Mark as used (widgets are mounted but not directly referenced)
   void taskBrowserWidget
   void settingsWidget

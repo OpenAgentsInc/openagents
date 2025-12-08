@@ -12,9 +12,34 @@ import type {
   CurrentRunInfo,
   TBRunSummary,
   TBRunOutcome,
+  TBModelOption,
 } from "./types.js"
-import { OUTCOME_COLORS } from "./types.js"
+import { OUTCOME_COLORS, DEFAULT_EXECUTION_SETTINGS } from "./types.js"
 import { SocketServiceTag } from "../../services/socket.js"
+
+// ============================================================================
+// Settings Helpers
+// ============================================================================
+
+const STORAGE_KEY = "tbcc_settings"
+const DEFAULT_SUITE_PATH = "tasks/terminal-bench-2.json"
+
+/** Read saved settings from localStorage */
+const getSettings = (): { model: TBModelOption } => {
+  if (typeof localStorage === "undefined") {
+    return { model: DEFAULT_EXECUTION_SETTINGS.model }
+  }
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return { model: parsed.execution?.model ?? DEFAULT_EXECUTION_SETTINGS.model }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return { model: DEFAULT_EXECUTION_SETTINGS.model }
+}
 
 // ============================================================================
 // Types
@@ -346,10 +371,15 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         }
 
         case "runFullBenchmark": {
+          // Read model preference from settings
+          const settings = getSettings()
           yield* Effect.tryPromise({
             try: async () => {
-              const result = await Effect.runPromise(socket.startTBRun({ suitePath: "default.json", subset: "TB_10" })); // Default to TB_10 if runAll not supported
-              return result;
+              const result = await Effect.runPromise(socket.startTBRun({
+                suitePath: DEFAULT_SUITE_PATH,
+                model: settings.model,
+              }))
+              return result
             },
             catch: (e) => e,
           }).pipe(
@@ -359,7 +389,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
                 currentRun: {
                   runId: result.runId,
                   taskId: "all",
-                  taskName: "Full Benchmark",
+                  taskName: `Full Benchmark (${settings.model})`,
                   attempt: 1,
                   maxAttempts: 1,
                   status: "running",
@@ -380,10 +410,16 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         }
 
         case "runRandomTask": {
+          // Read model preference from settings
+          const settings = getSettings()
           yield* Effect.tryPromise({
             try: async () => {
-              const result = await Effect.runPromise(socket.startTBRun({ subset: "TB_10" } as any)); // Fallback
-              return result;
+              const result = await Effect.runPromise(socket.startTBRun({
+                suitePath: DEFAULT_SUITE_PATH,
+                model: settings.model,
+                random: true,
+              }))
+              return result
             },
             catch: (e) => e,
           }).pipe(
@@ -393,7 +429,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
                 currentRun: {
                   runId: result.runId,
                   taskId: "random",
-                  taskName: "Random Task",
+                  taskName: `Random Task (${settings.model})`,
                   attempt: 1,
                   maxAttempts: 5,
                   status: "running",

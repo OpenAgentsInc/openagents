@@ -410,7 +410,8 @@ describe("TB Command Center E2E", () => {
             // Verify currentRun state was updated
             const state = yield* dashboardHandle.getState
             expect(state.currentRun).toBeDefined()
-            expect(state.currentRun?.taskName).toBe("Full Benchmark")
+            // Task name now includes model: "Full Benchmark (fm)" or "Full Benchmark (claude-code)"
+            expect(state.currentRun?.taskName).toContain("Full Benchmark")
 
           }).pipe(
             Effect.provideService(SocketServiceTag, mockSocketWithSpy()),

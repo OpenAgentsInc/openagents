@@ -90,6 +90,51 @@ export const TBCCSettingsWidget: Widget<TBCCSettingsState, TBCCSettingsEvent> = 
           : ""}
             </div>
 
+            <!-- Model Selection -->
+            <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-6">
+              <h3 class="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
+                <span class="text-lg">🤖</span> Model
+              </h3>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors
+                  ${state.execution.model === "fm"
+                    ? "bg-emerald-900/30 border-emerald-600/50 text-emerald-200"
+                    : "border-zinc-700/50 text-zinc-400 hover:border-zinc-600/60"}">
+                  <input
+                    type="radio"
+                    name="model"
+                    value="fm"
+                    ${state.execution.model === "fm" ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="model"
+                    class="hidden"
+                  />
+                  <div>
+                    <div class="font-medium">Foundation Model</div>
+                    <div class="text-xs opacity-70">Apple on-device (default)</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors
+                  ${state.execution.model === "claude-code"
+                    ? "bg-blue-900/30 border-blue-600/50 text-blue-200"
+                    : "border-zinc-700/50 text-zinc-400 hover:border-zinc-600/60"}">
+                  <input
+                    type="radio"
+                    name="model"
+                    value="claude-code"
+                    ${state.execution.model === "claude-code" ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="model"
+                    class="hidden"
+                  />
+                  <div>
+                    <div class="font-medium">Claude Code</div>
+                    <div class="text-xs opacity-70">Cloud-based</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <!-- Execution Settings -->
             <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-6">
               <h3 class="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
@@ -245,7 +290,7 @@ export const TBCCSettingsWidget: Widget<TBCCSettingsState, TBCCSettingsEvent> = 
 
   setupEvents: (ctx) =>
     Effect.gen(function* () {
-      // Inputs
+      // Inputs (text, number, checkbox)
       yield* ctx.dom.delegate(ctx.container, "input", "change", (_e, target) => {
         const el = target as HTMLInputElement
         const action = el.dataset.action
@@ -258,6 +303,8 @@ export const TBCCSettingsWidget: Widget<TBCCSettingsState, TBCCSettingsEvent> = 
           value = el.checked
         } else if (el.type === "number") {
           value = el.value === "" ? null : Number(el.value)
+        } else if (el.type === "radio") {
+          value = el.value
         } else {
           value = el.value
         }
@@ -266,6 +313,19 @@ export const TBCCSettingsWidget: Widget<TBCCSettingsState, TBCCSettingsEvent> = 
           Effect.runFork(ctx.emit({ type: "updateExecution", key: key as keyof ExecutionSettings, value }))
         } else if (action === "updateLogging") {
           Effect.runFork(ctx.emit({ type: "updateLogging", key: key as keyof LoggingSettings, value }))
+        }
+      })
+
+      // Model selection labels (click to select radio)
+      yield* ctx.dom.delegate(ctx.container, "label:has(input[name='model'])", "click", (_e, target) => {
+        const label = target as HTMLLabelElement
+        const radio = label.querySelector("input[type='radio']") as HTMLInputElement | null
+        if (radio && !radio.checked) {
+          Effect.runFork(ctx.emit({
+            type: "updateExecution",
+            key: "model" as keyof ExecutionSettings,
+            value: radio.value
+          }))
         }
       })
 
