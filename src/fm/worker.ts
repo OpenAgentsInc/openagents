@@ -40,7 +40,11 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   // Check if task requires special handling
   const taskLower = (input.taskDescription ?? "").toLowerCase();
   const needsWordCount = taskLower.includes("count") && taskLower.includes("word");
-  const needsReadFirst = !needsWordCount && (
+  const needsExactCopy = (taskLower.includes("exact same content") || 
+                          taskLower.includes("exact content") ||
+                          taskLower.includes("copy it exactly") ||
+                          (taskLower.includes("read") && taskLower.includes("create") && taskLower.includes("same content")));
+  const needsReadFirst = !needsWordCount && !needsExactCopy && (
                          taskLower.includes("count") || 
                          taskLower.includes("number of") ||
                          taskLower.includes("read") && taskLower.includes("write"));
@@ -53,6 +57,9 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
       // Just ran a command - hint to save the output
       hint = "\nHint: You have command output. Save it to a file if needed.";
     }
+  } else if (needsExactCopy) {
+    // Exact file copy - use cp command to preserve content exactly
+    hint = "\nHint: To copy a file exactly, use run_command with: cp source.txt destination.txt";
   } else if (needsWordCount) {
     // Word counting task - use wc command
     hint = "\nHint: To count words, use run_command with: wc -w filename.txt | awk '{print $1}'";
