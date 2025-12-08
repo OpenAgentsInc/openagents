@@ -308,4 +308,170 @@ describe("TB Command Center E2E", () => {
       )
     )
   })
+
+  // =========================================================================
+  // Phase 1: P0 Gap Tests
+  // =========================================================================
+
+  it("TBCC-022: View run details with execution steps", async () => {
+    // Create enhanced mock with step data
+    const mockWithSteps = (): SocketService => ({
+      ...createMockSocket(),
+      loadTBRunDetails: () => Effect.succeed({
+        meta: MOCK_RUNS[0],
+        tasks: [
+          {
+            id: "task-1",
+            name: "Fix Bug",
+            category: "Debugging",
+            difficulty: "hard",
+            outcome: "success",
+            turns: 10,
+            durationMs: 5000,
+            tokens: 1000,
+          }
+        ],
+      } as any),
+    })
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const runHandle = yield* harness.mount(TBCCRunBrowserWidget, {
+              containerId: "tbcc-tab-runs",
+            })
+            yield* runHandle.waitForState((s) => !s.loading)
+
+            // Emit selectRun event directly (avoiding browser interaction timeout)
+            yield* runHandle.emit({ type: "selectRun", runId: "run-1", source: "local" })
+            yield* runHandle.waitForState((s) => s.selectedRunId === "run-1")
+            yield* runHandle.waitForState((s) => !s.loadingDetail)
+
+            const html = yield* runHandle.getHTML
+
+            // Verify task results are displayed
+            expect(html).toContain("Fix Bug")
+            expect(html).toContain("success")
+
+            // Verify execution details section exists
+            expect(html).toContain("Execution Steps")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockWithSteps()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("TBCC-004: Start benchmark run verification", async () => {
+    // Create spy for socket.startTBRun
+    let startTBRunCalled = false
+    let capturedOptions: any = null
+
+    const mockSocketWithSpy = (): SocketService => ({
+      ...createMockSocket(),
+      startTBRun: (options) => {
+        startTBRunCalled = true
+        capturedOptions = options
+        return Effect.succeed({ runId: "new-run-123" })
+      }
+    })
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const dashboardHandle = yield* harness.mount(TBCCDashboardWidget, {
+              containerId: "tbcc-tab-dashboard",
+            })
+            yield* dashboardHandle.waitForState((s) => !s.loading)
+
+            // Emit runFullBenchmark event directly
+            yield* dashboardHandle.emit({ type: "runFullBenchmark" })
+
+            // Wait a bit for async effect to complete
+            yield* Effect.sleep("100 millis")
+
+            // Verify socket call was made
+            expect(startTBRunCalled).toBe(true)
+            expect(capturedOptions).toBeDefined()
+
+            // Verify currentRun state was updated
+            const state = yield* dashboardHandle.getState
+            expect(state.currentRun).toBeDefined()
+            expect(state.currentRun?.taskName).toBe("Full Benchmark")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockSocketWithSpy()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("TBCC-002: KPI calculations with multiple runs", async () => {
+    // Create mock with multiple runs of different outcomes
+    const MULTI_RUNS = [
+      { ...MOCK_RUNS[0], runId: "run-1", outcome: "success" as const },
+      { ...MOCK_RUNS[0], runId: "run-2", outcome: "success" as const },
+      { ...MOCK_RUNS[0], runId: "run-3", outcome: "failure" as const },
+      { ...MOCK_RUNS[0], runId: "run-4", outcome: "success" as const },
+    ]
+
+    const mockWithMultiRuns = (): SocketService => ({
+      ...createMockSocket(),
+      loadRecentTBRuns: () => Effect.succeed(MULTI_RUNS as any),
+    })
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const dashboardHandle = yield* harness.mount(TBCCDashboardWidget, {
+              containerId: "tbcc-tab-dashboard",
+            })
+            yield* dashboardHandle.waitForState((s) => !s.loading)
+
+            const html = yield* dashboardHandle.getHTML
+
+            // Verify KPIs are displayed
+            expect(html).toContain("Success Rate")
+            expect(html).toContain("Total Runs")
+
+            // Verify stats were calculated (3 success out of 4 = 75%)
+            const state = yield* dashboardHandle.getState
+            expect(state.stats).toBeDefined()
+            expect(state.stats?.totalRuns).toBe(4)
+            expect(state.stats?.overallSuccessRate).toBe(0.75)
+
+            // Verify all runs are shown in table
+            expect(html).toContain("run-1")
+            expect(html).toContain("run-2")
+            expect(html).toContain("run-3")
+            expect(html).toContain("run-4")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockWithMultiRuns()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
 })
