@@ -26038,6 +26038,13 @@ ${endStackCall}`;
       }
       return response.data ?? null;
     }
+    async startTestGen(suitePath, taskId, model) {
+      const response = await this.request("request:startTestGen", { suitePath, taskId, model });
+      if (!response.success) {
+        throw new Error(response.error ?? "Failed to start test generation");
+      }
+      return response.data;
+    }
     handleMessage(data) {
       const parsed = parseSocketMessage(data);
       if (!parsed) {
@@ -26310,7 +26317,8 @@ ${endStackCall}`;
       assignTaskToMC: (taskId, options) => wrapRequest(() => client.assignTaskToMC(taskId, options)),
       loadUnifiedTrajectories: (limit) => wrapRequest(() => client.loadUnifiedTrajectories(limit)),
       getHFTrajectoryCount: () => wrapRequest(() => client.getHFTrajectoryCount()),
-      getHFTrajectories: (offset, limit) => wrapRequest(() => client.getHFTrajectories(offset, limit))
+      getHFTrajectories: (offset, limit) => wrapRequest(() => client.getHFTrajectories(offset, limit)),
+      startTestGen: (suitePath, taskId, model) => wrapRequest(() => client.startTestGen(suitePath, taskId, model))
     };
   };
   var SocketServiceLive = (options) => exports_Layer.succeed(SocketServiceTag, makeSocketService(new SocketClient(options)));
@@ -29137,6 +29145,7 @@ ${endStackCall}`;
     { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
     { id: "tasks", label: "Tasks", icon: "list-checks" },
     { id: "runs", label: "Runs", icon: "play-circle" },
+    { id: "testgen", label: "TestGen", icon: "flask-conical" },
     { id: "settings", label: "Settings", icon: "settings" }
   ];
   var DEFAULT_EXECUTION_SETTINGS = {
@@ -29228,6 +29237,7 @@ ${endStackCall}`;
             <div id="tbcc-tab-dashboard" class="${state.activeTab === "dashboard" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-tasks" class="${state.activeTab === "tasks" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-runs" class="${state.activeTab === "runs" ? "" : "hidden"} h-full"></div>
+            <div id="tbcc-tab-testgen" class="${state.activeTab === "testgen" ? "" : "hidden"} h-full"></div>
             <div id="tbcc-tab-settings" class="${state.activeTab === "settings" ? "" : "hidden"} h-full"></div>
           </main>
         </div>
@@ -30430,6 +30440,330 @@ ${endStackCall}`;
       return [exports_Stream.make(ctx.emit({ type: "loadRuns", page: 0 }))];
     }
   };
+  // src/effuse/widgets/tb-command-center/tbcc-testgen.ts
+  var TBTestGenWidget = {
+    id: "tbcc-testgen",
+    initialState: () => {
+      console.log("[TBTestGen] Creating initial state");
+      return {
+        status: "idle",
+        taskIds: [],
+        selectedTaskId: null,
+        sessionId: null,
+        taskId: null,
+        taskDescription: null,
+        environment: null,
+        tests: [],
+        totalTests: 0,
+        durationMs: 0,
+        uncertainties: [],
+        error: null
+      };
+    },
+    render: (ctx) => exports_Effect.gen(function* () {
+      const state = yield* ctx.state.get;
+      if (window.bunLog) {
+        window.bunLog(`[TBTestGen] render called, status=${state.status}`);
+      }
+      const header = html`
+        <div class="border-b border-zinc-800/60 p-4">
+          <h2 class="text-xl font-bold font-mono text-zinc-100">Test Generation</h2>
+          <p class="text-sm text-zinc-500 mt-1">Environment-aware test generation for TB tasks</p>
+        </div>
+      `;
+      const controls = html`
+        <div class="p-4 border-b border-zinc-800/60 space-y-4">
+          <div class="flex items-center gap-4">
+            <label class="text-sm font-mono text-zinc-400 flex-shrink-0">Task:</label>
+            <select
+              class="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+              data-action="selectTask"
+              ${state.status !== "idle" && state.status !== "complete" && state.status !== "error" ? "disabled" : ""}
+            >
+              <option value="">Random task</option>
+              ${state.taskIds.length > 0 ? joinTemplates(state.taskIds.map((id2) => html`
+                        <option value="${id2}" ${state.selectedTaskId === id2 ? "selected" : ""}>${id2}</option>
+                      `)) : html`<option disabled>No tasks loaded</option>`}
+            </select>
+            <button
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-mono rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              data-action="generate"
+              ${state.status !== "idle" && state.status !== "complete" && state.status !== "error" ? "disabled" : ""}
+            >
+              ${state.status === "generating" ? "Generating..." : "▶ Generate"}
+            </button>
+            ${state.status === "complete" || state.status === "error" ? html`
+                  <button
+                    class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-mono rounded transition-colors"
+                    data-action="clear"
+                  >
+                    Clear
+                  </button>
+                ` : ""}
+          </div>
+        </div>
+      `;
+      const environmentPanel = state.environment ? html`
+              <div class="p-4 bg-zinc-900/40 border-b border-zinc-800/60">
+                <div class="flex items-start gap-6">
+                  <div>
+                    <span class="text-xs text-zinc-500 font-mono">Platform:</span>
+                    <span class="ml-2 text-sm text-zinc-200 font-mono">${state.environment.platform}</span>
+                  </div>
+                  <div>
+                    <span class="text-xs text-zinc-500 font-mono">Files:</span>
+                    <span class="ml-2 text-sm text-zinc-200 font-mono">${state.environment.fileCount} (${state.environment.filePreviews} previews)</span>
+                  </div>
+                </div>
+                ${state.environment.prohibitedTools.length > 0 ? html`
+                      <div class="mt-2">
+                        <span class="text-xs text-zinc-500 font-mono">Prohibited Tools:</span>
+                        <div class="mt-1 flex flex-wrap gap-2">
+                          ${joinTemplates(state.environment.prohibitedTools.map((tool) => html`
+                                  <span class="px-2 py-1 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-300 font-mono">
+                                    ${tool}
+                                  </span>
+                                `))}
+                        </div>
+                      </div>
+                    ` : ""}
+                ${state.environment.languages.length > 0 ? html`
+                      <div class="mt-2">
+                        <span class="text-xs text-zinc-500 font-mono">Languages:</span>
+                        <div class="mt-1 flex flex-wrap gap-2">
+                          ${joinTemplates(state.environment.languages.map((lang) => html`
+                                  <span class="px-2 py-1 bg-blue-900/30 border border-blue-700/50 rounded text-xs text-blue-300 font-mono">
+                                    ${lang}
+                                  </span>
+                                `))}
+                        </div>
+                      </div>
+                    ` : ""}
+              </div>
+            ` : "";
+      const taskDescPanel = state.taskDescription ? html`
+              <div class="p-4 bg-zinc-900/40 border-b border-zinc-800/60">
+                <span class="text-xs text-zinc-500 font-mono">Task: ${state.taskId ?? ""}</span>
+                <p class="mt-1 text-sm text-zinc-300 font-mono leading-relaxed">${state.taskDescription.slice(0, 300)}${state.taskDescription.length > 300 ? "..." : ""}</p>
+              </div>
+            ` : "";
+      const testCards = state.tests.length > 0 ? html`
+              <div class="p-4 space-y-3 overflow-y-auto flex-1">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-sm font-mono text-zinc-400">Generated Tests (${state.tests.length})</h3>
+                  ${state.status === "complete" ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s</span>` : ""}
+                </div>
+                ${joinTemplates(state.tests.map((test) => {
+        const categoryColors = {
+          anti_cheat: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/50" },
+          existence: { bg: "bg-blue-900/30", text: "text-blue-300", border: "border-blue-700/50" },
+          correctness: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/50" },
+          boundary: { bg: "bg-yellow-900/30", text: "text-yellow-300", border: "border-yellow-700/50" },
+          integration: { bg: "bg-purple-900/30", text: "text-purple-300", border: "border-purple-700/50" }
+        };
+        const colors2 = categoryColors[test.category] ?? { bg: "bg-zinc-800/30", text: "text-zinc-300", border: "border-zinc-700/50" };
+        return html`
+                        <div class="p-3 bg-zinc-900 border ${colors2.border} rounded">
+                          <div class="flex items-start justify-between mb-2">
+                            <span class="px-2 py-1 ${colors2.bg} ${colors2.text} text-xs font-mono rounded uppercase">${test.category}</span>
+                            <div class="flex items-center gap-2">
+                              <span class="text-xs text-zinc-500 font-mono">${(test.confidence * 100).toFixed(0)}%</span>
+                              <div class="w-16 h-1.5 bg-zinc-800 rounded overflow-hidden">
+                                <div class="h-full ${colors2.bg}" style="width: ${test.confidence * 100}%"></div>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="space-y-2">
+                            <div>
+                              <span class="text-xs text-zinc-500 font-mono">Input:</span>
+                              <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.input}</pre>
+                            </div>
+                            ${test.expectedOutput ? html`
+                                  <div>
+                                    <span class="text-xs text-zinc-500 font-mono">Expected:</span>
+                                    <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.expectedOutput}</pre>
+                                  </div>
+                                ` : ""}
+                            <div>
+                              <span class="text-xs text-zinc-500 font-mono">Reasoning:</span>
+                              <p class="mt-1 text-xs text-zinc-400 leading-relaxed">${test.reasoning}</p>
+                            </div>
+                          </div>
+                        </div>
+                      `;
+      }))}
+              </div>
+            ` : "";
+      const completionSummary = state.status === "complete" && state.uncertainties.length > 0 ? html`
+              <div class="p-4 bg-yellow-900/20 border-t border-yellow-700/50">
+                <h4 class="text-sm font-mono text-yellow-300 mb-2">Uncertainties:</h4>
+                <ul class="space-y-1">
+                  ${joinTemplates(state.uncertainties.map((u) => html`
+                        <li class="text-xs text-yellow-200 font-mono">• ${u}</li>
+                      `))}
+                </ul>
+              </div>
+            ` : "";
+      const errorPanel = state.error ? html`
+            <div class="p-4 bg-red-900/20 border border-red-700/50 rounded m-4">
+              <h4 class="text-sm font-mono text-red-300 mb-1">Error:</h4>
+              <p class="text-xs text-red-200 font-mono">${state.error}</p>
+            </div>
+          ` : "";
+      const emptyState = state.status === "idle" && state.tests.length === 0 ? html`
+              <div class="flex-1 flex items-center justify-center text-center p-8">
+                <div>
+                  <div class="text-6xl mb-4">🧪</div>
+                  <h3 class="text-lg font-mono text-zinc-400 mb-2">No tests generated yet</h3>
+                  <p class="text-sm text-zinc-600">Select a task and click Generate to start</p>
+                </div>
+              </div>
+            ` : "";
+      const loadingState = state.status === "generating" && state.tests.length === 0 ? html`
+              <div class="flex-1 flex items-center justify-center text-center p-8">
+                <div>
+                  <div class="animate-spin text-4xl mb-4">⚙️</div>
+                  <h3 class="text-lg font-mono text-zinc-400">Generating tests...</h3>
+                  <p class="text-sm text-zinc-600 mt-2">This may take 10-30 seconds</p>
+                </div>
+              </div>
+            ` : "";
+      return html`
+        <div class="h-full flex flex-col bg-zinc-950">
+          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${errorPanel} ${emptyState} ${loadingState} ${testCards} ${completionSummary}
+        </div>
+      `;
+    }),
+    setupEvents: (ctx) => exports_Effect.gen(function* () {
+      yield* ctx.dom.delegate(ctx.container, "[data-action='selectTask']", "change", (_e, target) => {
+        const value = target.value;
+        exports_Effect.runFork(ctx.emit({ type: "selectTask", taskId: value || null }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='generate']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "generate" }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='clear']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "clear" }));
+      });
+    }),
+    handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      const socket = yield* SocketServiceTag;
+      switch (event.type) {
+        case "loadSuite": {
+          yield* ctx.state.update((s) => ({ ...s, status: "loading_suite" }));
+          const suiteInfo = yield* socket.loadTBSuite("tasks/terminal-bench-2.json").pipe(exports_Effect.catchAll((error) => exports_Effect.gen(function* () {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              status: "error",
+              error: error.message
+            }));
+            return null;
+          })));
+          if (suiteInfo) {
+            const taskIds = suiteInfo.tasks.map((t) => t.id);
+            yield* ctx.state.update((s) => ({
+              ...s,
+              status: "idle",
+              taskIds
+            }));
+          }
+          break;
+        }
+        case "selectTask": {
+          yield* ctx.state.update((s) => ({ ...s, selectedTaskId: event.taskId }));
+          break;
+        }
+        case "generate": {
+          const state = yield* ctx.state.get;
+          yield* ctx.state.update((s) => ({
+            ...s,
+            status: "generating",
+            sessionId: null,
+            taskId: null,
+            taskDescription: null,
+            environment: null,
+            tests: [],
+            totalTests: 0,
+            durationMs: 0,
+            uncertainties: [],
+            error: null
+          }));
+          const result = yield* socket.startTestGen("tasks/terminal-bench-2.json", state.selectedTaskId ?? undefined, "local").pipe(exports_Effect.catchAll((error) => exports_Effect.gen(function* () {
+            yield* ctx.state.update((s) => ({
+              ...s,
+              status: "error",
+              error: error.message
+            }));
+            return null;
+          })));
+          if (result) {
+            yield* ctx.state.update((s) => ({ ...s, sessionId: result.sessionId }));
+          }
+          break;
+        }
+        case "clear": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            status: "idle",
+            sessionId: null,
+            taskId: null,
+            taskDescription: null,
+            environment: null,
+            tests: [],
+            totalTests: 0,
+            durationMs: 0,
+            uncertainties: [],
+            error: null
+          }));
+          break;
+        }
+      }
+    }),
+    subscriptions: (ctx) => {
+      const testgenSub = exports_Effect.gen(function* () {
+        const socket = yield* SocketServiceTag;
+        yield* ctx.emit({ type: "loadSuite" });
+        yield* exports_Stream.runForEach(socket.getMessages(), (msg) => exports_Effect.gen(function* () {
+          const state = yield* ctx.state.get;
+          if ("sessionId" in msg && msg.sessionId !== state.sessionId) {
+            return;
+          }
+          if (msg.type === "testgen_start") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              taskId: data.taskId,
+              taskDescription: data.taskDescription,
+              environment: data.environment
+            }));
+          } else if (msg.type === "testgen_test") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              tests: [...s.tests, data.test]
+            }));
+          } else if (msg.type === "testgen_complete") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              status: "complete",
+              totalTests: data.totalTests,
+              durationMs: data.durationMs,
+              uncertainties: data.uncertainties
+            }));
+          } else if (msg.type === "testgen_error") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              status: "error",
+              error: data.error
+            }));
+          }
+        }));
+      });
+      return [exports_Stream.make(testgenSub)];
+    }
+  };
   // src/effuse/widgets/tb-command-center/tbcc-settings.ts
   var STORAGE_KEY2 = "tbcc_settings";
   var loadSettings = () => {
@@ -30796,6 +31130,7 @@ ${event.reason?.stack || event.reason}`);
     const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard");
     const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks");
     const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs");
+    const testGenWidget = yield* mountWidgetById(TBTestGenWidget, "tbcc-tab-testgen");
     const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings");
     let outputContainer = document.getElementById("tb-output-widget");
     if (!outputContainer) {

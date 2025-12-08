@@ -13,7 +13,7 @@
 import { parseArgs } from "util";
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
-import { loadTerminalBenchSuite, type TerminalBenchSuite } from "../bench/terminal-bench.js";
+import { loadTerminalBenchSuite } from "../bench/terminal-bench.js";
 import {
   generateTestsFromDescription,
   summarizeCategories,

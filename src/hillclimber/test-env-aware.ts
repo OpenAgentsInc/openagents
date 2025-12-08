@@ -4,10 +4,15 @@
  * Tests introspection and generation with a mock environment.
  */
 
-import { Effect } from "effect";
-import { introspectLocalEnvironment, localCommandExecutor } from "./environment-introspector.js";
-import { generateTestsFromEnvironment, getAllTestsFromEnvironmentResult } from "./test-generator.js";
-import { inferProhibitedTools, emptyEnvironmentInfo } from "./environment-info.js";
+import { Effect } from "effect"
+import {
+  emptyEnvironmentInfo, inferProhibitedTools
+} from "./environment-info.js"
+import { introspectLocalEnvironment } from "./environment-introspector.js"
+import {
+  generateTestsFromEnvironment, getAllTestsFromEnvironmentResult
+} from "./test-generator.js"
+
 import type { EnvironmentInfo } from "./environment-info.js";
 
 const RSTAN_TO_PYSTAN_DESCRIPTION = `

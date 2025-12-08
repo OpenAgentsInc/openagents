@@ -11,11 +11,13 @@
  * - Category Balance: Do we have the right mix of test types?
  */
 
-import { Effect } from "effect";
-import { BunContext } from "@effect/platform-bun";
-import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
+import { Effect } from "effect"
+import { BunContext } from "@effect/platform-bun"
+import {
+  loadTerminalBenchSuite, TerminalBenchTask, type
+} from "../bench/terminal-bench.js"
+
 import type { GeneratedTest, TestCategory, TestGenerationResult } from "./test-generator.js";
-import { log } from "./logger.js";
 
 // ============================================================================
 // Types
@@ -494,7 +496,7 @@ function findBestMatch(
 
     // Check for partial match (similar input)
     if (inputsSimilar(generated.input, actual.input)) {
-      if (bestMatchType !== "exact") {
+      if (bestMatchType === "no_match" || bestMatchType === "category_only") {
         bestMatch = actual;
         bestMatchType = "partial";
       }
@@ -654,5 +656,5 @@ export async function loadTB2Tasks(): Promise<TerminalBenchTask[]> {
   const suite = await Effect.runPromise(
     loadTerminalBenchSuite(suitePath).pipe(Effect.provide(BunContext.layer)),
   );
-  return suite.tasks;
+  return [...suite.tasks];
 }

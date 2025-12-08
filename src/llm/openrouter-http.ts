@@ -5,8 +5,9 @@ import * as Secret from "effect/Secret"
 import { OpenRouter } from "@openrouter/sdk"
 import {
     loadOpenRouterEnv, logAtLevel, openRouterBaseLayer, OpenRouterConfig,
-    OpenRouterConfigShape, parseLogLevel, resolveLogger, type
+    parseLogLevel, resolveLogger
 } from "./openrouter-config.js"
+import type { OpenRouterConfigShape } from "./openrouter-config.js"
 import { makeRequestBody } from "./openrouter-tools.js"
 import { HttpError, isRetryableLlmError, retryWithBackoff } from "./retry.js"
 

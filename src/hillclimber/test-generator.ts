@@ -8,10 +8,15 @@
  * It reasons about requirements and generates its own tests.
  */
 
-import { Effect, Layer } from "effect";
-import { AnthropicClient, anthropicConfigLayer, anthropicClientLive } from "../llm/anthropic.js";
-import { FMService, FMServiceLive, type FMServiceError } from "../fm/service.js";
-import { log } from "./logger.js";
+import { Effect, Layer } from "effect"
+import {
+  FMService, FMServiceError, FMServiceLive, type
+} from "../fm/service.js"
+import {
+  AnthropicClient, anthropicClientLive, anthropicConfigLayer
+} from "../llm/anthropic.js"
+import { log } from "./logger.js"
+
 import type { EnvironmentInfo } from "./environment-info.js";
 
 // ============================================================================
@@ -250,7 +255,7 @@ export const generateTestsWithClaude = (
   taskDescription: string,
   taskId: string,
   options: TestGeneratorOptions = {},
-): Effect.Effect<TestGenerationResult, Error> =>
+) =>
   Effect.gen(function* () {
     const startTime = Date.now();
     const anthropic = yield* AnthropicClient;
@@ -301,7 +306,7 @@ export const generateTestsWithClaude = (
     Effect.provide(
       Layer.mergeAll(anthropicConfigLayer, anthropicClientLive),
     ),
-  );
+  ) as Effect.Effect<TestGenerationResult, Error>;
 
 // ============================================================================
 // Generation with Local FM
@@ -557,11 +562,11 @@ ${toolsSection}
 
 ### Prohibited Tools (ANTI-CHEAT)
 ${environment.tools.prohibited.length > 0
-  ? environment.tools.prohibited.map(t =>
-      `- ${t.name}: ${t.reason} (found: ${t.found})`
-    ).join("\n")
-  : "None specified"
-}
+      ? environment.tools.prohibited.map(t =>
+        `- ${t.name}: ${t.reason} (found: ${t.found})`
+      ).join("\n")
+      : "None specified"
+    }
 
 ### Working Directory: ${environment.files.workdir}
 
@@ -585,9 +590,9 @@ Based on the task description, what tools/approaches should be PROHIBITED?
 - If this is an "implement from scratch" task, verify no pre-built solutions exist
 - Think: "What would a lazy implementation do that we should catch?"
 ${environment.tools.prohibited.length > 0
-  ? `\nProhibited tools to check: ${environment.tools.prohibited.map(t => t.name).join(", ")}`
-  : "\nInfer prohibited tools from the task description."
-}
+      ? `\nProhibited tools to check: ${environment.tools.prohibited.map(t => t.name).join(", ")}`
+      : "\nInfer prohibited tools from the task description."
+    }
 
 ### 2. Existence Tests
 Based on the workspace:
@@ -868,7 +873,7 @@ export const generateTestsWithEnvironmentClaude = (
   taskId: string,
   environment: EnvironmentInfo,
   options: TestGeneratorOptions = {},
-): Effect.Effect<EnvironmentAwareTestResult, Error> =>
+) =>
   Effect.gen(function* () {
     const startTime = Date.now();
     const anthropic = yield* AnthropicClient;
@@ -900,7 +905,7 @@ export const generateTestsWithEnvironmentClaude = (
     };
   }).pipe(
     Effect.provide(Layer.mergeAll(anthropicConfigLayer, anthropicClientLive)),
-  );
+  ) as Effect.Effect<EnvironmentAwareTestResult, Error>;
 
 /**
  * Generate tests from task description AND environment context.

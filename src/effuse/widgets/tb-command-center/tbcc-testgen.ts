@@ -78,24 +78,31 @@ export type TBTestGenEvent =
 export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServiceTag> = {
   id: "tbcc-testgen",
 
-  initialState: () => ({
-    status: "idle",
-    taskIds: [],
-    selectedTaskId: null,
-    sessionId: null,
-    taskId: null,
-    taskDescription: null,
-    environment: null,
-    tests: [],
-    totalTests: 0,
-    durationMs: 0,
-    uncertainties: [],
-    error: null,
-  }),
+  initialState: () => {
+    console.log("[TBTestGen] Creating initial state")
+    return {
+      status: "idle",
+      taskIds: [],
+      selectedTaskId: null,
+      sessionId: null,
+      taskId: null,
+      taskDescription: null,
+      environment: null,
+      tests: [],
+      totalTests: 0,
+      durationMs: 0,
+      uncertainties: [],
+      error: null,
+    }
+  },
 
   render: (ctx) =>
     Effect.gen(function* () {
       const state = yield* ctx.state.get;
+
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[TBTestGen] render called, status=${state.status}`);
+      }
 
       // Header
       const header = html`
