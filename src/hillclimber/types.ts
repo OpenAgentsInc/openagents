@@ -110,6 +110,7 @@ export interface ConfigChange {
   newUseSkills?: boolean;
   newMaxTurns?: number;
   reasoning?: string;
+  model?: string; // Actual model that was used for this change
 }
 
 // ============================================================================

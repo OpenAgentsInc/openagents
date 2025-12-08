@@ -65,3 +65,4 @@ export const logError = (message: string, error?: Error): void => {
  * Get the path to the log file (for reference in docs/help).
  */
 export const getLogPath = (): string => LOG_PATH;
+
