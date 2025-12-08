@@ -69,7 +69,8 @@ export type TBTestGenEvent =
   | { type: "loadSuite" }
   | { type: "selectTask"; taskId: string | null }
   | { type: "generate" }
-  | { type: "clear" };
+  | { type: "clear" }
+  | { type: "cancel" };
 
 // ============================================================================
 // Widget Definition
@@ -136,10 +137,20 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             <button
               class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-mono rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               data-action="generate"
-              ${state.status !== "idle" && state.status !== "complete" && state.status !== "error" ? "disabled" : ""}
+              ${state.status === "generating" || state.status === "loading_suite" ? "disabled" : ""}
             >
               ${state.status === "generating" ? "Generating..." : "▶ Generate"}
             </button>
+            ${state.status === "generating"
+          ? html`
+                  <button
+                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-mono rounded transition-colors"
+                    data-action="cancel"
+                  >
+                    Cancel
+                  </button>
+                `
+          : ""}
             ${state.status === "complete" || state.status === "error"
           ? html`
                   <button
@@ -368,6 +379,11 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
       yield* ctx.dom.delegate(ctx.container, "[data-action='clear']", "click", () => {
         Effect.runFork(ctx.emit({ type: "clear" }));
       });
+
+      // Cancel button (during generation)
+      yield* ctx.dom.delegate(ctx.container, "[data-action='cancel']", "click", () => {
+        Effect.runFork(ctx.emit({ type: "cancel" }));
+      });
     }),
 
   handleEvent: (event, ctx) =>
@@ -464,6 +480,18 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
           }));
           break;
         }
+
+        case "cancel": {
+          // Cancel generation by resetting to idle state
+          // Note: The background generation will continue, but we'll ignore its messages
+          yield* ctx.state.update((s) => ({
+            ...s,
+            status: "idle",
+            sessionId: null, // Clear sessionId so we ignore future messages
+            error: null,
+          }));
+          break;
+        }
       }
     }),
 
@@ -489,6 +517,7 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             const data = msg as TestGenStartMessage;
             yield* ctx.state.update((s) => ({
               ...s,
+              status: "generating", // Ensure status is generating when start message arrives
               taskId: data.taskId,
               taskDescription: data.taskDescription,
               environment: data.environment,
