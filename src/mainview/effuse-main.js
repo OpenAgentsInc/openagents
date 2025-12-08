@@ -29918,11 +29918,17 @@ ${endStackCall}`;
           yield* socket.startTBRun({
             suitePath: "tasks/terminal-bench-2.json",
             taskIds: [event.taskId]
-          });
+          }).pipe(exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+            ...s,
+            error: `Failed to start run: ${error instanceof Error ? error.message : String(error)}`
+          }))));
           break;
         }
       }
-    }),
+    }).pipe(exports_Effect.catchAll((error) => ctx.state.update((s) => ({
+      ...s,
+      error: `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+    })))),
     subscriptions: (ctx) => {
       return [exports_Stream.make(ctx.emit({ type: "loadTasks" }))];
     }
