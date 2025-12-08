@@ -29124,7 +29124,8 @@ ${endStackCall}`;
     deepComputeEnabled: false,
     recursionLimitN: 3,
     innerIterationsT: 5,
-    earlyStopOnHighConfidence: true
+    earlyStopOnHighConfidence: true,
+    model: "fm"
   };
   var DEFAULT_LOGGING_SETTINGS = {
     saveTrajectories: true,
@@ -29298,6 +29299,21 @@ ${endStackCall}`;
     }
   };
   // src/effuse/widgets/tb-command-center/tbcc-dashboard.ts
+  var STORAGE_KEY = "tbcc_settings";
+  var DEFAULT_SUITE_PATH = "tasks/terminal-bench-2.json";
+  var getSettings = () => {
+    if (typeof localStorage === "undefined") {
+      return { model: DEFAULT_EXECUTION_SETTINGS.model };
+    }
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { model: parsed.execution?.model ?? DEFAULT_EXECUTION_SETTINGS.model };
+      }
+    } catch {}
+    return { model: DEFAULT_EXECUTION_SETTINGS.model };
+  };
   var formatDuration4 = (ms) => {
     if (ms === null)
       return "-";
@@ -29549,9 +29565,13 @@ ${endStackCall}`;
           break;
         }
         case "runFullBenchmark": {
+          const settings = getSettings();
           yield* exports_Effect.tryPromise({
             try: async () => {
-              const result = await exports_Effect.runPromise(socket.startTBRun({ suitePath: "default.json", subset: "TB_10" }));
+              const result = await exports_Effect.runPromise(socket.startTBRun({
+                suitePath: DEFAULT_SUITE_PATH,
+                model: settings.model
+              }));
               return result;
             },
             catch: (e) => e
@@ -29560,7 +29580,7 @@ ${endStackCall}`;
             currentRun: {
               runId: result.runId,
               taskId: "all",
-              taskName: "Full Benchmark",
+              taskName: `Full Benchmark (${settings.model})`,
               attempt: 1,
               maxAttempts: 1,
               status: "running",
@@ -29575,9 +29595,14 @@ ${endStackCall}`;
           break;
         }
         case "runRandomTask": {
+          const settings = getSettings();
           yield* exports_Effect.tryPromise({
             try: async () => {
-              const result = await exports_Effect.runPromise(socket.startTBRun({ subset: "TB_10" }));
+              const result = await exports_Effect.runPromise(socket.startTBRun({
+                suitePath: DEFAULT_SUITE_PATH,
+                model: settings.model,
+                random: true
+              }));
               return result;
             },
             catch: (e) => e
@@ -29586,7 +29611,7 @@ ${endStackCall}`;
             currentRun: {
               runId: result.runId,
               taskId: "random",
-              taskName: "Random Task",
+              taskName: `Random Task (${settings.model})`,
               attempt: 1,
               maxAttempts: 5,
               status: "running",
@@ -30348,13 +30373,13 @@ ${endStackCall}`;
     }
   };
   // src/effuse/widgets/tb-command-center/tbcc-settings.ts
-  var STORAGE_KEY = "tbcc_settings";
+  var STORAGE_KEY2 = "tbcc_settings";
   var loadSettings = () => {
     if (typeof localStorage === "undefined") {
       return { execution: DEFAULT_EXECUTION_SETTINGS, logging: DEFAULT_LOGGING_SETTINGS };
     }
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY2);
       if (saved) {
         return JSON.parse(saved);
       }
@@ -30367,7 +30392,7 @@ ${endStackCall}`;
     if (typeof localStorage === "undefined")
       return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ execution, logging }));
+      localStorage.setItem(STORAGE_KEY2, JSON.stringify({ execution, logging }));
     } catch (e) {
       console.error("Failed to save settings", e);
     }
@@ -30393,6 +30418,47 @@ ${endStackCall}`;
             <div class="flex items-center justify-between mb-8">
               <h2 class="text-xl font-bold font-mono text-zinc-100">Settings</h2>
               ${state.saved ? html`<span class="text-sm text-emerald-400 animate-fade-out">Settings saved!</span>` : ""}
+            </div>
+
+            <!-- Model Selection -->
+            <div class="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-6 mb-6">
+              <h3 class="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
+                <span class="text-lg">🤖</span> Model
+              </h3>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors
+                  ${state.execution.model === "fm" ? "bg-emerald-900/30 border-emerald-600/50 text-emerald-200" : "border-zinc-700/50 text-zinc-400 hover:border-zinc-600/60"}">
+                  <input
+                    type="radio"
+                    name="model"
+                    value="fm"
+                    ${state.execution.model === "fm" ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="model"
+                    class="hidden"
+                  />
+                  <div>
+                    <div class="font-medium">Foundation Model</div>
+                    <div class="text-xs opacity-70">Apple on-device (default)</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors
+                  ${state.execution.model === "claude-code" ? "bg-blue-900/30 border-blue-600/50 text-blue-200" : "border-zinc-700/50 text-zinc-400 hover:border-zinc-600/60"}">
+                  <input
+                    type="radio"
+                    name="model"
+                    value="claude-code"
+                    ${state.execution.model === "claude-code" ? "checked" : ""}
+                    data-action="updateExecution"
+                    data-key="model"
+                    class="hidden"
+                  />
+                  <div>
+                    <div class="font-medium">Claude Code</div>
+                    <div class="text-xs opacity-70">Cloud-based</div>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <!-- Execution Settings -->
@@ -30559,6 +30625,8 @@ ${endStackCall}`;
           value = el.checked;
         } else if (el.type === "number") {
           value = el.value === "" ? null : Number(el.value);
+        } else if (el.type === "radio") {
+          value = el.value;
         } else {
           value = el.value;
         }
@@ -30566,6 +30634,17 @@ ${endStackCall}`;
           exports_Effect.runFork(ctx.emit({ type: "updateExecution", key, value }));
         } else if (action === "updateLogging") {
           exports_Effect.runFork(ctx.emit({ type: "updateLogging", key, value }));
+        }
+      });
+      yield* ctx.dom.delegate(ctx.container, "label:has(input[name='model'])", "click", (_e, target) => {
+        const label = target;
+        const radio = label.querySelector("input[type='radio']");
+        if (radio && !radio.checked) {
+          exports_Effect.runFork(ctx.emit({
+            type: "updateExecution",
+            key: "model",
+            value: radio.value
+          }));
         }
       });
       yield* ctx.dom.delegate(ctx.container, "button[data-action='save']", "click", () => {
@@ -30660,6 +30739,13 @@ ${event.reason?.stack || event.reason}`);
     const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks");
     const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs");
     const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings");
+    let outputContainer = document.getElementById("tb-output-widget");
+    if (!outputContainer) {
+      outputContainer = document.createElement("div");
+      outputContainer.id = "tb-output-widget";
+      document.body.appendChild(outputContainer);
+    }
+    const tbOutputWidget = yield* mountWidgetById(TBOutputWidget, "tb-output-widget");
     console.log("[Effuse] Child widgets mounted");
     yield* exports_Stream.runForEach(dashboardWidget.events, (event) => exports_Effect.gen(function* () {
       if (event.type === "viewRun") {
