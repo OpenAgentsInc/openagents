@@ -56,7 +56,7 @@ models/
 docs/scratchpad/
 
 *.log
-!docs/logs/runs/
+!docs/logs/runs/*.log
 *bead-run.md
 *task-run.md
 logs/*.log
