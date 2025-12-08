@@ -10,10 +10,10 @@
 
 import { Effect, Layer } from "effect"
 import {
-  FMService, FMServiceError, FMServiceLive, type
+    FMService, FMServiceLive, type FMServiceError
 } from "../fm/service.js"
 import {
-  AnthropicClient, anthropicClientLive, anthropicConfigLayer
+    AnthropicClient, anthropicClientLive, anthropicConfigLayer
 } from "../llm/anthropic.js"
 import { log } from "./logger.js"
 

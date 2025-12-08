@@ -30671,7 +30671,9 @@ ${endStackCall}`;
         </div>
       `;
       if (window.bunLog) {
-        window.bunLog(`[TBTestGen] render output length=${result.toString().length}, hasEmptyState=${emptyState !== ""}, hasControls=${controls !== ""}`);
+        const emptyStateStr = emptyState.toString();
+        const controlsStr = controls.toString();
+        window.bunLog(`[TBTestGen] render output length=${result.toString().length}, hasEmptyState=${emptyStateStr !== ""}, hasControls=${controlsStr !== ""}`);
       }
       return result;
     }),
