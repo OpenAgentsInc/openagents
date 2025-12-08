@@ -87,6 +87,16 @@ export const makeCell = <A>(
 
 ---
 
+## DOM Rendering Model
+
+**Critical:** Effuse uses `innerHTML` replacement for rendering. This means:
+
+1. Every `render()` call produces a complete HTML string
+2. `dom.render(container, content)` does `container.innerHTML = content.toString()`
+3. **This replaces ALL child elements** - any DOM inside the container is wiped out
+
+**Implication:** If a parent widget renders containers that child widgets mount into, re-rendering the parent will destroy the child widgets' DOM. See [Parent/Child Widget Relationships](#parentchild-widget-relationships) below for solutions.
+
 ## Mount Process
 
 `src/effuse/widget/mount.ts`
@@ -434,6 +444,130 @@ const initEffuse = () => {
 3. **Stream-Based Re-rendering** - Each state change triggers a render. Multiple rapid updates will queue up renders.
 
 4. **Event Delegation** - Using `delegate` instead of individual listeners avoids re-attaching on render.
+
+## Parent/Child Widget Relationships
+
+**Critical Pattern:** When a parent widget renders containers for child widgets, re-rendering the parent will **wipe out child widget DOM**.
+
+### The Problem
+
+```typescript
+// Parent widget renders child containers
+const ParentWidget: Widget<ParentState, ParentEvent> = {
+  render: (ctx) =>
+    Effect.gen(function* () {
+      const state = yield* ctx.state.get
+      return html`
+        <div>
+          <div id="child-container-1" class="${state.showChild1 ? "" : "hidden"}"></div>
+          <div id="child-container-2" class="${state.showChild2 ? "" : "hidden"}"></div>
+        </div>
+      `
+    }),
+}
+
+// Child widgets are mounted into those containers
+yield* mountWidgetById(ChildWidget1, "child-container-1")
+yield* mountWidgetById(ChildWidget2, "child-container-2")
+```
+
+**What happens:**
+1. Parent renders, creating `child-container-1` and `child-container-2`
+2. Child widgets mount and render their content into those containers
+3. Parent state changes (e.g., `showChild1` changes)
+4. Parent re-renders, calling `dom.render(container, newHTML)`
+5. **Child widgets' DOM is wiped out** because `innerHTML` is replaced
+
+### Solutions
+
+**Option 1: Direct DOM Manipulation (Recommended for Tab Switching)**
+
+Update classes directly in `handleEvent` instead of relying on re-render:
+
+```typescript
+handleEvent: (event, ctx) =>
+  Effect.gen(function* () {
+    switch (event.type) {
+      case "changeTab": {
+        yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
+
+        // Directly update DOM classes to avoid wiping out child widgets
+        const TABS = ["tab1", "tab2", "tab3"]
+        for (const tabId of TABS) {
+          const container = yield* ctx.dom.queryOption(`#tab-${tabId}`)
+          if (container) {
+            if (tabId === event.tab) {
+              container.classList.remove("hidden")
+            } else {
+              container.classList.add("hidden")
+            }
+          }
+        }
+        break
+      }
+    }
+  }),
+```
+
+**Option 2: Restructure Containers**
+
+Don't render child containers in parent - create them once in HTML or mount separately:
+
+```typescript
+// In HTML (index.html)
+<div id="parent-widget">
+  <div id="child-container-1"></div>
+  <div id="child-container-2"></div>
+</div>
+
+// Parent widget only renders its own UI, not child containers
+const ParentWidget: Widget<ParentState, ParentEvent> = {
+  render: (ctx) =>
+    Effect.gen(function* () {
+      // Only render parent's UI (sidebar, header, etc.)
+      // Child containers exist in HTML, not in render output
+      return html`<div>Parent UI only</div>`
+    }),
+}
+```
+
+**Option 3: Conditional Re-rendering**
+
+Only re-render parts that don't contain child widgets:
+
+```typescript
+// Split render into parts that can be safely re-rendered
+// vs. parts that contain child widgets (render once, update classes only)
+```
+
+### When to Use Each Approach
+
+- **Direct DOM manipulation**: Tab switching, show/hide toggles, simple visibility changes
+- **Restructure containers**: Complex layouts where parent doesn't need to control child container structure
+- **Conditional re-rendering**: Large widgets where only specific sections change
+
+### Example: TBCC Shell Widget
+
+The TBCC Shell widget uses **Option 1** for tab switching:
+
+```typescript
+// In handleEvent for changeTab:
+// 1. Update state (for sidebar button active states)
+yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
+
+// 2. Directly update tab container visibility (avoids wiping child widgets)
+for (const tabId of TABS) {
+  const container = yield* ctx.dom.queryOption(`#tbcc-tab-${tabId}`)
+  if (container) {
+    container.classList.toggle("hidden", tabId !== event.tab)
+  }
+}
+
+// 3. Update sidebar button classes directly
+// (can also be done via re-render since sidebar doesn't contain child widgets)
+```
+
+**Key takeaway:** If your parent widget renders containers that child widgets mount into, **never re-render those containers** - update their classes/attributes directly in event handlers.
 
 ---
 
