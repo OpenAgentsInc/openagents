@@ -1,5 +1,6 @@
-import { Database } from "bun:sqlite";
-import { Context, Effect, Layer } from "effect";
+import { Database } from "bun:sqlite"
+import { Context, Effect, Layer } from "effect"
+
 import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
 
 /**
@@ -68,7 +69,7 @@ export class InferenceStore extends Context.Tag("InferenceStore")<
       InferenceStoreError
     >;
   }
->() {}
+>() { }
 
 /**
  * Helper: Extract usage metrics from response
@@ -197,11 +198,11 @@ export const makeInferenceStoreLive = (
               request.tools !== undefined ||
               request.toolChoice !== undefined
               ? JSON.stringify({
-                  temperature: request.temperature,
-                  maxTokens: request.maxTokens,
-                  tools: request.tools,
-                  toolChoice: request.toolChoice,
-                })
+                temperature: request.temperature,
+                maxTokens: request.maxTokens,
+                tools: request.tools,
+                toolChoice: request.toolChoice,
+              })
               : null,
             JSON.stringify(response),
             response.id || null,
