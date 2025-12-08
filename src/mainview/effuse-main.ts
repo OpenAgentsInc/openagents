@@ -102,6 +102,10 @@ const mountAllWidgets = Effect.gen(function* () {
   const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs")
   const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings")
 
+  // Mark as used (widgets are mounted but not directly referenced)
+  void taskBrowserWidget
+  void settingsWidget
+
   console.log("[Effuse] Child widgets mounted")
 
   // 3. Wire up events
