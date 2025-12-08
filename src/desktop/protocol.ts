@@ -11,7 +11,11 @@
  * - Responses flow server -> client with matching correlation IDs
  */
 
-import type { HudMessage, TBDifficulty } from "../hud/protocol.js";
+import type { HudMessage } from "../hud/protocol.js";
+import type { TBRunOptions, TBSuiteInfo, TBRunHistoryItem, TBRunDetails } from "../shared/tb-types.js";
+
+// Re-export shared types for convenience
+export type { TBRunOptions, TBSuiteInfo, TBRunHistoryItem, TBRunDetails } from "../shared/tb-types.js";
 
 // ============================================================================
 // Correlation ID Support
@@ -47,20 +51,8 @@ export interface LoadTBSuiteRequest extends BaseRequest {
 /**
  * Start a TB run
  */
-export interface StartTBRunRequest extends BaseRequest {
+export interface StartTBRunRequest extends BaseRequest, TBRunOptions {
   type: "request:startTBRun";
-  suitePath: string;
-  taskIds?: string[];
-  timeout?: number;
-  maxTurns?: number;
-  outputDir?: string;
-  sandbox?: boolean;
-  sandboxBackend?: "docker" | "macos-container";
-  sandboxImage?: string;
-  subset?: string;
-  runAll?: boolean;
-  random?: boolean;
-  model?: "fm" | "claude-code" | string;
 }
 
 /**
@@ -167,20 +159,6 @@ interface BaseResponse {
 }
 
 /**
- * TB suite information
- */
-export interface TBSuiteInfo {
-  name: string;
-  version: string;
-  tasks: Array<{
-    id: string;
-    name: string;
-    category: string;
-    difficulty: TBDifficulty | string;
-  }>;
-}
-
-/**
  * Response to LoadTBSuiteRequest
  */
 export interface LoadTBSuiteResponse extends BaseResponse {
@@ -209,48 +187,11 @@ export interface StopTBRunResponse extends BaseResponse {
 }
 
 /**
- * TB run history item
- */
-export interface TBRunHistoryItem {
-  runId: string;
-  suiteName: string;
-  suiteVersion: string;
-  timestamp: string;
-  passRate: number;
-  passed: number;
-  failed: number;
-  timeout: number;
-  error: number;
-  totalDurationMs: number;
-  totalTokens: number;
-  taskCount: number;
-  filepath: string;
-}
-
-/**
  * Response to LoadRecentTBRunsRequest
  */
 export interface LoadRecentTBRunsResponse extends BaseResponse {
   type: "response:loadRecentTBRuns";
   data?: TBRunHistoryItem[];
-}
-
-/**
- * TB run details with task results
- */
-export interface TBRunDetails {
-  meta: TBRunHistoryItem;
-  tasks: Array<{
-    id: string;
-    name: string;
-    category: string;
-    difficulty: string;
-    outcome: string;
-    durationMs: number;
-    turns: number;
-    tokens: number;
-    outputLines?: number;
-  }>;
 }
 
 /**
