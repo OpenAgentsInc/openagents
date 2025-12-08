@@ -30615,7 +30615,7 @@ ${endStackCall}`;
       const reflectionPanel = state.reflections.length > 0 ? html`
               <div class="p-4 bg-blue-900/20 border-b border-blue-800/50">
                 <h4 class="text-sm font-mono text-blue-300 mb-2">Reflections:</h4>
-                <div class="space-y-2">
+                <div class="space-y-2 max-h-32 overflow-y-auto">
                   ${joinTemplates(state.reflections.slice(-3).map((r) => html`
                           <div class="text-xs text-blue-200 font-mono">
                             ${r.category ? `[${r.category}] ` : ""}${r.text}
@@ -30625,7 +30625,7 @@ ${endStackCall}`;
               </div>
             ` : "";
       const testCards = state.tests.length > 0 ? html`
-              <div class="p-4 space-y-3 overflow-y-auto flex-1">
+              <div class="p-4 space-y-3">
                 <div class="flex items-center justify-between mb-2">
                   <h3 class="text-sm font-mono text-zinc-400">Generated Tests (${state.tests.length})</h3>
                   ${state.status === "complete" ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s | ${state.totalRounds} rounds</span>` : ""}
@@ -30669,6 +30669,11 @@ ${endStackCall}`;
                         </div>
                       `;
       }))}
+              </div>
+            ` : "";
+      const scrollableContent = state.reflections.length > 0 || state.tests.length > 0 ? html`
+              <div class="flex-1 overflow-y-auto">
+                ${reflectionPanel} ${testCards}
               </div>
             ` : "";
       const completionSummary = state.status === "complete" ? html`
@@ -30717,7 +30722,7 @@ ${endStackCall}`;
             ` : "";
       const result = html`
         <div class="h-full flex flex-col bg-zinc-950">
-          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${reflectionPanel} ${errorPanel} ${emptyState} ${loadingState} ${testCards} ${completionSummary}
+          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${errorPanel} ${emptyState} ${loadingState} ${scrollableContent} ${completionSummary}
         </div>
       `;
       if (window.bunLog) {
