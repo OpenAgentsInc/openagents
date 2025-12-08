@@ -6,12 +6,12 @@
  */
 
 import { Effect, Stream } from "effect"
-import { html, joinTemplates } from "../../template/html.js"
-import type { Widget } from "../../widget/types.js"
 import { SocketServiceTag } from "../../services/socket.js"
-import type { TabId, CurrentRunInfo } from "./types.js"
+import { html, joinTemplates } from "../../template/html.js"
 import { TABS } from "./types.js"
 
+import type { Widget } from "../../widget/types.js"
+import type { TabId, CurrentRunInfo } from "./types.js"
 // ============================================================================
 // Types
 // ============================================================================
@@ -33,21 +33,6 @@ export type TBCCShellEvent =
   | { type: "runStarted"; runId: string; taskId: string; taskName: string }
   | { type: "runCompleted"; runId: string; outcome: string }
   | { type: "connectionChange"; connected: boolean }
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const renderTabIcon = (icon: string): string => {
-  // Unicode icons (not HTML entities - those get escaped)
-  const iconMap: Record<string, string> = {
-    "layout-dashboard": "📊",
-    "list-checks": "📋",
-    "play-circle": "▶️",
-    "settings": "⚙️",
-  }
-  return iconMap[icon] ?? "•"
-}
 
 // ============================================================================
 // Widget Definition
@@ -78,7 +63,6 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
 
           return html`
             <button class="${baseClasses} ${activeClasses}" data-action="changeTab" data-tab="${tab.id}">
-              <span class="text-lg">${renderTabIcon(tab.icon)}</span>
               ${state.sidebarCollapsed ? "" : html`<span>${tab.label}</span>`}
             </button>
           `

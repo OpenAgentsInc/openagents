@@ -73,7 +73,14 @@ const makeDomService = (root: Document | Element = document): DomService => ({
   ) =>
     Effect.sync(() => {
       const listener = (e: Event) => {
-        const target = (e.target as Element)?.closest(selector)
+        // Handle text nodes - get the parent element if target is a text node
+        let element: Element | null = null
+        if (e.target instanceof Element) {
+          element = e.target
+        } else if (e.target instanceof Node && e.target.parentElement) {
+          element = e.target.parentElement
+        }
+        const target = element?.closest(selector)
         if (target && container.contains(target)) {
           handler(e as HTMLElementEventMap[K], target)
         }
