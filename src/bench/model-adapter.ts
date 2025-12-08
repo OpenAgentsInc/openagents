@@ -25,9 +25,7 @@ import { makeMemoryServiceLive, MemoryService } from "../memory/service.js"
 import {
   makeReflexionServiceLive, ReflexionService
 } from "../reflexion/service.js"
-import {
-  makeSkillServiceLive, Skill, SkillService
-} from "../skills/index.js"
+import { makeSkillServiceLive, Skill, SkillService } from "../skills/index.js"
 
 import type { Subtask } from "../agent/orchestrator/types.js";
 import type { TerminalBenchTask } from "./terminal-bench.js";
@@ -1280,29 +1278,54 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       }
 
       // Verify total initial context size fits within FM budget
-      // Use more conservative estimate: system + user + 60 chars overhead (roles, formatting, etc.)
-      const totalInitialChars = systemPrompt.length + userMessage.length + 60;
+      // Account for JSON serialization overhead: ~120 chars for roles, structure, formatting
+      const jsonOverhead = 120; // {"role":"system","content":"..."} + outer JSON structure
+      const totalInitialChars = systemPrompt.length + userMessage.length + jsonOverhead;
       let finalUserMessage = userMessage;
 
-      // Be more aggressive: target 80% of budget to leave room for response
-      const targetBudget = Math.floor(FM_CONTEXT_BUDGET * 0.8);
+      // Be VERY aggressive: target 90% of budget to leave room for response
+      // FM's actual limit appears to be ~500-600 chars total including JSON overhead
+      const targetBudget = Math.floor(FM_CONTEXT_BUDGET * 0.9);
       
       if (totalInitialChars > targetBudget) {
-        log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds target (${targetBudget} chars). System: ${systemPrompt.length}, User: ${userMessage.length}`);
+        log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds target (${targetBudget} chars). System: ${systemPrompt.length}, User: ${userMessage.length}, JSON overhead: ${jsonOverhead}`);
         // Further truncate user message to fit within target budget
-        const maxUserChars = Math.max(50, targetBudget - systemPrompt.length - 60);
+        const maxUserChars = Math.max(30, targetBudget - systemPrompt.length - jsonOverhead);
         finalUserMessage = truncateTaskDescription(task.description, maxUserChars);
         log(`[Context] Further truncated user message to ${finalUserMessage.length} chars`);
       }
 
-      // Final check - log final sizes
-      const finalTotal = systemPrompt.length + finalUserMessage.length + 60;
-      log(`[Context] Final context: ${finalTotal} chars (System: ${systemPrompt.length}, User: ${finalUserMessage.length}, Overhead: 60)`);
+      // Final check - log final sizes with JSON overhead
+      const finalTotal = systemPrompt.length + finalUserMessage.length + jsonOverhead;
+      log(`[Context] Final context: ${finalTotal} chars (System: ${systemPrompt.length}, User: ${finalUserMessage.length}, JSON overhead: ${jsonOverhead})`);
+      
+      // If still too large, be even more aggressive
+      if (finalTotal > FM_CONTEXT_BUDGET) {
+        log(`[Context] CRITICAL: Still exceeds budget! Reducing to absolute minimum...`);
+        const absoluteMax = Math.max(20, FM_CONTEXT_BUDGET - systemPrompt.length - jsonOverhead - 20);
+        finalUserMessage = truncateTaskDescription(task.description, absoluteMax);
+        log(`[Context] Reduced to absolute minimum: ${finalUserMessage.length} chars`);
+      }
 
       let messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
         { role: "user", content: finalUserMessage },
       ];
+
+      // Log the EXACT messages being sent to FM
+      log(`[FM Request] Messages being sent to FM agent:`);
+      log(`[FM Request] Total messages: ${messages.length}`);
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        log(`[FM Request] Message ${i + 1} (${msg.role}):`);
+        log(`[FM Request]   Length: ${msg.content.length} chars`);
+        log(`[FM Request]   Content: ${JSON.stringify(msg.content)}`);
+      }
+      const totalContentChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+      const estimatedJsonSize = JSON.stringify(messages).length;
+      log(`[FM Request] Total content chars: ${totalContentChars}`);
+      log(`[FM Request] Estimated JSON size: ${estimatedJsonSize} chars`);
+      log(`[FM Request] Full JSON payload: ${JSON.stringify(messages, null, 2)}`);
 
       const maxTurns = task.max_turns ?? options.maxTurns;
       const timeoutMs = (task.timeout_seconds ?? options.timeout) * 1000;
@@ -1366,6 +1389,21 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
               log(`[Context] Truncated ${messages.length} messages to ${truncatedMessages.length} for context limit`);
             }
 
+            // Log the EXACT truncated messages being sent
+            log(`[FM Request] Truncated messages (turn ${turns}):`);
+            log(`[FM Request] Total messages: ${truncatedMessages.length}`);
+            for (let i = 0; i < truncatedMessages.length; i++) {
+              const msg = truncatedMessages[i];
+              log(`[FM Request] Message ${i + 1} (${msg.role}):`);
+              log(`[FM Request]   Length: ${msg.content.length} chars`);
+              log(`[FM Request]   Content: ${JSON.stringify(msg.content)}`);
+            }
+            const truncatedContentChars = truncatedMessages.reduce((sum, m) => sum + m.content.length, 0);
+            const truncatedJsonSize = JSON.stringify(truncatedMessages).length;
+            log(`[FM Request] Truncated content chars: ${truncatedContentChars}`);
+            log(`[FM Request] Truncated JSON size: ${truncatedJsonSize} chars`);
+            log(`[FM Request] Full truncated JSON: ${JSON.stringify(truncatedMessages, null, 2)}`);
+
             // Call Foundation Models with retry on context error
             let response;
             try {
@@ -1378,6 +1416,22 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
               if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
                 log(`[Context] Hit context limit, retrying with minimal context`);
                 const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS_DEFAULT / 2);
+                
+                // Log minimal messages
+                log(`[FM Request] Minimal context retry (turn ${turns}):`);
+                log(`[FM Request] Total messages: ${minimalMessages.length}`);
+                for (let i = 0; i < minimalMessages.length; i++) {
+                  const msg = minimalMessages[i];
+                  log(`[FM Request] Message ${i + 1} (${msg.role}):`);
+                  log(`[FM Request]   Length: ${msg.content.length} chars`);
+                  log(`[FM Request]   Content: ${JSON.stringify(msg.content)}`);
+                }
+                const minimalContentChars = minimalMessages.reduce((sum, m) => sum + m.content.length, 0);
+                const minimalJsonSize = JSON.stringify(minimalMessages).length;
+                log(`[FM Request] Minimal content chars: ${minimalContentChars}`);
+                log(`[FM Request] Minimal JSON size: ${minimalJsonSize} chars`);
+                log(`[FM Request] Full minimal JSON: ${JSON.stringify(minimalMessages, null, 2)}`);
+                
                 try {
                   response = await Effect.runPromise(
                     client.chat({ messages: minimalMessages }),
