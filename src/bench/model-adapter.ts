@@ -26,7 +26,7 @@ import {
   makeReflexionServiceLive, ReflexionService
 } from "../reflexion/service.js"
 import {
-  makeSkillServiceLive, Skill, SkillService, type
+  makeSkillServiceLive, Skill, SkillService
 } from "../skills/index.js"
 
 import type { Subtask } from "../agent/orchestrator/types.js";
@@ -915,7 +915,9 @@ export const parseDescriptiveToolCall = (text: string): { name: string; argument
 const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
   const port = fmConfig.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
-  const useSkills = fmConfig.useSkills ?? true;
+  // Disable skills/memory/reflection by default for FM due to tight context limits
+  // These can be enabled explicitly but will reduce available space for task description
+  const useSkills = fmConfig.useSkills ?? false;
   const useMemory = fmConfig.useMemory ?? false;
   const useReflection = fmConfig.useReflection ?? false;
   const maxReflectionRetries = fmConfig.maxReflectionRetries ?? 2;
@@ -1263,7 +1265,11 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       const {
         getUserMessageBudget,
         truncateTaskDescription,
+        FM_CONTEXT_BUDGET,
       } = require("../fm/micro-task.js");
+
+      // Log system prompt size for debugging
+      log(`[Context] System prompt: ${systemPrompt.length} chars`);
 
       const userBudget = getUserMessageBudget(systemPrompt);
       const userMessage = truncateTaskDescription(task.description, userBudget);
@@ -1274,17 +1280,24 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       }
 
       // Verify total initial context size fits within FM budget
-      const { FM_CONTEXT_BUDGET } = require("../fm/micro-task.js");
-      const totalInitialChars = systemPrompt.length + userMessage.length + 40; // +40 for message overhead
+      // Use more conservative estimate: system + user + 60 chars overhead (roles, formatting, etc.)
+      const totalInitialChars = systemPrompt.length + userMessage.length + 60;
       let finalUserMessage = userMessage;
 
-      if (totalInitialChars > FM_CONTEXT_BUDGET) {
-        log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds FM budget (${FM_CONTEXT_BUDGET} chars). System: ${systemPrompt.length}, User: ${userMessage.length}`);
-        // Further truncate user message if needed
-        const maxUserChars = Math.max(100, FM_CONTEXT_BUDGET - systemPrompt.length - 40);
+      // Be more aggressive: target 80% of budget to leave room for response
+      const targetBudget = Math.floor(FM_CONTEXT_BUDGET * 0.8);
+      
+      if (totalInitialChars > targetBudget) {
+        log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds target (${targetBudget} chars). System: ${systemPrompt.length}, User: ${userMessage.length}`);
+        // Further truncate user message to fit within target budget
+        const maxUserChars = Math.max(50, targetBudget - systemPrompt.length - 60);
         finalUserMessage = truncateTaskDescription(task.description, maxUserChars);
         log(`[Context] Further truncated user message to ${finalUserMessage.length} chars`);
       }
+
+      // Final check - log final sizes
+      const finalTotal = systemPrompt.length + finalUserMessage.length + 60;
+      log(`[Context] Final context: ${finalTotal} chars (System: ${systemPrompt.length}, User: ${finalUserMessage.length}, Overhead: 60)`);
 
       let messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
