@@ -13,16 +13,24 @@
  *   const result = await runner.runTask(task, { workspace, timeout });
  */
 
-import { runClaudeCodeSubagent } from "../agent/orchestrator/claude-code-subagent.js";
-import type { Subtask } from "../agent/orchestrator/types.js";
-import { createOllamaClient, checkOllamaHealth } from "../llm/ollama.js";
-import { createFMClient, checkFMHealth, isMacOS } from "../llm/foundation-models.js";
-import type { TerminalBenchTask } from "./terminal-bench.js";
-import { Effect } from "effect";
-import { SkillService, makeSkillServiceLive, type Skill } from "../skills/index.js";
-import { MemoryService, makeMemoryServiceLive } from "../memory/service.js";
-import { ReflexionService, makeReflexionServiceLive } from "../reflexion/service.js";
+import { Effect } from "effect"
+import {
+  runClaudeCodeSubagent
+} from "../agent/orchestrator/claude-code-subagent.js"
+import {
+  checkFMHealth, createFMClient, isMacOS
+} from "../llm/foundation-models.js"
+import { checkOllamaHealth, createOllamaClient } from "../llm/ollama.js"
+import { makeMemoryServiceLive, MemoryService } from "../memory/service.js"
+import {
+  makeReflexionServiceLive, ReflexionService
+} from "../reflexion/service.js"
+import {
+  makeSkillServiceLive, Skill, SkillService, type
+} from "../skills/index.js"
 
+import type { Subtask } from "../agent/orchestrator/types.js";
+import type { TerminalBenchTask } from "./terminal-bench.js";
 // --- Configuration Types ---
 
 export interface ClaudeCodeModelConfig {
@@ -601,10 +609,10 @@ export const createFMToolParseError = (
 /**
  * System prompt building is now handled by buildMicroTaskPrompt() in src/fm/micro-task.ts
  * which ensures all prompts fit within FM's ~1100 char context window.
- * 
+ *
  * The micro-task system provides:
  * - Condensed skills (max 300 chars)
- * - Condensed memories (max 150 chars)  
+ * - Condensed memories (max 150 chars)
  * - Condensed reflections (max 100 chars)
  * - Truncated task descriptions to fit remaining budget
  */
@@ -708,7 +716,7 @@ export const truncateMessagesForFM = (
  *
  * Uses micro-task condensation to fit within FM's ~1100 char context window.
  * See src/fm/micro-task.ts for the condensation logic.
- * 
+ *
  * This delegates to buildMicroTaskPrompt() which ensures everything fits within budget.
  */
 const buildFMSystemPrompt = (options?: {
@@ -718,7 +726,7 @@ const buildFMSystemPrompt = (options?: {
 }): string => {
   // Import micro-task functions dynamically to avoid circular deps
   const { buildMicroTaskPrompt } = require("../fm/micro-task.js");
-  
+
   // Use the micro-task prompt builder which handles all condensation
   return buildMicroTaskPrompt({
     skills: options?.skills,
@@ -1269,7 +1277,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       const { FM_CONTEXT_BUDGET } = require("../fm/micro-task.js");
       const totalInitialChars = systemPrompt.length + userMessage.length + 40; // +40 for message overhead
       let finalUserMessage = userMessage;
-      
+
       if (totalInitialChars > FM_CONTEXT_BUDGET) {
         log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds FM budget (${FM_CONTEXT_BUDGET} chars). System: ${systemPrompt.length}, User: ${userMessage.length}`);
         // Further truncate user message if needed
@@ -1321,188 +1329,188 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           turns = 0; // Reset turn count for new attempt
         }
 
-      try {
-        while (turns < maxTurns) {
-          // Check timeout
-          if (Date.now() - startTime > timeoutMs) {
-            return await finalize({
-              success: false,
-              turns,
-              tokens: totalTokens,
-              durationMs: Date.now() - startTime,
-              output: outputText,
-              error: "Task timed out",
-              model: "fm:default",
-            });
-          }
+        try {
+          while (turns < maxTurns) {
+            // Check timeout
+            if (Date.now() - startTime > timeoutMs) {
+              return await finalize({
+                success: false,
+                turns,
+                tokens: totalTokens,
+                durationMs: Date.now() - startTime,
+                output: outputText,
+                error: "Task timed out",
+                model: "fm:default",
+              });
+            }
 
-          turns++;
-          log(`\n--- Turn ${turns} ---`);
+            turns++;
+            log(`\n--- Turn ${turns} ---`);
 
-          // Truncate messages to fit FM context limit
-          const truncatedMessages = truncateMessagesForFM(messages);
-          if (truncatedMessages.length < messages.length) {
-            log(`[Context] Truncated ${messages.length} messages to ${truncatedMessages.length} for context limit`);
-          }
+            // Truncate messages to fit FM context limit
+            const truncatedMessages = truncateMessagesForFM(messages);
+            if (truncatedMessages.length < messages.length) {
+              log(`[Context] Truncated ${messages.length} messages to ${truncatedMessages.length} for context limit`);
+            }
 
-          // Call Foundation Models with retry on context error
-          let response;
-          try {
-            response = await Effect.runPromise(
-              client.chat({ messages: truncatedMessages }),
-            );
-          } catch (e) {
-            const errorMsg = e instanceof Error ? e.message : String(e);
-            // If context exceeded, try with even shorter context
-            if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
-              log(`[Context] Hit context limit, retrying with minimal context`);
-              const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS_DEFAULT / 2);
-              try {
-                response = await Effect.runPromise(
-                  client.chat({ messages: minimalMessages }),
-                );
-              } catch (e2) {
-                // If still failing, throw original error
+            // Call Foundation Models with retry on context error
+            let response;
+            try {
+              response = await Effect.runPromise(
+                client.chat({ messages: truncatedMessages }),
+              );
+            } catch (e) {
+              const errorMsg = e instanceof Error ? e.message : String(e);
+              // If context exceeded, try with even shorter context
+              if (errorMsg.includes(FM_CONTEXT_EXCEEDED_ERROR)) {
+                log(`[Context] Hit context limit, retrying with minimal context`);
+                const minimalMessages = truncateMessagesForFM(messages, FM_MAX_CONTEXT_CHARS_DEFAULT / 2);
+                try {
+                  response = await Effect.runPromise(
+                    client.chat({ messages: minimalMessages }),
+                  );
+                } catch (e2) {
+                  // If still failing, throw original error
+                  throw e;
+                }
+              } else {
                 throw e;
               }
-            } else {
-              throw e;
             }
-          }
 
-          // Track tokens
-          if (response.usage) {
-            totalTokens += response.usage.total_tokens ?? 0;
-          }
+            // Track tokens
+            if (response.usage) {
+              totalTokens += response.usage.total_tokens ?? 0;
+            }
 
-          const choice = response.choices[0];
-          const assistantContent = choice?.message.content ?? "";
+            const choice = response.choices[0];
+            const assistantContent = choice?.message.content ?? "";
 
-          // Log assistant response
-          log(`Assistant: ${assistantContent}`);
+            // Log assistant response
+            log(`Assistant: ${assistantContent}`);
 
-          // Parse and execute tool calls FIRST (before checking TASK_COMPLETE)
-          const toolCalls = parseToolCalls(assistantContent);
+            // Parse and execute tool calls FIRST (before checking TASK_COMPLETE)
+            const toolCalls = parseToolCalls(assistantContent);
 
-          if (toolCalls.length > 0) {
-            // Add assistant message
-            messages.push({ role: "assistant", content: assistantContent });
+            if (toolCalls.length > 0) {
+              // Add assistant message
+              messages.push({ role: "assistant", content: assistantContent });
 
-            // Execute each tool
-            const toolResults: string[] = [];
-            for (const toolCall of toolCalls) {
-              log(`Tool call: ${toolCall.name}(${JSON.stringify(toolCall.arguments)})`);
+              // Execute each tool
+              const toolResults: string[] = [];
+              for (const toolCall of toolCalls) {
+                log(`Tool call: ${toolCall.name}(${JSON.stringify(toolCall.arguments)})`);
 
-              const result = await executeTool(toolCall.name, toolCall.arguments, options.workspace);
-              log(`Tool result: ${result.success ? "success" : "failure"}`);
-              if (result.output.length < 500) {
-                log(result.output);
-              } else {
-                log(result.output.slice(0, 500) + "...[truncated]");
+                const result = await executeTool(toolCall.name, toolCall.arguments, options.workspace);
+                log(`Tool result: ${result.success ? "success" : "failure"}`);
+                if (result.output.length < 500) {
+                  log(result.output);
+                } else {
+                  log(result.output.slice(0, 500) + "...[truncated]");
+                }
+
+                toolResults.push(`${toolCall.name} result: ${result.output}`);
               }
 
-              toolResults.push(`${toolCall.name} result: ${result.output}`);
-            }
+              // Add tool results as user message
+              messages.push({
+                role: "user",
+                content: "Tool results:\n" + toolResults.join("\n\n"),
+              });
 
-            // Add tool results as user message
-            messages.push({
-              role: "user",
-              content: "Tool results:\n" + toolResults.join("\n\n"),
-            });
+              // Check for completion AFTER executing tools
+              if (assistantContent.includes("TASK_COMPLETE")) {
+                return await finalize({
+                  success: true,
+                  turns,
+                  tokens: totalTokens,
+                  durationMs: Date.now() - startTime,
+                  output: outputText,
+                  model: "fm:default",
+                });
+              }
+            } else {
+              // No tool calls - add response and continue
+              messages.push({ role: "assistant", content: assistantContent });
 
-            // Check for completion AFTER executing tools
-            if (assistantContent.includes("TASK_COMPLETE")) {
-              return await finalize({
-                success: true,
-                turns,
-                tokens: totalTokens,
-                durationMs: Date.now() - startTime,
-                output: outputText,
-                model: "fm:default",
+              // Check for completion (no tools needed)
+              if (assistantContent.includes("TASK_COMPLETE")) {
+                return await finalize({
+                  success: true,
+                  turns,
+                  tokens: totalTokens,
+                  durationMs: Date.now() - startTime,
+                  output: outputText,
+                  model: "fm:default",
+                });
+              }
+
+              // If no tool calls and no completion, prompt for action
+              if (!assistantContent.trim()) {
+                log("Warning: Empty response from model");
+                break;
+              }
+
+              // Add a nudge to continue
+              messages.push({
+                role: "user",
+                content: "Please continue with the task. Use tools to make changes, and say TASK_COMPLETE when done.",
               });
             }
-          } else {
-            // No tool calls - add response and continue
-            messages.push({ role: "assistant", content: assistantContent });
+          }
 
-            // Check for completion (no tools needed)
-            if (assistantContent.includes("TASK_COMPLETE")) {
-              return await finalize({
-                success: true,
-                turns,
-                tokens: totalTokens,
-                durationMs: Date.now() - startTime,
-                output: outputText,
-                model: "fm:default",
-              });
-            }
-
-            // If no tool calls and no completion, prompt for action
-            if (!assistantContent.trim()) {
-              log("Warning: Empty response from model");
-              break;
-            }
-
-            // Add a nudge to continue
-            messages.push({
-              role: "user",
-              content: "Please continue with the task. Use tools to make changes, and say TASK_COMPLETE when done.",
+          // Reached max turns - generate reflection and retry if enabled
+          const error = `Reached max turns (${maxTurns})`;
+          if (useReflection && attemptNumber <= maxReflectionRetries) {
+            log(`\n[Reflexion] Generating reflection for failure...`);
+            const newReflection = await generateReflection(task.description, error, {
+              skillsUsed: skillIds,
+              attemptNumber,
             });
+            if (newReflection) {
+              reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
+              log(`[Reflexion] Generated new insight, will retry with updated context`);
+              continue; // Retry with new reflection
+            }
           }
-        }
-
-        // Reached max turns - generate reflection and retry if enabled
-        const error = `Reached max turns (${maxTurns})`;
-        if (useReflection && attemptNumber <= maxReflectionRetries) {
-          log(`\n[Reflexion] Generating reflection for failure...`);
-          const newReflection = await generateReflection(task.description, error, {
-            skillsUsed: skillIds,
-            attemptNumber,
+          return await finalize({
+            success: false,
+            turns,
+            tokens: totalTokens,
+            durationMs: Date.now() - startTime,
+            output: outputText,
+            error,
+            model: "fm:default",
           });
-          if (newReflection) {
-            reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
-            log(`[Reflexion] Generated new insight, will retry with updated context`);
-            continue; // Retry with new reflection
-          }
-        }
-        return await finalize({
-          success: false,
-          turns,
-          tokens: totalTokens,
-          durationMs: Date.now() - startTime,
-          output: outputText,
-          error,
-          model: "fm:default",
-        });
-      } catch (e) {
-        const durationMs = Date.now() - startTime;
-        const errorMsg = e instanceof Error ? e.message : String(e);
-        log(`Error: ${errorMsg}`);
+        } catch (e) {
+          const durationMs = Date.now() - startTime;
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          log(`Error: ${errorMsg}`);
 
-        // Generate reflection and retry if enabled
-        if (useReflection && attemptNumber <= maxReflectionRetries) {
-          log(`\n[Reflexion] Generating reflection for error...`);
-          const newReflection = await generateReflection(task.description, errorMsg, {
-            skillsUsed: skillIds,
-            attemptNumber,
+          // Generate reflection and retry if enabled
+          if (useReflection && attemptNumber <= maxReflectionRetries) {
+            log(`\n[Reflexion] Generating reflection for error...`);
+            const newReflection = await generateReflection(task.description, errorMsg, {
+              skillsUsed: skillIds,
+              attemptNumber,
+            });
+            if (newReflection) {
+              reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
+              log(`[Reflexion] Generated new insight, will retry with updated context`);
+              continue; // Retry with new reflection
+            }
+          }
+
+          return await finalize({
+            success: false,
+            turns,
+            tokens: totalTokens,
+            durationMs,
+            output: outputText,
+            error: errorMsg,
+            model: "fm:default",
           });
-          if (newReflection) {
-            reflections = reflections ? `${reflections}\n\n${newReflection}` : newReflection;
-            log(`[Reflexion] Generated new insight, will retry with updated context`);
-            continue; // Retry with new reflection
-          }
         }
-
-        return await finalize({
-          success: false,
-          turns,
-          tokens: totalTokens,
-          durationMs,
-          output: outputText,
-          error: errorMsg,
-          model: "fm:default",
-        });
-      }
       } // End of retry loop
 
       // Should not reach here, but return failure if we do
