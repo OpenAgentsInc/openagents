@@ -31,6 +31,9 @@ import type { Subtask } from "../agent/orchestrator/types.js";
 import type { TerminalBenchTask } from "./terminal-bench.js";
 import { createPlan } from "../fm/planners.js";
 import { runMicroTaskPlan } from "../fm/orchestrator.js";
+import { getSuiteMode } from "../fm/hints.js";
+import { runTaskVerification } from "./terminal-bench.js";
+import { BunContext } from "@effect/platform-bun";
 // --- Configuration Types ---
 
 export interface ClaudeCodeModelConfig {
@@ -105,6 +108,8 @@ export interface RunTaskOptions {
   runId?: string | undefined;
   /** Callback fired when sessionId becomes available (for ATIF disk persistence) */
   onSessionId?: (sessionId: string) => void;
+  /** Suite path for suite-aware features (hints, skills toggle) */
+  suitePath?: string | undefined;
 }
 
 // --- Model Runner Interface ---
@@ -559,6 +564,25 @@ export const getFMContextLimit = (model?: string): number => {
 };
 
 const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
+
+/**
+ * Normalize /app/ paths in shell commands to relative paths.
+ * Only used for FM runner - other models may have real /app paths.
+ */
+function normalizeCommand(command: string): string {
+  let cmd = command;
+
+  // Replace /app/ with ./
+  cmd = cmd.replace(/\/app\//g, "./");
+
+  // Strip "cd /app && " prefix entirely
+  cmd = cmd.replace(/^cd\s+\/app\s*&&\s*/i, "");
+
+  // Strip standalone "cd /app;"
+  cmd = cmd.replace(/^cd\s+\/app\s*;\s*/i, "");
+
+  return cmd;
+}
 
 /**
  * Structured error type for FM tool parsing failures.
@@ -1220,7 +1244,9 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
 
         case "run_command": {
           const command = args.command as string;
-          const proc = Bun.spawn(["sh", "-c", command], {
+          // Normalize /app/ paths for FM runner (FM may reference /app/ from task descriptions)
+          const normalizedCommand = normalizeCommand(command);
+          const proc = Bun.spawn(["sh", "-c", normalizedCommand], {
             cwd: workspace,
             stdout: "pipe",
             stderr: "pipe",
@@ -1231,7 +1257,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
           return {
             success: exitCode === 0,
-            output: `Working directory: ${workspace}\nCommand: ${command}\nExit code: ${exitCode}\n${output}`,
+            output: `Working directory: ${workspace}\nCommand: ${normalizedCommand}${command !== normalizedCommand ? ` (normalized from: ${command})` : ""}\nExit code: ${exitCode}\n${output}`,
           };
         }
 
@@ -1267,10 +1293,24 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       if (useMicroTask) {
         log(`[FM] Using micro-task supervisor architecture`);
 
-        // Retrieve relevant skills for this task (Voyager-style)
-        const { skills, ids: skillIds } = await getRelevantSkills(task.description);
-        if (skills.length > 0) {
-          log(`[Skills] Injected ${skills.length} relevant skills: ${skills.map(s => s.name).join(", ")}`);
+        // Suite-aware skills toggle: For TB2, disable skills initially until we stabilize other fixes
+        const suiteMode = getSuiteMode(options.suitePath);
+        const useSkillsForTask = suiteMode === "fm-mini"; // TB2 gets false
+
+        // IMPORTANT: Only call getRelevantSkills when useSkillsForTask is true
+        // This prevents skill retrieval overhead and avoids injecting potentially
+        // confusing skill text into TB2 prompts
+        let skills: Skill[] = [];
+        let skillIds: string[] = [];
+        if (useSkillsForTask) {
+          const result = await getRelevantSkills(task.description);
+          skills = result.skills;
+          skillIds = result.ids;
+          if (skills.length > 0) {
+            log(`[Skills] Injected ${skills.length} relevant skills: ${skills.map(s => s.name).join(", ")}`);
+          }
+        } else {
+          log(`[Skills] Disabled for suite mode: ${suiteMode}`);
         }
 
         // Create plan for this task
@@ -1281,6 +1321,23 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         }
 
         // Run with micro-task orchestrator
+        // (suiteMode already computed above for skills toggle)
+
+        // Create verification callback that wraps existing TB verification
+        const verifyTask = async (): Promise<boolean> => {
+          if (!task.verification) return true; // No verification script = pass
+
+          try {
+            // Reuse existing verification runner from TB harness
+            const result = await Effect.runPromise(
+              runTaskVerification(task).pipe(Effect.provide(BunContext.layer))
+            );
+            return result.passed;
+          } catch {
+            return false;
+          }
+        };
+
         const result = await runMicroTaskPlan(client, plan, {
           workspace: options.workspace,
           timeout: task.timeout_seconds ?? options.timeout,
@@ -1288,6 +1345,9 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           taskDescription: task.description,
           skills,
           onOutput: options.onOutput,
+          suiteMode, // Pass suiteMode to orchestrator for hint system
+          verifyTask,
+          maxRetryAfterFailedVerify: 2,
         });
 
         // Record skill usage for tracking
