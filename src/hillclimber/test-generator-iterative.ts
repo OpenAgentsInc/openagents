@@ -99,7 +99,7 @@ const DEFAULT_CONFIG: IterationConfig = {
   minTotalTests: 15,
   targetTotalTests: 30,
   maxTotalRounds: 12,
-  maxTotalTokens: 50000,
+  maxTotalTokens: 100000, // Hard stop at 100k (soft warning at 80k)
   maxTotalTimeMs: 180000,
 };
 
@@ -373,7 +373,7 @@ async function generateTestsForCategoryRound(
   existingTests: GeneratedTest[],
   round: number,
   model: "local" | "claude",
-): Promise<GeneratedTest[]> {
+): Promise<{ tests: GeneratedTest[]; tokens: number }> {
   const prompt = buildCategoryPrompt(
     taskDescription,
     taskId,
@@ -393,8 +393,8 @@ async function generateTestsForCategoryRound(
 async function generateWithLocalFM(
   prompt: string,
   category: IterativeTestCategory,
-): Promise<GeneratedTest[]> {
-  const response = await Effect.runPromise(
+): Promise<{ tests: GeneratedTest[]; tokens: number }> {
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const fm = yield* FMService;
       yield* fm.ensureRunning();
@@ -410,18 +410,20 @@ async function generateWithLocalFM(
       });
 
       const content = response.choices[0]?.message?.content ?? "";
-      return parseTestsResponse(content, category);
+      const tests = parseTestsResponse(content, category);
+      const tokens = response.usage?.total_tokens ?? 0;
+      return { tests, tokens };
     }).pipe(Effect.provide(FMServiceLive)),
   );
 
-  return response;
+  return result;
 }
 
 async function generateWithClaude(
   prompt: string,
   category: IterativeTestCategory,
-): Promise<GeneratedTest[]> {
-  const response = await Effect.runPromise(
+): Promise<{ tests: GeneratedTest[]; tokens: number }> {
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const anthropic = yield* AnthropicClient;
 
@@ -433,13 +435,15 @@ async function generateWithClaude(
       });
 
       const content = response.choices[0]?.message?.content ?? "";
-      return parseTestsResponse(content, category);
+      const tests = parseTestsResponse(content, category);
+      const tokens = response.usage?.total_tokens ?? 0;
+      return { tests, tokens };
     }).pipe(
       Effect.provide(Layer.mergeAll(anthropicConfigLayer, anthropicClientLive)),
-    ) as Effect.Effect<GeneratedTest[], Error>,
+    ) as Effect.Effect<{ tests: GeneratedTest[]; tokens: number }, Error>,
   );
 
-  return response;
+  return result;
 }
 
 function parseTestsResponse(
@@ -486,7 +490,7 @@ async function reflectOnCategory(
   taskId: string,
   environment: EnvironmentInfo,
   model: "local" | "claude",
-): Promise<string> {
+): Promise<{ reflection: string; tokens: number }> {
   const prompt = `Review the ${existingTests.length} existing tests for category ${category}:
 
 ${existingTests.map((t, i) => `${i + 1}. ${t.id}: ${t.reasoning}`).join("\n")}
@@ -494,7 +498,7 @@ ${existingTests.map((t, i) => `${i + 1}. ${t.id}: ${t.reasoning}`).join("\n")}
 What edge cases or scenarios are missing? Provide a brief reflection (1-2 sentences).`;
 
   if (model === "local") {
-    const response = await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.gen(function* () {
         const fm = yield* FMService;
         yield* fm.ensureRunning();
@@ -505,12 +509,14 @@ What edge cases or scenarios are missing? Provide a brief reflection (1-2 senten
           maxTokens: 512,
         });
 
-        return response.choices[0]?.message?.content ?? "";
+        const reflection = response.choices[0]?.message?.content ?? "";
+        const tokens = response.usage?.total_tokens ?? 0;
+        return { reflection, tokens };
       }).pipe(Effect.provide(FMServiceLive)),
     );
-    return response;
+    return result;
   } else {
-    const response = await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.gen(function* () {
         const anthropic = yield* AnthropicClient;
 
@@ -521,12 +527,14 @@ What edge cases or scenarios are missing? Provide a brief reflection (1-2 senten
           maxTokens: 512,
         });
 
-        return response.choices[0]?.message?.content ?? "";
+        const reflection = response.choices[0]?.message?.content ?? "";
+        const tokens = response.usage?.total_tokens ?? 0;
+        return { reflection, tokens };
       }).pipe(
         Effect.provide(Layer.mergeAll(anthropicConfigLayer, anthropicClientLive)),
-      ) as Effect.Effect<string, Error>,
+      ) as Effect.Effect<{ reflection: string; tokens: number }, Error>,
     );
-    return response;
+    return result;
   }
 }
 
@@ -536,7 +544,7 @@ async function assessComprehensiveness(
   taskId: string,
   environment: EnvironmentInfo,
   model: "local" | "claude",
-): Promise<{ score: number; gaps: string[]; recommendations: string[] }> {
+): Promise<{ score: number; gaps: string[]; recommendations: string[]; tokens: number }> {
   const prompt = buildComprehensivenessPrompt(
     state,
     taskDescription,
@@ -545,8 +553,9 @@ async function assessComprehensiveness(
   );
 
   let content: string;
+  let tokens = 0;
   if (model === "local") {
-    content = await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.gen(function* () {
         const fm = yield* FMService;
         yield* fm.ensureRunning();
@@ -557,11 +566,15 @@ async function assessComprehensiveness(
           maxTokens: 1024,
         });
 
-        return response.choices[0]?.message?.content ?? "";
+        const text = response.choices[0]?.message?.content ?? "";
+        const tokenCount = response.usage?.total_tokens ?? 0;
+        return { text, tokens: tokenCount };
       }).pipe(Effect.provide(FMServiceLive)),
     );
+    content = result.text;
+    tokens = result.tokens;
   } else {
-    content = await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.gen(function* () {
         const anthropic = yield* AnthropicClient;
 
@@ -572,11 +585,15 @@ async function assessComprehensiveness(
           maxTokens: 1024,
         });
 
-        return response.choices[0]?.message?.content ?? "";
+        const text = response.choices[0]?.message?.content ?? "";
+        const tokenCount = response.usage?.total_tokens ?? 0;
+        return { text, tokens: tokenCount };
       }).pipe(
         Effect.provide(Layer.mergeAll(anthropicConfigLayer, anthropicClientLive)),
-      ) as Effect.Effect<string, Error>,
+      ) as Effect.Effect<{ text: string; tokens: number }, Error>,
     );
+    content = result.text;
+    tokens = result.tokens;
   }
 
   let jsonContent = content.trim();
@@ -594,9 +611,10 @@ async function assessComprehensiveness(
       recommendations: Array.isArray(parsed.recommendations)
         ? parsed.recommendations
         : [],
+      tokens,
     };
   } catch {
-    return { score: 5, gaps: [], recommendations: [] };
+    return { score: 5, gaps: [], recommendations: [], tokens };
   }
 }
 
@@ -633,7 +651,8 @@ export async function generateTestsIteratively(
       while (
         !isCategoryComplete(state, category, finalConfig) &&
         round <= finalConfig.maxRoundsPerCategory &&
-        state.totalRounds < finalConfig.maxTotalRounds
+        state.totalRounds < finalConfig.maxTotalRounds &&
+        state.totalTokensUsed < finalConfig.maxTotalTokens
       ) {
         emitter.onProgress({
           type: "testgen_progress",
@@ -645,7 +664,7 @@ export async function generateTestsIteratively(
         });
 
         // Generate tests for this category/round
-        const newTests = await generateTestsForCategoryRound(
+        const result = await generateTestsForCategoryRound(
           category,
           taskDescription,
           taskId,
@@ -655,8 +674,19 @@ export async function generateTestsIteratively(
           model,
         );
 
+        // Update token usage
+        state.totalTokensUsed += result.tokens;
+
+        // Token limit guardrails
+        if (state.totalTokensUsed >= finalConfig.maxTotalTokens) {
+          log(`[TestGen] Hard token limit reached: ${state.totalTokensUsed} >= ${finalConfig.maxTotalTokens}. Stopping generation.`);
+          break; // Exit category loop
+        } else if (state.totalTokensUsed >= 80000) {
+          log(`[TestGen] Warning: Token usage at ${state.totalTokensUsed}, approaching limit of ${finalConfig.maxTotalTokens}`);
+        }
+
         // Emit each test immediately
-        for (const test of newTests) {
+        for (const test of result.tests) {
           emitter.onTest({
             type: "testgen_test",
             sessionId: "", // Will be set by caller
@@ -677,7 +707,7 @@ export async function generateTestsIteratively(
 
         // Reflect if needed
         if (shouldReflect(state, category, finalConfig)) {
-          const reflection = await reflectOnCategory(
+          const reflectionResult = await reflectOnCategory(
             category,
             getTestsForCategory(state, category),
             taskDescription,
@@ -686,11 +716,14 @@ export async function generateTestsIteratively(
             model,
           );
 
+          // Update token usage
+          state.totalTokensUsed += reflectionResult.tokens;
+
           emitter.onReflection({
             type: "testgen_reflection",
             sessionId: "", // Will be set by caller
             category,
-            reflectionText: reflection,
+            reflectionText: reflectionResult.reflection,
             action: "refining",
           });
         }
@@ -727,6 +760,8 @@ export async function generateTestsIteratively(
         model,
       );
 
+      // Update token usage
+      state.totalTokensUsed += assessment.tokens;
       state.comprehensivenessScore = assessment.score;
 
       emitter.onReflection({
@@ -743,7 +778,7 @@ export async function generateTestsIteratively(
         state.totalRounds < finalConfig.maxTotalRounds
       ) {
         // Generate tests based on recommendations (simplified - just generate more)
-        const additionalTests = await generateTestsForCategoryRound(
+        const additionalResult = await generateTestsForCategoryRound(
           "correctness", // Default category for additional tests
           taskDescription,
           taskId,
@@ -753,7 +788,10 @@ export async function generateTestsIteratively(
           model,
         );
 
-        for (const test of additionalTests) {
+        // Update token usage
+        state.totalTokensUsed += additionalResult.tokens;
+
+        for (const test of additionalResult.tests) {
           const testCategory = test.category as IterativeTestCategory;
           emitter.onTest({
             type: "testgen_test",
@@ -811,4 +849,3 @@ export async function generateTestsIteratively(
     throw error;
   }
 }
-

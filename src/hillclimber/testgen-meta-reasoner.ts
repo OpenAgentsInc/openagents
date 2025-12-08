@@ -5,24 +5,23 @@
  * Similar to HillClimber meta-reasoner but focused on test generation quality.
  */
 
-import { Effect } from "effect";
+import { Effect } from "effect"
+import { InferenceStoreLive } from "../llm/inference-store.js"
+import { openRouterLive } from "../llm/openrouter-http.js"
 import {
-  OpenRouterInference,
-  OpenRouterInferenceLive,
-} from "../llm/openrouter-inference.js";
-import { openRouterLive } from "../llm/openrouter-http.js";
-import { InferenceStoreLive } from "../llm/inference-store.js";
-import { TestGenStore, TestGenStoreLive } from "./testgen-store.js";
+  OpenRouterInference, OpenRouterInferenceLive
+} from "../llm/openrouter-inference.js"
+import { log, logError } from "./logger.js"
+import { FREE_MODELS } from "./meta-reasoner.js"
+
+import type { TestGenAnalysis } from "./testgen-analyzer.js"
+
 import type {
   TestGenConfig,
   TestGenConfigInput,
   TestGenConfigChange,
   TestGenRun,
-  TestGenAnalysis,
 } from "./testgen-types.js";
-import { FREE_MODELS } from "./meta-reasoner.js";
-import { log, logError } from "./logger.js";
-
 // ============================================================================
 // Prompt Building
 // ============================================================================
@@ -70,8 +69,8 @@ Current config:
 
 Recent performance (last ${recentRuns.length} runs):
 ${recentRuns.slice(0, 5).map((r, i) =>
-  `- Run ${i + 1}: Score ${r.score}, comprehensiveness=${r.comprehensivenessScore?.toFixed(1) ?? "N/A"}, balance=${r.categoryBalance?.toFixed(2) ?? "N/A"}, anti-cheat=${r.antiCheatCoverage?.toFixed(2) ?? "N/A"}, efficiency=${r.tokenEfficiency?.toFixed(2) ?? "N/A"}`
-).join("\n")}
+    `- Run ${i + 1}: Score ${r.score}, comprehensiveness=${r.comprehensivenessScore?.toFixed(1) ?? "N/A"}, balance=${r.categoryBalance?.toFixed(2) ?? "N/A"}, anti-cheat=${r.antiCheatCoverage?.toFixed(2) ?? "N/A"}, efficiency=${r.tokenEfficiency?.toFixed(2) ?? "N/A"}`
+  ).join("\n")}
 
 Average score: ${avgScore.toFixed(0)}/1000
 
@@ -177,17 +176,21 @@ const parseTestGenConfigChange = (
       }
     }
 
-    return {
-      type: parsed.type || "update_params",
-      changes: Object.keys(changes).length > 0 ? changes : undefined,
+    const result: TestGenConfigChange = {
+      type: (parsed.type || "update_params") as TestGenConfigChange["type"],
       reasoning: parsed.reasoning || "No reasoning provided",
       model,
     };
+    if (Object.keys(changes).length > 0) {
+      result.changes = changes;
+    }
+    return result;
   } catch (error) {
-    logError("Failed to parse meta-reasoner response", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logError("Failed to parse meta-reasoner response", error instanceof Error ? error : new Error(String(error)));
     return {
-      type: "keep",
-      reasoning: `Parse error: ${error}`,
+      type: "keep" as const,
+      reasoning: `Parse error: ${errorMessage}`,
       model,
     };
   }
@@ -215,51 +218,95 @@ export const proposeTestGenConfigChange = (
     let model = modelOverride || FREE_MODELS[0];
     let modelIndex = 0;
     const maxAttempts = modelOverride ? 1 : FREE_MODELS.length;
+    const maxRetriesPerModel = 3;
+    const baseDelayMs = 5000; // Start with 5 seconds
+    const maxDelayMs = 60000; // Max 60 seconds
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        log(`[TestGenMetaReasoner] Using model: ${model} (attempt ${attempt + 1}/${maxAttempts})`);
+      for (let retry = 0; retry < maxRetriesPerModel; retry++) {
+        try {
+          if (retry > 0) {
+            // Exponential backoff: 5s, 10s, 20s, capped at 60s
+            const delayMs = Math.min(
+              baseDelayMs * Math.pow(2, retry - 1),
+              maxDelayMs
+            );
+            log(`[TestGenMetaReasoner] Retrying ${model} after ${delayMs}ms (retry ${retry}/${maxRetriesPerModel})`);
+            yield* Effect.sleep(delayMs);
+          } else {
+            log(`[TestGenMetaReasoner] Using model: ${model} (attempt ${attempt + 1}/${maxAttempts})`);
+          }
 
-        const response = yield* inference.send(
-          model,
-          [{ role: "user", content: prompt }],
-          {
-            temperature: 0.3,
-            max_tokens: 1000,
-            response_format: { type: "json_object" },
-          },
-        );
+          const response = yield* inference.send(
+            model,
+            [{ role: "user", content: prompt }],
+            {
+              temperature: 0.3,
+              maxTokens: 1000,
+              // Note: responseFormat is not directly supported, but json_object
+              // should be handled by the model's native support
+            },
+          );
 
-        if (!response || !response.content) {
-          throw new Error("Empty response from model");
+          if (!response || !response.choices || response.choices.length === 0) {
+            throw new Error("Empty response from model");
+          }
+
+          const messageContent = response.choices[0]?.message?.content;
+          const content = typeof messageContent === "string"
+            ? messageContent
+            : null;
+
+          if (!content) {
+            throw new Error("No content in response");
+          }
+
+          const change = parseTestGenConfigChange(content, model);
+          log(`[TestGenMetaReasoner] Proposed change: ${change.type}`);
+          return change;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const isRateLimit = errorMessage.includes("429") ||
+            errorMessage.includes("rate") ||
+            errorMessage.includes("rate limit") ||
+            errorMessage.includes("rate-limited");
+
+          const errorObj = error instanceof Error ? error : new Error(String(error));
+          if (isRateLimit && retry < maxRetriesPerModel - 1) {
+            logError(`[TestGenMetaReasoner] Rate limited on ${model}, will retry`, errorObj);
+            // Continue to next retry with backoff
+            continue;
+          } else if (isRateLimit) {
+            logError(`[TestGenMetaReasoner] Rate limited on ${model}, exhausted retries`, errorObj);
+            // Fall through to try next model or return "keep"
+          } else {
+            logError(`[TestGenMetaReasoner] Model ${model} failed`, errorObj);
+            // Non-rate-limit error: try next model immediately
+            break;
+          }
         }
+      }
 
-        const content = Array.isArray(response.content)
-          ? response.content[0]?.text || ""
-          : typeof response.content === "string"
-          ? response.content
-          : "";
-
-        if (!content) {
-          throw new Error("No content in response");
-        }
-
-        const change = parseTestGenConfigChange(content, model);
-        log(`[TestGenMetaReasoner] Proposed change: ${change.type}`);
-        return change;
-      } catch (error) {
-        logError(`[TestGenMetaReasoner] Model ${model} failed`, error);
-
-        if (modelIndex < FREE_MODELS.length - 1) {
-          modelIndex++;
-          model = FREE_MODELS[modelIndex];
-        } else {
-          throw error;
-        }
+      // Try next model if available
+      if (modelIndex < FREE_MODELS.length - 1) {
+        modelIndex++;
+        model = FREE_MODELS[modelIndex];
+      } else {
+        // All models exhausted, return "keep" (no change)
+        log(`[TestGenMetaReasoner] All models exhausted, returning "keep" (no config change)`);
+        return {
+          type: "keep" as const,
+          reasoning: "All models rate-limited or failed, keeping current config",
+        };
       }
     }
 
-    throw new Error("All models failed");
+    // Fallback: return "keep" if we somehow get here
+    log(`[TestGenMetaReasoner] Fallback: returning "keep" (no config change)`);
+    return {
+      type: "keep" as const,
+      reasoning: "Meta-reasoning failed, keeping current config",
+    };
   }).pipe(
     Effect.provide(OpenRouterInferenceLive),
     Effect.provide(openRouterLive),
@@ -267,14 +314,83 @@ export const proposeTestGenConfigChange = (
   );
 
 /**
+ * Validate config changes against guardrails.
+ * Returns null if validation passes, or an error message if it fails.
+ */
+const validateConfigChange = (
+  currentConfig: TestGenConfig,
+  change: TestGenConfigChange,
+): string | null => {
+  if (change.type === "keep" || !change.changes) {
+    return null; // No changes to validate
+  }
+
+  const changes = change.changes;
+
+  // Delta caps: temperature ±0.1, tests ±1, rounds ±1
+  if (changes.temperature !== undefined) {
+    const delta = Math.abs(changes.temperature - currentConfig.temperature);
+    if (delta > 0.1) {
+      return `Temperature change too large: ${delta.toFixed(3)} > 0.1 (capped at ±0.1)`;
+    }
+  }
+
+  if (changes.minTestsPerCategory !== undefined) {
+    const delta = Math.abs(changes.minTestsPerCategory - currentConfig.minTestsPerCategory);
+    if (delta > 1) {
+      return `Min tests per category change too large: ${delta} > 1 (capped at ±1)`;
+    }
+    // Hard minimum: 2 per category
+    if (changes.minTestsPerCategory < 2) {
+      return `Min tests per category too low: ${changes.minTestsPerCategory} < 2 (minimum: 2)`;
+    }
+  }
+
+  if (changes.maxTestsPerCategory !== undefined) {
+    const delta = Math.abs(changes.maxTestsPerCategory - currentConfig.maxTestsPerCategory);
+    if (delta > 1) {
+      return `Max tests per category change too large: ${delta} > 1 (capped at ±1)`;
+    }
+    // Ensure max >= min
+    const minTests = changes.minTestsPerCategory ?? currentConfig.minTestsPerCategory;
+    if (changes.maxTestsPerCategory < minTests) {
+      return `Max tests per category (${changes.maxTestsPerCategory}) < min (${minTests})`;
+    }
+  }
+
+  if (changes.maxRoundsPerCategory !== undefined) {
+    const delta = Math.abs(changes.maxRoundsPerCategory - currentConfig.maxRoundsPerCategory);
+    if (delta > 1) {
+      return `Max rounds per category change too large: ${delta} > 1 (capped at ±1)`;
+    }
+  }
+
+  // Hard minimum: 10 total tests (minTestsPerCategory * 5 categories)
+  const minTestsPerCategory = changes.minTestsPerCategory ?? currentConfig.minTestsPerCategory;
+  const minTotalTests = minTestsPerCategory * 5; // 5 categories
+  if (minTotalTests < 10) {
+    return `Total minimum tests too low: ${minTotalTests} < 10 (need at least 2 per category × 5 categories)`;
+  }
+
+  // Token limits are checked at runtime, not in config validation
+  // (soft ceiling: warn at 80k, hard-stop at 100k)
+
+  return null; // Validation passed
+};
+
+/**
  * Apply a config change to create a new config.
+ * Includes guardrail validation.
  */
 export const applyConfigChange = (
   currentConfig: TestGenConfig,
   change: TestGenConfigChange,
 ): TestGenConfigInput => {
-  if (change.type === "keep" || !change.changes) {
-    // No changes, return current config as input (will be deduplicated by hash)
+  // Validate guardrails
+  const validationError = validateConfigChange(currentConfig, change);
+  if (validationError) {
+    log(`[TestGenMetaReasoner] Guardrail violation: ${validationError}. Keeping current config.`);
+    // Return current config (no changes) if validation fails
     return {
       version: incrementVersion(currentConfig.version),
       temperature: currentConfig.temperature,
@@ -286,36 +402,55 @@ export const applyConfigChange = (
       antiCheatWeight: currentConfig.antiCheatWeight,
       precisionWeight: currentConfig.precisionWeight,
       categoryOrder: currentConfig.categoryOrder,
-      categoryPrompts: currentConfig.categoryPrompts,
-      antiCheatPrompt: currentConfig.antiCheatPrompt,
-      reflectionPrompt: currentConfig.reflectionPrompt,
       primaryModel: currentConfig.primaryModel,
       reflectionModel: currentConfig.reflectionModel,
       minComprehensivenessScore: currentConfig.minComprehensivenessScore,
       targetComprehensivenessScore: currentConfig.targetComprehensivenessScore,
     };
   }
+  // Helper to build config input, handling optional properties correctly
+  const buildConfigInput = (overrides: Partial<TestGenConfigInput> = {}): TestGenConfigInput => {
+    const input: TestGenConfigInput = {
+      version: incrementVersion(currentConfig.version),
+      temperature: overrides.temperature ?? currentConfig.temperature,
+      maxTokens: overrides.maxTokens ?? currentConfig.maxTokens,
+      minTestsPerCategory: overrides.minTestsPerCategory ?? currentConfig.minTestsPerCategory,
+      maxTestsPerCategory: overrides.maxTestsPerCategory ?? currentConfig.maxTestsPerCategory,
+      maxRoundsPerCategory: overrides.maxRoundsPerCategory ?? currentConfig.maxRoundsPerCategory,
+      environmentWeight: overrides.environmentWeight ?? currentConfig.environmentWeight,
+      antiCheatWeight: overrides.antiCheatWeight ?? currentConfig.antiCheatWeight,
+      precisionWeight: overrides.precisionWeight ?? currentConfig.precisionWeight,
+      categoryOrder: overrides.categoryOrder ?? currentConfig.categoryOrder,
+      primaryModel: overrides.primaryModel ?? currentConfig.primaryModel,
+      reflectionModel: overrides.reflectionModel ?? currentConfig.reflectionModel,
+      minComprehensivenessScore: overrides.minComprehensivenessScore ?? currentConfig.minComprehensivenessScore,
+      targetComprehensivenessScore: overrides.targetComprehensivenessScore ?? currentConfig.targetComprehensivenessScore,
+    };
+
+    // Handle optional string properties (only include if defined)
+    const categoryPromptsValue = overrides.categoryPrompts ?? currentConfig.categoryPrompts;
+    if (categoryPromptsValue !== undefined) {
+      input.categoryPrompts = categoryPromptsValue;
+    }
+    const antiCheatPromptValue = overrides.antiCheatPrompt ?? currentConfig.antiCheatPrompt;
+    if (antiCheatPromptValue !== undefined) {
+      input.antiCheatPrompt = antiCheatPromptValue;
+    }
+    const reflectionPromptValue = overrides.reflectionPrompt ?? currentConfig.reflectionPrompt;
+    if (reflectionPromptValue !== undefined) {
+      input.reflectionPrompt = reflectionPromptValue;
+    }
+
+    return input;
+  };
+
+  if (change.type === "keep" || !change.changes) {
+    // No changes, return current config as input (will be deduplicated by hash)
+    return buildConfigInput();
+  }
 
   // Merge changes with current config
-  return {
-    version: incrementVersion(currentConfig.version),
-    temperature: change.changes.temperature ?? currentConfig.temperature,
-    maxTokens: change.changes.maxTokens ?? currentConfig.maxTokens,
-    minTestsPerCategory: change.changes.minTestsPerCategory ?? currentConfig.minTestsPerCategory,
-    maxTestsPerCategory: change.changes.maxTestsPerCategory ?? currentConfig.maxTestsPerCategory,
-    maxRoundsPerCategory: change.changes.maxRoundsPerCategory ?? currentConfig.maxRoundsPerCategory,
-    environmentWeight: change.changes.environmentWeight ?? currentConfig.environmentWeight,
-    antiCheatWeight: change.changes.antiCheatWeight ?? currentConfig.antiCheatWeight,
-    precisionWeight: change.changes.precisionWeight ?? currentConfig.precisionWeight,
-    categoryOrder: change.changes.categoryOrder ?? currentConfig.categoryOrder,
-    categoryPrompts: change.changes.categoryPrompts ?? currentConfig.categoryPrompts,
-    antiCheatPrompt: change.changes.antiCheatPrompt ?? currentConfig.antiCheatPrompt,
-    reflectionPrompt: change.changes.reflectionPrompt ?? currentConfig.reflectionPrompt,
-    primaryModel: change.changes.primaryModel ?? currentConfig.primaryModel,
-    reflectionModel: change.changes.reflectionModel ?? currentConfig.reflectionModel,
-    minComprehensivenessScore: change.changes.minComprehensivenessScore ?? currentConfig.minComprehensivenessScore,
-    targetComprehensivenessScore: change.changes.targetComprehensivenessScore ?? currentConfig.targetComprehensivenessScore,
-  };
+  return buildConfigInput(change.changes);
 };
 
 /**
@@ -329,4 +464,3 @@ const incrementVersion = (version: string): string => {
   }
   return version;
 };
-
