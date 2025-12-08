@@ -1,8 +1,8 @@
-import { Effect, Context, Layer } from "effect";
-import { OpenRouterClient } from "./openrouter-http.js";
-import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
-import { InferenceStore } from "./inference-store.js";
+import { Context, Effect, Layer } from "effect"
+import { InferenceStore } from "./inference-store.js"
+import { OpenRouterClient } from "./openrouter-http.js"
 
+import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
 // ============================================================================
 // Constants
 // ============================================================================
@@ -75,7 +75,7 @@ export class OpenRouterInferenceError extends Error {
 export class OpenRouterInference extends Context.Tag("OpenRouterInference")<
   OpenRouterInference,
   IOpenRouterInference
->() {}
+>() { }
 
 // ============================================================================
 // Implementation

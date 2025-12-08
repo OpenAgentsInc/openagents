@@ -1,20 +1,16 @@
-import { OpenRouter } from "@openrouter/sdk";
-import { Effect } from "effect";
-import * as Context from "effect/Context";
-import * as Layer from "effect/Layer";
-import * as Secret from "effect/Secret";
-import { HttpError, retryWithBackoff, isRetryableLlmError } from "./retry.js";
-import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
+import { Effect } from "effect"
+import * as Context from "effect/Context"
+import * as Layer from "effect/Layer"
+import * as Secret from "effect/Secret"
+import { OpenRouter } from "@openrouter/sdk"
 import {
-  OpenRouterConfig,
-  type OpenRouterConfigShape,
-  loadOpenRouterEnv,
-  logAtLevel,
-  parseLogLevel,
-  resolveLogger,
-  openRouterBaseLayer,
-} from "./openrouter-config.js";
-import { makeRequestBody } from "./openrouter-tools.js";
+    loadOpenRouterEnv, logAtLevel, openRouterBaseLayer, OpenRouterConfig,
+    OpenRouterConfigShape, parseLogLevel, resolveLogger, type
+} from "./openrouter-config.js"
+import { makeRequestBody } from "./openrouter-tools.js"
+import { HttpError, isRetryableLlmError, retryWithBackoff } from "./retry.js"
+
+import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
 import type { OpenRouterLogger } from "./openrouter-types.js";
 
 const createOpenRouterClient = (config: OpenRouterConfigShape) =>
@@ -94,8 +90,8 @@ const sendChatRaw = (
         cause instanceof HttpError
           ? cause
           : new HttpError(
-              `OpenRouter request failed: ${String(cause instanceof Error ? cause.message : cause)}`,
-            ),
+            `OpenRouter request failed: ${String(cause instanceof Error ? cause.message : cause)}`,
+          ),
     });
 
     logAtLevel(logger, "info", `[OpenRouter] Response received, id: ${(response as any).id}`);
@@ -137,7 +133,7 @@ export interface OpenRouterClientShape {
 export class OpenRouterClient extends Context.Tag("OpenRouterClient")<
   OpenRouterClient,
   OpenRouterClientShape
->() {}
+>() { }
 
 const makeClient = Effect.gen(function* () {
   const config = yield* OpenRouterConfig;
