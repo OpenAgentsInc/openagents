@@ -79,6 +79,7 @@
     "hillclimber:overnight": "bun src/hillclimber/cli.ts --max-runs 500 --sleep 30000",
     "hillclimber:stats": "bun src/hillclimber/cli.ts --stats",
     "hillclimber:export": "bun src/hillclimber/cli.ts --export",
+    "test-gen:compare": "bun src/hillclimber/test-gen-compare.ts",
     "hf:download": "bun src/huggingface/cli.ts download",
     "hf:list": "bun src/huggingface/cli.ts list",
     "hf:info": "bun src/huggingface/cli.ts info",
