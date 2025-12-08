@@ -1,3 +1,5 @@
+> Editor's note: This plan includes a gaming-borderline-cheating idea to run the benchmark's tests during runtime. We call that out and get its response in docs/logs/20251208/1219-benchmark-gaming-analysis.md and redesign to avoid that in docs/logs/20251208/1224-blind-verification-redesign.md.
+
 # HillClimber v2: 10x Architecture Redesign
 
 ## Executive Summary
