@@ -34,6 +34,11 @@ import { BunContext } from "@effect/platform-bun";
 import { Effect } from "effect";
 import { cpSync, readdirSync, statSync } from "fs";
 import { createTBEmitter, type TBEmitter } from "../tbench-hud/emit.js";
+import {
+  saveTBRun,
+  convertResultsToTBRunFile,
+} from "../tbench-hud/persistence.js";
+import type { Trajectory } from "../atif/schema.js";
 
 // ============================================================================
 // CLI Argument Parsing
@@ -544,6 +549,31 @@ interface ComparisonReport {
   } | undefined;
 }
 
+/**
+ * Load ATIF trajectory if available.
+ * Trajectory may be saved to output directory during run, or not available.
+ *
+ * @param outputDir - Output directory where trajectory might be saved
+ * @returns Trajectory if found, undefined otherwise
+ */
+const loadTrajectoryIfAvailable = async (
+  outputDir: string
+): Promise<Trajectory | undefined> => {
+  // Try to load from output directory
+  const trajectoryPath = join(outputDir, "trajectory.json");
+  if (existsSync(trajectoryPath)) {
+    try {
+      const content = JSON.parse(readFileSync(trajectoryPath, "utf-8"));
+      return content as Trajectory;
+    } catch (err) {
+      console.warn(`[TB] Failed to load trajectory: ${err}`);
+    }
+  }
+
+  // TODO: In the future, could collect from TBEmitter if it buffers trajectory steps
+  return undefined;
+};
+
 const generateComparisonReport = (
   current: TerminalBenchResults,
   baseline: TerminalBenchResults | undefined
@@ -785,6 +815,31 @@ const main = async (): Promise<void> => {
     totalDurationMs: totalDuration,
   });
   tbEmitter.close();
+
+  // Save TBRunFile format to .openagents/tb-runs/ for UI run browser
+  if (args.runId) {
+    try {
+      // Load ATIF trajectory if available
+      const trajectory = await loadTrajectoryIfAvailable(args.output);
+
+      // Convert to TBRunFile format
+      const runFile = convertResultsToTBRunFile(
+        finalResults,
+        args.runId,
+        suite, // Full suite object for task metadata lookup
+        trajectory
+      );
+
+      // Save to .openagents/tb-runs/
+      const savedPath = await saveTBRun(runFile);
+      console.log(`[TB] Run saved to: ${savedPath}`);
+    } catch (err) {
+      console.warn(`[TB] Failed to save TBRunFile: ${err}`);
+      // Don't fail the run if persistence fails
+    }
+  } else {
+    console.warn(`[TB] No runId provided, skipping TBRunFile save (use --run-id flag)`);
+  }
 
   // Print summary
   console.log(`\n=== Terminal-Bench Run Complete ===`);

@@ -11,6 +11,7 @@ import { join } from "path";
 import { readdirSync, existsSync, mkdirSync } from "fs";
 import type { Trajectory } from "../atif/schema.js";
 import type { TBTaskOutcome, TBDifficulty } from "../hud/protocol.js";
+import type { TerminalBenchResults, TerminalBenchSuite } from "../bench/terminal-bench.js";
 
 // ============================================================================
 // Types
@@ -268,3 +269,86 @@ export const buildTBRunMeta = (params: {
   totalTokens: params.totalTokens,
   taskCount: params.taskCount,
 });
+
+/**
+ * Map TerminalBenchResult status to TBTaskOutcome.
+ */
+const mapStatusToOutcome = (
+  status: "pass" | "fail" | "timeout" | "error" | "skip"
+): TBTaskOutcome => {
+  switch (status) {
+    case "pass":
+      return "success";
+    case "fail":
+      return "failure";
+    case "timeout":
+      return "timeout";
+    case "error":
+      return "error";
+    case "skip":
+      return "error"; // Skip treated as error
+    default:
+      return "error";
+  }
+};
+
+/**
+ * Convert TerminalBenchResults to TBRunFile format.
+ *
+ * This function converts the results.json format produced by tbench-local.ts
+ * into the TBRunFile format expected by the UI run browser.
+ *
+ * @param results - TerminalBenchResults from tbench-local.ts
+ * @param runId - Run ID (from --run-id flag or generated)
+ * @param suite - Suite metadata (full suite object for task metadata lookup)
+ * @param trajectory - Optional ATIF trajectory for detailed analysis
+ * @returns TBRunFile ready for saveTBRun()
+ */
+export const convertResultsToTBRunFile = (
+  results: TerminalBenchResults,
+  runId: string,
+  suite: TerminalBenchSuite | { name: string; version: string },
+  trajectory?: Trajectory
+): TBRunFile => {
+  // Create lookup map for task metadata if full suite provided
+  const taskMap =
+    "tasks" in suite && Array.isArray(suite.tasks)
+      ? new Map(suite.tasks.map((t) => [t.id, t]))
+      : new Map<string, { name: string; category: string; difficulty: string }>();
+
+  // Calculate total duration from individual task durations
+  const totalDurationMs = results.results.reduce((sum, r) => sum + r.duration_ms, 0);
+
+  // Build metadata
+  const meta = buildTBRunMeta({
+    runId,
+    suiteName: results.suite_name,
+    suiteVersion: results.suite_version,
+    timestamp: results.timestamp,
+    passRate: results.summary.pass_rate,
+    passed: results.summary.passed,
+    failed: results.summary.failed,
+    timeout: results.summary.timeout,
+    error: results.summary.error,
+    totalDurationMs,
+    totalTokens: results.summary.total_tokens,
+    taskCount: results.summary.total,
+  });
+
+  // Convert task results
+  const tasks: TBTaskResult[] = results.results.map((r) => {
+    const taskDef = taskMap.get(r.task_id);
+    return {
+      id: r.task_id,
+      name: taskDef?.name ?? r.task_id,
+      category: taskDef?.category ?? "",
+      difficulty: (taskDef?.difficulty ?? "medium") as TBDifficulty,
+      outcome: mapStatusToOutcome(r.status),
+      durationMs: r.duration_ms,
+      turns: r.turns,
+      tokens: r.tokens_used,
+    };
+  });
+
+  return buildTBRunFile(meta, tasks, trajectory);
+};

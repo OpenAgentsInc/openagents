@@ -26,6 +26,7 @@ export {
   getTBRunById,
   buildTBRunFile,
   buildTBRunMeta,
+  convertResultsToTBRunFile,
   DEFAULT_TB_RUNS_DIR,
   type TBRunMeta,
   type TBTaskResult as TBPersistedTaskResult,
