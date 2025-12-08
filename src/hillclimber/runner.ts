@@ -17,6 +17,7 @@ import { formatRunSummary, isBetterScore } from "./scoring.js";
 import { exportTaskHint } from "./exporter.js";
 import type { HillClimberOptions, HillClimberRunInput } from "./types.js";
 import { generateRunId as genRunId } from "./types.js";
+import { log, logError } from "./logger.js";
 
 // ============================================================================
 // Types
@@ -46,7 +47,7 @@ export const runHillClimber = async (
 
   // Handle graceful shutdown
   const shutdown = () => {
-    console.log("\n[HillClimber] Shutting down gracefully...");
+    log("\n[HillClimber] Shutting down gracefully...");
     state.running = false;
   };
 
@@ -56,25 +57,25 @@ export const runHillClimber = async (
   // Determine tasks to optimize
   let tasks = options.tasks;
   if (tasks.length === 0) {
-    console.log("[HillClimber] No tasks specified, discovering from suite...");
+    log("[HillClimber] No tasks specified, discovering from suite...");
     tasks = await getAvailableTasks(options.suitePath);
     // Filter to easy/medium tasks for initial runs
     const availableTasks = tasks.slice(0, 5); // Start with first 5 tasks
-    console.log(
+    log(
       `[HillClimber] Found ${tasks.length} tasks, using first ${availableTasks.length}`,
     );
     tasks = availableTasks;
   }
 
   if (tasks.length === 0) {
-    console.error("[HillClimber] No tasks to optimize!");
+    logError("[HillClimber] No tasks to optimize!");
     return;
   }
 
-  console.log(`[HillClimber] Starting optimization loop`);
-  console.log(`[HillClimber] Tasks: ${tasks.join(", ")}`);
-  console.log(`[HillClimber] Max runs: ${options.maxRuns}`);
-  console.log(`[HillClimber] Sleep interval: ${options.sleepMs}ms`);
+  log(`[HillClimber] Starting optimization loop`);
+  log(`[HillClimber] Tasks: ${tasks.join(", ")}`);
+  log(`[HillClimber] Max runs: ${options.maxRuns}`);
+  log(`[HillClimber] Sleep interval: ${options.sleepMs}ms`);
 
   // Create workspace base
   const fs = require("node:fs");
@@ -89,26 +90,27 @@ export const runHillClimber = async (
     state.taskIndex++;
     state.totalRuns++;
 
-    console.log(
+    log(
       `\n${"=".repeat(60)}\n[HillClimber] Run #${state.totalRuns}/${options.maxRuns} - Task: ${taskId}\n${"=".repeat(60)}`,
     );
 
     try {
       await runSingleIteration(taskId, state.totalRuns, options, workspaceBase);
     } catch (e) {
-      console.error(
+      logError(
         `[HillClimber] Error in iteration: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e : undefined,
       );
     }
 
     // Sleep between runs
     if (state.running && state.totalRuns < options.maxRuns) {
-      console.log(`[HillClimber] Sleeping ${options.sleepMs}ms...`);
+      log(`[HillClimber] Sleeping ${options.sleepMs}ms...`);
       await new Promise((resolve) => setTimeout(resolve, options.sleepMs));
     }
   }
 
-  console.log(`\n[HillClimber] Completed ${state.totalRuns} runs`);
+  log(`\n[HillClimber] Completed ${state.totalRuns} runs`);
 
   // Show final stats
   await showStats();
@@ -128,17 +130,17 @@ const runSingleIteration = async (
 
     // Get or create current config for this task
     const config = yield* store.ensureDefaultConfig(taskId);
-    console.log(`[HillClimber] Current config: hint=${config.hint ? "yes" : "no"}, skills=${config.useSkills}, maxTurns=${config.maxTurnsOverride}`);
+    log(`[HillClimber] Current config: hint=${config.hint ? "yes" : "no"}, skills=${config.useSkills}, maxTurns=${config.maxTurnsOverride}`);
 
     // Get the TB task
     const task = yield* Effect.promise(() => getTask(options.suitePath, taskId));
     if (!task) {
-      console.error(`[HillClimber] Task not found: ${taskId}`);
+      logError(`[HillClimber] Task not found: ${taskId}`);
       return;
     }
 
     // Run the task
-    console.log(`[HillClimber] Executing task...`);
+    log(`[HillClimber] Executing task...`);
     const execution = yield* Effect.promise(() =>
       runTask(taskId, config, {
         suitePath: options.suitePath,
@@ -159,25 +161,25 @@ const runSingleIteration = async (
     );
 
     const { result, score } = execution;
-    console.log(`\n[HillClimber] ${formatRunSummary(result.passed, result.turns, score)}`);
+    log(`\n[HillClimber] ${formatRunSummary(result.passed, result.turns, score)}`);
 
     // Propose config change
-    console.log(`[HillClimber] Analyzing result with meta-reasoner...`);
+    log(`[HillClimber] Analyzing result with meta-reasoner...`);
     let change;
     try {
       change = yield* Effect.promise(() =>
         Effect.runPromise(proposeConfigChange(task, config, result, runNumber)),
       );
     } catch (e) {
-      console.log(
+      log(
         `[HillClimber] Meta-reasoner failed, using heuristics: ${e instanceof Error ? e.message : String(e)}`,
       );
       change = proposeHeuristicChange(task, config, result);
     }
 
-    console.log(`[HillClimber] Proposed change: ${change.type}`);
+    log(`[HillClimber] Proposed change: ${change.type}`);
     if (change.type === "update_hint") {
-      console.log(`[HillClimber] New hint: ${change.newHint?.slice(0, 100)}...`);
+      log(`[HillClimber] New hint: ${change.newHint?.slice(0, 100)}...`);
     }
 
     // Save new config if changed
@@ -187,7 +189,7 @@ const runSingleIteration = async (
       const newConfig = yield* store.saveConfig(newConfigInput);
       yield* store.setCurrentConfig(taskId, newConfig.id);
       finalConfigId = newConfig.id;
-      console.log(`[HillClimber] Saved new config (id=${newConfig.id})`);
+      log(`[HillClimber] Saved new config (id=${newConfig.id})`);
     }
 
     // Save run record
@@ -201,14 +203,14 @@ const runSingleIteration = async (
       durationMs: result.durationMs,
       stepSummary: result.stepSummary,
       errorMessage: result.errorMessage,
-      metaModel: change.type !== "keep" ? "x-ai/grok-4.1-fast:free" : null,
+      metaModel: change.type !== "keep" ? "arcee-ai/trinity-mini:free" : null,
       proposedChange: change.reasoning ?? null,
       changeAccepted: change.type !== "keep",
       score,
     };
 
     const savedRun = yield* store.saveRun(runInput);
-    console.log(`[HillClimber] Saved run (id=${savedRun.id})`);
+    log(`[HillClimber] Saved run (id=${savedRun.id})`);
 
     // Update best config if this is better
     const currentBest = yield* store.getBestConfigForTask(taskId);
@@ -220,7 +222,7 @@ const runSingleIteration = async (
         score,
         result.passed,
       );
-      console.log(`[HillClimber] New best score for task: ${score}`);
+      log(`[HillClimber] New best score for task: ${score}`);
 
       // Auto-export if stable enough
       yield* exportTaskHint(taskId).pipe(

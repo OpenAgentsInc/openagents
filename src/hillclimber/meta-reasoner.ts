@@ -2,7 +2,7 @@
  * HillClimber Meta-Reasoner
  *
  * Uses OpenRouter models to propose config changes based on run results.
- * Primary: x-ai/grok-4.1-fast:free (free, unlimited)
+ * Primary: Default free model via free:true option (arcee-ai/trinity-mini:free)
  * Backup: openrouter/auto (every 10th run for deeper analysis)
  */
 
@@ -21,6 +21,7 @@ import type {
   HillClimberRun,
 } from "./types.js";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
+import { log } from "./logger.js";
 
 // ============================================================================
 // Historical Context
@@ -48,10 +49,8 @@ export interface HistoricalContext {
 // Constants
 // ============================================================================
 
-import { DEFAULT_FREE_MODEL } from "../llm/openrouter-inference.js";
-
-/** Free model for meta-reasoning (uses DEFAULT_FREE_MODEL from inference service) */
-export const FREE_MODEL = DEFAULT_FREE_MODEL;
+// Note: We use free:true option instead of hardcoding model names
+// This lets the OpenRouter service automatically select the default free model
 
 /** Auto model for deeper analysis (use sparingly) */
 export const AUTO_MODEL = "openrouter/auto";
@@ -177,9 +176,9 @@ export const proposeConfigChange = (
 
     // Use auto model every Nth run for deeper analysis
     const useAuto = runNumber % AUTO_MODEL_FREQUENCY === 0;
-    const model = useAuto ? AUTO_MODEL : FREE_MODEL;
+    const model = useAuto ? AUTO_MODEL : "openrouter/auto";
 
-    console.log(
+    log(
       `[MetaReasoner] Using ${useAuto ? "auto" : "free"} model for run #${runNumber}`,
     );
 
@@ -188,12 +187,16 @@ export const proposeConfigChange = (
     const response = yield* inference.send(
       model,
       [{ role: "user", content: prompt }],
-      { temperature: 0.3, maxTokens: 200 },
+      {
+        free: !useAuto, // Use free model when not using auto
+        temperature: 0.3,
+        maxTokens: 200
+      },
     );
 
     const content = response.choices[0]?.message?.content?.trim() ?? "";
 
-    console.log(`[MetaReasoner] Response: ${content.slice(0, 100)}...`);
+    log(`[MetaReasoner] Response: ${content.slice(0, 100)}...`);
 
     // Parse the response
     if (
@@ -213,7 +216,7 @@ export const proposeConfigChange = (
 
     // If response is too long, it might not be a valid hint
     if (newHint.length > 500) {
-      console.log(`[MetaReasoner] Response too long, keeping current config`);
+      log(`[MetaReasoner] Response too long, keeping current config`);
       return {
         type: "keep" as const,
         reasoning: "Response too long, likely not a valid hint",
