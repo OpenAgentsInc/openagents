@@ -2,6 +2,10 @@
 
 Apple Foundation Models integration for local LLM inference on macOS 26+ with Apple Intelligence.
 
+## Quick Links
+
+- **[Guided Generation](./guided-generation.md)** - Constrained output for guaranteed valid JSON (4x faster, 100% reliable)
+
 ## Overview
 
 Foundation Models is Apple's on-device language model framework, part of Apple Intelligence. This integration provides:
