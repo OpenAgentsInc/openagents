@@ -22,6 +22,7 @@ import {
   MAX_ACTION_CHARS,
   MAX_CONTEXT_CHARS,
   MAX_PREVIOUS_CHARS,
+  MAX_HISTORY_ENTRY_CHARS,
 } from "./micro-task-types.js";
 import { callFMWorker, type FMClientLike } from "./worker.js";
 
@@ -235,7 +236,7 @@ export function updateStateFromResult(
     step.status = "failed";
     step.errorSummary = result.condensed;
   }
-  state.history.push(result.condensed);
+  state.history.push(truncate(result.condensed, MAX_HISTORY_ENTRY_CHARS));
 }
 
 // --- Error Recovery ---
@@ -347,7 +348,7 @@ export async function runMicroTaskPlan(
 
       if (!workerOutput.toolName) {
         log(`[Worker] No tool call parsed, raw: ${workerOutput.raw.slice(0, 100)}`);
-        state.history.push("No tool call - retrying");
+        state.history.push(truncate("No tool call - retrying", MAX_HISTORY_ENTRY_CHARS));
         consecutiveFailures++;
         continue;
       }
@@ -407,7 +408,7 @@ export async function runMicroTaskPlan(
       );
       log(`[Tool] ${workerOutput.toolName}: ${result.success ? "success" : "failed"} - ${result.condensed}`);
 
-      state.history.push(result.condensed);
+      state.history.push(truncate(result.condensed, MAX_HISTORY_ENTRY_CHARS));
 
       if (result.success) {
         hadAnySuccess = true;
@@ -419,7 +420,7 @@ export async function runMicroTaskPlan(
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       log(`[Orchestrator] Error: ${errMsg}`);
-      state.history.push(`Error: ${condenseError(errMsg)}`);
+      state.history.push(truncate(`Error: ${condenseError(errMsg)}`, MAX_HISTORY_ENTRY_CHARS));
       consecutiveFailures++;
     }
   }
