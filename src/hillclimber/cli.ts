@@ -21,6 +21,7 @@ import { runExport, generateHintsCode } from "./exporter.js";
 import { Effect } from "effect";
 import { HillClimberStoreLive } from "./store.js";
 import type { HillClimberOptions } from "./types.js";
+import { getLogPath } from "./logger.js";
 
 // ============================================================================
 // Default Values
@@ -160,6 +161,7 @@ const main = async (): Promise<void> => {
 ║              HillClimber - TB Optimization                ║
 ╚═══════════════════════════════════════════════════════════╝
 `);
+  console.log(`[HillClimber] Logs: ${getLogPath()}`);
 
   // Stats only mode
   if (showStatsOnly) {
