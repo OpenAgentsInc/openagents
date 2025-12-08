@@ -26363,7 +26363,42 @@ ${endStackCall}`;
   var mountWidget = (widget, container) => exports_Effect.gen(function* () {
     const dom = yield* DomServiceTag;
     const stateService = yield* StateServiceTag;
-    const preservedState = loadWidgetState(widget.id);
+    let preservedState = loadWidgetState(widget.id);
+    if (widget.id === "tbcc-testgen" && preservedState) {
+      const oldState = preservedState;
+      if (!oldState.threadItems && (oldState.tests && Array.isArray(oldState.tests) || oldState.reflections && Array.isArray(oldState.reflections))) {
+        console.log("[Effuse] Migrating tbcc-testgen state from old format to thread format");
+        const threadItems = [];
+        const now = Date.now();
+        if (Array.isArray(oldState.tests)) {
+          oldState.tests.forEach((test, index) => {
+            threadItems.push({
+              type: "test",
+              timestamp: now - (oldState.tests.length - index) * 1000,
+              data: test
+            });
+          });
+        }
+        if (Array.isArray(oldState.reflections)) {
+          oldState.reflections.forEach((reflection, index) => {
+            threadItems.push({
+              type: "reflection",
+              timestamp: now - (oldState.reflections.length - index) * 1000,
+              data: reflection
+            });
+          });
+        }
+        threadItems.sort((a, b) => a.timestamp - b.timestamp);
+        const migratedState = {
+          ...oldState,
+          threadItems,
+          expandedItemId: oldState.expandedItemId ?? null
+        };
+        delete migratedState.tests;
+        delete migratedState.reflections;
+        preservedState = migratedState;
+      }
+    }
     const initialState = preservedState ?? widget.initialState();
     const state = yield* stateService.cell(initialState);
     const eventQueue = yield* exports_Effect.acquireRelease(exports_Queue.unbounded(), (queue) => exports_Queue.shutdown(queue));
@@ -30477,6 +30512,268 @@ ${endStackCall}`;
       return [exports_Stream.make(ctx.emit({ type: "loadRuns", page: 0 }))];
     }
   };
+  // src/effuse/components/atif-thread.ts
+  function renderThreadContainer(items, options) {
+    const itemElements = items.map((item) => {
+      const itemId = getItemId(item);
+      const isExpanded = itemId === options.expandedItemId;
+      return renderThreadItem(item, { isExpanded, onToggle: options.onToggle });
+    });
+    return html`
+    <div class="flex flex-col gap-2">
+      ${joinTemplates(itemElements)}
+    </div>
+  `;
+  }
+  function renderThreadItem(item, state) {
+    const timestamp = formatTimestamp3(item.timestamp);
+    switch (item.type) {
+      case "progress":
+        return renderProgressItem(timestamp, item.data, state);
+      case "reflection":
+        return renderReflectionItem(timestamp, item.data, state);
+      case "test":
+        return renderTestItem(timestamp, item.data, state);
+      case "complete":
+        return renderCompleteItem(timestamp, item.data, state);
+      case "error":
+        return renderErrorItem(timestamp, item.data, state);
+    }
+  }
+  function renderProgressItem(timestamp, progress, state) {
+    return html`
+    <div class="p-3 bg-zinc-900/40 border border-zinc-800/60 rounded-lg">
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-zinc-400">⚙️</span>
+        <span class="text-xs font-mono text-zinc-300 uppercase">PROGRESS</span>
+        <span class="text-sm text-zinc-400">${progress.status}</span>
+        ${progress.category ? html`<span class="text-xs text-zinc-500">(${progress.category} - round ${progress.round})</span>` : ""}
+      </div>
+    </div>
+  `;
+  }
+  function renderReflectionItem(timestamp, reflection, state) {
+    const actionLabels = {
+      refining: "Refining",
+      assessing: "Assessing",
+      complete: "Complete"
+    };
+    return html`
+    <div class="p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+      <div class="flex items-start gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-blue-300">💭</span>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-mono text-blue-300 uppercase">REFLECTION</span>
+            <span class="text-xs text-blue-400">${actionLabels[reflection.action]}</span>
+            ${reflection.category ? html`<span class="px-2 py-0.5 bg-blue-900/40 border border-blue-700/50 rounded text-xs text-blue-300 font-mono">${reflection.category}</span>` : ""}
+          </div>
+          <p class="text-sm text-blue-200 font-mono leading-relaxed">${reflection.text}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function renderTestItem(timestamp, test, state) {
+    const categoryBadge = getCategoryBadge(test.category);
+    const confidencePercent = Math.round(test.confidence * 100);
+    const itemId = test.id;
+    const header = html`
+    <div
+      class="flex items-center justify-between p-3 bg-zinc-900/60 border border-zinc-800/60 rounded-lg cursor-pointer hover:bg-zinc-900/80 transition-colors"
+      data-action="toggleItem"
+      data-item-id="${itemId}"
+    >
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <span class="text-xs text-zinc-500 font-mono flex-shrink-0">${timestamp}</span>
+        ${categoryBadge}
+        <span class="text-sm text-zinc-200 font-mono truncate">${test.id}</span>
+        <span class="text-xs text-zinc-400 flex-shrink-0">(${confidencePercent}%)</span>
+      </div>
+      <span class="text-zinc-500 flex-shrink-0 ml-2">${state.isExpanded ? "▲" : "▼"}</span>
+    </div>
+  `;
+    if (!state.isExpanded) {
+      return header;
+    }
+    const confidenceBar = renderConfidenceBar(test.confidence);
+    const details = html`
+    <div class="mt-2 p-4 bg-zinc-950/60 border border-zinc-800/40 rounded-lg space-y-3">
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Input</label>
+        <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap">${test.input}</pre>
+      </div>
+
+      ${test.expectedOutput ? html`
+            <div>
+              <label class="text-xs font-mono text-zinc-500 uppercase">Expected Output</label>
+              <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-blue-300 overflow-x-auto whitespace-pre-wrap">${test.expectedOutput}</pre>
+            </div>
+          ` : ""}
+
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Reasoning</label>
+        <p class="mt-1 text-sm text-zinc-300 leading-relaxed">${test.reasoning}</p>
+      </div>
+
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Confidence</label>
+        <div class="mt-1">${confidenceBar}</div>
+      </div>
+    </div>
+  `;
+    return html`${header} ${details}`;
+  }
+  function renderCompleteItem(timestamp, complete3, state) {
+    return html`
+    <div class="p-4 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
+      <div class="flex items-center gap-3 mb-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-emerald-400">✓</span>
+        <span class="text-xs font-mono text-emerald-300 uppercase">COMPLETE</span>
+      </div>
+      <div class="space-y-2 text-sm">
+        <div>
+          <span class="text-zinc-400">Total Tests: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalTests}</span>
+        </div>
+        <div>
+          <span class="text-zinc-400">Total Rounds: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalRounds}</span>
+        </div>
+        ${complete3.comprehensivenessScore !== null ? html`
+              <div>
+                <span class="text-zinc-400">Comprehensiveness Score: </span>
+                <span class="text-emerald-300 font-mono">${complete3.comprehensivenessScore}/10</span>
+              </div>
+            ` : ""}
+        <div>
+          <span class="text-zinc-400">Tokens Used: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalTokensUsed.toLocaleString()}</span>
+        </div>
+        <div>
+          <span class="text-zinc-400">Duration: </span>
+          <span class="text-emerald-300 font-mono">${(complete3.durationMs / 1000).toFixed(1)}s</span>
+        </div>
+        ${complete3.uncertainties.length > 0 ? html`
+              <div>
+                <span class="text-zinc-400">Uncertainties: </span>
+                <ul class="mt-1 space-y-1">
+                  ${joinTemplates(complete3.uncertainties.map((u) => html`
+                        <li class="text-yellow-300 text-xs">• ${u}</li>
+                      `))}
+                </ul>
+              </div>
+            ` : ""}
+      </div>
+    </div>
+  `;
+  }
+  function renderErrorItem(timestamp, error, state) {
+    return html`
+    <div class="p-3 bg-red-900/20 border border-red-700/50 rounded-lg">
+      <div class="flex items-start gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-red-400">✗</span>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-mono text-red-300 uppercase">ERROR</span>
+          </div>
+          <p class="text-sm text-red-200 font-mono">${error.error}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function getItemId(item) {
+    switch (item.type) {
+      case "test":
+        return item.data.id;
+      case "progress":
+        return `progress-${item.timestamp}`;
+      case "reflection":
+        return `reflection-${item.timestamp}`;
+      case "complete":
+        return `complete-${item.timestamp}`;
+      case "error":
+        return `error-${item.timestamp}`;
+    }
+  }
+  function formatTimestamp3(timestamp) {
+    const date = new Date(timestamp);
+    const hours2 = date.getHours().toString().padStart(2, "0");
+    const minutes2 = date.getMinutes().toString().padStart(2, "0");
+    const seconds2 = date.getSeconds().toString().padStart(2, "0");
+    return `${hours2}:${minutes2}:${seconds2}`;
+  }
+  function getCategoryBadge(category) {
+    const badges = {
+      anti_cheat: {
+        emoji: "\uD83D\uDD34",
+        bg: "bg-red-900/40",
+        text: "text-red-300",
+        border: "border-red-700/50"
+      },
+      existence: {
+        emoji: "\uD83D\uDD35",
+        bg: "bg-blue-900/40",
+        text: "text-blue-300",
+        border: "border-blue-700/50"
+      },
+      correctness: {
+        emoji: "\uD83D\uDFE2",
+        bg: "bg-emerald-900/40",
+        text: "text-emerald-300",
+        border: "border-emerald-700/50"
+      },
+      boundary: {
+        emoji: "\uD83D\uDFE1",
+        bg: "bg-yellow-900/40",
+        text: "text-yellow-300",
+        border: "border-yellow-700/50"
+      },
+      integration: {
+        emoji: "\uD83D\uDFE3",
+        bg: "bg-purple-900/40",
+        text: "text-purple-300",
+        border: "border-purple-700/50"
+      }
+    };
+    const badge = badges[category] || {
+      emoji: "⚪",
+      bg: "bg-zinc-800/40",
+      text: "text-zinc-300",
+      border: "border-zinc-700/50"
+    };
+    return html`
+    <span class="px-2 py-1 text-xs font-mono border rounded ${badge.bg} ${badge.text} ${badge.border} flex-shrink-0">
+      ${badge.emoji} ${category}
+    </span>
+  `;
+  }
+  function renderConfidenceBar(confidence) {
+    const percent = Math.round(confidence * 100);
+    const width = `${percent}%`;
+    const categoryColors = {
+      anti_cheat: "bg-red-500",
+      existence: "bg-blue-500",
+      correctness: "bg-emerald-500",
+      boundary: "bg-yellow-500",
+      integration: "bg-purple-500"
+    };
+    const barColor = "bg-emerald-500";
+    return html`
+    <div class="flex items-center gap-2">
+      <div class="flex-1 h-2 bg-zinc-800 rounded overflow-hidden">
+        <div class="h-full ${barColor} transition-all" style="width: ${width}"></div>
+      </div>
+      <span class="text-xs text-zinc-400 font-mono">${percent}%</span>
+    </div>
+  `;
+  }
+
   // src/effuse/widgets/tb-command-center/tbcc-testgen.ts
   var TBTestGenWidget = {
     id: "tbcc-testgen",
@@ -30490,7 +30787,8 @@ ${endStackCall}`;
         taskId: null,
         taskDescription: null,
         environment: null,
-        tests: [],
+        threadItems: [],
+        expandedItemId: null,
         totalTests: 0,
         durationMs: 0,
         uncertainties: [],
@@ -30498,7 +30796,6 @@ ${endStackCall}`;
         currentCategory: null,
         currentRound: 0,
         progressStatus: null,
-        reflections: [],
         totalRounds: 0,
         categoryRounds: null,
         comprehensivenessScore: null,
@@ -30612,68 +30909,14 @@ ${endStackCall}`;
                 </div>
               </div>
             ` : "";
-      const reflectionPanel = state.reflections.length > 0 ? html`
-              <div class="p-4 bg-blue-900/20 border-b border-blue-800/50">
-                <h4 class="text-sm font-mono text-blue-300 mb-2">Reflections:</h4>
-                <div class="space-y-2 max-h-32 overflow-y-auto">
-                  ${joinTemplates(state.reflections.slice(-3).map((r) => html`
-                          <div class="text-xs text-blue-200 font-mono">
-                            ${r.category ? `[${r.category}] ` : ""}${r.text}
-                          </div>
-                        `))}
-                </div>
-              </div>
-            ` : "";
-      const testCards = state.tests.length > 0 ? html`
-              <div class="p-4 space-y-3">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="text-sm font-mono text-zinc-400">Generated Tests (${state.tests.length})</h3>
-                  ${state.status === "complete" ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s | ${state.totalRounds} rounds</span>` : ""}
-                </div>
-                ${joinTemplates(state.tests.map((test) => {
-        const categoryColors = {
-          anti_cheat: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/50" },
-          existence: { bg: "bg-blue-900/30", text: "text-blue-300", border: "border-blue-700/50" },
-          correctness: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/50" },
-          boundary: { bg: "bg-yellow-900/30", text: "text-yellow-300", border: "border-yellow-700/50" },
-          integration: { bg: "bg-purple-900/30", text: "text-purple-300", border: "border-purple-700/50" }
-        };
-        const colors2 = categoryColors[test.category] ?? { bg: "bg-zinc-800/30", text: "text-zinc-300", border: "border-zinc-700/50" };
-        return html`
-                        <div class="p-3 bg-zinc-900 border ${colors2.border} rounded">
-                          <div class="flex items-start justify-between mb-2">
-                            <span class="px-2 py-1 ${colors2.bg} ${colors2.text} text-xs font-mono rounded uppercase">${test.category}</span>
-                            <div class="flex items-center gap-2">
-                              <span class="text-xs text-zinc-500 font-mono">${(test.confidence * 100).toFixed(0)}%</span>
-                              <div class="w-16 h-1.5 bg-zinc-800 rounded overflow-hidden">
-                                <div class="h-full ${colors2.bg}" style="width: ${test.confidence * 100}%"></div>
-                              </div>
-                            </div>
-                          </div>
-                          <div class="space-y-2">
-                            <div>
-                              <span class="text-xs text-zinc-500 font-mono">Input:</span>
-                              <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.input}</pre>
-                            </div>
-                            ${test.expectedOutput ? html`
-                                  <div>
-                                    <span class="text-xs text-zinc-500 font-mono">Expected:</span>
-                                    <pre class="mt-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-300 font-mono overflow-x-auto">${test.expectedOutput}</pre>
-                                  </div>
-                                ` : ""}
-                            <div>
-                              <span class="text-xs text-zinc-500 font-mono">Reasoning:</span>
-                              <p class="mt-1 text-xs text-zinc-400 leading-relaxed">${test.reasoning}</p>
-                            </div>
-                          </div>
-                        </div>
-                      `;
-      }))}
-              </div>
-            ` : "";
-      const scrollableContent = state.reflections.length > 0 || state.tests.length > 0 ? html`
-              <div class="flex-1 overflow-y-auto">
-                ${reflectionPanel} ${testCards}
+      const threadView = state.threadItems.length > 0 ? html`
+              <div class="flex-1 overflow-y-auto p-4">
+                ${renderThreadContainer(state.threadItems, {
+        expandedItemId: state.expandedItemId,
+        onToggle: (itemId) => {
+          exports_Effect.runFork(ctx.emit({ type: "toggleItem", itemId }));
+        }
+      })}
               </div>
             ` : "";
       const completionSummary = state.status === "complete" ? html`
@@ -30702,7 +30945,7 @@ ${endStackCall}`;
               <p class="text-xs text-red-200 font-mono">${state.error}</p>
             </div>
           ` : "";
-      const emptyState = state.status === "idle" && state.tests.length === 0 ? html`
+      const emptyState = state.status === "idle" && state.threadItems.length === 0 ? html`
               <div class="flex-1 flex items-center justify-center text-center p-8">
                 <div>
                   <div class="text-6xl mb-4">🧪</div>
@@ -30711,7 +30954,7 @@ ${endStackCall}`;
                 </div>
               </div>
             ` : "";
-      const loadingState = state.status === "generating" && state.tests.length === 0 ? html`
+      const loadingState = state.status === "generating" && state.threadItems.length === 0 ? html`
               <div class="flex-1 flex items-center justify-center text-center p-8">
                 <div>
                   <div class="animate-spin text-4xl mb-4">⚙️</div>
@@ -30722,7 +30965,7 @@ ${endStackCall}`;
             ` : "";
       const result = html`
         <div class="h-full flex flex-col bg-zinc-950">
-          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${errorPanel} ${emptyState} ${loadingState} ${scrollableContent} ${completionSummary}
+          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${errorPanel} ${emptyState} ${loadingState} ${threadView} ${completionSummary}
         </div>
       `;
       if (window.bunLog) {
@@ -30745,6 +30988,12 @@ ${endStackCall}`;
       });
       yield* ctx.dom.delegate(ctx.container, "[data-action='cancel']", "click", () => {
         exports_Effect.runFork(ctx.emit({ type: "cancel" }));
+      });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='toggleItem']", "click", (_e, target) => {
+        const itemId = target.dataset.itemId;
+        if (itemId) {
+          exports_Effect.runFork(ctx.emit({ type: "toggleItem", itemId }));
+        }
       });
     }),
     handleEvent: (event, ctx) => exports_Effect.gen(function* () {
@@ -30783,7 +31032,8 @@ ${endStackCall}`;
             taskId: null,
             taskDescription: null,
             environment: null,
-            tests: [],
+            threadItems: [],
+            expandedItemId: null,
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
@@ -30791,7 +31041,6 @@ ${endStackCall}`;
             currentCategory: null,
             currentRound: 0,
             progressStatus: null,
-            reflections: [],
             totalRounds: 0,
             categoryRounds: null,
             comprehensivenessScore: null,
@@ -30819,7 +31068,8 @@ ${endStackCall}`;
             taskId: null,
             taskDescription: null,
             environment: null,
-            tests: [],
+            threadItems: [],
+            expandedItemId: null,
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
@@ -30827,7 +31077,6 @@ ${endStackCall}`;
             currentCategory: null,
             currentRound: 0,
             progressStatus: null,
-            reflections: [],
             totalRounds: 0,
             categoryRounds: null,
             comprehensivenessScore: null,
@@ -30842,6 +31091,13 @@ ${endStackCall}`;
             status: "idle",
             sessionId: null,
             error: null
+          }));
+          break;
+        }
+        case "toggleItem": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            expandedItemId: s.expandedItemId === event.itemId ? null : event.itemId
           }));
           break;
         }
@@ -30870,6 +31126,19 @@ ${endStackCall}`;
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "progress",
+                  timestamp: Date.now(),
+                  data: {
+                    phase: data.phase,
+                    category: data.currentCategory ?? null,
+                    round: data.roundNumber,
+                    status: data.status
+                  }
+                }
+              ],
               currentPhase: data.phase,
               currentCategory: data.currentCategory ?? null,
               currentRound: data.roundNumber,
@@ -30879,12 +31148,16 @@ ${endStackCall}`;
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
-              reflections: [
-                ...s.reflections,
+              threadItems: [
+                ...s.threadItems,
                 {
-                  category: data.category ?? null,
-                  text: data.reflectionText,
-                  action: data.action
+                  type: "reflection",
+                  timestamp: Date.now(),
+                  data: {
+                    category: data.category ?? null,
+                    text: data.reflectionText,
+                    action: data.action
+                  }
                 }
               ]
             }));
@@ -30892,12 +31165,34 @@ ${endStackCall}`;
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
-              tests: [...s.tests, data.test]
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "test",
+                  timestamp: Date.now(),
+                  data: data.test
+                }
+              ]
             }));
           } else if (msg.type === "testgen_complete") {
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "complete",
+                  timestamp: Date.now(),
+                  data: {
+                    totalTests: data.totalTests,
+                    totalRounds: data.totalRounds,
+                    comprehensivenessScore: data.comprehensivenessScore,
+                    totalTokensUsed: data.totalTokensUsed,
+                    durationMs: data.durationMs,
+                    uncertainties: data.uncertainties
+                  }
+                }
+              ],
               status: "complete",
               currentPhase: "complete",
               totalTests: data.totalTests,
@@ -30912,6 +31207,16 @@ ${endStackCall}`;
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
+              threadItems: [
+                ...s.threadItems,
+                {
+                  type: "error",
+                  timestamp: Date.now(),
+                  data: {
+                    error: data.error
+                  }
+                }
+              ],
               status: "error",
               error: data.error
             }));

@@ -93,6 +93,8 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
 
   initialState: () => {
     console.log("[TBTestGen] Creating initial state")
+    // Note: State migration from old format (tests/reflections) to new format (threadItems)
+    // is handled in src/effuse/widget/mount.ts
     return {
       status: "idle",
       taskIds: [],

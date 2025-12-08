@@ -8,7 +8,8 @@ import type {
   Status,
   DeletionEntry,
 } from "../tasks/schema.js";
-import { INITIAL_SCHEMA_SQL } from "./migrations.js";
+import { INITIAL_SCHEMA_SQL, runMigrations } from "./migrations.js";
+import { BunContext } from "@effect/platform-bun";
 
 /**
  * DatabaseError - Error type for all database operations
@@ -112,6 +113,24 @@ export class DatabaseService extends Context.Tag("DatabaseService")<
       entry: DeletionEntry,
     ) => Effect.Effect<void, DatabaseError>;
     readonly getDeletions: () => Effect.Effect<DeletionEntry[], DatabaseError>;
+
+    // Trajectory operations
+    readonly insertTestGenTrajectory: (data: {
+      sessionId: string;
+      taskId: string;
+      taskDescription: string;
+      totalTests: number;
+      totalRounds: number;
+      categoryRounds: Record<string, number>;
+      comprehensivenessScore: number | null;
+      totalTokensUsed: number;
+      durationMs: number;
+      tests: unknown[];
+      reflections: unknown[];
+      environment: unknown;
+      uncertainties: string[];
+      modelName?: string;
+    }) => Effect.Effect<void, DatabaseError>;
 
     // Transactions
     readonly runInTransaction: <A, E>(
@@ -735,6 +754,88 @@ export const makeDatabaseLive = (
           }));
         });
 
+      // Insert test generation trajectory
+      const insertTestGenTrajectory = (data: {
+        sessionId: string;
+        taskId: string;
+        taskDescription: string;
+        totalTests: number;
+        totalRounds: number;
+        categoryRounds: Record<string, number>;
+        comprehensivenessScore: number | null;
+        totalTokensUsed: number;
+        durationMs: number;
+        tests: unknown[];
+        reflections: unknown[];
+        environment: unknown;
+        uncertainties: string[];
+        modelName?: string;
+      }): Effect.Effect<void, DatabaseError> =>
+        runSQL(() => {
+          // First, insert into trajectories table
+          const trajectoryStmt = db.prepare(`
+            INSERT INTO trajectories (
+              session_id, schema_version, agent_name, model_name, step_count,
+              first_step_at, last_step_at, total_tokens, trajectory
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          const now = new Date().toISOString();
+          const trajectoryJson = JSON.stringify({
+            session_id: data.sessionId,
+            task_id: data.taskId,
+            task_description: data.taskDescription,
+            tests: data.tests,
+            reflections: data.reflections,
+            environment: data.environment,
+            uncertainties: data.uncertainties,
+            total_tests: data.totalTests,
+            total_rounds: data.totalRounds,
+            category_rounds: data.categoryRounds,
+            comprehensiveness_score: data.comprehensivenessScore,
+            total_tokens_used: data.totalTokensUsed,
+            duration_ms: data.durationMs,
+            created_at: now,
+          });
+
+          trajectoryStmt.run(
+            data.sessionId,
+            "testgen-v1.0",
+            "testgen",
+            data.modelName ?? null,
+            0, // step_count (not applicable for testgen)
+            now, // first_step_at
+            now, // last_step_at
+            data.totalTokensUsed,
+            trajectoryJson,
+          );
+
+          // Then, insert into testgen_trajectories table
+          const testgenStmt = db.prepare(`
+            INSERT INTO testgen_trajectories (
+              session_id, task_id, task_description,
+              total_tests, total_rounds, category_rounds, comprehensiveness_score,
+              total_tokens_used, duration_ms, tests, reflections, environment, uncertainties
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          testgenStmt.run(
+            data.sessionId,
+            data.taskId,
+            data.taskDescription,
+            data.totalTests,
+            data.totalRounds,
+            JSON.stringify(data.categoryRounds),
+            data.comprehensivenessScore,
+            data.totalTokensUsed,
+            data.durationMs,
+            JSON.stringify(data.tests),
+            JSON.stringify(data.reflections),
+            JSON.stringify(data.environment),
+            JSON.stringify(data.uncertainties),
+          );
+        });
+
       // Run in transaction
       const runInTransaction = <A, E>(
         effect: Effect.Effect<A, E>,
@@ -750,20 +851,30 @@ export const makeDatabaseLive = (
 
       // Migrate
       const migrate = (): Effect.Effect<void, DatabaseError> =>
-        Effect.try({
-          try: () => {
-            const tableExists = db
-              .prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_version'",
-              )
-              .get();
+        Effect.gen(function* () {
+          const tableExists = db
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_version'",
+            )
+            .get();
 
-            if (!tableExists) {
-              db.exec(INITIAL_SCHEMA_SQL);
-            }
-          },
-          catch: (e) =>
-            new DatabaseError("migration", `Failed to initialize schema: ${e}`),
+          if (!tableExists) {
+            // Initial schema - create tables
+            yield* Effect.try({
+              try: () => db.exec(INITIAL_SCHEMA_SQL),
+              catch: (e) =>
+                new DatabaseError("migration", `Failed to initialize schema: ${e}`),
+            });
+          }
+
+          // Run all pending migrations from .openagents/migrations/
+          yield* runMigrations(db, ".openagents/migrations").pipe(
+            Effect.provide(BunContext.layer),
+            Effect.mapError(
+              (e) =>
+                new DatabaseError("migration", `Failed to run migrations: ${e.message}`, e),
+            ),
+          );
         });
 
       // Run migration on startup
@@ -788,6 +899,7 @@ export const makeDatabaseLive = (
         searchTasks,
         recordDeletion,
         getDeletions,
+        insertTestGenTrajectory,
         runInTransaction,
       };
     }),

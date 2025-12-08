@@ -5,7 +5,7 @@
  * Used by the desktop handler to run test generation with real-time updates.
  */
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
 import { generateTestsIteratively } from "./test-generator-iterative.js";
@@ -20,6 +20,7 @@ import type {
   TestGenReflectionMessage,
 } from "../hud/protocol.js";
 import type { IterativeTestGenEmitter } from "./test-generator-iterative.js";
+import { DatabaseService, DatabaseLive } from "../storage/database.js";
 
 // ============================================================================
 // Types
@@ -79,6 +80,13 @@ export async function runTestGenWithStreaming(
   emitter: TestGenEmitter,
   options: TestGenOptions,
 ): Promise<void> {
+  // Track data for persistence
+  const startTime = Date.now();
+  const tests: TestGenTestMessage["test"][] = [];
+  const reflections: TestGenReflectionMessage[] = [];
+  let startMessage: TestGenStartMessage | null = null;
+  let completeMessage: TestGenCompleteMessage | null = null;
+  let modelName: string | undefined;
 
   try {
     // Load TB suite
@@ -114,7 +122,7 @@ export async function runTestGenWithStreaming(
     if (env.languages.ruby) languages.push(`Ruby ${env.languages.ruby.version}`);
     if (env.languages.java) languages.push(`Java ${env.languages.java.version}`);
 
-    emitter.onStart({
+    startMessage = {
       type: "testgen_start",
       sessionId,
       taskId: task.id,
@@ -126,16 +134,71 @@ export async function runTestGenWithStreaming(
         fileCount: env.files.listing.length,
         filePreviews: env.files.taskFiles.length,
       },
-    });
+    };
+    emitter.onStart(startMessage);
+
+    // Determine model name
+    modelName = options.model === "claude" ? "claude-sonnet-4-20250514" : "local-fm";
 
     // Generate tests iteratively (streams tests as they're generated)
     const iterativeEmitter: IterativeTestGenEmitter = {
-      onStart: (msg) => emitter.onStart({ ...msg, sessionId }),
-      onTest: (msg) => emitter.onTest({ ...msg, sessionId }),
-      onProgress: (msg) => emitter.onProgress({ ...msg, sessionId }),
-      onReflection: (msg) => emitter.onReflection({ ...msg, sessionId }),
-      onComplete: (msg) => emitter.onComplete({ ...msg, sessionId }),
-      onError: (msg) => emitter.onError({ ...msg, sessionId }),
+      onStart: (msg) => {
+        emitter.onStart({ ...msg, sessionId });
+      },
+      onTest: (msg) => {
+        tests.push(msg.test);
+        emitter.onTest({ ...msg, sessionId });
+      },
+      onProgress: (msg) => {
+        emitter.onProgress({ ...msg, sessionId });
+      },
+      onReflection: (msg) => {
+        reflections.push({ ...msg, sessionId });
+        emitter.onReflection({ ...msg, sessionId });
+      },
+      onComplete: (msg) => {
+        completeMessage = { ...msg, sessionId };
+        emitter.onComplete(completeMessage);
+
+        // Save trajectory to database
+        if (startMessage && completeMessage) {
+          const durationMs = Date.now() - startTime;
+          Effect.runPromise(
+            DatabaseService.pipe(
+              Effect.flatMap((db) =>
+                db.insertTestGenTrajectory({
+                  sessionId,
+                  taskId: startMessage.taskId,
+                  taskDescription: startMessage.taskDescription,
+                  totalTests: completeMessage.totalTests,
+                  totalRounds: completeMessage.totalRounds,
+                  categoryRounds: completeMessage.categoryRounds,
+                  comprehensivenessScore: completeMessage.comprehensivenessScore,
+                  totalTokensUsed: completeMessage.totalTokensUsed,
+                  durationMs: completeMessage.durationMs || durationMs,
+                  tests,
+                  reflections: reflections.map((r) => ({
+                    category: r.category,
+                    reflectionText: r.reflectionText,
+                    action: r.action,
+                  })),
+                  environment: startMessage.environment,
+                  uncertainties: completeMessage.uncertainties,
+                  modelName,
+                })
+              ),
+              Effect.provide(DatabaseLive),
+              Effect.catchAll((error) => {
+                console.error("[TestGen] Failed to save trajectory:", error);
+                return Effect.void;
+              }),
+            )
+          );
+        }
+      },
+      onError: (msg) => {
+        emitter.onError({ ...msg, sessionId });
+      },
     };
 
     await generateTestsIteratively(

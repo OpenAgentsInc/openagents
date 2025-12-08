@@ -152,12 +152,90 @@ Server-side logs:
 [Worker] File changed: /path/to/widget.ts, sending reload signal
 ```
 
+## State Migration
+
+When you change a widget's state interface (e.g., rename fields, change structure), preserved HMR state may not match the new shape. Effuse provides a migration system to handle this automatically.
+
+### Automatic Migration
+
+The mount system (`src/effuse/widget/mount.ts`) includes migration logic for widgets that change their state structure. Currently, this is implemented for the `tbcc-testgen` widget as an example.
+
+**Example: tbcc-testgen Migration**
+
+When the TestGen widget was refactored from separate `tests` and `reflections` arrays to a unified `threadItems` array, migration logic was added to convert old state:
+
+```typescript
+// In src/effuse/widget/mount.ts
+if (widget.id === "tbcc-testgen" && preservedState) {
+  const oldState = preservedState as any
+  // Check if it has old format (tests/reflections arrays) but not threadItems
+  if (!oldState.threadItems && 
+      ((oldState.tests && Array.isArray(oldState.tests)) || 
+       (oldState.reflections && Array.isArray(oldState.reflections)))) {
+    // Convert old arrays to new threadItems format
+    const threadItems = []
+    // ... migration logic ...
+    preservedState = { ...oldState, threadItems }
+  }
+}
+```
+
+### Adding Migration for Your Widget
+
+To add migration logic for your widget:
+
+1. **Identify the state change** - What fields changed? What's the old format vs new format?
+
+2. **Add migration in mount.ts** - Add a check in `mountWidget()` function:
+   ```typescript
+   if (widget.id === "your-widget-id" && preservedState) {
+     const oldState = preservedState as any
+     if (/* old format detected */) {
+       // Convert to new format
+       preservedState = migrateState(oldState)
+     }
+   }
+   ```
+
+3. **Test migration** - Load widget with old state, make change, verify migration works
+
+4. **Remove migration later** - After a few releases, you can remove migration logic if all users have upgraded
+
+### Migration Best Practices
+
+1. **Detect old format explicitly** - Check for absence of new fields AND presence of old fields
+2. **Preserve all other state** - Use spread operator to keep unchanged fields
+3. **Add approximate data** - If new format needs data not in old format, use reasonable defaults
+4. **Log migration** - Use `console.log()` to help debug migration issues
+5. **Handle edge cases** - What if old state is partially corrupted? What if migration fails?
+
+### When to Use Migration vs Clear State
+
+**Use Migration When:**
+- State contains user work that's hard to recreate (form inputs, selections, generated content)
+- The change is a structural refactor (rename, reorganize) not a semantic change
+- You want seamless upgrade experience
+
+**Clear State When:**
+- The change is semantic (old state doesn't make sense with new code)
+- Migration would be too complex or error-prone
+- The widget is in early development (users expect resets)
+
+**Clear state manually:**
+```typescript
+// In browser console
+clearAllState()
+location.reload()
+```
+
 ## Limitations
 
 1. **Full page reload** - Not true HMR (module-level replacement). The entire page reloads, but state is preserved.
 
-2. **State shape changes** - If you change the widget's state interface, preserved state may not match. Clear state with `clearAllState()` or reload twice.
+2. **State shape changes** - If you change the widget's state interface, preserved state may not match. Use migration logic (see above) or clear state with `clearAllState()`.
 
 3. **Non-serializable state** - Functions, DOM refs, and Effect primitives cannot be preserved.
 
 4. **WebSocket dependency** - HMR requires the WebSocket connection to be established. If disconnected, changes won't trigger reload.
+
+5. **Migration complexity** - Complex state migrations may be error-prone. Consider clearing state for major breaking changes.

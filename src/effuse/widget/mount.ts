@@ -46,7 +46,58 @@ export const mountWidget = <S, E, R>(
     const stateService = yield* StateServiceTag
 
     // Check for HMR preserved state, otherwise use initialState
-    const preservedState = loadWidgetState<S>(widget.id)
+    // Special handling for tbcc-testgen widget migration
+    let preservedState = loadWidgetState<S>(widget.id)
+
+    // Migrate old state format for tbcc-testgen widget
+    if (widget.id === "tbcc-testgen" && preservedState) {
+      const oldState = preservedState as any
+      // Check if it has old format (tests/reflections arrays) but not threadItems
+      if (!oldState.threadItems &&
+          ((oldState.tests && Array.isArray(oldState.tests)) ||
+           (oldState.reflections && Array.isArray(oldState.reflections)))) {
+        console.log("[Effuse] Migrating tbcc-testgen state from old format to thread format")
+        const threadItems: any[] = []
+        const now = Date.now()
+
+        // Convert old tests array to thread items
+        if (Array.isArray(oldState.tests)) {
+          oldState.tests.forEach((test: any, index: number) => {
+            threadItems.push({
+              type: "test",
+              timestamp: now - (oldState.tests.length - index) * 1000,
+              data: test,
+            })
+          })
+        }
+
+        // Convert old reflections array to thread items
+        if (Array.isArray(oldState.reflections)) {
+          oldState.reflections.forEach((reflection: any, index: number) => {
+            threadItems.push({
+              type: "reflection",
+              timestamp: now - (oldState.reflections.length - index) * 1000,
+              data: reflection,
+            })
+          })
+        }
+
+        // Sort by timestamp
+        threadItems.sort((a, b) => a.timestamp - b.timestamp)
+
+        // Create migrated state
+        const migratedState = {
+          ...oldState,
+          threadItems,
+          expandedItemId: oldState.expandedItemId ?? null,
+        }
+        delete (migratedState as any).tests
+        delete (migratedState as any).reflections
+
+        preservedState = migratedState as S
+      }
+    }
+
     const initialState = preservedState ?? widget.initialState()
 
     // Create state cell with initial or preserved state
