@@ -352,8 +352,13 @@ export async function runMicroTaskPlan(
         continue;
       }
 
-      // Check for repeated identical actions (FM doing same thing over and over)
-      const actionSignature = `${workerOutput.toolName}:${JSON.stringify(workerOutput.toolArgs)}`;
+      // Check for repeated actions (FM doing same thing over and over)
+      // For write/edit, just check tool + path (content may vary)
+      const toolPath = workerOutput.toolArgs.path as string ?? workerOutput.toolArgs.p as string ?? "";
+      const actionSignature = (workerOutput.toolName === "write_file" || workerOutput.toolName === "edit_file")
+        ? `${workerOutput.toolName}:${toolPath}`
+        : `${workerOutput.toolName}:${JSON.stringify(workerOutput.toolArgs)}`;
+      
       if (actionSignature === lastActionSignature) {
         repeatCount++;
         if (repeatCount >= MAX_REPEAT_ACTIONS) {
@@ -369,6 +374,18 @@ export async function runMicroTaskPlan(
       } else {
         lastActionSignature = actionSignature;
         repeatCount = 1;
+      }
+      
+      // Safety: exit after too many turns with success (task likely done)
+      if (hadAnySuccess && turns > 10) {
+        log(`\n[Orchestrator] ${turns} turns after success - assuming complete`);
+        return {
+          success: true,
+          turns,
+          tokens: state.totalTokens,
+          durationMs: Date.now() - state.startTime,
+          output: outputText,
+        };
       }
 
       // Check if FM signaled task complete
