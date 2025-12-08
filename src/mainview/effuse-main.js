@@ -29566,12 +29566,16 @@ ${endStackCall}`;
         }
         case "runFullBenchmark": {
           const settings = getSettings();
+          console.log("[Dashboard] Starting run with settings:", settings);
+          console.log("[Dashboard] Model:", settings.model);
+          const runOptions = {
+            suitePath: DEFAULT_SUITE_PATH,
+            model: settings.model
+          };
+          console.log("[Dashboard] Run options:", JSON.stringify(runOptions));
           yield* exports_Effect.tryPromise({
             try: async () => {
-              const result = await exports_Effect.runPromise(socket.startTBRun({
-                suitePath: DEFAULT_SUITE_PATH,
-                model: settings.model
-              }));
+              const result = await exports_Effect.runPromise(socket.startTBRun(runOptions));
               return result;
             },
             catch: (e) => e

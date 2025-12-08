@@ -60,6 +60,7 @@ export interface StartTBRunRequest extends BaseRequest {
   subset?: string;
   runAll?: boolean;
   random?: boolean;
+  model?: "fm" | "claude-code" | string;
 }
 
 /**

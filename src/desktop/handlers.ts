@@ -126,6 +126,7 @@ export interface TBRunOptions {
 }
 
 export async function startTBRun(options: TBRunOptions): Promise<{ runId: string }> {
+  console.log("[TB] startTBRun received options:", JSON.stringify(options, null, 2));
   // Generate run ID
   const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
   const random = Math.random().toString(36).slice(2, 8);

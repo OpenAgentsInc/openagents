@@ -373,12 +373,16 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         case "runFullBenchmark": {
           // Read model preference from settings
           const settings = getSettings()
+          console.log("[Dashboard] Starting run with settings:", settings)
+          console.log("[Dashboard] Model:", settings.model)
+          const runOptions = {
+            suitePath: DEFAULT_SUITE_PATH,
+            model: settings.model,
+          }
+          console.log("[Dashboard] Run options:", JSON.stringify(runOptions))
           yield* Effect.tryPromise({
             try: async () => {
-              const result = await Effect.runPromise(socket.startTBRun({
-                suitePath: DEFAULT_SUITE_PATH,
-                model: settings.model,
-              }))
+              const result = await Effect.runPromise(socket.startTBRun(runOptions))
               return result
             },
             catch: (e) => e,
