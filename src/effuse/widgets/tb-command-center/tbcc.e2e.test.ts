@@ -474,4 +474,203 @@ describe("TB Command Center E2E", () => {
       )
     )
   })
+
+  // =========================================================================
+  // Phase 2: Remaining P0 Gap Tests
+  // =========================================================================
+
+  it("TBCC-013: View task details interactively", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const taskHandle = yield* harness.mount(TBCCTaskBrowserWidget, {
+              containerId: "tbcc-tab-tasks",
+            })
+            yield* taskHandle.waitForState((s) => !s.loading)
+
+            // Emit selectTask event directly (avoiding browser interaction)
+            yield* taskHandle.emit({ type: "selectTask", taskId: "task-1" })
+
+            // Wait for selection
+            yield* taskHandle.waitForState((s) => s.selectedTaskId === "task-1")
+
+            // Verify detail view content
+            const html = yield* taskHandle.getHTML
+
+            // Verify task description
+            expect(html).toContain("Fix a critical bug")
+
+            // Verify timeout displayed
+            expect(html).toContain("300s")
+
+            // Verify max turns
+            expect(html).toContain("50")
+
+            // Verify tags
+            expect(html).toContain("bug")
+            expect(html).toContain("urgent")
+
+            // Verify category
+            expect(html).toContain("Debugging")
+
+            // Verify run button exists
+            expect(html).toContain("Run Task")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("TBCC-014: Run specific task with verification", async () => {
+    // Create spy for socket.startTBRun
+    let startTBRunCalled = false
+    let capturedOptions: any = null
+
+    const mockSocketWithSpy = (): SocketService => ({
+      ...createMockSocket(),
+      startTBRun: (options) => {
+        startTBRunCalled = true
+        capturedOptions = options
+        return Effect.succeed({ runId: "task-run-123" })
+      }
+    })
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const taskHandle = yield* harness.mount(TBCCTaskBrowserWidget, {
+              containerId: "tbcc-tab-tasks",
+            })
+            yield* taskHandle.waitForState((s) => !s.loading)
+
+            // Select task first
+            yield* taskHandle.emit({ type: "selectTask", taskId: "task-1" })
+            yield* taskHandle.waitForState((s) => s.selectedTaskId === "task-1")
+
+            // Emit runTask event
+            yield* taskHandle.emit({ type: "runTask", taskId: "task-1" })
+
+            // Wait for async effect to complete
+            yield* Effect.sleep("100 millis")
+
+            // Verify socket call was made
+            expect(startTBRunCalled).toBe(true)
+            expect(capturedOptions).toBeDefined()
+            expect(capturedOptions.taskIds).toContain("task-1")
+            expect(capturedOptions.suitePath).toBe("tasks/terminal-bench-2.json")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockSocketWithSpy()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("TBCC-032: Settings persistence with localStorage", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer, window } = yield* makeHappyDomLayer()
+
+          // Mock localStorage
+          const storage: Record<string, string> = {}
+          const mockLocalStorage = {
+            getItem: (key: string) => storage[key] || null,
+            setItem: (key: string, value: string) => { storage[key] = value },
+            removeItem: (key: string) => { delete storage[key] },
+            clear: () => { Object.keys(storage).forEach(k => delete storage[k]) },
+            length: 0,
+            key: () => null,
+          }
+
+          // Override both window.localStorage and global localStorage
+          Object.defineProperty(window, 'localStorage', {
+            value: mockLocalStorage,
+            writable: true,
+            configurable: true,
+          })
+
+          // Also set on global for direct localStorage access
+          Object.defineProperty(globalThis, 'localStorage', {
+            value: mockLocalStorage,
+            writable: true,
+            configurable: true,
+          })
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            // Mount settings widget
+            const settingsHandle = yield* harness.mount(TBCCSettingsWidget, {
+              containerId: "tbcc-tab-settings",
+            })
+
+            // Get initial state
+            const initialState = yield* settingsHandle.getState
+            expect(initialState.execution.maxAttempts).toBe(5) // Default
+
+            // Emit update event to change a setting
+            yield* settingsHandle.emit({
+              type: "updateExecution",
+              key: "maxAttempts",
+              value: 10
+            })
+
+            // Wait for state update
+            yield* settingsHandle.waitForState((s) => s.execution.maxAttempts === 10)
+
+            // Emit save event
+            yield* settingsHandle.emit({ type: "save" })
+
+            // Wait a bit for save to complete
+            yield* Effect.sleep("50 millis")
+
+            // Verify localStorage was called with correct key
+            expect(storage["tbcc_settings"]).toBeDefined()
+            const saved = JSON.parse(storage["tbcc_settings"])
+            expect(saved.execution).toBeDefined()
+            expect(saved.execution.maxAttempts).toBe(10)
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+
+          // Test restoration in a new scope
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            // Mount new settings widget instance (simulates page reload)
+            const settingsHandle2 = yield* harness.mount(TBCCSettingsWidget, {
+              containerId: "tbcc-tab-settings-2",
+            })
+
+            // Verify setting was restored from localStorage
+            const restoredState = yield* settingsHandle2.getState
+            expect(restoredState.execution.maxAttempts).toBe(10)
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
 })
