@@ -318,10 +318,13 @@ export const analyzeTokenEfficiency = (
   totalTokens: number,
   comprehensivenessScore: number,
 ): number => {
-  if (totalTokens === 0) return 0;
+  if (totalTokens === 0 || comprehensivenessScore === 0) return 0;
 
   // Normalize: comprehensiveness per 1k tokens
   // Higher is better, but cap at 1.0 (10 comprehensiveness / 10k tokens = 1.0)
+  // Formula: (comprehensiveness / tokens) * 1000 / 10
+  // Example: (8.0 / 55221) * 1000 / 10 = 0.0145
   const efficiency = (comprehensivenessScore / totalTokens) * 1000;
-  return Math.min(1.0, efficiency / 10); // 10 comprehensiveness per 10k tokens = 1.0
+  const normalized = efficiency / 10; // Scale to 0-1 range
+  return Math.min(1.0, Math.max(0.0, normalized));
 };

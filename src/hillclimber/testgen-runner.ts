@@ -203,10 +203,7 @@ const runSingleIteration = async (
       }
     );
 
-    // 4. Wait a bit for trajectory to be saved (async operation)
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // 5. Get trajectory and analyze
+    // 4. Get trajectory and analyze (save is now awaited in runTestGenWithStreaming)
     const trajectory = await getTrajectory(sessionId);
     const analysis = analyzeTestGenRun({
       sessionId,
@@ -371,4 +368,3 @@ export const runTestGenEvolution = async (
 
   log(`[TestGenRunner] Evolution complete (${state.totalRuns} runs)`);
 };
-

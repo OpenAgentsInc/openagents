@@ -140,6 +140,9 @@ export async function runTestGenWithStreaming(
     // Determine model name
     modelName = options.model === "claude" ? "claude-sonnet-4-20250514" : "local-fm";
 
+    // Track save promise to await after generation completes
+    let savePromise: Promise<void> | null = null;
+
     // Generate tests iteratively (streams tests as they're generated)
     const iterativeEmitter: IterativeTestGenEmitter = {
       onStart: (msg) => {
@@ -160,10 +163,10 @@ export async function runTestGenWithStreaming(
         completeMessage = { ...msg, sessionId };
         emitter.onComplete(completeMessage);
 
-        // Save trajectory to database
+        // Save trajectory to database (track promise to await later)
         if (startMessage && completeMessage) {
           const durationMs = Date.now() - startTime;
-          Effect.runPromise(
+          savePromise = Effect.runPromise(
             DatabaseService.pipe(
               Effect.flatMap((db) =>
                 db.insertTestGenTrajectory({
@@ -211,6 +214,11 @@ export async function runTestGenWithStreaming(
         verbose: false,
       }
     );
+
+    // Await trajectory save to complete before returning
+    if (savePromise) {
+      await savePromise;
+    }
   } catch (error) {
     // Emit error message
     emitter.onError({
