@@ -29150,12 +29150,12 @@ ${endStackCall}`;
   // src/effuse/widgets/tb-command-center/tbcc-shell.ts
   var renderTabIcon = (icon) => {
     const iconMap = {
-      "layout-dashboard": "&#9635;",
-      "list-checks": "&#9744;",
-      "play-circle": "&#9654;",
-      settings: "&#9881;"
+      "layout-dashboard": "\uD83D\uDCCA",
+      "list-checks": "\uD83D\uDCCB",
+      "play-circle": "▶️",
+      settings: "⚙️"
     };
-    return iconMap[icon] ?? "&#8226;";
+    return iconMap[icon] ?? "•";
   };
   var TBCCShellWidget = {
     id: "tbcc-shell",
