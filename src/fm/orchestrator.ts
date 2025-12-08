@@ -276,7 +276,10 @@ export async function runMicroTaskPlan(
   let turns = 0;
   let consecutiveFailures = 0;
   let hadAnySuccess = false;
+  let lastActionSignature = "";
+  let repeatCount = 0;
   const MAX_CONSECUTIVE_FAILURES = 3;
+  const MAX_REPEAT_ACTIONS = 2; // Stop if same action repeated this many times
 
   const log = (text: string): void => {
     outputText += text + "\n";
@@ -340,6 +343,25 @@ export async function runMicroTaskPlan(
         state.history.push("No tool call - retrying");
         consecutiveFailures++;
         continue;
+      }
+
+      // Check for repeated identical actions (FM doing same thing over and over)
+      const actionSignature = `${workerOutput.toolName}:${JSON.stringify(workerOutput.toolArgs)}`;
+      if (actionSignature === lastActionSignature) {
+        repeatCount++;
+        if (repeatCount >= MAX_REPEAT_ACTIONS) {
+          log(`\n[Orchestrator] Same action repeated ${repeatCount} times - task complete`);
+          return {
+            success: hadAnySuccess,
+            turns,
+            tokens: state.totalTokens,
+            durationMs: Date.now() - state.startTime,
+            output: outputText,
+          };
+        }
+      } else {
+        lastActionSignature = actionSignature;
+        repeatCount = 1;
       }
 
       const result = await executeTool(
