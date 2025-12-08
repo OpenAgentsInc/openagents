@@ -37,11 +37,13 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   // Add workflow hints based on previous actions and task type
   let hint = "";
   
-  // Check if task requires reading first (counting, analyzing, etc.)
+  // Check if task requires special handling
   const taskLower = (input.taskDescription ?? "").toLowerCase();
-  const needsReadFirst = taskLower.includes("count") || 
+  const needsWordCount = taskLower.includes("count") && taskLower.includes("word");
+  const needsReadFirst = !needsWordCount && (
+                         taskLower.includes("count") || 
                          taskLower.includes("number of") ||
-                         taskLower.includes("read") && taskLower.includes("write");
+                         taskLower.includes("read") && taskLower.includes("write"));
   
   if (input.previous && input.previous !== "none") {
     if (input.previous.includes(" contains:")) {
@@ -51,6 +53,9 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
       // Just ran a command - hint to save the output
       hint = "\nHint: You have command output. Save it to a file if needed.";
     }
+  } else if (needsWordCount) {
+    // Word counting task - use wc command
+    hint = "\nHint: To count words, use run_command with: wc -w filename.txt | awk '{print $1}'";
   } else if (needsReadFirst) {
     // First turn and task needs reading - hint to read first
     hint = "\nHint: This task requires reading a file first. Use read_file before writing.";
