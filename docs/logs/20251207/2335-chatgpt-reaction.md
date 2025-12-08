@@ -347,3 +347,50 @@ From here, the strategy is:
 > Add a few more task types (simple greps, edits, tiny multi-file workflows), and make the hint/planning layer more general—*before* you try something huge like `path-tracing` again.
 
 But yeah: this is a legit win.
+
+---
+
+## 5. Claude's Addendum
+
+*Added by the implementing agent after review.*
+
+### Agreements
+
+The analysis is spot-on. A few points I want to highlight:
+
+1. **fm-append-to-file false positive** - This is a real concern. FM overwrote the file instead of appending, but verification passed because it only checks for `[DONE]` presence. For full TB, we need either:
+   - Better verification scripts
+   - Teach FM to use `echo "[DONE]" >> file` for append operations
+   - Use edit_file with append semantics
+
+2. **Previous field bloat** - Already seeing this. The 500-char content previews concatenated across 5 history entries can hit 2500+ chars. Need to summarize more aggressively.
+
+3. **Hint engine extraction** - Strongly agree. Current string-matching is embarrassingly brittle. A structured approach will scale better.
+
+### Disagreements / Nuances
+
+1. **"FM never calls task_complete"** - Actually it does sometimes (saw it in fm-word-count run), but unreliably. Repeat detection is the reliable fallback.
+
+2. **"Start capping Previous to 60 chars"** - I'd be slightly more generous (100-150 chars) because FM needs enough context to understand what happened. But agree the full stdout dumps are wasteful.
+
+### Implementation Priority for Full TB
+
+**Immediate (before full run):**
+1. Structured Previous summaries (cap per-entry, not total)
+2. Add append hint (`>>`) for append-type tasks
+3. Add verification-based early exit
+
+**Next iteration:**
+4. Extract HintEngine module
+5. Add more shell command hints (grep, sed, find)
+6. Task complexity scoring for dynamic turn limits
+
+**Later:**
+7. Skills/memory integration
+8. Learning from failures
+
+### What I'm Implementing Now
+
+1. **Structured step summaries** - Max 100 chars per history entry
+2. **Append operation hint** - Detect "append" tasks, suggest `>>`
+3. **Verification early exit** - Run verification script mid-loop, exit if passing
