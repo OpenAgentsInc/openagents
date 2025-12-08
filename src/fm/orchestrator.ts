@@ -286,7 +286,7 @@ export async function runMicroTaskPlan(
   let lastActionSignature = "";
   let repeatCount = 0;
   const MAX_CONSECUTIVE_FAILURES = 3;
-  const MAX_REPEAT_ACTIONS = 2; // Stop if same action repeated this many times
+  const MAX_REPEAT_ACTIONS = 3; // Stop if same action repeated this many times
 
   const log = (text: string): void => {
     outputText += text + "\n";

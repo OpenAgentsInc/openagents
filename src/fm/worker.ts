@@ -49,7 +49,10 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
                          taskLower.includes("number of") ||
                          taskLower.includes("read") && taskLower.includes("write"));
   
-  if (input.previous && input.previous !== "none") {
+  // For exact copy tasks, ALWAYS show the cp hint (FM tends to ignore it otherwise)
+  if (needsExactCopy) {
+    hint = "\nIMPORTANT: Use run_command to copy the file: cp source.txt echo.txt";
+  } else if (input.previous && input.previous !== "none") {
     if (input.previous.includes(" contains:")) {
       // Just read a file - hint to use the content with exact preservation
       hint = "\nHint: You just read file content. Write it EXACTLY to the target file, preserving all newlines (use \\n).";
@@ -57,9 +60,6 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
       // Just ran a command - hint to save the output
       hint = "\nHint: You have command output. Save it to a file if needed.";
     }
-  } else if (needsExactCopy) {
-    // Exact file copy - use cp command to preserve content exactly
-    hint = "\nHint: To copy a file exactly, use run_command with: cp source.txt destination.txt";
   } else if (needsWordCount) {
     // Word counting task - use wc command
     hint = "\nHint: To count words, use run_command with: wc -w filename.txt | awk '{print $1}'";
