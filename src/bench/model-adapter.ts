@@ -599,18 +599,15 @@ export const createFMToolParseError = (
 });
 
 /**
- * System prompt for Foundation Models-based coding agents.
- * Uses text-based tool calling since FM may not support native JSON tool calling.
- * Keep this SHORT - Apple FM has limited context window.
+ * System prompt building is now handled by buildMicroTaskPrompt() in src/fm/micro-task.ts
+ * which ensures all prompts fit within FM's ~1100 char context window.
+ * 
+ * The micro-task system provides:
+ * - Condensed skills (max 300 chars)
+ * - Condensed memories (max 150 chars)  
+ * - Condensed reflections (max 100 chars)
+ * - Truncated task descriptions to fit remaining budget
  */
-const FM_BASE_PROMPT = `You must use tools. Output ONLY a tool_call tag.
-
-Example: To create hello.txt with "Hi":
-<tool_call>{"name":"write_file","arguments":{"path":"hello.txt","content":"Hi"}}</tool_call>
-
-Available: write_file, read_file, run_command
-
-After the tool runs, say TASK_COMPLETE.`;
 
 /**
  * Truncate messages to fit within FM context limit.
@@ -711,44 +708,23 @@ export const truncateMessagesForFM = (
  *
  * Uses micro-task condensation to fit within FM's ~1100 char context window.
  * See src/fm/micro-task.ts for the condensation logic.
+ * 
+ * This delegates to buildMicroTaskPrompt() which ensures everything fits within budget.
  */
 const buildFMSystemPrompt = (options?: {
   skills?: Skill[];
   memories?: string;
   reflections?: string;
 }): string => {
-  const { skills, memories, reflections } = options ?? {};
-
   // Import micro-task functions dynamically to avoid circular deps
-  // These condense skills/memories/reflections to fit FM context
-  const {
-    condenseSkillsForPrompt,
-    condenseMemoriesForPrompt,
-    condenseReflectionsForPrompt,
-  } = require("../fm/micro-task.js");
-
-  // Start with base prompt
-  let prompt = FM_BASE_PROMPT;
-
-  // Add condensed skills (max ~300 chars instead of full code blocks)
-  const skillsSection = condenseSkillsForPrompt(skills ?? []);
-  if (skillsSection) {
-    prompt += `\n${skillsSection}`;
-  }
-
-  // Add condensed memories (max ~150 chars)
-  const memoriesSection = condenseMemoriesForPrompt(memories);
-  if (memoriesSection) {
-    prompt += `\n${memoriesSection}`;
-  }
-
-  // Add condensed reflections (max ~100 chars)
-  const reflectionsSection = condenseReflectionsForPrompt(reflections);
-  if (reflectionsSection) {
-    prompt += `\n${reflectionsSection}`;
-  }
-
-  return prompt;
+  const { buildMicroTaskPrompt } = require("../fm/micro-task.js");
+  
+  // Use the micro-task prompt builder which handles all condensation
+  return buildMicroTaskPrompt({
+    skills: options?.skills,
+    memories: options?.memories,
+    reflections: options?.reflections,
+  });
 };
 
 /**
@@ -1270,15 +1246,41 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       }
 
       // Build system prompt with injected skills, memories, and reflections
+      // Use micro-task prompt builder to ensure it fits within FM context budget
       const buildPrompt = () => buildFMSystemPrompt({ skills, memories, reflections });
       let systemPrompt = buildPrompt();
 
-      // Build initial messages with workspace context (keep short for FM context limits)
-      const userMessage = `${task.description}`;
+      // Truncate task description to fit remaining budget after system prompt
+      // Import micro-task functions dynamically
+      const {
+        getUserMessageBudget,
+        truncateTaskDescription,
+      } = require("../fm/micro-task.js");
+
+      const userBudget = getUserMessageBudget(systemPrompt);
+      const userMessage = truncateTaskDescription(task.description, userBudget);
+
+      // Log if we had to truncate
+      if (task.description.length > userBudget) {
+        log(`[Context] Truncated task description from ${task.description.length} to ${userMessage.length} chars to fit FM context`);
+      }
+
+      // Verify total initial context size fits within FM budget
+      const { FM_CONTEXT_BUDGET } = require("../fm/micro-task.js");
+      const totalInitialChars = systemPrompt.length + userMessage.length + 40; // +40 for message overhead
+      let finalUserMessage = userMessage;
+      
+      if (totalInitialChars > FM_CONTEXT_BUDGET) {
+        log(`[Context] WARNING: Initial context (${totalInitialChars} chars) exceeds FM budget (${FM_CONTEXT_BUDGET} chars). System: ${systemPrompt.length}, User: ${userMessage.length}`);
+        // Further truncate user message if needed
+        const maxUserChars = Math.max(100, FM_CONTEXT_BUDGET - systemPrompt.length - 40);
+        finalUserMessage = truncateTaskDescription(task.description, maxUserChars);
+        log(`[Context] Further truncated user message to ${finalUserMessage.length} chars`);
+      }
 
       let messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
+        { role: "user", content: finalUserMessage },
       ];
 
       const maxTurns = task.max_turns ?? options.maxTurns;
