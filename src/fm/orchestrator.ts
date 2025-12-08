@@ -284,6 +284,90 @@ export interface OrchestratorResult {
   error?: string;
 }
 
+type CompletionReason =
+  | "task_complete"
+  | "repeat_same_action"
+  | "repeat_failures";
+
+/**
+ * Check if task is done. If verifier exists, run it.
+ * Returns result if done, undefined if should continue.
+ */
+async function finalizeIfDone(
+  reason: CompletionReason,
+  options: OrchestratorOptions,
+  state: {
+    step: number;
+    history: StepSummary[];
+    verifyRetryCount: number;
+    maxVerifyRetries: number;
+    totalTokens: number;
+    durationMs: number;
+    output: string;
+    hadAnySuccess: boolean;
+  },
+  log: (text: string) => void,
+  logParseErrors: () => void
+): Promise<OrchestratorResult | undefined> {
+  // If no verifier, trust the signal (backward compat for fm-mini)
+  if (!options.verifyTask) {
+    log(`\n[Orchestrator] FM signaled completion (${reason}) - no verification`);
+    logParseErrors();
+    return {
+      success: state.hadAnySuccess,
+      turns: state.step,
+      tokens: state.totalTokens,
+      durationMs: state.durationMs,
+      output: state.output,
+    };
+  }
+
+  // Run verification
+  log(`\n[Orchestrator] ${reason} - running verification`);
+  const passed = await options.verifyTask();
+
+  if (passed) {
+    log(`\n[Orchestrator] Verification passed`);
+    logParseErrors();
+    return {
+      success: true,
+      turns: state.step,
+      tokens: state.totalTokens,
+      durationMs: state.durationMs,
+      output: state.output,
+    };
+  }
+
+  // Verification failed
+  state.verifyRetryCount++;
+  log(`\n[Orchestrator] Verification failed (attempt ${state.verifyRetryCount}/${state.maxVerifyRetries})`);
+
+  if (state.verifyRetryCount >= state.maxVerifyRetries) {
+    log(`\n[Orchestrator] Verification failed after ${state.verifyRetryCount} attempts`);
+    logParseErrors();
+    return {
+      success: false,
+      turns: state.step,
+      tokens: state.totalTokens,
+      durationMs: state.durationMs,
+      output: state.output,
+      error: `Verification failed after ${state.verifyRetryCount} attempts`,
+    };
+  }
+
+  // Add feedback to history and continue
+  state.history.push(summarizeToolResult(
+    state.step,
+    "verification",
+    false,
+    "Verification failed: output does not meet spec. Fix and try again.",
+    {}
+  ));
+
+  // Return undefined = not done, keep looping
+  return undefined;
+}
+
 export async function runMicroTaskPlan(
   client: FMClientLike,
   plan: MicroPlan,
@@ -305,10 +389,19 @@ export async function runMicroTaskPlan(
   // Track verification retry count
   let verifyRetryCount = 0;
   const maxVerifyRetries = options.maxRetryAfterFailedVerify ?? 2;
+  // Track parse errors for metrics
+  let parseErrorCount = 0;
 
   const log = (text: string): void => {
     outputText += text + "\n";
     options.onOutput?.(text + "\n");
+  };
+
+  // Helper to log parse errors before returning
+  const logParseErrors = (): void => {
+    if (parseErrorCount > 0) {
+      log(`[Orchestrator] Parse errors in this task: ${parseErrorCount}`);
+    }
   };
 
   log(`[Orchestrator] Starting dynamic execution for task`);
@@ -320,6 +413,7 @@ export async function runMicroTaskPlan(
   while (turns < maxTurns) {
     if (Date.now() - state.startTime > timeoutMs) {
       log(`[Orchestrator] Timeout reached`);
+      logParseErrors();
       return {
         success: hadAnySuccess,
         turns,
@@ -331,15 +425,32 @@ export async function runMicroTaskPlan(
     }
 
     // Stop if we've had too many consecutive failures after initial success
+    // Now goes through verification
     if (hadAnySuccess && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      log(`\n[Orchestrator] ${MAX_CONSECUTIVE_FAILURES} consecutive failures after success - task likely complete`);
-      return {
-        success: true,
-        turns,
-        tokens: state.totalTokens,
-        durationMs: Date.now() - state.startTime,
-        output: outputText,
-      };
+      const result = await finalizeIfDone(
+        "repeat_failures",
+        options,
+        {
+          step: turns,
+          history: stepHistory,
+          verifyRetryCount,
+          maxVerifyRetries,
+          totalTokens: state.totalTokens,
+          durationMs: Date.now() - state.startTime,
+          output: outputText,
+          hadAnySuccess,
+        },
+        log,
+        logParseErrors
+      );
+      if (result) {
+        return result;
+      }
+      // Verification failed but we're retrying - reset counters
+      consecutiveFailures = 0;
+      repeatCount = 0;
+      lastActionSignature = "";
+      continue;
     }
 
     turns++;
@@ -372,6 +483,7 @@ export async function runMicroTaskPlan(
 
       if (!workerOutput.toolName) {
         log(`[Worker] No tool call parsed, raw: ${workerOutput.raw.slice(0, 100)}`);
+        parseErrorCount++;
         // Add summary for failed tool call parsing
         stepHistory.push({
           step: turns,
@@ -402,6 +514,7 @@ export async function runMicroTaskPlan(
       // Safety: exit after too many turns with success (task likely done)
       if (hadAnySuccess && turns > 10) {
         log(`\n[Orchestrator] ${turns} turns after success - assuming complete`);
+        logParseErrors();
         return {
           success: true,
           turns,
@@ -411,64 +524,60 @@ export async function runMicroTaskPlan(
         };
       }
 
-      // Check if FM signaled task complete OR repeated same action too many times
-      if (workerOutput.toolName === "task_complete" || repeatCount >= MAX_REPEAT_ACTIONS) {
-        // If we have a verifier, use it
-        if (options.verifyTask) {
-          log(`\n[Orchestrator] ${workerOutput.toolName === "task_complete" ? "FM signaled task complete" : "Same action repeated too many times"} - running verification`);
-          const passed = await options.verifyTask();
-
-          if (passed) {
-            log(`\n[Orchestrator] Verification passed`);
-            return {
-              success: true,
-              turns,
-              tokens: state.totalTokens,
-              durationMs: Date.now() - state.startTime,
-              output: outputText,
-            };
-          }
-
-          // Verification failed
-          verifyRetryCount++;
-          log(`\n[Orchestrator] Verification failed (attempt ${verifyRetryCount}/${maxVerifyRetries})`);
-
-          if (verifyRetryCount >= maxVerifyRetries) {
-            log(`\n[Orchestrator] Verification failed after ${verifyRetryCount} attempts`);
-            return {
-              success: false,
-              turns,
-              tokens: state.totalTokens,
-              durationMs: Date.now() - state.startTime,
-              output: outputText,
-              error: `Verification failed after ${verifyRetryCount} attempts`,
-            };
-          }
-
-          // Add feedback to history and continue
-          stepHistory.push(summarizeToolResult(
-            turns,
-            "verification",
-            false,
-            "Verification failed: your output does not meet the spec. Fix and try again.",
-            {}
-          ));
-
-          // Reset repeat counter since we're giving FM another chance
-          repeatCount = 0;
-          lastActionSignature = ""; // Reset to allow different actions
-          continue; // Don't exit the loop
+      // Check if FM signaled task complete
+      if (workerOutput.toolName === "task_complete") {
+        const result = await finalizeIfDone(
+          "task_complete",
+          options,
+          {
+            step: turns,
+            history: stepHistory,
+            verifyRetryCount,
+            maxVerifyRetries,
+            totalTokens: state.totalTokens,
+            durationMs: Date.now() - state.startTime,
+            output: outputText,
+            hadAnySuccess,
+          },
+          log,
+          logParseErrors
+        );
+        if (result) {
+          return result;
         }
+        // Verification failed but we're retrying - reset counters
+        consecutiveFailures = 0;
+        repeatCount = 0;
+        lastActionSignature = "";
+        continue;
+      }
 
-        // No verifier: trust the completion signal (backward compat)
-        log(`\n[Orchestrator] ${workerOutput.toolName === "task_complete" ? "FM signaled task complete" : "Same action repeated too many times"} - no verification`);
-        return {
-          success: hadAnySuccess,
-          turns,
-          tokens: state.totalTokens,
-          durationMs: Date.now() - state.startTime,
-          output: outputText,
-        };
+      // Check if same action repeated too many times
+      if (repeatCount >= MAX_REPEAT_ACTIONS) {
+        const result = await finalizeIfDone(
+          "repeat_same_action",
+          options,
+          {
+            step: turns,
+            history: stepHistory,
+            verifyRetryCount,
+            maxVerifyRetries,
+            totalTokens: state.totalTokens,
+            durationMs: Date.now() - state.startTime,
+            output: outputText,
+            hadAnySuccess,
+          },
+          log,
+          logParseErrors
+        );
+        if (result) {
+          return result;
+        }
+        // Verification failed but we're retrying - reset counters
+        consecutiveFailures = 0;
+        repeatCount = 0;
+        lastActionSignature = "";
+        continue;
       }
 
       const result = await executeTool(
@@ -498,9 +607,9 @@ export async function runMicroTaskPlan(
 
       if (result.success) {
         hadAnySuccess = true;
-        consecutiveFailures = 0;
+        consecutiveFailures = 0; // Reset on success
       } else {
-        consecutiveFailures++;
+        consecutiveFailures++; // Increment on failure
       }
 
     } catch (e) {
@@ -519,6 +628,7 @@ export async function runMicroTaskPlan(
   }
 
   log(`\n[Orchestrator] Max turns reached`);
+  logParseErrors();
 
   const result: OrchestratorResult = {
     success: hadAnySuccess,

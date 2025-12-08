@@ -99,6 +99,7 @@ const sendChatRaw = (
     });
 
     logAtLevel(logger, "info", `[OpenRouter] Response received, id: ${(response as any).id}`);
+    logAtLevel(logger, "debug", `[OpenRouter] Raw response: ${JSON.stringify(response, null, 2)}`);
 
     const choice = (response as any).choices?.[0];
     const message = choice?.message;
@@ -108,6 +109,7 @@ const sendChatRaw = (
 
     return {
       id: (response as any).id ?? "",
+      model: (response as any).model, // Preserve model field from auto router
       usage: (response as any).usage,
       choices: [
         {

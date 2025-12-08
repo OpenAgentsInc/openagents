@@ -45,6 +45,7 @@ export interface ChatChoice {
 
 export interface ChatResponse {
   id: string;
+  model?: string; // Model used (especially important for openrouter/auto)
   choices: ChatChoice[];
   usage?: {
     prompt_tokens?: number;
