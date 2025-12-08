@@ -73,12 +73,13 @@ export interface ToolResult {
 }
 
 // --- Constants ---
+// FM has 4096 tokens (~16K chars) context window - plenty of room
 
-export const MAX_ACTION_CHARS = 40;
-export const MAX_CONTEXT_CHARS = 30;
-export const MAX_PREVIOUS_CHARS = 30;
-export const MAX_RESULT_SUMMARY_CHARS = 50;
-export const MAX_ERROR_SUMMARY_CHARS = 50;
+export const MAX_ACTION_CHARS = 200;
+export const MAX_CONTEXT_CHARS = 200;
+export const MAX_PREVIOUS_CHARS = 200;
+export const MAX_RESULT_SUMMARY_CHARS = 100;
+export const MAX_ERROR_SUMMARY_CHARS = 100;
 
 // --- Helpers ---
 

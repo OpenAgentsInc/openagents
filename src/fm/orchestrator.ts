@@ -242,6 +242,7 @@ export interface OrchestratorOptions {
   workspace: string;
   timeout: number;
   maxTurns: number;
+  taskDescription?: string | undefined;
   onOutput?: ((text: string) => void) | undefined;
 }
 
@@ -307,10 +308,14 @@ export async function runMicroTaskPlan(
     log(`\n--- Step ${step.id}: ${step.action} ---`);
 
     const workerInput = buildWorkerInput(step, state);
+    const workerInputWithTask = {
+      ...workerInput,
+      taskDescription: options.taskDescription,
+    };
     log(`[Worker] Input: action="${workerInput.action}", context="${workerInput.context}", previous="${workerInput.previous}"`);
 
     try {
-      const workerOutput = await callFMWorker(client, workerInput);
+      const workerOutput = await callFMWorker(client, workerInputWithTask, log);
       log(`[Worker] Output: tool=${workerOutput.toolName}, args=${JSON.stringify(workerOutput.toolArgs)}`);
 
       if (!workerOutput.toolName) {
