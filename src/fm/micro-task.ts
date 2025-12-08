@@ -13,9 +13,11 @@ import type { Skill } from "../skills/schema.js";
 // --- Constants ---
 
 /**
- * FM context budget (chars). Keep conservative to leave room for response.
+ * FM context budget (chars). Keep VERY conservative to leave room for response.
+ * Based on empirical testing, FM's actual safe limit is ~800-900 chars total.
+ * We use 700 to be safe and leave room for response generation.
  */
-export const FM_CONTEXT_BUDGET = 900; // ~200 chars reserved for user message + response
+export const FM_CONTEXT_BUDGET = 700; // Conservative limit to avoid context errors
 
 /**
  * Maximum chars for skills section.
@@ -142,10 +144,10 @@ export function buildMicroTaskPrompt(options: {
 }): string {
   const { skills, memories, reflections } = options;
 
-  // Core instructions - keep VERY short
+  // Core instructions - keep VERY short (minimal for FM's tiny context)
   const core = `Tools: write_file, read_file, run_command
-Output: <tool_call>{"name":"..","arguments":{..}}</tool_call>
-Done: say TASK_COMPLETE`;
+Format: <tool_call>{"name":"..","arguments":{..}}</tool_call>
+Done: TASK_COMPLETE`;
 
   // Condense each section
   const skillsSection = condenseSkillsForPrompt(skills ?? []);
@@ -166,8 +168,10 @@ Done: say TASK_COMPLETE`;
  */
 export function getUserMessageBudget(systemPrompt: string): number {
   const used = systemPrompt.length;
-  const remaining = FM_CONTEXT_BUDGET - used - 50; // 50 for overhead
-  return Math.max(100, remaining); // At least 100 chars for task
+  // Reserve 80 chars for message overhead (roles, formatting, etc.)
+  // Be conservative to avoid hitting the limit
+  const remaining = FM_CONTEXT_BUDGET - used - 80;
+  return Math.max(50, remaining); // At least 50 chars for task (very minimal)
 }
 
 /**
