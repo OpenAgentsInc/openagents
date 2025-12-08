@@ -18,8 +18,31 @@ import type {
   HillClimberConfigInput,
   ConfigChange,
   TaskRunResult,
+  HillClimberRun,
 } from "./types.js";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
+
+// ============================================================================
+// Historical Context
+// ============================================================================
+
+/**
+ * Historical context from the database for smarter meta-reasoning.
+ */
+export interface HistoricalContext {
+  /** Recent runs for this task (newest first) */
+  recentRuns: HillClimberRun[];
+  /** Total runs for this task */
+  totalRuns: number;
+  /** Total passes for this task */
+  totalPasses: number;
+  /** Best score ever achieved */
+  bestScore: number;
+  /** Best hint that achieved the best score (if any) */
+  bestHint: string | null;
+  /** All unique hints that have been tried */
+  triedHints: string[];
+}
 
 // ============================================================================
 // Constants
@@ -41,17 +64,61 @@ export const AUTO_MODEL_FREQUENCY = 10;
 // ============================================================================
 
 /**
+ * Build historical context section for the prompt.
+ */
+const buildHistorySection = (history: HistoricalContext | null): string => {
+  if (!history || history.totalRuns === 0) {
+    return "History: This is the first run for this task.";
+  }
+
+  const passRate = ((history.totalPasses / history.totalRuns) * 100).toFixed(0);
+
+  let historyText = `History:
+- Total runs: ${history.totalRuns}, Passes: ${history.totalPasses} (${passRate}% pass rate)
+- Best score ever: ${history.bestScore}`;
+
+  if (history.bestHint) {
+    historyText += `\n- Best performing hint: "${history.bestHint}"`;
+  }
+
+  if (history.triedHints.length > 0) {
+    const hintsList = history.triedHints
+      .filter(h => h) // Filter out null/empty
+      .slice(0, 5) // Show max 5
+      .map(h => `"${h.slice(0, 50)}${h.length > 50 ? '...' : ''}"`)
+      .join(", ");
+    if (hintsList) {
+      historyText += `\n- Previously tried hints: ${hintsList}`;
+    }
+  }
+
+  // Show recent run outcomes
+  if (history.recentRuns.length > 0) {
+    const recentOutcomes = history.recentRuns
+      .slice(0, 5)
+      .map(r => r.passed ? "PASS" : "FAIL")
+      .join(", ");
+    historyText += `\n- Recent outcomes (newest first): ${recentOutcomes}`;
+  }
+
+  return historyText;
+};
+
+/**
  * Build the meta-reasoning prompt for suggesting config changes.
  */
 const buildMetaPrompt = (
   task: TerminalBenchTask,
   config: HillClimberConfig,
   result: TaskRunResult,
+  history: HistoricalContext | null,
 ): string => {
   const stepSummaryText =
     result.stepSummary.length > 0
       ? result.stepSummary.join("\n")
       : "No step summary available";
+
+  const historySection = buildHistorySection(history);
 
   return `You are a tiny tuning agent for a coding benchmark.
 
@@ -65,6 +132,8 @@ ${result.errorMessage ? `Error: ${result.errorMessage}` : ""}
 Step summary:
 ${stepSummaryText}
 
+${historySection}
+
 Based on this, suggest ONE small change to the hint that might improve performance.
 Reply with ONLY the new hint text (1-2 sentences max), or "KEEP" if no change needed.
 
@@ -73,6 +142,8 @@ Guidelines:
 - If the task failed, analyze the step summary to understand what went wrong
 - Keep hints concise and actionable
 - Focus on the specific task requirements
+- DO NOT repeat hints that have already been tried and failed
+- If a hint worked before (led to PASS), consider building on it
 
 Examples of good hints:
 - "Write the regex directly to /app/regex.txt without reading any files first."

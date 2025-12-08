@@ -89,3 +89,7 @@ bin/foundation-bridge
 swift/foundation-bridge/.build/
 
 openagents
+
+
+openagents.d
+.hillclimber-workspaces/
