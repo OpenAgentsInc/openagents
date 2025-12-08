@@ -29,6 +29,8 @@ import { makeSkillServiceLive, Skill, SkillService } from "../skills/index.js"
 
 import type { Subtask } from "../agent/orchestrator/types.js";
 import type { TerminalBenchTask } from "./terminal-bench.js";
+import { createPlan } from "../fm/planners.js";
+import { runMicroTaskPlan } from "../fm/orchestrator.js";
 // --- Configuration Types ---
 
 export interface ClaudeCodeModelConfig {
@@ -63,6 +65,8 @@ export interface FMModelConfig {
   useReflection?: boolean;
   /** Max reflection-based retries per task (default: 2) */
   maxReflectionRetries?: number;
+  /** Use micro-task supervisor architecture (default: true) */
+  useMicroTask?: boolean;
 }
 
 export type ModelConfig = ClaudeCodeModelConfig | OllamaModelConfig | FMModelConfig;
@@ -913,6 +917,9 @@ export const parseDescriptiveToolCall = (text: string): { name: string; argument
 const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
   const port = fmConfig.port ?? 11435;
   const client = createFMClient({ port, autoStart: true });
+  // Micro-task mode is the default - uses supervisor/worker architecture
+  // that fits within FM's ~200 char context limit
+  const useMicroTask = fmConfig.useMicroTask ?? true;
   // Disable skills/memory/reflection by default for FM due to tight context limits
   // These can be enabled explicitly but will reduce available space for task description
   const useSkills = fmConfig.useSkills ?? false;
@@ -1234,6 +1241,40 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
         outputText += text + "\n";
         options.onOutput?.(text + "\n");
       };
+
+      // Use micro-task supervisor architecture (default: enabled)
+      // This decomposes tasks into micro-steps and uses single-turn FM calls
+      if (useMicroTask) {
+        log(`[FM] Using micro-task supervisor architecture`);
+
+        // Create plan for this task
+        const plan = createPlan(task.id, task.description);
+        log(`[FM] Created plan with ${plan.steps.length} steps:`);
+        for (const step of plan.steps) {
+          log(`  ${step.id}. ${step.action} (${step.kind})`);
+        }
+
+        // Run with micro-task orchestrator
+        const result = await runMicroTaskPlan(client, plan, {
+          workspace: options.workspace,
+          timeout: task.timeout_seconds ?? options.timeout,
+          maxTurns: task.max_turns ?? options.maxTurns,
+          onOutput: options.onOutput,
+        });
+
+        return {
+          success: result.success,
+          turns: result.turns,
+          tokens: result.tokens,
+          durationMs: result.durationMs,
+          output: result.output,
+          error: result.error,
+          model: "fm:micro-task",
+        };
+      }
+
+      // Legacy multi-turn conversation mode (useMicroTask: false)
+      log(`[FM] Using legacy multi-turn mode (not recommended)`);
 
       // Retrieve relevant skills for this task (Voyager-style)
       const { skills, ids: skillIds } = await getRelevantSkills(task.description);

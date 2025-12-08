@@ -242,7 +242,7 @@ export interface OrchestratorOptions {
   workspace: string;
   timeout: number;
   maxTurns: number;
-  onOutput?: (text: string) => void;
+  onOutput?: ((text: string) => void) | undefined;
 }
 
 export interface OrchestratorResult {
@@ -358,12 +358,17 @@ export async function runMicroTaskPlan(
   const allDone = plan.steps.every((s) => s.status === "done");
   log(`\n[Orchestrator] Completed. Success: ${allDone}`);
 
-  return {
+  const result: OrchestratorResult = {
     success: allDone,
     turns,
     tokens: state.totalTokens,
     durationMs: Date.now() - state.startTime,
     output: outputText,
-    error: allDone ? undefined : "Some steps failed",
   };
+
+  if (!allDone) {
+    result.error = "Some steps failed";
+  }
+
+  return result;
 }

@@ -28,10 +28,10 @@ export function buildWorkerPrompt(input: WorkerInput): string {
 // --- Worker Call ---
 
 export interface FMClientLike {
-  chat: (opts: { messages: Array<{ role: string; content: string }> }) => Effect.Effect<{
-    choices: Array<{ message: { content: string } }>;
-    usage?: { total_tokens?: number };
-  }>;
+  chat: (opts: { messages: Array<{ role: "user" | "system" | "assistant" | "tool"; content: string }> }) => Effect.Effect<{
+    choices: Array<{ message: { content: string | null } }>;
+    usage?: { total_tokens?: number | undefined };
+  }, unknown, never>;
 }
 
 export async function callFMWorker(
@@ -40,7 +40,9 @@ export async function callFMWorker(
 ): Promise<WorkerOutput> {
   const prompt = buildWorkerPrompt(input);
 
-  const messages = [{ role: "user", content: prompt }];
+  const messages: Array<{ role: "user" | "system" | "assistant" | "tool"; content: string }> = [
+    { role: "user", content: prompt },
+  ];
 
   const response = await Effect.runPromise(
     client.chat({ messages }),
