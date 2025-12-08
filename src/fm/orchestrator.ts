@@ -262,6 +262,7 @@ export interface OrchestratorOptions {
   timeout: number;
   maxTurns: number;
   taskDescription?: string | undefined;
+  skills?: import("../skills/schema.js").Skill[] | undefined;
   onOutput?: ((text: string) => void) | undefined;
 }
 
@@ -338,6 +339,7 @@ export async function runMicroTaskPlan(
       context: hadAnySuccess ? "Previous action succeeded" : "Start or continue the task",
       previous,
       taskDescription: options.taskDescription,
+      skills: options.skills,
     };
 
     log(`[Worker] Previous: ${previous.slice(0, 100)}`);

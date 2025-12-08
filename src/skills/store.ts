@@ -192,7 +192,28 @@ const makeStore = (projectRoot: string): Effect.Effect<ISkillStore, SkillStoreEr
       });
 
     // Initialize state
-    const initialSkills = yield* loadSkills();
+    let initialSkills = yield* loadSkills();
+    
+    // Seed from bootstrap skills if store is empty
+    if (initialSkills.size === 0) {
+      const seedResult = yield* Effect.tryPromise({
+        try: async () => {
+          const { bootstrapSkills } = await import("./library/index.js");
+          return bootstrapSkills;
+        },
+        catch: () => new SkillStoreError("io_error", "Failed to load bootstrap skills"),
+      }).pipe(Effect.orElseSucceed(() => [] as Skill[]));
+      
+      if (seedResult.length > 0) {
+        for (const skill of seedResult) {
+          initialSkills.set(skill.id, skill);
+        }
+        // Save seeded skills to disk
+        yield* saveAll(initialSkills);
+        console.log(`[SkillStore] Seeded ${seedResult.length} bootstrap skills`);
+      }
+    }
+    
     const initialIndex = buildIndex(initialSkills);
 
     const stateRef = yield* Ref.make<StoreState>({

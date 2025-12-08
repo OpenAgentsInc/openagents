@@ -194,6 +194,7 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
       const quickActions = html`
         <div class="flex gap-3 mb-6">
           <button
+            type="button"
             class="px-4 py-2 text-xs font-mono uppercase rounded border border-emerald-700 text-emerald-300 bg-emerald-900/40 hover:bg-emerald-900/60 transition-colors"
             data-action="runFullBenchmark"
             ${state.currentRun ? "disabled" : ""}
@@ -309,14 +310,39 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
 
   setupEvents: (ctx) =>
     Effect.gen(function* () {
+      if (typeof window !== "undefined" && (window as any).bunLog) {
+        (window as any).bunLog("[TBCCDashboard] Setting up event handlers")
+      }
+      
       // Quick action buttons
-      yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", (_e, target) => {
-        const action = (target as HTMLElement).dataset.action
-        const runId = (target as HTMLElement).dataset.runId
+      yield* ctx.dom.delegate(ctx.container, "button[data-action]", "click", (e, target) => {
+        const button = target as HTMLButtonElement
+        const action = button.dataset.action
+        
+        if (typeof window !== "undefined" && (window as any).bunLog) {
+          (window as any).bunLog(`[TBCCDashboard] Click detected on button with action="${action}", disabled=${button.disabled}`)
+        }
+        
+        // Ignore clicks on disabled buttons
+        if (button.disabled) {
+          if (typeof window !== "undefined" && (window as any).bunLog) {
+            (window as any).bunLog(`[TBCCDashboard] Button is disabled, ignoring click`)
+          }
+          return
+        }
+        
+        const runId = button.dataset.runId
+
+        if (typeof window !== "undefined" && (window as any).bunLog) {
+          (window as any).bunLog(`[TBCCDashboard] Processing action="${action}"`)
+        }
 
         if (action === "refresh") {
           Effect.runFork(ctx.emit({ type: "refresh" }))
         } else if (action === "runFullBenchmark") {
+          if (typeof window !== "undefined" && (window as any).bunLog) {
+            (window as any).bunLog(`[TBCCDashboard] Emitting runFullBenchmark event`)
+          }
           Effect.runFork(ctx.emit({ type: "runFullBenchmark" }))
         } else if (action === "runRandomTask") {
           Effect.runFork(ctx.emit({ type: "runRandomTask" }))
@@ -371,15 +397,24 @@ export const TBCCDashboardWidget: Widget<TBCCDashboardState, TBCCDashboardEvent,
         }
 
         case "runFullBenchmark": {
+          if (typeof window !== "undefined" && (window as any).bunLog) {
+            (window as any).bunLog(`[TBCCDashboard] handleEvent: runFullBenchmark received`)
+          }
+          
           // Read model preference from settings
           const settings = getSettings()
-          console.log("[Dashboard] Starting run with settings:", settings)
-          console.log("[Dashboard] Model:", settings.model)
+          if (typeof window !== "undefined" && (window as any).bunLog) {
+            (window as any).bunLog(`[TBCCDashboard] Settings:`, JSON.stringify(settings))
+          }
+          
           const runOptions = {
             suitePath: DEFAULT_SUITE_PATH,
             model: settings.model,
           }
-          console.log("[Dashboard] Run options:", JSON.stringify(runOptions))
+          
+          if (typeof window !== "undefined" && (window as any).bunLog) {
+            (window as any).bunLog(`[TBCCDashboard] Starting run with options:`, JSON.stringify(runOptions))
+          }
           yield* Effect.tryPromise({
             try: async () => {
               const result = await Effect.runPromise(socket.startTBRun(runOptions))

@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 import type { WorkerInput, WorkerOutput } from "./micro-task-types.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
+import type { Skill } from "../skills/schema.js";
 
 // --- Worker Prompt Template ---
 // FM has 4096 tokens (~16K chars) context window, so we can be more verbose
@@ -27,6 +28,7 @@ IMPORTANT: Output ONLY the tool call, nothing else. Call task_complete when done
 
 export interface WorkerPromptInput extends WorkerInput {
   taskDescription?: string | undefined;
+  skills?: Skill[] | undefined;
 }
 
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
@@ -72,8 +74,17 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     hint = "\nHint: This task requires reading a file first. Use read_file before writing.";
   }
   
-  return `${WORKER_SYSTEM}
+  // Format skills section if provided
+  let skillsSection = "";
+  if (input.skills && input.skills.length > 0) {
+    const skillLines = input.skills.map(s => 
+      `- ${s.name}: ${s.description.slice(0, 100)}${s.description.length > 100 ? "..." : ""}`
+    ).join("\n");
+    skillsSection = `\nRelevant Skills:\n${skillLines}\n`;
+  }
 
+  return `${WORKER_SYSTEM}
+${skillsSection}
 ${taskSection}
 Context: ${input.context}
 ${input.previous !== "none" ? `Previous: ${input.previous}` : ""}${hint}
