@@ -614,7 +614,10 @@ After the tool runs, say TASK_COMPLETE.`;
 
 /**
  * Truncate messages to fit within FM context limit.
- * Strategy: Keep system prompt (first), trim middle history, keep last message.
+ * Strategy: Keep system prompt (first), preserve recent tool interactions (last 2-3 pairs),
+ * drop older history first.
+ *
+ * This preserves critical short-term memory: recent tool calls and their results.
  *
  * Exported for testing.
  */
@@ -630,34 +633,73 @@ export const truncateMessagesForFM = (
   }
 
   // Need to truncate
-  // Strategy: Keep first (system) and last (user) messages, truncate middle
+  // Strategy: Keep system message (truncated if needed), preserve last 2-3 message pairs
+  // (tool call + result), drop older history first
   const result: typeof messages = [];
   let usedChars = 0;
-  const reserveForLast = 200; // Reserve space for last user message
+
+  // Reserve space for recent tool interactions (estimate ~600 chars for 2-3 pairs)
+  // But ensure system message can be truncated if needed
+  const reserveForRecent = Math.min(600, maxChars - 200); // At least 200 for system
+  const availableForSystem = Math.max(200, maxChars - reserveForRecent - 100);
 
   // Always keep system message (but truncate if too long)
   if (messages.length > 0 && messages[0].role === "system") {
     const systemMsg = messages[0];
-    const maxSystemChars = Math.min(systemMsg.content.length, maxChars - reserveForLast - 100);
+    const maxSystemChars = Math.min(systemMsg.content.length, availableForSystem);
+    const systemContent = systemMsg.content.length > maxSystemChars
+      ? systemMsg.content.slice(0, maxSystemChars) + "...[truncated]"
+      : systemMsg.content;
     result.push({
       role: "system",
-      content: systemMsg.content.slice(0, maxSystemChars),
+      content: systemContent,
     });
-    usedChars += maxSystemChars + 20;
+    usedChars += systemContent.length + 20;
   }
 
-  // Always keep last message
-  if (messages.length > 1) {
+  // Preserve last 2-3 message pairs (assistant tool call + user tool result)
+  // This gives agent short-term memory of recent actions
+  const pairsToKeep = 3; // Keep last 3 pairs (6 messages max)
+  const startIdx = Math.max(1, messages.length - pairsToKeep * 2);
+
+  // Add recent message pairs, working backwards from the end
+  for (let i = startIdx; i < messages.length; i++) {
+    const msg = messages[i];
+    const msgSize = msg.content.length + 20;
+
+    // If adding this message would exceed limit, truncate it and stop
+    if (usedChars + msgSize > maxChars - 50) {
+      const remaining = maxChars - usedChars - 50;
+      if (remaining > 50) {
+        // Truncate this message if there's reasonable space
+        result.push({
+          role: msg.role,
+          content: msg.content.slice(0, remaining) + "...[truncated]",
+        });
+      }
+      break;
+    }
+
+    result.push(msg);
+    usedChars += msgSize;
+  }
+
+  // If we only have system message but there are more messages, try to add at least the last one
+  if (result.length === 1 && messages.length > 1) {
     const lastMsg = messages[messages.length - 1];
-    const maxLastChars = Math.min(lastMsg.content.length, maxChars - usedChars - 50);
-    // Truncate content if needed
-    const truncatedContent = lastMsg.content.length > maxLastChars
-      ? lastMsg.content.slice(0, maxLastChars) + "...[truncated]"
-      : lastMsg.content;
-    result.push({
-      role: lastMsg.role,
-      content: truncatedContent,
-    });
+    const lastMsgSize = lastMsg.content.length + 20;
+    if (usedChars + lastMsgSize <= maxChars - 50) {
+      result.push(lastMsg);
+    } else {
+      // Truncate last message to fit
+      const remaining = maxChars - usedChars - 50;
+      if (remaining > 50) {
+        result.push({
+          role: lastMsg.role,
+          content: lastMsg.content.slice(0, remaining) + "...[truncated]",
+        });
+      }
+    }
   }
 
   return result;
@@ -1080,51 +1122,94 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
       const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import("fs");
 
       // Helper to normalize paths - reject absolute paths and resolve relative ones
-      const normalizePath = (inputPath: string): string => {
+      // Returns both normalized path and original path for clarity in tool results
+      const normalizePath = (inputPath: string): { normalized: string; original: string; wasAbsolute: boolean } => {
+        const original = inputPath;
+        let normalized: string;
+        let wasAbsolute = false;
+
         if (isAbsolute(inputPath)) {
           // If it's an absolute path, just use the basename to make it relative
-          return resolve(workspace, basename(inputPath));
+          wasAbsolute = true;
+          normalized = resolve(workspace, basename(inputPath));
+        } else {
+          normalized = resolve(workspace, inputPath);
         }
-        return resolve(workspace, inputPath);
+
+        return { normalized, original, wasAbsolute };
       };
 
       switch (name) {
         case "read_file": {
-          const path = normalizePath(args.path as string);
-          if (!existsSync(path)) {
-            return { success: false, output: `File not found: ${path}` };
+          const pathInfo = normalizePath(args.path as string);
+          if (!existsSync(pathInfo.normalized)) {
+            const pathNote = pathInfo.wasAbsolute
+              ? ` (normalized from ${pathInfo.original} to ${pathInfo.normalized})`
+              : "";
+            return {
+              success: false,
+              output: `File not found: ${pathInfo.normalized}${pathNote}\nWorking directory: ${workspace}`,
+            };
           }
-          const content = readFileSync(path, "utf-8");
-          return { success: true, output: content };
+          const content = readFileSync(pathInfo.normalized, "utf-8");
+          const pathNote = pathInfo.wasAbsolute
+            ? ` (normalized from ${pathInfo.original})`
+            : "";
+          return {
+            success: true,
+            output: `Read file: ${pathInfo.normalized}${pathNote}\n\n${content}`,
+          };
         }
 
         case "write_file": {
-          const path = normalizePath(args.path as string);
-          const dir = dirname(path);
+          const pathInfo = normalizePath(args.path as string);
+          const dir = dirname(pathInfo.normalized);
           if (!existsSync(dir)) {
             mkdirSync(dir, { recursive: true });
           }
-          writeFileSync(path, args.content as string);
-          return { success: true, output: `Wrote ${(args.content as string).length} bytes to ${path}` };
+          writeFileSync(pathInfo.normalized, args.content as string);
+          const pathNote = pathInfo.wasAbsolute
+            ? ` (normalized from ${pathInfo.original})`
+            : "";
+          return {
+            success: true,
+            output: `Wrote ${(args.content as string).length} bytes to ${pathInfo.normalized}${pathNote}\nWorking directory: ${workspace}`,
+          };
         }
 
         case "edit_file": {
-          const path = normalizePath(args.path as string);
-          if (!existsSync(path)) {
-            return { success: false, output: `File not found: ${path}` };
+          const pathInfo = normalizePath(args.path as string);
+          if (!existsSync(pathInfo.normalized)) {
+            const pathNote = pathInfo.wasAbsolute
+              ? ` (normalized from ${pathInfo.original} to ${pathInfo.normalized})`
+              : "";
+            return {
+              success: false,
+              output: `File not found: ${pathInfo.normalized}${pathNote}\nWorking directory: ${workspace}`,
+            };
           }
-          let content = readFileSync(path, "utf-8");
+          let content = readFileSync(pathInfo.normalized, "utf-8");
           const oldText = args.old_text as string;
           if (!content.includes(oldText)) {
-            return { success: false, output: `Text not found in file: ${oldText.slice(0, 50)}...` };
+            return {
+              success: false,
+              output: `Text not found in file: ${oldText.slice(0, 50)}...\nFile: ${pathInfo.normalized}\nWorking directory: ${workspace}`,
+            };
           }
           content = content.replace(oldText, args.new_text as string);
-          writeFileSync(path, content);
-          return { success: true, output: `Edited ${path}` };
+          writeFileSync(pathInfo.normalized, content);
+          const pathNote = pathInfo.wasAbsolute
+            ? ` (normalized from ${pathInfo.original})`
+            : "";
+          return {
+            success: true,
+            output: `Edited ${pathInfo.normalized}${pathNote}\nWorking directory: ${workspace}`,
+          };
         }
 
         case "run_command": {
-          const proc = Bun.spawn(["sh", "-c", args.command as string], {
+          const command = args.command as string;
+          const proc = Bun.spawn(["sh", "-c", command], {
             cwd: workspace,
             stdout: "pipe",
             stderr: "pipe",
@@ -1135,7 +1220,7 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
           const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
           return {
             success: exitCode === 0,
-            output: `Exit code: ${exitCode}\n${output}`,
+            output: `Working directory: ${workspace}\nCommand: ${command}\nExit code: ${exitCode}\n${output}`,
           };
         }
 
