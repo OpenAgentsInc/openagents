@@ -213,19 +213,61 @@ The service layer should work unchanged if the store interface is preserved.
 
 May need updates if it directly accesses store internals.
 
-### 5. Handle Embedding Storage
+### 5. Handle Embedding Storage with sqlite-vec
 
-Embeddings are float arrays. Store as BLOB:
+**IMPORTANT**: Use `sqlite-vec` extension for native vector similarity search, not manual BLOB serialization.
+
+See: https://github.com/asg017/sqlite-vec
+
+```sql
+-- Create virtual table for vector index
+CREATE VIRTUAL TABLE skills_vec USING vec0(
+  skill_id TEXT PRIMARY KEY,
+  embedding float[768]  -- Dimension depends on FM embedding model
+);
+
+-- Insert embedding when adding skill
+INSERT INTO skills_vec (skill_id, embedding)
+VALUES (?, ?);
+
+-- Cosine similarity search (native, fast!)
+SELECT 
+  s.*,
+  vec_distance_cosine(sv.embedding, ?) as distance
+FROM skills s
+JOIN skills_vec sv ON s.id = sv.skill_id
+WHERE sv.embedding MATCH ?
+  AND vec_distance_cosine(sv.embedding, ?) < 0.7
+ORDER BY distance
+LIMIT 5;
+```
+
+**Setup in Bun:**
 
 ```typescript
-// Serialize embedding to BLOB
+import { Database } from "bun:sqlite";
+
+const db = new Database(dbPath);
+
+// Load sqlite-vec extension
+// See: https://github.com/asg017/sqlite-vec#installation
+db.loadExtension("./vec0");  // Path to compiled extension
+
+// Or if using bun's built-in support (check if available):
+// db.exec("SELECT load_extension('vec0')");
+```
+
+**Fallback**: If sqlite-vec isn't available, fall back to BLOB storage + JS cosine similarity (current behavior):
+
+```typescript
+// Serialize embedding to BLOB (fallback)
 const serializeEmbedding = (embedding: number[]): Buffer => {
-  const buffer = Buffer.alloc(embedding.length * 4); // 4 bytes per float32
+  const buffer = Buffer.alloc(embedding.length * 4);
   embedding.forEach((val, i) => buffer.writeFloatLE(val, i * 4));
   return buffer;
 };
 
-// Deserialize BLOB to embedding
+// Deserialize BLOB to embedding (fallback)
 const deserializeEmbedding = (blob: Buffer): number[] => {
   const result: number[] = [];
   for (let i = 0; i < blob.length; i += 4) {
@@ -233,7 +275,11 @@ const deserializeEmbedding = (blob: Buffer): number[] => {
   }
   return result;
 };
+
+// Then use cosineSimilarity() from src/skills/embedding.ts
 ```
+
+**Recommended approach**: Try sqlite-vec first, fall back to JS if extension not available.
 
 ---
 
@@ -392,12 +438,14 @@ This could complement or replace the embedding-based search for some use cases.
 
 | File | Purpose |
 |------|---------|
+| `docs/database/SCHEMA.md` | Full SQLite schema design with sqlite-vec (REFERENCE) |
 | `src/storage/database.ts` | SQLite pattern for tasks (REFERENCE) |
 | `src/storage/migrations.ts` | Schema migrations (REFERENCE) |
 | `src/skills/store.ts` | Current JSONL implementation (REPLACE) |
 | `src/skills/schema.ts` | Skill type definitions (KEEP) |
 | `src/skills/service.ts` | Service layer (KEEP, minimal changes) |
-| `src/skills/retrieval.ts` | Embedding retrieval (KEEP, check internals) |
+| `src/skills/retrieval.ts` | Embedding retrieval (KEEP, may simplify with sqlite-vec) |
+| `src/skills/embedding.ts` | Current JS cosine similarity (KEEP as fallback) |
 | `src/skills/library/primitives.ts` | Bootstrap skills (KEEP) |
 | `src/skills/library/compositional.ts` | Bootstrap skills (KEEP) |
 
