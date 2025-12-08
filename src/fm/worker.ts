@@ -12,7 +12,21 @@ import { parseToolCalls } from "../bench/model-adapter.js";
 import type { Skill } from "../skills/schema.js";
 
 // --- Worker Prompt Template ---
-// FM has 4096 tokens (~16K chars) context window, so we can be more verbose
+// FM has 4096 tokens (~16K chars) context window, but task descriptions can be very long
+// We truncate task descriptions to stay within limits
+
+const MAX_TASK_CHARS = 600; // Conservative limit for FM's tiny context
+
+/**
+ * Truncate task description to fit in FM's context window.
+ * The full description is too verbose for FM; it just needs the gist.
+ */
+function truncateTaskDescription(description: string): string {
+  if (description.length <= MAX_TASK_CHARS) {
+    return description;
+  }
+  return description.slice(0, MAX_TASK_CHARS) + "\n...[truncated]";
+}
 
 const WORKER_SYSTEM = `You are a coding assistant. Respond ONLY with a tool call in this exact format:
 <tool_call>{"name":"TOOL","arguments":{"key":"value"}}</tool_call>
@@ -22,6 +36,11 @@ PATH RULES:
 - When the task mentions "/app/foo", use "foo" or "./foo" (relative path)
 - Never use absolute /app/ paths in commands or file operations
 - Example: "/app/output.txt" → "output.txt" or "./output.txt"
+
+JSON RULES:
+- Keep file content reasonably short when possible
+- Ensure valid JSON: escape newlines (\\n) and quotes (\\")
+- If writing large files, consider breaking into smaller chunks
 
 Available tools:
 - write_file: {"name":"write_file","arguments":{"path":"file.txt","content":"text"}}
@@ -49,7 +68,7 @@ export interface WorkerPromptInput extends WorkerInput {
 
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
   const taskSection = input.taskDescription
-    ? `Original Task: ${input.taskDescription}\n\nCurrent Step: ${input.action}`
+    ? `Original Task: ${truncateTaskDescription(input.taskDescription)}\n\nCurrent Step: ${input.action}`
     : `Task: ${input.action}`;
 
   // Use suite-aware hint if provided (from orchestrator)
@@ -101,7 +120,7 @@ export async function callFMWorker(
 
   // Log the exact prompt being sent
   const jsonSize = JSON.stringify(messages).length;
-  log?.(`[FM] Prompt: "${prompt}" (${prompt.length} chars, JSON: ${jsonSize} chars)`);
+  log?.(`[FM] Prompt length: ${prompt.length} chars (JSON: ${jsonSize} chars)`);
 
   const response = await Effect.runPromise(
     client.chat({ messages }),

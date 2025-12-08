@@ -17,6 +17,7 @@
     "models:generate": "bun scripts/generate-models.ts",
     "prepare": "effect-language-service patch",
     "hi": "bun --bun src/llm/openrouter-cli.ts -- --prompt 'Say hi'",
+    "demo:openrouter": "bun --bun src/llm/openrouter-inference-demo.ts",
     "demo:edit": "bun --bun src/tools/edit-demo.ts",
     "demo:agent-tools": "echo \"openrouter tool demo removed\"",
     "tasks:init": "bun src/tasks/cli.ts init",

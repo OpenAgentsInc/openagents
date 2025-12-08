@@ -566,6 +566,26 @@ export const getFMContextLimit = (model?: string): number => {
 const FM_CONTEXT_EXCEEDED_ERROR = "Exceeded model context window size";
 
 /**
+ * Check if command uses a tool that's not available in local environment.
+ * Returns error message if unavailable, null if available.
+ */
+function checkUnavailableTool(command: string): string | null {
+  const UNAVAILABLE_LOCAL_TOOLS = [
+    /^\s*primer3\b/,
+    /^\s*python\b/,  // python3 might work, but python often doesn't
+    /^\s*oligotm\b/,
+  ];
+
+  for (const pattern of UNAVAILABLE_LOCAL_TOOLS) {
+    if (pattern.test(command)) {
+      const toolName = command.match(/^\s*(\S+)/)?.[1] ?? "tool";
+      return `${toolName} is not available in local environment. This task expects a container with ${toolName} installed.`;
+    }
+  }
+  return null;
+}
+
+/**
  * Normalize /app/ paths in shell commands to relative paths.
  * Only used for FM runner - other models may have real /app paths.
  *
@@ -764,6 +784,35 @@ const buildFMSystemPrompt = (options?: {
 };
 
 /**
+ * Attempt to fix common JSON issues from FM output.
+ * Tries progressively shorter substrings ending at } to find valid JSON.
+ */
+function attemptJSONSalvage(jsonStr: string): { name: string; arguments: Record<string, unknown> } | null {
+  // Find all } positions and try parsing from longest to shortest
+  const bracePositions: number[] = [];
+  for (let i = jsonStr.length - 1; i >= 0; i--) {
+    if (jsonStr[i] === '}') bracePositions.push(i);
+  }
+
+  for (const pos of bracePositions) {
+    const candidate = jsonStr.slice(0, pos + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed.name && typeof parsed.name === "string" && parsed.arguments) {
+        return {
+          name: parsed.name,
+          arguments: parsed.arguments,
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse tool calls from model output.
  * Handles multiple formats:
  * - <tool_call>{"name":"...", "arguments":{...}}</tool_call>
@@ -772,22 +821,14 @@ const buildFMSystemPrompt = (options?: {
  * - "Using write_file tool with arguments: path=hello.txt, content=Hello World"
  * - {"response":"Using write_file tool with arguments: path=X, content=Y"}
  *
+ * More forgiving: handles truncated JSON and trailing junk.
  * Exported for testing.
- *
- * TODO: Improve robustness for malformed JSON.
- * Occasionally FM produces malformed JSON like:
- *   <tool_call>{"name":"write_file", ... "content":"""\n...
- * That's FM mixing triple-quote style which breaks JSON parsing.
- * Future improvement: make parseToolCalls more forgiving:
- * - Find the first `{` after `<tool_call>`
- * - Try to parse up to various closing `}` positions
- * - Strip trailing junk until JSON parses
  */
 export const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
-  // Try <tool_call>...</tool_call> format (with optional closing tag)
-  const tagRegex = /<tool_call>(\{.*?\})(?:<\/tool_call>)?/gs;
+  // Pattern 1: Proper closing tag
+  const tagRegex = /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/gs;
   let match;
   while ((match = tagRegex.exec(text)) !== null) {
     try {
@@ -799,13 +840,17 @@ export const parseToolCalls = (text: string): Array<{ name: string; arguments: R
         });
       }
     } catch {
-      // Skip malformed tool calls
+      // Try salvage for truncated JSON
+      const salvaged = attemptJSONSalvage(match[1]);
+      if (salvaged) {
+        calls.push(salvaged);
+      }
     }
   }
 
-  // Also try just <tool_call>{...} without closing tag (FM sometimes does this)
+  // Pattern 2: No closing tag, find balanced braces (more forgiving)
   if (calls.length === 0) {
-    const unclosedRegex = /<tool_call>(\{[^<]+)/g;
+    const unclosedRegex = /<tool_call>\s*(\{[\s\S]*)/g;
     while ((match = unclosedRegex.exec(text)) !== null) {
       try {
         // Clean up the JSON - might have trailing whitespace or newlines
@@ -818,7 +863,11 @@ export const parseToolCalls = (text: string): Array<{ name: string; arguments: R
           });
         }
       } catch {
-        // Skip malformed tool calls
+        // Try salvage for truncated JSON
+        const salvaged = attemptJSONSalvage(match[1]);
+        if (salvaged) {
+          calls.push(salvaged);
+        }
       }
     }
   }
@@ -1255,6 +1304,16 @@ const createFMRunner = (fmConfig: FMModelConfig): ModelRunner => {
 
         case "run_command": {
           const command = args.command as string;
+
+          // Check for unavailable tools first
+          const unavailableMsg = checkUnavailableTool(command);
+          if (unavailableMsg) {
+            return {
+              success: false,
+              output: unavailableMsg,
+            };
+          }
+
           // Normalize /app/ paths for FM runner (FM may reference /app/ from task descriptions)
           const normalizedCommand = normalizeCommand(command);
           const proc = Bun.spawn(["sh", "-c", normalizedCommand], {
