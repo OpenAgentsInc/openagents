@@ -348,6 +348,7 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 - **[ui-components.md](./ui-components.md)** - Complete UI/layout guide with Tailwind patterns and examples
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Deep dive into Effuse architecture
 - **[TESTING.md](./TESTING.md)** - Complete testing guide
+- **[HMR.md](./HMR.md)** - Hot Module Replacement with state preservation and migration
 - **Source code**: `src/effuse/widgets/apm-widget.ts` is the simplest complete example
 
 ---
@@ -359,3 +360,4 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 3. **Mutating state directly** - Always use `state.update(s => ({ ...s, newValue }))`
 4. **Missing socket service** - If widget has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
 5. **Re-rendering parent wipes child widgets** - If parent renders containers for child widgets, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-widget-relationships) for details.
+6. **State shape changes break HMR** - If you change a widget's state interface, old preserved state won't match. Add migration logic in `mount.ts` (see [HMR.md](./HMR.md#state-migration)) or clear state with `clearAllState()`.
