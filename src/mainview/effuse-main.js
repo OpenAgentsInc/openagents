@@ -30494,6 +30494,15 @@ ${endStackCall}`;
         totalTests: 0,
         durationMs: 0,
         uncertainties: [],
+        currentPhase: "idle",
+        currentCategory: null,
+        currentRound: 0,
+        progressStatus: null,
+        reflections: [],
+        totalRounds: 0,
+        categoryRounds: null,
+        comprehensivenessScore: null,
+        totalTokensUsed: 0,
         error: null
       };
     },
@@ -30592,11 +30601,34 @@ ${endStackCall}`;
                 <p class="mt-1 text-sm text-zinc-300 font-mono leading-relaxed">${state.taskDescription.slice(0, 300)}${state.taskDescription.length > 300 ? "..." : ""}</p>
               </div>
             ` : "";
+      const progressIndicator = state.status === "generating" && state.progressStatus ? html`
+              <div class="p-4 bg-zinc-900/40 border-b border-zinc-800/60">
+                <div class="flex items-center gap-3">
+                  <div class="animate-spin text-emerald-400">⚙️</div>
+                  <div class="flex-1">
+                    <div class="text-sm font-mono text-zinc-300">${state.progressStatus}</div>
+                    ${state.currentCategory ? html`<div class="text-xs text-zinc-500 mt-1">Category: ${state.currentCategory} | Round: ${state.currentRound}</div>` : ""}
+                  </div>
+                </div>
+              </div>
+            ` : "";
+      const reflectionPanel = state.reflections.length > 0 ? html`
+              <div class="p-4 bg-blue-900/20 border-b border-blue-800/50">
+                <h4 class="text-sm font-mono text-blue-300 mb-2">Reflections:</h4>
+                <div class="space-y-2">
+                  ${joinTemplates(state.reflections.slice(-3).map((r) => html`
+                          <div class="text-xs text-blue-200 font-mono">
+                            ${r.category ? `[${r.category}] ` : ""}${r.text}
+                          </div>
+                        `))}
+                </div>
+              </div>
+            ` : "";
       const testCards = state.tests.length > 0 ? html`
               <div class="p-4 space-y-3 overflow-y-auto flex-1">
                 <div class="flex items-center justify-between mb-2">
                   <h3 class="text-sm font-mono text-zinc-400">Generated Tests (${state.tests.length})</h3>
-                  ${state.status === "complete" ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s</span>` : ""}
+                  ${state.status === "complete" ? html`<span class="text-xs text-emerald-400 font-mono">${(state.durationMs / 1000).toFixed(1)}s | ${state.totalRounds} rounds</span>` : ""}
                 </div>
                 ${joinTemplates(state.tests.map((test) => {
         const categoryColors = {
@@ -30639,14 +30671,24 @@ ${endStackCall}`;
       }))}
               </div>
             ` : "";
-      const completionSummary = state.status === "complete" && state.uncertainties.length > 0 ? html`
-              <div class="p-4 bg-yellow-900/20 border-t border-yellow-700/50">
-                <h4 class="text-sm font-mono text-yellow-300 mb-2">Uncertainties:</h4>
-                <ul class="space-y-1">
-                  ${joinTemplates(state.uncertainties.map((u) => html`
-                        <li class="text-xs text-yellow-200 font-mono">• ${u}</li>
-                      `))}
-                </ul>
+      const completionSummary = state.status === "complete" ? html`
+              <div class="p-4 bg-emerald-900/20 border-t border-emerald-700/50 space-y-3">
+                ${state.comprehensivenessScore !== null ? html`
+                      <div>
+                        <span class="text-xs text-emerald-400 font-mono">Comprehensiveness Score: </span>
+                        <span class="text-sm font-mono text-emerald-300">${state.comprehensivenessScore}/10</span>
+                      </div>
+                    ` : ""}
+                ${state.uncertainties.length > 0 ? html`
+                      <div>
+                        <h4 class="text-sm font-mono text-yellow-300 mb-2">Uncertainties:</h4>
+                        <ul class="space-y-1">
+                          ${joinTemplates(state.uncertainties.map((u) => html`
+                                <li class="text-xs text-yellow-200 font-mono">• ${u}</li>
+                              `))}
+                        </ul>
+                      </div>
+                    ` : ""}
               </div>
             ` : "";
       const errorPanel = state.error ? html`
@@ -30675,7 +30717,7 @@ ${endStackCall}`;
             ` : "";
       const result = html`
         <div class="h-full flex flex-col bg-zinc-950">
-          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${errorPanel} ${emptyState} ${loadingState} ${testCards} ${completionSummary}
+          ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${progressIndicator} ${reflectionPanel} ${errorPanel} ${emptyState} ${loadingState} ${testCards} ${completionSummary}
         </div>
       `;
       if (window.bunLog) {
@@ -30740,6 +30782,15 @@ ${endStackCall}`;
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
+            currentPhase: "category_generation",
+            currentCategory: null,
+            currentRound: 0,
+            progressStatus: null,
+            reflections: [],
+            totalRounds: 0,
+            categoryRounds: null,
+            comprehensivenessScore: null,
+            totalTokensUsed: 0,
             error: null
           }));
           const result = yield* socket.startTestGen("tasks/terminal-bench-2.json", state.selectedTaskId ?? undefined, "local").pipe(exports_Effect.catchAll((error) => exports_Effect.gen(function* () {
@@ -30767,6 +30818,15 @@ ${endStackCall}`;
             totalTests: 0,
             durationMs: 0,
             uncertainties: [],
+            currentPhase: "idle",
+            currentCategory: null,
+            currentRound: 0,
+            progressStatus: null,
+            reflections: [],
+            totalRounds: 0,
+            categoryRounds: null,
+            comprehensivenessScore: null,
+            totalTokensUsed: 0,
             error: null
           }));
           break;
@@ -30796,9 +30856,32 @@ ${endStackCall}`;
             yield* ctx.state.update((s) => ({
               ...s,
               status: "generating",
+              currentPhase: "category_generation",
               taskId: data.taskId,
               taskDescription: data.taskDescription,
               environment: data.environment
+            }));
+          } else if (msg.type === "testgen_progress") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              currentPhase: data.phase,
+              currentCategory: data.currentCategory ?? null,
+              currentRound: data.roundNumber,
+              progressStatus: data.status
+            }));
+          } else if (msg.type === "testgen_reflection") {
+            const data = msg;
+            yield* ctx.state.update((s) => ({
+              ...s,
+              reflections: [
+                ...s.reflections,
+                {
+                  category: data.category ?? null,
+                  text: data.reflectionText,
+                  action: data.action
+                }
+              ]
             }));
           } else if (msg.type === "testgen_test") {
             const data = msg;
@@ -30811,7 +30894,12 @@ ${endStackCall}`;
             yield* ctx.state.update((s) => ({
               ...s,
               status: "complete",
+              currentPhase: "complete",
               totalTests: data.totalTests,
+              totalRounds: data.totalRounds,
+              categoryRounds: data.categoryRounds,
+              comprehensivenessScore: data.comprehensivenessScore,
+              totalTokensUsed: data.totalTokensUsed,
               durationMs: data.durationMs,
               uncertainties: data.uncertainties
             }));

@@ -885,12 +885,39 @@ export interface TestGenTestMessage {
 }
 
 /**
+ * Test generation progress update
+ */
+export interface TestGenProgressMessage {
+  type: "testgen_progress";
+  sessionId: string;
+  phase: "category_generation" | "global_refinement";
+  currentCategory?: string;
+  roundNumber: number;
+  status: string;
+}
+
+/**
+ * Test generation reflection (gap analysis)
+ */
+export interface TestGenReflectionMessage {
+  type: "testgen_reflection";
+  sessionId: string;
+  category?: string;
+  reflectionText: string;
+  action: "refining" | "assessing" | "complete";
+}
+
+/**
  * Test generation complete
  */
 export interface TestGenCompleteMessage {
   type: "testgen_complete";
   sessionId: string;
   totalTests: number;
+  totalRounds: number;
+  categoryRounds: Record<string, number>;
+  comprehensivenessScore: number | null;
+  totalTokensUsed: number;
   durationMs: number;
   uncertainties: string[];
 }
@@ -968,6 +995,8 @@ export type HudMessage =
   | DevReloadMessage
   | TestGenStartMessage
   | TestGenTestMessage
+  | TestGenProgressMessage
+  | TestGenReflectionMessage
   | TestGenCompleteMessage
   | TestGenErrorMessage;
 
@@ -1154,6 +1183,12 @@ export const isTestGenTest = (msg: HudMessage): msg is TestGenTestMessage =>
 
 export const isTestGenComplete = (msg: HudMessage): msg is TestGenCompleteMessage =>
   msg.type === "testgen_complete";
+
+export const isTestGenProgress = (msg: HudMessage): msg is TestGenProgressMessage =>
+  msg.type === "testgen_progress";
+
+export const isTestGenReflection = (msg: HudMessage): msg is TestGenReflectionMessage =>
+  msg.type === "testgen_reflection";
 
 export const isTestGenError = (msg: HudMessage): msg is TestGenErrorMessage =>
   msg.type === "testgen_error";
