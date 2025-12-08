@@ -336,11 +336,17 @@ export const TBTestGenWidget: Widget<TBTestGenState, TBTestGenEvent, SocketServi
             `
           : "";
 
-      return html`
+      const result = html`
         <div class="h-full flex flex-col bg-zinc-950">
           ${header} ${controls} ${environmentPanel} ${taskDescPanel} ${errorPanel} ${emptyState} ${loadingState} ${testCards} ${completionSummary}
         </div>
       `;
+
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[TBTestGen] render output length=${result.toString().length}, hasEmptyState=${emptyState !== ""}, hasControls=${controls !== ""}`);
+      }
+
+      return result;
     }),
 
   setupEvents: (ctx) =>
