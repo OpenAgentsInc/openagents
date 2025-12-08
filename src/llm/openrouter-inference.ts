@@ -10,8 +10,11 @@ import type { ChatRequest, ChatResponse } from "./openrouter-types.js";
 /**
  * Default free model to use when free option is enabled.
  * This model is free to use and doesn't require credits.
+ *
+ * Note: arcee-ai/trinity-mini:free and qwen/qwen3-4b:free were returning empty content.
+ * Using mistralai/mistral-7b-instruct:free as it should return actual content.
  */
-export const DEFAULT_FREE_MODEL = "arcee-ai/trinity-mini:free";
+export const DEFAULT_FREE_MODEL = "mistralai/mistral-7b-instruct:free";
 
 // ============================================================================
 // Interface

@@ -203,7 +203,7 @@ const runSingleIteration = async (
       durationMs: result.durationMs,
       stepSummary: result.stepSummary,
       errorMessage: result.errorMessage,
-      metaModel: change.type !== "keep" ? "arcee-ai/trinity-mini:free" : null,
+      metaModel: change.model ?? null, // Always record the model used, even for "keep"
       proposedChange: change.reasoning ?? null,
       changeAccepted: change.type !== "keep",
       score,

@@ -21,7 +21,7 @@ import type {
   HillClimberRun,
 } from "./types.js";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
-import { log } from "./logger.js";
+import { log, logError } from "./logger.js";
 
 // ============================================================================
 // Historical Context
@@ -176,27 +176,63 @@ export const proposeConfigChange = (
 
     // Use auto model every Nth run for deeper analysis
     const useAuto = runNumber % AUTO_MODEL_FREQUENCY === 0;
-    const model = useAuto ? AUTO_MODEL : "openrouter/auto";
+    const model = useAuto ? AUTO_MODEL : "openrouter/auto"; // Model string (free:true will override to default free model)
 
     log(
-      `[MetaReasoner] Using ${useAuto ? "auto" : "free"} model for run #${runNumber}`,
+      `[MetaReasoner] Using ${useAuto ? "auto" : "free"} model for run #${runNumber} (model: ${model}, free: ${!useAuto})`,
     );
 
     const prompt = buildMetaPrompt(task, config, result);
+    log(`[MetaReasoner] Prompt length: ${prompt.length} chars`);
 
-    const response = yield* inference.send(
-      model,
-      [{ role: "user", content: prompt }],
-      {
-        free: !useAuto, // Use free model when not using auto
-        temperature: 0.3,
-        maxTokens: 200
-      },
-    );
+    let response;
+    try {
+      response = yield* inference.send(
+        model,
+        [{ role: "user", content: prompt }],
+        {
+          free: !useAuto, // Use free model when not using auto
+          temperature: 0.3,
+          maxTokens: 200
+        },
+      );
+    } catch (error) {
+      logError(`[MetaReasoner] API call failed`, error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+
+    // Log full response structure for debugging
+    log(`[MetaReasoner] Raw response structure: ${JSON.stringify({
+      id: response.id,
+      model: response.model,
+      choicesCount: response.choices?.length ?? 0,
+      firstChoice: response.choices?.[0] ? {
+        messageRole: response.choices[0].message?.role,
+        contentLength: response.choices[0].message?.content?.length ?? 0,
+        contentPreview: response.choices[0].message?.content?.slice(0, 50) ?? "(null/empty)"
+      } : null
+    }, null, 2)}`);
 
     const content = response.choices[0]?.message?.content?.trim() ?? "";
+    const actualModel = response.model ?? model; // Get the actual model that was used
 
-    log(`[MetaReasoner] Response: ${content.slice(0, 100)}...`);
+    // Always log the FULL response content (not truncated)
+    if (content.length === 0) {
+      logError(`[MetaReasoner] Response: (EMPTY) - no content from model ${actualModel}`);
+      logError(`[MetaReasoner] Usage: ${JSON.stringify(response.usage, null, 2)}`);
+      logError(`[MetaReasoner] This model may be a reasoning-only model. Trying fallback...`);
+
+      // If we got tokens but no content, this might be a reasoning model issue
+      // Try using a different free model that actually returns content
+      if (response.usage?.completion_tokens && response.usage.completion_tokens > 0) {
+        logError(`[MetaReasoner] Model generated ${response.usage.completion_tokens} tokens but returned empty content. This is likely a model issue.`);
+      }
+
+      // Don't throw - let it fall through to "keep" behavior
+    } else {
+      log(`[MetaReasoner] Response (${content.length} chars, model: ${actualModel}):`);
+      log(`[MetaReasoner] ${content}`);
+    }
 
     // Parse the response
     if (
@@ -207,6 +243,7 @@ export const proposeConfigChange = (
       return {
         type: "keep" as const,
         reasoning: content,
+        model: actualModel,
       };
     }
 
@@ -220,6 +257,7 @@ export const proposeConfigChange = (
       return {
         type: "keep" as const,
         reasoning: "Response too long, likely not a valid hint",
+        model: actualModel,
       };
     }
 
@@ -228,6 +266,7 @@ export const proposeConfigChange = (
       return {
         type: "keep" as const,
         reasoning: "Empty response",
+        model: actualModel,
       };
     }
 
@@ -235,6 +274,7 @@ export const proposeConfigChange = (
       type: "update_hint" as const,
       newHint,
       reasoning: content,
+      model: actualModel,
     };
   }).pipe(
     Effect.provide(

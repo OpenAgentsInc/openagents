@@ -59,3 +59,4 @@ describe("parseToolCalls", () => {
     // May or may not parse depending on format, but shouldn't crash
   });
 });
+
