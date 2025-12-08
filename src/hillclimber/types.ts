@@ -159,6 +159,7 @@ export interface HillClimberOptions {
   showStats: boolean;        // Show stats and exit
   exportHints: boolean;      // Export best hints to hints.ts
   suitePath: string;         // Path to Terminal-Bench suite
+  modelOverride?: string;    // Optional model override (from CLI)
 }
 
 // ============================================================================

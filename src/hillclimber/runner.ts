@@ -168,7 +168,7 @@ const runSingleIteration = async (
     let change;
     try {
       change = yield* Effect.promise(() =>
-        Effect.runPromise(proposeConfigChange(task, config, result, runNumber)),
+        Effect.runPromise(proposeConfigChange(task, config, result, runNumber, options.modelOverride)),
       );
     } catch (e) {
       log(

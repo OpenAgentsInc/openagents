@@ -18,6 +18,7 @@ import {
 } from "../llm/openrouter-inference.js";
 import { openRouterLive } from "../llm/openrouter-http.js";
 import { InferenceStoreLive } from "../llm/inference-store.js";
+import { HillClimberStore, HillClimberStoreLive } from "./store.js";
 import type {
   HillClimberConfig,
   HillClimberConfigInput,
@@ -54,8 +55,22 @@ export interface HistoricalContext {
 // Constants
 // ============================================================================
 
-// Note: We use free:true option instead of hardcoding model names
-// This lets the OpenRouter service automatically select the default free model
+/** Priority order (best first, all free) */
+export const FREE_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen3-235b-a22b:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+  "google/gemma-3-27b-it:free",
+  "google/gemini-2.0-flash-exp:free",
+  "mistralai/mistral-7b-instruct:free", // Last resort
+];
+
+/** Models that return empty responses - avoid these */
+export const BLOCKLIST = [
+  "arcee-ai/trinity-mini:free",
+  "openai/gpt-5",
+  "qwen/qwen3-4b:free",
+];
 
 /** Auto model for deeper analysis (use sparingly) */
 export const AUTO_MODEL = "openrouter/auto";
@@ -65,6 +80,15 @@ export const AUTO_MODEL_FREQUENCY = 10;
 
 /** Maximum hint length in characters */
 export const MAX_HINT_LENGTH = 150;
+
+/** Number of consecutive "too similar" rejections before forcing diversity */
+export const DIVERSITY_THRESHOLD = 3;
+
+/** Number of runs with same hint before forcing new approach */
+export const STALENESS_THRESHOLD = 5;
+
+/** Frequency for random perturbation (every Nth run) */
+export const RANDOM_PERTURBATION_FREQUENCY = 10;
 
 // ============================================================================
 // Task-Specific Constraints
@@ -170,6 +194,7 @@ const buildMetaPrompt = (
   config: HillClimberConfig,
   result: TaskRunResult,
   history: HistoricalContext | null,
+  diversityWarning?: boolean,
 ): string => {
   const stepSummaryText =
     result.stepSummary.length > 0
@@ -182,7 +207,12 @@ const buildMetaPrompt = (
   const forbiddenList = constraints.forbidden.map(f => `"${f}"`).join(", ");
   const requiredList = constraints.required?.map(r => `"${r}"`).join(", ") ?? "none";
 
+  const diversityNote = diversityWarning
+    ? "\n\n⚠️ IMPORTANT: The current hint has been tried multiple times without success. Propose a COMPLETELY DIFFERENT approach. Think outside the box and try a fundamentally different strategy."
+    : "";
+
   return `You are tuning a very dumb coding agent with limited tools: write_file, read_file, run_command, edit_file.
+${diversityNote}
 
 Task ID: ${task.id}
 Task description (truncated):
@@ -228,6 +258,7 @@ If no change is needed, respond with:
  * @param config The current config
  * @param result The run result
  * @param runNumber The current run number (to decide which model to use)
+ * @param modelOverride Optional model override (from CLI)
  * @returns Effect that resolves to the proposed config change
  */
 export const proposeConfigChange = (
@@ -235,35 +266,157 @@ export const proposeConfigChange = (
   config: HillClimberConfig,
   result: TaskRunResult,
   runNumber: number,
+  modelOverride?: string,
 ): Effect.Effect<ConfigChange, Error> =>
   Effect.gen(function* () {
     const inference = yield* OpenRouterInference;
+    const store = yield* HillClimberStore;
 
-    // Use auto model every Nth run for deeper analysis
-    const useAuto = runNumber % AUTO_MODEL_FREQUENCY === 0;
-    const model = useAuto ? AUTO_MODEL : "openrouter/auto"; // Model string (free:true will override to default free model)
+    // Get historical context
+    const recentRuns = yield* store.getRunHistory(task.id, 10);
+    const taskStats = yield* store.getTaskStats(task.id);
+
+    let history: HistoricalContext | null = null;
+    if (taskStats) {
+      const bestConfig = yield* store.getBestConfigForTask(task.id);
+      let bestHint: string | null = null;
+      if (bestConfig) {
+        const config = yield* store.getConfigById(bestConfig.configId);
+        bestHint = config?.hint ?? null;
+      }
+
+      // Get all unique hints from recent runs
+      const configIds = new Set(recentRuns.map(r => r.configId));
+      const triedHints: string[] = [];
+      for (const configId of configIds) {
+        const config = yield* store.getConfigById(configId);
+        if (config?.hint) {
+          triedHints.push(config.hint);
+        }
+      }
+
+      history = {
+        recentRuns,
+        totalRuns: taskStats.totalRuns,
+        totalPasses: taskStats.passCount,
+        bestScore: taskStats.bestScore,
+        bestHint,
+        triedHints,
+      };
+    }
+
+    // Determine which model to use
+    let modelIndex = 0;
+    let model = modelOverride || FREE_MODELS[0];
+
+    // Use auto model every Nth run for deeper analysis (unless override specified)
+    const useAuto = !modelOverride && runNumber % AUTO_MODEL_FREQUENCY === 0;
+    if (useAuto) {
+      model = AUTO_MODEL;
+    }
+
+    // Check for hint diversity issues
+    const historyRecentRuns = history?.recentRuns ?? [];
+    const sameHintCount = historyRecentRuns.filter(r => {
+      // Get config for each run to check hint
+      return r.configId === config.id;
+    }).length;
+
+    const tooSimilarCount = historyRecentRuns
+      .slice(0, DIVERSITY_THRESHOLD)
+      .filter(r => !r.changeAccepted).length;
+
+    const needsDiversity = tooSimilarCount >= DIVERSITY_THRESHOLD || sameHintCount >= STALENESS_THRESHOLD;
+    const useRandomPerturbation = runNumber % RANDOM_PERTURBATION_FREQUENCY === 0;
 
     log(
-      `[MetaReasoner] Using ${useAuto ? "auto" : "free"} model for run #${runNumber} (model: ${model}, free: ${!useAuto})`,
+      `[MetaReasoner] Using ${useAuto ? "auto" : "free"} model for run #${runNumber} (model: ${model})`,
     );
+    if (needsDiversity) {
+      log(`[MetaReasoner] Diversity enforcement: ${tooSimilarCount} too-similar rejections, ${sameHintCount} runs with same hint`);
+    }
 
-    const prompt = buildMetaPrompt(task, config, result);
+    const prompt = buildMetaPrompt(task, config, result, history, needsDiversity);
     log(`[MetaReasoner] Prompt length: ${prompt.length} chars`);
 
-    let response;
-    try {
-      response = yield* inference.send(
-        model,
-        [{ role: "user", content: prompt }],
-        {
-          free: !useAuto, // Use free model when not using auto
-          temperature: 0.3,
-          maxTokens: 200
-        },
-      );
-    } catch (error) {
-      logError(`[MetaReasoner] API call failed`, error instanceof Error ? error : new Error(String(error)));
-      throw error;
+    // Try models with fallback on empty response
+    let response: any = null;
+    let actualModel = model;
+    let attempts = 0;
+    const maxAttempts = modelOverride ? 1 : FREE_MODELS.length;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        // Skip blocklisted models
+        if (BLOCKLIST.includes(model)) {
+          if (modelIndex < FREE_MODELS.length - 1) {
+            modelIndex++;
+            model = FREE_MODELS[modelIndex];
+            continue;
+          } else {
+            break;
+          }
+        }
+
+        response = yield* inference.send(
+          model,
+          [{ role: "user", content: prompt }],
+          {
+            free: !useAuto, // Use free model when not using auto
+            temperature: useRandomPerturbation ? 0.7 : 0.3, // Higher temp for diversity
+            maxTokens: 200
+          },
+        );
+
+        actualModel = response.model ?? model;
+        const content = response.choices[0]?.message?.content?.trim() ?? "";
+
+        // Check for empty response (reasoning model issue)
+        if (content.length === 0 && response.usage?.completion_tokens && response.usage.completion_tokens > 0) {
+          logError(`[MetaReasoner] Model ${actualModel} returned empty content (${response.usage.completion_tokens} tokens generated), trying fallback...`);
+
+          // Try next model in list
+          if (!modelOverride && modelIndex < FREE_MODELS.length - 1) {
+            modelIndex++;
+            model = FREE_MODELS[modelIndex];
+            continue;
+          } else {
+            // No more models to try, fall through to "keep" behavior
+            break;
+          }
+        } else if (content.length > 0) {
+          // Got valid content, break out of retry loop
+          break;
+        }
+      } catch (error) {
+        logError(`[MetaReasoner] API call failed for model ${model}`, error instanceof Error ? error : new Error(String(error)));
+
+        // Try next model if available
+        if (!modelOverride && modelIndex < FREE_MODELS.length - 1) {
+          modelIndex++;
+          model = FREE_MODELS[modelIndex];
+          continue;
+        } else {
+          // If we've exhausted all models, return keep instead of throwing
+          logError(`[MetaReasoner] All models failed, keeping current config`);
+          return {
+            type: "keep" as const,
+            reasoning: "All model attempts failed",
+            model: actualModel,
+          };
+        }
+      }
+    }
+
+    // Check if we got a valid response
+    if (!response || !response.choices?.[0]?.message?.content) {
+      logError(`[MetaReasoner] No valid response after ${attempts} attempts, keeping current config`);
+      return {
+        type: "keep" as const,
+        reasoning: "No valid response from any model",
+        model: actualModel,
+      };
     }
 
     // Log full response structure for debugging
@@ -278,22 +431,20 @@ export const proposeConfigChange = (
       } : null
     }, null, 2)}`);
 
-    const content = response.choices[0]?.message?.content?.trim() ?? "";
-    const actualModel = response.model ?? model; // Get the actual model that was used
+    let content = response.choices[0]?.message?.content?.trim() ?? "";
+
+    // Strip model artifacts
+    content = stripModelArtifacts(content);
 
     // Always log the FULL response content (not truncated)
     if (content.length === 0) {
       logError(`[MetaReasoner] Response: (EMPTY) - no content from model ${actualModel}`);
       logError(`[MetaReasoner] Usage: ${JSON.stringify(response.usage, null, 2)}`);
-      logError(`[MetaReasoner] This model may be a reasoning-only model. Trying fallback...`);
-
-      // If we got tokens but no content, this might be a reasoning model issue
-      // Try using a different free model that actually returns content
-      if (response.usage?.completion_tokens && response.usage.completion_tokens > 0) {
-        logError(`[MetaReasoner] Model generated ${response.usage.completion_tokens} tokens but returned empty content. This is likely a model issue.`);
-      }
-
-      // Don't throw - let it fall through to "keep" behavior
+      return {
+        type: "keep" as const,
+        reasoning: "Empty response from model",
+        model: actualModel,
+      };
     } else {
       log(`[MetaReasoner] Response (${content.length} chars, model: ${actualModel}):`);
       log(`[MetaReasoner] ${content}`);
@@ -388,6 +539,7 @@ export const proposeConfigChange = (
       OpenRouterInferenceLive.pipe(
         Layer.provideMerge(openRouterLive),
         Layer.provideMerge(InferenceStoreLive),
+        Layer.provideMerge(HillClimberStoreLive),
       ),
     ),
   );
@@ -544,6 +696,33 @@ const isHintMeaningfullyDifferent = (oldHint: string, newHint: string): boolean 
 
   return true;
 };
+
+// ============================================================================
+// Model Artifact Stripping
+// ============================================================================
+
+/**
+ * Strip common model artifacts from response content.
+ */
+const stripModelArtifacts = (content: string): string => {
+  let cleaned = content.trim();
+
+  // Strip Mistral <s> token
+  cleaned = cleaned.replace(/^<s>\s*/, "");
+
+  // Strip instruction wrappers like [INST]...[/INST]
+  cleaned = cleaned.replace(/^\[INST\].*?\[\/INST\]\s*/s, "");
+
+  // Strip other common prefixes
+  cleaned = cleaned.replace(/^(assistant|user|system):\s*/i, "");
+
+  return cleaned.trim();
+};
+
+// ============================================================================
+// Historical Context
+// ============================================================================
+
 
 // ============================================================================
 // Heuristic Fallback
