@@ -645,6 +645,10 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
         ...(request.timeout !== undefined && { timeout: request.timeout }),
         ...(request.maxTurns !== undefined && { maxTurns: request.maxTurns }),
         ...(request.outputDir && { outputDir: request.outputDir }),
+        ...(request.model && { model: request.model }),
+        ...(request.sandbox !== undefined && { sandbox: request.sandbox }),
+        ...(request.sandboxBackend && { sandboxBackend: request.sandboxBackend }),
+        ...(request.sandboxImage && { sandboxImage: request.sandboxImage }),
       });
       return createSuccessResponse("response:startTBRun", correlationId, data);
     }
