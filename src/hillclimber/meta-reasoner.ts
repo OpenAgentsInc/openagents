@@ -299,14 +299,26 @@ export const proposeConfigChange = (
       log(`[MetaReasoner] ${content}`);
     }
 
-    // Parse JSON response
+    // Parse JSON response (handle markdown code blocks)
     let parsedResponse: { hint?: string; reason?: string } | null = null;
+
+    // Strip markdown code blocks if present
+    let jsonContent = content.trim();
+    if (jsonContent.startsWith("```")) {
+      // Remove opening ```json or ```
+      jsonContent = jsonContent.replace(/^```(?:json)?\s*\n?/, "");
+      // Remove closing ```
+      jsonContent = jsonContent.replace(/\n?```\s*$/, "");
+      jsonContent = jsonContent.trim();
+      log(`[MetaReasoner] Stripped markdown code blocks from response`);
+    }
+
     try {
-      // Try to parse as JSON first
-      parsedResponse = JSON.parse(content);
-    } catch {
+      // Try to parse as JSON
+      parsedResponse = JSON.parse(jsonContent);
+    } catch (e) {
       // If not JSON, treat as plain text (backward compatibility)
-      log(`[MetaReasoner] Response is not JSON, parsing as plain text`);
+      log(`[MetaReasoner] Response is not JSON, parsing as plain text: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     let newHint: string;
@@ -315,6 +327,7 @@ export const proposeConfigChange = (
     if (parsedResponse && typeof parsedResponse.hint === "string") {
       newHint = parsedResponse.hint.trim();
       reason = parsedResponse.reason || "No reason provided";
+      log(`[MetaReasoner] Extracted hint from JSON: ${newHint.length} chars`);
     } else {
       // Fallback: parse as plain text
       if (
