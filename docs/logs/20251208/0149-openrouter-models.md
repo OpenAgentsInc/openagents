@@ -138,3 +138,4 @@ interface OpenRouterModelsResponse {
 - `instruct_type` is always `null` but included in the schema for completeness
 - `SupportedParameter` type could be extended with more values as they appear in the full dataset
 
+
