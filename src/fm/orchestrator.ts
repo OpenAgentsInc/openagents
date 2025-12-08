@@ -176,9 +176,9 @@ export async function executeTool(
         const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
 
         if (exitCode === 0) {
-          // Include stdout in condensed so FM can use the output
-          const preview = stdout.trim().length > 200 
-            ? stdout.trim().slice(0, 200) + "..." 
+          // Include stdout in condensed so FM can use the output (500 char limit)
+          const preview = stdout.trim().length > 500 
+            ? stdout.trim().slice(0, 500) + "..." 
             : stdout.trim();
           const condensed = preview 
             ? `Command output: ${preview}`
