@@ -52,6 +52,10 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
     Effect.gen(function* () {
       const state = yield* ctx.state.get
 
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[TBCCShell] render called, activeTab=${state.activeTab}`);
+      }
+
       // Tab navigation items
       const tabItems = joinTemplates(
         TABS.map((tab) => {
@@ -147,8 +151,14 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
 
   handleEvent: (event, ctx) =>
     Effect.gen(function* () {
+      if ((window as any).bunLog) {
+        (window as any).bunLog(`[TBCCShell] handleEvent: ${event.type}`);
+      }
       switch (event.type) {
         case "changeTab": {
+          if ((window as any).bunLog) {
+            (window as any).bunLog(`[TBCCShell] Changing tab to: ${event.tab}`);
+          }
           yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
           break
         }

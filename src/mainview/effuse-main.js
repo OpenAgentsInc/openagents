@@ -29189,6 +29189,9 @@ ${endStackCall}`;
     }),
     render: (ctx) => exports_Effect.gen(function* () {
       const state = yield* ctx.state.get;
+      if (window.bunLog) {
+        window.bunLog(`[TBCCShell] render called, activeTab=${state.activeTab}`);
+      }
       const tabItems = joinTemplates(TABS.map((tab) => {
         const isActive2 = tab.id === state.activeTab;
         const baseClasses = "flex items-center gap-3 px-4 py-3 text-sm font-mono transition-colors cursor-pointer";
@@ -29255,8 +29258,14 @@ ${endStackCall}`;
       });
     }),
     handleEvent: (event, ctx) => exports_Effect.gen(function* () {
+      if (window.bunLog) {
+        window.bunLog(`[TBCCShell] handleEvent: ${event.type}`);
+      }
       switch (event.type) {
         case "changeTab": {
+          if (window.bunLog) {
+            window.bunLog(`[TBCCShell] Changing tab to: ${event.tab}`);
+          }
           yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }));
           break;
         }
