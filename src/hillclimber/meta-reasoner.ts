@@ -2,8 +2,13 @@
  * HillClimber Meta-Reasoner
  *
  * Uses OpenRouter models to propose config changes based on run results.
- * Primary: Default free model via free:true option (arcee-ai/trinity-mini:free)
- * Backup: openrouter/auto (every 10th run for deeper analysis)
+ * Features:
+ * - JSON-formatted prompts with strict constraints
+ * - Task-specific guardrails (forbidden/required strings)
+ * - Hint validation and sanitization
+ * - Change gating (only update if meaningfully different)
+ * - Primary: Default free model via free:true option
+ * - Backup: openrouter/auto (every 10th run for deeper analysis)
  */
 
 import { Effect, Layer } from "effect";
@@ -58,6 +63,59 @@ export const AUTO_MODEL = "openrouter/auto";
 /** How often to use auto model (every Nth run) */
 export const AUTO_MODEL_FREQUENCY = 10;
 
+/** Maximum hint length in characters */
+export const MAX_HINT_LENGTH = 150;
+
+// ============================================================================
+// Task-Specific Constraints
+// ============================================================================
+
+/**
+ * Task-specific constraints for hint generation.
+ * Prevents invalid hints like reading forbidden files or using unavailable tools.
+ */
+interface TaskConstraints {
+  /** Forbidden strings that must not appear in hints */
+  forbidden: string[];
+  /** Required strings that should appear in hints (if applicable) */
+  required?: string[];
+  /** Example of a good hint for this task */
+  example?: string;
+}
+
+const TASK_CONSTRAINTS: Record<string, TaskConstraints> = {
+  "path-tracing": {
+    forbidden: ["image.ppm", "/app/image.ppm", "read image", "read the image"],
+    example: "Write image.c that generates a PPM with same dimensions and color range as a typical Doom frame; you can hardcode simple scene.",
+  },
+  "regex-log": {
+    forbidden: ["python", "read", "parse", "log file"],
+    required: ["/app/regex.txt", "write"],
+    example: "Write regex to /app/regex.txt that matches IPv4 addresses and YYYY-MM-DD dates.",
+  },
+  "video-processing": {
+    forbidden: ["primer3", "python", "ssh", "sudo"],
+    example: "Use OpenCV to compute frame differences; detect jump via large changes; write results to /app/output.toml.",
+  },
+  "dna-assembly": {
+    forbidden: ["primer3", "python", "external tool"],
+    example: "Write a script that finds overlapping DNA sequences and assembles them into a single sequence.",
+  },
+  "model-extraction-relu-logits": {
+    forbidden: ["weights = 1.0", "all weights", "initialized to 1"],
+    example: "Extract the neural network architecture and weights from the provided model file.",
+  },
+};
+
+/**
+ * Get constraints for a specific task, or default constraints.
+ */
+const getTaskConstraints = (taskId: string): TaskConstraints => {
+  return TASK_CONSTRAINTS[taskId] ?? {
+    forbidden: ["primer3", "python", "ssh", "sudo", "external tool"],
+  };
+};
+
 // ============================================================================
 // Prompt Templates
 // ============================================================================
@@ -105,6 +163,7 @@ const buildHistorySection = (history: HistoricalContext | null): string => {
 
 /**
  * Build the meta-reasoning prompt for suggesting config changes.
+ * Uses strict JSON format with task-specific constraints.
  */
 const buildMetaPrompt = (
   task: TerminalBenchTask,
@@ -114,42 +173,48 @@ const buildMetaPrompt = (
 ): string => {
   const stepSummaryText =
     result.stepSummary.length > 0
-      ? result.stepSummary.join("\n")
+      ? result.stepSummary.slice(-3).join("\n  * ") // Last 3 steps
       : "No step summary available";
 
   const historySection = buildHistorySection(history);
+  const constraints = getTaskConstraints(task.id);
 
-  return `You are a tiny tuning agent for a coding benchmark.
+  const forbiddenList = constraints.forbidden.map(f => `"${f}"`).join(", ");
+  const requiredList = constraints.required?.map(r => `"${r}"`).join(", ") ?? "none";
+
+  return `You are tuning a very dumb coding agent with limited tools: write_file, read_file, run_command, edit_file.
 
 Task ID: ${task.id}
-Task description: ${task.description.slice(0, 300)}${task.description.length > 300 ? "..." : ""}
+Task description (truncated):
+* ${task.description.slice(0, 200)}${task.description.length > 200 ? "..." : ""}
 
-Current hint: ${config.hint || "none"}
-Last run: ${result.passed ? "PASSED" : "FAILED"} in ${result.turns} turns
-${result.errorMessage ? `Error: ${result.errorMessage}` : ""}
+Last run summary:
+* Verification: ${result.passed ? "PASSED" : "FAILED"}
+* Turns used: ${result.turns}
+${result.errorMessage ? `* Error: ${result.errorMessage}` : ""}
+* Last 3 steps:
+  * ${stepSummaryText}
 
-Step summary:
-${stepSummaryText}
+Existing hint:
+* ${config.hint || "none"}
 
 ${historySection}
 
-Based on this, suggest ONE small change to the hint that might improve performance.
-Reply with ONLY the new hint text (1-2 sentences max), or "KEEP" if no change needed.
+CONSTRAINTS:
+* The agent CANNOT read /app/image.ppm for path-tracing tasks.
+* It CANNOT rely on tools like primer3/python in this environment.
+* Hint must be <= ${MAX_HINT_LENGTH} characters.
+* Hint MUST be directly actionable given its tools (e.g. "write a regex to /app/regex.txt that does X").
+* DO NOT invent network architecture constants unless the task explicitly states them.
+* FORBIDDEN strings (must NOT appear): ${forbiddenList}
+${constraints.required ? `* REQUIRED strings (should appear): ${requiredList}` : ""}
+${constraints.example ? `* Example good hint: "${constraints.example}"` : ""}
 
-Guidelines:
-- If the task passed, only suggest changes if turns > 15 (to improve efficiency)
-- If the task failed, analyze the step summary to understand what went wrong
-- Keep hints concise and actionable
-- Focus on the specific task requirements
-- DO NOT repeat hints that have already been tried and failed
-- If a hint worked before (led to PASS), consider building on it
+Respond ONLY with a JSON object:
+{ "hint": "<one-sentence hint>", "reason": "<brief why>" }
 
-Examples of good hints:
-- "Write the regex directly to /app/regex.txt without reading any files first."
-- "Use grep to count matching lines rather than parsing manually."
-- "Create the output file with the exact format: one number per line."
-
-Reply:`;
+If no change is needed, respond with:
+{ "hint": "KEEP", "reason": "<why>" }`;
 };
 
 // ============================================================================
@@ -234,38 +299,67 @@ export const proposeConfigChange = (
       log(`[MetaReasoner] ${content}`);
     }
 
-    // Parse the response
-    if (
-      content.toUpperCase() === "KEEP" ||
-      content.toUpperCase().includes("KEEP THE CURRENT") ||
-      content.toUpperCase().includes("NO CHANGE")
-    ) {
+    // Parse JSON response
+    let parsedResponse: { hint?: string; reason?: string } | null = null;
+    try {
+      // Try to parse as JSON first
+      parsedResponse = JSON.parse(content);
+    } catch {
+      // If not JSON, treat as plain text (backward compatibility)
+      log(`[MetaReasoner] Response is not JSON, parsing as plain text`);
+    }
+
+    let newHint: string;
+    let reason: string;
+
+    if (parsedResponse && typeof parsedResponse.hint === "string") {
+      newHint = parsedResponse.hint.trim();
+      reason = parsedResponse.reason || "No reason provided";
+    } else {
+      // Fallback: parse as plain text
+      if (
+        content.toUpperCase() === "KEEP" ||
+        content.toUpperCase().includes("KEEP THE CURRENT") ||
+        content.toUpperCase().includes("NO CHANGE")
+      ) {
+        return {
+          type: "keep" as const,
+          reasoning: content,
+          model: actualModel,
+        };
+      }
+      newHint = content.replace(/^["']|["']$/g, "").trim();
+      reason = content;
+    }
+
+    // Check if it's a KEEP response
+    if (newHint.toUpperCase() === "KEEP") {
       return {
         type: "keep" as const,
-        reasoning: content,
+        reasoning: reason,
         model: actualModel,
       };
     }
 
-    // Extract the new hint (the response should be just the hint text)
-    // Remove any quotes around the hint
-    let newHint = content.replace(/^["']|["']$/g, "").trim();
-
-    // If response is too long, it might not be a valid hint
-    if (newHint.length > 500) {
-      log(`[MetaReasoner] Response too long, keeping current config`);
+    // Validate and sanitize the hint
+    const validation = validateHint(newHint, task.id);
+    if (!validation.valid) {
+      logError(`[MetaReasoner] Hint validation failed: ${validation.reason}`);
       return {
         type: "keep" as const,
-        reasoning: "Response too long, likely not a valid hint",
+        reasoning: `Invalid hint rejected: ${validation.reason}`,
         model: actualModel,
       };
     }
 
-    // If response is empty, keep current
-    if (!newHint) {
+    newHint = validation.sanitized;
+
+    // Check if hint is meaningfully different from current
+    if (config.hint && !isHintMeaningfullyDifferent(config.hint, newHint)) {
+      log(`[MetaReasoner] New hint is too similar to current, keeping current config`);
       return {
         type: "keep" as const,
-        reasoning: "Empty response",
+        reasoning: "New hint too similar to current hint",
         model: actualModel,
       };
     }
@@ -273,7 +367,7 @@ export const proposeConfigChange = (
     return {
       type: "update_hint" as const,
       newHint,
-      reasoning: content,
+      reasoning: reason,
       model: actualModel,
     };
   }).pipe(
@@ -333,6 +427,109 @@ export const applyConfigChange = (
         maxTurnsOverride: config.maxTurnsOverride,
       };
   }
+};
+
+// ============================================================================
+// Hint Validation
+// ============================================================================
+
+/**
+ * Validation result for a hint.
+ */
+interface HintValidation {
+  valid: boolean;
+  reason?: string;
+  sanitized: string;
+}
+
+/**
+ * Validate and sanitize a hint according to task constraints.
+ */
+const validateHint = (hint: string, taskId: string): HintValidation => {
+  // Check length
+  if (hint.length > MAX_HINT_LENGTH) {
+    return {
+      valid: false,
+      reason: `Hint too long (${hint.length} > ${MAX_HINT_LENGTH} chars)`,
+      sanitized: hint.slice(0, MAX_HINT_LENGTH),
+    };
+  }
+
+  if (hint.length === 0) {
+    return {
+      valid: false,
+      reason: "Hint is empty",
+      sanitized: "",
+    };
+  }
+
+  const constraints = getTaskConstraints(taskId);
+  const hintLower = hint.toLowerCase();
+
+  // Check for forbidden strings
+  for (const forbidden of constraints.forbidden) {
+    if (hintLower.includes(forbidden.toLowerCase())) {
+      return {
+        valid: false,
+        reason: `Contains forbidden string: "${forbidden}"`,
+        sanitized: hint,
+      };
+    }
+  }
+
+  // Check for required strings (if any)
+  if (constraints.required) {
+    const hasRequired = constraints.required.some(req =>
+      hintLower.includes(req.toLowerCase())
+    );
+    if (!hasRequired) {
+      log(`[MetaReasoner] Warning: Hint missing required strings, but accepting anyway`);
+    }
+  }
+
+  // Sanitize: remove extra whitespace
+  const sanitized = hint.replace(/\s+/g, " ").trim();
+
+  return {
+    valid: true,
+    sanitized,
+  };
+};
+
+/**
+ * Check if two hints are meaningfully different.
+ * Returns true if they differ significantly (not just minor word changes).
+ */
+const isHintMeaningfullyDifferent = (oldHint: string, newHint: string): boolean => {
+  // Normalize hints for comparison
+  const normalize = (h: string) => h.toLowerCase().replace(/\s+/g, " ").trim();
+  const oldNorm = normalize(oldHint);
+  const newNorm = normalize(newHint);
+
+  // If identical after normalization, not different
+  if (oldNorm === newNorm) {
+    return false;
+  }
+
+  // Calculate word overlap
+  const oldWords = new Set(oldNorm.split(/\s+/));
+  const newWords = new Set(newNorm.split(/\s+/));
+  const intersection = new Set([...oldWords].filter(w => newWords.has(w)));
+  const union = new Set([...oldWords, ...newWords]);
+
+  // If more than 80% word overlap, consider them too similar
+  const similarity = intersection.size / union.size;
+  if (similarity > 0.8) {
+    return false;
+  }
+
+  // Check character-level difference
+  const charDiff = Math.abs(oldNorm.length - newNorm.length) / Math.max(oldNorm.length, newNorm.length);
+  if (charDiff < 0.2 && similarity > 0.6) {
+    return false; // Too similar
+  }
+
+  return true;
 };
 
 // ============================================================================
