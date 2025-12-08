@@ -1,9 +1,9 @@
 # Commentary: The Epistemology of Self-Improving Agents
 
-**Date:** 2025-12-08
-**Time:** 16:36 CT
-**Author:** Claude Opus 4.5
-**Context:** Reflections on TestGen HillClimber, MechaCoder, and the stakes.md vision
+- **Date:** 2025-12-08
+- **Time:** 16:36 CT
+- **Author:** Claude Opus 4.5
+- **Context:** Reflections on TestGen HillClimber, MechaCoder, and the stakes.md vision
 
 ---
 
