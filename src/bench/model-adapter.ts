@@ -751,8 +751,8 @@ const buildFMSystemPrompt = (options?: {
 export const parseToolCalls = (text: string): Array<{ name: string; arguments: Record<string, unknown> }> => {
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
-  // Try <tool_call>...</tool_call> format
-  const tagRegex = /<tool_call>(.*?)<\/tool_call>/gs;
+  // Try <tool_call>...</tool_call> format (with optional closing tag)
+  const tagRegex = /<tool_call>(\{.*?\})(?:<\/tool_call>)?/gs;
   let match;
   while ((match = tagRegex.exec(text)) !== null) {
     try {
@@ -765,6 +765,26 @@ export const parseToolCalls = (text: string): Array<{ name: string; arguments: R
       }
     } catch {
       // Skip malformed tool calls
+    }
+  }
+
+  // Also try just <tool_call>{...} without closing tag (FM sometimes does this)
+  if (calls.length === 0) {
+    const unclosedRegex = /<tool_call>(\{[^<]+)/g;
+    while ((match = unclosedRegex.exec(text)) !== null) {
+      try {
+        // Clean up the JSON - might have trailing whitespace or newlines
+        const jsonStr = match[1].trim();
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.name && typeof parsed.name === "string") {
+          calls.push({
+            name: parsed.name,
+            arguments: parsed.arguments ?? {},
+          });
+        }
+      } catch {
+        // Skip malformed tool calls
+      }
     }
   }
 

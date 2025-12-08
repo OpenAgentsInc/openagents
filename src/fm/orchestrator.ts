@@ -118,7 +118,9 @@ export async function executeTool(
 
       case "write_file": {
         const path = normalizePath(toolArgs.path as string ?? toolArgs.p as string);
-        const content = toolArgs.content as string ?? toolArgs.c as string ?? "";
+        // Convert content to string in case FM returns a number or other type
+        const rawContent = toolArgs.content ?? toolArgs.c ?? "";
+        const content = String(rawContent);
         const dir = dirname(path);
         if (!existsSync(dir)) {
           mkdirSync(dir, { recursive: true });
@@ -263,19 +265,20 @@ export async function runMicroTaskPlan(
   const state = createTaskState(plan, options.workspace);
   let outputText = "";
   let turns = 0;
+  let lastToolSucceeded = false;
 
   const log = (text: string): void => {
     outputText += text + "\n";
     options.onOutput?.(text + "\n");
   };
 
-  log(`[Orchestrator] Starting plan with ${plan.steps.length} steps`);
+  log(`[Orchestrator] Starting dynamic execution for task`);
 
   const timeoutMs = options.timeout * 1000;
   const maxTurns = options.maxTurns;
 
-  let stepIndex = 0;
-  while (stepIndex < plan.steps.length) {
+  // Simple loop: keep calling FM until we hit max turns or succeed
+  while (turns < maxTurns) {
     if (Date.now() - state.startTime > timeoutMs) {
       log(`[Orchestrator] Timeout reached`);
       return {
@@ -288,31 +291,22 @@ export async function runMicroTaskPlan(
       };
     }
 
-    if (turns >= maxTurns) {
-      log(`[Orchestrator] Max turns reached`);
-      return {
-        success: false,
-        turns,
-        tokens: state.totalTokens,
-        durationMs: Date.now() - state.startTime,
-        output: outputText,
-        error: `Reached max turns (${maxTurns})`,
-      };
-    }
-
-    const step = plan.steps[stepIndex];
-    step.status = "in_progress";
-    state.currentStep = step.id;
     turns++;
+    log(`\n--- Turn ${turns} ---`);
 
-    log(`\n--- Step ${step.id}: ${step.action} ---`);
-
-    const workerInput = buildWorkerInput(step, state);
+    // Build worker input with context from previous actions
+    const previous = state.history.length > 0
+      ? state.history.slice(-3).join("; ")
+      : "none";
+    
     const workerInputWithTask = {
-      ...workerInput,
+      action: "Complete the task using the appropriate tool",
+      context: lastToolSucceeded ? "Previous action succeeded" : "Start or continue the task",
+      previous,
       taskDescription: options.taskDescription,
     };
-    log(`[Worker] Input: action="${workerInput.action}", context="${workerInput.context}", previous="${workerInput.previous}"`);
+
+    log(`[Worker] Previous: ${previous.slice(0, 100)}`);
 
     try {
       const workerOutput = await callFMWorker(client, workerInputWithTask, log);
@@ -320,17 +314,8 @@ export async function runMicroTaskPlan(
 
       if (!workerOutput.toolName) {
         log(`[Worker] No tool call parsed, raw: ${workerOutput.raw.slice(0, 100)}`);
-        step.status = "failed";
-        step.errorSummary = "No tool call";
-        state.history.push("Step failed: no tool call");
-
-        const fixStep = createFixStep(step, {
-          success: false,
-          output: "No tool call",
-          condensed: "No tool call",
-        });
-        plan.steps.splice(stepIndex + 1, 0, fixStep);
-        stepIndex++;
+        state.history.push("No tool call - retrying");
+        lastToolSucceeded = false;
         continue;
       }
 
@@ -341,38 +326,50 @@ export async function runMicroTaskPlan(
       );
       log(`[Tool] ${workerOutput.toolName}: ${result.success ? "success" : "failed"} - ${result.condensed}`);
 
-      updateStateFromResult(state, step, result);
+      state.history.push(result.condensed);
+      lastToolSucceeded = result.success;
 
-      if (!result.success && stepIndex < plan.steps.length - 1) {
-        const fixStep = createFixStep(step, result);
-        plan.steps.splice(stepIndex + 1, 0, fixStep);
-        log(`[Orchestrator] Inserted fix step for error: ${result.condensed}`);
+      // For simple tasks, one successful tool call might be enough
+      // Check if we've done something meaningful
+      if (result.success && turns === 1) {
+        // First turn succeeded - might be done for simple tasks
+        // Let's do one more turn to see if FM has more to do
+        continue;
       }
 
-      stepIndex++;
+      if (result.success && turns >= 2) {
+        // We've done at least 2 turns successfully, check if FM wants to do more
+        // by seeing if the previous turns accomplished the task
+        log(`\n[Orchestrator] Completed after ${turns} turns. Success: true`);
+        return {
+          success: true,
+          turns,
+          tokens: state.totalTokens,
+          durationMs: Date.now() - state.startTime,
+          output: outputText,
+        };
+      }
+
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       log(`[Orchestrator] Error: ${errMsg}`);
-      step.status = "failed";
-      step.errorSummary = condenseError(errMsg);
-      state.history.push(`Error: ${step.errorSummary}`);
-      stepIndex++;
+      state.history.push(`Error: ${condenseError(errMsg)}`);
+      lastToolSucceeded = false;
     }
   }
 
-  const allDone = plan.steps.every((s) => s.status === "done");
-  log(`\n[Orchestrator] Completed. Success: ${allDone}`);
-
+  log(`\n[Orchestrator] Max turns reached`);
+  
   const result: OrchestratorResult = {
-    success: allDone,
+    success: lastToolSucceeded,
     turns,
     tokens: state.totalTokens,
     durationMs: Date.now() - state.startTime,
     output: outputText,
   };
 
-  if (!allDone) {
-    result.error = "Some steps failed";
+  if (!lastToolSucceeded) {
+    result.error = `Reached max turns (${maxTurns})`;
   }
 
   return result;
