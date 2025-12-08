@@ -26,7 +26,7 @@ import type { HillClimberOptions } from "./types.js";
 // Default Values
 // ============================================================================
 
-const DEFAULT_SUITE_PATH = "suites/terminal-bench-2.json";
+const DEFAULT_SUITE_PATH = "tasks/terminal-bench-2.json";
 const DEFAULT_MAX_RUNS = 100;
 const DEFAULT_SLEEP_MS = 30000; // 30 seconds
 
