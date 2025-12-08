@@ -673,4 +673,208 @@ describe("TB Command Center E2E", () => {
       )
     )
   })
+
+  // =========================================================================
+  // Phase 3: P1 Feature Tests
+  // =========================================================================
+
+  it("TBCC-011: Interactive difficulty filtering", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const taskHandle = yield* harness.mount(TBCCTaskBrowserWidget, {
+              containerId: "tbcc-tab-tasks",
+            })
+            yield* taskHandle.waitForState((s) => !s.loading)
+
+            // Initial state - all tasks visible
+            let html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // hard
+            expect(html).toContain("Write Docs") // easy
+
+            // Filter by hard difficulty
+            yield* taskHandle.emit({ type: "updateFilter", difficulty: "hard" })
+            yield* taskHandle.waitForState((s) => s.difficultyFilter === "hard")
+
+            html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // hard task should be visible
+            expect(html).not.toContain("Write Docs") // easy task should be hidden
+
+            // Filter by easy difficulty
+            yield* taskHandle.emit({ type: "updateFilter", difficulty: "easy" })
+            yield* taskHandle.waitForState((s) => s.difficultyFilter === "easy")
+
+            html = yield* taskHandle.getHTML
+            expect(html).not.toContain("Fix Bug") // hard task should be hidden
+            expect(html).toContain("Write Docs") // easy task should be visible
+
+            // Reset to all
+            yield* taskHandle.emit({ type: "updateFilter", difficulty: "all" })
+            yield* taskHandle.waitForState((s) => s.difficultyFilter === "all")
+
+            html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // both tasks visible
+            expect(html).toContain("Write Docs")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("TBCC-012: Real-time search functionality", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const taskHandle = yield* harness.mount(TBCCTaskBrowserWidget, {
+              containerId: "tbcc-tab-tasks",
+            })
+            yield* taskHandle.waitForState((s) => !s.loading)
+
+            // Initial state - all tasks visible
+            let html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug")
+            expect(html).toContain("Write Docs")
+
+            // Search for "Docs"
+            yield* taskHandle.emit({ type: "updateSearch", query: "Docs" })
+            yield* taskHandle.waitForState((s) => s.searchQuery === "Docs")
+
+            html = yield* taskHandle.getHTML
+            expect(html).not.toContain("Fix Bug") // doesn't match search
+            expect(html).toContain("Write Docs") // matches search
+
+            // Search for "Bug"
+            yield* taskHandle.emit({ type: "updateSearch", query: "Bug" })
+            yield* taskHandle.waitForState((s) => s.searchQuery === "Bug")
+
+            html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // matches search
+            expect(html).not.toContain("Write Docs") // doesn't match
+
+            // Search by category "Debugging"
+            yield* taskHandle.emit({ type: "updateSearch", query: "Debugging" })
+            yield* taskHandle.waitForState((s) => s.searchQuery === "Debugging")
+
+            html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // category matches
+            expect(html).not.toContain("Write Docs") // category doesn't match
+
+            // Clear search
+            yield* taskHandle.emit({ type: "updateSearch", query: "" })
+            yield* taskHandle.waitForState((s) => s.searchQuery === "")
+
+            html = yield* taskHandle.getHTML
+            expect(html).toContain("Fix Bug") // both visible again
+            expect(html).toContain("Write Docs")
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, createMockSocket()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
+
+  it("Enhanced KPI calculations - edge cases", async () => {
+    // Test 1: All success
+    const ALL_SUCCESS = [
+      { ...MOCK_RUNS[0], runId: "run-1", outcome: "success" as const, durationMs: 5000 },
+      { ...MOCK_RUNS[0], runId: "run-2", outcome: "success" as const, durationMs: 3000 },
+      { ...MOCK_RUNS[0], runId: "run-3", outcome: "success" as const, durationMs: 7000 },
+    ]
+
+    const mockAllSuccess = (): SocketService => ({
+      ...createMockSocket(),
+      loadRecentTBRuns: () => Effect.succeed(ALL_SUCCESS as any),
+    })
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { layer } = yield* makeHappyDomLayer()
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const dashboardHandle1 = yield* harness.mount(TBCCDashboardWidget, {
+              containerId: "tbcc-tab-dashboard-1",
+            })
+            yield* dashboardHandle1.waitForState((s) => !s.loading)
+
+            const state = yield* dashboardHandle1.getState
+            expect(state.stats?.totalRuns).toBe(3)
+            expect(state.stats?.overallSuccessRate).toBe(1.0) // 100%
+            expect(state.stats?.avgDurationSeconds).toBe(5) // (5000 + 3000 + 7000) / 3 / 1000
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockAllSuccess()),
+            Effect.provide(layer)
+          )
+
+          // Test 2: All failure
+          const mockAllFailure = (): SocketService => ({
+            ...createMockSocket(),
+            loadRecentTBRuns: () => Effect.succeed([
+              { ...MOCK_RUNS[0], runId: "run-1", outcome: "failure" as const },
+              { ...MOCK_RUNS[0], runId: "run-2", outcome: "failure" as const },
+            ] as any),
+          })
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const dashboardHandle2 = yield* harness.mount(TBCCDashboardWidget, {
+              containerId: "tbcc-tab-dashboard-2",
+            })
+            yield* dashboardHandle2.waitForState((s) => !s.loading)
+
+            const state = yield* dashboardHandle2.getState
+            expect(state.stats?.totalRuns).toBe(2)
+            expect(state.stats?.overallSuccessRate).toBe(0.0) // 0%
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockAllFailure()),
+            Effect.provide(layer)
+          )
+
+          // Test 3: No runs
+          const mockNoRuns = (): SocketService => ({
+            ...createMockSocket(),
+            loadRecentTBRuns: () => Effect.succeed([]),
+          })
+
+          yield* Effect.gen(function* () {
+            const harness = yield* TestHarnessTag
+
+            const dashboardHandle3 = yield* harness.mount(TBCCDashboardWidget, {
+              containerId: "tbcc-tab-dashboard-3",
+            })
+            yield* dashboardHandle3.waitForState((s) => !s.loading)
+
+            const state = yield* dashboardHandle3.getState
+            expect(state.stats?.totalRuns).toBe(0)
+
+          }).pipe(
+            Effect.provideService(SocketServiceTag, mockNoRuns()),
+            Effect.provide(layer)
+          )
+        })
+      )
+    )
+  })
 })
