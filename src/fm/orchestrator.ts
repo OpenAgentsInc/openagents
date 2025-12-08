@@ -109,10 +109,12 @@ export async function executeTool(
           const lines = content.split("\n");
           content = lines.slice(start - 1, end).join("\n");
         }
+        // Include actual content in condensed so FM can use it (truncate if long)
+        const preview = content.length > 200 ? content.slice(0, 200) + "..." : content;
         return {
           success: true,
           output: content,
-          condensed: condenseSummary(`Read ${basename(path)}: ${content.length} chars`),
+          condensed: `${basename(path)} contains: ${preview}`,
         };
       }
 
@@ -174,10 +176,17 @@ export async function executeTool(
         const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
 
         if (exitCode === 0) {
+          // Include stdout in condensed so FM can use the output
+          const preview = stdout.trim().length > 200 
+            ? stdout.trim().slice(0, 200) + "..." 
+            : stdout.trim();
+          const condensed = preview 
+            ? `Command output: ${preview}`
+            : "Command succeeded (no output)";
           return {
             success: true,
             output: `Exit 0\n${output}`,
-            condensed: condenseSummary(`Command succeeded`),
+            condensed,
           };
         } else {
           return {
@@ -265,7 +274,9 @@ export async function runMicroTaskPlan(
   const state = createTaskState(plan, options.workspace);
   let outputText = "";
   let turns = 0;
-  let lastToolSucceeded = false;
+  let consecutiveFailures = 0;
+  let hadAnySuccess = false;
+  const MAX_CONSECUTIVE_FAILURES = 3;
 
   const log = (text: string): void => {
     outputText += text + "\n";
@@ -282,12 +293,24 @@ export async function runMicroTaskPlan(
     if (Date.now() - state.startTime > timeoutMs) {
       log(`[Orchestrator] Timeout reached`);
       return {
-        success: false,
+        success: hadAnySuccess,
         turns,
         tokens: state.totalTokens,
         durationMs: Date.now() - state.startTime,
         output: outputText,
         error: "Task timed out",
+      };
+    }
+
+    // Stop if we've had too many consecutive failures after initial success
+    if (hadAnySuccess && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      log(`\n[Orchestrator] ${MAX_CONSECUTIVE_FAILURES} consecutive failures after success - task likely complete`);
+      return {
+        success: true,
+        turns,
+        tokens: state.totalTokens,
+        durationMs: Date.now() - state.startTime,
+        output: outputText,
       };
     }
 
@@ -301,7 +324,7 @@ export async function runMicroTaskPlan(
     
     const workerInputWithTask = {
       action: "Complete the task using the appropriate tool",
-      context: lastToolSucceeded ? "Previous action succeeded" : "Start or continue the task",
+      context: hadAnySuccess ? "Previous action succeeded" : "Start or continue the task",
       previous,
       taskDescription: options.taskDescription,
     };
@@ -315,7 +338,7 @@ export async function runMicroTaskPlan(
       if (!workerOutput.toolName) {
         log(`[Worker] No tool call parsed, raw: ${workerOutput.raw.slice(0, 100)}`);
         state.history.push("No tool call - retrying");
-        lastToolSucceeded = false;
+        consecutiveFailures++;
         continue;
       }
 
@@ -327,49 +350,34 @@ export async function runMicroTaskPlan(
       log(`[Tool] ${workerOutput.toolName}: ${result.success ? "success" : "failed"} - ${result.condensed}`);
 
       state.history.push(result.condensed);
-      lastToolSucceeded = result.success;
 
-      // For simple tasks, one successful tool call might be enough
-      // Check if we've done something meaningful
-      if (result.success && turns === 1) {
-        // First turn succeeded - might be done for simple tasks
-        // Let's do one more turn to see if FM has more to do
-        continue;
-      }
-
-      if (result.success && turns >= 2) {
-        // We've done at least 2 turns successfully, check if FM wants to do more
-        // by seeing if the previous turns accomplished the task
-        log(`\n[Orchestrator] Completed after ${turns} turns. Success: true`);
-        return {
-          success: true,
-          turns,
-          tokens: state.totalTokens,
-          durationMs: Date.now() - state.startTime,
-          output: outputText,
-        };
+      if (result.success) {
+        hadAnySuccess = true;
+        consecutiveFailures = 0;
+      } else {
+        consecutiveFailures++;
       }
 
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       log(`[Orchestrator] Error: ${errMsg}`);
       state.history.push(`Error: ${condenseError(errMsg)}`);
-      lastToolSucceeded = false;
+      consecutiveFailures++;
     }
   }
 
   log(`\n[Orchestrator] Max turns reached`);
   
   const result: OrchestratorResult = {
-    success: lastToolSucceeded,
+    success: hadAnySuccess,
     turns,
     tokens: state.totalTokens,
     durationMs: Date.now() - state.startTime,
     output: outputText,
   };
 
-  if (!lastToolSucceeded) {
-    result.error = `Reached max turns (${maxTurns})`;
+  if (!hadAnySuccess) {
+    result.error = `Reached max turns (${maxTurns}) with no success`;
   }
 
   return result;
