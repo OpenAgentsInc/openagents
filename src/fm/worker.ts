@@ -47,6 +47,7 @@ Available tools:
 - read_file: {"name":"read_file","arguments":{"path":"file.txt"}}
 - run_command: {"name":"run_command","arguments":{"command":"ls -la"}}
 - edit_file: {"name":"edit_file","arguments":{"path":"file.txt","old_text":"old","new_text":"new"}}
+- verify_progress: {"name":"verify_progress","arguments":{}} - Check how many tests are passing
 - task_complete: {"name":"task_complete","arguments":{}} - Call this when the task is finished
 
 IMPORTANT: The ONLY tools you may call are:
@@ -54,6 +55,7 @@ IMPORTANT: The ONLY tools you may call are:
 - read_file
 - run_command
 - edit_file
+- verify_progress
 - task_complete
 
 If you put any other name in the "name" field, it will fail. Skills/approaches listed above are for inspiration only - they are NOT callable tools.
@@ -64,6 +66,8 @@ export interface WorkerPromptInput extends WorkerInput {
   taskDescription?: string | undefined;
   skills?: Skill[] | undefined;
   hint?: string | undefined;
+  /** Verification feedback from last test run (e.g., "3/9 tests passing. Failures: ...") */
+  verificationFeedback?: string | undefined;
 }
 
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
@@ -89,11 +93,21 @@ ${approaches}
 `;
   }
 
+  // Format verification feedback if provided (KEY for MAP architecture)
+  // This is what allows FM to iterate based on test results
+  let verificationSection = "";
+  if (input.verificationFeedback) {
+    verificationSection = `
+VERIFICATION STATUS:
+${input.verificationFeedback}
+`;
+  }
+
   return `${WORKER_SYSTEM}
 ${skillsSection}
 ${taskSection}
 Context: ${input.context}
-${input.previous !== "none" ? `Previous: ${input.previous}` : ""}${hint}
+${input.previous !== "none" ? `Previous: ${input.previous}` : ""}${verificationSection}${hint}
 
 Respond with a single tool call:`;
 }
