@@ -15,12 +15,16 @@ import type { HudMessage } from "../hud/protocol.js";
 import type {
   SocketRequest,
   SocketResponse,
-  TBSuiteInfo,
-  TBRunHistoryItem,
-  TBRunDetails,
   MCTask,
   UnifiedTrajectory,
 } from "../desktop/protocol.js";
+import type {
+  TBRunOptions,
+  TBRunResult,
+  TBSuiteInfo,
+  TBRunHistoryItem,
+  TBRunDetails,
+} from "../shared/tb-types.js";
 import {
   generateCorrelationId,
   parseSocketMessage,
@@ -304,16 +308,7 @@ export class SocketClient {
   /**
    * Start a TB run.
    */
-  async startTBRun(options: {
-    suitePath: string;
-    taskIds?: string[];
-    timeout?: number;
-    maxTurns?: number;
-    outputDir?: string;
-    model?: "fm" | "claude-code" | string;
-    sandbox?: boolean;
-    random?: boolean;
-  }): Promise<{ runId: string }> {
+  async startTBRun(options: TBRunOptions): Promise<TBRunResult> {
     const response = await this.request("request:startTBRun", options);
     if (!response.success) {
       throw new Error(response.error ?? "Failed to start run");

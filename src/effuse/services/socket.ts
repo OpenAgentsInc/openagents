@@ -6,14 +6,18 @@
 
 import { Context, Effect, Stream } from "effect"
 import type { HudMessage } from "../../hud/protocol.js"
+import type { MCTask, UnifiedTrajectory } from "../../desktop/protocol.js"
+import type { Trajectory } from "../../atif/schema.js"
 import type {
+  TBRunOptions,
+  TBRunResult,
   TBSuiteInfo,
   TBRunHistoryItem,
   TBRunDetails,
-  MCTask,
-  UnifiedTrajectory,
-} from "../../desktop/protocol.js"
-import type { Trajectory } from "../../atif/schema.js"
+} from "../../shared/tb-types.js"
+
+// Re-export for convenience
+export type { TBRunOptions, TBRunResult, TBSuiteInfo, TBRunHistoryItem, TBRunDetails }
 
 /**
  * Error types for socket operations
@@ -30,23 +34,8 @@ export class SocketError extends Error {
   }
 }
 
-/**
- * Options for starting a TB run
- */
-export interface StartTBRunOptions {
-  suitePath: string
-  taskIds?: string[]
-  timeout?: number
-  maxTurns?: number
-  outputDir?: string
-  subset?: string
-  runAll?: boolean
-  random?: boolean
-  /** Model to use: "fm" (Foundation Model), "claude-code", or ollama:<model> */
-  model?: "fm" | "claude-code" | string
-  /** Enable sandbox mode */
-  sandbox?: boolean
-}
+/** @deprecated Use TBRunOptions from shared/tb-types.ts */
+export type StartTBRunOptions = TBRunOptions
 
 /**
  * Options for assigning a task to MechaCoder
