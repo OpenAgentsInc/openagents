@@ -30525,10 +30525,18 @@ ${endStackCall}`;
             <button
               class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-mono rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               data-action="generate"
-              ${state.status !== "idle" && state.status !== "complete" && state.status !== "error" ? "disabled" : ""}
+              ${state.status === "generating" || state.status === "loading_suite" ? "disabled" : ""}
             >
               ${state.status === "generating" ? "Generating..." : "▶ Generate"}
             </button>
+            ${state.status === "generating" ? html`
+                  <button
+                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-mono rounded transition-colors"
+                    data-action="cancel"
+                  >
+                    Cancel
+                  </button>
+                ` : ""}
             ${state.status === "complete" || state.status === "error" ? html`
                   <button
                     class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-mono rounded transition-colors"
@@ -30688,6 +30696,9 @@ ${endStackCall}`;
       yield* ctx.dom.delegate(ctx.container, "[data-action='clear']", "click", () => {
         exports_Effect.runFork(ctx.emit({ type: "clear" }));
       });
+      yield* ctx.dom.delegate(ctx.container, "[data-action='cancel']", "click", () => {
+        exports_Effect.runFork(ctx.emit({ type: "cancel" }));
+      });
     }),
     handleEvent: (event, ctx) => exports_Effect.gen(function* () {
       const socket = yield* SocketServiceTag;
@@ -30760,6 +30771,15 @@ ${endStackCall}`;
           }));
           break;
         }
+        case "cancel": {
+          yield* ctx.state.update((s) => ({
+            ...s,
+            status: "idle",
+            sessionId: null,
+            error: null
+          }));
+          break;
+        }
       }
     }),
     subscriptions: (ctx) => {
@@ -30775,6 +30795,7 @@ ${endStackCall}`;
             const data = msg;
             yield* ctx.state.update((s) => ({
               ...s,
+              status: "generating",
               taskId: data.taskId,
               taskDescription: data.taskDescription,
               environment: data.environment
