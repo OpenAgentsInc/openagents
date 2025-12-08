@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test"
 import { Effect, Stream } from "effect"
 import { makeHappyDomLayer } from "../../testing/layers/happy-dom.js"
 import { TestHarnessTag, TestBrowserTag } from "../../testing/index.js"
-import { SocketServiceTag, type SocketService } from "../../services/socket.js"
+import { SocketServiceTag, SocketError, type SocketService } from "../../services/socket.js"
 import {
   TBCCDashboardWidget,
   TBCCTaskBrowserWidget,
@@ -123,6 +123,7 @@ const createMockSocket = (): SocketService => ({
   loadUnifiedTrajectories: () => Effect.succeed([]),
   getHFTrajectoryCount: () => Effect.succeed(0),
   getHFTrajectories: () => Effect.succeed([]),
+  startTestGen: () => Effect.fail(new SocketError("request_failed", "Mock")),
 })
 
 describe("TB Command Center E2E", () => {

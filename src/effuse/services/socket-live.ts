@@ -97,6 +97,10 @@ const makeSocketService = (client: SocketClient): SocketService => {
 
     getHFTrajectories: (offset, limit) =>
       wrapRequest<Trajectory[]>(() => client.getHFTrajectories(offset, limit) as Promise<Trajectory[]>),
+
+    // Test Generation Operations
+    startTestGen: (suitePath, taskId, model) =>
+      wrapRequest(() => client.startTestGen(suitePath, taskId, model)),
   }
 }
 

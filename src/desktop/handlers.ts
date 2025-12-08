@@ -33,6 +33,7 @@ import {
   isGetHFTrajectoryCountRequest,
   isGetHFTrajectoriesRequest,
   isGetHFTrajectoryRequest,
+  isStartTestGenRequest,
   createSuccessResponse,
   createErrorResponse,
   type UnifiedTrajectory,
@@ -53,6 +54,22 @@ import {
   HFDatasetServiceLive,
 } from "../huggingface/index.js";
 import type { Trajectory } from "../atif/schema.js";
+import { runTestGenWithStreaming } from "../hillclimber/testgen-service.js";
+import type { HudMessage } from "../hud/protocol.js";
+import { generateCorrelationId } from "./protocol.js";
+
+// ============================================================================
+// HUD Message Sender
+// ============================================================================
+
+let hudMessageSender: ((msg: HudMessage) => void) | null = null;
+
+/**
+ * Set the HUD message sender (called from server-worker.ts)
+ */
+export function setTestGenHudSender(sender: (msg: HudMessage) => void): void {
+  hudMessageSender = sender;
+}
 
 // ============================================================================
 // Project Root Resolution
@@ -703,6 +720,35 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       console.log(`[Handler] Received getHFTrajectory request (index=${request.index})`);
       const data = await getHFTrajectory(request.index);
       return createSuccessResponse("response:getHFTrajectory", correlationId, data);
+    }
+
+    if (isStartTestGenRequest(request)) {
+      console.log(`[Handler] Received startTestGen request (taskId=${request.taskId ?? "random"})`);
+
+      if (!hudMessageSender) {
+        return createErrorResponse("response:startTestGen", correlationId, "HUD message sender not initialized");
+      }
+
+      const sessionId = generateCorrelationId();
+      const model = request.model ?? "local";
+
+      // Run test generation in background with streaming HUD messages
+      runTestGenWithStreaming(
+        request.suitePath,
+        request.taskId,
+        sessionId,
+        {
+          onStart: (msg) => hudMessageSender!(msg),
+          onTest: (msg) => hudMessageSender!(msg),
+          onComplete: (msg) => hudMessageSender!(msg),
+          onError: (msg) => hudMessageSender!(msg),
+        },
+        { model }
+      ).catch((err) => {
+        console.error(`[Handler] TestGen background error:`, err);
+      });
+
+      return createSuccessResponse("response:startTestGen", correlationId, { sessionId });
     }
 
     // Unknown request type

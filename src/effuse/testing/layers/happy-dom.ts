@@ -156,6 +156,8 @@ const makeSocketService = (
     Effect.fail(new SocketError("request_failed", "Mock: loadUnifiedTrajectories")),
   getHFTrajectoryCount: () => Effect.succeed(0),
   getHFTrajectories: (_, __) => Effect.succeed([]),
+  startTestGen: (_, __, ___) =>
+    Effect.fail(new SocketError("request_failed", "Mock: startTestGen")),
 })
 
 /**

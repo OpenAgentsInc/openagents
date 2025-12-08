@@ -848,6 +848,63 @@ export interface DevReloadMessage {
 }
 
 // ============================================================================
+// Test Generation Events
+// ============================================================================
+
+/**
+ * Test generation started
+ */
+export interface TestGenStartMessage {
+  type: "testgen_start";
+  sessionId: string;
+  taskId: string;
+  taskDescription: string;
+  environment: {
+    platform: string;
+    prohibitedTools: string[];
+    languages: string[];
+    fileCount: number;
+    filePreviews: number;
+  };
+}
+
+/**
+ * Single test generated (streamed one at a time)
+ */
+export interface TestGenTestMessage {
+  type: "testgen_test";
+  sessionId: string;
+  test: {
+    id: string;
+    category: string;
+    input: string;
+    expectedOutput: string | null;
+    reasoning: string;
+    confidence: number;
+  };
+}
+
+/**
+ * Test generation complete
+ */
+export interface TestGenCompleteMessage {
+  type: "testgen_complete";
+  sessionId: string;
+  totalTests: number;
+  durationMs: number;
+  uncertainties: string[];
+}
+
+/**
+ * Test generation error
+ */
+export interface TestGenErrorMessage {
+  type: "testgen_error";
+  sessionId: string;
+  error: string;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -908,7 +965,11 @@ export type HudMessage =
   | TrainerEvolutionProfileEvaluatedMessage
   | TrainerEvolutionABResultMessage
   | TrainerEvolutionCompleteMessage
-  | DevReloadMessage;
+  | DevReloadMessage
+  | TestGenStartMessage
+  | TestGenTestMessage
+  | TestGenCompleteMessage
+  | TestGenErrorMessage;
 
 /**
  * Status stream payloads (headless RPC-compatible)
@@ -1080,3 +1141,23 @@ export const isTrainerMessage = (msg: HudMessage): boolean =>
 
 export const isDevReload = (msg: HudMessage): msg is DevReloadMessage =>
   msg.type === "dev_reload";
+
+// ============================================================================
+// Test Generation Event Type Guards
+// ============================================================================
+
+export const isTestGenStart = (msg: HudMessage): msg is TestGenStartMessage =>
+  msg.type === "testgen_start";
+
+export const isTestGenTest = (msg: HudMessage): msg is TestGenTestMessage =>
+  msg.type === "testgen_test";
+
+export const isTestGenComplete = (msg: HudMessage): msg is TestGenCompleteMessage =>
+  msg.type === "testgen_complete";
+
+export const isTestGenError = (msg: HudMessage): msg is TestGenErrorMessage =>
+  msg.type === "testgen_error";
+
+/** Check if message is any testgen-related message */
+export const isTestGenMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("testgen_");

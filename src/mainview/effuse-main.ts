@@ -18,6 +18,7 @@ import {
   TBCCTaskBrowserWidget,
   TBCCRunBrowserWidget,
   TBCCSettingsWidget,
+  TBTestGenWidget,
   // Streaming output widget (fixed overlay)
   TBOutputWidget,
 } from "../effuse/index.js"
@@ -102,6 +103,7 @@ const mountAllWidgets = Effect.gen(function* () {
   const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard")
   const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks")
   const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs")
+  const testGenWidget = yield* mountWidgetById(TBTestGenWidget, "tbcc-tab-testgen")
   const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings")
 
   // 3. Mount TBOutputWidget (fixed overlay for streaming output)
@@ -117,6 +119,7 @@ const mountAllWidgets = Effect.gen(function* () {
 
   // Mark as used (widgets are mounted but not directly referenced)
   void taskBrowserWidget
+  void testGenWidget
   void settingsWidget
 
   console.log("[Effuse] Child widgets mounted")
