@@ -234,3 +234,70 @@ await generateTestsIteratively(taskDescription, taskId, env, emitter, {
 1. Decide on approach (context-aware vs FM-powered)
 2. Implement as part of Phase 3 of the main refactor plan
 3. Update all callers to pass appropriate context
+
+---
+
+## Implementation Log
+
+**Date:** 2025-12-09  
+**Time:** ~16:30 CT  
+**Status:** ✅ Completed
+
+### What Was Done
+
+Implemented **Option 1: Context-Aware Categories** as recommended in this document.
+
+#### Changes Made
+
+1. **`src/hillclimber/test-generator-iterative.ts`**
+   - Added `TestGenContext` type: `"benchmark" | "commander" | "mechacoder" | "custom"`
+   - Added `getCategoriesForContext()` function that returns appropriate categories:
+     - `benchmark`: All 5 categories including `anti_cheat`
+     - `commander`: `existence`, `correctness`, `boundary` (no `anti_cheat`)
+     - `mechacoder`: `correctness`, `boundary` (minimal set)
+     - `custom`: User-specified categories (defaults to `correctness` if none provided)
+   - Updated `generateTestsIteratively()` to accept `context` and `categories` options
+   - Changed hardcoded `CATEGORIES` array to `ALL_CATEGORIES` and use context-aware selection
+   - Added logging for context and selected categories
+
+2. **`src/hillclimber/testgen-service.ts`**
+   - `runTestGenWithStreaming()`: Added `context: "benchmark"` (for TB2 tasks)
+   - `runCustomTestGen()`: Added `context: "commander"` (for free-form prompts)
+
+3. **`src/hillclimber/testgen-integration.ts`**
+   - `runTestGenForTask()`: Added `context: "benchmark"` (for TB2 tasks)
+
+4. **`scripts/run-testgen-regex-log.ts`**
+   - Added `context: "benchmark"` (for TB2 benchmark script)
+
+### Impact
+
+- ✅ **Commander** no longer generates `anti_cheat` tests for free-form prompts
+- ✅ **Benchmark tasks** still get full test suite including `anti_cheat`
+- ✅ **Backward compatible**: Defaults to `"benchmark"` if context not specified
+- ✅ **Extensible**: Easy to add new contexts or customize categories
+
+### Testing
+
+- No lint errors introduced
+- All callers updated to pass appropriate context
+- Changes committed and pushed to main
+
+### Commit
+
+```
+Refactor test generator to use context-aware categories
+
+Remove benchmark-specific hardcoding from generateTestsIteratively().
+TestGen now supports different contexts:
+- benchmark: All 5 categories including anti_cheat (for TB2)
+- commander: existence, correctness, boundary (for free-form prompts)
+- mechacoder: correctness, boundary (for autonomous coding)
+- custom: User-specified categories
+
+This prevents anti_cheat tests from being generated for non-benchmark
+use cases like Commander free-form prompts, which don't have forbidden
+tools.
+```
+
+**Commit hash:** `c2b5a974e`
