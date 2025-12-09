@@ -47,12 +47,35 @@ describe("E2E: regex-log task", () => {
       throw new Error("regex-log task not found in suite");
     }
 
-    // Copy TB2 task files to workspace
+    // Copy TB2 task files to workspace (proper setup)
     const taskDir = join(TB2_ROOT, "regex-log");
     if (existsSync(taskDir)) {
-      await cp(taskDir, join(workspace, "regex-log"), { recursive: true });
-      // Move contents to workspace root (TB2 structure)
-      // This is a simplified setup - real TB2 has more structure
+      // Copy environment files to workspace root
+      const envDir = join(taskDir, "environment");
+      if (existsSync(envDir)) {
+        const { readdirSync, statSync, cpSync } = await import("fs");
+        const entries = readdirSync(envDir);
+        for (const entry of entries) {
+          if (entry === "Dockerfile") continue;
+          const srcPath = join(envDir, entry);
+          const destPath = join(workspace, entry);
+          if (statSync(srcPath).isDirectory()) {
+            cpSync(srcPath, destPath, { recursive: true });
+          } else {
+            cpSync(srcPath, destPath);
+          }
+        }
+      }
+      
+      // Copy test files
+      const testsDir = join(taskDir, "tests");
+      const destTestsDir = join(workspace, "tests");
+      if (existsSync(testsDir)) {
+        await cp(testsDir, destTestsDir, { recursive: true });
+      }
+    } else {
+      console.warn(`[E2E] TB2 task directory not found: ${taskDir}`);
+      console.warn(`[E2E] Tests may fail - workspace not properly set up`);
     }
   });
 
