@@ -784,6 +784,17 @@ const buildFMSystemPrompt = (options?: {
 };
 
 /**
+ * Fix invalid JSON escape sequences that FM often produces.
+ * For example, \d, \s, \b, etc. are valid regex but invalid JSON.
+ * We escape the backslash so JSON.parse works.
+ */
+function fixInvalidEscapeSequences(jsonStr: string): string {
+  // List of characters that are valid JSON escape sequences: ", \, /, b, f, n, r, t, u
+  // Everything else needs to have its backslash escaped
+  return jsonStr.replace(/\\([^"\\/bfnrtu])/g, '\\\\$1');
+}
+
+/**
  * Attempt to fix common JSON issues from FM output.
  * Tries progressively shorter substrings ending at } to find valid JSON.
  */
@@ -832,7 +843,9 @@ export const parseToolCalls = (text: string): Array<{ name: string; arguments: R
   let match;
   while ((match = tagRegex.exec(text)) !== null) {
     try {
-      const parsed = JSON.parse(match[1]);
+      // Fix invalid escape sequences before parsing (e.g., \d, \s in regex)
+      const fixedJson = fixInvalidEscapeSequences(match[1]);
+      const parsed = JSON.parse(fixedJson);
       if (parsed.name && typeof parsed.name === "string") {
         calls.push({
           name: parsed.name,
