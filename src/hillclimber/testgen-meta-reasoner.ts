@@ -105,13 +105,21 @@ To ensure stable evolution, changes must be incremental:
 - maxTestsPerCategory: 5 → 6 (change of +1, within limit)
 - temperature: 0.3 → 0.4 (change of +0.1, within limit)
 - environmentWeight: 0.7 → 0.8 (change of +0.1, within limit)
+- antiCheatWeight: 0.8 → 0.9 (change of +0.1, within limit)
 
 **Examples of INVALID changes (will be rejected):**
 - minTestsPerCategory: 2 → 4 (change of +2, exceeds ±1 limit)
 - maxTestsPerCategory: 5 → 8 (change of +3, exceeds ±1 limit)
 - temperature: 0.3 → 0.6 (change of +0.3, exceeds ±0.1 limit)
 
-Propose SMALL, INCREMENTAL changes. If you want a larger change, propose it in steps over multiple iterations.
+**When to propose changes:**
+- If scores are stagnant or declining, propose small adjustments
+- If specific metrics are low (balance, anti-cheat, efficiency), adjust relevant weights
+- If token efficiency is low, consider reducing test counts or rounds
+- If comprehensiveness is low, consider increasing test counts or rounds
+- Temperature adjustments can help with diversity vs focus tradeoff
+
+Propose SMALL, INCREMENTAL changes. If you want a larger change, propose it in steps over multiple iterations. Don't be too conservative - small improvements add up over time.
 
 Return JSON with this exact structure:
 {
