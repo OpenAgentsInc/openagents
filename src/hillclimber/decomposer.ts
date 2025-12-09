@@ -86,6 +86,10 @@ Use the appropriate regex technique to enforce the condition before matching.`,
         "Lookahead (?=...) checks a condition WITHOUT consuming characters",
         "Positive lookahead (?=.*pattern) ensures pattern exists somewhere on the line",
         "Greedy .* matches as much as possible - useful for capturing the LAST match",
+        // IPv4 domain knowledge (legitimate - teaches what IPv4 IS, not the solution)
+        "IPv4 addresses use DOT notation: four numbers (0-255) separated by dots",
+        "Example IPv4: 192.168.1.1 — note the DOTS not dashes",
+        "IPv4 pattern: \\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3} (dots between octets)",
         // Process knowledge
         "Run verify_progress to see which tests pass and which fail",
         // JSON escaping knowledge (legitimate tooling help)
