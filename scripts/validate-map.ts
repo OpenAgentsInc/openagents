@@ -9,7 +9,6 @@
  */
 
 import { spawn } from "bun";
-import { existsSync } from "node:fs";
 
 const startTime = Date.now();
 

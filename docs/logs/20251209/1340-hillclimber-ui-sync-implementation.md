@@ -296,4 +296,26 @@ export const TestGenGraphComponent: Component<
 
 ---
 
-**Status:** ✅ Complete - Full CLI ↔ UI sync implemented
+## Post-Implementation Fix: Remove Hardcoded Demo Data
+
+After initial implementation, user noticed graph showed hardcoded demo nodes even with "SESSIONS (0)". Fixed by:
+
+1. **`types.ts`**: Updated `createTestGenNodes()` to create nodes with "waiting" status and zeroed data (removed hardcoded test counts, percentages, etc.)
+
+2. **`types.ts`**: Simplified `createTestGenConnections()` to only include core node connections (category/subtask nodes will be added dynamically)
+
+3. **`testgen-graph-component.ts`**: Changed `initialState()` to use empty `nodes: []` and `connections: []`
+
+4. **`state-mapper.ts`**: Added logic to initialize nodes when first session starts:
+   ```typescript
+   if (nodes.length === 0 && activeSession) {
+     nodes = createTestGenNodes()
+     connections = createTestGenConnections()
+   }
+   ```
+
+Now the graph only shows nodes when there's an active session with live data.
+
+---
+
+**Status:** ✅ Complete - Full CLI ↔ UI sync implemented (with live data only)

@@ -6,7 +6,7 @@
 
 import type { HudMessage } from "../../../hud/protocol.js"
 import type { TestGenGraphState, SessionRunState, TestGenNode } from "./types.js"
-import { createNewSession } from "./types.js"
+import { createNewSession, createTestGenNodes, createTestGenConnections } from "./types.js"
 
 // ============================================================================
 // Message Type Guards
@@ -182,16 +182,26 @@ export function mapMessageToState(
 
   sessions.set(sessionId, session)
 
-  // Update nodes based on active session
-  const activeSession = sessions.get(state.activeSessionId ?? sessionId)
-  const nodes = activeSession
-    ? updateNodesFromSession(state.nodes, activeSession)
-    : state.nodes
-
   // Auto-select new session if none active
   const activeSessionId = state.activeSessionId ?? sessionId
 
-  return { ...state, sessions, nodes, activeSessionId }
+  // Get active session for node updates
+  const activeSession = sessions.get(activeSessionId)
+
+  // Initialize nodes if empty (first session starting)
+  let nodes = state.nodes
+  let connections = state.connections
+  if (nodes.length === 0 && activeSession) {
+    nodes = createTestGenNodes()
+    connections = createTestGenConnections()
+  }
+
+  // Update nodes based on active session
+  if (activeSession) {
+    nodes = updateNodesFromSession(nodes, activeSession)
+  }
+
+  return { ...state, sessions, nodes, connections, activeSessionId }
 }
 
 // ============================================================================

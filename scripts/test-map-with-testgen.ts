@@ -12,7 +12,7 @@ import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { loadTerminalBenchSuite } from "../src/bench/terminal-bench.js";
 import { runMAPOrchestrator } from "../src/hillclimber/map-orchestrator.js";
-import { mkdirSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 

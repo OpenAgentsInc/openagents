@@ -5,7 +5,7 @@
  * Transparent background so the dot grid shows through.
  */
 
-import { Effect, Ref, Stream, pipe } from "effect"
+import { Effect } from "effect"
 import type { Component, ComponentContext } from "../component/types.js"
 import { html } from "../template/html.js"
 import * as THREE from "three"
@@ -51,12 +51,12 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
       const canvasResult = yield* ctx.dom.queryId<HTMLCanvasElement>(
         `${ctx.container.id}-three-bg-canvas`
       ).pipe(Effect.either)
-      
+
       if (canvasResult._tag === "Left") {
         // Canvas not found, return void (component will work without Three.js background)
         return
       }
-      
+
       const canvas = canvasResult.right
 
       // Set canvas size
@@ -290,9 +290,11 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
           if (conn.progress > 1) conn.progress = 0
 
           // Calculate dash offset based on progress
-          // Note: dashOffset may not exist in all Three.js versions, using type assertion
-          const totalLength = conn.line.geometry.attributes.position.count * 0.1
-          ;(material as any).dashOffset = -conn.progress * (material.dashSize + material.gapSize) * 10
+          // LineDashedMaterial has dashOffset but TypeScript types may not include it
+          const offset = -conn.progress * (material.dashSize + material.gapSize) * 10
+          if ("dashOffset" in material) {
+            (material as THREE.LineDashedMaterial & { dashOffset: number }).dashOffset = offset
+          }
         })
 
         renderer.render(scene, camera)
@@ -348,12 +350,16 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
         const intersects = raycaster.intersectObjects(nodes)
 
         if (intersects.length > 0) {
-          const clickedNode = intersects[0].object as THREE.Mesh
-          const nodeId = (clickedNode as any).nodeId
-          const atifType = (clickedNode as any).atifType
-          const label = (clickedNode as any).label
-          console.log(`[Three Background] ATIF ${atifType} (${label}) clicked`)
-          // TODO: Emit event or trigger action
+          const clickedNode = intersects[0].object as THREE.Mesh & {
+            atifType?: string
+            label?: string
+          }
+          const atifType = clickedNode.atifType
+          const label = clickedNode.label
+          if (atifType && label) {
+            console.log(`[Three Background] ATIF ${atifType} (${label}) clicked`)
+            // TODO: Emit event or trigger action
+          }
         }
       }
 

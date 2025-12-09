@@ -166,11 +166,11 @@ export type TestGenGraphEvent =
   | { type: "startRun"; mode: "quick" | "standard" | "full" }
 
 // ============================================================================
-// Initial Data (Hardcoded for now)
+// Initial Graph Structure
 // ============================================================================
 
 /**
- * Create initial TestGen nodes with hardcoded data
+ * Create initial TestGen nodes with waiting status (populated by live data)
  */
 export function createTestGenNodes(): TestGenNode[] {
   return [
@@ -182,10 +182,10 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 50,
       width: 140,
       height: 60,
-      status: "completed",
+      status: "waiting",
       data: {
-        taskName: "regex-log",
-        description: "Extract dates from log lines with IPv4",
+        taskName: "",
+        description: "",
       },
     },
     // TestGen node
@@ -196,10 +196,10 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 150,
       width: 140,
       height: 60,
-      status: "completed",
+      status: "waiting",
       data: {
-        testCount: 31,
-        phase: "complete",
+        testCount: 0,
+        phase: "start",
       },
     },
     // Decomposer node
@@ -210,128 +210,9 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 150,
       width: 140,
       height: 60,
-      status: "completed",
-      data: {
-        subtaskCount: 4,
-      },
-    },
-    // Category nodes (5 categories)
-    {
-      id: "category-boundary",
-      label: "boundary",
-      x: 50,
-      y: 250,
-      width: 100,
-      height: 50,
-      status: "completed",
-      data: {
-        categoryName: "boundary",
-        categoryTestCount: 4,
-      },
-    },
-    {
-      id: "category-existence",
-      label: "existence",
-      x: 50,
-      y: 320,
-      width: 100,
-      height: 50,
-      status: "completed",
-      data: {
-        categoryName: "existence",
-        categoryTestCount: 5,
-      },
-    },
-    {
-      id: "category-anti_cheat",
-      label: "anti_cheat",
-      x: 50,
-      y: 390,
-      width: 100,
-      height: 50,
-      status: "completed",
-      data: {
-        categoryName: "anti_cheat",
-        categoryTestCount: 4,
-      },
-    },
-    {
-      id: "category-correctness",
-      label: "correctness",
-      x: 50,
-      y: 460,
-      width: 100,
-      height: 50,
-      status: "completed",
-      data: {
-        categoryName: "correctness",
-        categoryTestCount: 3,
-      },
-    },
-    {
-      id: "category-integration",
-      label: "integration",
-      x: 50,
-      y: 530,
-      width: 100,
-      height: 50,
-      status: "completed",
-      data: {
-        categoryName: "integration",
-        categoryTestCount: 5,
-      },
-    },
-    // Subtask nodes (4 subtasks)
-    {
-      id: "subtask-write-regex",
-      label: "write-regex",
-      x: 300,
-      y: 250,
-      width: 120,
-      height: 50,
-      status: "completed",
-      data: {
-        subtaskName: "write-regex",
-        isActive: false,
-      },
-    },
-    {
-      id: "subtask-boundaries",
-      label: "boundaries",
-      x: 300,
-      y: 320,
-      width: 120,
-      height: 50,
-      status: "completed",
-      data: {
-        subtaskName: "boundaries",
-        isActive: false,
-      },
-    },
-    {
-      id: "subtask-iterate",
-      label: "iterate",
-      x: 300,
-      y: 390,
-      width: 120,
-      height: 50,
-      status: "running",
-      data: {
-        subtaskName: "iterate",
-        isActive: true,
-      },
-    },
-    {
-      id: "subtask-final",
-      label: "final-validation",
-      x: 300,
-      y: 460,
-      width: 120,
-      height: 50,
       status: "waiting",
       data: {
-        subtaskName: "final-validation",
-        isActive: false,
+        subtaskCount: 0,
       },
     },
     // FM node
@@ -342,10 +223,10 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 300,
       width: 140,
       height: 60,
-      status: "running",
+      status: "waiting",
       data: {
-        action: "tool_call",
-        toolName: "write_file",
+        action: "thinking",
+        toolName: "",
       },
     },
     // Solution node
@@ -356,9 +237,9 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 400,
       width: 140,
       height: 60,
-      status: "completed",
+      status: "waiting",
       data: {
-        content: "regex.txt",
+        content: "",
       },
     },
     // Verifier node
@@ -369,11 +250,11 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 500,
       width: 140,
       height: 60,
-      status: "running",
+      status: "waiting",
       data: {
-        running: true,
-        passed: 17,
-        total: 31,
+        running: false,
+        passed: 0,
+        total: 0,
       },
     },
     // Progress node
@@ -384,12 +265,12 @@ export function createTestGenNodes(): TestGenNode[] {
       y: 500,
       width: 140,
       height: 60,
-      status: "partial",
+      status: "waiting",
       data: {
-        percentage: 54.8,
-        bestPercentage: 89.5,
-        turn: 2,
-        maxTurns: 10,
+        percentage: 0,
+        bestPercentage: 0,
+        turn: 0,
+        maxTurns: 0,
       },
     },
   ]
@@ -397,31 +278,16 @@ export function createTestGenNodes(): TestGenNode[] {
 
 /**
  * Create initial connections between TestGen nodes
+ * Category and subtask nodes are added dynamically when data arrives
  */
 export function createTestGenConnections(): TestGenConnection[] {
   return [
     // Task to TestGen and Decomposer
     { from: "task", to: "testgen" },
     { from: "task", to: "decomposer" },
-    // TestGen to categories
-    { from: "testgen", to: "category-boundary" },
-    { from: "testgen", to: "category-existence" },
-    { from: "testgen", to: "category-anti_cheat" },
-    { from: "testgen", to: "category-correctness" },
-    { from: "testgen", to: "category-integration" },
     // TestGen and Decomposer to FM
     { from: "testgen", to: "fm" },
     { from: "decomposer", to: "fm" },
-    // Decomposer to subtasks
-    { from: "decomposer", to: "subtask-write-regex" },
-    { from: "decomposer", to: "subtask-boundaries" },
-    { from: "decomposer", to: "subtask-iterate" },
-    { from: "decomposer", to: "subtask-final" },
-    // Subtasks to FM
-    { from: "subtask-write-regex", to: "fm" },
-    { from: "subtask-boundaries", to: "fm" },
-    { from: "subtask-iterate", to: "fm" },
-    { from: "subtask-final", to: "fm" },
     // FM to Solution
     { from: "fm", to: "solution" },
     // Solution to Verifier

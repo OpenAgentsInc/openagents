@@ -158,6 +158,8 @@ const makeSocketService = (
   getHFTrajectories: (_, __) => Effect.succeed([]),
   startTestGen: (_, __, ___) =>
     Effect.fail(new SocketError("request_failed", "Mock: startTestGen")),
+  startHillClimber: (_, __, ___) =>
+    Effect.fail(new SocketError("request_failed", "Mock: startHillClimber")),
 })
 
 /**

@@ -5,8 +5,7 @@
  * These types map to the SQLite schema in .openagents/migrations/005_testgen_evolution.sql
  */
 
-import type { TestCategory, GeneratedTest } from "./test-generator.js";
-import type { EnvironmentInfo } from "./environment-info.js";
+import type { TestCategory } from "./test-generator.js";
 
 // ============================================================================
 // Core Domain Types
@@ -273,4 +272,3 @@ export const rowToTestGenEvolution = (row: any): TestGenEvolution => ({
   qualityDelta: row.quality_delta ?? null,
   createdAt: row.created_at,
 });
-

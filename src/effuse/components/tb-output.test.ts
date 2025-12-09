@@ -13,7 +13,6 @@ import {
   type TBOutputState,
   type TBOutputEvent,
   type TBOutputLine,
-  type TBOutputSource,
 } from "./tb-output.js"
 
 describe("TBOutputComponent", () => {

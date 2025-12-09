@@ -8,7 +8,7 @@
 import { Effect } from "effect"
 import { BunContext } from "@effect/platform-bun"
 import {
-    loadTerminalBenchSuite, type TerminalBenchTask
+    loadTerminalBenchSuite
 } from "../bench/terminal-bench.js"
 import { DatabaseLive, DatabaseService } from "../storage/database.js"
 import { log, logError } from "./logger.js"
@@ -22,7 +22,7 @@ import {
 } from "./testgen-service.js"
 import { TestGenStore, TestGenStoreLive } from "./testgen-store.js"
 import {
-    generateTestGenRunId, type TestGenConfig, type TestGenRunInput
+    generateTestGenRunId
 } from "./testgen-types.js"
 
 // ============================================================================

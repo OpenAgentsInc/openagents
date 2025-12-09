@@ -10,7 +10,7 @@
  * - Expected improvement: 10-20% per turn
  */
 
-import { mkdtempSync, rmSync, copyFileSync, existsSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";

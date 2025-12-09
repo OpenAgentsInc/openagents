@@ -110,7 +110,7 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
       }).join("")
 
     return html`
-      <div style="position: absolute; inset: 0; overflow: hidden;">
+      <div style="position: absolute; inset: 0; overflow: hidden; isolation: isolate;">
         <!-- Session List Sidebar -->
         <div style="
           position: absolute;
@@ -138,7 +138,7 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
             data-action="start-quick"
             style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; cursor: pointer; font-size: 12px;"
           >
-            Quick (3 turns)
+            QUICK TEST v2
           </button>
           <button
             data-action="start-standard"
@@ -159,7 +159,7 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
           id="testgen-graph-svg"
           width="100%"
           height="100%"
-          style="position: absolute; inset: 0; background: #000000; user-select: none;"
+          style="position: absolute; inset: 0; background: #000000; user-select: none; z-index: 0;"
         >
           ${rawHtml(
             renderGraph(
@@ -251,17 +251,18 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
     }
 
     // Mouse down: Start drag or pan
-    const handleMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return // Only left mouse button
+    const handleMouseDown = (e: Event) => {
+      const mouseEvent = e as MouseEvent
+      if (mouseEvent.button !== 0) return // Only left mouse button
 
       clickStartTime = Date.now()
-      clickStartPos = { x: e.clientX, y: e.clientY }
-      lastMouseX = e.clientX
-      lastMouseY = e.clientY
+      clickStartPos = { x: mouseEvent.clientX, y: mouseEvent.clientY }
+      lastMouseX = mouseEvent.clientX
+      lastMouseY = mouseEvent.clientY
 
       Effect.runFork(
         Effect.gen(function* () {
-          const worldPos = screenToWorld(e.clientX, e.clientY)
+          const worldPos = screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
           const node = findNodeAt(worldPos.x, worldPos.y)
 
           if (node) {
@@ -285,14 +286,15 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
     }
 
     // Mouse move: Update drag or pan
-    const handleMouseMove = (e: MouseEvent) => {
-      const dx = e.clientX - lastMouseX
-      const dy = e.clientY - lastMouseY
+    const handleMouseMove = (e: Event) => {
+      const mouseEvent = e as MouseEvent
+      const dx = mouseEvent.clientX - lastMouseX
+      const dy = mouseEvent.clientY - lastMouseY
 
       if (isDraggingNode) {
         Effect.runFork(
           Effect.gen(function* () {
-            const worldPos = screenToWorld(e.clientX, e.clientY)
+            const worldPos = screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
             yield* ctx.emit({ type: "nodeDragMove", worldPoint: worldPos })
           })
         )
@@ -302,23 +304,24 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
         // Just hovering - update hover state
         Effect.runFork(
           Effect.gen(function* () {
-            const worldPos = screenToWorld(e.clientX, e.clientY)
+            const worldPos = screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
             const node = findNodeAt(worldPos.x, worldPos.y)
             yield* ctx.emit({ type: "nodeHover", nodeId: node?.id || null })
           })
         )
       }
 
-      lastMouseX = e.clientX
-      lastMouseY = e.clientY
+      lastMouseX = mouseEvent.clientX
+      lastMouseY = mouseEvent.clientY
     }
 
     // Mouse up: End drag or pan, detect click
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = (e: Event) => {
+      const mouseEvent = e as MouseEvent
       const wasClick =
         Date.now() - clickStartTime < 200 &&
-        Math.abs(e.clientX - clickStartPos.x) < 5 &&
-        Math.abs(e.clientY - clickStartPos.y) < 5
+        Math.abs(mouseEvent.clientX - clickStartPos.x) < 5 &&
+        Math.abs(mouseEvent.clientY - clickStartPos.y) < 5
 
       if (isDraggingNode) {
         Effect.runFork(ctx.emit({ type: "nodeDragEnd" }))
@@ -335,7 +338,7 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       if (wasClick) {
         Effect.runFork(
           Effect.gen(function* () {
-            const worldPos = screenToWorld(e.clientX, e.clientY)
+            const worldPos = screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
             const node = findNodeAt(worldPos.x, worldPos.y)
             if (node) {
               yield* ctx.emit({ type: "nodeClick", nodeId: node.id })
@@ -346,14 +349,15 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
     }
 
     // Wheel zoom
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
+    const handleWheel = (e: Event) => {
+      const wheelEvent = e as WheelEvent
+      wheelEvent.preventDefault()
       const svg = getSvg()
       if (!svg) return
 
-      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      const delta = wheelEvent.deltaY > 0 ? 0.9 : 1.1
       const rect = svg.getBoundingClientRect()
-      const pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      const pointer = { x: wheelEvent.clientX - rect.left, y: wheelEvent.clientY - rect.top }
 
       Effect.runFork(
         ctx.emit({
@@ -365,39 +369,42 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
     }
 
     // Attach event listeners
-    container.addEventListener("mousedown", handleMouseDown)
-    document.addEventListener("mousemove", handleMouseMove)
-    document.addEventListener("mouseup", handleMouseUp)
-    container.addEventListener("wheel", handleWheel, { passive: false })
+    container.addEventListener("mousedown", handleMouseDown as EventListener)
+    document.addEventListener("mousemove", handleMouseMove as EventListener)
+    document.addEventListener("mouseup", handleMouseUp as EventListener)
+    container.addEventListener("wheel", handleWheel as EventListener, { passive: false })
 
-    // Start button handlers
-    const handleStartClick = (e: Event) => {
+    // Click handler using event delegation (works after re-renders)
+    const handleClick = (e: Event) => {
+      console.log("[TestGen Graph] Click detected on:", (e.target as HTMLElement).tagName, (e.target as HTMLElement).dataset)
       const target = e.target as HTMLElement
-      const action = target.dataset.action
-      if (!action?.startsWith("start-")) return
 
-      const mode = action.replace("start-", "") as "quick" | "standard" | "full"
-      Effect.runFork(ctx.emit({ type: "startRun", mode }))
-    }
+      // Check for start button clicks
+      const startButton = target.closest("[data-action^='start-']") as HTMLElement | null
+      if (startButton) {
+        const action = startButton.dataset.action
+        if (action?.startsWith("start-")) {
+          const mode = action.replace("start-", "") as "quick" | "standard" | "full"
+          console.log("[TestGen Graph] Start button clicked:", mode)
+          Effect.runFork(ctx.emit({ type: "startRun", mode }))
+          return
+        }
+      }
 
-    // Session selection handler
-    const handleSessionClick = (e: Event) => {
-      const target = e.target as HTMLElement
+      // Check for session card clicks
       const sessionCard = target.closest("[data-action='select-session']") as HTMLElement | null
-      if (!sessionCard) return
-
-      const sessionId = sessionCard.dataset.sessionId
-      if (sessionId) {
-        Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
+      if (sessionCard) {
+        const sessionId = sessionCard.dataset.sessionId
+        if (sessionId) {
+          console.log("[TestGen Graph] Session selected:", sessionId)
+          Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
+        }
       }
     }
 
-    // Attach button listeners
-    const startButtons = container.querySelectorAll("[data-action^='start-']")
-    startButtons.forEach((btn) => btn.addEventListener("click", handleStartClick))
-
-    // Attach session selection listener (use event delegation on container)
-    container.addEventListener("click", handleSessionClick)
+    // Attach single click handler using event delegation
+    console.log("[TestGen Graph] Attaching click handler to container:", container.id || container.tagName)
+    container.addEventListener("click", handleClick)
 
     // Cleanup
     return Effect.sync(() => {
@@ -406,8 +413,7 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
       container.removeEventListener("wheel", handleWheel)
-      startButtons.forEach((btn) => btn.removeEventListener("click", handleStartClick))
-      container.removeEventListener("click", handleSessionClick)
+      container.removeEventListener("click", handleClick)
     })
   })
 }

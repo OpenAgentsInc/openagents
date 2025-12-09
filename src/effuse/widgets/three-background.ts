@@ -5,8 +5,9 @@
  * Transparent background so the dot grid shows through.
  */
 
-import { Effect, Ref, Stream, pipe } from "effect"
+import { Effect } from "effect"
 import { html } from "../template/html.js"
+import type { ComponentContext } from "../component/types.js"
 import type { Widget } from "../widget/types.js"
 import * as THREE from "three"
 
@@ -20,6 +21,18 @@ export interface ThreeBackgroundState {
 
 export type ThreeBackgroundEvent = never
 
+// Extended Three.js Mesh type with custom metadata
+interface ATIFNodeMesh extends THREE.Mesh {
+  borderLines?: THREE.LineSegments
+  pulsePhase?: number
+  isHovered?: boolean
+  nodeId?: number
+  atifType?: string
+  label?: string
+  screenPosition?: { x: number; y: number }
+  labelElement?: HTMLElement
+}
+
 // ============================================================================
 // Widget Definition
 // ============================================================================
@@ -29,7 +42,7 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
 
   initialState: () => ({}),
 
-  render: (ctx) =>
+  render: (ctx: ComponentContext<ThreeBackgroundState, ThreeBackgroundEvent>) =>
     Effect.gen(function* () {
       // Render canvas container (positioned behind intro card)
       return html`
@@ -45,12 +58,15 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
       `
     }),
 
-  setupEvents: (ctx) =>
+  setupEvents: (ctx: ComponentContext<ThreeBackgroundState, ThreeBackgroundEvent>) =>
     Effect.gen(function* () {
       // Get canvas element
-      const canvas = yield* ctx.dom.queryId<HTMLCanvasElement>(
-        `${ctx.container.id}-three-bg-canvas`
+      const canvas = ctx.container.querySelector<HTMLCanvasElement>(
+        `#${ctx.container.id}-three-bg-canvas`
       )
+      if (!canvas) {
+        return Effect.void
+      }
 
       // Set canvas size
       const resizeCanvas = () => {
@@ -162,15 +178,16 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
         const borderLines = new THREE.LineSegments(wireframe, lineMaterial)
         borderLines.position.y = 0.1
         node.add(borderLines)
-        ;(node as any).borderLines = borderLines
+        const atifNode = node as ATIFNodeMesh
+        atifNode.borderLines = borderLines
 
         // Store node metadata
-        ;(node as any).pulsePhase = Math.random() * Math.PI * 2
-        ;(node as any).isHovered = false
-        ;(node as any).nodeId = i
-        ;(node as any).atifType = atifType.type
-        ;(node as any).label = atifType.label
-        ;(node as any).screenPosition = { x: 0, y: 0 } // Will be updated
+        atifNode.pulsePhase = Math.random() * Math.PI * 2
+        atifNode.isHovered = false
+        atifNode.nodeId = i
+        atifNode.atifType = atifType.type
+        atifNode.label = atifType.label
+        atifNode.screenPosition = { x: 0, y: 0 } // Will be updated
 
         scene.add(node)
         nodes.push(node)
@@ -189,7 +206,7 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
         label.style.opacity = "0.95"
         label.id = `atif-label-${i}`
         labelContainer.appendChild(label)
-        ;(node as any).labelElement = label
+        atifNode.labelElement = label
       }
 
       // Create dotted connection lines with animation
@@ -242,19 +259,18 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
       scene.add(topLight)
 
       // Animation loop
-      let animationId: number | null = null
-      let time = 0
+      let _animationId: number | null = null
 
       const animate = () => {
-        animationId = requestAnimationFrame(animate)
-        time += 0.01
+        _animationId = requestAnimationFrame(animate)
 
         // Animate node borders (subtle pulse)
         nodes.forEach((node) => {
           // No indicator animation needed - using border instead
 
           // Update label position (project 3D to screen coordinates)
-          const labelElement = (node as any).labelElement as HTMLElement
+          const atifNode = node as ATIFNodeMesh
+          const labelElement = atifNode.labelElement
           if (labelElement) {
             const vector = new THREE.Vector3()
             node.getWorldPosition(vector)
@@ -283,8 +299,11 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
           if (conn.progress > 1) conn.progress = 0
 
           // Calculate dash offset based on progress
-          const totalLength = conn.line.geometry.attributes.position.count * 0.1
-          material.dashOffset = -conn.progress * (material.dashSize + material.gapSize) * 10
+          // LineDashedMaterial has dashOffset but TypeScript types may not include it
+          const offset = -conn.progress * (material.dashSize + material.gapSize) * 10
+          if ("dashOffset" in material) {
+            (material as THREE.LineDashedMaterial & { dashOffset: number }).dashOffset = offset
+          }
         })
 
         renderer.render(scene, camera)
@@ -316,16 +335,17 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
           const material = node.material as THREE.MeshStandardMaterial
           material.color.setRGB(0.05, 0.05, 0.05) // Dark/black
           material.opacity = 0.7
-          ;(node as any).isHovered = false
+          const atifNode = node as ATIFNodeMesh
+          atifNode.isHovered = false
         })
 
         // Highlight hovered node (brighter with more opacity)
         if (intersects.length > 0) {
-          const hoveredNode = intersects[0].object as THREE.Mesh
+          const hoveredNode = intersects[0].object as ATIFNodeMesh
           const material = hoveredNode.material as THREE.MeshStandardMaterial
           material.color.setRGB(0.15, 0.15, 0.15) // Slightly brighter
           material.opacity = 0.9 // More opaque
-          ;(hoveredNode as any).isHovered = true
+          hoveredNode.isHovered = true
           canvas.style.cursor = "pointer"
         } else {
           canvas.style.cursor = "default"
@@ -340,11 +360,12 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
         const intersects = raycaster.intersectObjects(nodes)
 
         if (intersects.length > 0) {
-          const clickedNode = intersects[0].object as THREE.Mesh
-          const nodeId = (clickedNode as any).nodeId
-          const atifType = (clickedNode as any).atifType
-          const label = (clickedNode as any).label
-          console.log(`[Three Background] ATIF ${atifType} (${label}) clicked`)
+          const clickedNode = intersects[0].object as ATIFNodeMesh
+          const atifType = clickedNode.atifType
+          const label = clickedNode.label
+          if (atifType && label) {
+            console.log(`[Three Background] ATIF ${atifType} (${label}) clicked`)
+          }
           // TODO: Emit event or trigger action
         }
       }
@@ -352,41 +373,40 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
       canvas.addEventListener("mousemove", onMouseMove)
       canvas.addEventListener("click", onMouseClick)
 
-      // Cleanup
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          if (animationId !== null) {
-            cancelAnimationFrame(animationId)
-          }
-          window.removeEventListener("resize", resizeCanvas)
-          window.removeEventListener("resize", handleResize)
-          canvas.removeEventListener("mousemove", onMouseMove)
-          canvas.removeEventListener("click", onMouseClick)
-          if (labelContainer.parentNode) {
-            labelContainer.parentNode.removeChild(labelContainer)
-          }
-          renderer.dispose()
-          nodes.forEach((node) => {
-            node.traverse((child) => {
-              if (child instanceof THREE.Mesh) {
-                child.geometry.dispose()
-                if (Array.isArray(child.material)) {
-                  child.material.forEach((mat) => mat.dispose())
-                } else {
-                  child.material.dispose()
-                }
+      // Return cleanup (Component expects Effect<void, never, R>)
+      // The cleanup will be called by the component system
+      return Effect.sync(() => {
+        if (_animationId !== null) {
+          cancelAnimationFrame(_animationId)
+        }
+        window.removeEventListener("resize", resizeCanvas)
+        window.removeEventListener("resize", handleResize)
+        canvas.removeEventListener("mousemove", onMouseMove)
+        canvas.removeEventListener("click", onMouseClick)
+        if (labelContainer.parentNode) {
+          labelContainer.parentNode.removeChild(labelContainer)
+        }
+        renderer.dispose()
+        nodes.forEach((node) => {
+          node.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.geometry.dispose()
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose())
+              } else {
+                child.material.dispose()
               }
-            })
-          })
-          connections.forEach((line) => {
-            line.geometry.dispose()
-            if (Array.isArray(line.material)) {
-              line.material.forEach((mat) => mat.dispose())
-            } else {
-              line.material.dispose()
             }
           })
         })
-      )
+        connections.forEach((line) => {
+          line.geometry.dispose()
+          if (Array.isArray(line.material)) {
+            line.material.forEach((mat) => mat.dispose())
+          } else {
+            line.material.dispose()
+          }
+        })
+      })
     }),
 }
