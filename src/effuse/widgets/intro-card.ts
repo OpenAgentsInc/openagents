@@ -37,7 +37,7 @@ export const IntroCardWidget: Widget<IntroCardState, IntroCardEvent> = {
   render: (ctx) =>
     Effect.gen(function* () {
       return html`
-        <div class="fixed inset-0 flex items-center justify-center" style="padding: 24px;">
+        <div class="fixed inset-0 flex items-center justify-center" style="padding: 24px; z-index: 10;">
           <div class="bg-zinc-950/90 border border-zinc-800/60 rounded-2xl backdrop-blur-xl shadow-2xl max-w-2xl w-full" style="padding: 48px 64px; font-family: 'Berkeley Mono', monospace;">
             <h1 class="text-5xl font-bold text-zinc-100 text-center tracking-tight" style="font-family: 'Berkeley Mono', monospace; margin: 0;">
               TerminalBench Gym

@@ -7,7 +7,7 @@
 import { Effect, Layer } from "effect"
 import {
   DomServiceLive, IntroCardWidget, mountWidget, SocketServiceFromClient,
-  StateServiceLive
+  StateServiceLive, ThreeBackgroundWidget
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
@@ -107,6 +107,22 @@ const createNewModeLayer = () => {
 // Widget Mounting
 // ============================================================================
 
+const mountThreeBackground = Effect.gen(function* () {
+  console.log("[New Mode] Mounting Three.js background...")
+
+  // Find or create container
+  let container = document.getElementById("three-background-container")
+  if (!container) {
+    container = document.createElement("div")
+    container.id = "three-background-container"
+    document.body.appendChild(container)
+  }
+
+  console.log("[New Mode] Three.js container found/created:", container)
+  yield* mountWidget(ThreeBackgroundWidget, container)
+  console.log("[New Mode] Three.js background mounted")
+})
+
 const mountIntroCard = Effect.gen(function* () {
   console.log("[New Mode] Mounting intro card...")
 
@@ -137,6 +153,9 @@ const initNewMode = () => {
     const layer = createNewModeLayer()
 
     const program = Effect.gen(function* () {
+      // Mount Three.js background first (lower z-index)
+      yield* mountThreeBackground
+      // Mount intro card on top (higher z-index)
       yield* mountIntroCard
       // Keep scope alive
       yield* Effect.never
