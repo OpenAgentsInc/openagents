@@ -132,4 +132,3 @@ The guardrails are NOT too restrictive - they're allowing incremental changes (+
 ## Continuing...
 
 System is working correctly. Ready to run longer experiment or adjust guardrails if needed.
-
