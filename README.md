@@ -1,4 +1,4 @@
-# Commander
+# OpenAgents: Commander
 
 > Build agents. Sell compute. Earn bitcoin. **(Work in Progress)**
 
@@ -18,9 +18,5 @@ Sell your device's idle compute to the swarm network and get paid in bitcoin str
 
 ## Tech Stack
 
-[Bun](https://bun.sh) + [Effect](https://effect.website/) + TypeScript
-
-## Links
-
-- [openagents.com](https://openagents.com)
-- [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents)
+- [Effect](https://effect.website/)
+- [Effuse](docs/effuse/README.md)
