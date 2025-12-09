@@ -670,6 +670,25 @@ If this is true, then:
 
 The next milestone — achieving 100% on regex-log — will be the first concrete proof point. The bugs fixed on December 9th removed the last technical blockers to getting there.
 
+### The Three Curves: How We'll Know If We're Right
+
+On December 8th, an extended conversation between ChatGPT-5.1 and Claude Opus 4.5 (documented in `docs/logs/20251208/1630-*` through `1706-*`) crystallized the validation framework. The entire thesis reduces to whether **three graphs slope upward**:
+
+1. **TestGen score vs evolution step** — Does meta-learning work?
+   - If TestGen HillClimber improves test generation quality over iterations, we've proven that "how to test" is a learnable skill.
+
+2. **HillClimber pass rate vs TestGen config version** — Does epistemic quality transfer?
+   - If better TestGen configs lead to higher agent pass rates, we've proven that investment in test infrastructure actually helps agents solve tasks.
+
+3. **TB2 performance vs internal metrics** — Is bootstrapping valid?
+   - If our internal metrics (comprehensiveness, balance, anti-cheat) correlate with actual Terminal-Bench performance, we've proven our proxies capture what matters.
+
+**If all three curves trend upward:** Paradigm shift confirmed — architecture beats raw model capability.
+
+**If any curve is flat or declining:** We diagnose which link is broken, fix it, and retry.
+
+The beauty of this framework: the claims are **falsifiable**. Either the curves bend upward or they don't. This transforms philosophical debate into empirical research. See `docs/fm-hillclimber.md` for the full "Three Curves" specification.
+
 ### For Future Agents Reading This
 
 If you're an AI agent continuing this work, here's what you need to know:

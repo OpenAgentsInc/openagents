@@ -465,6 +465,80 @@ The research is clear: iterative refinement with feedback beats single-shot gene
 
 ---
 
+## The Three Curves: Validating the Thesis
+
+Our architectural thesis — that structured search + epistemic tooling + iterative feedback can outcompete larger models — is falsifiable. It reduces to whether **three graphs slope upward**:
+
+### Curve 1: TestGen Score vs Evolution Step
+
+**Question:** Does meta-learning work?
+
+```
+X-axis: Evolution step (0-50+ runs)
+Y-axis: TestGen quality score (0-1000)
+```
+
+The TestGen HillClimber evolves test generation configs over time. Each run generates tests, analyzes them (comprehensiveness, category balance, anti-cheat coverage), computes a score, and a meta-reasoner proposes config improvements.
+
+**Success:** Upward trend in score over iterations. Config changes are non-trivial and meaningful.
+
+**Failure:** Scores bounce around noise, stagnate, or configs oscillate without improvement.
+
+**Why this matters:** If the system can learn to generate better tests, it demonstrates that "how to test" is itself a learnable skill — a key insight for recursive optimization.
+
+### Curve 2: HillClimber Pass Rate vs TestGen Config Version
+
+**Question:** Does epistemic quality transfer to agent performance?
+
+```
+X-axis: TestGen config version (v1.0.0, v1.1.0, v1.2.0, ...)
+Y-axis: HillClimber pass rate (0-100%)
+```
+
+Better test generation should produce better tests. Better tests should help agents iterate more effectively toward correct solutions.
+
+**Success:** Higher pass rates and/or fewer turns to success with evolved TestGen configs.
+
+**Failure:** No improvement, or pass rates increase only because tests became trivially easy.
+
+**Why this matters:** This is the "epistemic engine" validation — proving that investment in test infrastructure actually improves agent outcomes.
+
+### Curve 3: TB2 Performance vs Internal Metrics
+
+**Question:** Is bootstrapping valid?
+
+```
+X-axis: Internal TestGen metrics (score, comprehensiveness, balance, etc.)
+Y-axis: Correlation with TB2 official tests or actual benchmark performance (0-1)
+```
+
+Our internal metrics (comprehensiveness, category balance, anti-cheat coverage) are proxies. The ground truth is Terminal-Bench 2's actual evaluation.
+
+**Success:** Positive correlation between internal metrics and TB2 alignment/performance.
+
+**Failure:** Internal metrics improve but TB2 performance is flat or declining (Goodhart's Law).
+
+**Why this matters:** This validates that our bootstrapping approach (environment introspection + diverse categories + self-assessment) actually captures what the benchmark cares about.
+
+### The Stakes
+
+**If all three curves slope upward:**
+
+- **Paradigm shift confirmed** — architecture beats raw model capability
+- **Local-first wins** — Apple FM + better loops can compete with cloud giants
+- **The Bitter Lesson for agents** — compute invested in search and feedback matters more than model size
+- **OpenAgents becomes the agent runtime standard** — the company that builds the best loops wins
+
+**If any curve fails to slope upward:**
+
+- Diagnose which link is broken (meta-learning? transfer? calibration?)
+- Fix the specific issue
+- Retry the experiment
+
+The beautiful thing about this framework: the claims are **falsifiable**. Either the curves bend upward or they don't. Most AI philosophy is theater; ours runs on SQLite and produces data.
+
+---
+
 ## References
 
 - `docs/hillclimber/stakes.md` — Business implications of Terminal-Bench #1
