@@ -25,10 +25,23 @@ Read `docs/hillclimber/stakes.md` for the full implications.
 
 ## CURRENT STATUS
 
+### Two Test Suites — Two Results
+
+| Test Suite | Result | Regex | When |
+|------------|--------|-------|------|
+| **TB2 Original (19 tests)** | **89.5% (17/19)** | `\d{4}-\d{2}-\d{2}` | Dec 8 |
+| **TestGen Comprehensive (24 tests)** | **45.8% (11/24)** | IPv4 lookahead | Dec 9 |
+
+**CRITICAL:** These measure DIFFERENT things:
+- **89.5%** = Best result against TB2's ACTUAL benchmark tests (what matters for leaderboard)
+- **45.8%** = Result against TestGen's comprehensive tests (harder, includes edge cases)
+
+The 89.5% with a simple date regex proves TB2 tests don't heavily penalize missing IPv4 logic. But to hit 100%, we need the full regex that handles both.
+
 | Metric | Value |
 |--------|-------|
-| **Best Result** | 45.8% (11/24 tests) |
-| **Current Regex** | `(?=.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*(\d{4}-\d{2}-\d{2})` |
+| **Best TB2 Result** | 89.5% (17/19 tests) |
+| **Best TestGen Result** | 45.8% (11/24 tests) |
 | **Bugs Fixed** | 7+ major bugs on Dec 9 |
 | **Pipeline Status** | All components working |
 
@@ -41,7 +54,12 @@ Read `docs/hillclimber/stakes.md` for the full implications.
 - CLI↔UI sync ✅
 
 ### What's Missing for 100%
-The current regex is TOO SIMPLE. TB2's actual test requires:
+
+**For TB2 (89.5% → 100%):** Only 2 tests failing! The simple regex `\d{4}-\d{2}-\d{2}` is close but needs:
+- IPv4 lookahead (to ensure IPv4 exists on line)
+- Possibly some boundary handling
+
+**For TestGen Comprehensive (45.8% → 100%):** More work needed:
 
 | Requirement | Current | Needed |
 |-------------|---------|--------|
@@ -50,6 +68,8 @@ The current regex is TOO SIMPLE. TB2's actual test requires:
 | Date validation | `\d{4}-\d{2}-\d{2}` matches 2023-13-45 | Month 01-12, Day 01-31 |
 | Date boundaries | None | `(?<![A-Za-z0-9])` |
 | Last date | Yes (greedy `.*`) | ✅ Already correct |
+
+**Strategy:** Focus on TB2 first (only 2 tests to fix), then tackle comprehensive tests.
 
 ---
 
@@ -71,7 +91,34 @@ This regex achieves 100%:
 
 ## APPROACH: Two Paths to 100%
 
-### Path A: Let FM Discover It (Preferred)
+### Understanding the Gap
+
+**TB2 (89.5%):** Only 2 of 19 tests failing. The simple `\d{4}-\d{2}-\d{2}` regex works for most cases. Those 2 failing tests likely require:
+- IPv4 presence check (lookahead)
+- Some boundary condition
+
+**TestGen (45.8%):** 13 of 24 tests failing. TestGen's more comprehensive tests catch:
+- Invalid IPs (256.x.x.x)
+- Invalid dates (month 13, day 32)
+- Boundary conditions
+
+### Path A: Focus on TB2 First (Recommended)
+
+Since we're at 89.5% on TB2, we only need to fix 2 tests to hit 100% on the actual benchmark.
+
+**Run with TB2 tests (not TestGen):**
+```bash
+# The default uses TestGen. To test against TB2's actual tests,
+# we may need to run a validation against the real benchmark.
+bun scripts/test-progress-fix.ts --standard  # 10 turns, 15 min
+```
+
+**Key insight:** If a simple regex gets 89.5%, adding just IPv4 lookahead might get us to 100%:
+```regex
+(?=.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*(\d{4}-\d{2}-\d{2})
+```
+
+### Path B: Let FM Discover Full Solution
 
 The architecture is designed to let FM iterate toward the solution. With all bugs fixed:
 
@@ -88,13 +135,13 @@ bun scripts/test-progress-fix.ts --full      # 25 turns, 45 min
 ```
 
 **Watch for:**
-- Turn 1-3: Basic IPv4 lookahead (~45%)
-- Turn 4-6: IP octet validation (~65%)
+- Turn 1-3: Basic IPv4 lookahead (~45% on TestGen, ~95% on TB2)
+- Turn 4-6: IP octet validation (~65% on TestGen)
 - Turn 7-10: Boundaries + date validation (~85-100%)
 
-**If FM doesn't improve past ~65% after 10 turns**, move to Path B.
+**If FM doesn't improve past ~65% after 10 turns**, move to Path C.
 
-### Path B: Guide FM More Explicitly
+### Path C: Guide FM More Explicitly
 
 Update `src/hillclimber/decomposer.ts` with more explicit guidance:
 

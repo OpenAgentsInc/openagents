@@ -30,9 +30,18 @@ December 9, 2025 was an extremely productive day with two major workstreams:
 | CLI↔UI Sync | Real-time socket-based updates | ✅ Implemented |
 | Webview Click Bug | Discovered `click` events don't fire; use `mousedown` | ✅ Fixed |
 
-### Current Best Result: 45.8% (11/24 tests)
+### Best Results
 
-With all fixes applied, the system achieved 45.8% on regex-log in a quick 3-turn test. This validates that:
+| Test Suite | Result | Regex | Date |
+|------------|--------|-------|------|
+| **TB2 Original (19 tests)** | **89.5% (17/19)** | `\d{4}-\d{2}-\d{2}` | Dec 8 |
+| **TestGen Comprehensive (24 tests)** | **45.8% (11/24)** | IPv4 lookahead | Dec 9 |
+
+**Important:** These are DIFFERENT test suites:
+- **89.5%** = Best result against TB2's actual benchmark tests (simpler)
+- **45.8%** = Result against TestGen's comprehensive tests (harder, includes edge cases like invalid IPs 256.x.x.x, invalid dates month 13)
+
+The 45.8% with IPv4 lookahead regex against comprehensive tests actually represents architectural progress, as it validates:
 - Pytest discovery works
 - TestGen generates proper edge case tests
 - FM generates correct IPv4 lookahead regex
@@ -484,7 +493,7 @@ All major bugs blocking FM iteration have been fixed:
 - Pytest discovery ✅
 - Python code generation ✅
 
-The system achieved **45.8%** on regex-log in a quick 3-turn test, validating that the architecture works. With longer runs (10-25 turns), we expect to push toward 100%.
+The system achieved **89.5%** on TB2's original tests (Dec 8) and **45.8%** on TestGen's more comprehensive tests (Dec 9). The architecture is validated. With longer runs (10-25 turns), we expect to push toward 100%.
 
 ### 2. Real-Time UI Visualization is Complete
 
