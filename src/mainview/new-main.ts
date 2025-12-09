@@ -7,7 +7,7 @@
 import { Effect, Layer } from "effect"
 import {
   DomServiceLive, mountComponent, SocketServiceFromClient,
-  StateServiceLive, TestGenGraphComponent
+  StateServiceLive, TestGenGraphComponent, NewShellComponent, CommanderComponent
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
@@ -178,20 +178,37 @@ const createNewModeLayer = () => {
 // Component Mounting
 // ============================================================================
 
-const mountTestGenGraph = Effect.gen(function* () {
-  console.log("[New Mode] Mounting TestGen graph background...")
+const mountShellAndChildren = Effect.gen(function* () {
+  console.log("[New Mode] Mounting components...")
 
-  // Find or create container
-  let container = document.getElementById("three-background-container")
-  if (!container) {
-    container = document.createElement("div")
-    container.id = "three-background-container"
-    document.body.appendChild(container)
+  // Mount TestGenGraph as background (z-index: 1)
+  const bgContainer = document.getElementById("three-background-container")
+  if (bgContainer) {
+    console.log("[New Mode] Mounting TestGenGraphComponent as background...")
+    yield* mountComponent(TestGenGraphComponent, bgContainer)
+    console.log("[New Mode] Background mounted")
   }
 
-  console.log("[New Mode] TestGen graph container found/created:", container)
-  yield* mountComponent(TestGenGraphComponent, container)
-  console.log("[New Mode] TestGen graph background mounted")
+  // Mount shell into intro-card-container (z-index: 10)
+  const shellContainer = document.getElementById("intro-card-container")
+  if (!shellContainer) {
+    console.error("[New Mode] intro-card-container not found!")
+    return
+  }
+
+  console.log("[New Mode] Mounting NewShellComponent...")
+  yield* mountComponent(NewShellComponent, shellContainer)
+  console.log("[New Mode] Shell mounted")
+
+  // Mount Commander into commander tab (Gym tab shows background through)
+  const commanderContainer = document.getElementById("new-tab-commander")
+  if (commanderContainer) {
+    console.log("[New Mode] Mounting CommanderComponent into commander tab...")
+    yield* mountComponent(CommanderComponent, commanderContainer)
+    console.log("[New Mode] Commander mounted")
+  } else {
+    console.error("[New Mode] Commander container not found!")
+  }
 })
 
 // ============================================================================
@@ -205,8 +222,8 @@ const initNewMode = () => {
     const layer = createNewModeLayer()
 
     const program = Effect.gen(function* () {
-      // Mount TestGen graph background
-      yield* mountTestGenGraph
+      // Mount shell and child components
+      yield* mountShellAndChildren
       // Keep scope alive
       yield* Effect.never
     })

@@ -35,6 +35,7 @@ import {
   isGetHFTrajectoryRequest,
   isStartTestGenRequest,
   isStartHillClimberRequest,
+  isStartCustomTestGenRequest,
   createSuccessResponse,
   createErrorResponse,
   type UnifiedTrajectory,
@@ -55,7 +56,7 @@ import {
   HFDatasetServiceLive,
 } from "../huggingface/index.js";
 import type { Trajectory } from "../atif/schema.js";
-import { runTestGenWithStreaming } from "../hillclimber/testgen-service.js";
+import { runTestGenWithStreaming, runCustomTestGen } from "../hillclimber/testgen-service.js";
 import type { HudMessage } from "../hud/protocol.js";
 import { generateCorrelationId } from "./protocol.js";
 
@@ -855,6 +856,36 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       });
 
       return createSuccessResponse("response:startTestGen", correlationId, { sessionId });
+    }
+
+    if (isStartCustomTestGenRequest(request)) {
+      console.log(`[Handler] Received startCustomTestGen request`);
+
+      if (!hudMessageSender) {
+        return createErrorResponse("response:startCustomTestGen", correlationId, "HUD message sender not initialized");
+      }
+
+      const sessionId = request.sessionId;
+      const model = request.model ?? "local";
+
+      // Run custom test generation in background with streaming HUD messages
+      runCustomTestGen(
+        request.taskDescription,
+        sessionId,
+        {
+          onStart: (msg) => hudMessageSender!(msg),
+          onTest: (msg) => hudMessageSender!(msg),
+          onProgress: (msg) => hudMessageSender!(msg),
+          onReflection: (msg) => hudMessageSender!(msg),
+          onComplete: (msg) => hudMessageSender!(msg),
+          onError: (msg) => hudMessageSender!(msg),
+        },
+        { model }
+      ).catch((err) => {
+        console.error(`[Handler] CustomTestGen background error:`, err);
+      });
+
+      return createSuccessResponse("response:startCustomTestGen", correlationId, { sessionId });
     }
 
     if (isStartHillClimberRequest(request)) {

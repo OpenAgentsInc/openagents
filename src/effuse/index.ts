@@ -154,6 +154,16 @@ export {
   type TestGenGraphEvent,
 } from "./components/testgen-graph/index.js"
 export {
+  NewShellComponent,
+  type NewShellState,
+  type NewShellEvent,
+} from "./components/new-shell/index.js"
+export {
+  CommanderComponent,
+  type CommanderState,
+  type CommanderEvent,
+} from "./components/commander/index.js"
+export {
   ContainerPanesComponent,
   type ContainerPanesState,
   type ContainerPanesEvent,

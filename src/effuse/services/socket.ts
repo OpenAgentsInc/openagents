@@ -116,6 +116,13 @@ export interface SocketService {
     model?: "local" | "claude"
   ) => Effect.Effect<{ sessionId: string }, SocketError>
 
+  /** Start custom test generation from free-form task description */
+  readonly startCustomTestGen: (
+    taskDescription: string,
+    sessionId: string,
+    model?: "local" | "claude"
+  ) => Promise<{ sessionId: string }>
+
   // ============================================================================
   // HillClimber Operations
   // ============================================================================

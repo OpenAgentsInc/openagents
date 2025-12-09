@@ -257,6 +257,166 @@ export async function runTestGenWithStreaming(
 }
 
 // ============================================================================
+// Custom TestGen (Free-form Task Description)
+// ============================================================================
+
+/**
+ * Run test generation with a custom free-form task description.
+ *
+ * @param taskDescription - User's task description
+ * @param sessionId - Unique session ID for correlating messages
+ * @param emitter - Callback interface for HUD messages
+ * @param options - Generation options
+ */
+export async function runCustomTestGen(
+  taskDescription: string,
+  sessionId: string,
+  emitter: TestGenEmitter,
+  options: TestGenOptions,
+): Promise<void> {
+  // Track data for persistence
+  const startTime = Date.now();
+  const tests: TestGenTestMessage["test"][] = [];
+  const reflections: TestGenReflectionMessage[] = [];
+  let startMessage: TestGenStartMessage | null = null;
+  let completeMessage: TestGenCompleteMessage | null = null;
+  let modelName: string | undefined;
+
+  try {
+    // Generate a unique task ID
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    const random = Math.random().toString(36).slice(2, 8);
+    const taskId = `custom-${timestamp}-${random}`;
+
+    // Build minimal environment info
+    const env = emptyEnvironmentInfo();
+    env.platform = { type: "docker" };
+
+    // Infer prohibited tools from description
+    env.tools.prohibited = inferProhibitedTools(taskDescription);
+    env.tools.prohibitedCheck = {};
+    for (const tool of env.tools.prohibited) {
+      env.tools.prohibitedCheck[tool.name] = false;
+    }
+
+    // Minimal file listing (empty for custom tasks)
+    env.files.workdir = "/app";
+    env.files.listing = [];
+    env.files.taskFiles = [];
+
+    // Emit start message
+    const prohibitedTools = env.tools.prohibited.map(t => t.name);
+
+    startMessage = {
+      type: "testgen_start",
+      sessionId,
+      taskId,
+      taskDescription,
+      environment: {
+        platform: env.platform.type,
+        prohibitedTools,
+        languages: [],
+        fileCount: 0,
+        filePreviews: 0,
+      },
+    };
+    emitter.onStart(startMessage);
+
+    // Determine model name
+    modelName = options.model === "claude" ? "claude-sonnet-4-20250514" : "local-fm";
+
+    // Track save promise to await after generation completes
+    let savePromise: Promise<void> | null = null;
+
+    // Generate tests iteratively (streams tests as they're generated)
+    const iterativeEmitter: IterativeTestGenEmitter = {
+      onStart: (msg) => {
+        emitter.onStart({ ...msg, sessionId });
+      },
+      onTest: (msg) => {
+        tests.push(msg.test);
+        emitter.onTest({ ...msg, sessionId });
+      },
+      onProgress: (msg) => {
+        emitter.onProgress({ ...msg, sessionId });
+      },
+      onReflection: (msg) => {
+        reflections.push({ ...msg, sessionId });
+        emitter.onReflection({ ...msg, sessionId });
+      },
+      onComplete: (msg) => {
+        completeMessage = { ...msg, sessionId };
+        emitter.onComplete(completeMessage);
+
+        // Save trajectory to database
+        if (startMessage && completeMessage) {
+          const durationMs = Date.now() - startTime;
+          const trajectoryData = {
+            sessionId,
+            taskId: startMessage.taskId,
+            taskDescription: startMessage.taskDescription,
+            totalTests: completeMessage.totalTests,
+            totalRounds: completeMessage.totalRounds,
+            categoryRounds: completeMessage.categoryRounds,
+            comprehensivenessScore: completeMessage.comprehensivenessScore,
+            totalTokensUsed: completeMessage.totalTokensUsed,
+            durationMs: completeMessage.durationMs || durationMs,
+            tests,
+            reflections: reflections.map((r) => ({
+              ...(r.category !== undefined ? { category: r.category } : {}),
+              reflectionText: r.reflectionText,
+              action: r.action,
+            })),
+            environment: startMessage.environment,
+            uncertainties: completeMessage.uncertainties,
+            ...(modelName ? { modelName } : {}),
+          };
+
+          savePromise = Effect.runPromise(
+            DatabaseService.pipe(
+              Effect.flatMap((db) =>
+                db.insertTestGenTrajectory(trajectoryData)
+              ),
+              Effect.provide(DatabaseLive),
+              Effect.catchAll((error) => {
+                console.error("[CustomTestGen] Failed to save trajectory:", error);
+                return Effect.void;
+              }),
+            )
+          );
+        }
+      },
+      onError: (msg) => {
+        emitter.onError({ ...msg, sessionId });
+      },
+    };
+
+    await generateTestsIteratively(
+      taskDescription,
+      taskId,
+      env,
+      iterativeEmitter,
+      {
+        model: options.model,
+        verbose: false,
+      }
+    );
+
+    // Await trajectory save to complete before returning
+    if (savePromise) {
+      await savePromise;
+    }
+  } catch (error) {
+    // Emit error message
+    emitter.onError({
+      type: "testgen_error",
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// ============================================================================
 // Environment Building
 // ============================================================================
 

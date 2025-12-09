@@ -9,6 +9,7 @@
 
 import { Effect } from "effect";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import { runTB2InDocker } from "../bench/tb2-docker-runner.js";
@@ -99,10 +100,71 @@ export const runVerification = (
   });
 
 /**
+ * Check if Docker is available on the system.
+ */
+function isDockerAvailable(): boolean {
+  try {
+    if (process.env.OPENAGENTS_DOCKER_AVAILABLE === "0") return false;
+    if (process.env.OPENAGENTS_DOCKER_AVAILABLE === "1") return true;
+    execFileSync("docker", ["--version"], { stdio: "ignore", timeout: 2000 });
+    // Also check if daemon is running
+    execFileSync("docker", ["info"], { stdio: "ignore", timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run pytest locally (fallback when Docker unavailable).
+ */
+async function runLocalPytest(workspace: string): Promise<{
+  exitCode: number;
+  output: string;
+  passed: boolean;
+  progress: number;
+  testsPassing: number;
+  testsTotal: number;
+}> {
+  const testsDir = join(workspace, "tests");
+  if (!existsSync(testsDir)) {
+    throw new Error(`Tests directory not found: ${testsDir}`);
+  }
+
+  const proc = Bun.spawn(["python3", "-m", "pytest", "tests/", "-v", "--tb=short"], {
+    cwd: workspace,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+  });
+
+  const exitCode = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  const output = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
+
+  // Parse pytest output
+  const parseResult = parsePytestOutput(output);
+  const passed = exitCode === 0 && parseResult.failed === 0;
+  const progress = parseResult.total > 0 ? parseResult.passed / parseResult.total : 0;
+
+  return {
+    exitCode,
+    output,
+    passed,
+    progress,
+    testsPassing: parseResult.passed,
+    testsTotal: parseResult.total,
+  };
+}
+
+/**
  * Run verification using Docker for TB2 tasks.
  *
  * This is the proper way to run TB2 tests - in the Docker environment
  * where /app/ exists as expected. Uses blind verification (pass/fail only).
+ *
+ * Falls back to local pytest if Docker is not available.
  *
  * @param task - TB2 task with source_path pointing to task directory
  * @param workspace - Local workspace with the solution
@@ -113,41 +175,59 @@ export const runVerificationWithDocker = (
 ): Effect.Effect<{ exitCode: number; output: string; passed: boolean; progress: number; testsPassing: number; testsTotal: number }, Error> =>
   Effect.tryPromise({
     try: async () => {
+      // Check if Docker is available
+      const dockerAvailable = isDockerAvailable();
+
+      if (!dockerAvailable) {
+        console.log(`[TB2] Docker not available, falling back to local pytest`);
+        return await runLocalPytest(workspace);
+      }
+
       // Check if task has source_path with tests
       const taskDir = task.source_path;
       if (!taskDir || !existsSync(taskDir)) {
-        throw new Error(`Task source_path not found: ${taskDir}. Cannot run Docker verification.`);
+        // Fall back to local if no taskDir
+        console.log(`[TB2] Task source_path not found, falling back to local pytest`);
+        return await runLocalPytest(workspace);
       }
 
       const testsDir = join(taskDir, "tests");
       if (!existsSync(testsDir)) {
-        throw new Error(`Tests directory not found: ${testsDir}. Cannot run Docker verification.`);
+        // Fall back to local if no testsDir
+        console.log(`[TB2] Tests directory not found, falling back to local pytest`);
+        return await runLocalPytest(workspace);
       }
 
-      // Run verification in Docker
-      const result = await runTB2InDocker({
-        taskId: task.id,
-        taskDir,
-        workspace,
-        timeout: 120000,
-        captureDetails: false, // Blind verification - no expected values
-      });
+      try {
+        // Run verification in Docker
+        const result = await runTB2InDocker({
+          taskId: task.id,
+          taskDir,
+          workspace,
+          timeout: 120000,
+          captureDetails: false, // Blind verification - no expected values
+        });
 
-      // Format output for compatibility with existing parsers
-      const output = result.passed
-        ? `${result.testsPassing} passed in ${result.durationMs}ms`
-        : `${result.testsPassing} passed, ${result.testsTotal - result.testsPassing} failed in ${result.durationMs}ms${result.feedback ? `\n${result.feedback}` : ""}`;
+        // Format output for compatibility with existing parsers
+        const output = result.passed
+          ? `${result.testsPassing} passed in ${result.durationMs}ms`
+          : `${result.testsPassing} passed, ${result.testsTotal - result.testsPassing} failed in ${result.durationMs}ms${result.feedback ? `\n${result.feedback}` : ""}`;
 
-      return {
-        exitCode: result.exitCode,
-        output,
-        passed: result.passed,
-        progress: result.progress,
-        testsPassing: result.testsPassing,
-        testsTotal: result.testsTotal,
-      };
+        return {
+          exitCode: result.exitCode,
+          output,
+          passed: result.passed,
+          progress: result.progress,
+          testsPassing: result.testsPassing,
+          testsTotal: result.testsTotal,
+        };
+      } catch (dockerError) {
+        // Docker failed, fall back to local
+        console.log(`[TB2] Docker verification failed: ${dockerError}, falling back to local pytest`);
+        return await runLocalPytest(workspace);
+      }
     },
-    catch: (e) => new Error(`Docker verification failed: ${e}`),
+    catch: (e) => new Error(`Verification failed: ${e}`),
   });
 
 // ============================================================================

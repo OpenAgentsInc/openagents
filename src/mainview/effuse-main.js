@@ -26045,6 +26045,13 @@ ${endStackCall}`;
       }
       return response.data;
     }
+    async startCustomTestGen(taskDescription, sessionId, model) {
+      const response = await this.request("request:startCustomTestGen", { taskDescription, sessionId, model });
+      if (!response.success) {
+        throw new Error(response.error ?? "Failed to start custom test generation");
+      }
+      return response.data;
+    }
     async startHillClimber(task, mode, suitePath) {
       const response = await this.request("request:startHillClimber", { task, mode, suitePath });
       if (!response.success) {
@@ -26326,6 +26333,7 @@ ${endStackCall}`;
       getHFTrajectoryCount: () => wrapRequest(() => client.getHFTrajectoryCount()),
       getHFTrajectories: (offset, limit) => wrapRequest(() => client.getHFTrajectories(offset, limit)),
       startTestGen: (suitePath, taskId, model) => wrapRequest(() => client.startTestGen(suitePath, taskId, model)),
+      startCustomTestGen: (taskDescription, sessionId, model) => client.startCustomTestGen(taskDescription, sessionId, model),
       startHillClimber: (task, mode, suitePath) => wrapRequest(() => client.startHillClimber(task, mode, suitePath))
     };
   };
@@ -26838,6 +26846,269 @@ ${endStackCall}`;
   var initialTrajectoryPaneState = TrajectoryPaneComponent.initialState();
   // src/effuse/components/agent-graph/geometry.ts
   var TWO_PI = 2 * Math.PI;
+  // src/effuse/components/atif-thread.ts
+  function renderThreadContainer(items, options) {
+    const itemElements = items.map((item) => {
+      const itemId = getItemId(item);
+      const isExpanded = itemId === options.expandedItemId;
+      const state = {
+        isExpanded,
+        ...options.onToggle !== undefined ? { onToggle: options.onToggle } : {}
+      };
+      return renderThreadItem(item, state);
+    });
+    return html`
+    <div class="flex flex-col gap-2">
+      ${joinTemplates(itemElements)}
+    </div>
+  `;
+  }
+  function renderThreadItem(item, state) {
+    const timestamp = formatTimestamp2(item.timestamp);
+    switch (item.type) {
+      case "progress":
+        return renderProgressItem(timestamp, item.data, state);
+      case "reflection":
+        return renderReflectionItem(timestamp, item.data, state);
+      case "test":
+        return renderTestItem(timestamp, item.data, state);
+      case "complete":
+        return renderCompleteItem(timestamp, item.data, state);
+      case "error":
+        return renderErrorItem(timestamp, item.data, state);
+    }
+  }
+  function renderProgressItem(timestamp, progress, state) {
+    return html`
+    <div class="p-3 bg-zinc-900/40 border border-zinc-800/60 rounded-lg">
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-zinc-400">⚙️</span>
+        <span class="text-xs font-mono text-zinc-300 uppercase">PROGRESS</span>
+        <span class="text-sm text-zinc-400">${progress.status}</span>
+        ${progress.category ? html`<span class="text-xs text-zinc-500">(${progress.category} - round ${progress.round})</span>` : ""}
+      </div>
+    </div>
+  `;
+  }
+  function renderReflectionItem(timestamp, reflection, state) {
+    const actionLabels = {
+      refining: "Refining",
+      assessing: "Assessing",
+      complete: "Complete"
+    };
+    return html`
+    <div class="p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+      <div class="flex items-start gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-blue-300">💭</span>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-mono text-blue-300 uppercase">REFLECTION</span>
+            <span class="text-xs text-blue-400">${actionLabels[reflection.action]}</span>
+            ${reflection.category ? html`<span class="px-2 py-0.5 bg-blue-900/40 border border-blue-700/50 rounded text-xs text-blue-300 font-mono">${reflection.category}</span>` : ""}
+          </div>
+          <p class="text-sm text-blue-200 font-mono leading-relaxed">${reflection.text}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function renderTestItem(timestamp, test, state) {
+    const categoryBadge = getCategoryBadge(test.category);
+    const confidencePercent = Math.round(test.confidence * 100);
+    const itemId = test.id;
+    const header = html`
+    <div
+      class="flex items-center justify-between p-3 bg-zinc-900/60 border border-zinc-800/60 rounded-lg cursor-pointer hover:bg-zinc-900/80 transition-colors"
+      data-action="toggleItem"
+      data-item-id="${itemId}"
+    >
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <span class="text-xs text-zinc-500 font-mono flex-shrink-0">${timestamp}</span>
+        ${categoryBadge}
+        <span class="text-sm text-zinc-200 font-mono truncate">${test.id}</span>
+        <span class="text-xs text-zinc-400 flex-shrink-0">(${confidencePercent}%)</span>
+      </div>
+      <span class="text-zinc-500 flex-shrink-0 ml-2">${state.isExpanded ? "▲" : "▼"}</span>
+    </div>
+  `;
+    if (!state.isExpanded) {
+      return header;
+    }
+    const confidenceBar = renderConfidenceBar(test.confidence);
+    const details = html`
+    <div class="mt-2 p-4 bg-zinc-950/60 border border-zinc-800/40 rounded-lg space-y-3">
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Input</label>
+        <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap">${test.input}</pre>
+      </div>
+
+      ${test.expectedOutput ? html`
+            <div>
+              <label class="text-xs font-mono text-zinc-500 uppercase">Expected Output</label>
+              <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-blue-300 overflow-x-auto whitespace-pre-wrap">${test.expectedOutput}</pre>
+            </div>
+          ` : ""}
+
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Reasoning</label>
+        <p class="mt-1 text-sm text-zinc-300 leading-relaxed">${test.reasoning}</p>
+      </div>
+
+      <div>
+        <label class="text-xs font-mono text-zinc-500 uppercase">Confidence</label>
+        <div class="mt-1">${confidenceBar}</div>
+      </div>
+    </div>
+  `;
+    return html`${header} ${details}`;
+  }
+  function renderCompleteItem(timestamp, complete3, state) {
+    return html`
+    <div class="p-4 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
+      <div class="flex items-center gap-3 mb-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-emerald-400">✓</span>
+        <span class="text-xs font-mono text-emerald-300 uppercase">COMPLETE</span>
+      </div>
+      <div class="space-y-2 text-sm">
+        <div>
+          <span class="text-zinc-400">Total Tests: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalTests}</span>
+        </div>
+        <div>
+          <span class="text-zinc-400">Total Rounds: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalRounds}</span>
+        </div>
+        ${complete3.comprehensivenessScore !== null ? html`
+              <div>
+                <span class="text-zinc-400">Comprehensiveness Score: </span>
+                <span class="text-emerald-300 font-mono">${complete3.comprehensivenessScore}/10</span>
+              </div>
+            ` : ""}
+        <div>
+          <span class="text-zinc-400">Tokens Used: </span>
+          <span class="text-emerald-300 font-mono">${complete3.totalTokensUsed.toLocaleString()}</span>
+        </div>
+        <div>
+          <span class="text-zinc-400">Duration: </span>
+          <span class="text-emerald-300 font-mono">${(complete3.durationMs / 1000).toFixed(1)}s</span>
+        </div>
+        ${complete3.uncertainties.length > 0 ? html`
+              <div>
+                <span class="text-zinc-400">Uncertainties: </span>
+                <ul class="mt-1 space-y-1">
+                  ${joinTemplates(complete3.uncertainties.map((u) => html`
+                        <li class="text-yellow-300 text-xs">• ${u}</li>
+                      `))}
+                </ul>
+              </div>
+            ` : ""}
+      </div>
+    </div>
+  `;
+  }
+  function renderErrorItem(timestamp, error, state) {
+    return html`
+    <div class="p-3 bg-red-900/20 border border-red-700/50 rounded-lg">
+      <div class="flex items-start gap-3">
+        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
+        <span class="text-red-400">✗</span>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-mono text-red-300 uppercase">ERROR</span>
+          </div>
+          <p class="text-sm text-red-200 font-mono">${error.error}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  function getItemId(item) {
+    switch (item.type) {
+      case "test":
+        return item.data.id;
+      case "progress":
+        return `progress-${item.timestamp}`;
+      case "reflection":
+        return `reflection-${item.timestamp}`;
+      case "complete":
+        return `complete-${item.timestamp}`;
+      case "error":
+        return `error-${item.timestamp}`;
+    }
+  }
+  function formatTimestamp2(timestamp) {
+    const date = new Date(timestamp);
+    const hours2 = date.getHours().toString().padStart(2, "0");
+    const minutes2 = date.getMinutes().toString().padStart(2, "0");
+    const seconds2 = date.getSeconds().toString().padStart(2, "0");
+    return `${hours2}:${minutes2}:${seconds2}`;
+  }
+  function getCategoryBadge(category) {
+    const badges = {
+      anti_cheat: {
+        emoji: "\uD83D\uDD34",
+        bg: "bg-red-900/40",
+        text: "text-red-300",
+        border: "border-red-700/50"
+      },
+      existence: {
+        emoji: "\uD83D\uDD35",
+        bg: "bg-blue-900/40",
+        text: "text-blue-300",
+        border: "border-blue-700/50"
+      },
+      correctness: {
+        emoji: "\uD83D\uDFE2",
+        bg: "bg-emerald-900/40",
+        text: "text-emerald-300",
+        border: "border-emerald-700/50"
+      },
+      boundary: {
+        emoji: "\uD83D\uDFE1",
+        bg: "bg-yellow-900/40",
+        text: "text-yellow-300",
+        border: "border-yellow-700/50"
+      },
+      integration: {
+        emoji: "\uD83D\uDFE3",
+        bg: "bg-purple-900/40",
+        text: "text-purple-300",
+        border: "border-purple-700/50"
+      }
+    };
+    const badge = badges[category] || {
+      emoji: "⚪",
+      bg: "bg-zinc-800/40",
+      text: "text-zinc-300",
+      border: "border-zinc-700/50"
+    };
+    return html`
+    <span class="px-2 py-1 text-xs font-mono border rounded ${badge.bg} ${badge.text} ${badge.border} flex-shrink-0">
+      ${badge.emoji} ${category}
+    </span>
+  `;
+  }
+  function renderConfidenceBar(confidence) {
+    const percent = Math.round(confidence * 100);
+    const width = `${percent}%`;
+    const barColor = "bg-emerald-500";
+    return html`
+    <div class="flex items-center gap-2">
+      <div class="flex-1 h-2 bg-zinc-800 rounded overflow-hidden">
+        <div class="h-full ${barColor} transition-all" style="width: ${width}"></div>
+      </div>
+      <span class="text-xs text-zinc-400 font-mono">${percent}%</span>
+    </div>
+  `;
+  }
+
+  // src/hud/protocol.ts
+  var HUD_WS_PORT = 8080;
+  var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}/ws`;
+  var isATIFStep = (msg) => msg.type === "atif_step";
   // src/effuse/components/container-panes.ts
   var MAX_VISIBLE_PANES = 10;
   var MAX_LINES_PER_PANE = 500;
@@ -27090,11 +27361,6 @@ ${endStackCall}`;
     }
   };
   var initialContainerPanesState = ContainerPanesComponent.initialState();
-  // src/hud/protocol.ts
-  var HUD_WS_PORT = 8080;
-  var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}/ws`;
-  var isATIFStep = (msg) => msg.type === "atif_step";
-
   // src/effuse/components/tb-output.ts
   var MAX_OUTPUT_LINES = 500;
   var getSourceColorClass = (source) => {
@@ -28872,7 +29138,7 @@ ${endStackCall}`;
   };
 
   // src/effuse/components/hf-trajectory-detail.ts
-  var formatTimestamp2 = (iso) => {
+  var formatTimestamp3 = (iso) => {
     try {
       return new Date(iso).toLocaleTimeString(undefined, {
         hour: "2-digit",
@@ -29040,7 +29306,7 @@ ${endStackCall}`;
                     <span class="text-xs px-1.5 py-0.5 rounded border ${sourceClass} uppercase font-mono">
                       ${source}
                     </span>
-                    <span class="text-xs text-zinc-400 font-mono">${formatTimestamp2(step4.timestamp)}</span>
+                    <span class="text-xs text-zinc-400 font-mono">${formatTimestamp3(step4.timestamp)}</span>
                     ${toolCallCount > 0 ? html`<span class="text-xs text-violet-400">🔧 ${toolCallCount} tool${toolCallCount > 1 ? "s" : ""}</span>` : ""}
                     ${hasObs ? html`<span class="text-xs text-emerald-400">✓ obs</span>` : ""}
                   </div>
@@ -29186,7 +29452,7 @@ ${endStackCall}`;
   };
   var initialHFTrajectoryDetailState = HFTrajectoryDetailComponent.initialState();
   // src/effuse/components/tb-command-center/types.ts
-  var TABS = [
+  var TABS2 = [
     { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
     { id: "tasks", label: "Tasks", icon: "list-checks" },
     { id: "runs", label: "Runs", icon: "play-circle" },
@@ -29237,7 +29503,7 @@ ${endStackCall}`;
       if (window.bunLog) {
         window.bunLog(`[TBCCShell] render called, activeTab=${state.activeTab}`);
       }
-      const tabItems = joinTemplates(TABS.map((tab) => {
+      const tabItems = joinTemplates(TABS2.map((tab) => {
         const isActive2 = tab.id === state.activeTab;
         const baseClasses = "flex items-center gap-3 px-4 py-3 text-sm font-mono transition-colors cursor-pointer";
         const activeClasses = isActive2 ? "bg-zinc-800/60 text-zinc-100 border-l-2 border-emerald-500" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-l-2 border-transparent";
@@ -29311,8 +29577,8 @@ ${endStackCall}`;
           if (window.bunLog) {
             window.bunLog(`[TBCCShell] Changing tab to: ${event.tab}`);
           }
-          const TABS2 = ["dashboard", "tasks", "runs", "testgen", "settings"];
-          for (const tabId of TABS2) {
+          const TABS3 = ["dashboard", "tasks", "runs", "testgen", "settings"];
+          for (const tabId of TABS3) {
             const container = yield* ctx.dom.queryOption(`#tbcc-tab-${tabId}`);
             if (container) {
               if (tabId === event.tab) {
@@ -30522,265 +30788,6 @@ ${endStackCall}`;
       return [exports_Stream.make(ctx.emit({ type: "loadRuns", page: 0 }))];
     }
   };
-  // src/effuse/components/atif-thread.ts
-  function renderThreadContainer(items, options) {
-    const itemElements = items.map((item) => {
-      const itemId = getItemId(item);
-      const isExpanded = itemId === options.expandedItemId;
-      const state = {
-        isExpanded,
-        ...options.onToggle !== undefined ? { onToggle: options.onToggle } : {}
-      };
-      return renderThreadItem(item, state);
-    });
-    return html`
-    <div class="flex flex-col gap-2">
-      ${joinTemplates(itemElements)}
-    </div>
-  `;
-  }
-  function renderThreadItem(item, state) {
-    const timestamp = formatTimestamp3(item.timestamp);
-    switch (item.type) {
-      case "progress":
-        return renderProgressItem(timestamp, item.data, state);
-      case "reflection":
-        return renderReflectionItem(timestamp, item.data, state);
-      case "test":
-        return renderTestItem(timestamp, item.data, state);
-      case "complete":
-        return renderCompleteItem(timestamp, item.data, state);
-      case "error":
-        return renderErrorItem(timestamp, item.data, state);
-    }
-  }
-  function renderProgressItem(timestamp, progress, state) {
-    return html`
-    <div class="p-3 bg-zinc-900/40 border border-zinc-800/60 rounded-lg">
-      <div class="flex items-center gap-3">
-        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
-        <span class="text-zinc-400">⚙️</span>
-        <span class="text-xs font-mono text-zinc-300 uppercase">PROGRESS</span>
-        <span class="text-sm text-zinc-400">${progress.status}</span>
-        ${progress.category ? html`<span class="text-xs text-zinc-500">(${progress.category} - round ${progress.round})</span>` : ""}
-      </div>
-    </div>
-  `;
-  }
-  function renderReflectionItem(timestamp, reflection, state) {
-    const actionLabels = {
-      refining: "Refining",
-      assessing: "Assessing",
-      complete: "Complete"
-    };
-    return html`
-    <div class="p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
-      <div class="flex items-start gap-3">
-        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
-        <span class="text-blue-300">💭</span>
-        <div class="flex-1">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-mono text-blue-300 uppercase">REFLECTION</span>
-            <span class="text-xs text-blue-400">${actionLabels[reflection.action]}</span>
-            ${reflection.category ? html`<span class="px-2 py-0.5 bg-blue-900/40 border border-blue-700/50 rounded text-xs text-blue-300 font-mono">${reflection.category}</span>` : ""}
-          </div>
-          <p class="text-sm text-blue-200 font-mono leading-relaxed">${reflection.text}</p>
-        </div>
-      </div>
-    </div>
-  `;
-  }
-  function renderTestItem(timestamp, test, state) {
-    const categoryBadge = getCategoryBadge(test.category);
-    const confidencePercent = Math.round(test.confidence * 100);
-    const itemId = test.id;
-    const header = html`
-    <div
-      class="flex items-center justify-between p-3 bg-zinc-900/60 border border-zinc-800/60 rounded-lg cursor-pointer hover:bg-zinc-900/80 transition-colors"
-      data-action="toggleItem"
-      data-item-id="${itemId}"
-    >
-      <div class="flex items-center gap-3 flex-1 min-w-0">
-        <span class="text-xs text-zinc-500 font-mono flex-shrink-0">${timestamp}</span>
-        ${categoryBadge}
-        <span class="text-sm text-zinc-200 font-mono truncate">${test.id}</span>
-        <span class="text-xs text-zinc-400 flex-shrink-0">(${confidencePercent}%)</span>
-      </div>
-      <span class="text-zinc-500 flex-shrink-0 ml-2">${state.isExpanded ? "▲" : "▼"}</span>
-    </div>
-  `;
-    if (!state.isExpanded) {
-      return header;
-    }
-    const confidenceBar = renderConfidenceBar(test.confidence);
-    const details = html`
-    <div class="mt-2 p-4 bg-zinc-950/60 border border-zinc-800/40 rounded-lg space-y-3">
-      <div>
-        <label class="text-xs font-mono text-zinc-500 uppercase">Input</label>
-        <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap">${test.input}</pre>
-      </div>
-
-      ${test.expectedOutput ? html`
-            <div>
-              <label class="text-xs font-mono text-zinc-500 uppercase">Expected Output</label>
-              <pre class="mt-1 p-2 bg-zinc-900/60 rounded text-sm font-mono text-blue-300 overflow-x-auto whitespace-pre-wrap">${test.expectedOutput}</pre>
-            </div>
-          ` : ""}
-
-      <div>
-        <label class="text-xs font-mono text-zinc-500 uppercase">Reasoning</label>
-        <p class="mt-1 text-sm text-zinc-300 leading-relaxed">${test.reasoning}</p>
-      </div>
-
-      <div>
-        <label class="text-xs font-mono text-zinc-500 uppercase">Confidence</label>
-        <div class="mt-1">${confidenceBar}</div>
-      </div>
-    </div>
-  `;
-    return html`${header} ${details}`;
-  }
-  function renderCompleteItem(timestamp, complete3, state) {
-    return html`
-    <div class="p-4 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
-      <div class="flex items-center gap-3 mb-3">
-        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
-        <span class="text-emerald-400">✓</span>
-        <span class="text-xs font-mono text-emerald-300 uppercase">COMPLETE</span>
-      </div>
-      <div class="space-y-2 text-sm">
-        <div>
-          <span class="text-zinc-400">Total Tests: </span>
-          <span class="text-emerald-300 font-mono">${complete3.totalTests}</span>
-        </div>
-        <div>
-          <span class="text-zinc-400">Total Rounds: </span>
-          <span class="text-emerald-300 font-mono">${complete3.totalRounds}</span>
-        </div>
-        ${complete3.comprehensivenessScore !== null ? html`
-              <div>
-                <span class="text-zinc-400">Comprehensiveness Score: </span>
-                <span class="text-emerald-300 font-mono">${complete3.comprehensivenessScore}/10</span>
-              </div>
-            ` : ""}
-        <div>
-          <span class="text-zinc-400">Tokens Used: </span>
-          <span class="text-emerald-300 font-mono">${complete3.totalTokensUsed.toLocaleString()}</span>
-        </div>
-        <div>
-          <span class="text-zinc-400">Duration: </span>
-          <span class="text-emerald-300 font-mono">${(complete3.durationMs / 1000).toFixed(1)}s</span>
-        </div>
-        ${complete3.uncertainties.length > 0 ? html`
-              <div>
-                <span class="text-zinc-400">Uncertainties: </span>
-                <ul class="mt-1 space-y-1">
-                  ${joinTemplates(complete3.uncertainties.map((u) => html`
-                        <li class="text-yellow-300 text-xs">• ${u}</li>
-                      `))}
-                </ul>
-              </div>
-            ` : ""}
-      </div>
-    </div>
-  `;
-  }
-  function renderErrorItem(timestamp, error, state) {
-    return html`
-    <div class="p-3 bg-red-900/20 border border-red-700/50 rounded-lg">
-      <div class="flex items-start gap-3">
-        <span class="text-xs text-zinc-500 font-mono">${timestamp}</span>
-        <span class="text-red-400">✗</span>
-        <div class="flex-1">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-mono text-red-300 uppercase">ERROR</span>
-          </div>
-          <p class="text-sm text-red-200 font-mono">${error.error}</p>
-        </div>
-      </div>
-    </div>
-  `;
-  }
-  function getItemId(item) {
-    switch (item.type) {
-      case "test":
-        return item.data.id;
-      case "progress":
-        return `progress-${item.timestamp}`;
-      case "reflection":
-        return `reflection-${item.timestamp}`;
-      case "complete":
-        return `complete-${item.timestamp}`;
-      case "error":
-        return `error-${item.timestamp}`;
-    }
-  }
-  function formatTimestamp3(timestamp) {
-    const date = new Date(timestamp);
-    const hours2 = date.getHours().toString().padStart(2, "0");
-    const minutes2 = date.getMinutes().toString().padStart(2, "0");
-    const seconds2 = date.getSeconds().toString().padStart(2, "0");
-    return `${hours2}:${minutes2}:${seconds2}`;
-  }
-  function getCategoryBadge(category) {
-    const badges = {
-      anti_cheat: {
-        emoji: "\uD83D\uDD34",
-        bg: "bg-red-900/40",
-        text: "text-red-300",
-        border: "border-red-700/50"
-      },
-      existence: {
-        emoji: "\uD83D\uDD35",
-        bg: "bg-blue-900/40",
-        text: "text-blue-300",
-        border: "border-blue-700/50"
-      },
-      correctness: {
-        emoji: "\uD83D\uDFE2",
-        bg: "bg-emerald-900/40",
-        text: "text-emerald-300",
-        border: "border-emerald-700/50"
-      },
-      boundary: {
-        emoji: "\uD83D\uDFE1",
-        bg: "bg-yellow-900/40",
-        text: "text-yellow-300",
-        border: "border-yellow-700/50"
-      },
-      integration: {
-        emoji: "\uD83D\uDFE3",
-        bg: "bg-purple-900/40",
-        text: "text-purple-300",
-        border: "border-purple-700/50"
-      }
-    };
-    const badge = badges[category] || {
-      emoji: "⚪",
-      bg: "bg-zinc-800/40",
-      text: "text-zinc-300",
-      border: "border-zinc-700/50"
-    };
-    return html`
-    <span class="px-2 py-1 text-xs font-mono border rounded ${badge.bg} ${badge.text} ${badge.border} flex-shrink-0">
-      ${badge.emoji} ${category}
-    </span>
-  `;
-  }
-  function renderConfidenceBar(confidence) {
-    const percent = Math.round(confidence * 100);
-    const width = `${percent}%`;
-    const barColor = "bg-emerald-500";
-    return html`
-    <div class="flex items-center gap-2">
-      <div class="flex-1 h-2 bg-zinc-800 rounded overflow-hidden">
-        <div class="h-full ${barColor} transition-all" style="width: ${width}"></div>
-      </div>
-      <span class="text-xs text-zinc-400 font-mono">${percent}%</span>
-    </div>
-  `;
-  }
-
   // src/effuse/components/tb-command-center/tbcc-testgen.ts
   var TBTestGenComponent = {
     id: "tbcc-testgen",
