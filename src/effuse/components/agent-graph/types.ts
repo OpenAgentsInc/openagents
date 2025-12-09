@@ -47,6 +47,7 @@ export interface AgentGraphState {
   nodes: SimNode[]
   connections: GraphConnection[]
   hoveredNodeId: string | null
+  draggedNodeId: string | null
   animationFrame: number
   simulationRunning: boolean
   canvas: {
@@ -66,6 +67,10 @@ export interface AgentGraphState {
 export type AgentGraphEvent =
   | { type: "nodeClick"; nodeId: string }
   | { type: "nodeHover"; nodeId: string | null }
+  | { type: "nodeDragStart"; nodeId: string; startPoint: Point }
+  | { type: "nodeDragMove"; worldPoint: Point }
+  | { type: "nodeDragEnd" }
+  | { type: "nodeDoubleClick"; nodeId: string }
   | { type: "canvasPan"; delta: Point }
   | { type: "canvasZoom"; delta: number; pointer: Point }
   | { type: "simulationTick" }

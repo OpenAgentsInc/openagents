@@ -34,11 +34,12 @@ function initialState(): AgentGraphState {
     nodes: createATIFNodes(),
     connections: createATIFConnections(),
     hoveredNodeId: null,
+    draggedNodeId: null,
     animationFrame: 0,
     simulationRunning: true,
     canvas: {
-      pan: { x: 0, y: 0 },
-      zoom: 1,
+      pan: { x: 200, y: 100 },
+      zoom: 1.5,
       viewport: { width: 0, height: 0 },
     },
   }
@@ -57,7 +58,6 @@ function render(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
         id="agent-graph-svg"
         width="100%"
         height="100%"
-        viewBox="0 0 800 600"
         style="position: absolute; inset: 0; background: #000000; user-select: none;"
       >
         ${rawHtml(
@@ -129,142 +129,154 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
 
     _animationId = requestAnimationFrame(animate)
 
-    // Mouse hover detection
-    svg.addEventListener("mousemove", (e: MouseEvent) => {
-      const rect = svg.getBoundingClientRect()
-      const svgX = e.clientX - rect.left
-      const svgY = e.clientY - rect.top
+    // Interaction state
+    let isDraggingNode = false
+    let isPanningCanvas = false
+    let lastMouseX = 0
+    let lastMouseY = 0
+    let clickStartTime = 0
+    let clickStartPos = { x: 0, y: 0 }
 
-      Effect.runFork(
-        Effect.gen(function* () {
-          const state = yield* ctx.state.get
+    // Helper: Get world coordinates from screen coordinates
+    const screenToWorld = (screenX: number, screenY: number) => {
+      return Effect.gen(function* () {
+        const state = yield* ctx.state.get
+        const rect = svg.getBoundingClientRect()
+        const svgX = screenX - rect.left
+        const svgY = screenY - rect.top
+        return {
+          x: (svgX - state.canvas.pan.x) / state.canvas.zoom,
+          y: (svgY - state.canvas.pan.y) / state.canvas.zoom,
+        }
+      })
+    }
 
-          // Transform to world coordinates
-          const worldX = (svgX - state.canvas.pan.x) / state.canvas.zoom
-          const worldY = (svgY - state.canvas.pan.y) / state.canvas.zoom
-
-          // Find node at point
-          const hoveredNode = state.nodes.find((node: SimNode) => {
-            const dx = worldX - node.x
-            const dy = worldY - node.y
-            return (
-              Math.abs(dx) <= node.width / 2 &&
-              Math.abs(dy) <= node.height / 2
-            )
-          })
-
-          yield* ctx.emit({
-            type: "nodeHover",
-            nodeId: hoveredNode?.id || null,
-          })
+    // Helper: Find node at world coordinates
+    const findNodeAt = (worldX: number, worldY: number) => {
+      return Effect.gen(function* () {
+        const state = yield* ctx.state.get
+        return state.nodes.find((node: SimNode) => {
+          const dx = worldX - node.x
+          const dy = worldY - node.y
+          return Math.abs(dx) <= node.width / 2 && Math.abs(dy) <= node.height / 2
         })
-      )
-    })
+      })
+    }
 
-    // Click detection
-    svg.addEventListener("click", (e: MouseEvent) => {
-      const rect = svg.getBoundingClientRect()
-      const svgX = e.clientX - rect.left
-      const svgY = e.clientY - rect.top
+    // Mouse down: Start drag or pan
+    svg.addEventListener("mousedown", (e: MouseEvent) => {
+      if (e.button !== 0) return // Only left mouse button
+
+      clickStartTime = Date.now()
+      clickStartPos = { x: e.clientX, y: e.clientY }
+      lastMouseX = e.clientX
+      lastMouseY = e.clientY
 
       Effect.runFork(
         Effect.gen(function* () {
-          const state = yield* ctx.state.get
+          const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+          const node = yield* findNodeAt(worldPos.x, worldPos.y)
 
-          // Transform to world coordinates
-          const worldX = (svgX - state.canvas.pan.x) / state.canvas.zoom
-          const worldY = (svgY - state.canvas.pan.y) / state.canvas.zoom
-
-          // Find node at point
-          const clickedNode = state.nodes.find((node: SimNode) => {
-            const dx = worldX - node.x
-            const dy = worldY - node.y
-            return (
-              Math.abs(dx) <= node.width / 2 &&
-              Math.abs(dy) <= node.height / 2
-            )
-          })
-
-          if (clickedNode) {
-            yield* ctx.emit({ type: "nodeClick", nodeId: clickedNode.id })
+          if (node) {
+            // Start dragging node
+            isDraggingNode = true
+            svg.style.cursor = "grabbing"
+            yield* ctx.emit({
+              type: "nodeDragStart",
+              nodeId: node.id,
+              startPoint: worldPos,
+            })
+          } else {
+            // Start panning canvas
+            isPanningCanvas = true
+            svg.style.cursor = "grabbing"
           }
         })
       )
     })
 
-    // Pan: click and drag
-    let isPanning = false
-    let lastMouseX = 0
-    let lastMouseY = 0
+    // Mouse move: Update drag or pan
+    document.addEventListener("mousemove", (e: MouseEvent) => {
+      const dx = e.clientX - lastMouseX
+      const dy = e.clientY - lastMouseY
 
-    svg.addEventListener("mousedown", (e: MouseEvent) => {
-      // Only pan on left-click on background (not on nodes)
-      if (e.button === 0) {
-        const rect = svg.getBoundingClientRect()
-        const svgX = e.clientX - rect.left
-        const svgY = e.clientY - rect.top
-
+      if (isDraggingNode) {
         Effect.runFork(
           Effect.gen(function* () {
-            const state = yield* ctx.state.get
+            const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+            yield* ctx.emit({ type: "nodeDragMove", worldPoint: worldPos })
+          })
+        )
+      } else if (isPanningCanvas) {
+        console.log("[PAN] delta:", dx, dy)
+        Effect.runFork(ctx.emit({ type: "canvasPan", delta: { x: dx, y: dy } }))
+      } else {
+        // Just hovering - update hover state
+        Effect.runFork(
+          Effect.gen(function* () {
+            const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+            const node = yield* findNodeAt(worldPos.x, worldPos.y)
+            yield* ctx.emit({ type: "nodeHover", nodeId: node?.id || null })
+          })
+        )
+      }
 
-            const worldX = (svgX - state.canvas.pan.x) / state.canvas.zoom
-            const worldY = (svgY - state.canvas.pan.y) / state.canvas.zoom
+      lastMouseX = e.clientX
+      lastMouseY = e.clientY
+    })
 
-            const onNode = state.nodes.some((node: SimNode) => {
-              const dx = worldX - node.x
-              const dy = worldY - node.y
-              return (
-                Math.abs(dx) <= node.width / 2 &&
-                Math.abs(dy) <= node.height / 2
-              )
-            })
+    // Mouse up: End drag or pan, detect click
+    document.addEventListener("mouseup", (e: MouseEvent) => {
+      const wasClick =
+        Date.now() - clickStartTime < 200 &&
+        Math.abs(e.clientX - clickStartPos.x) < 5 &&
+        Math.abs(e.clientY - clickStartPos.y) < 5
 
-            if (!onNode) {
-              isPanning = true
-              lastMouseX = e.clientX
-              lastMouseY = e.clientY
-              svg.style.cursor = "grabbing"
+      if (isDraggingNode) {
+        Effect.runFork(ctx.emit({ type: "nodeDragEnd" }))
+        isDraggingNode = false
+        svg.style.cursor = "default"
+      } else if (isPanningCanvas) {
+        isPanningCanvas = false
+        svg.style.cursor = "default"
+      }
+
+      // Handle click
+      if (wasClick) {
+        Effect.runFork(
+          Effect.gen(function* () {
+            const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+            const node = yield* findNodeAt(worldPos.x, worldPos.y)
+            if (node) {
+              yield* ctx.emit({ type: "nodeClick", nodeId: node.id })
             }
           })
         )
       }
     })
 
-    document.addEventListener("mousemove", (e) => {
-      if (isPanning) {
-        const dx = e.clientX - lastMouseX
-        const dy = e.clientY - lastMouseY
-
-        Effect.runFork(
-          ctx.emit({ type: "canvasPan", delta: { x: dx, y: dy } })
-        )
-
-        lastMouseX = e.clientX
-        lastMouseY = e.clientY
-      }
+    // Double-click: Unpin node
+    svg.addEventListener("dblclick", (e: MouseEvent) => {
+      Effect.runFork(
+        Effect.gen(function* () {
+          const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+          const node = yield* findNodeAt(worldPos.x, worldPos.y)
+          if (node) {
+            yield* ctx.emit({ type: "nodeDoubleClick", nodeId: node.id })
+          }
+        })
+      )
     })
 
-    document.addEventListener("mouseup", () => {
-      if (isPanning) {
-        isPanning = false
-        svg.style.cursor = "default"
-      }
-    })
-
-    // Zoom: scroll wheel
+    // Wheel: Zoom
     svg.addEventListener("wheel", (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? 0.9 : 1.1 // Zoom out/in
-
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
       const rect = svg.getBoundingClientRect()
-      const pointer = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      }
-
+      const pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      console.log("[ZOOM] delta:", delta, "pointer:", pointer)
       Effect.runFork(ctx.emit({ type: "canvasZoom", delta, pointer }))
-    })
+    }, { passive: false })
 
     // TODO: Add proper cleanup for animationFrame using acquireRelease
     // For now, the animation will stop when simulation alpha drops below minimum
@@ -286,33 +298,84 @@ function handleEvent(event: AgentGraphEvent, ctx: ComponentContext<AgentGraphSta
         break
 
       case "nodeClick":
-        console.log("Clicked node:", event.nodeId)
-        // TODO: Emit to parent or show details panel
+        console.log("[AgentGraph] Clicked node:", event.nodeId)
+        break
+
+      case "nodeDragStart":
+        yield* ctx.state.update((s: AgentGraphState) => {
+          // Pin the node by setting fx/fy
+          const nodes = s.nodes.map((n) =>
+            n.id === event.nodeId ? { ...n, fx: n.x, fy: n.y } : n
+          )
+          return { ...s, nodes, draggedNodeId: event.nodeId }
+        })
+        console.log("[AgentGraph] Dragging node:", event.nodeId)
+        break
+
+      case "nodeDragMove":
+        yield* ctx.state.update((s: AgentGraphState) => {
+          if (!s.draggedNodeId) return s
+          const nodes = s.nodes.map((n) =>
+            n.id === s.draggedNodeId
+              ? { ...n, fx: event.worldPoint.x, fy: event.worldPoint.y, x: event.worldPoint.x, y: event.worldPoint.y, vx: 0, vy: 0 }
+              : n
+          )
+          return { ...s, nodes }
+        })
+        break
+
+      case "nodeDragEnd":
+        yield* ctx.state.update((s: AgentGraphState) => ({
+          ...s,
+          draggedNodeId: null,
+        }))
+        console.log("[AgentGraph] Drag ended")
+        break
+
+      case "nodeDoubleClick":
+        yield* ctx.state.update((s: AgentGraphState) => {
+          // Unpin the node by clearing fx/fy
+          const nodes = s.nodes.map((n) =>
+            n.id === event.nodeId ? { ...n, fx: undefined, fy: undefined } : n
+          )
+          return { ...s, nodes }
+        })
+        console.log("[AgentGraph] Unpinned node:", event.nodeId)
         break
 
       case "canvasPan":
-        yield* ctx.state.update((s: AgentGraphState) => ({
-          ...s,
-          canvas: {
-            ...s.canvas,
-            pan: {
-              x: s.canvas.pan.x + event.delta.x,
-              y: s.canvas.pan.y + event.delta.y,
+        yield* ctx.state.update((s: AgentGraphState) => {
+          const newPan = {
+            x: s.canvas.pan.x + event.delta.x,
+            y: s.canvas.pan.y + event.delta.y,
+          }
+          console.log("[STATE] Pan updated:", newPan)
+          return {
+            ...s,
+            canvas: {
+              ...s.canvas,
+              pan: newPan,
             },
-          },
-        }))
+          }
+        })
         break
 
       case "canvasZoom":
         yield* ctx.state.update((s: AgentGraphState) => {
-          const newZoom = Math.max(
-            0.25,
-            Math.min(4, s.canvas.zoom * event.delta)
-          )
-          // TODO: Zoom toward pointer position (requires more complex math)
+          const oldZoom = s.canvas.zoom
+          const newZoom = Math.max(0.25, Math.min(4, oldZoom * event.delta))
+
+          // Zoom toward the pointer position
+          const pointer = event.pointer
+          const newPan = {
+            x: pointer.x - (pointer.x - s.canvas.pan.x) * (newZoom / oldZoom),
+            y: pointer.y - (pointer.y - s.canvas.pan.y) * (newZoom / oldZoom),
+          }
+
+          console.log("[STATE] Zoom updated:", newZoom, "Pan:", newPan)
           return {
             ...s,
-            canvas: { ...s.canvas, zoom: newZoom },
+            canvas: { ...s.canvas, zoom: newZoom, pan: newPan },
           }
         })
         break

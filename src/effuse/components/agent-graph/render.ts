@@ -128,9 +128,11 @@ export function renderGraph(
     .map((node) => renderNode(node, node.id === hoveredNodeId))
     .join("\n")
 
+  const transform = `translate(${pan.x},${pan.y}) scale(${zoom})`
+  console.log("[RENDER] Transform:", transform)
   return `
     ${renderGridPattern()}
-    <g transform="translate(${pan.x},${pan.y}) scale(${zoom})">
+    <g transform="${transform}">
       ${connectionsHtml}
       ${nodesHtml}
     </g>
