@@ -13,8 +13,8 @@
 
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
-import { readdirSync } from "fs";
-import { resolve, existsSync, readFileSync, writeFileSync, mkdirSync } from "path";
+import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { resolve, dirname, join } from "path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
@@ -276,36 +276,61 @@ async function executeAction(
       case "write_file": {
         const path = toolArgs.path as string || toolArgs.file_path as string;
         const content = String(toolArgs.content || "");
-        const fullPath = path.startsWith("/") ? path : `${workspace}/${path}`;
-
-        const fs = await import("node:fs");
-        const pathMod = await import("node:path");
-        const dir = pathMod.dirname(fullPath);
-
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
+        
+        // Normalize /app/ paths to workspace (TerminalBench convention)
+        let normalizedPath = path;
+        if (path.startsWith("/app/")) {
+          normalizedPath = path.replace("/app/", "");
+        } else if (path.startsWith("/app")) {
+          normalizedPath = path.replace("/app", "");
         }
-        fs.writeFileSync(fullPath, content);
+        
+        const fullPath = resolve(workspace, normalizedPath);
+        const dir = dirname(fullPath);
+
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true });
+        }
+        writeFileSync(fullPath, content);
 
         return {
           success: true,
-          output: `Wrote ${content.length} bytes to ${path}`,
-          modifiedFile: path,
+          output: `Wrote ${content.length} bytes to ${normalizedPath}`,
+          modifiedFile: normalizedPath,
         };
       }
 
       case "read_file": {
         const path = toolArgs.path as string || toolArgs.file_path as string;
-        const fullPath = path.startsWith("/") ? path : `${workspace}/${path}`;
-
-        const fs = await import("node:fs");
-        if (!fs.existsSync(fullPath)) {
-          return { success: false, output: `File not found: ${path}` };
+        
+        // Normalize /app/ paths to workspace (TerminalBench convention)
+        let normalizedPath = path;
+        if (path.startsWith("/app/")) {
+          normalizedPath = path.replace("/app/", "");
+        } else if (path.startsWith("/app")) {
+          normalizedPath = path.replace("/app", "");
         }
-        const content = fs.readFileSync(fullPath, "utf-8");
+        
+        const fullPath = resolve(workspace, normalizedPath);
+
+        if (!existsSync(fullPath)) {
+          // List available files to help FM
+          const files = readdirSync(workspace, { withFileTypes: true });
+          const fileList = files
+            .filter(f => f.isFile())
+            .map(f => f.name)
+            .join(", ");
+          return {
+            success: false,
+            output: `File not found: ${path}. Available files in workspace: ${fileList || "none"}`,
+            condensed: `File not found: ${path}. Available: ${fileList || "none"}`,
+          };
+        }
+        const content = readFileSync(fullPath, "utf-8");
         return {
           success: true,
           output: content.slice(0, 1000) + (content.length > 1000 ? "..." : ""),
+          condensed: `File ${normalizedPath} contains: ${content.slice(0, 200)}${content.length > 200 ? "..." : ""}`,
         };
       }
 
@@ -606,6 +631,22 @@ async function runMAPOrchestratorWithDecomposition(
     // Step 3d: Execute action
     const actionResult = await executeAction(action, options.workspace, log);
     log(`[MAP] Result: ${actionResult.success ? "SUCCESS" : "FAILED"} - ${actionResult.output.slice(0, 100)}`);
+
+    // If action failed, add error to state so FM sees it next turn
+    if (!actionResult.success) {
+      if (!state.lastEvaluation) {
+        state.lastEvaluation = {
+          total: 0,
+          passed: 0,
+          failed: 0,
+          progress: state.bestProgress,
+          suggestion: `Action failed: ${actionResult.output}`,
+          failures: [],
+        };
+      } else {
+        state.lastEvaluation.suggestion = `Action failed: ${actionResult.output}. ${state.lastEvaluation.suggestion || ""}`;
+      }
+    }
 
     // Track action
     state.previousActions.push(createActionSignature(action.toolName, action.toolArgs));
