@@ -24,6 +24,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { FMService, FMServiceLive, FMServiceError } from "../fm/service.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
+import { runTestGenForTask } from "./testgen-integration.js";
 
 // ============================================================================
 // Types
@@ -519,6 +520,20 @@ export async function runMAPOrchestrator(
   };
 
   log(`[MAP] Starting MAP orchestrator for task: ${task.id}`);
+
+  // Step 0: Generate comprehensive test suite using testgen
+  log(`[MAP] Running testgen to generate comprehensive tests...`);
+  try {
+    const testgenResult = await runTestGenForTask(task, options.workspace, {
+      model: "local",
+      verbose: options.verbose,
+    });
+    log(`[MAP] Generated ${testgenResult.tests.length} tests (score: ${testgenResult.comprehensivenessScore}/10)`);
+    log(`[MAP] Tests written to: ${testgenResult.testFilePath}`);
+  } catch (error) {
+    log(`[MAP] Warning: TestGen failed: ${error instanceof Error ? error.message : String(error)}`);
+    log(`[MAP] Continuing with standard TB2 tests...`);
+  }
 
   // Step 1: Decompose task
   const decomposition = decomposeTask(task);

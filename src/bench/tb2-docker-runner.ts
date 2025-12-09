@@ -90,9 +90,19 @@ export async function runTB2InDocker(
     // Copy workspace to docker context (this becomes /app/)
     cpSync(workspace, dockerContext, { recursive: true });
 
-    // Copy TB2 tests to docker context
-    const testsDestDir = join(dockerContext, "tests");
-    cpSync(testsDir, testsDestDir, { recursive: true });
+    // Check if testgen-generated tests exist in workspace
+    const workspaceTestsDir = join(workspace, "tests");
+    const hasTestgenTests = existsSync(workspaceTestsDir) && existsSync(join(workspaceTestsDir, "test_outputs.py"));
+
+    if (hasTestgenTests) {
+      console.log(`[TB2] Using testgen-generated tests from workspace`);
+      // Tests already copied with workspace - use those
+    } else {
+      console.log(`[TB2] Using TB2 reference tests from ${testsDir}`);
+      // Copy TB2 tests to docker context
+      const testsDestDir = join(dockerContext, "tests");
+      cpSync(testsDir, testsDestDir, { recursive: true });
+    }
 
     // Run pytest in Docker container with task-specific image
     const dockerArgs = [
