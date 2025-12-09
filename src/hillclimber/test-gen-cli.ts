@@ -16,11 +16,10 @@ import { parseArgs } from "util"
 import { BunContext } from "@effect/platform-bun"
 import { loadTerminalBenchSuite } from "../bench/terminal-bench.js"
 import {
-    generateTestsFromDescription, summarizeCategories, TestGeneratorOptions,
-    type
+    generateTestsFromDescription, summarizeCategories, type TestGeneratorOptions
 } from "./test-generator.js"
 import {
-    runTestGenEvolution, TestGenRunnerOptions, type
+    runTestGenEvolution, type TestGenRunnerOptions
 } from "./testgen-runner.js"
 import { TestGenStore, TestGenStoreLive } from "./testgen-store.js"
 

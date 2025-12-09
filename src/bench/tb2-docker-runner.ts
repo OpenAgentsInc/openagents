@@ -79,9 +79,11 @@ export async function runTB2InDocker(
   const envConfig = taskConfig.environment || {};
 
   // Ensure proper Docker image is available
-  const dockerImage = await ensureTaskImage(taskId, taskDir, envConfig, {
-    timeout: envConfig.build_timeout_sec ? envConfig.build_timeout_sec * 1000 : undefined,
-  });
+  const imageOptions: { timeout?: number } = {};
+  if (envConfig.build_timeout_sec) {
+    imageOptions.timeout = envConfig.build_timeout_sec * 1000;
+  }
+  const dockerImage = await ensureTaskImage(taskId, taskDir, envConfig, imageOptions);
 
   console.log(`[TB2] Running verification for ${taskId} with image: ${dockerImage}`);
 
@@ -182,16 +184,21 @@ export async function runTB2InDocker(
       }
     }
 
-    return {
+    const dockerResult: TB2DockerResult = {
       passed: parsed.passed,
       progress: parsed.total > 0 ? parsed.passing / parsed.total : 0,
       testsPassing: parsed.passing,
       testsTotal: parsed.total,
-      feedback,
-      failedTests: parsed.failedTests,
       exitCode: result.exitCode,
       durationMs,
     };
+    if (feedback) {
+      dockerResult.feedback = feedback;
+    }
+    if (parsed.failedTests.length > 0) {
+      dockerResult.failedTests = parsed.failedTests;
+    }
+    return dockerResult;
 
   } finally {
     // Cleanup temp directory

@@ -50,7 +50,7 @@ async function main() {
         console.log(`  Confidence: ${msg.test.confidence}`);
       },
       onProgress: (msg) => {
-        console.log(`[PROGRESS] ${msg.message}`);
+        console.log(`[PROGRESS] ${msg.status}`);
       },
       onReflection: (msg) => {
         reflections.push(msg);
