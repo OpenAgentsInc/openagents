@@ -73,19 +73,57 @@ The 89.5% with a simple date regex proves TB2 tests don't heavily penalize missi
 
 ---
 
-## THE TARGET REGEX
+## IMPORTANT: NO HARDCODED SOLUTIONS
 
-This regex achieves 100%:
+**DO NOT hardcode the target regex or give FM the answer.**
 
-```regex
-^(?=.*(?<![0-9A-Za-z])(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}(?![0-9A-Za-z])).*(?<![0-9A-Za-z])(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))(?![0-9A-Za-z])
-```
+The entire point of this architecture is to prove that:
+1. TestGen can bootstrap comprehensive tests WITHOUT seeing TB2's actual tests
+2. FM can DISCOVER the solution through iteration
+3. If TestGen tests are good, the discovered solution will pass TB2 too
 
-**Breakdown:**
-- `(?=.*VALID_IP)` — Lookahead: line must contain valid IPv4
-- IPv4: Each octet 0-255 with boundaries
-- `.*` — Greedy to get LAST date
-- Date: Year + Month 01-12 + Day 01-31 with boundaries
+This validates **Curve 3** of the Three Curves framework: "Do our internal metrics correlate with benchmark performance?"
+
+See `docs/logs/20251208/1219-benchmark-gaming-analysis.md` for the full analysis of what constitutes legitimate optimization vs cheating.
+
+**Legitimate:**
+- Domain knowledge (regex syntax, IPv4 format, date patterns)
+- Process knowledge (TDD approach, iterative refinement)
+- Test feedback (pass/fail with failure messages)
+
+**NOT Legitimate:**
+- Hardcoding the solution regex
+- Giving FM the exact answer to copy
+- Training on TB2's actual test cases
+
+**The FM must discover the solution, not be given it.**
+
+---
+
+## WARNING: Decomposer Currently Has Hardcoded Hints
+
+**ISSUE:** The current `src/hillclimber/decomposer.ts` (lines 67-79) contains:
+- `EXAMPLE REGEX (copy this exactly):` — This IS giving FM the solution
+- Specific TEST CASES with expected outputs — This leaks TB2 test information
+
+This crosses the line from "domain knowledge" into "hardcoded solution" territory.
+
+**If you want a clean validation of the architecture:**
+1. Remove the "EXAMPLE REGEX" line from decomposer
+2. Remove specific TEST CASES from subtask goals
+3. Keep only domain knowledge hints (regex syntax, lookahead concept, boundary patterns)
+4. Let FM discover the solution through TestGen feedback
+
+**Legitimate hints to keep:**
+- "Use positive lookahead (?=.*pattern) to check condition first"
+- "Match LAST occurrence by using greedy .* before capture group"
+- "Boundary assertions prevent false positives"
+
+**Hints to remove:**
+- Any complete regex pattern
+- Any specific input/output examples from TB2
+
+This is your call whether to clean this up or run with current state.
 
 ---
 
@@ -141,15 +179,25 @@ bun scripts/test-progress-fix.ts --full      # 25 turns, 45 min
 
 **If FM doesn't improve past ~65% after 10 turns**, move to Path C.
 
-### Path C: Guide FM More Explicitly
+### Path C: Improve TestGen Quality (If FM Stalls)
 
-Update `src/hillclimber/decomposer.ts` with more explicit guidance:
+If FM consistently stalls at a plateau, the issue is likely TestGen test quality, not FM guidance.
 
-1. **Add the target regex as an example** in subtask 1's goal
-2. **Add specific failure cases** to the hints
-3. **Make the decomposition more granular** — separate subtasks for IP validation vs date validation
+**Legitimate improvements:**
+1. **Better edge case extraction** — Improve `extractTaskEdgeCases()` to generate more boundary tests
+2. **Category balance** — Ensure TestGen produces balanced anti_cheat, boundary, integration tests
+3. **Clearer failure messages** — Make test failures more descriptive so FM understands WHY it failed
 
-**Key file:** `src/hillclimber/decomposer.ts` (REGEX_LOG_DECOMPOSITION at line ~54)
+**NOT legitimate:**
+- Adding the solution regex to decomposer hints
+- Giving FM specific implementation details from TB2 tests
+- Any form of "teaching to the test"
+
+**Key files for TestGen improvement:**
+- `src/hillclimber/test-generator-iterative.ts` — Test generation logic
+- `src/hillclimber/testgen-to-pytest.ts` — How tests become pytest cases
+
+**The goal:** Better tests → clearer feedback → FM discovers solution naturally
 
 ---
 
