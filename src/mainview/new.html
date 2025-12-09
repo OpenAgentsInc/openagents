@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,18 +17,32 @@
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+  <!-- Import map for Effect and dependencies -->
+  <script type="importmap">
+    {
+    "imports": {
+      "effect": "https://esm.sh/effect@3.19.8",
+      "effect/": "https://esm.sh/effect@3.19.8/"
+    }
+  }
+  </script>
+  <!-- Local styles (includes Berkeley Mono font) -->
+  <link rel="stylesheet" href="index.css">
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    html, body {
+
+    html,
+    body {
       width: 100%;
       height: 100%;
       overflow: hidden;
       background-color: #000000;
     }
+
     .dot-grid {
       background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
       background-size: 24px 24px;
@@ -35,7 +50,7 @@
   </style>
   <script>
     // HMR: Connect to WebSocket and listen for reload messages
-    (function() {
+    (function () {
       const WS_URL = 'ws://localhost:8080/ws';
       let ws = null;
       let reconnectAttempts = 0;
@@ -44,7 +59,7 @@
       function connect() {
         try {
           ws = new WebSocket(WS_URL);
-          
+
           ws.onopen = () => {
             console.log('[HMR] Connected to WebSocket');
             reconnectAttempts = 0;
@@ -69,7 +84,7 @@
           ws.onclose = () => {
             console.log('[HMR] WebSocket closed');
             ws = null;
-            
+
             // Auto-reconnect with exponential backoff
             if (reconnectAttempts < maxReconnectAttempts) {
               reconnectAttempts++;
@@ -92,7 +107,12 @@
       connect();
     })();
   </script>
+  <!-- Load Effuse-based new mode entry point as ESM module -->
+  <script type="module" src="new-main.ts"></script>
 </head>
+
 <body class="dot-grid">
+  <div id="intro-card-container"></div>
 </body>
+
 </html>

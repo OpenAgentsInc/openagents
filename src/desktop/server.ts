@@ -15,20 +15,16 @@
  * - HUD messages from agents (broadcast to UI clients)
  */
 
-import { join } from "node:path";
-import type { HudMessage, TBRunHistoryMessage } from "../hud/protocol.js";
-import { isHudMessage } from "../hud/protocol.js";
+import { dirname, join } from "node:path"
+import { isHudMessage } from "../hud/protocol.js"
+import { handleRequest, loadRecentTBRuns } from "./handlers.js"
+import { error as logError, log as logWithColor } from "./logger.js"
 import {
-  parseSocketMessage,
-  isSocketRequest,
-  isHudEvent,
-  serializeSocketMessage,
-  DESKTOP_HTTP_PORT,
-  DESKTOP_WS_PATH,
-} from "./protocol.js";
-import { handleRequest, loadRecentTBRuns } from "./handlers.js";
-import { error as logError, log as logWithColor } from "./logger.js";
+  DESKTOP_HTTP_PORT, DESKTOP_WS_PATH, isHudEvent, isSocketRequest,
+  parseSocketMessage, serializeSocketMessage
+} from "./protocol.js"
 
+import type { HudMessage, TBRunHistoryMessage } from "../hud/protocol.js";
 // ============================================================================
 // Types
 // ============================================================================
@@ -155,27 +151,54 @@ export class DesktopServer {
 
         // Static file serving
         let filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-        const fullPath = join(self.staticDir, filePath);
 
-        // Security: ensure we stay within staticDir
+        // For ESM modules, handle relative imports that go outside staticDir
+        // e.g., ../effuse/index.js from src/mainview/new-main.ts resolves to /effuse/index.js
+        // Try staticDir first, then project root (one level up) if not found
+        const projectRoot = dirname(self.staticDir); // Goes from src/mainview to src
+        let fullPath = join(self.staticDir, filePath);
+
+        // Security: ensure we stay within staticDir for normal files
         if (!fullPath.startsWith(self.staticDir)) {
           return new Response("Forbidden", { status: 403 });
         }
 
-        const file = Bun.file(fullPath);
+        // If file doesn't exist in staticDir, try project root (for ../ imports)
+        let file = Bun.file(fullPath);
+        if (!(await file.exists()) && !filePath.startsWith("/../")) {
+          // Try resolving from project root (removing leading slash)
+          const projectPath = join(projectRoot, filePath.replace(/^\//, ""));
+          // Security: ensure we stay within project root
+          if (projectPath.startsWith(projectRoot)) {
+            const projectFile = Bun.file(projectPath);
+            if (await projectFile.exists()) {
+              fullPath = projectPath;
+              file = projectFile;
+            }
+          }
+        }
+
         const ext = filePath.split(".").pop() || "";
 
+        // If .ts file requested, compile to ESM
         // If .js file requested but doesn't exist, check for .ts source
-        if (ext === "js" && !(await file.exists())) {
-          const tsPath = fullPath.replace(/\.js$/, ".ts");
+        if (ext === "ts" || (ext === "js" && !(await file.exists()))) {
+          const tsPath = ext === "ts" ? fullPath : fullPath.replace(/\.js$/, ".ts");
           const tsFile = Bun.file(tsPath);
           if (await tsFile.exists()) {
             try {
+              // Determine format: ESM for .ts requests, IIFE for .js requests (backward compat)
+              const format = ext === "ts" ? "esm" : "iife";
+
               const result = await Bun.build({
                 entrypoints: [tsPath],
                 target: "browser",
                 minify: false,
-                format: "iife",
+                format: format,
+                // For ESM, preserve module structure and external dependencies
+                splitting: format === "esm",
+                // Mark Effect as external so import statements are preserved for import map
+                external: format === "esm" ? ["effect"] : [],
               });
               if (result.success && result.outputs.length > 0) {
                 const text = await result.outputs[0].text();
