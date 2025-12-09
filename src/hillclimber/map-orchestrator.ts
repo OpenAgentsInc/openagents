@@ -13,6 +13,8 @@
 
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
+import { readdirSync } from "fs";
+import { resolve, existsSync, readFileSync, writeFileSync, mkdirSync } from "path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
@@ -186,12 +188,13 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`You are solving a coding task. Use tools to complete it.`);
   lines.push("");
 
-  // Task description (only on first turn or if not in previous actions)
-  if (context.previousActions.length === 0) {
-    lines.push(`## Task`);
-    lines.push(context.taskDescription.slice(0, 500)); // Truncate if long
-    lines.push("");
-  }
+  // Task description (ALWAYS include full - it's already in the prompt, no need to read files)
+  lines.push(`## Task`);
+  lines.push(context.taskDescription);
+  lines.push("");
+  lines.push(`⚠️ IMPORTANT: The task description is provided above. DO NOT try to read task.md or any other file for the task description.`);
+  lines.push(`The task description is already in this prompt. Start working on the task directly.`);
+  lines.push("");
 
   // Current subtask (most important)
   lines.push(`## Current Goal`);
@@ -237,7 +240,16 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`- verify_progress: Check test results`);
   lines.push(`- task_complete: Signal task is done`);
   lines.push("");
-  lines.push(`Respond with a tool call in format: <tool_call>{"name":"TOOL","arguments":{"key":"value"}}</tool_call>`);
+  lines.push(`## CRITICAL: Tool Call Format`);
+  lines.push(`You MUST respond with ONLY a tool call in this exact format:`);
+  lines.push(`<tool_call>{"name":"TOOL_NAME","arguments":{"key":"value"}}</tool_call>`);
+  lines.push(``);
+  lines.push(`Examples:`);
+  lines.push(`<tool_call>{"name":"read_file","arguments":{"path":"task.md"}}</tool_call>`);
+  lines.push(`<tool_call>{"name":"write_file","arguments":{"path":"regex.txt","content":"pattern"}}</tool_call>`);
+  lines.push(`<tool_call>{"name":"verify_progress","arguments":{}}</tool_call>`);
+  lines.push(``);
+  lines.push(`DO NOT write explanations, code blocks, or any other text. ONLY the tool call.`);
 
   return lines.join("\n");
 }
@@ -720,11 +732,21 @@ async function getNextAction(
 
     log(`[MAP-FM] FM response: ${content.slice(0, 200)}...`);
 
+    // Clean content - remove markdown code blocks if present
+    let cleanedContent = content.trim();
+    if (cleanedContent.includes("```")) {
+      // Extract content from code blocks
+      const codeBlockMatch = cleanedContent.match(/```(?:json|text|python)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        cleanedContent = codeBlockMatch[1].trim();
+      }
+    }
+
     // Parse tool calls from response
-    const toolCalls = parseToolCalls(content);
+    const toolCalls = parseToolCalls(cleanedContent);
 
     if (toolCalls.length === 0) {
-      log(`[MAP-FM] No tool call parsed from response`);
+      log(`[MAP-FM] No tool call parsed from response. Raw: ${content.slice(0, 300)}`);
       // Try to extract tool name from text if format is different
       const toolMatch = content.match(/(?:tool|action|call)[:\s]+(\w+)/i);
       if (toolMatch) {
@@ -735,6 +757,18 @@ async function getNextAction(
           toolArgs: {},
           reasoning: content.slice(0, 100),
         };
+      }
+      // Last resort: if content mentions a tool name, try to use it
+      const toolNames = ["read_file", "write_file", "edit_file", "run_command", "verify_progress", "task_complete"];
+      for (const toolName of toolNames) {
+        if (content.toLowerCase().includes(toolName.toLowerCase())) {
+          log(`[MAP-FM] Inferred tool from content: ${toolName}`);
+          return {
+            toolName,
+            toolArgs: {},
+            reasoning: content.slice(0, 100),
+          };
+        }
       }
       return null;
     }
