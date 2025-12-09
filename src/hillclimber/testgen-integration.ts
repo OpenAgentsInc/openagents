@@ -107,7 +107,11 @@ export async function runTestGenForTask(
         console.error(`[TestGen] Error: ${msg.error}`);
       },
     },
-    { model: options.model || "local", verbose: options.verbose || false }
+    {
+      model: options.model || "local",
+      verbose: options.verbose || false,
+      context: "benchmark",  // TB2 benchmark tasks
+    }
   );
 
   // Determine task type for pytest conversion

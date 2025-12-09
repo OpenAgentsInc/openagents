@@ -104,7 +104,7 @@ const DEFAULT_CONFIG: IterationConfig = {
 };
 
 // Category order (priority) - using string literals since TestCategory doesn't include anti_cheat
-const CATEGORIES = [
+const ALL_CATEGORIES = [
   "anti_cheat",
   "existence",
   "correctness",
@@ -112,7 +112,43 @@ const CATEGORIES = [
   "integration",
 ] as const;
 
-type IterativeTestCategory = typeof CATEGORIES[number];
+type IterativeTestCategory = typeof ALL_CATEGORIES[number];
+
+// ============================================================================
+// Context-Aware Category Selection
+// ============================================================================
+
+/**
+ * Context for test generation - determines which categories are relevant.
+ */
+export type TestGenContext =
+  | "benchmark"     // TB2 — all 5 categories including anti_cheat
+  | "commander"     // User prompts — correctness, boundary, existence
+  | "mechacoder"    // Autonomous coding — correctness, boundary
+  | "custom";       // Let caller specify
+
+/**
+ * Get categories for a given context.
+ */
+function getCategoriesForContext(
+  context: TestGenContext,
+  customCategories?: string[],
+): IterativeTestCategory[] {
+  switch (context) {
+    case "benchmark":
+      return ["anti_cheat", "existence", "correctness", "boundary", "integration"];
+    case "commander":
+      return ["existence", "correctness", "boundary"];
+    case "mechacoder":
+      return ["correctness", "boundary"];
+    case "custom":
+      // Filter to only valid iterative categories
+      const valid = customCategories?.filter((c): c is IterativeTestCategory =>
+        ALL_CATEGORIES.includes(c as IterativeTestCategory)
+      ) ?? [];
+      return valid.length > 0 ? valid : ["correctness"];
+  }
+}
 
 // ============================================================================
 // Helper Functions
@@ -827,7 +863,10 @@ export async function generateTestsIteratively(
   taskId: string,
   environment: EnvironmentInfo,
   emitter: IterativeTestGenEmitter,
-  options: TestGeneratorOptions = {},
+  options: TestGeneratorOptions & {
+    context?: TestGenContext;
+    categories?: string[];  // Override for "custom" context
+  } = {},
   config: Partial<IterationConfig> = {},
 ): Promise<EnvironmentAwareTestResult> {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
@@ -836,12 +875,18 @@ export async function generateTestsIteratively(
   const modelOption = options.model ?? "local";
   const model: "local" | "claude" = modelOption === "both" ? "local" : modelOption;
 
+  // Determine context (default to "benchmark" for backward compatibility)
+  const context: TestGenContext = options.context ?? "benchmark";
+  const categories = getCategoriesForContext(context, options.categories);
+
   log(`[TestGen] Starting iterative test generation for task: ${taskId}`);
   log(`[TestGen] Model: ${model}`);
+  log(`[TestGen] Context: ${context}`);
+  log(`[TestGen] Categories: ${categories.join(", ")}`);
 
   try {
     // Phase 2: Category-based iteration
-    for (const category of CATEGORIES) {
+    for (const category of categories) {
       state.currentCategory = category;
       let round = 1;
 
@@ -1003,8 +1048,8 @@ export async function generateTestsIteratively(
             },
           });
 
-          // Only add if it's one of our iterative categories
-          if (CATEGORIES.includes(testCategory as any)) {
+          // Only add if it's one of our iterative categories and in the current context
+          if (categories.includes(testCategory) && ALL_CATEGORIES.includes(testCategory as any)) {
             const existing = getTestsForCategory(state, testCategory);
             setTestsForCategory(state, testCategory, [...existing, test]);
           }

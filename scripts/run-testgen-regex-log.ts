@@ -69,7 +69,11 @@ async function main() {
         console.error(`[ERROR] ${msg.error}`);
       },
     },
-    { model: "local", verbose: true }
+    {
+      model: "local",
+      verbose: true,
+      context: "benchmark",  // TB2 benchmark tasks
+    }
   );
 
   console.log(`\nDone! Generated ${tests.length} tests.`);

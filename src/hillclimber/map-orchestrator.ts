@@ -595,31 +595,8 @@ export async function runMAPOrchestrator(
     log(`[MAP] Continuing with standard TB2 tests...`);
   }
 
-  // Step 1: Decompose task
+  // Step 1: Decompose task (always returns a decomposition now)
   const decomposition = decomposeTask(task);
-
-  if (!decomposition) {
-    log(`[MAP] No decomposition found for task: ${task.id}, using generic single-step`);
-    // Create a generic single-step decomposition
-    const genericDecomposition: TaskDecomposition = {
-      taskId: task.id,
-      subtaskCount: 1,
-      subtasks: [{
-        id: 1,
-        name: "complete-task",
-        goal: task.description,
-        checkpoint: "Task passes verification",
-        expectedArtifacts: [],
-        dependsOn: [],
-        hints: [],
-        maxTurns: options.maxTurns,
-      }],
-      globalHints: [],
-      filesToRead: [],
-      requiredOutputs: [],
-    };
-    return runMAPOrchestratorWithDecomposition(task, config, options, genericDecomposition, startTime, log);
-  }
 
   log(`[MAP] Decomposed into ${decomposition.subtasks.length} subtasks`);
   for (const st of decomposition.subtasks) {
