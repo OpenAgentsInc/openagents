@@ -3,21 +3,20 @@
  * SVG-based visualization of TestGen/HillClimber workflow
  */
 
-import { Effect, Stream, pipe } from "effect"
-import type { Component, ComponentContext } from "../../component/types.js"
+import { Effect, pipe, Stream } from "effect"
+import { SocketServiceTag } from "../../services/socket.js"
 import { html, rawHtml } from "../../template/html.js"
+import { renderGraph } from "./render.js"
+import { isHillClimberMessage, mapMessageToState } from "./state-mapper.js"
+import { createTestGenConnections, createTestGenNodes } from "./types.js"
+import { renderLogPanel } from "./log-panel.js"
+
+import type { Component, ComponentContext } from "../../component/types.js"
 import type {
   TestGenGraphState,
   TestGenGraphEvent,
 } from "./types.js"
-import {
-  createTestGenNodes,
-  createTestGenConnections,
-} from "./types.js"
-import { renderGraph } from "./render.js"
 import type { Point } from "../agent-graph/geometry.js"
-import { SocketServiceTag } from "../../services/socket.js"
-import { mapMessageToState, isHillClimberMessage } from "./state-mapper.js"
 import type { HudMessage } from "../../../hud/protocol.js"
 
 // ============================================================================
@@ -46,6 +45,10 @@ function initialState(): TestGenGraphState {
       zoom: 1.2,
       viewport: { width: 0, height: 0 },
     },
+
+    // Log/output panel
+    logItems: [],
+    logPanelCollapsed: false,
   }
 }
 
@@ -62,15 +65,9 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
       ? state.sessions.get(state.activeSessionId)
       : null
 
-    const sessionStatus = state.isStarting
-      ? "STARTING..."
-      : activeSession
-        ? `${activeSession.status.toUpperCase()} | Turn ${activeSession.currentTurn}/${activeSession.maxTurns} | Progress: ${(activeSession.progress * 100).toFixed(1)}%`
-        : "Ready"
-
-    // Disable buttons while starting or running
-    const buttonsDisabled = state.isStarting || (activeSession?.status === "running") || (activeSession?.status === "testgen")
-    const disabledStyle = buttonsDisabled ? "opacity: 0.5; cursor: not-allowed;" : "cursor: pointer;"
+    const sessionStatus = activeSession
+      ? `${activeSession.status} | Turn ${activeSession.currentTurn}/${activeSession.maxTurns} | Progress: ${(activeSession.progress * 100).toFixed(1)}%`
+      : "No active session"
 
     // Get status color based on session status
     const getStatusColor = (status: string) => {
@@ -142,22 +139,22 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
 
         <!-- Control Panel -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 100; display: flex; gap: 8px; align-items: center;">
-          <span style="color: ${state.isStarting ? '#ff0' : '#888'}; font-size: 12px; margin-right: 8px; font-weight: ${state.isStarting ? 'bold' : 'normal'};">${sessionStatus}</span>
+          <span style="color: #888; font-size: 12px; margin-right: 8px;">${sessionStatus}</span>
           <button
             data-action="start-quick"
-            style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; font-size: 12px; ${disabledStyle}"
+            style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; cursor: pointer; font-size: 12px;"
           >
-            ${state.isStarting ? "Starting..." : "Quick (3 turns)"}
+            QUICK TEST v2
           </button>
           <button
             data-action="start-standard"
-            style="padding: 6px 12px; background: #333; color: #ff0; border: 1px solid #ff0; border-radius: 4px; font-size: 12px; ${disabledStyle}"
+            style="padding: 6px 12px; background: #333; color: #ff0; border: 1px solid #ff0; border-radius: 4px; cursor: pointer; font-size: 12px;"
           >
             Standard (10 turns)
           </button>
           <button
             data-action="start-full"
-            style="padding: 6px 12px; background: #333; color: #f80; border: 1px solid #f80; border-radius: 4px; font-size: 12px; ${disabledStyle}"
+            style="padding: 6px 12px; background: #333; color: #f80; border: 1px solid #f80; border-radius: 4px; cursor: pointer; font-size: 12px;"
           >
             Full (25 turns)
           </button>
@@ -181,6 +178,9 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
             )
           )}
         </svg>
+
+        <!-- Log/Output Panel -->
+        ${renderLogPanel(state.logItems, state.logPanelCollapsed)}
       </div>
     `
   })
@@ -377,57 +377,61 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       )
     }
 
-    // Attach mouse event listeners for drag/pan/zoom (these are low-level canvas interactions)
+    // Attach event listeners
     container.addEventListener("mousedown", handleMouseDown as EventListener)
     document.addEventListener("mousemove", handleMouseMove as EventListener)
     document.addEventListener("mouseup", handleMouseUp as EventListener)
     container.addEventListener("wheel", handleWheel as EventListener, { passive: false })
 
-    // WEBVIEW BUG: 'click' events don't fire in webview-bun, but mousedown/mouseup do.
-    // Use mousedown for button detection instead of click.
-    const bunLog = typeof window !== "undefined" ? (window as any).bunLog : null
-
-    // Handle button clicks via mousedown (click events don't work in webview)
-    ctx.container.addEventListener("mousedown", (e) => {
+    // Click handler using event delegation (works after re-renders)
+    const handleClick = (e: Event) => {
+      console.log("[TestGen Graph] Click detected on:", (e.target as HTMLElement).tagName, (e.target as HTMLElement).dataset)
       const target = e.target as HTMLElement
 
-      // Check for start buttons
+      // Check for start button clicks
       const startButton = target.closest("[data-action^='start-']") as HTMLElement | null
-      if (startButton && ctx.container.contains(startButton)) {
-        e.stopPropagation()
+      if (startButton) {
         const action = startButton.dataset.action
         if (action?.startsWith("start-")) {
           const mode = action.replace("start-", "") as "quick" | "standard" | "full"
-          if (bunLog) {
-            bunLog("[TestGen Graph] Start button clicked:", mode)
-          }
+          console.log("[TestGen Graph] Start button clicked:", mode)
           Effect.runFork(ctx.emit({ type: "startRun", mode }))
+          return
         }
-        return
       }
 
-      // Check for session selection
+      // Check for session card clicks
       const sessionCard = target.closest("[data-action='select-session']") as HTMLElement | null
-      if (sessionCard && ctx.container.contains(sessionCard)) {
-        e.stopPropagation()
+      if (sessionCard) {
         const sessionId = sessionCard.dataset.sessionId
         if (sessionId) {
-          if (bunLog) {
-            bunLog("[TestGen Graph] Session selected:", sessionId)
-          }
+          console.log("[TestGen Graph] Session selected:", sessionId)
           Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
         }
         return
       }
-    })
 
-    // Cleanup (delegate cleanup is handled automatically by Effect scope)
+      // Check for log panel toggle
+      const toggleLog = target.closest("[data-action='toggle-log']") as HTMLElement | null
+      if (toggleLog) {
+        console.log("[TestGen Graph] Toggling log panel")
+        Effect.runFork(ctx.emit({ type: "toggleLogPanel" }))
+        return
+      }
+    }
+
+    // Attach single click handler using event delegation
+    console.log("[TestGen Graph] Attaching click handler to container:", container.id || container.tagName)
+    container.addEventListener("click", handleClick)
+
+    // Cleanup
     return Effect.sync(() => {
       cancelAnimationFrame(_animationId)
       container.removeEventListener("mousedown", handleMouseDown)
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
       container.removeEventListener("wheel", handleWheel)
+      container.removeEventListener("click", handleClick)
     })
   })
 }
@@ -523,44 +527,32 @@ function handleEvent(
         break
 
       case "startRun": {
-        // Check if already starting or running
-        const currentState = yield* ctx.state.get
-        if (currentState.isStarting) {
-          console.log("[TestGen Graph] Already starting, ignoring")
-          break
-        }
-        const activeSession = currentState.activeSessionId
-          ? currentState.sessions.get(currentState.activeSessionId)
-          : null
-        if (activeSession?.status === "running" || activeSession?.status === "testgen") {
-          console.log("[TestGen Graph] Run in progress, ignoring")
-          break
-        }
-
         console.log("[TestGen Graph] Starting HillClimber run:", event.mode)
-        // Set isStarting immediately for UI feedback
-        yield* ctx.state.update((s) => ({ ...s, isStarting: true }))
-
         yield* pipe(
           Effect.gen(function* () {
             const socket = yield* SocketServiceTag
             const result = yield* socket.startHillClimber("regex-log", event.mode)
             console.log("[TestGen Graph] HillClimber started:", result.sessionId)
-            // Set the new session as active and clear isStarting
+            // Set the new session as active
             yield* ctx.state.update((s) => ({
               ...s,
-              isStarting: false,
               activeSessionId: result.sessionId,
             }))
           }),
           Effect.catchAll((err) => {
             console.error("[TestGen Graph] Failed to start HillClimber:", err)
-            // Clear isStarting on error too
-            return ctx.state.update((s) => ({ ...s, isStarting: false }))
+            return Effect.void
           })
         )
         break
       }
+
+      case "toggleLogPanel":
+        yield* ctx.state.update((s) => ({
+          ...s,
+          logPanelCollapsed: !s.logPanelCollapsed,
+        }))
+        break
     }
   })
 }

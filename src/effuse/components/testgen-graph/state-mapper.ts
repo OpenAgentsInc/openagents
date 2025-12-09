@@ -5,7 +5,7 @@
  */
 
 import type { HudMessage } from "../../../hud/protocol.js"
-import type { TestGenGraphState, SessionRunState, TestGenNode } from "./types.js"
+import type { TestGenGraphState, SessionRunState, TestGenNode, LogItem } from "./types.js"
 import { createNewSession, createTestGenNodes, createTestGenConnections } from "./types.js"
 
 // ============================================================================
@@ -20,6 +20,85 @@ const isMAPMessage = (msg: HudMessage): boolean =>
 
 export const isHillClimberMessage = (msg: HudMessage): boolean =>
   isTestGenMessage(msg) || isMAPMessage(msg)
+
+// ============================================================================
+// HUD Message to Log Item Conversion
+// ============================================================================
+
+/**
+ * Convert a HUD message to a LogItem for the output panel
+ */
+export function hudMessageToLogItem(msg: HudMessage): LogItem | null {
+  switch (msg.type) {
+    case "map_turn_start": {
+      const turnMsg = msg as { turn: number; maxTurns: number; subtask: string }
+      return {
+        type: "turn",
+        timestamp: Date.now(),
+        data: {
+          turn: turnMsg.turn,
+          maxTurns: turnMsg.maxTurns,
+          subtask: turnMsg.subtask,
+        },
+      }
+    }
+
+    case "map_fm_action": {
+      const fmMsg = msg as { action: "thinking" | "tool_call" | "complete"; toolName?: string; args?: string }
+      return {
+        type: "fm_action",
+        timestamp: Date.now(),
+        data: {
+          action: fmMsg.action,
+          tool: fmMsg.toolName,
+          args: fmMsg.args,
+        },
+      }
+    }
+
+    case "map_verify": {
+      const verifyMsg = msg as { status: "running" | "complete"; passed?: number; total?: number }
+      return {
+        type: "verify",
+        timestamp: Date.now(),
+        data: {
+          status: verifyMsg.status === "complete" ? "passed" : "running",
+          passed: verifyMsg.passed,
+          total: verifyMsg.total,
+        },
+      }
+    }
+
+    case "testgen_progress": {
+      const progressMsg = msg as { currentCategory?: string; roundNumber?: number; status?: string }
+      return {
+        type: "progress",
+        timestamp: Date.now(),
+        data: {
+          phase: progressMsg.currentCategory || "TestGen",
+          message: progressMsg.status || `Round ${progressMsg.roundNumber || 0}`,
+        },
+      }
+    }
+
+    case "map_run_complete": {
+      const completeMsg = msg as { success: boolean; finalProgress: number }
+      // Calculate duration from session start (we'll need to get this from state)
+      return {
+        type: "complete",
+        timestamp: Date.now(),
+        data: {
+          passed: completeMsg.success,
+          progress: completeMsg.finalProgress,
+          duration: 0, // Will be calculated from session state if needed
+        },
+      }
+    }
+
+    default:
+      return null
+  }
+}
 
 // ============================================================================
 // State Mapping
@@ -201,7 +280,13 @@ export function mapMessageToState(
     nodes = updateNodesFromSession(nodes, activeSession)
   }
 
-  return { ...state, sessions, nodes, connections, activeSessionId }
+  // Also append to log items
+  const logItem = hudMessageToLogItem(msg)
+  const logItems = logItem
+    ? [...state.logItems.slice(-200), logItem] // Keep last 200 items
+    : state.logItems
+
+  return { ...state, sessions, nodes, connections, activeSessionId, logItems }
 }
 
 // ============================================================================
