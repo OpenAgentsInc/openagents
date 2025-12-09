@@ -59,7 +59,7 @@ try {
 const result = await Effect.runPromise(
   Effect.gen(function* () {
     const fm = yield* FMService;
-    
+
     yield* fm.ensureRunning().pipe(
       Effect.mapError((error) => {
         if (error instanceof FMServiceError) {
@@ -159,4 +159,3 @@ const result = await Effect.runPromise(
 ## Status
 
 ✅ **Complete** - All error handling implemented, all "stuck" language removed, specific error reasons for all failures.
-
