@@ -1,9 +1,11 @@
 # Effuse: Effect-Native UI Framework
 
-Effuse is OpenAgents' custom, lightweight UI framework built natively on Effect TypeScript. It powers the mainview desktop HUD with type-safe, reactive, testable widgets.
+Effuse is OpenAgents' custom, lightweight UI framework built natively on Effect TypeScript. It powers the mainview desktop HUD with type-safe, reactive, testable components.
+
+**Note:** Effuse currently uses the term "component" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
 
 **TL;DR for coding agents:**
-- Widgets are Effect-native components with typed state, events, and services
+- Components are Effect-native UI elements with typed state, events, and services
 - Use `html` tagged templates with automatic XSS escaping
 - State is reactive via `StateCell<A>` (built on Effect.Ref + Queue)
 - Test with `makeTestLayer()` or `makeHappyDomLayer()` for real DOM
@@ -13,11 +15,11 @@ Effuse is OpenAgents' custom, lightweight UI framework built natively on Effect 
 
 ## Quick Start
 
-### Creating a Widget
+### Creating a Component
 
 ```typescript
 import { Effect } from "effect"
-import { html, type Widget } from "../effuse/index.js"
+import { html, type Component } from "../effuse/index.js"
 
 // 1. Define state type
 interface CounterState {
@@ -29,8 +31,8 @@ type CounterEvent =
   | { type: "increment" }
   | { type: "decrement" }
 
-// 3. Create the widget
-const CounterWidget: Widget<CounterState, CounterEvent> = {
+// 3. Create the component
+const CounterComponent: Component<CounterState, CounterEvent> = {
   id: "counter",
 
   initialState: () => ({ count: 0 }),
@@ -70,15 +72,15 @@ const CounterWidget: Widget<CounterState, CounterEvent> = {
 }
 ```
 
-### Mounting a Widget
+### Mounting a Component
 
 ```typescript
 import { Effect } from "effect"
-import { mountWidget, EffuseLive } from "../effuse/index.js"
+import { mountComponent, EffuseLive } from "../effuse/index.js"
 
 const program = Effect.gen(function* () {
-  const container = document.getElementById("my-widget")!
-  yield* mountWidget(MyWidget, container)
+  const container = document.getElementById("my-component")!
+  yield* mountComponent(MyComponent, container)
 })
 
 Effect.runPromise(
@@ -89,14 +91,14 @@ Effect.runPromise(
 )
 ```
 
-### Testing a Widget
+### Testing a Component
 
 ```typescript
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { makeTestLayer } from "../effuse/layers/test.js"
-import { mountWidget } from "../effuse/widget/mount.js"
-import { MyWidget } from "./my-widget.js"
+import { mountComponent } from "../effuse/component/mount.js"
+import { MyComponent } from "./my-component.js"
 
 test("renders initial state", async () => {
   await Effect.runPromise(
@@ -105,7 +107,7 @@ test("renders initial state", async () => {
         const { layer, getRendered } = yield* makeTestLayer()
         const container = { id: "test" } as Element
 
-        yield* mountWidget(MyWidget, container).pipe(Effect.provide(layer))
+        yield* mountComponent(MyComponent, container).pipe(Effect.provide(layer))
 
         const html = yield* getRendered(container)
         expect(html).toContain("expected content")
@@ -119,9 +121,9 @@ test("renders initial state", async () => {
 
 ## Core Concepts
 
-### 1. Widget Interface
+### 1. Component Interface
 
-A widget has five key properties:
+A component has five key properties:
 
 | Property | Required | Description |
 |----------|----------|-------------|
@@ -134,22 +136,22 @@ A widget has five key properties:
 
 **Type signature:**
 ```typescript
-interface Widget<S, E, R = never> {
+interface Component<S, E, R = never> {
   id: string
   initialState: () => S
-  render: (ctx: WidgetContext<S, E>) => Effect.Effect<TemplateResult, never, R>
-  handleEvent?: (event: E, ctx: WidgetContext<S, E>) => Effect.Effect<void, never, R>
-  setupEvents?: (ctx: WidgetContext<S, E>) => Effect.Effect<void, never, R>
-  subscriptions?: (ctx: WidgetContext<S, E>) => Stream.Stream<Effect.Effect<void, never, R>, never, R>[]
+  render: (ctx: ComponentContext<S, E>) => Effect.Effect<TemplateResult, never, R>
+  handleEvent?: (event: E, ctx: ComponentContext<S, E>) => Effect.Effect<void, never, R>
+  setupEvents?: (ctx: ComponentContext<S, E>) => Effect.Effect<void, never, R>
+  subscriptions?: (ctx: ComponentContext<S, E>) => Stream.Stream<Effect.Effect<void, never, R>, never, R>[]
 }
 ```
 
-### 2. WidgetContext
+### 2. ComponentContext
 
-Passed to all widget methods:
+Passed to all component methods:
 
 ```typescript
-interface WidgetContext<S, E> {
+interface ComponentContext<S, E> {
   readonly state: StateCell<S>      // Reactive state
   readonly emit: (event: E) => Effect<void>  // Emit events
   readonly dom: DomService          // DOM operations
@@ -241,19 +243,19 @@ src/effuse/
 │   ├── html.ts              # html`` tagged template
 │   ├── types.ts             # TemplateResult types
 │   └── escape.ts            # HTML escaping
-├── widget/
-│   ├── types.ts             # Widget interface
-│   └── mount.ts             # mountWidget helpers
+├── component/
+│   ├── types.ts             # Component interface
+│   └── mount.ts             # mountComponent helpers
 ├── layers/
 │   ├── live.ts              # EffuseLive, EffuseLiveNoSocket
 │   └── test.ts              # makeTestLayer, makeCustomTestLayer
-├── widgets/                 # Implemented widgets
-│   ├── apm-widget.ts        # APM monitor
+├── components/              # Implemented components
+│   ├── apm-component.ts      # APM monitor
 │   ├── tb-controls.ts       # TerminalBench controls
 │   ├── mc-tasks.ts          # MechaCoder tasks
-│   └── ...                  # Other widgets
+│   └── ...                  # Other components
 └── testing/                 # Test infrastructure
-    ├── harness.ts           # TestHarness, WidgetHandle
+    ├── harness.ts           # TestHarness, ComponentHandle
     ├── browser.ts           # TestBrowser service
     └── layers/
         └── happy-dom.ts     # Real DOM testing
@@ -294,7 +296,7 @@ Subscribe to HUD messages for real-time updates:
 import { SocketServiceTag } from "../effuse/index.js"
 import { Stream, pipe } from "effect"
 
-const MyWidget: Widget<State, Event, SocketServiceTag> = {
+const MyComponent: Component<State, Event, SocketServiceTag> = {
   // ...
   subscriptions: (ctx) => {
     const socket = Effect.map(SocketServiceTag, s => s)
@@ -326,20 +328,20 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 
 ---
 
-## Implemented Widgets
+## Implemented Components
 
-| Widget | File | Purpose |
-|--------|------|---------|
-| `APMWidget` | `widgets/apm-widget.ts` | Actions Per Minute monitor |
-| `TBControlsWidget` | `widgets/tb-controls.ts` | TerminalBench suite/run controls |
-| `TBOutputWidget` | `widgets/tb-output.ts` | Streaming test output |
-| `TBResultsWidget` | `widgets/tb-results.ts` | Run results and per-task metrics |
-| `TBLearningWidget` | `widgets/tb-learning.ts` | FM learning metrics display |
-| `ATIFDetailsWidget` | `widgets/atif-details.ts` | ATIF trajectory step viewer |
-| `MCTasksWidget` | `widgets/mc-tasks.ts` | Ready tasks list |
-| `CategoryTreeWidget` | `widgets/category-tree.ts` | Task category tree |
-| `TrajectoryPaneWidget` | `widgets/trajectory-pane.ts` | Trajectory list |
-| `ContainerPanesWidget` | `widgets/container-panes.ts` | Container output grid |
+| Component | File | Purpose |
+|----------|------|---------|
+| `APMComponent` | `components/apm-component.ts` | Actions Per Minute monitor |
+| `TBControlsComponent` | `components/tb-controls.ts` | TerminalBench suite/run controls |
+| `TBOutputComponent` | `components/tb-output.ts` | Streaming test output |
+| `TBResultsComponent` | `components/tb-results.ts` | Run results and per-task metrics |
+| `TBLearningComponent` | `components/tb-learning.ts` | FM learning metrics display |
+| `ATIFDetailsComponent` | `components/atif-details.ts` | ATIF trajectory step viewer |
+| `MCTasksComponent` | `components/mc-tasks.ts` | Ready tasks list |
+| `CategoryTreeComponent` | `components/category-tree.ts` | Task category tree |
+| `TrajectoryPaneComponent` | `components/trajectory-pane.ts` | Trajectory list |
+| `ContainerPanesComponent` | `components/container-panes.ts` | Container output grid |
 
 ---
 
@@ -349,15 +351,15 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Deep dive into Effuse architecture
 - **[TESTING.md](./TESTING.md)** - Complete testing guide
 - **[HMR.md](./HMR.md)** - Hot Module Replacement with state preservation and migration
-- **Source code**: `src/effuse/widgets/apm-widget.ts` is the simplest complete example
+- **Source code**: `src/effuse/components/apm-component.ts` is the simplest complete example
 
 ---
 
 ## Common Mistakes
 
-1. **Forgetting `Effect.scoped`** - Widget mounting requires a scope for cleanup
+1. **Forgetting `Effect.scoped`** - Component mounting requires a scope for cleanup
 2. **Not using `Effect.runFork` in event handlers** - DOM callbacks are sync, emit returns Effect
 3. **Mutating state directly** - Always use `state.update(s => ({ ...s, newValue }))`
-4. **Missing socket service** - If widget has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
-5. **Re-rendering parent wipes child widgets** - If parent renders containers for child widgets, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-widget-relationships) for details.
-6. **State shape changes break HMR** - If you change a widget's state interface, old preserved state won't match. Add migration logic in `mount.ts` (see [HMR.md](./HMR.md#state-migration)) or clear state with `clearAllState()`.
+4. **Missing socket service** - If component has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
+5. **Re-rendering parent wipes child components** - If parent renders containers for child components, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-component-relationships) for details.
+6. **State shape changes break HMR** - If you change a component's state interface, old preserved state won't match. Add migration logic in `mount.ts` (see [HMR.md](./HMR.md#state-migration)) or clear state with `clearAllState()`.

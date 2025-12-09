@@ -52,9 +52,9 @@ Do:
 ```
 effuse/
 ├── index.ts (main entry)
-├── widgets/
+├── components/
 │   ├── intro-card.ts
-│   ├── apm-widget.ts
+│   ├── apm-component.ts
 │   └── ...
 └── services/
     ├── dom.ts
@@ -128,7 +128,7 @@ Each file served as separate module, browser resolves imports.
 2. **Create import map** with all dependencies
 3. **Update server** to handle ESM compilation
 4. **Update `index.html`** to use modules
-5. **Test** widgets still work
+5. **Test** components still work
 
 ### Phase 3: Optimize
 
@@ -163,7 +163,7 @@ Each file served as separate module, browser resolves imports.
 ```typescript
 // new-main.ts
 import { Effect, Layer } from "effect"
-import { mountWidget, DomServiceLive, StateServiceLive, SocketServiceFromClient, IntroCardWidget } from "../effuse/index.js"
+import { mountComponent, DomServiceLive, StateServiceLive, SocketServiceFromClient, IntroCardComponent } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
 // Rest of code unchanged - just imports are ESM

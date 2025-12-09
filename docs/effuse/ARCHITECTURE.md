@@ -14,13 +14,13 @@ Deep dive into Effuse's internals for agents needing to understand or extend the
 
 ---
 
-## Widget Lifecycle
+## Component Lifecycle
 
 ```
 1. MOUNT
    └─> Create StateCell with initialState
    └─> Create event Queue
-   └─> Build WidgetContext
+   └─> Build ComponentContext
    └─> Initial render()
    └─> setupEvents() if defined
    └─> Fork state.changes watcher (re-renders)
@@ -95,19 +95,19 @@ export const makeCell = <A>(
 2. `dom.render(container, content)` does `container.innerHTML = content.toString()`
 3. **This replaces ALL child elements** - any DOM inside the container is wiped out
 
-**Implication:** If a parent widget renders containers that child widgets mount into, re-rendering the parent will destroy the child widgets' DOM. See [Parent/Child Widget Relationships](#parentchild-widget-relationships) below for solutions.
+**Implication:** If a parent component renders containers that child components mount into, re-rendering the parent will destroy the child components' DOM. See [Parent/Child Component Relationships](#parentchild-component-relationships) below for solutions.
 
 ## Mount Process
 
-`src/effuse/widget/mount.ts`
+`src/effuse/component/mount.ts`
 
-The `mountWidget` function orchestrates the widget lifecycle:
+The `mountComponent` function orchestrates the component lifecycle:
 
 ```typescript
-export const mountWidget = <S, E, R>(
-  widget: Widget<S, E, R>,
+export const mountComponent = <S, E, R>(
+  component: Component<S, E, R>,
   container: Element
-): Effect.Effect<MountedWidget, never, R | DomServiceTag | StateServiceTag | Scope.Scope>
+): Effect.Effect<MountedComponent, never, R | DomServiceTag | StateServiceTag | Scope.Scope>
 ```
 
 **Step-by-step:**
@@ -120,7 +120,7 @@ export const mountWidget = <S, E, R>(
 
 2. **Create state cell** (scoped to current Effect scope):
    ```typescript
-   const state = yield* stateService.cell(widget.initialState())
+   const state = yield* stateService.cell(component.initialState())
    ```
 
 3. **Create event queue** with cleanup:
@@ -133,7 +133,7 @@ export const mountWidget = <S, E, R>(
 
 4. **Build context**:
    ```typescript
-   const ctx: WidgetContext<S, E> = {
+   const ctx: ComponentContext<S, E> = {
      state,
      emit: (event) => Queue.offer(eventQueue, event),
      dom,
@@ -143,14 +143,14 @@ export const mountWidget = <S, E, R>(
 
 5. **Initial render**:
    ```typescript
-   const initialContent = yield* widget.render(ctx)
+   const initialContent = yield* component.render(ctx)
    yield* dom.render(container, initialContent)
    ```
 
 6. **Set up events** (delegated listeners):
    ```typescript
-   if (widget.setupEvents) {
-     yield* widget.setupEvents(ctx)
+   if (component.setupEvents) {
+     yield* component.setupEvents(ctx)
    }
    ```
 
@@ -160,7 +160,7 @@ export const mountWidget = <S, E, R>(
      state.changes,
      Stream.tap(() =>
        Effect.gen(function* () {
-         const content = yield* widget.render(ctx)
+         const content = yield* component.render(ctx)
          yield* dom.render(container, content)
        })
      ),
@@ -171,10 +171,10 @@ export const mountWidget = <S, E, R>(
 
 8. **Fork event handler** (runs until scope closes):
    ```typescript
-   if (widget.handleEvent) {
+   if (component.handleEvent) {
      yield* pipe(
        Stream.fromQueue(eventQueue),
-       Stream.tap((event) => widget.handleEvent!(event, ctx)),
+       Stream.tap((event) => component.handleEvent!(event, ctx)),
        Stream.runDrain,
        Effect.forkScoped
      )
@@ -183,8 +183,8 @@ export const mountWidget = <S, E, R>(
 
 9. **Fork subscriptions** (external streams):
    ```typescript
-   if (widget.subscriptions) {
-     for (const sub of widget.subscriptions(ctx)) {
+   if (component.subscriptions) {
+     for (const sub of component.subscriptions(ctx)) {
        yield* pipe(
          sub,
          Stream.tap((effect) => effect),
@@ -270,7 +270,7 @@ export interface SocketService {
 }
 ```
 
-**Key insight:** `getMessages()` returns a Stream that widgets subscribe to. The socket client maintains a WebSocket connection and publishes incoming HUD protocol messages.
+**Key insight:** `getMessages()` returns a Stream that components subscribe to. The socket client maintains a WebSocket connection and publishes incoming HUD protocol messages.
 
 ---
 
@@ -396,7 +396,7 @@ export class SocketError extends Error {
 }
 ```
 
-**Pattern:** Services use typed errors. Widgets should catch and handle appropriately, or let errors propagate for debugging.
+**Pattern:** Services use typed errors. Components should catch and handle appropriately, or let errors propagate for debugging.
 
 ---
 
@@ -406,7 +406,7 @@ export class SocketError extends Error {
 
 Entry point that:
 1. Creates the Effuse layer with socket client
-2. Mounts all widgets to their containers
+2. Mounts all components to their containers
 3. Keeps the Effect scope alive with `Effect.never`
 
 ```typescript
@@ -414,7 +414,7 @@ const initEffuse = () => {
   const layer = createEffuseLayer()
 
   const program = Effect.gen(function* () {
-    yield* mountAllWidgets
+    yield* mountAllComponents
     yield* Effect.never  // Keep scope alive
   })
 
@@ -437,7 +437,7 @@ const initEffuse = () => {
 
 ## Performance Considerations
 
-1. **innerHTML Updates** - Effuse replaces entire container innerHTML on each render. This is simple but can be slow for large widgets. Keep widgets focused.
+1. **innerHTML Updates** - Effuse replaces entire container innerHTML on each render. This is simple but can be slow for large components. Keep components focused.
 
 2. **No Virtual DOM** - No diffing means every render is a full replace. State changes should be batched if possible.
 
@@ -445,15 +445,15 @@ const initEffuse = () => {
 
 4. **Event Delegation** - Using `delegate` instead of individual listeners avoids re-attaching on render.
 
-## Parent/Child Widget Relationships
+## Parent/Child Component Relationships
 
-**Critical Pattern:** When a parent widget renders containers for child widgets, re-rendering the parent will **wipe out child widget DOM**.
+**Critical Pattern:** When a parent component renders containers for child components, re-rendering the parent will **wipe out child component DOM**.
 
 ### The Problem
 
 ```typescript
-// Parent widget renders child containers
-const ParentWidget: Widget<ParentState, ParentEvent> = {
+// Parent component renders child containers
+const ParentComponent: Component<ParentState, ParentEvent> = {
   render: (ctx) =>
     Effect.gen(function* () {
       const state = yield* ctx.state.get
@@ -466,17 +466,17 @@ const ParentWidget: Widget<ParentState, ParentEvent> = {
     }),
 }
 
-// Child widgets are mounted into those containers
-yield* mountWidgetById(ChildWidget1, "child-container-1")
-yield* mountWidgetById(ChildWidget2, "child-container-2")
+// Child components are mounted into those containers
+yield* mountComponentById(ChildComponent1, "child-container-1")
+yield* mountComponentById(ChildComponent2, "child-container-2")
 ```
 
 **What happens:**
 1. Parent renders, creating `child-container-1` and `child-container-2`
-2. Child widgets mount and render their content into those containers
+2. Child components mount and render their content into those containers
 3. Parent state changes (e.g., `showChild1` changes)
 4. Parent re-renders, calling `dom.render(container, newHTML)`
-5. **Child widgets' DOM is wiped out** because `innerHTML` is replaced
+5. **Child components' DOM is wiped out** because `innerHTML` is replaced
 
 ### Solutions
 
@@ -491,7 +491,7 @@ handleEvent: (event, ctx) =>
       case "changeTab": {
         yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
 
-        // Directly update DOM classes to avoid wiping out child widgets
+        // Directly update DOM classes to avoid wiping out child components
         const TABS = ["tab1", "tab2", "tab3"]
         for (const tabId of TABS) {
           const container = yield* ctx.dom.queryOption(`#tab-${tabId}`)
@@ -515,13 +515,13 @@ Don't render child containers in parent - create them once in HTML or mount sepa
 
 ```typescript
 // In HTML (index.html)
-<div id="parent-widget">
+<div id="parent-component">
   <div id="child-container-1"></div>
   <div id="child-container-2"></div>
 </div>
 
-// Parent widget only renders its own UI, not child containers
-const ParentWidget: Widget<ParentState, ParentEvent> = {
+// Parent component only renders its own UI, not child containers
+const ParentComponent: Component<ParentState, ParentEvent> = {
   render: (ctx) =>
     Effect.gen(function* () {
       // Only render parent's UI (sidebar, header, etc.)
@@ -533,29 +533,29 @@ const ParentWidget: Widget<ParentState, ParentEvent> = {
 
 **Option 3: Conditional Re-rendering**
 
-Only re-render parts that don't contain child widgets:
+Only re-render parts that don't contain child components:
 
 ```typescript
 // Split render into parts that can be safely re-rendered
-// vs. parts that contain child widgets (render once, update classes only)
+// vs. parts that contain child components (render once, update classes only)
 ```
 
 ### When to Use Each Approach
 
 - **Direct DOM manipulation**: Tab switching, show/hide toggles, simple visibility changes
 - **Restructure containers**: Complex layouts where parent doesn't need to control child container structure
-- **Conditional re-rendering**: Large widgets where only specific sections change
+- **Conditional re-rendering**: Large components where only specific sections change
 
-### Example: TBCC Shell Widget
+### Example: TBCC Shell Component
 
-The TBCC Shell widget uses **Option 1** for tab switching:
+The TBCC Shell component uses **Option 1** for tab switching:
 
 ```typescript
 // In handleEvent for changeTab:
 // 1. Update state (for sidebar button active states)
 yield* ctx.state.update((s) => ({ ...s, activeTab: event.tab }))
 
-// 2. Directly update tab container visibility (avoids wiping child widgets)
+// 2. Directly update tab container visibility (avoids wiping child components)
 for (const tabId of TABS) {
   const container = yield* ctx.dom.queryOption(`#tbcc-tab-${tabId}`)
   if (container) {
@@ -564,21 +564,21 @@ for (const tabId of TABS) {
 }
 
 // 3. Update sidebar button classes directly
-// (can also be done via re-render since sidebar doesn't contain child widgets)
+// (can also be done via re-render since sidebar doesn't contain child components)
 ```
 
-**Key takeaway:** If your parent widget renders containers that child widgets mount into, **never re-render those containers** - update their classes/attributes directly in event handlers.
+**Key takeaway:** If your parent component renders containers that child components mount into, **never re-render those containers** - update their classes/attributes directly in event handlers.
 
 ---
 
 ## Extending Effuse
 
-### Adding a New Widget
+### Adding a New Component
 
-1. Create `src/effuse/widgets/my-widget.ts`
+1. Create `src/effuse/components/my-component.ts`
 2. Define state and event types
-3. Implement Widget interface
-4. Add tests in `my-widget.test.ts`
+3. Implement Component interface
+4. Add tests in `my-component.test.ts`
 5. Export from `src/effuse/index.ts`
 6. Mount in `src/mainview/effuse-main.ts`
 
@@ -593,7 +593,7 @@ for (const tabId of TABS) {
 
 ### Modifying StateCell
 
-Be careful - StateCell is core infrastructure. Changes affect all widgets. Key files:
+Be careful - StateCell is core infrastructure. Changes affect all components. Key files:
 - `src/effuse/state/cell.ts`
 - `src/effuse/services/state.ts`
 - `src/effuse/services/state-live.ts`
