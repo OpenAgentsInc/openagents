@@ -9,7 +9,7 @@ import { Effect } from "effect"
 import { InferenceStoreLive } from "../llm/inference-store.js"
 import { openRouterLive } from "../llm/openrouter-http.js"
 import {
-  OpenRouterInference, OpenRouterInferenceLive
+    OpenRouterInference, OpenRouterInferenceLive
 } from "../llm/openrouter-inference.js"
 import { log, logError } from "./logger.js"
 import { FREE_MODELS } from "./meta-reasoner.js"
@@ -92,6 +92,26 @@ What should we change to improve overall quality? Consider:
 3. Adjusting max rounds per category (more rounds = more refinement but slower)
 4. Changing strategy weights (environment vs description, anti-cheat emphasis)
 5. Model selection (local vs claude for different phases)
+
+**IMPORTANT: Guardrail Constraints**
+To ensure stable evolution, changes must be incremental:
+- Temperature: Can change by ±0.1 maximum (e.g., 0.3 → 0.2 or 0.3 → 0.4)
+- Min/Max tests per category: Can change by ±1 maximum (e.g., 2 → 3 or 5 → 4)
+- Max rounds per category: Can change by ±1 maximum (e.g., 3 → 4 or 5 → 4)
+- Weights: Can change by ±0.1 maximum (e.g., 0.7 → 0.8 or 0.7 → 0.6)
+
+**Examples of VALID changes:**
+- minTestsPerCategory: 2 → 3 (change of +1, within limit)
+- maxTestsPerCategory: 5 → 6 (change of +1, within limit)
+- temperature: 0.3 → 0.4 (change of +0.1, within limit)
+- environmentWeight: 0.7 → 0.8 (change of +0.1, within limit)
+
+**Examples of INVALID changes (will be rejected):**
+- minTestsPerCategory: 2 → 4 (change of +2, exceeds ±1 limit)
+- maxTestsPerCategory: 5 → 8 (change of +3, exceeds ±1 limit)
+- temperature: 0.3 → 0.6 (change of +0.3, exceeds ±0.1 limit)
+
+Propose SMALL, INCREMENTAL changes. If you want a larger change, propose it in steps over multiple iterations.
 
 Return JSON with this exact structure:
 {
