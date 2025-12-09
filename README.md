@@ -23,4 +23,4 @@ You command **MechaCoder**, training it through the **GYM** to complete coding t
 ## Links
 
 - [openagents.com](https://openagents.com)
-- [github.com/openagents-inc/openagents](https://github.com/openagents-inc/openagents)
+- [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents)
