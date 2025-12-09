@@ -56,8 +56,25 @@
 **Fix Applied:**
 - Added explicit instruction: "After writing or editing files, call verify_progress to see test results"
 
-**Next Steps:**
-1. Check why verification shows 0/0 tests
-2. Ensure test workspace has TB2 test files
-3. Test again with improved prompt
+**Fix 4: Test Workspace Setup**
+- Updated e2e test to properly copy TB2 task files
+- Copy environment files to workspace root
+- Copy test files to workspace/tests directory
+- This should fix "0/0 tests" issue
+
+**Files Modified:**
+- `src/hillclimber/e2e-regex-log.test.ts` - proper workspace setup
+
+---
+
+## Step 4: Next Test Run
+
+Testing with all fixes:
+1. ✅ Path normalization (/app/ → workspace)
+2. ✅ Action failure feedback
+3. ✅ File listing on errors
+4. ✅ Prompt emphasis on verify_progress
+5. ✅ Proper test workspace setup
+
+Running test again...
 
