@@ -152,9 +152,17 @@ export async function runTB2InDocker(
       "  echo '[PYTEST] ERROR: pytest not available after installation' >&2; " +
       "  exit 127; " +
       "fi && " +
-      // 4. Run tests
+      // 4. Run tests (try explicit file path if directory doesn't work)
       "echo '=== PYTEST OUTPUT START ===' && " +
-      "python3 -m pytest tests/ -v 2>&1"
+      "echo '[DEBUG] Checking test file location...' >&2 && " +
+      "ls -la tests/ >&2 || echo '[DEBUG] tests/ directory not found' >&2 && " +
+      "if [ -f tests/test_outputs.py ]; then " +
+      "  echo '[DEBUG] Found tests/test_outputs.py, running pytest...' >&2 && " +
+      "  python3 -m pytest tests/test_outputs.py -v 2>&1; " +
+      "else " +
+      "  echo '[DEBUG] tests/test_outputs.py not found, trying tests/ directory...' >&2 && " +
+      "  python3 -m pytest tests/ -v 2>&1; " +
+      "fi"
     );
 
     const result = await runDockerCommand(dockerArgs, timeout);
@@ -163,12 +171,20 @@ export async function runTB2InDocker(
     const fullOutput = result.stdout + result.stderr;
     console.log(`[TB2] Docker exitCode: ${result.exitCode}`);
     console.log(`[TB2] Docker output length: ${fullOutput.length} chars`);
-    if (fullOutput.length > 0) {
-      console.log(`[TB2] Docker output (first 500 chars):\n${fullOutput.substring(0, 500)}`);
-    }
 
-    // Parse pytest output
+    // Parse pytest output first to check for discovery issues
     const parsed = parsePytestSummary(fullOutput);
+
+    if (fullOutput.length > 0) {
+      // Log more output if discovery fails (0/0 tests)
+      if (parsed.total === 0) {
+        // Log full output when no tests discovered
+        console.log(`[TB2] WARNING: No tests discovered! Full output:\n${fullOutput}`);
+      } else {
+        // Log first 1000 chars for normal runs
+        console.log(`[TB2] Docker output (first 1000 chars):\n${fullOutput.substring(0, 1000)}`);
+      }
+    }
 
     const durationMs = Date.now() - startTime;
 

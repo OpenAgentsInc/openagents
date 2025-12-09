@@ -61,7 +61,12 @@ export function convertTestsToPytest(
 
     if (options.taskType === "regex") {
       // Regex test
-      lines.push(`    input_text = ${pythonStringLiteral(test.input)}`);
+      // CRITICAL: Strip any leading/trailing quotes that LLM may have added
+      let inputValue = test.input;
+      if (typeof inputValue === "string") {
+        inputValue = inputValue.replace(/^["']+|["']+$/g, "");
+      }
+      lines.push(`    input_text = ${pythonStringLiteral(inputValue)}`);
 
       if (test.expectedOutput === null || test.expectedOutput === undefined) {
         // Should NOT match
@@ -69,8 +74,21 @@ export function convertTestsToPytest(
         lines.push(`    assert len(matches) == 0, f"Expected no match, but got {matches}"`);
       } else {
         // Should match and return expected output
+        // CRITICAL: Strip any leading/trailing quotes that LLM may have added
+        // Handle cases like: '"2023-10-01"', '"""2023-10-01"""', ""2023-10-01"", etc.
+        let expectedValue = test.expectedOutput;
+        if (typeof expectedValue === "string") {
+          // Remove ALL leading/trailing quote characters (single, double, or triple)
+          // This handles: '"value"', '"""value"""', ""value"", etc.
+          expectedValue = expectedValue.replace(/^["']+|["']+$/g, "");
+          // Also handle triple quotes specifically
+          expectedValue = expectedValue.replace(/^"""|"""$/g, "");
+          expectedValue = expectedValue.replace(/^'''|'''$/g, "");
+          // Final cleanup: remove any remaining leading/trailing quotes
+          expectedValue = expectedValue.replace(/^["']+|["']+$/g, "");
+        }
         lines.push(`    matches = re.findall(pattern_text, input_text, re.MULTILINE)`);
-        lines.push(`    expected = ${pythonStringLiteral(test.expectedOutput)}`);
+        lines.push(`    expected = ${pythonStringLiteral(expectedValue)}`);
         lines.push(`    assert len(matches) > 0, f"Expected match '{expected}', but got no matches"`);
         lines.push(`    assert matches[0] == expected, f"Expected '{expected}', got '{matches[0]}'"`);
       }
@@ -95,14 +113,39 @@ function sanitizeFunctionName(name: string): string {
 
 /**
  * Convert a string to a Python string literal with proper escaping.
+ *
+ * IMPORTANT: This function assumes the input string has already had
+ * leading/trailing quotes stripped. It will NOT add quotes if the string
+ * already contains quotes that would cause syntax errors.
  */
 function pythonStringLiteral(str: string): string {
-  // Use triple-quoted string for multi-line or complex strings
-  if (str.includes("\n") || str.includes('"') || str.includes("'")) {
+  // Handle empty string
+  if (str === "") {
+    return '""';
+  }
+
+  // Use triple-quoted string for multi-line strings
+  if (str.includes("\n")) {
     return '"""' + str.replace(/"""/g, '\\"\\"\\"') + '"""';
   }
-  // Use single-quoted string for simple strings
-  return '"' + str.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+
+  // For strings containing quotes, prefer single quotes if possible
+  if (str.includes('"') && !str.includes("'")) {
+    return "'" + str.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+  }
+
+  // For strings containing single quotes, use double quotes
+  if (str.includes("'") && !str.includes('"')) {
+    return '"' + str.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+  }
+
+  // For strings with both quote types, use triple quotes
+  if (str.includes('"') || str.includes("'")) {
+    return '"""' + str.replace(/"""/g, '\\"\\"\\"') + '"""';
+  }
+
+  // Simple string with no quotes - use double quotes
+  return '"' + str.replace(/\\/g, "\\\\") + '"';
 }
 
 /**
