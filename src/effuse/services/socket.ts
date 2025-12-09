@@ -115,6 +115,17 @@ export interface SocketService {
     taskId?: string,
     model?: "local" | "claude"
   ) => Effect.Effect<{ sessionId: string }, SocketError>
+
+  // ============================================================================
+  // HillClimber Operations
+  // ============================================================================
+
+  /** Start a HillClimber run (TestGen + MAP orchestrator) */
+  readonly startHillClimber: (
+    task: string,
+    mode: "quick" | "standard" | "full",
+    suitePath?: string
+  ) => Effect.Effect<{ sessionId: string }, SocketError>
 }
 
 /**

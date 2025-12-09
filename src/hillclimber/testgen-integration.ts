@@ -40,6 +40,8 @@ export async function runTestGenForTask(
   options: {
     model?: "local" | "claude";
     verbose?: boolean;
+    /** HUD emitter for real-time UI updates */
+    hudEmitter?: import("./hud-emitter.js").HillClimberHudEmitter;
   } = {}
 ): Promise<TestGenIntegrationResult> {
   const startTime = Date.now();
@@ -50,6 +52,12 @@ export async function runTestGenForTask(
 
   const tests: GeneratedTest[] = [];
   let comprehensivenessScore = 0;
+
+  // Track test counts per category for HUD
+  const categoryTestCounts: Record<string, number> = {};
+
+  // Emit TestGen start to HUD
+  options.hudEmitter?.onTestGenStart(task.id, task.description);
 
   // Generate tests using iterative testgen
   await generateTestsIteratively(
@@ -75,6 +83,9 @@ export async function runTestGenForTask(
         if (options.verbose) {
           console.log(`[TestGen] Generated test ${tests.length}: ${test.category}`);
         }
+        // Emit category update to HUD
+        categoryTestCounts[test.category] = (categoryTestCounts[test.category] || 0) + 1;
+        options.hudEmitter?.onTestGenCategory(test.category, categoryTestCounts[test.category]);
       },
       onProgress: (msg) => {
         if (options.verbose) {
@@ -91,6 +102,8 @@ export async function runTestGenForTask(
         if (options.verbose) {
           console.log(`[TestGen] Complete: ${msg.totalTests} tests, score ${comprehensivenessScore}/10`);
         }
+        // Emit TestGen complete to HUD
+        options.hudEmitter?.onTestGenComplete(msg.totalTests, comprehensivenessScore);
       },
       onError: (msg) => {
         console.error(`[TestGen] Error: ${msg.error}`);

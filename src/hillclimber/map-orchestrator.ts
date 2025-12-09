@@ -42,6 +42,8 @@ export interface MAPOrchestratorOptions {
   onOutput?: (text: string) => void;
   /** Enable detailed logging */
   verbose?: boolean;
+  /** HUD emitter for real-time UI updates */
+  hudEmitter?: import("./hud-emitter.js").HillClimberHudEmitter;
 }
 
 export interface MAPOrchestratorResult {
@@ -647,6 +649,14 @@ async function runMAPOrchestratorWithDecomposition(
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     const currentSubtask = decomposition.subtasks[state.currentSubtask];
     log(`[HEARTBEAT] Turn ${state.totalTurns}/${options.maxTurns} | Subtask: ${currentSubtask?.name ?? 'unknown'} | Progress: ${(state.bestProgress * 100).toFixed(1)}% | Elapsed: ${elapsed}s`);
+    // Emit to HUD for real-time UI updates
+    options.hudEmitter?.onHeartbeat(
+      state.totalTurns,
+      options.maxTurns,
+      state.lastEvaluation?.progress ?? 0,
+      state.bestProgress,
+      elapsed * 1000
+    );
   }, 30_000);
 
   // Helper to clean up heartbeat
@@ -665,6 +675,9 @@ async function runMAPOrchestratorWithDecomposition(
 
     const currentSubtask = decomposition.subtasks[state.currentSubtask];
     log(`\n[MAP] === Turn ${state.totalTurns} (Subtask ${state.currentSubtask + 1}: ${currentSubtask.name}) ===`);
+
+    // Emit turn start to HUD
+    options.hudEmitter?.onTurnStart(state.totalTurns, options.maxTurns, currentSubtask.name);
 
     // Step 3a: Build FM context with verification feedback
     const fmContext = buildFMContext(task, decomposition, state, options.workspace);
@@ -755,6 +768,9 @@ async function runMAPOrchestratorWithDecomposition(
     }
 
     // Step 3d: Execute action
+    // Emit FM action to HUD
+    options.hudEmitter?.onFMAction("tool_call", action.toolName);
+
     const actionResult = await executeAction(action, options.workspace, log);
     log(`[MAP] Result: ${actionResult.success ? "SUCCESS" : "FAILED"} - ${actionResult.output.slice(0, 100)}`);
 
@@ -810,6 +826,9 @@ async function runMAPOrchestratorWithDecomposition(
     // Step 3f: Evaluate progress after file modifications
     if (actionResult.modifiedFile || actionResult.output === "VERIFY_PROGRESS_REQUESTED") {
       log(`[MAP] Running verification...`);
+      // Emit verify start to HUD
+      options.hudEmitter?.onVerifyStart();
+
       try {
         // Use Docker-based verification for TB2 tasks with source_path
         const useDocker = task.source_path && existsSync(task.source_path) && existsSync(join(task.source_path, "tests"));
@@ -820,6 +839,8 @@ async function runMAPOrchestratorWithDecomposition(
         );
 
         log(`[MAP] Progress: ${(evaluation.progress * 100).toFixed(1)}% (${evaluation.testsPassing}/${evaluation.testsTotal} tests)`);
+        // Emit verify complete to HUD
+        options.hudEmitter?.onVerifyComplete(evaluation.testsPassing, evaluation.testsTotal, evaluation.progress);
 
         updateStateWithEvaluation(state, evaluation);
 
@@ -829,6 +850,8 @@ async function runMAPOrchestratorWithDecomposition(
 
         switch (decision) {
           case "complete":
+            // Emit run complete to HUD
+            options.hudEmitter?.onRunComplete(true, evaluation.progress);
             cleanup();
             return {
               passed: true,
@@ -842,7 +865,14 @@ async function runMAPOrchestratorWithDecomposition(
 
           case "advance":
             log(`[MAP] Advancing to next subtask`);
+            // Emit subtask completion to HUD
+            options.hudEmitter?.onSubtaskChange(currentSubtask.name, "completed");
             advanceSubtask(state);
+            // Emit new subtask start to HUD
+            const nextSubtask = decomposition.subtasks[state.currentSubtask];
+            if (nextSubtask) {
+              options.hudEmitter?.onSubtaskChange(nextSubtask.name, "active");
+            }
             break;
 
           case "no_progress":
@@ -875,6 +905,9 @@ async function runMAPOrchestratorWithDecomposition(
   // (quickEvaluate has outdated regex parsing that can report wrong progress)
   const finalProgress = state.lastEvaluation?.progress ?? state.bestProgress;
   const finalPassed = state.lastEvaluation?.passed ?? false;
+
+  // Emit run complete to HUD
+  options.hudEmitter?.onRunComplete(finalPassed, finalProgress);
 
   cleanup();
   return {

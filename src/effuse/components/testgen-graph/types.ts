@@ -68,6 +68,58 @@ export interface TestGenConnection {
 }
 
 // ============================================================================
+// Session State (for multi-session tracking)
+// ============================================================================
+
+/**
+ * Per-session run state
+ */
+export interface SessionRunState {
+  sessionId: string
+  status: "waiting" | "testgen" | "running" | "completed" | "failed"
+
+  // TestGen phase
+  testGenProgress: { category: string; count: number }[]
+  totalTests: number
+
+  // MAP phase
+  currentTurn: number
+  maxTurns: number
+  currentSubtask: string
+  fmAction: string
+  testsPassed: number
+  testsTotal: number
+  progress: number
+  bestProgress: number
+
+  // Timestamps
+  startedAt: number
+  lastUpdateAt: number
+}
+
+/**
+ * Create a new empty session state
+ */
+export function createNewSession(sessionId: string): SessionRunState {
+  return {
+    sessionId,
+    status: "waiting",
+    testGenProgress: [],
+    totalTests: 0,
+    currentTurn: 0,
+    maxTurns: 10,
+    currentSubtask: "",
+    fmAction: "",
+    testsPassed: 0,
+    testsTotal: 0,
+    progress: 0,
+    bestProgress: 0,
+    startedAt: Date.now(),
+    lastUpdateAt: Date.now(),
+  }
+}
+
+// ============================================================================
 // Component State
 // ============================================================================
 
@@ -75,8 +127,15 @@ export interface TestGenConnection {
  * State for the TestGen graph component
  */
 export interface TestGenGraphState {
+  // Multi-session tracking
+  sessions: Map<string, SessionRunState>
+  activeSessionId: string | null
+
+  // Graph layout (shared)
   nodes: TestGenNode[]
   connections: TestGenConnection[]
+
+  // Interaction
   hoveredNodeId: string | null
   draggedNodeId: string | null
   animationFrame: number
@@ -103,6 +162,8 @@ export type TestGenGraphEvent =
   | { type: "canvasPan"; delta: Point }
   | { type: "canvasZoom"; delta: number; pointer: Point }
   | { type: "animationTick" }
+  | { type: "selectSession"; sessionId: string }
+  | { type: "startRun"; mode: "quick" | "standard" | "full" }
 
 // ============================================================================
 // Initial Data (Hardcoded for now)

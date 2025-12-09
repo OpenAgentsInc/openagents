@@ -430,6 +430,21 @@ export class SocketClient {
     return (response as Extract<SocketResponse, { type: "response:startTestGen" }>).data!;
   }
 
+  /**
+   * Start a HillClimber run (TestGen + MAP orchestrator)
+   */
+  async startHillClimber(
+    task: string,
+    mode: "quick" | "standard" | "full",
+    suitePath?: string
+  ): Promise<{ sessionId: string }> {
+    const response = await this.request("request:startHillClimber", { task, mode, suitePath });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to start HillClimber");
+    }
+    return (response as Extract<SocketResponse, { type: "response:startHillClimber" }>).data!;
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================

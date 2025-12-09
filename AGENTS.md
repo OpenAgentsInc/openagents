@@ -1,15 +1,16 @@
 # Commander: Agent Instructions
 
-> **This is the OpenAgents/Commander codebase.** Commander is a desktop application for building autonomous AI agents that earn bitcoin. See [docs/SYNTHESIS.md](docs/SYNTHESIS.md) for the full product vision.
+> **This is the OpenAgents/Commander codebase.** Commander is a desktop app for training AI agents and selling spare compute for bitcoin. See [docs/SYNTHESIS.md](docs/SYNTHESIS.md) for the full product vision.
 
 ## Product Overview
 
-**Commander** = Desktop app (installable via `curl -fsSL https://openagents.com/install | sh`)
-**MechaCoder** = Autonomous coding agent you command and train
-**GYM** = Training ground for improving agent skills
-**Agent Store** = Marketplace to publish and earn from agents
+**Commander** = Desktop app with built-in bitcoin wallet
+**Swarm Compute** = Sell your device's idle compute for bitcoin
+**MechaCoder** = Autonomous coding agent you train
+**GYM** = Training ground for agent skills
+**Agent Store** = Marketplace to publish agents that use the swarm network
 
-The gamified loop: **BUILD** (train in GYM) → **EARN** (deploy for bitcoin) → **GROW** (level up skills) → **SHARE** (publish to store)
+The loop: **SELL COMPUTE** (earn bitcoin) → **TRAIN AGENTS** (in GYM) → **PUBLISH** (to store)
 
 ---
 
