@@ -5,7 +5,7 @@
  * Used by the desktop handler to run test generation with real-time updates.
  */
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
 import { generateTestsIteratively } from "./test-generator-iterative.js";

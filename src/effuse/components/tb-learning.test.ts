@@ -7,7 +7,6 @@ import { Effect } from "effect"
 import { mountComponent } from "../component/mount.js"
 import {
   TBLearningComponent,
-  type TBLearningState,
 } from "./tb-learning.js"
 import { makeTestLayer } from "../layers/test.js"
 

@@ -14,7 +14,6 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { cp } from "fs/promises";
 import { existsSync } from "fs";
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";

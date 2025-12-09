@@ -4,8 +4,6 @@
  * Runs testgen, converts output to pytest, writes to workspace.
  */
 
-import { Effect } from "effect";
-import { BunContext } from "@effect/platform-bun";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";

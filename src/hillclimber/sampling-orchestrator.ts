@@ -7,9 +7,8 @@
 
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
-import { writeFileSync, readFileSync, existsSync } from "fs";
+import { writeFileSync } from "fs";
 import { join } from "path";
-import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import { evaluateProgressWithDocker, type EvaluatorResult } from "./evaluator.js";
 import {
   type SamplingOptions,

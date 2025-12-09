@@ -5,7 +5,7 @@
  * Used by the evolution system to evaluate config performance.
  */
 
-import type { GeneratedTest, TestCategory } from "./test-generator.js";
+import type { GeneratedTest } from "./test-generator.js";
 import type { EnvironmentInfo } from "./environment-info.js";
 
 // ============================================================================

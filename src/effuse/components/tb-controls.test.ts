@@ -15,7 +15,6 @@ import {
   type TBControlsState,
   type TBControlsEvent,
   type TBSuiteInfo,
-  type TBTaskInfo,
   initialTBControlsState,
 } from "./tb-controls.js"
 

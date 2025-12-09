@@ -6,7 +6,7 @@
 
 import { Effect } from "effect"
 import { html } from "../template/html.js"
-
+import type { ComponentContext } from "../component/types.js"
 import type { Widget } from "../widget/types.js"
 
 // ============================================================================
@@ -34,7 +34,7 @@ export const IntroCardWidget: Widget<IntroCardState, IntroCardEvent> = {
 
   initialState: () => ({}),
 
-  render: (ctx) =>
+  render: (ctx: ComponentContext<IntroCardState, IntroCardEvent>) =>
     Effect.gen(function* () {
       return html`
         <div class="fixed inset-0 flex items-center justify-center" style="padding: 24px; z-index: 10;">

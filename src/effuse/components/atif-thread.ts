@@ -422,14 +422,6 @@ function renderConfidenceBar(confidence: number): TemplateResult {
   const percent = Math.round(confidence * 100)
   const width = `${percent}%`
 
-  const categoryColors: Record<string, string> = {
-    anti_cheat: "bg-red-500",
-    existence: "bg-blue-500",
-    correctness: "bg-emerald-500",
-    boundary: "bg-yellow-500",
-    integration: "bg-purple-500",
-  }
-
   // Use a neutral color for the bar
   const barColor = "bg-emerald-500"
 

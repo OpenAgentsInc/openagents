@@ -30770,13 +30770,6 @@ ${endStackCall}`;
   function renderConfidenceBar(confidence) {
     const percent = Math.round(confidence * 100);
     const width = `${percent}%`;
-    const categoryColors = {
-      anti_cheat: "bg-red-500",
-      existence: "bg-blue-500",
-      correctness: "bg-emerald-500",
-      boundary: "bg-yellow-500",
-      integration: "bg-purple-500"
-    };
     const barColor = "bg-emerald-500";
     return html`
     <div class="flex items-center gap-2">

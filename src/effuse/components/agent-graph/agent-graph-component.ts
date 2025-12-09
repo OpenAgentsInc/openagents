@@ -90,7 +90,7 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     let lastTime = performance.now()
 
     // Animation loop
-    let _animationId: number
+    let animationId: number | undefined
 
     const animate = (currentTime: number) => {
       const dt = Math.min((currentTime - lastTime) / 1000, 0.1) // Max 100ms step
@@ -126,10 +126,10 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
         })
       )
 
-      _animationId = requestAnimationFrame(animate)
+      animationId = requestAnimationFrame(animate)
     }
 
-    _animationId = requestAnimationFrame(animate)
+    animationId = requestAnimationFrame(animate)
 
     // Interaction state
     let isDraggingNode = false
@@ -168,17 +168,18 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     }
 
     // Mouse down: Start drag or pan
-    container.addEventListener("mousedown", (e: MouseEvent) => {
-      if (e.button !== 0) return // Only left mouse button
+    container.addEventListener("mousedown", ((e: Event) => {
+      const mouseEvent = e as MouseEvent
+      if (mouseEvent.button !== 0) return // Only left mouse button
 
       clickStartTime = Date.now()
-      clickStartPos = { x: e.clientX, y: e.clientY }
-      lastMouseX = e.clientX
-      lastMouseY = e.clientY
+      clickStartPos = { x: mouseEvent.clientX, y: mouseEvent.clientY }
+      lastMouseX = mouseEvent.clientX
+      lastMouseY = mouseEvent.clientY
 
       Effect.runFork(
         Effect.gen(function* () {
-          const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+          const worldPos = yield* screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
           const node = yield* findNodeAt(worldPos.x, worldPos.y)
 
           if (node) {
@@ -199,7 +200,7 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
           }
         })
       )
-    })
+    }) as EventListener)
 
     // Mouse move: Update drag or pan
     document.addEventListener("mousemove", (e: MouseEvent) => {
@@ -263,31 +264,37 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     })
 
     // Double-click: Unpin node
-    container.addEventListener("dblclick", (e: MouseEvent) => {
+    container.addEventListener("dblclick", ((e: Event) => {
+      const mouseEvent = e as MouseEvent
       Effect.runFork(
         Effect.gen(function* () {
-          const worldPos = yield* screenToWorld(e.clientX, e.clientY)
+          const worldPos = yield* screenToWorld(mouseEvent.clientX, mouseEvent.clientY)
           const node = yield* findNodeAt(worldPos.x, worldPos.y)
           if (node) {
             yield* ctx.emit({ type: "nodeDoubleClick", nodeId: node.id })
           }
         })
       )
-    })
+    }) as EventListener)
 
     // Wheel: Zoom
-    container.addEventListener("wheel", (e: WheelEvent) => {
-      e.preventDefault()
+    container.addEventListener("wheel", ((e: Event) => {
+      const wheelEvent = e as WheelEvent
+      wheelEvent.preventDefault()
       const svg = getSvg()
       if (!svg) return
       const rect = svg.getBoundingClientRect()
-      const pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-      const delta = e.deltaY > 0 ? 0.975 : 1.025
+      const pointer = { x: wheelEvent.clientX - rect.left, y: wheelEvent.clientY - rect.top }
+      const delta = wheelEvent.deltaY > 0 ? 0.975 : 1.025
       Effect.runFork(ctx.emit({ type: "canvasZoom", delta, pointer }))
-    }, { passive: false })
+    }) as EventListener, { passive: false })
 
-    // TODO: Add proper cleanup for animationFrame using acquireRelease
-    // For now, the animation will stop when simulation alpha drops below minimum
+    // Cleanup animation frame
+    return Effect.sync(() => {
+      if (animationId !== undefined) {
+        cancelAnimationFrame(animationId)
+      }
+    })
   })
 }
 
@@ -343,9 +350,13 @@ function handleEvent(event: AgentGraphEvent, ctx: ComponentContext<AgentGraphSta
       case "nodeDoubleClick":
         yield* ctx.state.update((s: AgentGraphState) => {
           // Unpin the node by clearing fx/fy
-          const nodes = s.nodes.map((n) =>
-            n.id === event.nodeId ? { ...n, fx: undefined, fy: undefined } : n
-          )
+          const nodes = s.nodes.map((n) => {
+            if (n.id === event.nodeId) {
+              const { fx, fy, ...rest } = n
+              return rest
+            }
+            return n
+          })
           return { ...s, nodes }
         })
         console.log("[AgentGraph] Unpinned node:", event.nodeId)
