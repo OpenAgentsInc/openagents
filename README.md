@@ -6,22 +6,7 @@ Your agent command center. (wip)
 
 - [Effect](https://effect.website/)
 - [Effuse](docs/effuse/README.md)
-- [Tailwind](https://tailwindcss.com/)
-- [webview-bun](https://github.com/tr1ckydev/webview-bun)
 
-## Getting Started
+## Project FM Hill Climber
 
-1. Install dependencies:
-   ```bash
-   bun install
-   ```
-
-2. Run in development mode:
-   ```bash
-   bun start
-   ```
-
-3. Build for production:
-   ```bash
-   bun run build
-   ```
+FM Hill Climber is our system for solving Terminal-Bench 2 tasks using Apple's on-device Foundation Model with MAP architecture, parallel sampling, and iterative verification. The goal is to achieve #1 on Terminal-Bench using only local inference. See [docs/fm-hillclimber.md](docs/fm-hillclimber.md) for full documentation.
