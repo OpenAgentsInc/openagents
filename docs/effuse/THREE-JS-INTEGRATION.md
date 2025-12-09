@@ -1,10 +1,12 @@
-# Three.js Integration with Effuse Widgets
+# Three.js Integration with Effuse Components
 
-Speculation on how Three.js can work with Effuse's Effect-native widget system.
+Speculation on how Three.js can work with Effuse's Effect-native component system.
+
+**Note:** Effuse currently uses the term "component" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
 
 ## The Challenge
 
-Effuse widgets use `innerHTML` replacement for rendering, which means:
+Effuse components use `innerHTML` replacement for rendering, which means:
 - Every state change triggers a full DOM replacement
 - Canvas elements and WebGL contexts would be destroyed on re-render
 - Three.js objects (Scene, Camera, Renderer) aren't serializable
@@ -19,7 +21,7 @@ Effuse widgets use `innerHTML` replacement for rendering, which means:
 ```typescript
 import { Effect, Stream, pipe } from "effect"
 import { html } from "../effuse/index.js"
-import type { Widget } from "../effuse/widget/types.js"
+import type { Component } from "../effuse/component/types.js"
 import * as THREE from "three"
 
 interface ThreeSceneState {
@@ -34,7 +36,7 @@ type ThreeSceneEvent =
   | { type: "setRotationSpeed"; speed: number }
   | { type: "setCameraPosition"; x: number; y: number; z: number }
 
-export const ThreeSceneWidget: Widget<ThreeSceneState, ThreeSceneEvent> = {
+export const ThreeSceneComponent: Component<ThreeSceneState, ThreeSceneEvent> = {
   id: "three-scene",
 
   initialState: () => ({
@@ -199,8 +201,8 @@ export interface ThreeScene {
   objects: Map<string, THREE.Object3D>
 }
 
-// Usage in widget
-export const ThreeSceneWidget: Widget<State, Event, ThreeServiceTag> = {
+// Usage in component
+export const ThreeSceneComponent: Component<State, Event, ThreeServiceTag> = {
   // ...
   setupEvents: (ctx) =>
     Effect.gen(function* () {
@@ -368,7 +370,7 @@ setupEvents: (ctx) =>
 
        // Only render UI controls, not canvas
        return html`
-         <div class="three-widget">
+         <div class="three-component">
            <canvas id="canvas" data-persist="true"></canvas>
            <div class="controls">
              <input type="range" data-action="setSpeed" />
@@ -384,12 +386,12 @@ setupEvents: (ctx) =>
    - Extend `DomService` with `renderPreserving` method
    - Only updates non-persistent elements
 
-## Example: Full Three.js Widget
+## Example: Full Three.js Component
 
 ```typescript
 import { Effect, Stream, pipe, Ref } from "effect"
 import { html } from "../effuse/index.js"
-import type { Widget } from "../effuse/widget/types.js"
+import type { Component } from "../effuse/component/types.js"
 import * as THREE from "three"
 
 interface CubeSceneState {
@@ -403,7 +405,7 @@ type CubeSceneEvent =
   | { type: "setColor"; color: string }
   | { type: "setCameraZ"; z: number }
 
-export const CubeSceneWidget: Widget<CubeSceneState, CubeSceneEvent> = {
+export const CubeSceneComponent: Component<CubeSceneState, CubeSceneEvent> = {
   id: "cube-scene",
 
   initialState: () => ({
@@ -582,5 +584,5 @@ export const CubeSceneWidget: Widget<CubeSceneState, CubeSceneEvent> = {
 1. **ThreeService** - Centralized scene management
 2. **Three.js Hooks** - Reusable patterns for common Three.js operations
 3. **Scene Serialization** - Save/load scene state (serializable parts only)
-4. **Multi-Scene Support** - Multiple Three.js scenes in one widget
+4. **Multi-Scene Support** - Multiple Three.js scenes in one component
 5. **WebGL Context Sharing** - Optimize multiple canvases

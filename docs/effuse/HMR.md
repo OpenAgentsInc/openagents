@@ -1,6 +1,8 @@
 # Effuse Hot Module Replacement (HMR)
 
-Effuse supports hot reloading with state preservation for rapid UI development. When you edit widget code, the browser reloads instantly while preserving widget state (selections, scroll position, form inputs, etc.).
+Effuse supports hot reloading with state preservation for rapid UI development. When you edit component code, the browser reloads instantly while preserving component state (selections, scroll position, form inputs, etc.).
+
+**Note:** Effuse currently uses the term "component" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
 
 ## Quick Start
 
@@ -30,30 +32,30 @@ location.reload()
     ↓
 Browser loads freshly rebuilt effuse-main.js
     ↓
-mountWidget() checks window.__EFFUSE_HMR__ for preserved state
+mountComponent() checks window.__EFFUSE_HMR__ for preserved state
     ↓
-Widget renders with previous state intact
+Component renders with previous state intact
 ```
 
 ### State Preservation
 
-Widget state is continuously saved to `window.__EFFUSE_HMR__` via a Stream that taps into `StateCell.changes`:
+Component state is continuously saved to `window.__EFFUSE_HMR__` via a Stream that taps into `StateCell.changes`:
 
 ```typescript
-// In mount.ts - runs for every widget
+// In mount.ts - runs for every component
 yield* pipe(
   state.changes,
-  Stream.tap((s) => Effect.sync(() => saveWidgetState(widget.id, s))),
+  Stream.tap((s) => Effect.sync(() => saveComponentState(component.id, s))),
   Stream.runDrain,
   Effect.forkScoped
 )
 ```
 
-On reload, `mountWidget()` checks for preserved state before using `initialState`:
+On reload, `mountComponent()` checks for preserved state before using `initialState`:
 
 ```typescript
-const preservedState = loadWidgetState<S>(widget.id)
-const initialState = preservedState ?? widget.initialState()
+const preservedState = loadComponentState<S>(component.id)
+const initialState = preservedState ?? component.initialState()
 ```
 
 ## Architecture
@@ -65,29 +67,29 @@ const initialState = preservedState ?? widget.initialState()
 | `src/desktop/server-worker.ts` | File watching + WebSocket broadcast |
 | `src/mainview/effuse-main.ts` | Reload handler |
 | `src/effuse/hmr/registry.ts` | State registry (`window.__EFFUSE_HMR__`) |
-| `src/effuse/widget/mount.ts` | State save/restore on mount |
+| `src/effuse/component/mount.ts` | State save/restore on mount |
 | `src/hud/protocol.ts` | `DevReloadMessage` type |
 
 ### State Registry API
 
 ```typescript
 import {
-  saveWidgetState,
-  loadWidgetState,
-  hasWidgetState,
+  saveComponentState,
+  loadComponentState,
+  hasComponentState,
   clearAllState,
   getHMRVersion,
   bumpHMRVersion
 } from "../effuse/index.js"
 
 // Save state (called automatically via Stream)
-saveWidgetState("my-widget", { count: 5 })
+saveComponentState("my-component", { count: 5 })
 
 // Load and consume state (one-time restore)
-const state = loadWidgetState<MyState>("my-widget")
+const state = loadComponentState<MyState>("my-component")
 
 // Check if state exists (doesn't consume)
-if (hasWidgetState("my-widget")) { ... }
+if (hasComponentState("my-component")) { ... }
 
 // Clear all preserved state
 clearAllState()
@@ -105,18 +107,18 @@ For state to be preserved across reloads, it must be JSON-serializable:
 | Primitives | Yes | strings, numbers, booleans, null |
 | Plain objects | Yes | `{ foo: "bar" }` |
 | Arrays | Yes | `[1, 2, 3]` |
-| Functions | No | Recreated from widget definition |
+| Functions | No | Recreated from component definition |
 | DOM references | No | Re-queried after mount |
 | Effect Fibers/Queues | No | Recreated on mount |
 
-Current widgets use only serializable state, so no changes are needed.
+Current components use only serializable state, so no changes are needed.
 
 ## Watched Directories
 
 The server watches these directories recursively:
 
 - `src/mainview/` - Main view entry point and socket client
-- `src/effuse/` - Widget framework and all widgets
+- `src/effuse/` - Component framework and all components
 
 File types that trigger reload: `.ts`, `.css`, `.html`
 
@@ -128,11 +130,11 @@ File changes are debounced by 100ms to prevent multiple rapid reloads when edito
 
 The HMR registry is browser-only. In test environments (where `window` is undefined), all registry functions are no-ops:
 
-- `saveWidgetState()` - silently skips
-- `loadWidgetState()` - returns `undefined`
-- `hasWidgetState()` - returns `false`
+- `saveComponentState()` - silently skips
+- `loadComponentState()` - returns `undefined`
+- `hasComponentState()` - returns `false`
 
-This ensures tests run without errors while widgets still use fresh `initialState()`.
+This ensures tests run without errors while components still use fresh `initialState()`.
 
 ## Debugging
 
@@ -149,24 +151,24 @@ Server-side logs:
 ```
 [Worker] HMR: Watching /path/to/src/mainview for changes
 [Worker] HMR: Watching /path/to/src/effuse for changes
-[Worker] File changed: /path/to/widget.ts, sending reload signal
+[Worker] File changed: /path/to/component.ts, sending reload signal
 ```
 
 ## State Migration
 
-When you change a widget's state interface (e.g., rename fields, change structure), preserved HMR state may not match the new shape. Effuse provides a migration system to handle this automatically.
+When you change a component's state interface (e.g., rename fields, change structure), preserved HMR state may not match the new shape. Effuse provides a migration system to handle this automatically.
 
 ### Automatic Migration
 
-The mount system (`src/effuse/widget/mount.ts`) includes migration logic for widgets that change their state structure. Currently, this is implemented for the `tbcc-testgen` widget as an example.
+The mount system (`src/effuse/component/mount.ts`) includes migration logic for components that change their state structure. Currently, this is implemented for the `tbcc-testgen` component as an example.
 
 **Example: tbcc-testgen Migration**
 
-When the TestGen widget was refactored from separate `tests` and `reflections` arrays to a unified `threadItems` array, migration logic was added to convert old state:
+When the TestGen component was refactored from separate `tests` and `reflections` arrays to a unified `threadItems` array, migration logic was added to convert old state:
 
 ```typescript
-// In src/effuse/widget/mount.ts
-if (widget.id === "tbcc-testgen" && preservedState) {
+// In src/effuse/component/mount.ts
+if (component.id === "tbcc-testgen" && preservedState) {
   const oldState = preservedState as any
   // Check if it has old format (tests/reflections arrays) but not threadItems
   if (!oldState.threadItems && 
@@ -180,15 +182,15 @@ if (widget.id === "tbcc-testgen" && preservedState) {
 }
 ```
 
-### Adding Migration for Your Widget
+### Adding Migration for Your Component
 
-To add migration logic for your widget:
+To add migration logic for your component:
 
 1. **Identify the state change** - What fields changed? What's the old format vs new format?
 
-2. **Add migration in mount.ts** - Add a check in `mountWidget()` function:
+2. **Add migration in mount.ts** - Add a check in `mountComponent()` function:
    ```typescript
-   if (widget.id === "your-widget-id" && preservedState) {
+   if (component.id === "your-component-id" && preservedState) {
      const oldState = preservedState as any
      if (/* old format detected */) {
        // Convert to new format
@@ -197,7 +199,7 @@ To add migration logic for your widget:
    }
    ```
 
-3. **Test migration** - Load widget with old state, make change, verify migration works
+3. **Test migration** - Load component with old state, make change, verify migration works
 
 4. **Remove migration later** - After a few releases, you can remove migration logic if all users have upgraded
 
@@ -219,7 +221,7 @@ To add migration logic for your widget:
 **Clear State When:**
 - The change is semantic (old state doesn't make sense with new code)
 - Migration would be too complex or error-prone
-- The widget is in early development (users expect resets)
+- The component is in early development (users expect resets)
 
 **Clear state manually:**
 ```typescript
@@ -232,7 +234,7 @@ location.reload()
 
 1. **Full page reload** - Not true HMR (module-level replacement). The entire page reloads, but state is preserved.
 
-2. **State shape changes** - If you change the widget's state interface, preserved state may not match. Use migration logic (see above) or clear state with `clearAllState()`.
+2. **State shape changes** - If you change the component's state interface, preserved state may not match. Use migration logic (see above) or clear state with `clearAllState()`.
 
 3. **Non-serializable state** - Functions, DOM refs, and Effect primitives cannot be preserved.
 

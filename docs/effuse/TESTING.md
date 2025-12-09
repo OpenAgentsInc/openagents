@@ -1,6 +1,6 @@
 # Effuse Testing Guide
 
-Complete guide to testing Effuse widgets at all levels.
+Complete guide to testing Effuse components at all levels.
 
 ---
 
@@ -11,7 +11,7 @@ Effuse provides three testing layers with increasing fidelity and cost:
 | Layer | Speed | DOM | Events | Use Case |
 |-------|-------|-----|--------|----------|
 | **Mock** | ~1ms | No | No | State-only logic, render output |
-| **Happy-DOM** | ~10ms | Yes | Yes | Widget behavior, event handling |
+| **Happy-DOM** | ~10ms | Yes | Yes | Component behavior, event handling |
 | **Playwright** | ~500ms | Browser | Full | E2E, visual regression |
 
 ---
@@ -24,10 +24,10 @@ Effuse provides three testing layers with increasing fidelity and cost:
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { makeTestLayer } from "../effuse/layers/test.js"
-import { mountWidget } from "../effuse/widget/mount.js"
-import { MyWidget } from "./my-widget.js"
+import { mountComponent } from "../effuse/component/mount.js"
+import { MyComponent } from "./my-component.js"
 
-describe("MyWidget", () => {
+describe("MyComponent", () => {
   test("renders initial state", async () => {
     await Effect.runPromise(
       Effect.scoped(
@@ -35,7 +35,7 @@ describe("MyWidget", () => {
           const { layer, getRendered } = yield* makeTestLayer()
           const container = { id: "test" } as Element
 
-          yield* mountWidget(MyWidget, container).pipe(Effect.provide(layer))
+          yield* mountComponent(MyComponent, container).pipe(Effect.provide(layer))
 
           const html = yield* getRendered(container)
           expect(html).toContain("expected content")
@@ -53,9 +53,9 @@ import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { makeHappyDomLayer } from "../effuse/testing/layers/happy-dom.js"
 import { TestHarnessTag, TestBrowserTag } from "../effuse/testing/index.js"
-import { MyWidget } from "./my-widget.js"
+import { MyComponent } from "./my-component.js"
 
-describe("MyWidget with real DOM", () => {
+describe("MyComponent with real DOM", () => {
   test("responds to click events", async () => {
     await Effect.runPromise(
       Effect.scoped(
@@ -66,7 +66,7 @@ describe("MyWidget with real DOM", () => {
             const harness = yield* TestHarnessTag
             const browser = yield* TestBrowserTag
 
-            const handle = yield* harness.mount(MyWidget)
+            const handle = yield* harness.mount(MyComponent)
 
             // Click a button
             yield* browser.click("[data-action='submit']")
@@ -135,7 +135,7 @@ const { layer, window, injectMessage, cleanup } = yield* makeHappyDomLayer()
 - `StateServiceTag` - Real implementation
 - `SocketServiceTag` - Mock with message injection
 - `TestBrowserTag` - DOM query/assertion utilities
-- `TestHarnessTag` - Widget mounting utilities
+- `TestHarnessTag` - Component mounting utilities
 
 **Best for:**
 - Event handling tests
@@ -148,18 +148,18 @@ const { layer, window, injectMessage, cleanup } = yield* makeHappyDomLayer()
 
 `src/effuse/testing/harness.ts`
 
-Mount widgets and access internals:
+Mount components and access internals:
 
 ```typescript
 const harness = yield* TestHarnessTag
 
-// Mount widget
-const handle = yield* harness.mount(MyWidget, {
+// Mount component
+const handle = yield* harness.mount(MyComponent, {
   containerId: "custom-id",     // Optional
   initialState: { count: 5 },   // Optional override
 })
 
-// Access widget handle
+// Access component handle
 yield* handle.getState          // Effect<State>
 yield* handle.setState(newState)    // Effect<void>
 yield* handle.updateState(s => ({ ...s, updated: true }))
@@ -178,10 +178,10 @@ const html = yield* handle.getHTML  // Get innerHTML
 yield* handle.waitForRender         // Allow re-render fiber to run
 ```
 
-### WidgetHandle<S, E>
+### ComponentHandle<S, E>
 
 ```typescript
-interface WidgetHandle<S, E> {
+interface ComponentHandle<S, E> {
   container: Element
 
   // State
@@ -258,14 +258,14 @@ test("renders with custom state", async () => {
       Effect.gen(function* () {
         const { layer, getRendered } = yield* makeTestLayer()
 
-        // Widget with custom initial state
-        const widget = {
-          ...MyWidget,
+        // Component with custom initial state
+        const component = {
+          ...MyComponent,
           initialState: () => ({ items: ["a", "b", "c"] }),
         }
 
         const container = { id: "test" } as Element
-        yield* mountWidget(widget, container).pipe(Effect.provide(layer))
+        yield* mountComponent(component, container).pipe(Effect.provide(layer))
 
         const html = yield* getRendered(container)
         expect(html).toContain("<li>a</li>")
@@ -287,7 +287,7 @@ test("updates on socket message", async () => {
         const { layer, getRendered, injectMessage } = yield* makeTestLayer()
         const container = { id: "test" } as Element
 
-        yield* mountWidget(APMWidget, container).pipe(Effect.provide(layer))
+        yield* mountComponent(APMComponent, container).pipe(Effect.provide(layer))
 
         // Initial state
         let html = yield* getRendered(container)
@@ -328,7 +328,7 @@ test("handles click events", async () => {
           const harness = yield* TestHarnessTag
           const browser = yield* TestBrowserTag
 
-          const handle = yield* harness.mount(CounterWidget)
+          const handle = yield* harness.mount(CounterComponent)
 
           // Initial state
           let state = yield* handle.getState
@@ -360,7 +360,7 @@ test("waits for async state", async () => {
         yield* Effect.gen(function* () {
           const harness = yield* TestHarnessTag
 
-          const handle = yield* harness.mount(AsyncWidget)
+          const handle = yield* harness.mount(AsyncComponent)
 
           // Trigger async operation
           yield* handle.emit({ type: "loadData" })
@@ -402,9 +402,9 @@ test("with custom socket behavior", async () => {
         })
 
         const container = { id: "test" } as Element
-        yield* mountWidget(TBControlsWidget, container).pipe(Effect.provide(layer))
+        yield* mountComponent(TBControlsComponent, container).pipe(Effect.provide(layer))
 
-        // Widget can now successfully call loadTBSuite
+        // Component can now successfully call loadTBSuite
       })
     )
   )
@@ -416,9 +416,9 @@ test("with custom socket behavior", async () => {
 ## Test File Organization
 
 ```
-src/effuse/widgets/
-├── my-widget.ts           # Widget implementation
-└── my-widget.test.ts      # Widget tests
+src/effuse/components/
+├── my-component.ts           # Component implementation
+└── my-component.test.ts      # Component tests
 
 src/effuse/testing/
 ├── index.ts               # Public testing exports
@@ -438,11 +438,11 @@ src/effuse/testing/
 ### Test Fixture Pattern
 
 ```typescript
-const setupWidget = () =>
+const setupComponent = () =>
   Effect.gen(function* () {
     const { layer, injectMessage } = yield* makeHappyDomLayer()
     const harness = yield* TestHarnessTag.pipe(Effect.provide(layer))
-    const handle = yield* harness.mount(MyWidget).pipe(Effect.provide(layer))
+    const handle = yield* harness.mount(MyComponent).pipe(Effect.provide(layer))
     return { handle, injectMessage, layer }
   })
 
@@ -450,7 +450,7 @@ test("scenario 1", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const { handle } = yield* setupWidget()
+        const { handle } = yield* setupComponent()
         // test logic
       })
     )
@@ -473,12 +473,12 @@ for (const { input, expected } of testCases) {
       Effect.scoped(
         Effect.gen(function* () {
           const { layer, getRendered } = yield* makeTestLayer()
-          const widget = {
-            ...MyWidget,
+          const component = {
+            ...MyComponent,
             initialState: () => ({ value: input }),
           }
           const container = { id: "test" } as Element
-          yield* mountWidget(widget, container).pipe(Effect.provide(layer))
+          yield* mountComponent(component, container).pipe(Effect.provide(layer))
 
           const html = yield* getRendered(container)
           expect(html).toContain(expected)
@@ -497,8 +497,8 @@ for (const { input, expected } of testCases) {
 # Run all Effuse tests
 bun test src/effuse/
 
-# Run specific widget tests
-bun test src/effuse/widgets/apm-widget.test.ts
+# Run specific component tests
+bun test src/effuse/components/apm-component.test.ts
 
 # Run with watch
 bun test --watch src/effuse/

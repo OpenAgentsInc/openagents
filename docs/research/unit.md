@@ -42,17 +42,17 @@ We're **not replacing Effuse**. We're harvesting three key primitives from Unit 
 | Primitive | Unit Source | Purpose | Effuse Adaptation |
 |-----------|-------------|---------|-------------------|
 | **Pin** | `src/Pin.ts` (360 lines) | Reactive data conduit with constant/ref/data semantics | EffusePin wraps StateCell, uses Effect Streams |
-| **Graph** | `src/Class/Graph/index.ts` (~3000 lines) | Composable unit trees with parent-child relationships | EffuseGraph uses Effect scoping, Widget composition |
-| **Spec** | `src/spec/fromSpec.ts`, `stringify.ts` | JSON serialization of units | WidgetSpec system for save/load, HMR, visual editing |
+| **Graph** | `src/Class/Graph/index.ts` (~3000 lines) | Composable unit trees with parent-child relationships | EffuseGraph uses Effect scoping, Component composition |
+| **Spec** | `src/spec/fromSpec.ts`, `stringify.ts` | JSON serialization of units | ComponentSpec system for save/load, HMR, visual editing |
 
 ### 1.3 Why This Enhances Effuse
 
 **Current Effuse Limitations:**
 
-1. **Weak Composition** - Parent-child widget relationships require manual patterns (see `tbcc-shell.ts:75-95`)
-2. **No Serialization** - Can't save/load widget configurations or layouts
+1. **Weak Composition** - Parent-child component relationships require manual patterns (see `tbcc-shell.ts:75-95`)
+2. **No Serialization** - Can't save/load component configurations or layouts
 3. **Manual State Preservation** - HMR uses `structuredClone` with migration hacks
-4. **No Visual Programming** - All widget composition is imperative code
+4. **No Visual Programming** - All component composition is imperative code
 
 **Unit Primitives Address These:**
 
@@ -68,11 +68,11 @@ We're **not replacing Effuse**. We're harvesting three key primitives from Unit 
 │                 Effuse Visual Language Architecture              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Widget<S, E, R>                        [Current - KEEP]        │
+│  Component<S, E, R>                     [Current - KEEP]        │
 │      │                                                           │
 │      ├─── EffuseGraph<S, E, R>          [NEW - Composition]     │
 │      │        ├─ EffusePin<A>           [NEW - Data conduits]   │
-│      │        ├─ WidgetSpec             [NEW - Serialization]   │
+│      │        ├─ ComponentSpec         [NEW - Serialization]   │
 │      │        └─ GraphMerge             [NEW - Pin connections] │
 │      │                                                           │
 │      └─── Effect Services               [Current - Keep all]    │
@@ -93,12 +93,12 @@ We're **not replacing Effuse**. We're harvesting three key primitives from Unit 
 
 | Benefit | Current Effuse | With Visual Language |
 |---------|----------------|----------------------|
-| **Widget Composition** | Manual patterns, direct DOM manipulation | Declarative specs, native parent-child |
+| **Component Composition** | Manual patterns, direct DOM manipulation | Declarative specs, native parent-child |
 | **State Sharing** | Custom events + subscriptions | Pin merges (data flows through connections) |
-| **Configuration** | Hard-coded in `initialState()` | JSON WidgetSpec (save/load) |
+| **Configuration** | Hard-coded in `initialState()` | JSON ComponentSpec (save/load) |
 | **HMR** | `structuredClone` + manual migrations | Snapshot/restore with automatic state preservation |
 | **Visual Programming** | Not possible | Foundation for graph editor, drag-drop composition |
-| **AI Generation** | Would need to write code | Can output WidgetSpec JSON directly |
+| **AI Generation** | Would need to write code | Can output ComponentSpec JSON directly |
 
 ### 1.6 Timeline
 
@@ -106,11 +106,13 @@ We're **not replacing Effuse**. We're harvesting three key primitives from Unit 
 
 - **Weeks 1-2:** Core primitives (EffusePin, PinSpec)
 - **Weeks 3-4:** Graph composition (EffuseGraph, GraphSpec)
-- **Week 5:** Widget registry and spec system
+- **Week 5:** Component registry and spec system
 - **Week 6:** Example migration (TB Command Center)
 - **Weeks 7-8:** Visual editor foundation
 
-**Backward compatible:** Existing simple widgets unchanged, only complex layouts migrate to EffuseGraph.
+**Backward compatible:** Existing simple components unchanged, only complex layouts migrate to EffuseGraph.
+
+**Note:** Effuse currently uses the term "widget" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
 
 ---
 
@@ -351,7 +353,7 @@ public restore(state: Pin_M<T>): void {
 
 **Harvest these concepts:**
 
-1. **Constant pins** - Perfect for persistent widget configuration (theme, layout prefs)
+1. **Constant pins** - Perfect for persistent component configuration (theme, layout prefs)
 2. **Ref pins** - Shared mutable state (global services, theme context)
 3. **take/pull/peak** - Different consumption semantics for different use cases
 4. **Snapshot/restore** - Better HMR than current `structuredClone` approach
@@ -424,7 +426,7 @@ const DashboardSpec: GraphSpec = {
   // Child units
   units: {
     apm: {
-      id: "9988a56e-6bee-46c8-864c-e351d84bc7e2",  // APM widget type ID
+      id: "9988a56e-6bee-46c8-864c-e351d84bc7e2",  // APM component type ID
       input: {
         expanded: { data: false, constant: true }
       }
@@ -525,7 +527,7 @@ const merge: GraphMergeSpec = {
 **Data flow:**
 
 ```
-APM Widget (sessionAPM pin)
+APM Component (sessionAPM pin)
     → emit('data', 15.5)
     → Merge listens to sessionAPM
     → Merge.push() to all outputs
@@ -597,16 +599,16 @@ interface G<I, O> {
 // Runtime composition changes
 const dashboard = new Graph(DashboardSpec, {}, system)
 
-// Add a new widget
-dashboard.addUnit('newWidget', {
-  id: 'container-widget-id',
+// Add a new component
+dashboard.addUnit('newComponent', {
+  id: 'container-component-id',
   input: { content: { data: 'Hello' } }
 })
 
-// Connect it to existing widget
+// Connect it to existing component
 dashboard.addMerge('apm_to_new', {
   input: { 'apm/sessionAPM': {} },
-  output: { 'newWidget/value': {} }
+  output: { 'newComponent/value': {} }
 })
 
 // Get updated spec
@@ -618,19 +620,19 @@ const updatedSpec = dashboard.getSpec()
 
 **Harvest these concepts:**
 
-1. **Parent-child widget composition** - Fixes current manual patterns (direct classList manipulation)
-2. **Declarative composition via specs** - JSON describes widget tree structure
-3. **Pin merges for widget communication** - Better than custom events + subscriptions
+1. **Parent-child component composition** - Fixes current manual patterns (direct classList manipulation)
+2. **Declarative composition via specs** - JSON describes component tree structure
+3. **Pin merges for component communication** - Better than custom events + subscriptions
 4. **Slot system** - Named content regions (sidebar, main, footer, etc.)
-5. **Runtime composition** - Add/remove/reconnect widgets dynamically
-6. **Spec serialization** - Save entire widget tree state to JSON
+5. **Runtime composition** - Add/remove/reconnect components dynamically
+6. **Spec serialization** - Save entire component tree state to JSON
 
 **Adaptation needed:**
 
-- Replace Unit with Widget<S, E, R>
+- Replace Unit with Component<S, E, R>
 - Replace event-based merges with Effect Stream-based merges
 - Use Effect scoping for child lifecycle (Effect.scoped, not manual destroy)
-- Add service dependencies (R in Widget<S, E, R>)
+- Add service dependencies (R in Component<S, E, R>)
 
 ---
 
@@ -765,17 +767,17 @@ interface BundleSpec {
   specs: Specs         // All dependency specs
 }
 
-// Example: Dashboard bundle includes specs for all child widgets
+// Example: Dashboard bundle includes specs for all child components
 const dashboardBundle: BundleSpec = {
   spec: {
     id: "dashboard",
     units: {
-      apm: { id: "apm-widget" },
+      apm: { id: "apm-component" },
       tb: { id: "tb-controls" }
     }
   },
   specs: {
-    "apm-widget": { /* APM widget spec */ },
+    "apm-component": { /* APM component spec */ },
     "tb-controls": { /* TB controls spec */ },
     // All transitive dependencies
   }
@@ -824,17 +826,17 @@ class Graph {
 
 **Harvest these concepts:**
 
-1. **Spec → Class pattern** - Dynamic widget class generation from JSON
-2. **Bundle specs** - Capture entire widget tree + dependencies
-3. **Metadata** - Author, version, description for widget marketplace
+1. **Spec → Class pattern** - Dynamic component class generation from JSON
+2. **Bundle specs** - Capture entire component tree + dependencies
+3. **Metadata** - Author, version, description for component marketplace
 4. **State capture** - Serialize current runtime state (not just initial config)
 5. **Dependency resolution** - Automatically include all required child specs
 
 **Adaptation needed:**
 
-- Create WidgetSpec interface (similar to GraphSpec structure)
-- Add Widget registry (id → Widget<S, E, R> mapping)
-- Serialize Effect service requirements (R in Widget<S, E, R>)
+- Create ComponentSpec interface (similar to GraphSpec structure)
+- Add Component registry (id → Component<S, E, R> mapping)
+- Serialize Effect service requirements (R in Component<S, E, R>)
 - Handle StateCell serialization (leverage snapshot/restore)
 
 ---
@@ -854,14 +856,14 @@ class Graph {
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │  TB Command Center (EffuseGraph)                               │  │
 │  │    ├─ Dashboard (EffuseGraph with 3 children)                  │  │
-│  │    ├─ Tasks (Simple Widget)                                    │  │
+│  │    ├─ Tasks (Simple Component)                                 │  │
 │  │    └─ TestGen (EffuseGraph with pin merges)                    │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                              ↓                                        │
 │  Composition Layer                                                    │
 │  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  EffuseGraph<S, E, R> implements Widget<S, E, R>              │  │
-│  │    ├─ children: Record<string, Widget<any, any, any>>         │  │
+│  │  EffuseGraph<S, E, R> implements Component<S, E, R>            │  │
+│  │    ├─ children: Record<string, Component<any, any, any>>        │  │
 │  │    ├─ pins: Record<string, EffusePin<any>>                    │  │
 │  │    ├─ merges: Record<string, GraphMerge>                      │  │
 │  │    └─ spec: EffuseGraphSpec (JSON-serializable)               │  │
@@ -878,7 +880,7 @@ class Graph {
 │                              ↓                                        │
 │  Effect Foundation (Current - KEEP)                                   │
 │  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  Widget<S, E, R>                                               │  │
+│  │  Component<S, E, R>                                             │  │
 │  │  StateCell<A> (Ref + Queue)                                    │  │
 │  │  Services: DomService, StateService, SocketService            │  │
 │  │  Layers: EffuseLive = DomLive + StateLive + SocketLive        │  │
@@ -892,8 +894,8 @@ class Graph {
 
 1. **Effect Streams, NOT event emitters** - All reactivity via `Stream.Stream<A, never>`
 2. **Context.Tag services, NOT System object** - DomService, StateService, etc.
-3. **Full generics preserved** - Widget<S, E, R>, type safety throughout
-4. **Backward compatible** - Simple widgets unchanged, only complex layouts use graphs
+3. **Full generics preserved** - Component<S, E, R>, type safety throughout
+4. **Backward compatible** - Simple components unchanged, only complex layouts use graphs
 
 ---
 
@@ -1031,7 +1033,7 @@ export const makeEffusePin = <A>(
 
 #### 3.2.3 Usage Examples
 
-**Example 1: Constant pin for widget configuration**
+**Example 1: Constant pin for component configuration**
 
 ```typescript
 // Theme configuration that persists
@@ -1042,7 +1044,7 @@ const themePinEffect = makeEffusePin(
 
 const themePin = yield* themePinEffect
 
-// Widgets can pull() repeatedly without consuming
+// Components can pull() repeatedly without consuming
 const theme1 = yield* themePin.pull()  // { mode: "dark", ... }
 const theme2 = yield* themePin.pull()  // Still available!
 
@@ -1074,9 +1076,9 @@ const result2 = yield* taskResultPin.take() // undefined (consumed)
 **Example 3: Ref pin for shared mutable state**
 
 ```typescript
-// Shared widget registry (reference semantics)
+// Shared component registry (reference semantics)
 const registryPin = yield* makeEffusePin(
-  new Map<string, Widget<any, any, any>>(),
+  new Map<string, Component<any, any, any>>(),
   { ref: true }  // Share the Map reference
 )
 
@@ -1107,22 +1109,22 @@ registry1 === registry2  // true (same reference)
 
 ---
 
-### 3.3 EffuseGraph - Composable Widget Trees
+### 3.3 EffuseGraph - Composable Component Trees
 
 **Harvest:** Graph composition, parent-child relationships, merge connections
-**Adapt:** Use Effect scoping for lifecycle, Widgets instead of Units
+**Adapt:** Use Effect scoping for lifecycle, Components instead of Units
 
 #### 3.3.1 Interface Design
 
 ```typescript
 // src/effuse/graph/types.ts
 
-import type { Widget, WidgetContext } from "../widget/types.js"
+import type { Component, ComponentContext } from "../component/types.js"
 import type { EffusePin } from "../pin/types.js"
 import type { TemplateResult } from "../template/html.js"
 
-export interface EffuseGraph<S, E, R = never> extends Widget<S, E, R> {
-  // Graph is a Widget (can be mounted like any widget)
+export interface EffuseGraph<S, E, R = never> extends Component<S, E, R> {
+  // Graph is a Component (can be mounted like any component)
   // S = graph state, E = graph events, R = service requirements
 }
 
@@ -1130,10 +1132,10 @@ export interface EffuseGraphSpec {
   id: string
   name?: string
 
-  // Child widgets
-  children: Record<string, WidgetSpec>
+  // Child components
+  children: Record<string, ComponentSpec>
 
-  // Graph-level pins (not widget state)
+  // Graph-level pins (not component state)
   pins?: Record<string, PinSpec>
 
   // Pin connections between children
@@ -1149,9 +1151,9 @@ export interface EffuseGraphSpec {
   metadata?: GraphMetadata
 }
 
-export interface WidgetSpec {
-  id: string                    // Widget type ID (key into WidgetRegistry)
-  initialState?: unknown        // Override widget's initialState()
+export interface ComponentSpec {
+  id: string                    // Component type ID (key into ComponentRegistry)
+  initialState?: unknown        // Override component's initialState()
   pins?: Record<string, PinSpec>
 }
 
@@ -1181,10 +1183,10 @@ export interface GraphMetadata {
 
 import { Effect, Stream, Scope } from "effect"
 import type { EffuseGraph, EffuseGraphSpec } from "./types.js"
-import type { Widget, WidgetContext } from "../widget/types.js"
+import type { Component, ComponentContext } from "../component/types.js"
 import { makeEffusePin } from "../pin/effuse-pin.js"
-import { mountWidget } from "../widget/mount.js"
-import { WidgetRegistry } from "../registry/widget-registry.js"
+import { mountComponent } from "../component/mount.js"
+import { ComponentRegistry } from "../registry/component-registry.js"
 
 export const makeEffuseGraph = <S, E, R>(
   spec: EffuseGraphSpec
@@ -1195,9 +1197,9 @@ export const makeEffuseGraph = <S, E, R>(
     // Graph-level state (not child state)
     initialState: () => ({} as S),  // Could be empty or spec-derived
 
-    render: (ctx: WidgetContext<S, E>) =>
+    render: (ctx: ComponentContext<S, E>) =>
       Effect.gen(function* () {
-        // Render containers for each child widget
+        // Render containers for each child component
         const childContainers = spec.component.children.map(childId =>
           html`<div id="${spec.id}-${childId}" class="effuse-graph-child"></div>`
         )
@@ -1209,7 +1211,7 @@ export const makeEffuseGraph = <S, E, R>(
         `
       }),
 
-    setupEvents: (ctx: WidgetContext<S, E>) =>
+    setupEvents: (ctx: ComponentContext<S, E>) =>
       Effect.gen(function* () {
         // Create pins
         const pins: Record<string, EffusePin<any>> = {}
@@ -1220,24 +1222,24 @@ export const makeEffuseGraph = <S, E, R>(
           })
         }
 
-        // Mount child widgets
+        // Mount child components
         const children: Record<string, any> = {}
-        for (const [childId, widgetSpec] of Object.entries(spec.children)) {
-          const widget = WidgetRegistry[widgetSpec.id]
-          if (!widget) {
-            throw new Error(`Widget not found: ${widgetSpec.id}`)
+        for (const [childId, componentSpec] of Object.entries(spec.children)) {
+          const component = ComponentRegistry[componentSpec.id]
+          if (!component) {
+            throw new Error(`Component not found: ${componentSpec.id}`)
           }
 
           // Override initialState if provided in spec
-          const childWidget = widgetSpec.initialState
-            ? { ...widget, initialState: () => widgetSpec.initialState }
-            : widget
+          const childComponent = componentSpec.initialState
+            ? { ...component, initialState: () => componentSpec.initialState }
+            : component
 
           // Mount child in its container
           const container = yield* ctx.dom.queryId(`${spec.id}-${childId}`)
-          const mounted = yield* mountWidget(childWidget, container)
+          const mounted = yield* mountComponent(childComponent, container)
 
-          children[childId] = { widget: childWidget, mounted }
+          children[childId] = { component: childComponent, mounted }
         }
 
         // Set up merges (pin connections)
@@ -1315,8 +1317,8 @@ const resolvePinPath = (
 **Before (manual patterns):**
 
 ```typescript
-// src/effuse/widgets/tb-command-center/tbcc-shell.ts (current)
-export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServiceTag> = {
+// src/effuse/components/tb-command-center/tbcc-shell.ts (current)
+export const TBCCShellComponent: Component<TBCCShellState, TBCCShellEvent, SocketServiceTag> = {
   id: "tbcc-shell",
 
   initialState: () => ({ activeTab: "dashboard" }),
@@ -1353,15 +1355,15 @@ export const TBCCShellWidget: Widget<TBCCShellState, TBCCShellEvent, SocketServi
 **After (EffuseGraph):**
 
 ```typescript
-// src/effuse/widgets/tb-command-center/tbcc-shell-spec.ts (new)
+// src/effuse/components/tb-command-center/tbcc-shell-spec.ts (new)
 export const TBCCShellSpec: EffuseGraphSpec = {
   id: "tbcc-shell",
   name: "TB Command Center Shell",
 
-  // Child widgets
+  // Child components
   children: {
     dashboard: {
-      id: "tbcc-dashboard",  // Widget type ID
+      id: "tbcc-dashboard",  // Component type ID
     },
     tasks: {
       id: "tbcc-tasks",
@@ -1403,7 +1405,7 @@ export const TBCCShellSpec: EffuseGraphSpec = {
   }
 }
 
-// Create the graph widget
+// Create the graph component
 export const TBCCShellGraph = makeEffuseGraph<TBCCShellState, TBCCShellEvent, SocketServiceTag>(
   TBCCShellSpec
 )
@@ -1415,83 +1417,83 @@ export const TBCCShellGraph = makeEffuseGraph<TBCCShellState, TBCCShellEvent, So
 - Declarative tab switching via pin merge
 - Serializable spec (can save/load layout)
 - Visual structure explicit in spec
-- Backward compatible (old widgets still work)
+- Backward compatible (old components still work)
 
 ---
 
-### 3.4 WidgetSpec - Serializable Widget Configuration
+### 3.4 ComponentSpec - Serializable Component Configuration
 
 **Harvest:** Spec serialization system, snapshot/restore
-**Adapt:** Widget interface → JSON spec, Effect services in layer
+**Adapt:** Component interface → JSON spec, Effect services in layer
 
-#### 3.4.1 Widget Registry
+#### 3.4.1 Component Registry
 
 ```typescript
-// src/effuse/registry/widget-registry.ts
+// src/effuse/registry/component-registry.ts
 
-import type { Widget } from "../widget/types.js"
-import { APMWidget } from "../widgets/apm-widget.js"
-import { TBControlsWidget } from "../widgets/tb-controls.js"
-import { MCTasksWidget } from "../widgets/mc-tasks.js"
-// ... all widgets
+import type { Component } from "../component/types.js"
+import { APMComponent } from "../components/apm-component.js"
+import { TBControlsComponent } from "../components/tb-controls.js"
+import { MCTasksComponent } from "../components/mc-tasks.js"
+// ... all components
 
-export const WidgetRegistry: Record<string, Widget<any, any, any>> = {
-  "apm-widget": APMWidget,
-  "tb-controls": TBControlsWidget,
-  "mc-tasks": MCTasksWidget,
-  "tbcc-dashboard": TBCCDashboardWidget,
-  "tbcc-tasks": TBCCTasksWidget,
-  "tbcc-testgen": TBCCTestGenWidget,
-  "three-background": ThreeBackgroundWidget,
-  "intro-card": IntroCardWidget,
-  "tb-output": TBOutputWidget,
-  "container-widget": ContainerWidget,
+export const ComponentRegistry: Record<string, Component<any, any, any>> = {
+  "apm-component": APMComponent,
+  "tb-controls": TBControlsComponent,
+  "mc-tasks": MCTasksComponent,
+  "tbcc-dashboard": TBCCDashboardComponent,
+  "tbcc-tasks": TBCCTasksComponent,
+  "tbcc-testgen": TBCCTestGenComponent,
+  "three-background": ThreeBackgroundComponent,
+  "intro-card": IntroCardComponent,
+  "tb-output": TBOutputComponent,
+  "container-component": ContainerComponent,
   // etc
 }
 
-export const getWidget = (id: string): Widget<any, any, any> | undefined => {
-  return WidgetRegistry[id]
+export const getComponent = (id: string): Component<any, any, any> | undefined => {
+  return ComponentRegistry[id]
 }
 
-export const registerWidget = (id: string, widget: Widget<any, any, any>): void => {
-  WidgetRegistry[id] = widget
+export const registerComponent = (id: string, component: Component<any, any, any>): void => {
+  ComponentRegistry[id] = component
 }
 ```
 
 #### 3.4.2 Spec Serialization
 
 ```typescript
-// src/effuse/spec/widget-spec.ts
+// src/effuse/spec/component-spec.ts
 
-import type { Widget } from "../widget/types.js"
-import type { WidgetSpec } from "../graph/types.js"
+import type { Component } from "../component/types.js"
+import type { ComponentSpec } from "../graph/types.js"
 
-export const widgetToSpec = <S>(
-  widget: Widget<S, any, any>,
+export const componentToSpec = <S>(
+  component: Component<S, any, any>,
   state: S
-): WidgetSpec => ({
-  id: widget.id,
+): ComponentSpec => ({
+  id: component.id,
   initialState: state,
   // TODO: Add pins, children if graph
 })
 
-export const widgetFromSpec = (
-  spec: WidgetSpec
-): Widget<any, any, any> => {
-  const widget = WidgetRegistry[spec.id]
-  if (!widget) {
-    throw new Error(`Widget not found in registry: ${spec.id}`)
+export const componentFromSpec = (
+  spec: ComponentSpec
+): Component<any, any, any> => {
+  const component = ComponentRegistry[spec.id]
+  if (!component) {
+    throw new Error(`Component not found in registry: ${spec.id}`)
   }
 
   // Override initialState if provided in spec
   if (spec.initialState !== undefined) {
     return {
-      ...widget,
+      ...component,
       initialState: () => spec.initialState
     }
   }
 
-  return widget
+  return component
 }
 ```
 
@@ -1500,33 +1502,33 @@ export const widgetFromSpec = (
 ```typescript
 // src/effuse/hmr/registry.ts (modified)
 
-import type { WidgetSpec } from "../graph/types.js"
-import { widgetToSpec } from "../spec/widget-spec.js"
+import type { ComponentSpec } from "../graph/types.js"
+import { componentToSpec } from "../spec/component-spec.js"
 
-export const saveWidgetState = (
-  widgetId: string,
-  widget: Widget<any, any, any>,
+export const saveComponentState = (
+  componentId: string,
+  component: Component<any, any, any>,
   state: unknown
 ): void => {
   const registry = getRegistry()
   if (!registry) return
 
   try {
-    const spec = widgetToSpec(widget, state)
-    registry.widgets.set(widgetId, spec)  // Store as WidgetSpec
+    const spec = componentToSpec(component, state)
+    registry.components.set(componentId, spec)  // Store as ComponentSpec
   } catch (e) {
-    console.warn(`[Effuse HMR] Could not save state for "${widgetId}":`, e)
+    console.warn(`[Effuse HMR] Could not save state for "${componentId}":`, e)
   }
 }
 
-export const loadWidgetSpec = (widgetId: string): WidgetSpec | undefined => {
+export const loadComponentSpec = (componentId: string): ComponentSpec | undefined => {
   const registry = getRegistry()
   if (!registry) return undefined
 
-  const spec = registry.widgets.get(widgetId) as WidgetSpec | undefined
+  const spec = registry.components.get(componentId) as ComponentSpec | undefined
   if (spec) {
-    registry.widgets.delete(widgetId)
-    console.log(`[Effuse HMR] Restored spec for "${widgetId}"`)
+    registry.components.delete(componentId)
+    console.log(`[Effuse HMR] Restored spec for "${componentId}"`)
   }
   return spec
 }
@@ -1535,29 +1537,29 @@ export const loadWidgetSpec = (widgetId: string): WidgetSpec | undefined => {
 #### 3.4.4 Persistent Configuration
 
 ```typescript
-// Save widget configuration to localStorage
-export const saveWidgetConfig = (
-  widgetId: string,
-  spec: WidgetSpec
+// Save component configuration to localStorage
+export const saveComponentConfig = (
+  componentId: string,
+  spec: ComponentSpec
 ): Effect.Effect<void, never> =>
   Effect.sync(() => {
-    const key = `effuse:widget:${widgetId}`
+    const key = `effuse:component:${componentId}`
     localStorage.setItem(key, JSON.stringify(spec))
   })
 
-// Load widget configuration from localStorage
-export const loadWidgetConfig = (
-  widgetId: string
-): Effect.Effect<WidgetSpec | undefined, never> =>
+// Load component configuration from localStorage
+export const loadComponentConfig = (
+  componentId: string
+): Effect.Effect<ComponentSpec | undefined, never> =>
   Effect.sync(() => {
-    const key = `effuse:widget:${widgetId}`
+    const key = `effuse:component:${componentId}`
     const json = localStorage.getItem(key)
     if (!json) return undefined
 
     try {
-      return JSON.parse(json) as WidgetSpec
+      return JSON.parse(json) as ComponentSpec
     } catch (e) {
-      console.warn(`Failed to parse widget config for ${widgetId}:`, e)
+      console.warn(`Failed to parse component config for ${componentId}:`, e)
       return undefined
     }
   })
@@ -1626,13 +1628,13 @@ src/effuse/
 
 - [ ] **Create EffuseGraph implementation** (`src/effuse/graph/effuse-graph.ts`)
   - makeEffuseGraph() factory function
-  - Child widget instantiation from specs
+  - Child component instantiation from specs
   - Pin creation from specs
   - Merge setup (pin connections)
   - Effect scoping for lifecycle
 
 - [ ] **Create Graph types** (`src/effuse/graph/types.ts`)
-  - EffuseGraph interface (extends Widget)
+  - EffuseGraph interface (extends Component)
   - EffuseGraphSpec type
   - MergeSpec type
   - GraphMetadata type
@@ -1642,21 +1644,21 @@ src/effuse/
   - graphFromSpec() - deserialize JSON to EffuseGraph
   - Bundle specs (with dependencies)
 
-- [ ] **Update mount system** (`src/effuse/widget/mount.ts`)
-  - Add mountGraph() for EffuseGraph widgets
-  - Handle child widget scoping
-  - Preserve existing mountWidget() for simple widgets
+- [ ] **Update mount system** (`src/effuse/component/mount.ts`)
+  - Add mountGraph() for EffuseGraph components
+  - Handle child component scoping
+  - Preserve existing mountComponent() for simple components
 
 - [ ] **Write Graph tests** (`src/effuse/graph/effuse-graph.test.ts`)
-  - Test child widget mounting
+  - Test child component mounting
   - Test pin merges (data flow)
   - Test graph lifecycle (children destroyed with parent)
   - Test spec serialization
 
 **Acceptance Criteria:**
 
-- EffuseGraph is a valid Widget (can be mounted)
-- Child widgets mount correctly in containers
+- EffuseGraph is a valid Component (can be mounted)
+- Child components mount correctly in containers
 - Pin merges propagate data between children
 - Graph lifecycle uses Effect scoping
 - Specs serialize/deserialize correctly
@@ -1677,41 +1679,41 @@ src/effuse/
 **Files to Modify:**
 
 ```
-src/effuse/widget/
+src/effuse/component/
 └── mount.ts                    [MODIFY - add mountGraph() ~100 lines]
 ```
 
 ---
 
-#### Phase 3: Widget Registry (Week 5)
+#### Phase 3: Component Registry (Week 5)
 
-**Goal:** Create widget registry for spec-based instantiation.
+**Goal:** Create component registry for spec-based instantiation.
 
 **Tasks:**
 
-- [ ] **Create widget registry** (`src/effuse/registry/widget-registry.ts`)
-  - Map widget IDs to Widget constructors
-  - getWidget() lookup function
-  - registerWidget() registration function
+- [ ] **Create component registry** (`src/effuse/registry/component-registry.ts`)
+  - Map component IDs to Component constructors
+  - getComponent() lookup function
+  - registerComponent() registration function
 
-- [ ] **Register all existing widgets**
-  - APMWidget, TBControlsWidget, MCTasksWidget, etc.
-  - Assign unique IDs to each widget type
+- [ ] **Register all existing components**
+  - APMComponent, TBControlsComponent, MCTasksComponent, etc.
+  - Assign unique IDs to each component type
 
-- [ ] **Implement WidgetSpec system** (`src/effuse/spec/widget-spec.ts`)
-  - widgetToSpec() - serialize Widget + state
-  - widgetFromSpec() - deserialize spec to Widget
+- [ ] **Implement ComponentSpec system** (`src/effuse/spec/component-spec.ts`)
+  - componentToSpec() - serialize Component + state
+  - componentFromSpec() - deserialize spec to Component
   - Handle initialState override
 
-- [ ] **Write registry tests** (`src/effuse/registry/widget-registry.test.ts`)
-  - Test widget lookup
+- [ ] **Write registry tests** (`src/effuse/registry/component-registry.test.ts`)
+  - Test component lookup
   - Test spec serialization/deserialization
   - Test initialState override
 
 **Acceptance Criteria:**
 
-- All existing widgets registered with unique IDs
-- widgetFromSpec() correctly instantiates widgets
+- All existing components registered with unique IDs
+- componentFromSpec() correctly instantiates components
 - initialState override works
 - Tests pass
 
@@ -1720,10 +1722,10 @@ src/effuse/widget/
 ```
 src/effuse/
 ├── registry/
-│   ├── widget-registry.ts       [NEW - 100 lines]
-│   └── widget-registry.test.ts  [NEW - 150 lines]
+│   ├── component-registry.ts       [NEW - 100 lines]
+│   └── component-registry.test.ts  [NEW - 150 lines]
 └── spec/
-    ├── widget-spec.ts           [NEW - 150 lines]
+    ├── component-spec.ts           [NEW - 150 lines]
     └── types.ts                 [NEW - 100 lines]
 ```
 
@@ -1755,7 +1757,7 @@ src/effuse/
   - EffusePin usage examples
   - EffuseGraph composition patterns
   - WidgetSpec serialization guide
-  - Migration guide (simple widget → graph)
+  - Migration guide (simple component → graph)
 
 **Acceptance Criteria:**
 
@@ -1790,32 +1792,32 @@ src/mainview/
 
 **Tasks:**
 
-- [ ] **Create spec editor widget** (`src/effuse/widgets/spec-editor.ts`)
-  - JSON editor for WidgetSpec/GraphSpec
+- [ ] **Create spec editor component** (`src/effuse/components/spec-editor.ts`)
+  - JSON editor for ComponentSpec/GraphSpec
   - Live preview of spec changes
   - Save/load specs to localStorage
   - Validation and error display
 
-- [ ] **Create graph visualizer** (`src/effuse/widgets/graph-visualizer.ts`)
+- [ ] **Create graph visualizer** (`src/effuse/components/graph-visualizer.ts`)
   - Render EffuseGraph as node graph (boxes + arrows)
-  - Show widgets as nodes
+  - Show components as nodes
   - Show pin merges as edges
-  - Click node to edit widget spec
+  - Click node to edit component spec
 
-- [ ] **Create example dashboard** (`src/effuse/widgets/example-dashboard.ts`)
+- [ ] **Create example dashboard** (`src/effuse/components/example-dashboard.ts`)
   - Showcase EffuseGraph composition
-  - Multiple widgets with pin merges
+  - Multiple components with pin merges
   - Editable via spec editor
 
 - [ ] **Integration**
-  - Add "Edit Spec" button to widgets
+  - Add "Edit Spec" button to components
   - Add graph visualizer to dev tools
   - Document visual editor usage
 
 **Acceptance Criteria:**
 
-- Spec editor can edit and preview WidgetSpec
-- Graph visualizer shows widget tree structure
+- Spec editor can edit and preview ComponentSpec
+- Graph visualizer shows component tree structure
 - Specs can be saved/loaded
 - Example dashboard demonstrates composition
 - Dev tools include graph visualizer
@@ -1823,7 +1825,7 @@ src/mainview/
 **Files to Create:**
 
 ```
-src/effuse/widgets/
+src/effuse/components/
 ├── spec-editor.ts              [NEW - 500 lines]
 ├── graph-visualizer.ts         [NEW - 600 lines]
 └── example-dashboard.ts        [NEW - 200 lines]
@@ -1835,21 +1837,21 @@ src/effuse/widgets/
 
 **Strategy:** Keep existing Effuse widgets working unchanged.
 
-**Simple widgets** (APM, TB Output, Container, etc.):
-- Continue using Widget<S, E, R> directly
+**Simple components** (APM, TB Output, Container, etc.):
+- Continue using Component<S, E, R> directly
 - No migration required
 - Can be used as children in EffuseGraph
 
 **Complex layouts** (TB Command Center, Dashboard):
 - Migrate to EffuseGraph for composition benefits
 - Remove manual DOM manipulation
-- Use pin merges for widget communication
+- Use pin merges for component communication
 
 **Both approaches supported simultaneously:**
 
 ```typescript
-// Simple widget (unchanged)
-const SimpleWidget: Widget<State, Event> = {
+// Simple component (unchanged)
+const SimpleComponent: Component<State, Event> = {
   id: "simple",
   initialState: () => ({ count: 0 }),
   render: (ctx) => html`<div>${ctx.state.count}</div>`,
@@ -1869,12 +1871,12 @@ const ComplexLayoutSpec: EffuseGraphSpec = {
 const ComplexLayoutGraph = makeEffuseGraph(ComplexLayoutSpec)
 ```
 
-**Migration checklist for widgets:**
+**Migration checklist for components:**
 
-- [ ] Widget has 3+ children? → Consider EffuseGraph
-- [ ] Widget has manual DOM manipulation? → Migrate to EffuseGraph
-- [ ] Widget has complex event routing? → Use pin merges
-- [ ] Widget is simple (<200 lines, no children)? → Keep as-is
+- [ ] Component has 3+ children? → Consider EffuseGraph
+- [ ] Component has manual DOM manipulation? → Migrate to EffuseGraph
+- [ ] Component has complex event routing? → Use pin merges
+- [ ] Component is simple (<200 lines, no children)? → Keep as-is
 
 ---
 
@@ -1885,7 +1887,7 @@ const ComplexLayoutGraph = makeEffuseGraph(ComplexLayoutSpec)
 - EffusePin (all pin types, semantics, snapshot/restore)
 - EffuseGraph (child mounting, merges, lifecycle)
 - Spec serialization (round-trip, validation)
-- Widget registry (lookup, registration)
+- Component registry (lookup, registration)
 
 **Integration Tests:**
 
@@ -1896,7 +1898,7 @@ const ComplexLayoutGraph = makeEffuseGraph(ComplexLayoutSpec)
 
 **Migration Tests:**
 
-- Ensure existing widgets still work
+- Ensure existing components still work
 - TB Command Center functional parity
 - No visual regressions
 
@@ -2119,7 +2121,7 @@ docs/
 
 ```
 src/effuse/
-├── widget/
+├── component/
 │   ├── mount.ts                        [MODIFY - add mountGraph() ~100 lines]
 │   └── types.ts                        [MODIFY - add EffuseGraph union type ~10 lines]
 │
@@ -2153,9 +2155,9 @@ docs/effuse/
 │  │    └─ mountWidget(TBCCShellGraph, container)               │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                              ↓                                   │
-│  Widget Layer                                                    │
+│  Component Layer                                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  src/effuse/widgets/tb-command-center/tbcc-shell-spec.ts   │ │
+│  │  src/effuse/components/tb-command-center/tbcc-shell-spec.ts│ │
 │  │    ├─ imports makeEffuseGraph                              │ │
 │  │    └─ exports TBCCShellSpec, TBCCShellGraph                │ │
 │  └────────────────────────────────────────────────────────────┘ │
@@ -2164,8 +2166,8 @@ docs/effuse/
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  src/effuse/graph/effuse-graph.ts                          │ │
 │  │    ├─ imports makeEffusePin (pin/effuse-pin.ts)            │ │
-│  │    ├─ imports mountWidget (widget/mount.ts)                │ │
-│  │    ├─ imports WidgetRegistry (registry/widget-registry.ts) │ │
+│  │    ├─ imports mountComponent (component/mount.ts)         │ │
+│  │    ├─ imports ComponentRegistry (registry/component-registry.ts) │ │
 │  │    └─ exports makeEffuseGraph                              │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                              ↓                                   │
@@ -2258,12 +2260,12 @@ docs/effuse/
 
 **HMR Test Scenarios:**
 
-- Simple widget: State preserved? ✓
+- Simple component: State preserved? ✓
 - Graph with 3 children: All child states preserved? ✓
 - Graph with pin merges: Merge connections preserved? ✓
 - Nested graph: All levels preserved? ✓
 
-**Success Metric:** HMR works for graphs as well as simple widgets.
+**Success Metric:** HMR works for graphs as well as simple components.
 
 ---
 
@@ -2279,7 +2281,7 @@ docs/effuse/
 
 - Thorough documentation (VISUAL-LANGUAGE.md)
 - Code examples for common patterns
-- Migrate one widget together as team (pair programming)
+- Migrate one component together as team (pair programming)
 - Visual graph editor to abstract complexity
 - Gradual rollout (8 weeks, not all at once)
 
@@ -2317,7 +2319,7 @@ docs/effuse/
 - DOM references: Don't serialize, recreate on mount
 - Streams: Don't serialize, recreate from spec
 
-**Success Metric:** 90% of widget state serializes correctly.
+**Success Metric:** 90% of component state serializes correctly.
 
 ---
 
@@ -2331,9 +2333,9 @@ Effuse Visual Language is successful if:
   - No visual changes
   - No performance degradation
 
-- [ ] **HMR works with graph widgets (preserve full state across hot reloads)**
+- [ ] **HMR works with graph components (preserve full state across hot reloads)**
   - Graph state preserved
-  - Child widget states preserved
+  - Child component states preserved
   - Pin states preserved
   - Merge connections preserved
 
@@ -2347,10 +2349,10 @@ Effuse Visual Language is successful if:
   - Graph mount <100ms
   - No frame drops during updates
 
-- [ ] **All existing widgets continue working unchanged**
-  - APMWidget, TBControlsWidget, MCTasksWidget, etc.
-  - No breaking changes to Widget<S, E, R> interface
-  - Tests pass for all existing widgets
+- [ ] **All existing components continue working unchanged**
+  - APMComponent, TBControlsComponent, MCTasksComponent, etc.
+  - No breaking changes to Component<S, E, R> interface
+  - Tests pass for all existing components
 
 ---
 
@@ -2358,16 +2360,16 @@ Effuse Visual Language is successful if:
 
 ### 8.1 What Effuse Visual Language Enables
 
-#### 1. Visual Widget Editor
+#### 1. Visual Component Editor
 
-**Description:** Drag-drop graph editor for composing widgets without code.
+**Description:** Drag-drop graph editor for composing components without code.
 
 **User Flow:**
 
 1. Open visual editor (new route: `/editor`)
-2. Drag widgets from palette onto canvas
+2. Drag components from palette onto canvas
 3. Connect pins by dragging arrows between nodes
-4. Edit widget properties in sidebar
+4. Edit component properties in sidebar
 5. Save spec to JSON
 6. Load spec in main app
 
@@ -2389,7 +2391,7 @@ Effuse Visual Language is successful if:
 
 **User Flow:**
 
-1. User rearranges widgets on dashboard
+1. User rearranges components on dashboard
 2. User clicks "Save Layout"
 3. Spec saved to localStorage (or backend)
 4. On next visit, layout restored from saved spec
@@ -2397,7 +2399,7 @@ Effuse Visual Language is successful if:
 **Technical Implementation:**
 
 - Add "Edit Mode" toggle to dashboard
-- In edit mode: drag widgets, resize, reorder
+- In edit mode: drag components, resize, reorder
 - Capture changes as GraphSpec modifications
 - Save spec on "Save Layout"
 - Load spec on mount (check localStorage first)
@@ -2406,21 +2408,21 @@ Effuse Visual Language is successful if:
 
 ---
 
-#### 3. Widget Marketplace
+#### 3. Component Marketplace
 
-**Description:** Share WidgetSpecs as JSON files, import into any Effuse app.
+**Description:** Share ComponentSpecs as JSON files, import into any Effuse app.
 
 **User Flow:**
 
-1. Developer creates reusable widget (e.g., "Kanban Board")
-2. Export widget spec to JSON file
-3. Upload to widget marketplace (website or npm package)
+1. Developer creates reusable component (e.g., "Kanban Board")
+2. Export component spec to JSON file
+3. Upload to component marketplace (website or npm package)
 4. Other developers download JSON spec
 5. Import into their app via spec editor
 
 **Technical Implementation:**
 
-- Create widget marketplace website
+- Create component marketplace website
 - JSON spec validation on upload
 - Search/filter by tags, author
 - Download as .json file
@@ -2445,7 +2447,7 @@ Effuse Visual Language is successful if:
 **Technical Implementation:**
 
 - Provide LLM with EffuseGraphSpec schema
-- Provide LLM with WidgetRegistry (available widgets)
+- Provide LLM with ComponentRegistry (available components)
 - LLM generates valid JSON
 - Validate spec before rendering
 - Error messages guide LLM to fix invalid specs
@@ -2470,10 +2472,10 @@ Effuse Visual Language is successful if:
 **Technical Implementation:**
 
 - Add global snapshot button
-- Capture all widget states via widgetToSpec
+- Capture all component states via componentToSpec
 - Capture all pin states via pin.snapshot()
 - Store in IndexedDB
-- Restore via widgetFromSpec + pin.restore()
+- Restore via componentFromSpec + pin.restore()
 
 **Timeline:** 2-3 weeks
 
@@ -2486,8 +2488,8 @@ Effuse Visual Language is successful if:
 **User Flow:**
 
 1. User A and User B open same dashboard
-2. User A moves widget, User B sees change instantly
-3. User B adds new widget, User A sees it
+2. User A moves component, User B sees change instantly
+3. User B adds new component, User A sees it
 4. No conflicts, automatic merge via CRDT
 
 **Technical Implementation:**
@@ -2511,20 +2513,20 @@ Effuse Visual Language is successful if:
 
 **Q2 2026 (Weeks 13-24):**
 
-- [ ] Widget marketplace (JSON spec sharing)
-- [ ] AI-generated UIs (LLM → WidgetSpec)
+- [ ] Component marketplace (JSON spec sharing)
+- [ ] AI-generated UIs (LLM → ComponentSpec)
 - [ ] Advanced visualizations (graph performance metrics, dependency tree)
 
 **Q3 2026 (Weeks 25-36):**
 
 - [ ] Multi-user collaboration (CRDT sync)
-- [ ] Widget versioning (semantic versioning for specs)
-- [ ] Widget templates (reusable patterns, starter kits)
+- [ ] Component versioning (semantic versioning for specs)
+- [ ] Component templates (reusable patterns, starter kits)
 
 **Q4 2026 (Weeks 37-48):**
 
 - [ ] Visual query builder (connect to data sources)
-- [ ] Animation timeline (keyframe animations for widgets)
+- [ ] Animation timeline (keyframe animations for components)
 - [ ] Accessibility tools (screen reader support, keyboard nav)
 
 ---
@@ -2533,8 +2535,8 @@ Effuse Visual Language is successful if:
 
 **Adoption:**
 
-- 50% of widgets use EffuseGraph within 6 months
-- 10+ community-contributed widgets in marketplace within 1 year
+- 50% of components use EffuseGraph within 6 months
+- 10+ community-contributed components in marketplace within 1 year
 - 5+ custom dashboards created by users within 3 months
 
 **Performance:**
@@ -2545,7 +2547,7 @@ Effuse Visual Language is successful if:
 
 **Developer Experience:**
 
-- Widget creation time reduced by 50% (graph vs manual)
+- Component creation time reduced by 50% (graph vs manual)
 - Onboarding time reduced by 30% (visual editor vs code)
 - Bug reproduction time reduced by 70% (time travel debugging)
 
@@ -2559,7 +2561,7 @@ Effuse Visual Language is successful if:
 
 1. **We're not replacing Effuse** - We're enhancing it with visual primitives
 2. **Effect-native throughout** - All reactivity via Streams, all services via Context.Tag
-3. **Backward compatible** - Existing simple widgets unchanged
+3. **Backward compatible** - Existing simple components unchanged
 4. **8-week phased rollout** - Low risk, incremental delivery
 5. **Future-ready** - Foundation for visual editors, AI generation, collaboration
 

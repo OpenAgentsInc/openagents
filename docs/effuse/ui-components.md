@@ -5,7 +5,7 @@
 ## Overview
 
 The OpenAgents UI is built with:
-- **Effuse Widget System** - Effect-based reactive widgets
+- **Effuse Component System** - Effect-based reactive components
 - **Tailwind CSS** - Utility-first styling (built-in to Effuse)
 - **Simple Layouts** - Clean, minimal structure for Terminal Bench
 - **HUD Components** - Advanced visualizations (grids, SVGs, flow charts)
@@ -56,44 +56,46 @@ We are **rebuilding the homepage from scratch** with a simple, clean layout focu
 - Fixed 260px sidebar
 - 1px border with `#262626` color
 - Main area takes remaining space
-- All existing widgets commented out (in migration)
+- All existing components commented out (in migration)
 
 ### Next Steps
 
-**Immediate Goal:** Create a sidebar widget for loading HuggingFace dataset trajectories
+**Immediate Goal:** Create a sidebar component for loading HuggingFace dataset trajectories
 - Display available trajectory datasets
 - Select and load trajectories
 - Preview trajectory metadata
-- Integration with ATIF Details widget
+- Integration with ATIF Details component
 
-## Effuse Widget System
+## Effuse Component System
+
+**Note:** Effuse currently uses the term "component" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
 
 ### What is Effuse?
 
-Effuse is our custom widget framework built on Effect-TS:
+Effuse is our custom component framework built on Effect-TS:
 - **Reactive State** - Effect-based state management
 - **Event Handling** - Type-safe event system
 - **Socket Integration** - Real-time WebSocket updates
-- **Composable** - Widgets can be mounted anywhere
+- **Composable** - Components can be mounted anywhere
 
-### Widget Structure
+### Component Structure
 
 ```typescript
 import { Effect } from "effect"
 import { html } from "../template/html.js"
-import type { Widget } from "../widget/types.js"
+import type { Component } from "../component/types.js"
 
-export interface MyWidgetState {
+export interface MyComponentState {
   count: number
   collapsed: boolean
 }
 
-export type MyWidgetEvent =
+export type MyComponentEvent =
   | { type: "increment" }
   | { type: "toggleCollapse" }
 
-export const MyWidget: Widget<MyWidgetState, MyWidgetEvent> = {
-  id: "my-widget",
+export const MyComponent: Component<MyComponentState, MyComponentEvent> = {
+  id: "my-component",
 
   initialState: () => ({
     count: 0,
@@ -106,7 +108,7 @@ export const MyWidget: Widget<MyWidgetState, MyWidgetEvent> = {
 
       return html`
         <div class="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-          <h3 class="text-sm font-bold text-zinc-100">My Widget</h3>
+          <h3 class="text-sm font-bold text-zinc-100">My Component</h3>
           <div class="text-zinc-400">${state.count}</div>
           <button data-action="increment">Increment</button>
         </div>
@@ -143,19 +145,19 @@ export const MyWidget: Widget<MyWidgetState, MyWidgetEvent> = {
 }
 ```
 
-### Mounting Widgets
+### Mounting Components
 
 **In HTML:**
 ```html
-<div id="my-widget-container"></div>
+<div id="my-component-container"></div>
 ```
 
 **In TypeScript:**
 ```typescript
-import { mountWidgetById } from "../effuse/index.js"
-import { MyWidget } from "./my-widget.js"
+import { mountComponentById } from "../effuse/index.js"
+import { MyComponent } from "./my-component.js"
 
-yield* mountWidgetById(MyWidget, "my-widget-container")
+yield* mountComponentById(MyComponent, "my-component-container")
 ```
 
 ## Tailwind CSS Styling
@@ -296,73 +298,73 @@ yield* mountWidgetById(MyWidget, "my-widget-container")
 </div>
 ```
 
-## Existing Widgets
+## Existing Components
 
-### Terminal Bench Widgets
+### Terminal Bench Components
 
-**TB Controls** (`src/effuse/widgets/tb-controls.ts`)
+**TB Controls** (`src/effuse/components/tb-controls.ts`)
 - Suite loading and path input
 - Run execution controls
 - Progress bar with pass/fail counts
 - Duration timer (HH:MM:SS)
 - Task filtering (difficulty, search)
 
-**TB Results** (`src/effuse/widgets/tb-results.ts`)
+**TB Results** (`src/effuse/components/tb-results.ts`)
 - Run summary with pass rate
 - Per-task results table (sortable)
 - Outcome filtering
 - Difficulty badges
 - Token/duration metrics
 
-**TB Learning** (`src/effuse/widgets/tb-learning.ts`)
+**TB Learning** (`src/effuse/components/tb-learning.ts`)
 - FM learning features display
 - Skills used/learned tracking
 - Memory and reflexion metrics
 - Learning flags indicators
 - Run summary stats
 
-**TB Output** (`src/effuse/widgets/tb-output.ts`)
+**TB Output** (`src/effuse/components/tb-output.ts`)
 - Live streaming output
 - Source filtering (agent/verification/system)
 - Line numbers toggle
 - Auto-scroll control
 - Copy to clipboard
 
-**Category Tree** (`src/effuse/widgets/category-tree.ts`)
+**Category Tree** (`src/effuse/components/category-tree.ts`)
 - Task organization by category
 - Expand/collapse categories
 - Task selection checkboxes
 - Status icons and badges
 - Pass/fail counts per category
 
-**ATIF Details** (`src/effuse/widgets/atif-details.ts`)
+**ATIF Details** (`src/effuse/components/atif-details.ts`)
 - Step-by-step trajectory viewer
 - Accordion expansion
 - Tool calls display (function + args)
 - Observations/results
 - Source badges (user/agent/system)
 
-### System Widgets
+### System Components
 
-**APM Widget** (`src/effuse/widgets/apm-widget.ts`)
+**APM Component** (`src/effuse/components/apm-component.ts`)
 - Actions per minute tracking
 - Real-time metrics updates
 - Historical comparison
 - Efficiency ratios
 
-**Trajectory Pane** (`src/effuse/widgets/trajectory-pane.ts`)
+**Trajectory Pane** (`src/effuse/components/trajectory-pane.ts`)
 - Recent runs list
 - TB + ATIF unified view
 - Run selection
 - Delete/refresh controls
 
-**MC Tasks** (`src/effuse/widgets/mc-tasks.ts`)
+**MC Tasks** (`src/effuse/components/mc-tasks.ts`)
 - Ready tasks from `.openagents/tasks.jsonl`
 - Priority and type badges
 - Task assignment
 - Collapse/expand
 
-**Container Panes** (`src/effuse/widgets/container-panes.ts`)
+**Container Panes** (`src/effuse/components/container-panes.ts`)
 - Sandbox execution logs
 - Per-task container output
 - stdout/stderr separation
@@ -370,7 +372,7 @@ yield* mountWidgetById(MyWidget, "my-widget-container")
 
 ## Socket Integration
 
-Widgets can subscribe to real-time WebSocket messages from the desktop server.
+Components can subscribe to real-time WebSocket messages from the desktop server.
 
 ### Message Types
 
@@ -456,24 +458,24 @@ subscriptions: (ctx) => {
 **Use Case:** Dashboard with multiple metrics
 ```html
 <div class="grid grid-cols-2 gap-4 p-4">
-  <div>Widget 1</div>
-  <div>Widget 2</div>
-  <div>Widget 3</div>
-  <div>Widget 4</div>
+  <div>Component 1</div>
+  <div>Component 2</div>
+  <div>Component 3</div>
+  <div>Component 4</div>
 </div>
 ```
 
 ## Development Workflow
 
-### Creating a New Widget
+### Creating a New Component
 
-1. **Create widget file** (`src/effuse/widgets/my-widget.ts`)
+1. **Create component file** (`src/effuse/components/my-component.ts`)
    - Define state interface
    - Define event types
-   - Implement widget object
+   - Implement component object
    - Use Tailwind for all styling
 
-2. **Create test file** (`src/effuse/widgets/my-widget.test.ts`)
+2. **Create test file** (`src/effuse/components/my-component.test.ts`)
    - Test initial state
    - Test rendering
    - Test event handling
@@ -481,17 +483,17 @@ subscriptions: (ctx) => {
 
 3. **Export from index** (`src/effuse/index.ts`)
    ```typescript
-   export { MyWidget } from "./widgets/my-widget.js"
+   export { MyComponent } from "./components/my-component.js"
    ```
 
 4. **Mount in mainview** (`src/mainview/effuse-main.ts`)
    ```typescript
-   yield* mountWidgetById(MyWidget, "my-widget-container")
+   yield* mountComponentById(MyComponent, "my-component-container")
    ```
 
 5. **Add container to HTML** (`src/mainview/index.html`)
    ```html
-   <div id="my-widget-container"></div>
+   <div id="my-component-container"></div>
    ```
 
 6. **Rebuild bundle**
@@ -499,14 +501,14 @@ subscriptions: (ctx) => {
    bun build src/mainview/effuse-main.ts --outfile src/mainview/effuse-main.js
    ```
 
-### Testing Widgets
+### Testing Components
 
 ```bash
-# Run widget tests
-SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/my-widget.test.ts
+# Run component tests
+SKIP_WEBVIEW_TESTS=1 bun test src/effuse/components/my-component.test.ts
 
-# Run all widget tests
-SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/
+# Run all component tests
+SKIP_WEBVIEW_TESTS=1 bun test src/effuse/components/
 ```
 
 ### Styling Guidelines
@@ -528,8 +530,8 @@ SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/
 
 ### Next Priorities
 
-1. **HuggingFace Trajectory Loader Widget**
-   - Sidebar widget for loading HF datasets
+1. **HuggingFace Trajectory Loader Component**
+   - Sidebar component for loading HF datasets
    - Display available trajectory datasets
    - Select and load trajectories
    - Preview metadata
@@ -549,9 +551,9 @@ SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/
 
 ### Future Enhancements
 
-- Drag-and-drop widget placement
+- Drag-and-drop component placement
 - Custom dashboard layouts
-- Widget configuration UI
+- Component configuration UI
 - Keyboard shortcuts
 - Dark/light theme toggle
 - Export/import layouts
@@ -559,14 +561,14 @@ SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/
 ## Resources
 
 **Documentation:**
-- [Effuse Widget System](../src/effuse/README.md)
+- [Effuse Component System](../src/effuse/README.md)
 - [HUD Protocol](../src/hud/protocol.ts)
 - [Terminal Bench User Stories](./testing/terminal-bench-user-stories.md)
 
 **Examples:**
-- [TB Controls Widget](../src/effuse/widgets/tb-controls.ts)
-- [ATIF Details Widget](../src/effuse/widgets/atif-details.ts)
-- [TB Results Widget](../src/effuse/widgets/tb-results.ts)
+- [TB Controls Component](../src/effuse/components/tb-controls.ts)
+- [ATIF Details Component](../src/effuse/components/atif-details.ts)
+- [TB Results Component](../src/effuse/components/tb-results.ts)
 
 **Tailwind:**
 - [Tailwind Documentation](https://tailwindcss.com/docs)
@@ -574,4 +576,4 @@ SKIP_WEBVIEW_TESTS=1 bun test src/effuse/widgets/
 
 ---
 
-**Note for AI Agents:** When editing frontend code, always use Tailwind CSS for styling, follow the Effuse widget pattern, and ensure changes are tested before committing. The UI is currently in a migration phase from complex layout to simple SidebarLayout for Terminal Bench focus.
+**Note for AI Agents:** When editing frontend code, always use Tailwind CSS for styling, follow the Effuse component pattern, and ensure changes are tested before committing. The UI is currently in a migration phase from complex layout to simple SidebarLayout for Terminal Bench focus.
