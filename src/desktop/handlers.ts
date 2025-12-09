@@ -299,9 +299,18 @@ export async function startHillClimber(
     args.push(`--${mode}`);
   }
 
+  // Ensure Docker is in PATH (common macOS locations)
+  const extraPaths = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"].filter(
+    (p) => !process.env.PATH?.includes(p)
+  );
+  const fullPath = extraPaths.length > 0
+    ? `${process.env.PATH}:${extraPaths.join(":")}`
+    : process.env.PATH;
+
   // Add task and session ID via environment (script will need to be updated to read these)
   const env = {
     ...process.env,
+    PATH: fullPath,
     HC_TASK: task,
     HC_SESSION_ID: sessionId,
     HC_SUITE_PATH: suitePath ?? join(PROJECT_ROOT, "tasks/terminal-bench-2.json"),
