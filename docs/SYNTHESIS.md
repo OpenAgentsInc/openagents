@@ -1,675 +1,613 @@
-# OpenAgents Desktop: Unified Product Synthesis
+# Commander: Build, Train, Deploy, Earn
 
-> **Vision:** A single desktop application that combines MechaCoder (autonomous coding agent), Agent Store (built-in marketplace), Terminal-Bench GYM (testing infrastructure), and FM Hill Climber (MAP architecture) into one cohesive product—all built with Bun, Effect, and Effuse.
+> **One command to install. One platform to command your AI agents. One way to earn bitcoin while you sleep.**
 
-**Last Updated:** 2025-12-09
-**Status:** Synthesis Document (Planning Phase)
-
----
-
-## Executive Summary
-
-Over the past two years, OpenAgents has built multiple powerful systems in parallel:
-
-1. **MechaCoder** — Autonomous coding agent following the Golden Loop v2 spec
-2. **FM Hill Climber** — MAP architecture for solving Terminal-Bench tasks using Apple on-device FM
-3. **Terminal-Bench GYM** — Testing and benchmarking infrastructure
-4. **Agent Store** — Marketplace for AI agents (from video series)
-5. **Effuse** — Effect-native UI framework for the desktop HUD
-
-**The Synthesis:** These systems are not separate products—they are **components of a single unified desktop application** that serves as the complete agent development and deployment platform.
-
-This document synthesizes all components into one coherent product vision and implementation roadmap.
+```bash
+curl -fsSL https://openagents.com/install | sh
+```
 
 ---
 
-## Table of Contents
+## The Game
 
-1. [The Unified Product](#the-unified-product)
-2. [Component Overview](#component-overview)
-3. [Architecture Integration](#architecture-integration)
-4. [User Experience Flow](#user-experience-flow)
-5. [Technical Stack](#technical-stack)
-6. [Implementation Roadmap](#implementation-roadmap)
-7. [Strategic Implications](#strategic-implications)
+**Commander** is not a tool. It's a game where you build, train, and deploy autonomous AI agents that earn bitcoin.
 
----
+You are the commander. MechaCoder is your first unit. Together, you will:
 
-## The Unified Product
+1. **BUILD** - Train MechaCoder to code better through the GYM
+2. **EARN** - Deploy MechaCoder to complete jobs and earn bitcoin
+3. **GROW** - Level up MechaCoder's skills as it learns from every task
+4. **SHARE** - Publish your best agents to the Agent Store for passive income
 
-### What We're Building
-
-**OpenAgents Desktop** is a single application that provides:
-
-1. **Agent Development Environment**
-   - MechaCoder picks tasks, implements code, runs tests, commits
-   - FM Hill Climber solves Terminal-Bench tasks using local Apple FM
-   - Terminal-Bench GYM provides systematic testing and benchmarking
-
-2. **Agent Marketplace**
-   - Agent Store built-in for discovering, installing, and sharing agents
-   - Agents can be trained in the GYM and published to the store
-   - Users can run agents from the store in their own projects
-
-3. **Unified UI (Effuse)**
-   - Single HUD showing MechaCoder progress, GYM training runs, Agent Store listings
-   - Real-time visualization of agent activity, Terminal-Bench scores, marketplace stats
-   - All components share the same Effect-native architecture
-
-### Why This Matters
-
-**The Strategic Thesis:**
-
-If MechaCoder + FM Hill Climber achieves **#1 on Terminal-Bench using only Apple on-device FM**, it proves:
-
-- **Architecture beats raw model capability** — Local inference + better loops can outperform cloud models
-- **OpenAgents becomes the agent runtime standard** — The platform that orchestrates the best agents
-- **Enterprise adoption** — Agents running on employee MacBooks, no cloud dependency, no data leakage
-
-The unified desktop app is the **delivery vehicle** for this thesis. It's not just a coding agent—it's the complete platform for agent development, testing, deployment, and commerce.
+The better you train your agents, the more bitcoin they earn. The more bitcoin they earn, the more you can invest in training. This is the **Agent Growth Flywheel**.
 
 ---
 
-## Component Overview
+## The Vision
 
-### 1. MechaCoder (Autonomous Coding Agent)
+### You Are the Commander
 
-**Purpose:** Pick tasks from `.openagents/tasks.jsonl`, implement code, run tests, commit & push.
+Imagine waking up to find:
+- MechaCoder completed 47 coding tasks overnight
+- Your wallet has 12,000 more sats than when you went to sleep
+- Your agent climbed 3 spots on the leaderboard
+- A notification: "MechaCoder unlocked Advanced Regex Mastery"
+
+This is Commander. Not a chat interface. Not an IDE plugin. A **command center** for building autonomous agents that work for you 24/7.
+
+### The Interface
+
+Commander's UI draws from two gaming masterpieces:
+
+**From StarCraft:**
+- **APM Tracking** - Measure your agents' actions per minute
+- **Control Groups** - Cmd+1-9 to select agent squads
+- **Hotkeys** - Keyboard-first interface for power users
+- **Minimap** - Always-visible overview of all your agents
+
+**From Factorio:**
+- **Spatial Canvas** - Drag-and-drop agent placement
+- **Production Stats** - Real-time throughput, costs, efficiency
+- **Blueprint System** - Save and share optimized workflows
+- **Tech Tree** - Unlock capabilities as you level up
+
+### The Mental Model
+
+```
+TRADITIONAL AI TOOLS              COMMANDER
+━━━━━━━━━━━━━━━━━━━━              ━━━━━━━━━━━━
+"I chat with AI"                  "I command an agent army"
+"Send message, get response"      "Deploy agents, earn bitcoin"
+"One conversation at a time"      "Parallel autonomous operations"
+"Tool for tasks"                  "Factory that prints money"
+```
+
+---
+
+## Core Components
+
+### 1. MechaCoder - Your First Agent
+
+MechaCoder is an autonomous coding agent that:
+- **Picks tasks** from your task queue (`.openagents/tasks.jsonl`)
+- **Implements code** following the Golden Loop v2 spec
+- **Runs tests** to verify correctness
+- **Commits & pushes** when tests pass
+- **Updates task status** and moves to the next job
+
+MechaCoder doesn't just complete tasks - it **learns**. Every task completion feeds into its skill tree, unlocking new capabilities.
 
 **Key Features:**
-- Golden Loop v2: Orient → select task → decompose → implement → verify → commit → update task
-- Orchestrator + Coding Subagent architecture (minimal prompts, efficient execution)
-- Preflight checklist (init.sh) for environment validation
-- Session persistence and resumption
-- HUD integration for real-time progress
+- Orchestrator + Subagent architecture (minimal prompts, efficient execution)
+- Preflight validation (ensures environment is ready before starting)
+- Session persistence (can resume interrupted work)
+- HUD integration (real-time progress visualization)
 
-**Documentation:**
-- `docs/mechacoder/README.md` — Overview
-- `docs/mechacoder/GOLDEN-LOOP-v2.md` — Complete spec
-- `docs/mechacoder/MECHACODER-OPS.md` — Operations guide
+### 2. The GYM - Training Ground
 
-**Current State:** ✅ Fully implemented, production-ready
+The GYM is where agents level up. You don't just *use* MechaCoder - you *train* it.
 
----
+**Training Environments:**
+- **Terminal-Bench** - The gold-standard benchmark for agent capabilities
+- **MechaBench** - Custom challenges for specific skills
+- **Tool Microbenchmarks** - Precise skill tests
+- **Healer Scenarios** - Recovery and error handling training
 
-### 2. FM Hill Climber (MAP Architecture)
+**How Training Works:**
+1. Select an environment (e.g., Terminal-Bench `regex-log` task)
+2. Create a training plan (objectives, metrics to optimize)
+3. Run training episodes (agent attempts the task)
+4. Analyze results (what worked, what didn't)
+5. Evolve the agent (apply learned improvements)
+6. Repeat until mastery
 
-**Purpose:** Solve Terminal-Bench 2 tasks using Apple on-device Foundation Model through sophisticated architecture.
+**The Three Curves:**
 
-**Key Features:**
-- **MAP Architecture** — Modular Agentic Planner (decomposer, monitor, evaluator)
-- **Test-Time Compute (TTC)** — Parallel sampling of N candidates, pick best
-- **TestGen** — Dynamic generation of comprehensive test suites
-- **Iterative Refinement** — Build solutions incrementally with verification feedback
-- **Docker Verification** — Isolated pytest execution
+Our training is scientifically validated. The thesis - that architecture beats raw model capability - reduces to whether three graphs slope upward:
 
-**Key Achievement:** 89.5% (17/19 tests) on `regex-log` task using only local FM inference.
+1. **TestGen Score vs Evolution Step** - Does meta-learning work?
+2. **HillClimber Pass Rate vs TestGen Config** - Does quality transfer to performance?
+3. **TB2 Performance vs Internal Metrics** - Is our proxy valid?
 
-**The Three Curves (Validation Framework):**
-1. **TestGen score vs evolution step** — Does meta-learning work?
-2. **HillClimber pass rate vs TestGen config version** — Does epistemic quality transfer?
-3. **TB2 performance vs internal metrics** — Is bootstrapping valid?
+If all three curves trend upward, we've proven that a well-trained local agent can outperform cloud giants.
 
-**Documentation:**
-- `docs/fm-hillclimber.md` — Complete system documentation
-- `docs/hillclimber/stakes.md` — Strategic implications of Terminal-Bench #1
-- `docs/logs/20251209/1119-comprehensive-daily-summary.md` — Recent development status
+### 3. FM Hill Climber - The MAP Architecture
 
-**Current State:** ✅ Core architecture implemented, pushing to 100% on regex-log
-
----
-
-### 3. Terminal-Bench GYM (Testing Infrastructure)
-
-**Purpose:** Systematic evaluation and training of agents in safe, sandboxed environments.
-
-**Key Features:**
-- **Gym Environments** — Terminal-Bench, MechaBench, tool microbenchmarks, Healer scenarios
-- **Agent Profiles** — Versioned agent configurations (prompts, models, tools)
-- **Training Episodes** — Single runs of agent profiles in environments
-- **Training Plans** — Structured evaluation suites with objectives
-- **Evolution Strategies** — Generate improved agent profiles based on results
-
-**Integration Points:**
-- Uses `src/bench/terminal-bench.ts` for TB2 task execution
-- Integrates with APM for metrics collection
-- Uses worktrees for sandboxed training runs
-- HUD shows training progress and results
-
-**Documentation:**
-- `docs/subagents/gym-trainer.md` — Trainer subagent & Gym spec
-- `docs/tbench/README.md` — Terminal-Bench 2.0 evaluation guide
-- `docs/terminal-bench.md` — Terminal-Bench integration overview
-
-**Current State:** ⏳ Spec complete, implementation in progress
-
----
-
-### 4. Agent Store (Built-in Marketplace)
-
-**Purpose:** Discover, install, and share AI agents within the desktop app.
-
-**Key Features:**
-- **Agent Registry** — Browse available agents (coding, testing, deployment, etc.)
-- **Installation** — One-click install agents into projects
-- **Publishing** — Train agents in GYM, then publish to store
-- **Ratings & Reviews** — Community feedback on agent performance
-- **Versioning** — Agents have versions, users can upgrade/downgrade
-
-**Integration Points:**
-- Agents trained in GYM can be published to store
-- MechaCoder can discover and use agents from store
-- Store listings show Terminal-Bench scores and GYM metrics
-- HUD shows installed agents and their status
-
-**Documentation:**
-- `docs/transcripts/` — Video series documenting Agent Store launch (Episodes 092-095)
-- Agent Store was launched in November 2023 with first payouts
-
-**Current State:** ⏳ Concept from video series, needs desktop integration
-
----
-
-### 5. Effuse (UI Framework)
-
-**Purpose:** Effect-native UI framework for the desktop HUD.
-
-**Key Features:**
-- **Widget System** — Effect-native components with typed state (`S`), events (`E`), services (`R`)
-- **StateCell** — Reactive state primitive (Effect.Ref + Queue)
-- **html``** — Tagged template with automatic XSS escaping
-- **Services** — DomService, StateService, SocketService (all Effect Context.Tags)
-- **Layers** — EffuseLive (production), makeTestLayer() (mock), makeHappyDomLayer() (real DOM)
-
-**Current Widgets:**
-- APM Widget — Actions per minute monitoring
-- TB Controls — Terminal-Bench task controls
-- MC Tasks — MechaCoder task list
-- Three Background — Animated agent graph (to be replaced with SVG)
-
-**Documentation:**
-- `docs/effuse/README.md` — Quick intro, core concepts, examples
-- `docs/effuse/ARCHITECTURE.md` — Deep dive (lifecycle, services, internals)
-- `docs/effuse/TESTING.md` — Testing guide (three-layer pyramid)
-
-**Current State:** ✅ Core framework implemented, widgets in progress
-
----
-
-## Architecture Integration
-
-### How Components Connect
+For advanced training, FM Hill Climber uses the **Modular Agentic Planner (MAP)** architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    OpenAgents Desktop App                        │
-│                    (Bun + Effect + Effuse)                      │
+│                      MAP ORCHESTRATOR                           │
+│  Coordinates modules, manages state, handles retry/backtrack    │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-        ▼                      ▼                      ▼
-┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│  MechaCoder   │    │ FM Hill        │    │ Terminal-Bench │
-│  (Orchestrator│    │ Climber        │    │ GYM            │
-│   + Subagent) │    │ (MAP)          │    │ (Trainer)      │
-└───────────────┘    └───────────────┘    └───────────────┘
-        │                      │                      │
-        │                      │                      │
-        └──────────────────────┼──────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Agent Store    │
-                    │  (Marketplace)  │
-                    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Effuse HUD     │
-                    │  (UI Framework) │
-                    └─────────────────┘
+           │           │           │           │
+           ▼           ▼           ▼           ▼
+    ┌───────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐
+    │   TASK    │ │  ACTOR  │ │ MONITOR │ │EVALUATOR │
+    │DECOMPOSER │ │  (FM)   │ │         │ │          │
+    └───────────┘ └─────────┘ └─────────┘ └──────────┘
+                       │
+                ┌──────┴──────┐
+                │  PARALLEL   │
+                │  SAMPLER    │ ← Test-Time Compute
+                │  (TTC)      │
+                └─────────────┘
+                       │
+               ┌───────────────┐
+               │   TESTGEN     │ ← Dynamic test generation
+               │  + VERIFIER   │
+               └───────────────┘
 ```
 
-### Shared Infrastructure
+**Key Achievement:** 89.5% on Terminal-Bench `regex-log` using only Apple on-device FM inference.
 
-**1. Task System (`.openagents/tasks.jsonl`)**
-- MechaCoder reads/writes tasks
-- GYM creates training tasks
-- Agent Store agents can create tasks
-- All components use the same task schema
+**Why This Matters:** If we hit #1 on Terminal-Bench using only local inference, it proves:
+- Architecture beats raw model capability
+- Local agents can outperform cloud giants
+- The future of AI is on-device, not in the cloud
 
-**2. Project Configuration (`.openagents/project.json`)**
-- Defines test commands, default branch, allowPush
-- Used by MechaCoder for verification
-- Used by GYM for training environments
-- Used by Agent Store for agent installation
+### 4. Agent Store - The Marketplace
 
-**3. Effect Services**
-- All components use Effect for async/error handling
-- Shared services: FileSystem, Path, Process, etc.
-- Effuse widgets consume services via Context.Tag
+Train an agent. Publish it. Earn bitcoin every time someone uses it.
 
-**4. HUD Event System**
-- MechaCoder emits events (task_selected, subtask_complete, etc.)
-- FM Hill Climber emits events (turn_start, progress_update, etc.)
-- GYM emits events (episode_start, training_complete, etc.)
-- All events flow to Effuse HUD for visualization
+**The Flow:**
+1. You train MechaCoder to excel at a specific task (e.g., "TypeScript Testing Specialist")
+2. MechaCoder achieves high scores in the GYM
+3. You publish to the Agent Store with one click
+4. Other users discover and install your agent
+5. Every time your agent completes a job, you earn bitcoin
+6. Passive income while you sleep
 
-**5. Logging (`docs/logs/YYYYMMDD/`)**
-- MechaCoder writes session logs
-- FM Hill Climber writes run logs
-- GYM writes training logs
-- All use the same directory structure and naming convention
+**Store Features:**
+- Browse/search agents by category
+- View Terminal-Bench scores and GYM metrics
+- One-click install to your Commander
+- Ratings and reviews
+- Automatic updates
+- Revenue sharing paid daily in bitcoin
 
----
+### 5. Effuse - The UI Framework
 
-## User Experience Flow
+Commander's interface is built with Effuse, our Effect-native UI framework:
 
-### Scenario 1: Developer Uses MechaCoder
+- **Widget System** - Effect-native components with typed state
+- **StateCell** - Reactive state primitives
+- **Services** - DomService, SocketService, StateService
+- **Real-time Updates** - Live agent status, earnings, metrics
 
-1. **Open Desktop App**
-   - User sees home screen with project list
-   - Selects a project (e.g., `~/code/myproject`)
-
-2. **Start MechaCoder**
-   - Clicks "Run one task" or "Run overnight"
-   - HUD shows:
-     - Current task ID/title
-     - Live log stream
-     - Files being modified
-     - Test results
-
-3. **Watch Progress**
-   - MechaCoder picks task from `.openagents/tasks.jsonl`
-   - Decomposes into subtasks
-   - Implements code changes
-   - Runs tests (from `project.json.testCommands`)
-   - Commits & pushes (if tests pass)
-   - Updates task status
-
-4. **Review Results**
-   - Git history shows new commits
-   - Task marked as `closed` in `tasks.jsonl`
-   - Log file in `docs/logs/YYYYMMDD/`
+**Current Widgets:**
+- APM Widget (actions per minute monitoring)
+- TB Controls (Terminal-Bench task controls)
+- MC Tasks (MechaCoder task list)
+- Agent Graph (visual agent relationships)
 
 ---
 
-### Scenario 2: Developer Trains Agent in GYM
+## The Gamification Layer
 
-1. **Open GYM Tab**
-   - User sees available environments (Terminal-Bench, MechaBench, etc.)
-   - Sees agent profiles (baseline, evolved variants)
+### Actions Per Minute (APM)
 
-2. **Create Training Plan**
-   - Select environment: "terminal-bench-v2"
-   - Select agent profile: "coding-subagent-v3"
-   - Select tasks: "regex-log, path-tracing, chess-best-move"
-   - Set objectives: "maximize pass rate"
+Inspired by StarCraft's competitive metric:
 
-3. **Run Training**
-   - GYM creates sandboxed worktrees
-   - Runs each task with selected agent profile
-   - Collects metrics (pass rate, turns, tokens, time)
-   - HUD shows:
-     - Current episode
-     - Progress per task
-     - Overall metrics
+```
+┌────────────────────────────────────────────────────────────────┐
+│  YOUR PERFORMANCE STATS                                        │
+│  ──────────────────────────────────────────────────────────── │
+│  Agent APM (Today):        2.3 actions/min                    │
+│  Jobs Completed:           47                                  │
+│  Bitcoin Earned:           12,847 sats                        │
+│  Keyboard Shortcut Usage:  89% (Power User!)                  │
+│  Global Rank:              #847 of 12,493                     │
+│                                                                │
+│  🏆 Top 7% of all commanders                                  │
+└────────────────────────────────────────────────────────────────┘
+```
 
-4. **Review Results**
-   - Training summary shows:
-     - Pass rate per task
-     - Best performing profile
-     - Suggested improvements
-   - User can:
-     - Publish best profile to Agent Store
-     - Create evolved variant for next training run
-     - Export results for analysis
+**What APM Measures:**
+- Messages to/from agents
+- Tool calls executed
+- Tasks completed
+- Efficiency of operations
 
----
+**Why It Matters:** What gets measured gets optimized. Commanders compete to maximize their APM, driving engagement and skill development.
 
-### Scenario 3: Developer Uses FM Hill Climber
+### Trust Tiers & Progression
 
-1. **Select Terminal-Bench Task**
-   - User opens "Terminal-Bench" tab in HUD
-   - Sees list of TB2 tasks
-   - Selects "regex-log"
+```
+BRONZE (0-500 XP)
+├── Basic MechaCoder access
+├── 10 jobs/day limit
+├── Access to GYM tutorials
+└── Unlock: "First Steps" achievement
 
-2. **Start Hill Climber**
-   - Clicks "Run with FM Hill Climber"
-   - System:
-     - Generates comprehensive tests (TestGen)
-     - Decomposes task into subtasks
-     - Runs MAP orchestrator with Apple FM
-     - Uses parallel sampling (TTC)
-     - Verifies progress in Docker
+SILVER (500-2000 XP)
+├── Standard MechaCoder skills
+├── 100 jobs/day limit
+├── Full GYM access
+├── Create workflows
+└── Unlock: "Competent Commander" achievement
 
-3. **Watch Progress**
-   - HUD shows:
-     - Current turn and subtask
-     - Progress percentage (e.g., "89.5% - 17/19 tests passing")
-     - Monitor warnings
-     - Best candidate selection
-   - Real-time updates every 30 seconds
+GOLD (2000+ XP)
+├── Premium MechaCoder skills
+├── Unlimited jobs
+├── Agent Store publishing
+├── Advanced optimization tools
+└── Unlock: "Elite Operator" achievement
+```
 
-4. **Review Results**
-   - Final result shows:
-     - Pass rate (target: 100%)
-     - Regex solution generated
-     - Test suite used
-     - Time taken
-   - User can:
-     - Export solution
-     - Compare with cloud model results
-     - Submit to Terminal-Bench leaderboard
+**How to Earn XP:**
+- +10 XP per completed job
+- +50 XP per 5-star agent review
+- +100 XP per GYM challenge passed
+- +500 XP per published agent
+- -50 XP per failed job (learn from mistakes)
 
----
+### Skill Trees
 
-### Scenario 4: Developer Browses Agent Store
+MechaCoder has learnable skills that unlock through training:
 
-1. **Open Agent Store Tab**
-   - User sees:
-     - Featured agents
-     - Categories (coding, testing, deployment, etc.)
-     - Search bar
-     - Filters (by Terminal-Bench score, ratings, etc.)
+```
+CODING FUNDAMENTALS
+├── ✅ Basic Syntax (Unlocked)
+├── ✅ Git Operations (Unlocked)
+├── 🔒 Test Writing (75% progress)
+├── 🔒 Regex Mastery (89.5% progress)
+└── 🔒 Complex Refactoring (Locked)
 
-2. **Browse Agents**
-   - Each agent card shows:
-     - Name and description
-     - Terminal-Bench score (if applicable)
-     - GYM metrics
-     - User ratings
-     - Installation count
+ARCHITECTURE
+├── ✅ File Navigation (Unlocked)
+├── 🔒 Codebase Understanding (60% progress)
+├── 🔒 API Design (Locked)
+└── 🔒 System Design (Locked)
 
-3. **Install Agent**
-   - User clicks "Install" on an agent
-   - System:
-     - Downloads agent profile
-     - Installs to `.openagents/agents/`
-     - Updates `project.json` with agent config
-     - Agent appears in "Installed Agents" list
+SPECIALIZATIONS
+├── 🔒 TypeScript Expert (Locked)
+├── 🔒 Python Master (Locked)
+├── 🔒 Rust Specialist (Locked)
+└── 🔒 Effect-TS Guru (Locked)
+```
 
-4. **Use Agent**
-   - User can:
-     - Run agent on a task (via MechaCoder integration)
-     - Train agent in GYM
-     - View agent metrics in HUD
+**Unlocking Skills:**
+- Complete GYM challenges in specific areas
+- Achieve high scores on relevant Terminal-Bench tasks
+- Accumulate successful job completions in the skill domain
 
----
+### Achievements
 
-### Scenario 5: Developer Publishes Agent to Store
+```
+🏆 ACHIEVEMENTS
 
-1. **Train Agent in GYM**
-   - User trains agent profile on Terminal-Bench tasks
-   - Achieves high pass rate (e.g., 95%+)
+First Blood          Complete your first task with MechaCoder
+Overnight Operator   Run MechaCoder for 8+ hours unattended
+Money Printer        Earn 100,000 sats from deployed agents
+Perfect Score        Achieve 100% on any Terminal-Bench task
+Blueprint Baron      Publish 10 agent blueprints to the store
+Review Royalty       Get 50+ five-star reviews on your agents
+APM Addict           Maintain 5+ APM for an entire day
+Gold Rush            Reach Gold tier
+Leaderboard Legend   Reach top 100 globally
+```
 
-2. **Publish to Store**
-   - User clicks "Publish to Store" in GYM results
-   - System:
-     - Validates agent profile
-     - Runs smoke tests
-     - Creates store listing
-     - Uploads to Agent Store
+### Leaderboards
 
-3. **Agent Available in Store**
-   - Other users can discover and install
-   - Ratings and reviews accumulate
-   - Agent appears in search results
+**Global Rankings:**
+- Top Earners (bitcoin earned this month)
+- Top APM (highest actions per minute)
+- Top Trainers (most GYM completions)
+- Top Publishers (most agent store downloads)
+
+**Seasonal Competitions:**
+- Monthly Terminal-Bench challenges
+- Weekly GYM speedruns
+- Agent Store featured competitions
 
 ---
 
-## Technical Stack
+## The Bitcoin Economy
 
-### Core Technologies
+### How You Earn
+
+1. **Job Completion**
+   - MechaCoder completes coding tasks
+   - Clients pay in bitcoin (Lightning/Spark)
+   - You keep earnings minus platform fee
+
+2. **Agent Store Royalties**
+   - Publish trained agents to the store
+   - Other users install and use them
+   - You earn per-job royalties
+
+3. **GYM Bounties**
+   - Complete difficult challenges
+   - Earn bounties posted by the community
+   - Special events with prize pools
+
+4. **Compute Marketplace**
+   - Sell spare compute for bitcoin
+   - Run a Commander node
+   - Earn from agent inference jobs
+
+### The Flywheel
+
+```
+        ┌──────────────────┐
+        │   Train Agent    │
+        │    in GYM        │
+        └────────┬─────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Agent Gets      │
+        │   Better         │
+        └────────┬─────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Deploy Agent    │
+        │  Earn Bitcoin    │
+        └────────┬─────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Reinvest in     │
+        │  More Training   │◄──────┐
+        └────────┬─────────┘       │
+                 │                 │
+                 └─────────────────┘
+```
+
+### Pricing & Tiers
+
+```
+FREE TIER
+├── MechaCoder basic access
+├── 10 jobs/day
+├── GYM tutorials
+├── Community support
+└── $0/month
+
+PRO TIER
+├── MechaCoder full access
+├── 100 jobs/day
+├── Full GYM access
+├── Priority support
+├── Agent Store publishing
+└── $13/month (paid in bitcoin)
+
+ENTERPRISE TIER
+├── Unlimited everything
+├── Custom agent training
+├── Dedicated support
+├── Team collaboration
+├── On-premise deployment
+└── Custom pricing
+```
+
+---
+
+## Installation & Quick Start
+
+### One-Command Install
+
+```bash
+# macOS/Linux
+curl -fsSL https://openagents.com/install | sh
+
+# Or with Homebrew
+brew install openagents/tap/commander
+```
+
+### First 5 Minutes
+
+1. **Launch Commander**
+   ```bash
+   commander
+   ```
+
+2. **Connect Your Wallet**
+   - Create a new wallet or import existing
+   - Get your first 1000 sats free to start
+
+3. **Start MechaCoder**
+   - Press `S` to start your first agent
+   - Watch it pick up a tutorial task
+
+4. **Complete First Task**
+   - MechaCoder runs through a simple coding challenge
+   - You earn your first XP
+   - Achievement unlocked: "First Blood"
+
+5. **Explore the GYM**
+   - Press `G` to open the GYM
+   - Start your first training plan
+   - Begin the journey to #1
+
+### Keyboard Shortcuts
+
+```
+GLOBAL
+Cmd+Space    Command palette (fuzzy search)
+Cmd+1-9      Select agent group
+Cmd+Shift+1-9 Assign to group
+?            Show all shortcuts
+
+AGENTS
+S            Start selected agents
+T            Stop selected agents
+R            Restart selected agents
+L            View logs
+C            Configure
+
+VIEWS
+M            Macro view (dashboard)
+D            Detail view (single agent)
+G            GYM
+Tab          Cycle through agents
+```
+
+---
+
+## The Stakes
+
+### If We Win Terminal-Bench #1
+
+**Industry Impact:**
+- Proves architecture beats raw model capability
+- Validates local-first AI over cloud dependency
+- Positions OpenAgents as the agent runtime standard
+
+**Enterprise Adoption:**
+- Agents running on employee MacBooks
+- No data leaving the device
+- Cheaper than cloud AI bills
+- Security teams love it
+
+**Platform Growth:**
+- OpenAgents becomes the "Node.js of agents"
+- Agent Store becomes the "App Store for AI skills"
+- Bitcoin becomes the native currency of AI commerce
+
+### The Paradigm Shift
+
+```
+CURRENT PARADIGM                  COMMANDER PARADIGM
+━━━━━━━━━━━━━━━━                  ━━━━━━━━━━━━━━━━━
+Cloud AI > Local AI              Local AI can win
+Bigger model = Better            Architecture > Model size
+Rent AI services                 Own AI agents
+Pay per API call                 Earn from your agents
+AI as tool                       AI as employee
+One-shot generation              Iterative improvement
+```
+
+---
+
+## Roadmap
+
+### Phase 1: Foundation (Weeks 1-4)
+- [x] MechaCoder core implementation
+- [x] Golden Loop v2 spec
+- [x] Task system (`.openagents/tasks.jsonl`)
+- [ ] Basic HUD (APM, task list, agent status)
+- [ ] One-command installer
+
+### Phase 2: Training (Weeks 5-8)
+- [ ] GYM implementation
+- [ ] Training plans & episodes
+- [ ] FM Hill Climber integration
+- [ ] Skill tree system
+- [ ] Achievement system
+
+### Phase 3: Gamification (Weeks 9-12)
+- [ ] APM tracking
+- [ ] Trust tiers
+- [ ] Leaderboards
+- [ ] Control groups (Cmd+1-9)
+- [ ] Full hotkey system
+
+### Phase 4: Marketplace (Weeks 13-16)
+- [ ] Agent Store beta
+- [ ] Publishing flow
+- [ ] Revenue sharing
+- [ ] Blueprint system
+- [ ] Ratings & reviews
+
+### Phase 5: Terminal-Bench #1 (Weeks 17-20)
+- [ ] Push to 100% on regex-log
+- [ ] Scale to all TB2 tasks
+- [ ] Validate Three Curves
+- [ ] Submit to leaderboard
+- [ ] Victory lap
+
+---
+
+## Technical Architecture
+
+### Stack
 
 **Runtime:**
-- **Bun** — JavaScript runtime, package manager, bundler
-- **Effect** — Type-safe async/error handling, dependency injection
-- **TypeScript** — Type safety, strict mode
+- Bun (fast JavaScript runtime)
+- Effect (type-safe async/error handling)
+- TypeScript (strict mode)
 
 **UI:**
-- **Effuse** — Effect-native UI framework
-- **HTML/CSS** — Standard web technologies
-- **SVG** — For agent graph visualization (replacing Three.js)
+- Effuse (Effect-native widgets)
+- SVG (agent graph visualization)
+- HTML/CSS (standard web tech)
 
-**Agent Infrastructure:**
-- **Apple Foundation Model** — On-device inference (via FM service)
-- **Claude Code** — Cloud coding subagent (fallback)
-- **Docker** — Sandboxed execution for Terminal-Bench verification
+**Agents:**
+- Apple Foundation Model (on-device inference)
+- Claude Code (cloud subagent when needed)
+- MCP (Model Context Protocol integration)
 
-**Data Storage:**
-- **SQLite** — For FM Hill Climber runs, GYM training data
-- **JSONL** — For tasks (`.openagents/tasks.jsonl`)
-- **JSON** — For project config, agent profiles, store listings
+**Data:**
+- SQLite (runs, training data)
+- JSONL (tasks, configs)
+- Nostr (decentralized messaging)
 
-**Testing:**
-- **Terminal-Bench 2.0** — External benchmark suite
-- **pytest** — Test execution in Docker
-- **Effect test utilities** — makeTestLayer(), makeHappyDomLayer()
+**Payments:**
+- Bitcoin Lightning Network
+- Spark (agent-to-agent payments)
 
----
+### File Structure
 
-## Implementation Roadmap
+```
+.openagents/
+├── project.json           # Project configuration
+├── tasks.jsonl            # Task queue
+└── agents/                # Installed agents
 
-### Phase 1: Core Integration (Weeks 1-4)
-
-**Goal:** Integrate existing components into unified desktop app.
-
-**Tasks:**
-
-1. **Unify HUD Event System**
-   - Create shared event types for all components
-   - Implement event router that forwards to Effuse widgets
-   - Add event filtering (internal vs. user-visible)
-
-2. **Integrate FM Hill Climber into HUD**
-   - Create TB2 task list widget
-   - Add "Run with FM Hill Climber" button
-   - Show real-time progress (turns, subtasks, test results)
-   - Display final results with solution
-
-3. **Integrate GYM into HUD**
-   - Create GYM tab with environment selector
-   - Add training plan creation UI
-   - Show training progress (episodes, metrics)
-   - Display training summary with evolution suggestions
-
-4. **Create Unified Project View**
-   - Single screen showing:
-     - MechaCoder status
-     - Active GYM training runs
-     - Installed agents from store
-     - Terminal-Bench scores
-
-**Deliverable:** Desktop app with all components visible in HUD
+src/
+├── mechacoder/            # Autonomous coding agent
+├── hillclimber/           # MAP architecture
+├── gym/                   # Training infrastructure
+├── effuse/                # UI framework
+├── store/                 # Agent marketplace
+└── tasks/                 # Task management
+```
 
 ---
 
-### Phase 2: Agent Store Integration (Weeks 5-8)
+## Join the Mission
 
-**Goal:** Build Agent Store as first-class component.
+**Commander** is not just an app. It's a movement.
 
-**Tasks:**
+We believe:
+- AI agents should be open, not locked behind corporate APIs
+- Users should own their agents, not rent them
+- The future of AI is local-first, privacy-preserving
+- Bitcoin is the native currency of machine commerce
+- Architecture and training beat raw model size
 
-1. **Implement Agent Store Backend**
-   - Agent registry (SQLite or JSON)
-   - Agent profile schema (config, metadata, ratings)
-   - Installation system (download, install to `.openagents/agents/`)
-   - Versioning system
+**Install Commander:**
+```bash
+curl -fsSL https://openagents.com/install | sh
+```
 
-2. **Build Agent Store UI**
-   - Browse/search interface
-   - Agent detail pages
-   - Installation flow
-   - Ratings and reviews
+**Join the Community:**
+- Discord: [discord.openagents.com](https://discord.openagents.com)
+- GitHub: [github.com/openagents-inc/openagents](https://github.com/openagents-inc/openagents)
+- Nostr: npub1openagents...
 
-3. **Integrate with GYM**
-   - "Publish to Store" button in GYM results
-   - Validation and smoke tests before publishing
-   - Automatic metadata generation (Terminal-Bench scores, GYM metrics)
-
-4. **Integrate with MechaCoder**
-   - MechaCoder can discover agents from store
-   - Agents can be used as subagents
-   - Agent selection UI in MechaCoder config
-
-**Deliverable:** Functional Agent Store with browse, install, publish
+**Start Earning:**
+Your agents are waiting. Your bitcoin is waiting. Let's build.
 
 ---
 
-### Phase 3: Advanced Features (Weeks 9-12)
+## Appendix: Key Documents
 
-**Goal:** Polish and advanced capabilities.
-
-**Tasks:**
-
-1. **Agent Graph Visualization**
-   - Replace Three.js with SVG-based graph (from Unit framework)
-   - Show agent relationships, data flow
-   - Interactive: hover, click, pan, zoom
-
-2. **Unified Logging Dashboard**
-   - Single view of all logs (MechaCoder, FM Hill Climber, GYM)
-   - Search and filtering
-   - Export capabilities
-
-3. **Performance Monitoring**
-   - APM integration across all components
-   - Real-time metrics dashboard
-   - Performance alerts
-
-4. **Agent Composition**
-   - Visual agent builder (drag-drop agents, connect pins)
-   - Agent pipelines (agent A → agent B → agent C)
-   - Shared state between agents
-
-**Deliverable:** Polished desktop app with advanced features
+| Document | Description |
+|----------|-------------|
+| `docs/mechacoder/README.md` | MechaCoder overview |
+| `docs/mechacoder/GOLDEN-LOOP-v2.md` | Autonomous agent spec |
+| `docs/fm-hillclimber.md` | MAP architecture |
+| `docs/hillclimber/stakes.md` | Terminal-Bench #1 implications |
+| `docs/effuse/README.md` | UI framework |
+| `docs/inspiration/starcraft.md` | APM & hotkey design |
+| `docs/inspiration/factorio.md` | Factory management design |
 
 ---
 
-### Phase 4: Terminal-Bench #1 Push (Weeks 13-16)
-
-**Goal:** Achieve #1 on Terminal-Bench using only Apple FM.
-
-**Tasks:**
-
-1. **Complete FM Hill Climber**
-   - Push regex-log to 100%
-   - Scale to other TB2 tasks (path-tracing, chess-best-move, etc.)
-   - Optimize turn budget and sampling strategy
-
-2. **Validate Three Curves**
-   - TestGen score vs evolution step (upward trend?)
-   - HillClimber pass rate vs TestGen config (improvement?)
-   - TB2 performance vs internal metrics (correlation?)
-
-3. **Submit to Terminal-Bench Leaderboard**
-   - Run full TB2 suite
-   - Generate official submission
-   - Submit to leaderboard
-
-4. **Document Results**
-   - Technical blog post
-   - Press release
-   - Investor narrative
-
-**Deliverable:** #1 on Terminal-Bench leaderboard, validated thesis
-
----
-
-## Strategic Implications
-
-### If We Succeed (Terminal-Bench #1)
-
-**1. Paradigm Shift Confirmed**
-- Architecture beats raw model capability
-- Local inference can outperform cloud models
-- The "bigger model = better results" assumption is wrong
-
-**2. OpenAgents Becomes the Standard**
-- The agent runtime standard (like Node.js for web)
-- The orchestrator for the best agents
-- The platform enterprises choose
-
-**3. Enterprise Adoption**
-- Agents running on employee MacBooks
-- No cloud dependency, no data leakage
-- Cheaper than cloud AI bills
-- Security/DevOps teams champion the solution
-
-**4. Business Model Validation**
-- Agent Store becomes the "App Store for skills"
-- Marketplace revenue from agent sales
-- Enterprise licensing for on-device agents
-
-### The Unified Product Advantage
-
-**Why One Desktop App Matters:**
-
-1. **Developer Experience**
-   - One tool for everything (development, testing, deployment, marketplace)
-   - No context switching between separate tools
-   - Consistent UI and workflows
-
-2. **Integration Depth**
-   - Agents trained in GYM can be published to store
-   - MechaCoder can use agents from store
-   - FM Hill Climber results inform GYM training
-   - All components share the same task system
-
-3. **Strategic Moat**
-   - Not just a coding agent—it's the complete platform
-   - Hard to replicate the integration depth
-   - Network effects from Agent Store
-
-4. **Enterprise Sales**
-   - One product to sell, not five separate tools
-   - Clear value proposition: "Complete agent platform"
-   - Easier to price and package
-
----
-
-## Key Documents Reference
-
-### MechaCoder
-- `docs/mechacoder/README.md` — Overview
-- `docs/mechacoder/GOLDEN-LOOP-v2.md` — Complete spec
-- `docs/mechacoder/MECHACODER-OPS.md` — Operations guide
-
-### FM Hill Climber
-- `docs/fm-hillclimber.md` — System documentation
-- `docs/hillclimber/stakes.md` — Strategic implications
-- `docs/logs/20251209/1119-comprehensive-daily-summary.md` — Recent status
-
-### Terminal-Bench GYM
-- `docs/subagents/gym-trainer.md` — Trainer & Gym spec
-- `docs/tbench/README.md` — Terminal-Bench evaluation guide
-- `docs/terminal-bench.md` — Integration overview
-
-### Agent Store
-- `docs/transcripts/README.md` — Video series transcripts (Episodes 092-095)
-
-### Effuse
-- `docs/effuse/README.md` — Framework intro
-- `docs/effuse/ARCHITECTURE.md` — Deep dive
-- `docs/effuse/TESTING.md` — Testing guide
-
-### Planning
-- `docs/claude/plans/unit-effuse.md` — Visual language improvements
-
----
-
-## Next Steps
-
-1. **Review this synthesis** with the team
-2. **Prioritize Phase 1 tasks** in `.openagents/tasks.jsonl`
-3. **Create implementation tickets** for each phase
-4. **Start Phase 1 integration** work
-5. **Set Terminal-Bench #1 target date**
-
----
-
-**Status:** This is a living document. Update as components evolve and integration progresses.
-
-**Questions?** See individual component documentation or create a task in `.openagents/tasks.jsonl`.
+**Last Updated:** 2025-12-09
+**Status:** Active Development
+**Goal:** Build the platform that makes AI agents earn bitcoin for everyone.
