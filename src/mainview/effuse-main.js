@@ -26828,6 +26828,8 @@ ${endStackCall}`;
     })
   };
   var initialTrajectoryPaneState = TrajectoryPaneComponent.initialState();
+  // src/effuse/components/agent-graph/geometry.ts
+  var TWO_PI = 2 * Math.PI;
   // src/effuse/components/container-panes.ts
   var MAX_VISIBLE_PANES = 10;
   var MAX_LINES_PER_PANE = 500;

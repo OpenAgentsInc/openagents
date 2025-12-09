@@ -144,6 +144,11 @@ export {
   type ThreeBackgroundEvent,
 } from "./components/three-background.js"
 export {
+  AgentGraphComponent,
+  type AgentGraphState,
+  type AgentGraphEvent,
+} from "./components/agent-graph/index.js"
+export {
   ContainerPanesComponent,
   type ContainerPanesState,
   type ContainerPanesEvent,

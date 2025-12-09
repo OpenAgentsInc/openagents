@@ -7,7 +7,7 @@
 import { Effect, Layer } from "effect"
 import {
   DomServiceLive, IntroCardComponent, mountComponent, SocketServiceFromClient,
-  StateServiceLive, ThreeBackgroundComponent
+  StateServiceLive, AgentGraphComponent
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
@@ -107,8 +107,8 @@ const createNewModeLayer = () => {
 // Component Mounting
 // ============================================================================
 
-const mountThreeBackground = Effect.gen(function* () {
-  console.log("[New Mode] Mounting Three.js background...")
+const mountAgentGraph = Effect.gen(function* () {
+  console.log("[New Mode] Mounting agent graph background...")
 
   // Find or create container
   let container = document.getElementById("three-background-container")
@@ -118,9 +118,9 @@ const mountThreeBackground = Effect.gen(function* () {
     document.body.appendChild(container)
   }
 
-  console.log("[New Mode] Three.js container found/created:", container)
-  yield* mountComponent(ThreeBackgroundComponent, container)
-  console.log("[New Mode] Three.js background mounted")
+  console.log("[New Mode] Agent graph container found/created:", container)
+  yield* mountComponent(AgentGraphComponent, container)
+  console.log("[New Mode] Agent graph background mounted")
 })
 
 const mountIntroCard = Effect.gen(function* () {
@@ -153,8 +153,8 @@ const initNewMode = () => {
     const layer = createNewModeLayer()
 
     const program = Effect.gen(function* () {
-      // Mount Three.js background first (lower z-index)
-      yield* mountThreeBackground
+      // Mount agent graph background first (lower z-index)
+      yield* mountAgentGraph
       // Mount intro card on top (higher z-index)
       yield* mountIntroCard
       // Keep scope alive
