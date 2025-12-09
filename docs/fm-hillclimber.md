@@ -11,7 +11,7 @@ FM Hill Climber is a system for solving Terminal-Bench 2 (TB2) tasks using Apple
 
 **Key Achievement:** Reached 89.5% (17/19 tests) on the `regex-log` task using only local FM inference — proving the architecture works.
 
-**Stakes:** If MechaCoder + FM Hill Climber achieves #1 on Terminal-Bench using only Apple on-device FM, it validates that local inference can outperform cloud models for agentic work. See `docs/local/stakes.md` for the full implications.
+**Stakes:** If MechaCoder + FM Hill Climber achieves #1 on Terminal-Bench using only Apple on-device FM, it validates that local inference can outperform cloud models for agentic work. See `docs/hillclimber/stakes.md` for the full implications.
 
 ---
 
@@ -467,7 +467,7 @@ The research is clear: iterative refinement with feedback beats single-shot gene
 
 ## References
 
-- `docs/local/stakes.md` — Business implications of Terminal-Bench #1
+- `docs/hillclimber/stakes.md` — Business implications of Terminal-Bench #1
 - `docs/logs/20251208/` — Development logs from Dec 8
 - `docs/logs/20251209/` — Development logs from Dec 9
 - `docs/research/deep-research/` — Research papers on MAP, TTC, etc.

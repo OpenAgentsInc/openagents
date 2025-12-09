@@ -34,7 +34,7 @@ If MechaCoder achieves #1 on Terminal-Bench using only local Apple FM inference,
 
 5. **Destroys Cloud-Dependent Business Models** — Cloud-dependent coding tools (Cursor, Replit, Windsurf) become obsolete. The "GPU crunch" narrative collapses if Apple Silicon on a laptop beats H100-powered agents.
 
-For the complete analysis of strategic implications, see [docs/local/stakes.md](../../local/stakes.md).
+For the complete analysis of strategic implications, see [docs/hillclimber/stakes.md](../../hillclimber/stakes.md).
 
 ### Where December 9th Fits
 
@@ -72,7 +72,7 @@ Achieving 100% on regex-log would be the **first definitive solve** and proof th
 | Document | Purpose |
 |----------|---------|
 | [docs/fm-hillclimber.md](../../fm-hillclimber.md) | Complete FM Hill Climber system documentation |
-| [docs/local/stakes.md](../../local/stakes.md) | Strategic implications of Terminal-Bench #1 |
+| [docs/hillclimber/stakes.md](../../hillclimber/stakes.md) | Strategic implications of Terminal-Bench #1 |
 | [docs/mechacoder/README.md](../../mechacoder/README.md) | MechaCoder autonomous agent overview |
 | [docs/mechacoder/GOLDEN-LOOP-v2.md](../../mechacoder/GOLDEN-LOOP-v2.md) | Desktop agent loop specification |
 | [docs/terminal-bench.md](../../terminal-bench.md) | Terminal-Bench integration guide |
