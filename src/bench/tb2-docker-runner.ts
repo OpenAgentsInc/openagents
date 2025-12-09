@@ -38,6 +38,8 @@ export interface TB2DockerResult {
   testsTotal: number;
   /** Generic feedback (no expected values) */
   feedback?: string;
+  /** Names of failed tests */
+  failedTests?: string[];
   /** Exit code from pytest */
   exitCode: number;
   /** Duration in ms */
@@ -123,10 +125,32 @@ export async function runTB2InDocker(
     dockerArgs.push(
       dockerImage,
       "sh", "-c",
-      // Install Python and pytest if not present (suppress installation output), then run tests
-      "command -v python3 >/dev/null 2>&1 || " +
-      "(apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq python3 python3-pip >/dev/null 2>&1) && " +
-      "python3 -m pip install -q --break-system-packages pytest 2>&1 | grep -v WARNING >&2 || true && " +
+      // Robust pytest installation and execution
+      // 1. Check if pytest already available
+      "if command -v pytest >/dev/null 2>&1 || python3 -m pytest --version >/dev/null 2>&1; then " +
+      "  echo '[PYTEST] Already installed' >&2; " +
+      "else " +
+      // 2. Try to install pytest using pip
+      "  echo '[PYTEST] Installing pytest...' >&2; " +
+      "  if command -v python3 >/dev/null 2>&1; then " +
+      // Try with --break-system-packages (for Debian 12+)
+      "    python3 -m pip install --break-system-packages pytest >/dev/null 2>&1 || " +
+      // Fallback: try without --break-system-packages
+      "    python3 -m pip install --user pytest >/dev/null 2>&1 || " +
+      // Fallback: try with apt-get if pip fails
+      "    (apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq python3-pytest >/dev/null 2>&1); " +
+      "  else " +
+      // No python3 - install it first
+      "    apt-get update -qq >/dev/null 2>&1 && " +
+      "    apt-get install -y -qq python3 python3-pytest >/dev/null 2>&1; " +
+      "  fi; " +
+      "fi && " +
+      // 3. Verify pytest is now available
+      "if ! (command -v pytest >/dev/null 2>&1 || python3 -m pytest --version >/dev/null 2>&1); then " +
+      "  echo '[PYTEST] ERROR: pytest not available after installation' >&2; " +
+      "  exit 127; " +
+      "fi && " +
+      // 4. Run tests
       "echo '=== PYTEST OUTPUT START ===' && " +
       "python3 -m pytest tests/ -v 2>&1"
     );
@@ -151,7 +175,10 @@ export async function runTB2InDocker(
     if (!parsed.passed && !captureDetails) {
       // Generic feedback without revealing expected values
       if (parsed.failed > 0) {
-        feedback = `${parsed.failed} test${parsed.failed > 1 ? 's' : ''} failing. Check edge cases.`;
+        const testList = parsed.failedTests.length > 0
+          ? `\nFailing tests: ${parsed.failedTests.slice(0, 5).join(', ')}${parsed.failedTests.length > 5 ? '...' : ''}`
+          : '';
+        feedback = `${parsed.failed} test${parsed.failed > 1 ? 's' : ''} failing.${testList}`;
       }
     }
 
@@ -161,6 +188,7 @@ export async function runTB2InDocker(
       testsPassing: parsed.passing,
       testsTotal: parsed.total,
       feedback,
+      failedTests: parsed.failedTests,
       exitCode: result.exitCode,
       durationMs,
     };
@@ -220,7 +248,37 @@ async function runDockerCommand(
 }
 
 /**
- * Parse pytest summary line to extract pass/fail counts.
+ * Parse failed test names from pytest verbose output.
+ *
+ * Looks for patterns like:
+ * - "FAILED tests/test_outputs.py::test_anti_cheat_1 - AssertionError"
+ * - "tests/test_example.py::test_boundary_2 FAILED"
+ */
+function parseFailedTests(output: string): string[] {
+  const failedTests: string[] = [];
+
+  // Pattern 1: FAILED path::test_name
+  const pattern1 = /FAILED\s+[^:]+::(\w+)/g;
+  let match;
+  while ((match = pattern1.exec(output)) !== null) {
+    if (match[1] && !failedTests.includes(match[1])) {
+      failedTests.push(match[1]);
+    }
+  }
+
+  // Pattern 2: path::test_name FAILED
+  const pattern2 = /[^:]+::(\w+)\s+FAILED/g;
+  while ((match = pattern2.exec(output)) !== null) {
+    if (match[1] && !failedTests.includes(match[1])) {
+      failedTests.push(match[1]);
+    }
+  }
+
+  return failedTests;
+}
+
+/**
+ * Parse pytest summary line to extract pass/fail counts and failed test names.
  *
  * Examples:
  * - "1 passed in 0.12s"
@@ -232,7 +290,11 @@ function parsePytestSummary(output: string): {
   failed: number;
   total: number;
   passed: boolean;
+  failedTests: string[];
 } {
+  // Parse failed test names
+  const failedTests = parseFailedTests(output);
+
   // Look for pytest summary patterns
   const summaryMatch = output.match(
     /(\d+)\s+passed(?:,\s+(\d+)\s+failed)?/i
@@ -246,6 +308,7 @@ function parsePytestSummary(output: string): {
       failed,
       total: passing + failed,
       passed: failed === 0,
+      failedTests,
     };
   }
 
@@ -258,6 +321,7 @@ function parsePytestSummary(output: string): {
       failed,
       total: failed,
       passed: false,
+      failedTests,
     };
   }
 
@@ -268,6 +332,7 @@ function parsePytestSummary(output: string): {
       failed: 0,
       total: 0,
       passed: false,
+      failedTests: [],
     };
   }
 
@@ -277,5 +342,6 @@ function parsePytestSummary(output: string): {
     failed: 0,
     total: 0,
     passed: false,
+    failedTests: [],
   };
 }
