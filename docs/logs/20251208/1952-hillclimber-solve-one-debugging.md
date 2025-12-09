@@ -41,7 +41,23 @@
 
 ---
 
-## Step 3: Next Test Run
+## Step 3: Test Results After Fixes
 
-Testing with fixes applied...
+**Progress:**
+- ✅ Path normalization working - FM successfully wrote to regex.txt (Turn 11)
+- ✅ File listing working - FM sees "Available files: none" when file doesn't exist
+- ⚠️ Verification shows "0/0 tests" - tests not being found
+- ⚠️ FM keeps reading file instead of calling verify_progress
+
+**New Issues:**
+1. Verification not finding tests (0/0 tests) - need to check test setup
+2. FM doesn't call verify_progress after writing - added prompt instruction
+
+**Fix Applied:**
+- Added explicit instruction: "After writing or editing files, call verify_progress to see test results"
+
+**Next Steps:**
+1. Check why verification shows 0/0 tests
+2. Ensure test workspace has TB2 test files
+3. Test again with improved prompt
 
