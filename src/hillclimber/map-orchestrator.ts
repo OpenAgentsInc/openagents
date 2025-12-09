@@ -212,6 +212,12 @@ export function formatFMPrompt(context: FMContext): string {
   if (context.currentSubtask.name === "write-initial-regex") {
     lines.push(`⚠️ ACTION REQUIRED: Write the regex file now. Do NOT read files first.`);
     lines.push(`Use write_file to create /app/regex.txt with your regex pattern.`);
+    lines.push(``);
+    lines.push(`IMPORTANT: Write ONLY the plain regex pattern to the file.`);
+    lines.push(`- Do NOT include r"..." or r'...' Python string wrappers`);
+    lines.push(`- Do NOT include quotes around the pattern`);
+    lines.push(`- Example correct content: \\d{4}-\\d{2}-\\d{2}`);
+    lines.push(`- Example WRONG: r"\\d{4}-\\d{2}-\\d{2}" or "\\d{4}-\\d{2}-\\d{2}"`);
     lines.push("");
   } else if (context.currentSubtask.name === "test-and-iterate") {
     lines.push(`⚠️ ACTION REQUIRED: Call verify_progress to see test results.`);
@@ -822,10 +828,27 @@ async function runMAPOrchestratorWithDecomposition(
  * Handles various formats: quoted strings, raw patterns, etc.
  */
 function extractRegexPattern(content: string): string | null {
-  // Remove common wrapper patterns
-  const cleaned = content
-    .replace(/^r["']/, "") // r"pattern" or r'pattern'
-    .replace(/["']$/, "")  // trailing quotes
+  let cleaned = content.trim();
+
+  // Handle Python raw string literals: r"pattern" or r'pattern'
+  if (cleaned.startsWith('r"') || cleaned.startsWith("r'")) {
+    // Remove r" or r' prefix
+    cleaned = cleaned.substring(2);
+    // Remove trailing quote (matching the opening quote)
+    if (cleaned.endsWith('"') || cleaned.endsWith("'")) {
+      cleaned = cleaned.substring(0, cleaned.length - 1);
+    }
+  }
+  // Handle regular quoted strings: "pattern" or 'pattern'
+  else if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+           (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.substring(1, cleaned.length - 1);
+  }
+
+  // Remove any markdown code block markers
+  cleaned = cleaned
+    .replace(/^```.*\n/, "")
+    .replace(/\n```$/, "")
     .trim();
 
   return cleaned || null;
