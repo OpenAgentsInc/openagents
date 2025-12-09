@@ -242,9 +242,23 @@ export function generateSuggestion(
   if (taskId === "regex-log") {
     const firstFailure = failures[0];
     if (firstFailure.expected && firstFailure.actual) {
-      // Analyze the difference
-      const expected = JSON.parse(firstFailure.expected || "[]");
-      const actual = JSON.parse(firstFailure.actual || "[]");
+      // Analyze the difference (with error handling)
+      let expected: unknown[] = [];
+      let actual: unknown[] = [];
+      try {
+        expected = JSON.parse(firstFailure.expected || "[]");
+        actual = JSON.parse(firstFailure.actual || "[]");
+      } catch (e) {
+        // If JSON parsing fails, try to extract arrays from string representation
+        const expectedMatch = firstFailure.expected.match(/\[(.*?)\]/);
+        const actualMatch = firstFailure.actual.match(/\[(.*?)\]/);
+        if (expectedMatch) {
+          expected = expectedMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""));
+        }
+        if (actualMatch) {
+          actual = actualMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""));
+        }
+      }
 
       if (expected.length > actual.length) {
         return `Missing ${expected.length - actual.length} matches. Check if regex is too restrictive.`;

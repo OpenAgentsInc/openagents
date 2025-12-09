@@ -18,6 +18,8 @@ import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
 import { monitorAction, createActionSignature, type ActionContext } from "./monitor.js";
 import { evaluateProgress, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
+import { FMService, FMServiceLive } from "../fm/service.js";
+import { parseToolCalls } from "../bench/model-adapter.js";
 
 // ============================================================================
 // Types
@@ -175,11 +177,23 @@ function buildFMContext(
 
 /**
  * Format FM context as a prompt string for injection.
+ * Optimized for ~3000 token limit.
  */
 export function formatFMPrompt(context: FMContext): string {
   const lines: string[] = [];
 
-  // Current subtask
+  // System instruction (compressed)
+  lines.push(`You are solving a coding task. Use tools to complete it.`);
+  lines.push("");
+
+  // Task description (only on first turn or if not in previous actions)
+  if (context.previousActions.length === 0) {
+    lines.push(`## Task`);
+    lines.push(context.taskDescription.slice(0, 500)); // Truncate if long
+    lines.push("");
+  }
+
+  // Current subtask (most important)
   lines.push(`## Current Goal`);
   lines.push(`${context.currentSubtask.goal}`);
   lines.push("");
@@ -189,30 +203,41 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`${context.currentSubtask.checkpoint}`);
   lines.push("");
 
-  // Verification feedback (key differentiator from legacy)
+  // Verification feedback (CRITICAL - specific failure details)
   if (context.verificationFeedback) {
     lines.push(`## Verification Status`);
     lines.push(context.verificationFeedback);
     lines.push("");
   }
 
-  // Hints
+  // Hints (prioritize current subtask hints)
   if (context.hints.length > 0) {
     lines.push(`## Hints`);
-    for (const hint of context.hints) {
+    for (const hint of context.hints.slice(0, 3)) { // Limit to 3 most relevant
       lines.push(`- ${hint}`);
     }
     lines.push("");
   }
 
-  // Previous actions (for context)
+  // Previous actions (compressed - last 2 only)
   if (context.previousActions.length > 0) {
     lines.push(`## Recent Actions`);
-    for (const action of context.previousActions) {
+    for (const action of context.previousActions.slice(-2)) {
       lines.push(`- ${action}`);
     }
     lines.push("");
   }
+
+  // Available tools
+  lines.push(`## Available Tools`);
+  lines.push(`- read_file(path): Read a file`);
+  lines.push(`- write_file(path, content): Write to a file`);
+  lines.push(`- edit_file(path, old_text, new_text): Replace text in a file`);
+  lines.push(`- run_command(command): Execute a shell command`);
+  lines.push(`- verify_progress: Check test results`);
+  lines.push(`- task_complete: Signal task is done`);
+  lines.push("");
+  lines.push(`Respond with a tool call in format: <tool_call>{"name":"TOOL","arguments":{"key":"value"}}</tool_call>`);
 
   return lines.join("\n");
 }
@@ -657,8 +682,7 @@ async function runMAPOrchestratorWithDecomposition(
 
 /**
  * Get next action from FM.
- * This is a placeholder that returns mock actions.
- * Full implementation will call the actual FM worker.
+ * Calls the actual FM service with formatted prompt and parses response.
  */
 async function getNextAction(
   task: TerminalBenchTask,
@@ -666,58 +690,66 @@ async function getNextAction(
   workspace: string,
   log: (text: string) => void,
 ): Promise<FMAction | null> {
-  // This is where we'll integrate with the FM worker
-  // For now, return a simple action based on subtask
+  try {
+    const prompt = formatFMPrompt(context);
+    
+    log(`[MAP-FM] Calling FM with prompt (${prompt.length} chars)`);
 
-  const subtask = context.currentSubtask;
+    // Call FM service
+    const response = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fm = yield* FMService;
+        yield* fm.ensureRunning();
 
-  // Check if verification was requested in previous context
-  if (context.verificationFeedback?.includes("FAILED")) {
-    // FM should iterate based on feedback
-    log(`[MAP-FM] Verification failed, need to iterate`);
-  }
+        const chatResponse = yield* fm.chat({
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+          maxTokens: 512, // Short responses for tool calls
+        });
 
-  // For testing, return actions based on subtask name
-  // Real implementation will call FM
-  switch (subtask.name) {
-    case "understand-task":
-      return {
-        toolName: "read_file",
-        toolArgs: { path: "task.md" },
-        reasoning: "Understanding the task requirements",
-      };
+        return chatResponse;
+      }).pipe(Effect.provide(FMServiceLive))
+    );
 
-    case "write-initial-regex":
-      return {
-        toolName: "write_file",
-        toolArgs: {
-          path: "regex.txt",
-          content: "\\d{4}-\\d{2}-\\d{2}",
-        },
-        reasoning: "Writing initial regex attempt",
-      };
+    const content = response.choices[0]?.message?.content ?? "";
+    
+    if (!content) {
+      log(`[MAP-FM] Empty response from FM`);
+      return null;
+    }
 
-    case "test-and-iterate":
-      return {
-        toolName: "verify_progress",
-        toolArgs: {},
-        reasoning: "Checking current progress",
-      };
+    log(`[MAP-FM] FM response: ${content.slice(0, 200)}...`);
 
-    case "final-validation":
-      return {
-        toolName: "task_complete",
-        toolArgs: {},
-        reasoning: "Task appears complete",
-      };
+    // Parse tool calls from response
+    const toolCalls = parseToolCalls(content);
 
-    default:
-      // Generic fallback
-      return {
-        toolName: "verify_progress",
-        toolArgs: {},
-        reasoning: "Checking progress",
-      };
+    if (toolCalls.length === 0) {
+      log(`[MAP-FM] No tool call parsed from response`);
+      // Try to extract tool name from text if format is different
+      const toolMatch = content.match(/(?:tool|action|call)[:\s]+(\w+)/i);
+      if (toolMatch) {
+        const toolName = toolMatch[1];
+        log(`[MAP-FM] Extracted tool name from text: ${toolName}`);
+        return {
+          toolName,
+          toolArgs: {},
+          reasoning: content.slice(0, 100),
+        };
+      }
+      return null;
+    }
+
+    const firstCall = toolCalls[0];
+    log(`[MAP-FM] Parsed tool call: ${firstCall.name} with args: ${JSON.stringify(firstCall.arguments)}`);
+
+    return {
+      toolName: firstCall.name,
+      toolArgs: firstCall.arguments,
+      reasoning: content.slice(0, 100), // First 100 chars as reasoning
+    };
+  } catch (error) {
+    log(`[MAP-FM] Error calling FM: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
   }
 }
 
