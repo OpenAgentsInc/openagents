@@ -93,39 +93,6 @@ Before making code changes:
    - [docs/effuse/README.md](docs/effuse/) — Required
    - [docs/effuse/ARCHITECTURE.md](docs/effuse/ARCHITECTURE.md) — If modifying framework
 
-3. **Inspect task config:**
-   - `.openagents/project.json` — Project settings
-   - `.openagents/tasks.jsonl` — Task queue
-
----
-
-## Task System
-
-This repo uses `.openagents/` for task tracking:
-
-```bash
-.openagents/project.json   # Project config
-.openagents/tasks.jsonl    # Task queue (NEVER edit manually)
-```
-
-### Task CLI
-
-```bash
-bun run tasks:list --json      # List all
-bun run tasks:ready --json     # Ready tasks (no blockers)
-bun run tasks:next --json      # Claim next task
-bun run tasks:create --title "..." --type bug --priority 1 --json
-bun run tasks:close --id oa-xxx --reason "Done" --json
-```
-
-### Workflow
-
-1. Check ready work: `bun run tasks:ready --json`
-2. Claim task: `bun run tasks:next --json`
-3. Implement, test, document
-4. Close: `bun run tasks:close --id <id> --reason "..."`
-5. Commit `.openagents/tasks.jsonl` with code changes
-
 ---
 
 ## Git Conventions
@@ -161,12 +128,8 @@ EOF
 
 ## Rules
 
-- ✅ Use `.openagents/tasks.jsonl` for task tracking
-- ✅ Link discovered work with `discovered-from` deps
 - ✅ Store planning docs in `history/` directory
-- ❌ Do NOT manually edit `tasks.jsonl`
 - ❌ Do NOT edit `tsconfig*.json` without asking
-- ❌ Do NOT use `bd` or `.beads/` (deprecated)
 
 ---
 
