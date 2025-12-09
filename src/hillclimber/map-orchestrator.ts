@@ -805,17 +805,19 @@ async function runMAPOrchestratorWithDecomposition(
   // Max turns reached
   log(`[MAP] Max turns (${options.maxTurns}) reached`);
 
-  // Final evaluation
-  const finalEval = await quickEvaluate(task, options.workspace);
+  // Use last evaluation result instead of running quickEvaluate again
+  // (quickEvaluate has outdated regex parsing that can report wrong progress)
+  const finalProgress = state.lastEvaluation?.progress ?? state.bestProgress;
+  const finalPassed = state.lastEvaluation?.passed ?? false;
 
   return {
-    passed: finalEval.passed,
+    passed: finalPassed,
     turns: state.totalTurns,
     durationMs: Date.now() - startTime,
-    progress: finalEval.progress,
+    progress: finalProgress,
     output: state.output,
     subtaskStatus: state.subtaskStatus,
-    error: `Max turns reached with ${(finalEval.progress * 100).toFixed(1)}% progress`,
+    error: `Max turns reached with ${(finalProgress * 100).toFixed(1)}% progress`,
   };
 }
 
