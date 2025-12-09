@@ -17,5 +17,18 @@
 
 ## Test Results
 
-Starting tests now...
+**Status:** FM integration working, but FM stuck in loop
+
+**Issues Found:**
+1. FM keeps trying to read "task.md" which doesn't exist
+2. Monitor rejects repeated actions but FM doesn't see the feedback
+3. FM needs clearer instructions that task description is already in prompt
+
+**Fixes Applied:**
+1. ✅ Made prompt explicitly state task description is provided (no need to read files)
+2. ✅ Added monitor rejection feedback to state so FM sees it
+3. ✅ Added file listing when read_file fails
+4. ✅ Force move to next subtask if stuck >5 turns
+
+**Next Test:** Running again with fixes...
 
