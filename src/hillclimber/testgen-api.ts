@@ -118,7 +118,7 @@ export const generateTests = async (
     totalTokensUsed: number;
     durationMs: number;
   } = completeMessage;
-  
+
   return {
     tests,
     sessionId,

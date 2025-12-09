@@ -177,8 +177,8 @@ export const analyzeAntiCheatCoverage = (
   }
 
   // Find anti-cheat tests (check reasoning/input for anti-cheat keywords since category doesn't exist)
-  const antiCheatTests = tests.filter((t) => 
-    t.reasoning.toLowerCase().includes("anti-cheat") || 
+  const antiCheatTests = tests.filter((t) =>
+    t.reasoning.toLowerCase().includes("anti-cheat") ||
     t.reasoning.toLowerCase().includes("prohibited") ||
     t.input.toLowerCase().includes("prohibited")
   );
