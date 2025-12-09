@@ -138,7 +138,7 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
             data-action="start-quick"
             style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; cursor: pointer; font-size: 12px;"
           >
-            QUICK TEST v2
+            Quick (3 turns)
           </button>
           <button
             data-action="start-standard"
@@ -368,52 +368,40 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       )
     }
 
-    // Attach event listeners
+    // Attach mouse event listeners for drag/pan/zoom (these are low-level canvas interactions)
     container.addEventListener("mousedown", handleMouseDown as EventListener)
     document.addEventListener("mousemove", handleMouseMove as EventListener)
     document.addEventListener("mouseup", handleMouseUp as EventListener)
     container.addEventListener("wheel", handleWheel as EventListener, { passive: false })
 
-    // Click handler using event delegation (works after re-renders)
-    const handleClick = (e: Event) => {
-      console.log("[TestGen Graph] Click detected on:", (e.target as HTMLElement).tagName, (e.target as HTMLElement).dataset)
-      const target = e.target as HTMLElement
-
-      // Check for start button clicks
-      const startButton = target.closest("[data-action^='start-']") as HTMLElement | null
-      if (startButton) {
-        const action = startButton.dataset.action
-        if (action?.startsWith("start-")) {
-          const mode = action.replace("start-", "") as "quick" | "standard" | "full"
-          console.log("[TestGen Graph] Start button clicked:", mode)
-          Effect.runFork(ctx.emit({ type: "startRun", mode }))
-          return
-        }
+    // START BUTTON CLICKS - Use Effuse delegate pattern (survives re-renders)
+    yield* ctx.dom.delegate(ctx.container, "[data-action^='start-']", "click", (e, target) => {
+      e.stopPropagation()
+      const action = (target as HTMLElement).dataset.action
+      if (action?.startsWith("start-")) {
+        const mode = action.replace("start-", "") as "quick" | "standard" | "full"
+        console.log("[TestGen Graph] Start button clicked:", mode)
+        Effect.runFork(ctx.emit({ type: "startRun", mode }))
       }
+    })
 
-      // Check for session card clicks
-      const sessionCard = target.closest("[data-action='select-session']") as HTMLElement | null
-      if (sessionCard) {
-        const sessionId = sessionCard.dataset.sessionId
-        if (sessionId) {
-          console.log("[TestGen Graph] Session selected:", sessionId)
-          Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
-        }
+    // SESSION SELECTION - Use Effuse delegate pattern (survives re-renders)
+    yield* ctx.dom.delegate(ctx.container, "[data-action='select-session']", "click", (e, target) => {
+      e.stopPropagation()
+      const sessionId = (target as HTMLElement).dataset.sessionId
+      if (sessionId) {
+        console.log("[TestGen Graph] Session selected:", sessionId)
+        Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
       }
-    }
+    })
 
-    // Attach single click handler using event delegation on document.body
-    console.log("[TestGen Graph] Attaching click handler to document.body")
-    document.body.addEventListener("click", handleClick)
-
-    // Cleanup
+    // Cleanup (delegate cleanup is handled automatically by Effect scope)
     return Effect.sync(() => {
       cancelAnimationFrame(_animationId)
       container.removeEventListener("mousedown", handleMouseDown)
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
       container.removeEventListener("wheel", handleWheel)
-      document.body.removeEventListener("click", handleClick)
     })
   })
 }
