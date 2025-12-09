@@ -1,3 +1,18 @@
+# Commander: Agent Instructions
+
+> **This is the OpenAgents/Commander codebase.** Commander is a desktop application for building autonomous AI agents that earn bitcoin. See [docs/SYNTHESIS.md](docs/SYNTHESIS.md) for the full product vision.
+
+## Product Overview
+
+**Commander** = Desktop app (installable via `curl -fsSL https://openagents.com/install | sh`)
+**MechaCoder** = Autonomous coding agent you command and train
+**GYM** = Training ground for improving agent skills
+**Agent Store** = Marketplace to publish and earn from agents
+
+The gamified loop: **BUILD** (train in GYM) → **EARN** (deploy for bitcoin) → **GROW** (level up skills) → **SHARE** (publish to store)
+
+---
+
 ### Agent Startup Checklist (for this repo)
 
 > **This repo (`openagents`) uses `.openagents/` as its sole task system. Beads (`bd`) is not used here anymore.**
@@ -6,6 +21,7 @@ Before you make any code changes in this repo, do the following:
 
 1. **Read the core docs once per session:**
    - `AGENTS.md` (this file)
+   - `docs/SYNTHESIS.md` - Product vision (Commander, MechaCoder, GYM, Agent Store)
    - `docs/mechacoder/README.md`
    - `docs/mechacoder/GOLDEN-LOOP-v2.md`
    - `docs/mechacoder/spec.md`
