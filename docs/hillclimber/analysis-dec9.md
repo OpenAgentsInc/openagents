@@ -63,7 +63,7 @@ Commander is the desktop app that makes this real:
 - **Agent training (GYM)** — Train agents that use the swarm network
 - **Agent Store** — Publish agents, others pay for compute when they run
 
-This isn't a roadmap item. The wallet exists (wallet.openagents.com). The compute network works (Episode 178 demo). Commander ties them together.
+This isn't a roadmap item. We've built all these pieces separately over 198 episodes—wallet, compute network, agent framework. Commander combines them into one product.
 
 ### 4. MechaCoder: First Swarm-Native Agent
 
