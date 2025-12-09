@@ -16,6 +16,8 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { cp } from "fs/promises";
 import { existsSync } from "fs";
+import { Effect } from "effect";
+import { BunContext } from "@effect/platform-bun";
 import { runTaskWithMAP } from "./map-orchestrator.js";
 import { loadTerminalBenchSuite, type TerminalBenchTask } from "../bench/terminal-bench.js";
 import type { HillClimberConfig } from "./types.js";
@@ -32,8 +34,10 @@ describe("E2E: regex-log task", () => {
     workspace = await mkdtemp(join(tmpdir(), "hillclimber-e2e-"));
     console.log(`[E2E] Workspace: ${workspace}`);
 
-    // Load task from suite
-    const suiteResult = await loadTerminalBenchSuite(SUITE_PATH);
+    // Load task from suite (using Effect)
+    const suiteResult = await Effect.runPromise(
+      loadTerminalBenchSuite(SUITE_PATH).pipe(Effect.provide(BunContext.layer))
+    );
     if (!suiteResult || !suiteResult.tasks) {
       throw new Error(`Failed to load suite from ${SUITE_PATH}`);
     }
