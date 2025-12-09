@@ -100,65 +100,43 @@ See `docs/logs/20251208/1219-benchmark-gaming-analysis.md` for the full analysis
 
 ---
 
-## WARNING: Decomposer Currently Has Hardcoded Hints
+## DECOMPOSER STATUS: CLEANED UP (Dec 9, 14:54 CT)
 
-**ISSUE:** The current `src/hillclimber/decomposer.ts` (lines 67-79) contains:
-- `EXAMPLE REGEX (copy this exactly):` — This IS giving FM the solution
-- Specific TEST CASES with expected outputs — This leaks TB2 test information
+**The decomposer has been cleaned up.** See `docs/logs/20251209/1454-decomposer-cleanup-no-cheating.md`.
 
-This crosses the line from "domain knowledge" into "hardcoded solution" territory.
+**What was removed:**
+- `EXAMPLE REGEX (copy this exactly):` — hardcoded solution
+- Specific TEST CASES with expected outputs — TB2 test leakage
 
-**If you want a clean validation of the architecture:**
-1. Remove the "EXAMPLE REGEX" line from decomposer
-2. Remove specific TEST CASES from subtask goals
-3. Keep only domain knowledge hints (regex syntax, lookahead concept, boundary patterns)
-4. Let FM discover the solution through TestGen feedback
+**What was kept (domain knowledge):**
+- Regex concepts: lookahead, greedy matching, capture groups
+- Boundary concepts: word boundaries, character classes
+- Process knowledge: iterate, verify, analyze failures
 
-**Legitimate hints to keep:**
-- "Use positive lookahead (?=.*pattern) to check condition first"
-- "Match LAST occurrence by using greedy .* before capture group"
-- "Boundary assertions prevent false positives"
+**The result:** FM must now DISCOVER the solution through iteration against TestGen tests. This is the clean validation of "architecture beats model size."
 
-**Hints to remove:**
-- Any complete regex pattern
-- Any specific input/output examples from TB2
-
-This is your call whether to clean this up or run with current state.
+**Important:** The 89.5% result from Dec 8 was achieved WITH the hardcoded hints. The next run will be a true test of whether FM can discover the solution without being given the answer.
 
 ---
 
-## APPROACH: Two Paths to 100%
+## APPROACH: Let FM Discover the Solution
 
 ### Understanding the Gap
 
-**TB2 (89.5%):** Only 2 of 19 tests failing. The simple `\d{4}-\d{2}-\d{2}` regex works for most cases. Those 2 failing tests likely require:
-- IPv4 presence check (lookahead)
-- Some boundary condition
+**Previous Results (with hardcoded hints):**
+- TB2: 89.5% (17/19) with `\d{4}-\d{2}-\d{2}`
+- TestGen: 45.8% (11/24) with IPv4 lookahead
 
-**TestGen (45.8%):** 13 of 24 tests failing. TestGen's more comprehensive tests catch:
-- Invalid IPs (256.x.x.x)
-- Invalid dates (month 13, day 32)
-- Boundary conditions
+**These results are now INVALID** — they were achieved with the decomposer giving FM the answer. The next run will be the true test.
 
-### Path A: Focus on TB2 First (Recommended)
+**TestGen's Comprehensive Tests catch:**
+- Invalid IPs (256.x.x.x) — must reject
+- Invalid dates (month 13, day 32) — must reject
+- Boundary conditions — false positives/negatives
 
-Since we're at 89.5% on TB2, we only need to fix 2 tests to hit 100% on the actual benchmark.
+### Path A: Let FM Discover the Solution (Clean Test)
 
-**Run with TB2 tests (not TestGen):**
-```bash
-# The default uses TestGen. To test against TB2's actual tests,
-# we may need to run a validation against the real benchmark.
-bun scripts/test-progress-fix.ts --standard  # 10 turns, 15 min
-```
-
-**Key insight:** If a simple regex gets 89.5%, adding just IPv4 lookahead might get us to 100%:
-```regex
-(?=.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*(\d{4}-\d{2}-\d{2})
-```
-
-### Path B: Let FM Discover Full Solution
-
-The architecture is designed to let FM iterate toward the solution. With all bugs fixed:
+The architecture is designed to let FM iterate toward the solution. With the decomposer cleaned up:
 
 1. **TestGen generates proper edge cases** — Invalid IPs (256), invalid dates (month 13)
 2. **FM sees failure feedback** — "Test failed: 256.1.1.1 should NOT match"
@@ -177,9 +155,9 @@ bun scripts/test-progress-fix.ts --full      # 25 turns, 45 min
 - Turn 4-6: IP octet validation (~65% on TestGen)
 - Turn 7-10: Boundaries + date validation (~85-100%)
 
-**If FM doesn't improve past ~65% after 10 turns**, move to Path C.
+**If FM doesn't improve past ~65% after 10 turns**, move to Path B.
 
-### Path C: Improve TestGen Quality (If FM Stalls)
+### Path B: Improve TestGen Quality (If FM Stalls)
 
 If FM consistently stalls at a plateau, the issue is likely TestGen test quality, not FM guidance.
 
@@ -452,6 +430,19 @@ For the original comprehensive summary (morning session):
 
 ---
 
+## RELATED LOGS
+
+| Time | File | Description |
+|------|------|-------------|
+| 14:41 | `1441-comprehensive-daily-summary.md` | Full day summary |
+| 14:54 | `1454-decomposer-cleanup-no-cheating.md` | Decomposer cleanup details |
+| 11:19 | `1119-comprehensive-daily-summary.md` | Morning session summary |
+| 12:19 | `1219-benchmark-gaming-analysis.md` (Dec 8) | Cheating vs legitimate optimization spectrum |
+
+---
+
 **Document created:** 2025-12-09 14:45 CT
+**Last updated:** 2025-12-09 15:00 CT (decomposer cleanup)
 **Mission:** 100% on regex-log using local Apple FM
 **Stakes:** Paradigm shift for AI industry
+**Status:** Decomposer cleaned, ready for clean validation run
