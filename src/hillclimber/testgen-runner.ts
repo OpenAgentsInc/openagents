@@ -8,7 +8,7 @@
 import { Effect } from "effect"
 import { BunContext } from "@effect/platform-bun"
 import {
-    loadTerminalBenchSuite, TerminalBenchTask, type
+    loadTerminalBenchSuite, type TerminalBenchTask
 } from "../bench/terminal-bench.js"
 import { DatabaseLive, DatabaseService } from "../storage/database.js"
 import { log, logError } from "./logger.js"
@@ -18,11 +18,11 @@ import {
 } from "./testgen-meta-reasoner.js"
 import { computeOverallScore } from "./testgen-scoring.js"
 import {
-    runTestGenWithStreaming, TestGenEmitter, type
+    runTestGenWithStreaming, type TestGenEmitter, type TestGenOptions
 } from "./testgen-service.js"
 import { TestGenStore, TestGenStoreLive } from "./testgen-store.js"
 import {
-    generateTestGenRunId, TestGenConfig, TestGenRunInput, type
+    generateTestGenRunId, type TestGenConfig, type TestGenRunInput
 } from "./testgen-types.js"
 
 // ============================================================================
@@ -197,10 +197,15 @@ const runSingleIteration = async (
       taskId,
       sessionId,
       silentEmitter,
-      {
-        model: config.primaryModel,
-        tb2Path: options.tb2Path,
-      }
+      (() => {
+        const opts: TestGenOptions = {
+          model: config.primaryModel,
+        };
+        if (options.tb2Path) {
+          opts.tb2Path = options.tb2Path;
+        }
+        return opts;
+      })()
     );
 
     // 4. Get trajectory and analyze (save is now awaited in runTestGenWithStreaming)
@@ -325,7 +330,7 @@ const runSingleIteration = async (
     // 11. Log progress
     log(`[TestGenRunner] Run ${state.totalRuns + 1} complete: score=${score}, change=${change.type}`);
   } catch (error) {
-    logError(`[TestGenRunner] Run ${state.totalRuns + 1} failed`, error);
+    logError(`[TestGenRunner] Run ${state.totalRuns + 1} failed`, error instanceof Error ? error : new Error(String(error)));
   }
 };
 
@@ -360,7 +365,7 @@ export const runTestGenEvolution = async (
         await new Promise((resolve) => setTimeout(resolve, options.sleepMs));
       }
     } catch (error) {
-      logError("[TestGenRunner] Iteration failed", error);
+      logError("[TestGenRunner] Iteration failed", error instanceof Error ? error : new Error(String(error)));
       state.totalRuns++;
       // Continue to next iteration even on error
     }

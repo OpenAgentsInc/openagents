@@ -10,7 +10,7 @@ import { BunContext } from "@effect/platform-bun";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
-import { evaluateProgressWithDocker } from "./evaluator.js";
+import { evaluateProgressWithDocker, type EvaluatorResult } from "./evaluator.js";
 import {
   type SamplingOptions,
   type CandidateResult,
@@ -119,18 +119,25 @@ export async function runParallelSampling(
   );
 
   // Step 5: Build candidate results
-  const candidateResults: CandidateResult[] = validCandidates.map((c, i) => ({
-    index: c.index,
-    temperature: temperatures[c.index],
-    variationHint: variations[c.index],
-    workspace: sampleWorkspaces[i],
-    passed: verificationResults[i].passed,
-    progress: verificationResults[i].progress,
-    testsPassing: verificationResults[i].testsPassing,
-    testsTotal: verificationResults[i].testsTotal,
-    failedTests: verificationResults[i].failedTests,
-    solution: c.solution,
-  }));
+  const candidateResults: CandidateResult[] = validCandidates.map((c, i) => {
+    const result: CandidateResult = {
+      index: c.index,
+      temperature: temperatures[c.index],
+      variationHint: variations[c.index],
+      workspace: sampleWorkspaces[i],
+      passed: verificationResults[i].passed,
+      progress: verificationResults[i].progress,
+      testsPassing: verificationResults[i].testsPassing,
+      testsTotal: verificationResults[i].testsTotal,
+      solution: c.solution,
+    };
+    // failedTests is optional, only add if present
+    const verificationResult = verificationResults[i] as EvaluatorResult & { failedTests?: string[] };
+    if (verificationResult.failedTests && Array.isArray(verificationResult.failedTests)) {
+      result.failedTests = verificationResult.failedTests;
+    }
+    return result;
+  });
 
   // Step 6: Calculate stats and pick best
   const { best, averageProgress, improvement } = calculateSamplingStats(

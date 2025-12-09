@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import { generateTestsIteratively } from "./test-generator-iterative.js";
 import { emptyEnvironmentInfo } from "./environment-info.js";
-import type { GeneratedTest } from "./test-generator.js";
+import type { GeneratedTest, TestCategory } from "./test-generator.js";
 import { convertTestsToPytest, generatePytestConftest, type TestGenToPytestOptions } from "./testgen-to-pytest.js";
 
 export interface TestGenIntegrationResult {
@@ -63,14 +63,22 @@ export async function runTestGenForTask(
         }
       },
       onTest: (msg) => {
-        tests.push(msg.test);
+        const test: GeneratedTest = {
+          id: msg.test.id,
+          category: msg.test.category as TestCategory,
+          input: msg.test.input,
+          expectedOutput: msg.test.expectedOutput,
+          reasoning: msg.test.reasoning,
+          confidence: msg.test.confidence,
+        };
+        tests.push(test);
         if (options.verbose) {
-          console.log(`[TestGen] Generated test ${tests.length}: ${msg.test.category}`);
+          console.log(`[TestGen] Generated test ${tests.length}: ${test.category}`);
         }
       },
       onProgress: (msg) => {
         if (options.verbose) {
-          console.log(`[TestGen] ${msg.message}`);
+          console.log(`[TestGen] ${msg.status}`);
         }
       },
       onReflection: (msg) => {

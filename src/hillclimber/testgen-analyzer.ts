@@ -176,8 +176,12 @@ export const analyzeAntiCheatCoverage = (
     return 1.0;
   }
 
-  // Find anti-cheat tests
-  const antiCheatTests = tests.filter((t) => t.category === "anti_cheat");
+  // Find anti-cheat tests (check reasoning/input for anti-cheat keywords since category doesn't exist)
+  const antiCheatTests = tests.filter((t) => 
+    t.reasoning.toLowerCase().includes("anti-cheat") || 
+    t.reasoning.toLowerCase().includes("prohibited") ||
+    t.input.toLowerCase().includes("prohibited")
+  );
   if (antiCheatTests.length === 0) {
     // Prohibited tools exist but no anti-cheat tests = 0 coverage
     return 0.0;

@@ -111,13 +111,21 @@ export const generateTests = async (
     throw new Error("Test generation did not complete");
   }
 
+  // TypeScript needs explicit type assertion after null check
+  const msg: {
+    totalTests: number;
+    comprehensivenessScore: number | null;
+    totalTokensUsed: number;
+    durationMs: number;
+  } = completeMessage;
+  
   return {
     tests,
     sessionId,
-    totalTests: completeMessage.totalTests,
-    comprehensivenessScore: completeMessage.comprehensivenessScore,
-    totalTokensUsed: completeMessage.totalTokensUsed,
-    durationMs: completeMessage.durationMs,
+    totalTests: msg.totalTests,
+    comprehensivenessScore: msg.comprehensivenessScore,
+    totalTokensUsed: msg.totalTokensUsed,
+    durationMs: msg.durationMs,
   };
 };
 
@@ -167,19 +175,34 @@ export const generateTestsWithCallbacks = async (
       options.onTest?.(msg.test);
     },
     onProgress: (msg) => {
-      options.onProgress?.({
+      const progress: {
+        phase: "category_generation" | "global_refinement";
+        currentCategory?: string;
+        roundNumber: number;
+        status: string;
+      } = {
         phase: msg.phase,
-        currentCategory: msg.currentCategory ?? undefined,
         roundNumber: msg.roundNumber,
         status: msg.status,
-      });
+      };
+      if (msg.currentCategory !== undefined) {
+        progress.currentCategory = msg.currentCategory;
+      }
+      options.onProgress?.(progress);
     },
     onReflection: (msg) => {
-      options.onReflection?.({
-        category: msg.category ?? undefined,
+      const reflection: {
+        category?: string;
+        reflectionText: string;
+        action: "refining" | "assessing" | "complete";
+      } = {
         reflectionText: msg.reflectionText,
         action: msg.action,
-      });
+      };
+      if (msg.category !== undefined) {
+        reflection.category = msg.category;
+      }
+      options.onReflection?.(reflection);
     },
     onComplete: (msg) => {
       completeMessage = {
