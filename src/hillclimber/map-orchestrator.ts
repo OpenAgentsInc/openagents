@@ -206,6 +206,17 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`${context.currentSubtask.checkpoint}`);
   lines.push("");
 
+  // Explicit action guidance based on subtask
+  if (context.currentSubtask.name === "write-initial-regex") {
+    lines.push(`⚠️ ACTION REQUIRED: Write the regex file now. Do NOT read files first.`);
+    lines.push(`Use write_file to create /app/regex.txt with your regex pattern.`);
+    lines.push("");
+  } else if (context.currentSubtask.name === "test-and-iterate") {
+    lines.push(`⚠️ ACTION REQUIRED: Call verify_progress to see test results.`);
+    lines.push(`After seeing results, fix the regex if needed.`);
+    lines.push("");
+  }
+
   // Verification feedback (CRITICAL - specific failure details)
   if (context.verificationFeedback) {
     lines.push(`## Verification Status`);
