@@ -355,9 +355,23 @@ Stream.filter((msg): msg is HudMessage => isMyMessage(msg))
 
 ## Common Mistakes
 
-1. **Forgetting `Effect.scoped`** - Component mounting requires a scope for cleanup
-2. **Not using `Effect.runFork` in event handlers** - DOM callbacks are sync, emit returns Effect
-3. **Mutating state directly** - Always use `state.update(s => ({ ...s, newValue }))`
-4. **Missing socket service** - If component has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
-5. **Re-rendering parent wipes child components** - If parent renders containers for child components, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-component-relationships) for details.
-6. **State shape changes break HMR** - If you change a component's state interface, old preserved state won't match. Add migration logic in `mount.ts` (see [HMR.md](./HMR.md#state-migration)) or clear state with `clearAllState()`.
+1. **Using raw `addEventListener()` instead of `ctx.dom.delegate()`** - **CRITICAL!** Effuse uses `innerHTML` replacement on re-render. Raw listeners attached to elements inside the container will break because those elements are destroyed and recreated. Always use `yield* ctx.dom.delegate(ctx.container, selector, event, handler)` which attaches to the container and uses event bubbling.
+
+   ```typescript
+   // ❌ WRONG - breaks after state change
+   setupEvents: (ctx) => Effect.gen(function* () {
+     ctx.container.addEventListener("click", handler)  // BROKEN!
+   })
+
+   // ✅ CORRECT - survives re-renders
+   setupEvents: (ctx) => Effect.gen(function* () {
+     yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", handler)
+   })
+   ```
+
+2. **Forgetting `Effect.scoped`** - Component mounting requires a scope for cleanup
+3. **Not using `Effect.runFork` in event handlers** - DOM callbacks are sync, emit returns Effect
+4. **Mutating state directly** - Always use `state.update(s => ({ ...s, newValue }))`
+5. **Missing socket service** - If component has subscriptions, use `EffuseLive` not `EffuseLiveNoSocket`
+6. **Re-rendering parent wipes child components** - If parent renders containers for child components, re-rendering the parent will destroy child DOM. Use direct DOM manipulation (classList) for visibility changes, or restructure so parent doesn't render child containers. See [ARCHITECTURE.md](./ARCHITECTURE.md#parentchild-component-relationships) for details.
+7. **State shape changes break HMR** - If you change a component's state interface, old preserved state won't match. Add migration logic in `mount.ts` (see [HMR.md](./HMR.md#state-migration)) or clear state with `clearAllState()`.

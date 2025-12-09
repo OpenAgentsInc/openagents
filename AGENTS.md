@@ -155,6 +155,35 @@ Effect-native widgets for Commander's HUD.
 - `StateCell<A>` — Reactive state primitive
 - `html\`\`` — Tagged template with XSS escaping
 
+### CRITICAL: Event Handling Pattern
+
+**NEVER use raw `addEventListener()` for click handlers in Effuse components.** Use `ctx.dom.delegate()` instead.
+
+```typescript
+// ❌ WRONG - Events will break after re-render
+setupEvents: (ctx) =>
+  Effect.gen(function* () {
+    const handleClick = (e: Event) => { ... }
+    ctx.container.addEventListener("click", handleClick)  // BROKEN!
+  })
+
+// ✅ CORRECT - Events survive re-renders
+setupEvents: (ctx) =>
+  Effect.gen(function* () {
+    yield* ctx.dom.delegate(ctx.container, "[data-action]", "click", (e, target) => {
+      const action = (target as HTMLElement).dataset.action
+      Effect.runFork(ctx.emit({ type: action }))
+    })
+  })
+```
+
+**Why:** Effuse uses `innerHTML` replacement on re-render. Raw listeners are attached to elements that get destroyed. `ctx.dom.delegate()` attaches to the container (which survives) and uses event bubbling + `closest()` to find targets.
+
+**Data attributes pattern:**
+- Use `data-action="actionName"` for click targets
+- Use `data-input="inputName"` for form inputs
+- Use `data-*` attributes to pass IDs/values (e.g., `data-session-id="${id}"`)
+
 See [docs/effuse/](docs/effuse/) for full docs.
 
 ---
