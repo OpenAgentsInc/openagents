@@ -1,7 +1,7 @@
 # Project FM Hill Climber
 
-**Last Updated:** 2025-12-09
-**Status:** Active Development (89.5% → targeting 100% on regex-log)
+- **Last Updated:** 2025-12-09
+- **Status:** Active Development (89.5% → targeting 100% on regex-log)
 
 ---
 
