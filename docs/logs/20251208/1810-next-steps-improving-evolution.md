@@ -109,3 +109,50 @@
 
 Starting with Step 1: Improving meta-reasoner prompts...
 
+---
+
+## Step 1 Implementation: Improved Meta-Reasoner Prompt ✅
+
+**Changes Made:**
+- Added explicit guardrail constraints section to prompt
+- Included examples of VALID changes (within limits)
+- Included examples of INVALID changes (exceed limits)
+- Emphasized small, incremental improvements
+- Added instruction: "Propose SMALL, INCREMENTAL changes"
+
+**File Modified:**
+- `src/hillclimber/testgen-meta-reasoner.ts` - `buildTestGenMetaPrompt`
+
+**Testing:**
+Running 5-iteration test to verify improved prompt works...
+
+---
+
+## Test Results ✅
+
+**Result:** Improved prompt works! No more guardrail violations.
+
+**Observations:**
+- Meta-reasoner now proposes "keep" instead of violating guardrails
+- No guardrail violations in test run
+- System is stable
+
+**New Issue:**
+- Meta-reasoner is now too conservative - proposing "keep" when changes might help
+- Free models may not be sophisticated enough to propose valid incremental changes
+- Need to either:
+  1. Expand change types (weights, temperature) to give more options
+  2. Test with paid models (better reasoning)
+  3. Add more explicit guidance on when to propose changes
+
+---
+
+## Next: Expand Change Types
+
+Since meta-reasoner is now guardrail-compliant but too conservative, let's give it more options by allowing changes to weights and other parameters.
+
+**Implementation:**
+- Update prompt to emphasize weight and temperature changes
+- These have larger guardrails (±0.1) so easier to propose valid changes
+- Add examples of weight/temperature adjustments
+
