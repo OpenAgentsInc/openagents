@@ -615,6 +615,17 @@ async function runMAPOrchestratorWithDecomposition(
     };
 
     const monitorDecision = monitorAction(monitorCtx);
+    
+    // Special case: If trying to read a file that doesn't exist and current subtask is write-initial-regex,
+    // provide more specific feedback
+    if (!monitorDecision.allowed && action.toolName === "read_file" && currentSubtask.name === "write-initial-regex") {
+      const path = action.toolArgs.path as string || action.toolArgs.file_path as string;
+      const normalizedPath = path?.replace(/^\/app\//, "").replace(/^\/app/, "") || path;
+      const fullPath = resolve(options.workspace, normalizedPath || "");
+      if (!existsSync(fullPath)) {
+        monitorDecision.suggestion = `The file ${path} doesn't exist yet. Write it using write_file instead of reading it.`;
+      }
+    }
 
     if (!monitorDecision.allowed) {
       log(`[MAP] Monitor REJECTED: ${monitorDecision.reason}`);
