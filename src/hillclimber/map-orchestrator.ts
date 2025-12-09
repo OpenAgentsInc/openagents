@@ -237,7 +237,7 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`- write_file(path, content): Write to a file`);
   lines.push(`- edit_file(path, old_text, new_text): Replace text in a file`);
   lines.push(`- run_command(command): Execute a shell command`);
-  lines.push(`- verify_progress: Check test results`);
+  lines.push(`- verify_progress: Check test results (IMPORTANT: Call this after writing files to see if tests pass)`);
   lines.push(`- task_complete: Signal task is done`);
   lines.push("");
   lines.push(`## CRITICAL: Tool Call Format`);
@@ -245,10 +245,11 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`<tool_call>{"name":"TOOL_NAME","arguments":{"key":"value"}}</tool_call>`);
   lines.push(``);
   lines.push(`Examples:`);
-  lines.push(`<tool_call>{"name":"read_file","arguments":{"path":"task.md"}}</tool_call>`);
+  lines.push(`<tool_call>{"name":"read_file","arguments":{"path":"regex.txt"}}</tool_call>`);
   lines.push(`<tool_call>{"name":"write_file","arguments":{"path":"regex.txt","content":"pattern"}}</tool_call>`);
   lines.push(`<tool_call>{"name":"verify_progress","arguments":{}}</tool_call>`);
   lines.push(``);
+  lines.push(`IMPORTANT: After writing or editing files, call verify_progress to see test results.`);
   lines.push(`DO NOT write explanations, code blocks, or any other text. ONLY the tool call.`);
 
   return lines.join("\n");
