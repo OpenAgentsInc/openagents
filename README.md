@@ -1,12 +1,12 @@
 # Commander
 
-> Build, Train, Deploy, Earn. **(Work in Progress)**
+> Build agents. Sell compute. Earn bitcoin. **(Work in Progress)**
 
-Commander is a desktop app for building autonomous AI agents that earn bitcoin.
+Commander is a desktop app for training AI agents and selling your spare compute for bitcoin.
 
 ## Vision
 
-You command **MechaCoder**, training it through the **GYM** to complete coding tasks. The better you train, the more bitcoin you earn. Publish agents to the **Agent Store** for passive income.
+Sell your device's idle compute to the swarm network and get paid in bitcoin straight to your built-in wallet. Train **MechaCoder** through the **GYM** to build agents that leverage the network. Publish to the **Agent Store**.
 
 **Full vision:** [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 

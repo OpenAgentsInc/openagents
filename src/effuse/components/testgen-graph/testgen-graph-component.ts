@@ -3,7 +3,7 @@
  * SVG-based visualization of TestGen/HillClimber workflow
  */
 
-import { Effect } from "effect"
+import { Effect, Stream, pipe } from "effect"
 import type { Component, ComponentContext } from "../../component/types.js"
 import { html, rawHtml } from "../../template/html.js"
 import type {
@@ -16,6 +16,9 @@ import {
 } from "./types.js"
 import { renderGraph } from "./render.js"
 import type { Point } from "../agent-graph/geometry.js"
+import { SocketServiceTag } from "../../services/socket.js"
+import { mapMessageToState, isHillClimberMessage } from "./state-mapper.js"
+import type { HudMessage } from "../../../hud/protocol.js"
 
 // ============================================================================
 // Initial State
@@ -23,8 +26,15 @@ import type { Point } from "../agent-graph/geometry.js"
 
 function initialState(): TestGenGraphState {
   return {
+    // Multi-session tracking
+    sessions: new Map(),
+    activeSessionId: null,
+
+    // Graph layout
     nodes: createTestGenNodes(),
     connections: createTestGenConnections(),
+
+    // Interaction
     hoveredNodeId: null,
     draggedNodeId: null,
     animationFrame: 0,
@@ -352,8 +362,40 @@ function handleEvent(
       case "animationTick":
         // Handled in animation loop
         break
+
+      case "selectSession":
+        yield* ctx.state.update((s) => ({
+          ...s,
+          activeSessionId: event.sessionId,
+        }))
+        break
+
+      case "startRun":
+        // TODO: Call socket service to start HillClimber run
+        console.log("[TestGen Graph] Start run:", event.mode)
+        break
     }
   })
+}
+
+// ============================================================================
+// Socket Subscriptions
+// ============================================================================
+
+function subscriptions(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
+  return [
+    pipe(
+      Stream.unwrap(
+        Effect.map(SocketServiceTag, (socket) => socket.getMessages())
+      ),
+      Stream.filter((msg): msg is HudMessage => isHillClimberMessage(msg)),
+      Stream.map((msg) =>
+        Effect.gen(function* () {
+          yield* ctx.state.update((state) => mapMessageToState(state, msg))
+        })
+      )
+    ),
+  ]
 }
 
 // ============================================================================
@@ -366,4 +408,5 @@ export const TestGenGraphComponent: Component<TestGenGraphState, TestGenGraphEve
   render,
   setupEvents,
   handleEvent,
+  subscriptions,
 }

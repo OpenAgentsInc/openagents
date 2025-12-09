@@ -137,6 +137,19 @@ export interface StartTestGenRequest extends BaseRequest {
 }
 
 /**
+ * Start a HillClimber run (TestGen + MAP orchestrator)
+ */
+export interface StartHillClimberRequest extends BaseRequest {
+  type: "request:startHillClimber";
+  /** Task ID from terminal-bench (e.g., "regex-log") */
+  task: string;
+  /** Run mode: quick (3 turns), standard (10 turns), or full (25 turns) */
+  mode: "quick" | "standard" | "full";
+  /** Path to terminal-bench suite file */
+  suitePath?: string;
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -151,7 +164,8 @@ export type SocketRequest =
   | GetHFTrajectoryCountRequest
   | GetHFTrajectoriesRequest
   | GetHFTrajectoryRequest
-  | StartTestGenRequest;
+  | StartTestGenRequest
+  | StartHillClimberRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -312,6 +326,14 @@ export interface StartTestGenResponse extends BaseResponse {
 }
 
 /**
+ * Response to StartHillClimberRequest
+ */
+export interface StartHillClimberResponse extends BaseResponse {
+  type: "response:startHillClimber";
+  data?: { sessionId: string };
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -326,7 +348,8 @@ export type SocketResponse =
   | GetHFTrajectoryCountResponse
   | GetHFTrajectoriesResponse
   | GetHFTrajectoryResponse
-  | StartTestGenResponse;
+  | StartTestGenResponse
+  | StartHillClimberResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -412,6 +435,9 @@ export const isGetHFTrajectoryRequest = (msg: SocketRequest): msg is GetHFTrajec
 
 export const isStartTestGenRequest = (msg: SocketRequest): msg is StartTestGenRequest =>
   msg.type === "request:startTestGen";
+
+export const isStartHillClimberRequest = (msg: SocketRequest): msg is StartHillClimberRequest =>
+  msg.type === "request:startHillClimber";
 
 // ============================================================================
 // Serialization Helpers

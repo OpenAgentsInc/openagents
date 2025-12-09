@@ -932,6 +932,76 @@ export interface TestGenErrorMessage {
 }
 
 // ============================================================================
+// MAP Orchestrator Events (HillClimber)
+// ============================================================================
+
+/**
+ * MAP orchestrator turn started
+ */
+export interface MAPTurnStartMessage {
+  type: "map_turn_start";
+  sessionId: string;
+  turn: number;
+  maxTurns: number;
+  subtask: string;
+}
+
+/**
+ * Foundation Model action
+ */
+export interface MAPFMActionMessage {
+  type: "map_fm_action";
+  sessionId: string;
+  action: "thinking" | "tool_call" | "complete";
+  toolName?: string;
+}
+
+/**
+ * Verification status
+ */
+export interface MAPVerifyMessage {
+  type: "map_verify";
+  sessionId: string;
+  status: "running" | "complete";
+  passed?: number;
+  total?: number;
+  progress?: number;
+}
+
+/**
+ * Subtask status change
+ */
+export interface MAPSubtaskChangeMessage {
+  type: "map_subtask_change";
+  sessionId: string;
+  subtask: string;
+  status: "active" | "completed" | "failed";
+}
+
+/**
+ * Heartbeat with progress
+ */
+export interface MAPHeartbeatMessage {
+  type: "map_heartbeat";
+  sessionId: string;
+  turn: number;
+  maxTurns: number;
+  progress: number;
+  bestProgress: number;
+  elapsedMs: number;
+}
+
+/**
+ * Run complete
+ */
+export interface MAPRunCompleteMessage {
+  type: "map_run_complete";
+  sessionId: string;
+  success: boolean;
+  finalProgress: number;
+}
+
+// ============================================================================
 // Union Type for All Messages
 // ============================================================================
 
@@ -998,7 +1068,13 @@ export type HudMessage =
   | TestGenProgressMessage
   | TestGenReflectionMessage
   | TestGenCompleteMessage
-  | TestGenErrorMessage;
+  | TestGenErrorMessage
+  | MAPTurnStartMessage
+  | MAPFMActionMessage
+  | MAPVerifyMessage
+  | MAPSubtaskChangeMessage
+  | MAPHeartbeatMessage
+  | MAPRunCompleteMessage;
 
 /**
  * Status stream payloads (headless RPC-compatible)
@@ -1196,3 +1272,33 @@ export const isTestGenError = (msg: HudMessage): msg is TestGenErrorMessage =>
 /** Check if message is any testgen-related message */
 export const isTestGenMessage = (msg: HudMessage): boolean =>
   msg.type.startsWith("testgen_");
+
+// ============================================================================
+// MAP Orchestrator Event Type Guards
+// ============================================================================
+
+export const isMAPTurnStart = (msg: HudMessage): msg is MAPTurnStartMessage =>
+  msg.type === "map_turn_start";
+
+export const isMAPFMAction = (msg: HudMessage): msg is MAPFMActionMessage =>
+  msg.type === "map_fm_action";
+
+export const isMAPVerify = (msg: HudMessage): msg is MAPVerifyMessage =>
+  msg.type === "map_verify";
+
+export const isMAPSubtaskChange = (msg: HudMessage): msg is MAPSubtaskChangeMessage =>
+  msg.type === "map_subtask_change";
+
+export const isMAPHeartbeat = (msg: HudMessage): msg is MAPHeartbeatMessage =>
+  msg.type === "map_heartbeat";
+
+export const isMAPRunComplete = (msg: HudMessage): msg is MAPRunCompleteMessage =>
+  msg.type === "map_run_complete";
+
+/** Check if message is any MAP orchestrator message */
+export const isMAPMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("map_");
+
+/** Check if message is any HillClimber-related message (TestGen or MAP) */
+export const isHillClimberMessage = (msg: HudMessage): boolean =>
+  msg.type.startsWith("testgen_") || msg.type.startsWith("map_");

@@ -12,9 +12,11 @@ import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
 import { loadTerminalBenchSuite } from "../src/bench/terminal-bench.js";
 import { runMAPOrchestrator } from "../src/hillclimber/map-orchestrator.js";
+import { createHillClimberHudEmitter } from "../src/hillclimber/hud-emitter.js";
 import { mkdirSync, createWriteStream, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 // Mode configurations
 const MODES = {
@@ -64,6 +66,11 @@ async function main() {
   log(`Turns: ${mode.turns}, Timeout: ${mode.timeoutSec}s`);
   log(`Log file: ${logFile}\n`);
 
+  // Create HUD emitter for real-time UI updates
+  const sessionId = `hc-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const hudEmitter = createHillClimberHudEmitter(sessionId);
+  log(`[INIT] Session ID: ${sessionId}`);
+
   // Load regex-log task
   log("[INIT] Loading Terminal-Bench suite...");
   const suite = await Effect.runPromise(
@@ -93,6 +100,7 @@ async function main() {
         maxTurns: mode.turns,
         taskDescription: task.description,
         verbose: false, // Reduce verbosity - heartbeat provides visibility
+        hudEmitter, // Pass HUD emitter for real-time UI updates
         onOutput: (text) => {
           const trimmed = text.trim();
           if (trimmed) {
@@ -139,6 +147,8 @@ async function main() {
     log(`\n[ERROR] ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   } finally {
+    // Close HUD emitter
+    hudEmitter.close();
     clearWatchdog();
     logStream.end();
   }

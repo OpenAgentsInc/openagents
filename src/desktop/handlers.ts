@@ -34,6 +34,7 @@ import {
   isGetHFTrajectoriesRequest,
   isGetHFTrajectoryRequest,
   isStartTestGenRequest,
+  isStartHillClimberRequest,
   createSuccessResponse,
   createErrorResponse,
   type UnifiedTrajectory,
@@ -269,6 +270,100 @@ export function stopTBRun(): { stopped: boolean } {
     return { stopped: true };
   }
   return { stopped: false };
+}
+
+// ============================================================================
+// HillClimber Run
+// ============================================================================
+
+let activeHillClimberRun: ReturnType<typeof spawn> | null = null;
+
+/**
+ * Start a HillClimber run (TestGen + MAP orchestrator)
+ *
+ * Spawns the test-progress-fix.ts script in background mode.
+ */
+export async function startHillClimber(
+  task: string,
+  mode: "quick" | "standard" | "full",
+  suitePath?: string
+): Promise<{ sessionId: string }> {
+  const { randomUUID } = await import("node:crypto");
+  const sessionId = `hc-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+  const scriptPath = join(PROJECT_ROOT, "scripts/test-progress-fix.ts");
+  const args = [scriptPath];
+
+  // Add mode flag
+  if (mode !== "quick") {
+    args.push(`--${mode}`);
+  }
+
+  // Add task and session ID via environment (script will need to be updated to read these)
+  const env = {
+    ...process.env,
+    HC_TASK: task,
+    HC_SESSION_ID: sessionId,
+    HC_SUITE_PATH: suitePath ?? join(PROJECT_ROOT, "tasks/terminal-bench-2.json"),
+  };
+
+  console.log(`[HC] Starting HillClimber run ${sessionId}:`, args.join(" "));
+  console.log(`[HC] Task: ${task}, Mode: ${mode}`);
+
+  activeHillClimberRun = spawn({
+    cmd: [process.execPath, ...args],
+    cwd: PROJECT_ROOT,
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+    env,
+  });
+
+  // Stream stdout for visibility
+  (async () => {
+    try {
+      if (activeHillClimberRun!.stdout instanceof ReadableStream) {
+        const reader = activeHillClimberRun!.stdout.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          process.stdout.write(`[HC ${sessionId}] ${text}`);
+        }
+      }
+    } catch {
+      // Reader cancelled - normal
+    }
+  })();
+
+  // Stream stderr
+  (async () => {
+    try {
+      if (activeHillClimberRun!.stderr instanceof ReadableStream) {
+        const reader = activeHillClimberRun!.stderr.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          process.stderr.write(`[HC ${sessionId}] ${text}`);
+        }
+      }
+    } catch {
+      // Reader cancelled - normal
+    }
+  })();
+
+  // Clean up when done
+  activeHillClimberRun.exited.then(() => {
+    console.log(`[HC] Run ${sessionId} completed`);
+    activeHillClimberRun = null;
+  });
+
+  return { sessionId };
 }
 
 // ============================================================================
@@ -751,6 +846,12 @@ export async function handleRequest(request: SocketRequest): Promise<SocketRespo
       });
 
       return createSuccessResponse("response:startTestGen", correlationId, { sessionId });
+    }
+
+    if (isStartHillClimberRequest(request)) {
+      console.log(`[Handler] Received startHillClimber request (task=${request.task}, mode=${request.mode})`);
+      const data = await startHillClimber(request.task, request.mode, request.suitePath);
+      return createSuccessResponse("response:startHillClimber", correlationId, data);
     }
 
     // Unknown request type
