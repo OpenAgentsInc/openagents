@@ -17,6 +17,8 @@ import { StateServiceTag } from "../services/state.js"
 
 // Import TB components
 import { TBOutputComponent } from "./tb-output.js"
+import { TBControlsComponent } from "./tb-controls.js"
+import { CategoryTreeComponent } from "./category-tree.js"
 
 // ============================================================================
 // Helper to run widget tests

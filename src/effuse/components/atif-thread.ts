@@ -5,7 +5,8 @@
  * Used by TestGen, ATIF viewer, agent logs, etc.
  */
 
-import { html, joinTemplates, type TemplateResult } from "../template/html.js"
+import { html, joinTemplates } from "../template/html.js"
+import type { TemplateResult } from "../template/types.js"
 
 // ============================================================================
 // Types
@@ -77,7 +78,11 @@ export function renderThreadContainer(
   const itemElements = items.map((item) => {
     const itemId = getItemId(item)
     const isExpanded = itemId === options.expandedItemId
-    return renderThreadItem(item, { isExpanded, onToggle: options.onToggle })
+    const state: ThreadItemState = {
+      isExpanded,
+      ...(options.onToggle !== undefined ? { onToggle: options.onToggle } : {}),
+    }
+    return renderThreadItem(item, state)
   })
 
   return html`

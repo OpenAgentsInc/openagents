@@ -11,6 +11,7 @@ import { DomServiceTag } from "../services/dom.js"
 import {
   CategoryTreeComponent,
   type CategoryTreeState,
+  type CategoryTreeEvent,
   type TBTaskData,
 } from "./category-tree.js"
 

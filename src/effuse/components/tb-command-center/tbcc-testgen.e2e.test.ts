@@ -1,9 +1,9 @@
 import { describe, it, expect } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import { makeHappyDomLayer } from "../../testing/layers/happy-dom.js";
 import { TestHarnessTag, TestBrowserTag } from "../../testing/index.js";
 import { SocketServiceTag, SocketError, type SocketService } from "../../services/socket.js";
-import { TBTestGenComponent } from "./tbcc-testgen.js";
+import { TBTestGenComponent, type TBTestGenState } from "./tbcc-testgen.js";
 import type {
   TestGenStartMessage,
   TestGenTestMessage,
@@ -11,8 +11,15 @@ import type {
   TestGenReflectionMessage,
   TestGenCompleteMessage,
   TestGenErrorMessage,
-  HudMessage,
 } from "../../../hud/protocol.js";
+import type { ThreadItem } from "../../components/atif-thread.js";
+
+// Helper functions to extract tests and reflections from threadItems
+const getTests = (state: TBTestGenState) =>
+  state.threadItems.filter((item): item is ThreadItem & { type: "test" } => item.type === "test").map(item => item.data);
+
+const getReflections = (state: TBTestGenState) =>
+  state.threadItems.filter((item): item is ThreadItem & { type: "reflection" } => item.type === "reflection").map(item => item.data);
 
 // Mock Data
 const MOCK_TASKS = [
@@ -316,7 +323,7 @@ describe("TB TestGen Component E2E", () => {
             yield* Effect.sleep("50 millis");
 
             // Wait for reflection to be processed
-            yield* testgenHandle.waitForState((s) => s.reflections.length > 0);
+            yield* testgenHandle.waitForState((s) => getReflections(s).length > 0);
 
             // Verify reflection is displayed
             const html = yield* testgenHandle.getHTML;
@@ -324,9 +331,10 @@ describe("TB TestGen Component E2E", () => {
             expect(html).toContain("Need more edge cases");
 
             const state = yield* testgenHandle.getState;
-            expect(state.reflections.length).toBe(1);
-            expect(state.reflections[0].text).toContain("edge cases");
-            expect(state.reflections[0].category).toBe("anti_cheat");
+            const reflections = getReflections(state);
+            expect(reflections.length).toBe(1);
+            expect(reflections[0].text).toContain("edge cases");
+            expect(reflections[0].category).toBe("anti_cheat");
 
           }).pipe(
             Effect.provideService(SocketServiceTag, mockSocket),
@@ -407,7 +415,7 @@ describe("TB TestGen Component E2E", () => {
             yield* Effect.sleep("50 millis");
 
             // Wait for tests to be received
-            yield* testgenHandle.waitForState((s) => s.tests.length >= 2);
+            yield* testgenHandle.waitForState((s) => getTests(s).length >= 2);
 
             // Verify tests are displayed
             const html = yield* testgenHandle.getHTML;
@@ -422,9 +430,10 @@ describe("TB TestGen Component E2E", () => {
             expect(html).toContain("Generated Tests (2)");
 
             const state = yield* testgenHandle.getState;
-            expect(state.tests.length).toBe(2);
-            expect(state.tests[0].category).toBe("anti_cheat");
-            expect(state.tests[1].category).toBe("existence");
+            const tests = getTests(state);
+            expect(tests.length).toBe(2);
+            expect(tests[0].category).toBe("anti_cheat");
+            expect(tests[1].category).toBe("existence");
 
           }).pipe(
             Effect.provideService(SocketServiceTag, mockSocket),
@@ -697,7 +706,7 @@ describe("TB TestGen Component E2E", () => {
 
             // Wait for completion
             yield* testgenHandle.waitForState((s) => s.status === "complete");
-            yield* testgenHandle.waitForState((s) => s.tests.length > 0);
+            yield* testgenHandle.waitForState((s) => getTests(s).length > 0);
 
             // Verify clear button is visible
             const html1 = yield* testgenHandle.getHTML;
@@ -708,12 +717,12 @@ describe("TB TestGen Component E2E", () => {
 
             // Wait for state to reset
             yield* testgenHandle.waitForState((s) => s.status === "idle");
-            yield* testgenHandle.waitForState((s) => s.tests.length === 0);
+            yield* testgenHandle.waitForState((s) => getTests(s).length === 0);
 
             // Verify state is reset
             const state = yield* testgenHandle.getState;
             expect(state.status).toBe("idle");
-            expect(state.tests.length).toBe(0);
+            expect(getTests(state).length).toBe(0);
             expect(state.totalTests).toBe(0);
             expect(state.sessionId).toBeNull();
             expect(state.taskId).toBeNull();
@@ -744,8 +753,10 @@ describe("TB TestGen Component E2E", () => {
 
             yield* testgenHandle.waitForState((s) => s.taskIds.length > 0);
 
-            // Select a task via dropdown
-            yield* browser.selectOption("select[data-action='selectTask']", ["task-1"]);
+            // Select a task via dropdown - use direct DOM manipulation
+            const select = yield* browser.query<HTMLSelectElement>("select[data-action='selectTask']");
+            select.value = "task-1";
+            yield* browser.dispatchEvent("select[data-action='selectTask']", new Event("change", { bubbles: true }));
 
             // Wait for selection
             yield* testgenHandle.waitForState((s) => s.selectedTaskId === "task-1");
@@ -886,13 +897,13 @@ describe("TB TestGen Component E2E", () => {
 
             // Wait for completion
             yield* testgenHandle.waitForState((s) => s.status === "complete");
-            yield* testgenHandle.waitForState((s) => s.tests.length === 2);
+            yield* testgenHandle.waitForState((s) => getTests(s).length === 2);
 
             // Verify all aspects of the flow
             const state = yield* testgenHandle.getState;
             expect(state.status).toBe("complete");
-            expect(state.tests.length).toBe(2);
-            expect(state.reflections.length).toBe(1);
+            expect(getTests(state).length).toBe(2);
+            expect(getReflections(state).length).toBe(1);
             expect(state.totalRounds).toBe(2);
             expect(state.comprehensivenessScore).toBe(8.0);
 
