@@ -374,24 +374,41 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
     document.addEventListener("mouseup", handleMouseUp as EventListener)
     container.addEventListener("wheel", handleWheel as EventListener, { passive: false })
 
-    // START BUTTON CLICKS - Use Effuse delegate pattern (survives re-renders)
-    yield* ctx.dom.delegate(ctx.container, "[data-action^='start-']", "click", (e, target) => {
-      e.stopPropagation()
-      const action = (target as HTMLElement).dataset.action
-      if (action?.startsWith("start-")) {
-        const mode = action.replace("start-", "") as "quick" | "standard" | "full"
-        console.log("[TestGen Graph] Start button clicked:", mode)
-        Effect.runFork(ctx.emit({ type: "startRun", mode }))
-      }
-    })
+    // WEBVIEW BUG: 'click' events don't fire in webview-bun, but mousedown/mouseup do.
+    // Use mousedown for button detection instead of click.
+    const bunLog = typeof window !== "undefined" ? (window as any).bunLog : null
 
-    // SESSION SELECTION - Use Effuse delegate pattern (survives re-renders)
-    yield* ctx.dom.delegate(ctx.container, "[data-action='select-session']", "click", (e, target) => {
-      e.stopPropagation()
-      const sessionId = (target as HTMLElement).dataset.sessionId
-      if (sessionId) {
-        console.log("[TestGen Graph] Session selected:", sessionId)
-        Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
+    // Handle button clicks via mousedown (click events don't work in webview)
+    ctx.container.addEventListener("mousedown", (e) => {
+      const target = e.target as HTMLElement
+
+      // Check for start buttons
+      const startButton = target.closest("[data-action^='start-']") as HTMLElement | null
+      if (startButton && ctx.container.contains(startButton)) {
+        e.stopPropagation()
+        const action = startButton.dataset.action
+        if (action?.startsWith("start-")) {
+          const mode = action.replace("start-", "") as "quick" | "standard" | "full"
+          if (bunLog) {
+            bunLog("[TestGen Graph] Start button clicked:", mode)
+          }
+          Effect.runFork(ctx.emit({ type: "startRun", mode }))
+        }
+        return
+      }
+
+      // Check for session selection
+      const sessionCard = target.closest("[data-action='select-session']") as HTMLElement | null
+      if (sessionCard && ctx.container.contains(sessionCard)) {
+        e.stopPropagation()
+        const sessionId = sessionCard.dataset.sessionId
+        if (sessionId) {
+          if (bunLog) {
+            bunLog("[TestGen Graph] Session selected:", sessionId)
+          }
+          Effect.runFork(ctx.emit({ type: "selectSession", sessionId }))
+        }
+        return
       }
     })
 
