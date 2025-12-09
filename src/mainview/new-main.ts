@@ -6,7 +6,7 @@
 
 import { Effect, Layer } from "effect"
 import {
-  DomServiceLive, IntroCardComponent, mountComponent, SocketServiceFromClient,
+  DomServiceLive, mountComponent, SocketServiceFromClient,
   StateServiceLive, AgentGraphComponent
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
@@ -123,25 +123,6 @@ const mountAgentGraph = Effect.gen(function* () {
   console.log("[New Mode] Agent graph background mounted")
 })
 
-const mountIntroCard = Effect.gen(function* () {
-  console.log("[New Mode] Mounting intro card...")
-
-  // Find or create container
-  let container = document.getElementById("intro-card-container")
-  if (!container) {
-    container = document.createElement("div")
-    container.id = "intro-card-container"
-    document.body.appendChild(container)
-  }
-
-  console.log("[New Mode] Container found/created:", container)
-
-  console.log("[New Mode] About to mount component...")
-  yield* mountComponent(IntroCardComponent, container)
-
-  console.log("[New Mode] Intro card mounted")
-})
-
 // ============================================================================
 // Initialize
 // ============================================================================
@@ -153,10 +134,8 @@ const initNewMode = () => {
     const layer = createNewModeLayer()
 
     const program = Effect.gen(function* () {
-      // Mount agent graph background first (lower z-index)
+      // Mount agent graph background
       yield* mountAgentGraph
-      // Mount intro card on top (higher z-index)
-      yield* mountIntroCard
       // Keep scope alive
       yield* Effect.never
     })
