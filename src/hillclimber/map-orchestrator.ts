@@ -571,8 +571,26 @@ async function runMAPOrchestratorWithDecomposition(
       log(`[MAP] Monitor REJECTED: ${monitorDecision.reason}`);
       if (monitorDecision.suggestion) {
         log(`[MAP] Suggestion: ${monitorDecision.suggestion}`);
+        // Add rejection feedback to state so FM sees it next turn
+        if (!state.lastEvaluation) {
+          state.lastEvaluation = {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            progress: state.bestProgress,
+            suggestion: `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}`,
+            failures: [],
+          };
+        } else {
+          state.lastEvaluation.suggestion = `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}. ${state.lastEvaluation.suggestion || ""}`;
+        }
       }
-      // Skip this action, FM will get feedback via verification
+      // Force move to next subtask if stuck
+      if (state.subtaskTurns > 5 && state.currentSubtask < decomposition.subtasks.length - 1) {
+        log(`[MAP] Stuck for ${state.subtaskTurns} turns, moving to next subtask`);
+        state.currentSubtask++;
+        state.subtaskTurns = 0;
+      }
       continue;
     }
 
