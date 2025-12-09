@@ -47,13 +47,14 @@ describe("E2E: regex-log task", () => {
       throw new Error("regex-log task not found in suite");
     }
 
-    // Copy TB2 task files to workspace (proper setup)
-    const taskDir = join(TB2_ROOT, "regex-log");
-    if (existsSync(taskDir)) {
+    // Copy TB2 task files to workspace using source_path from task
+    const sourcePath = regexLogTask.source_path || join(TB2_ROOT, "regex-log");
+    if (existsSync(sourcePath)) {
+      const { readdirSync, statSync, cpSync, readFileSync, writeFileSync, mkdirSync } = await import("fs");
+      
       // Copy environment files to workspace root
-      const envDir = join(taskDir, "environment");
+      const envDir = join(sourcePath, "environment");
       if (existsSync(envDir)) {
-        const { readdirSync, statSync, cpSync } = await import("fs");
         const entries = readdirSync(envDir);
         for (const entry of entries) {
           if (entry === "Dockerfile") continue;
@@ -67,14 +68,28 @@ describe("E2E: regex-log task", () => {
         }
       }
       
-      // Copy test files
-      const testsDir = join(taskDir, "tests");
+      // Copy test files, replacing /app/ paths with workspace path
+      const testsDir = join(sourcePath, "tests");
       const destTestsDir = join(workspace, "tests");
       if (existsSync(testsDir)) {
-        await cp(testsDir, destTestsDir, { recursive: true });
+        mkdirSync(destTestsDir, { recursive: true });
+        const testFiles = readdirSync(testsDir);
+        for (const file of testFiles) {
+          const srcFile = join(testsDir, file);
+          const destFile = join(destTestsDir, file);
+          if (statSync(srcFile).isFile()) {
+            let content = readFileSync(srcFile, "utf-8");
+            // Replace /app/ with workspace path for local execution
+            content = content.replace(/\/app\//g, `${workspace}/`);
+            content = content.replace(/\/app(?=["'])/g, workspace);
+            writeFileSync(destFile, content);
+          }
+        }
       }
+      
+      console.log(`[E2E] Copied TB2 files from ${sourcePath} to ${workspace}`);
     } else {
-      console.warn(`[E2E] TB2 task directory not found: ${taskDir}`);
+      console.warn(`[E2E] TB2 source path not found: ${sourcePath}`);
       console.warn(`[E2E] Tests may fail - workspace not properly set up`);
     }
   });
