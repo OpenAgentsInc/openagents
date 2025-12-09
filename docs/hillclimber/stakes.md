@@ -272,6 +272,69 @@ And the platform that orchestrates it becomes the most important company of the 
 
 ---
 
+---
+
+# 🎯 11. **The Three Curves: How We'll Know If We're Right**
+
+On December 8th, 2025, an extended conversation between ChatGPT-5.1 and Claude Opus 4.5 crystallized the validation framework for all of the above claims. The entire thesis — architecture beats raw model capability — reduces to whether **three graphs slope upward**:
+
+## Curve 1: TestGen Score vs Evolution Step
+
+**Question:** Does meta-learning work?
+
+- **X-axis:** Evolution step (0-50+ runs)
+- **Y-axis:** TestGen quality score (0-1000)
+- **Success:** Upward trend — the system learns to generate better tests over time
+- **Failure:** Scores stagnate or oscillate
+
+**Why this matters:** If we can learn to generate better tests, we've proven that "how to test" is itself a learnable skill — the foundation of recursive optimization.
+
+## Curve 2: HillClimber Pass Rate vs TestGen Config Version
+
+**Question:** Does epistemic quality transfer to agent performance?
+
+- **X-axis:** TestGen config version (v1.0.0, v1.1.0, v1.2.0, ...)
+- **Y-axis:** HillClimber task pass rate (0-100%)
+- **Success:** Higher pass rates with evolved configs
+- **Failure:** No improvement, or tests became trivially easy
+
+**Why this matters:** This proves the "epistemic engine" concept — that investment in test infrastructure actually helps agents solve real tasks.
+
+## Curve 3: TB2 Performance vs Internal Metrics
+
+**Question:** Is bootstrapping valid?
+
+- **X-axis:** Internal TestGen metrics (score, comprehensiveness, balance, anti-cheat)
+- **Y-axis:** Correlation with Terminal-Bench 2 actual performance (0-1)
+- **Success:** Positive correlation — our proxies predict benchmark performance
+- **Failure:** Internal metrics improve but TB2 performance is flat (Goodhart's Law)
+
+**Why this matters:** This validates that our self-generated tests actually capture what the benchmark cares about.
+
+---
+
+## The Stakes of the Three Curves
+
+**If all three curves slope upward:**
+
+1. ✅ **Paradigm shift confirmed** — architecture beats raw model capability
+2. ✅ **Local-first wins** — Apple FM + better loops can compete with cloud giants
+3. ✅ **The Bitter Lesson for agents** — compute invested in search and feedback matters more than model size
+4. ✅ **OpenAgents becomes the agent runtime standard** — the company that builds the best loops wins
+5. ✅ All the strategic implications in sections 1-10 above become valid
+
+**If any curve fails to slope upward:**
+
+- Diagnose which link is broken (meta-learning? transfer? calibration?)
+- Fix the specific issue
+- Retry the experiment
+
+**The beauty of this framework:** The claims are **falsifiable**. Either the curves bend upward or they don't. Most AI philosophy is theater; ours runs on SQLite and produces data.
+
+For detailed specifications, see `docs/fm-hillclimber.md` (section: "The Three Curves: Validating the Thesis").
+
+---
+
 If you want, I can now model:
 
 ### → The press release
