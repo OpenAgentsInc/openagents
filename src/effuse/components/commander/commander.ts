@@ -62,7 +62,8 @@ export const CommanderComponent: Component<CommanderState, CommanderEvent, Socke
           <!-- Header -->
           <div class="flex-shrink-0">
             <h2 class="text-xl font-bold font-mono text-zinc-100 mb-1">Commander</h2>
-            <p class="text-sm text-zinc-500">Generate tests from task descriptions</p>
+            <p class="text-sm text-zinc-500">Generate test cases for coding tasks</p>
+            <p class="text-xs text-zinc-600 mt-1">Describe a coding task and we'll generate test cases to verify the solution works correctly</p>
           </div>
 
           <!-- Prompt Input Section -->
@@ -72,7 +73,7 @@ export const CommanderComponent: Component<CommanderState, CommanderEvent, Socke
                 <textarea
                   id="commander-prompt-input"
                   class="w-full h-24 px-4 py-3 bg-zinc-900/60 border border-zinc-700/60 rounded-lg text-zinc-200 font-mono text-sm placeholder-zinc-600 resize-none focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30"
-                  placeholder="Describe a task... e.g., 'Extract the last IP address and date from log files using grep'"
+                  placeholder="Describe a coding task... e.g., 'Write a function to extract IP addresses from log files'"
                   data-input="prompt"
                 >${state.promptInput}</textarea>
               </div>
@@ -158,7 +159,7 @@ export const CommanderComponent: Component<CommanderState, CommanderEvent, Socke
             ...s,
             isGenerating: true,
             threadItems: [],
-            statusMessage: "Starting test generation...",
+            statusMessage: "Analyzing your task description...",
           }))
 
           // Trigger the test generation via socket
@@ -197,7 +198,7 @@ export const CommanderComponent: Component<CommanderState, CommanderEvent, Socke
         case "testgenStarted": {
           yield* ctx.state.update((s) => ({
             ...s,
-            statusMessage: `Generating tests for: ${event.taskDescription.slice(0, 50)}...`,
+            statusMessage: `Analyzing task and generating test cases...`,
           }))
           break
         }
