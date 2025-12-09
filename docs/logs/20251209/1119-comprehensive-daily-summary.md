@@ -729,7 +729,7 @@ The work from December 9th established proper testing infrastructure. **Use it.*
 
 ---
 
-**Document generated:** 2025-12-09 11:19 CT
-**Document updated:** 2025-12-09 (preface and conclusion added)
-**Total source files summarized:** 9
-**Total source lines reviewed:** ~2,427 lines
+- **Document generated:** 2025-12-09 11:19 CT
+- **Document updated:** 2025-12-09 (preface and conclusion added)
+- **Total source files summarized:** 9
+- **Total source lines reviewed:** ~2,427 lines
