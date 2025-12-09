@@ -10,7 +10,7 @@
 
 Hedge fund analysts say edge AI disrupts cloud AI capex in 3 years. We say it's NOW—because they model ONE device for ONE user. We're building for AGGREGATED compute across MILLIONS of devices with bitcoin incentives.
 
-**Current proof:** 89.5% on Terminal-Bench `regex-log` using only Apple on-device Foundation Model. If we hit #1 with local inference, we prove architecture beats model size.
+**Current focus:** Pushing toward 100% on Terminal-Bench `regex-log` using only Apple on-device Foundation Model. If we hit #1 with local inference, we prove architecture beats model size.
 
 ### Core Components
 
@@ -68,7 +68,7 @@ Read these to understand the project:
 
 We're pushing to 100% on Terminal-Bench using only local Apple FM inference.
 
-**Status:** 89.5% (17/19 tests) on `regex-log`
+**Status:** Active development, pushing toward 100% on `regex-log`
 
 **The Three Curves** (our validation framework):
 1. TestGen Score vs Evolution Step — Does meta-learning work?
