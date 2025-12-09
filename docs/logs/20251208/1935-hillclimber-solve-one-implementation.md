@@ -54,7 +54,37 @@
 
 ---
 
-## Step 3: Wire Up Integration Test
+## Step 3: Wire Up Integration Test ✅
 
-Creating end-to-end test for regex-log task...
+**Created:**
+- `src/hillclimber/e2e-regex-log.test.ts`
+- Tests that regex-log task solves in < 15 turns
+- Verifies FM receives specific failure feedback
+
+**Test Structure:**
+- Creates temporary workspace
+- Loads regex-log task from suite
+- Runs MAP orchestrator with real FM
+- Asserts: passes in < 15 turns, progress >= 1.0
+
+**Status:** Test created, needs TB2 task files setup for full run
+
+---
+
+## Summary
+
+**Completed:**
+1. ✅ Fixed evaluator JSON.parse bugs
+2. ✅ Connected FM to MAP orchestrator (replaced mock)
+3. ✅ Optimized prompt format for token budget
+4. ✅ Created integration test
+
+**Next Steps:**
+- Run integration test with proper TB2 setup
+- Debug any FM response parsing issues
+- Tune prompts if needed
+- Verify regex-log solves successfully
+
+**Key Achievement:**
+The critical gap has been fixed - FM is now actually called instead of using mock actions. The system can now iterate based on real verification feedback.
 
