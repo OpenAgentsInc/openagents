@@ -5,7 +5,7 @@
  * with real FM integration.
  * 
  * Success criteria:
- * - Task passes (9/9 tests) in < 15 turns
+ * - Task passes (1/1 test, extracting 9/9 dates) in < 15 turns
  * - FM receives specific failure feedback
  * - System iterates toward solution
  */
