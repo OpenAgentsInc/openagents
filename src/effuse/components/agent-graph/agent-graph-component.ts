@@ -81,7 +81,9 @@ function render(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
 
 function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
   return Effect.gen(function* () {
-    const svg = yield* ctx.dom.queryId<SVGSVGElement>("agent-graph-svg").pipe(Effect.orDie)
+    // Use container instead of SVG since SVG gets destroyed on each render
+    const container = ctx.container
+    const getSvg = () => container.querySelector<SVGSVGElement>("#agent-graph-svg")
 
     // Simulation state
     let simState = createSimulationState()
@@ -140,6 +142,8 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     // Helper: Get world coordinates from screen coordinates
     const screenToWorld = (screenX: number, screenY: number) => {
       return Effect.gen(function* () {
+        const svg = getSvg()
+        if (!svg) return { x: 0, y: 0 }
         const state = yield* ctx.state.get
         const rect = svg.getBoundingClientRect()
         const svgX = screenX - rect.left
@@ -164,7 +168,7 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     }
 
     // Mouse down: Start drag or pan
-    svg.addEventListener("mousedown", (e: MouseEvent) => {
+    container.addEventListener("mousedown", (e: MouseEvent) => {
       if (e.button !== 0) return // Only left mouse button
 
       clickStartTime = Date.now()
@@ -180,7 +184,8 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
           if (node) {
             // Start dragging node
             isDraggingNode = true
-            svg.style.cursor = "grabbing"
+            const svg = getSvg()
+            if (svg) svg.style.cursor = "grabbing"
             yield* ctx.emit({
               type: "nodeDragStart",
               nodeId: node.id,
@@ -189,7 +194,8 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
           } else {
             // Start panning canvas
             isPanningCanvas = true
-            svg.style.cursor = "grabbing"
+            const svg = getSvg()
+            if (svg) svg.style.cursor = "grabbing"
           }
         })
       )
@@ -208,7 +214,6 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
           })
         )
       } else if (isPanningCanvas) {
-        console.log("[PAN] delta:", dx, dy)
         Effect.runFork(ctx.emit({ type: "canvasPan", delta: { x: dx, y: dy } }))
       } else {
         // Just hovering - update hover state
@@ -235,10 +240,12 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
       if (isDraggingNode) {
         Effect.runFork(ctx.emit({ type: "nodeDragEnd" }))
         isDraggingNode = false
-        svg.style.cursor = "default"
+        const svg = getSvg()
+        if (svg) svg.style.cursor = "default"
       } else if (isPanningCanvas) {
         isPanningCanvas = false
-        svg.style.cursor = "default"
+        const svg = getSvg()
+        if (svg) svg.style.cursor = "default"
       }
 
       // Handle click
@@ -256,7 +263,7 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     })
 
     // Double-click: Unpin node
-    svg.addEventListener("dblclick", (e: MouseEvent) => {
+    container.addEventListener("dblclick", (e: MouseEvent) => {
       Effect.runFork(
         Effect.gen(function* () {
           const worldPos = yield* screenToWorld(e.clientX, e.clientY)
@@ -269,12 +276,13 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
     })
 
     // Wheel: Zoom
-    svg.addEventListener("wheel", (e: WheelEvent) => {
+    container.addEventListener("wheel", (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      const svg = getSvg()
+      if (!svg) return
       const rect = svg.getBoundingClientRect()
       const pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-      console.log("[ZOOM] delta:", delta, "pointer:", pointer)
+      const delta = e.deltaY > 0 ? 0.95 : 1.05
       Effect.runFork(ctx.emit({ type: "canvasZoom", delta, pointer }))
     }, { passive: false })
 
@@ -349,7 +357,6 @@ function handleEvent(event: AgentGraphEvent, ctx: ComponentContext<AgentGraphSta
             x: s.canvas.pan.x + event.delta.x,
             y: s.canvas.pan.y + event.delta.y,
           }
-          console.log("[STATE] Pan updated:", newPan)
           return {
             ...s,
             canvas: {
@@ -372,7 +379,6 @@ function handleEvent(event: AgentGraphEvent, ctx: ComponentContext<AgentGraphSta
             y: pointer.y - (pointer.y - s.canvas.pan.y) * (newZoom / oldZoom),
           }
 
-          console.log("[STATE] Zoom updated:", newZoom, "Pan:", newPan)
           return {
             ...s,
             canvas: { ...s.canvas, zoom: newZoom, pan: newPan },
