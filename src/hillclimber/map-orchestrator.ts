@@ -20,7 +20,7 @@ import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
 import { monitorAction, createActionSignature, type ActionContext } from "./monitor.js";
 import { evaluateProgress, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
-import { FMService, FMServiceLive } from "../fm/service.js";
+import { FMService, FMServiceLive, FMServiceError } from "../fm/service.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
 
 // ============================================================================
@@ -545,12 +545,17 @@ async function runMAPOrchestratorWithDecomposition(
       log(`[MAP] FM Context:\n${promptInjection}`);
     }
 
-    // Step 3b: Get action from FM (placeholder - returns mock action)
-    // In full implementation, this calls the actual FM
+    // Step 3b: Get action from FM with proper error handling
     const action = await getNextAction(task, fmContext, options.workspace, log);
 
     if (!action) {
-      log(`[MAP] FM returned no action`);
+      // Error was already logged by getNextAction with specific reason
+      // Check if we should advance subtask due to repeated failures
+      if (state.subtaskTurns > 5 && state.currentSubtask < decomposition.subtasks.length - 1) {
+        log(`[MAP] Advancing to next subtask after ${state.subtaskTurns} turns with FM errors`);
+        state.currentSubtask++;
+        state.subtaskTurns = 0;
+      }
       continue;
     }
 
