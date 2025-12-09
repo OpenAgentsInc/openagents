@@ -367,7 +367,7 @@ function decideNextStep(
   state: ExecutionState,
   decomposition: TaskDecomposition,
   evaluation: EvaluatorResult | null,
-): "continue" | "advance" | "backtrack" | "complete" | "stuck" {
+): "continue" | "advance" | "backtrack" | "complete" | "no_progress" {
   const currentSubtask = decomposition.subtasks[state.currentSubtask];
 
   // Task complete?
@@ -671,8 +671,8 @@ async function runMAPOrchestratorWithDecomposition(
             advanceSubtask(state);
             break;
 
-          case "stuck":
-            log(`[MAP] Stuck - trying different approach`);
+          case "no_progress":
+            log(`[MAP] No progress detected - trying different approach`);
             // Reset improvement counter but continue
             state.turnsSinceImprovement = 0;
             break;
