@@ -296,7 +296,7 @@ async function executeAction(
         };
         }
         const content = String(toolArgs.content || "");
-        
+
         // Normalize /app/ paths to workspace (TerminalBench convention)
         let normalizedPath = path;
         if (path.startsWith("/app/")) {
@@ -304,7 +304,7 @@ async function executeAction(
         } else if (path.startsWith("/app")) {
           normalizedPath = path.replace("/app", "");
         }
-        
+
         const fullPath = resolve(workspace, normalizedPath);
         const dir = dirname(fullPath);
 
@@ -322,7 +322,7 @@ async function executeAction(
 
       case "read_file": {
         const path = toolArgs.path as string || toolArgs.file_path as string;
-        
+
         // Normalize /app/ paths to workspace (TerminalBench convention)
         let normalizedPath = path;
         if (path.startsWith("/app/")) {
@@ -330,7 +330,7 @@ async function executeAction(
         } else if (path.startsWith("/app")) {
           normalizedPath = path.replace("/app", "");
         }
-        
+
         const fullPath = resolve(workspace, normalizedPath);
 
         if (!existsSync(fullPath)) {
@@ -638,7 +638,7 @@ async function runMAPOrchestratorWithDecomposition(
     };
 
     const monitorDecision = monitorAction(monitorCtx);
-    
+
     // Special case: If trying to read a file that doesn't exist and current subtask is write-initial-regex,
     // provide more specific feedback
     if (!monitorDecision.allowed && action.toolName === "read_file" && currentSubtask.name === "write-initial-regex") {

@@ -1,9 +1,9 @@
 /**
  * End-to-end integration test for regex-log task.
- * 
+ *
  * Tests that HillClimber can solve the regex-log task using MAP orchestrator
  * with real FM integration.
- * 
+ *
  * Success criteria:
  * - Task passes (1/1 test, extracting 9/9 dates) in < 15 turns
  * - FM receives specific failure feedback
@@ -164,9 +164,8 @@ describe("E2E: regex-log task", () => {
     );
 
     const outputText = output.join("\n");
-    
+
     // Should see verification feedback with specific failures
     expect(outputText).toMatch(/Verification|FAILED|test_/i);
   }, 90000);
 });
-
