@@ -9,7 +9,7 @@ Your agent command center. (wip)
 
 ## MechaCoder
 
-MechaCoder is our autonomous coding agent that picks up tasks from `.openagents/tasks.jsonl`, implements code, runs tests, and commits — learning patterns and conventions over time. It follows the Golden Loop v2 spec: select repo, pick ready task, understand, implement, test, commit & push, update task, repeat. See [docs/mechacoder/README.md](docs/mechacoder/README.md) for full documentation.
+MechaCoder is our autonomous coding agent that picks up tasks, implements code, runs tests, and commits — learning patterns and conventions over time. It follows the Golden Loop v2 spec: select repo, pick ready task, understand, implement, test, commit & push, update task, repeat. See [docs/mechacoder/README.md](docs/mechacoder/README.md) for full documentation.
 
 ## Project FM Hill Climber
 
