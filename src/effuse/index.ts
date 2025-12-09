@@ -7,7 +7,7 @@
  * @example
  * ```typescript
  * import { Effect } from "effect"
- * import { html, mountWidget, EffuseLive, type Widget } from "./effuse/index.js"
+ * import { html, mountComponent, EffuseLive, type Component } from "./effuse/index.js"
  *
  * interface CounterState {
  *   count: number
@@ -17,7 +17,7 @@
  *   | { type: "increment" }
  *   | { type: "decrement" }
  *
- * const CounterWidget: Widget<CounterState, CounterEvent> = {
+ * const CounterComponent: Component<CounterState, CounterEvent> = {
  *   id: "counter",
  *   initialState: () => ({ count: 0 }),
  *
@@ -55,10 +55,10 @@
  *     }),
  * }
  *
- * // Mount the widget
+ * // Mount the component
  * const program = Effect.gen(function* () {
  *   const container = document.getElementById("counter")!
- *   yield* mountWidget(CounterWidget, container)
+ *   yield* mountComponent(CounterComponent, container)
  * })
  *
  * Effect.runPromise(
@@ -100,16 +100,16 @@ export {
   SocketServiceDefault,
 } from "./services/socket-live.js"
 
-// Widget system
+// Component system
 export type {
-  Widget,
-  WidgetContext,
-  MountedWidget,
-  WidgetState,
-  WidgetEvent,
-  WidgetRequirements,
-} from "./widget/types.js"
-export { mountWidget, mountWidgetById, mountWidgets } from "./widget/mount.js"
+  Component,
+  ComponentContext,
+  MountedComponent,
+  ComponentState,
+  ComponentEvent,
+  ComponentRequirements,
+} from "./component/types.js"
+export { mountComponent, mountComponentById, mountComponents } from "./component/mount.js"
 
 // Layers
 export { EffuseLive, EffuseLiveNoSocket } from "./layers/live.js"
@@ -117,87 +117,87 @@ export { makeTestLayer, makeCustomTestLayer, type TestLayerResult } from "./laye
 
 // HMR (Hot Module Replacement)
 export {
-  saveWidgetState,
-  loadWidgetState,
-  hasWidgetState,
+  saveComponentState,
+  loadComponentState,
+  hasComponentState,
   clearAllState,
   getHMRVersion,
   bumpHMRVersion,
 } from "./hmr/index.js"
 
-// Widgets
-export { APMWidget, type APMState, type APMEvent, initialAPMState } from "./widgets/apm-widget.js"
+// Components
+export { APMComponent, type APMState, type APMEvent, initialAPMState } from "./components/apm-widget.js"
 export {
-  TrajectoryPaneWidget,
+  TrajectoryPaneComponent,
   type TrajectoryPaneState,
   type TrajectoryPaneEvent,
   initialTrajectoryPaneState,
-} from "./widgets/trajectory-pane.js"
+} from "./components/trajectory-pane.js"
 export {
-  IntroCardWidget,
+  IntroCardComponent,
   type IntroCardState,
   type IntroCardEvent,
-} from "./widgets/intro-card.js"
+} from "./components/intro-card.js"
 export {
-  ThreeBackgroundWidget,
+  ThreeBackgroundComponent,
   type ThreeBackgroundState,
   type ThreeBackgroundEvent,
-} from "./widgets/three-background.js"
+} from "./components/three-background.js"
 export {
-  ContainerPanesWidget,
+  ContainerPanesComponent,
   type ContainerPanesState,
   type ContainerPanesEvent,
   type ContainerPane,
   type ContainerOutputLine,
   type ContainerStreamType,
   initialContainerPanesState,
-} from "./widgets/container-panes.js"
+} from "./components/container-panes.js"
 export {
-  TBOutputWidget,
+  TBOutputComponent,
   type TBOutputState,
   type TBOutputEvent,
   type TBOutputLine,
   type TBOutputSource,
   initialTBOutputState,
-} from "./widgets/tb-output.js"
+} from "./components/tb-output.js"
 export {
-  MCTasksWidget,
+  MCTasksComponent,
   type MCTasksState,
   type MCTasksEvent,
   type MCTask,
   initialMCTasksState,
-} from "./widgets/mc-tasks.js"
+} from "./components/mc-tasks.js"
 export {
-  TBControlsWidget,
+  TBControlsComponent,
   type TBControlsState,
   type TBControlsEvent,
   type TBSuiteInfo,
   type TBTaskInfo,
   initialTBControlsState,
-} from "./widgets/tb-controls.js"
+} from "./components/tb-controls.js"
 export {
-  CategoryTreeWidget,
+  CategoryTreeComponent,
   type CategoryTreeState,
   type CategoryTreeEvent,
   type CategoryData,
   type TBTaskData,
   type TBTaskStatus,
   initialCategoryTreeState,
-} from "./widgets/category-tree.js"
+} from "./components/category-tree.js"
 export {
-  HFTrajectoryListWidget,
+  HFTrajectoryListComponent,
   type HFTrajectoryListState,
   type HFTrajectoryListEvent,
   type TrajectoryMetadata,
   initialHFTrajectoryListState,
-} from "./widgets/hf-trajectory-list.js"
+} from "./components/hf-trajectory-list.js"
 export {
-  HFTrajectoryDetailWidget,
+  HFTrajectoryDetailComponent,
   type HFTrajectoryDetailState,
   type HFTrajectoryDetailEvent,
   initialHFTrajectoryDetailState,
-} from "./widgets/hf-trajectory-detail.js"
-export * from "./widgets/tb-command-center/index.js"
+} from "./components/hf-trajectory-detail.js"
+export * from "./components/tb-command-center/index.js"
 
 // Components
 export {

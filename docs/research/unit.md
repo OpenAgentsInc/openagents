@@ -2358,7 +2358,67 @@ Effuse Visual Language is successful if:
 
 ## 8. Future Vision
 
-### 8.1 What Effuse Visual Language Enables
+### 8.1 Factorio-Inspired Agent Factory
+
+**Vision:** Transform OpenAgents from a "chat interface" to an "agent factory management interface" inspired by Factorio's visual programming paradigm.
+
+**Core Insight:** Managing AI agents isn't like having a conversation—it's like building and optimizing a factory. You place specialized machines (agents), connect them with conveyor belts (data flows), monitor production statistics (throughput and costs), and optimize for efficiency.
+
+```
+Current Mental Model          →        Future Mental Model (Enabled by Unit Primitives)
+━━━━━━━━━━━━━━━━━━━━          →        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"I chat with AI"              →        "I manage an agent factory"
+"Send message, get response"  →        "Build workflows, monitor production"
+"One conversation at a time"  →        "Parallel processing, resource optimization"
+"Sequential thinking"         →        "Systems thinking"
+```
+
+**How Unit Primitives Enable This:**
+
+1. **Agent Nodes (Unit Components)**
+   - Each agent is a Unit Component with visual status (BUSY, IDLE, ERROR)
+   - Pin inputs/outputs define what data the agent accepts/produces
+   - Component spec captures agent configuration (model, instructions, cost)
+
+2. **Connection Lines (Pin Merges)**
+   - Visual lines showing data flow between agents
+   - Jobs flow through Pin connections like items on Factorio conveyor belts
+   - Animated dots along connections = Pin events flowing through graph
+
+3. **Spatial Canvas (Graph Composition)**
+   - Drag agents from palette onto canvas (visual Graph building)
+   - Arrange agents spatially (inputs left, processing middle, outputs right)
+   - Save layouts as GraphSpec JSON (blueprint system)
+
+4. **Real-Time Monitoring (Pin Event Streams)**
+   - Pin.changes Stream emits on every job processed
+   - Dashboard widgets subscribe to aggregated metrics
+   - Live counters, progress bars, activity feeds
+
+5. **Production Statistics (Graph Metrics)**
+   - Track jobs/hour per agent (Pin event frequency)
+   - Monitor costs (token usage per Pin activation)
+   - Identify bottlenecks (slowest agent in chain = highest Pin latency)
+
+**Implementation Mapping:**
+
+| Factorio Concept | OpenAgents Equivalent | Unit Primitive |
+|------------------|----------------------|----------------|
+| Assembling Machine | AI Agent (Code Gen, Test, Review) | Component with pins |
+| Conveyor Belt | Data Flow / Job Stream | Pin merge connections |
+| Inserter | Job Router / Filter | Pin with conditional logic |
+| Power Grid | Relay Network | Graph lifecycle |
+| Pollution | Token Usage / Costs | Pin event metadata |
+| Production Stats | Dashboard Metrics | Aggregated Pin events |
+| Blueprint | Saved Workflow | GraphSpec JSON |
+
+**References:** See `/Users/christopherdavid/code/oapreclean/docs/game/` for detailed Factorio-inspired design:
+- `factorio-parallels.md` - Conceptual mappings (resources → data, machines → agents)
+- `agent-factory-mechanics.md` - Interaction patterns (drag-drop, click-to-connect)
+- `visual-language.md` - Design system (color-coded status, animations)
+- `factorio-ui-roadmap.md` - 5-phase implementation plan
+
+### 8.2 What Effuse Visual Language Enables
 
 #### 1. Visual Component Editor
 
@@ -2383,9 +2443,154 @@ Effuse Visual Language is successful if:
 
 **Timeline:** 2-3 weeks after Phase 5
 
+**Factorio Connection:** This is essentially Factorio's blueprint system but for AI workflows. Users share "Code Review Pipeline" specs just like Factorio players share "Main Bus" blueprints.
+
+**Unit Enabler:** GraphSpec serialization means the visual editor outputs JSON that can be loaded by `fromSpec()`. No code generation needed.
+
 ---
 
-#### 2. User-Configurable Dashboards
+#### 2. Spatial Agent Factory Canvas
+
+**Description:** Factorio-style map view where agents are machines arranged on a grid with visible data flow.
+
+**User Flow:**
+
+1. Open canvas view (grid background with dots)
+2. Drag "Code Gen" agent from palette onto canvas
+3. Drag "Test Runner" agent next to it
+4. Click Code Gen → click Test Runner to connect them
+5. See connection line appear with animated "job" dots flowing
+6. Click "Run" → watch jobs flow through the pipeline in real-time
+7. Check production stats: "47 jobs/hr, $12.34 earned today"
+
+**Technical Implementation:**
+
+```typescript
+// Agent Node Component (Unit Component wrapper)
+interface AgentNodeSpec extends ComponentSpec {
+  id: string
+  type: "code_gen" | "test" | "review"
+  position: { x: number; y: number }
+  config: {
+    model: string
+    instructions: string
+  }
+  pins: {
+    input: PinSpec    // Job input
+    output: PinSpec   // Job output
+    status: PinSpec   // Status updates (BUSY, IDLE, ERROR)
+  }
+}
+
+// Canvas is an EffuseGraph
+const AgentFactoryCanvas: EffuseGraphSpec = {
+  id: "agent-factory-canvas",
+  children: {
+    codeGen: {
+      id: "agent-node",
+      metadata: { type: "code_gen", position: { x: 100, y: 100 } }
+    },
+    testRunner: {
+      id: "agent-node",
+      metadata: { type: "test", position: { x: 300, y: 100 } }
+    }
+  },
+  merges: {
+    genToTest: {
+      input: { "codeGen/output": {} },
+      output: { "testRunner/input": {} }
+    }
+  }
+}
+```
+
+**Visual Features:**
+- Grid background (20px dots, 100px lines) - provides spatial reference
+- Agent nodes = Components with status badges (green=BUSY, blue=IDLE, red=ERROR)
+- Connection lines = Pin merges with animated dots (represents jobs flowing)
+- Real-time updates = Pin.changes Stream triggers status badge updates
+- Pan/zoom canvas to navigate large workflows
+
+**References:** `factorio-ui-roadmap.md` Phase 1 (Spatial Canvas & Connections)
+
+**Timeline:** Weeks 1-6 (Phase 1 in game roadmap)
+
+---
+
+#### 3. Production Metrics Dashboard
+
+**Description:** Real-time monitoring of agent performance with Factorio-style statistics.
+
+**User Flow:**
+
+1. View dashboard showing big numbers: "247 jobs today", "1,234 sats earned"
+2. See counters tick up as agents complete jobs (count-up animation)
+3. Check agent performance table: "Code Gen: 127 jobs, 45s avg, 98.4% success"
+4. Receive alert: "⚠️ Bottleneck detected: Test Runner is 70% of total time"
+5. Click "Add 2 more test agents" to parallelize
+
+**Technical Implementation:**
+
+```typescript
+// Metrics Widget subscribes to Pin events
+const ProductionMetrics: Component<MetricsState, MetricsEvent, SocketServiceTag> = {
+  id: "production-metrics",
+
+  subscriptions: (ctx) => [
+    // Subscribe to all agent status pins
+    pipe(
+      graphService.getAllAgentPins(),
+      Stream.flatMap(pins =>
+        Stream.merge(...pins.map(pin => pin.changes))
+      ),
+      Stream.map(event => {
+        // Aggregate job completions, costs, timing
+        return Effect.gen(function* () {
+          yield* ctx.state.update(s => ({
+            ...s,
+            jobsCompleted: s.jobsCompleted + 1,
+            earnings: s.earnings + event.cost,
+            avgTime: calculateAverage(s.times, event.duration)
+          }))
+        })
+      })
+    )
+  ],
+
+  render: (ctx) => Effect.gen(function* () {
+    const state = yield* ctx.state.get
+    return html`
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="label">Jobs Completed</span>
+          <span class="value">${state.jobsCompleted}</span>
+          <span class="trend">▲ +23%</span>
+        </div>
+        <div class="metric-card">
+          <span class="label">Earnings</span>
+          <span class="value">${state.earnings} sats</span>
+          <span class="trend">▲ +12%</span>
+        </div>
+      </div>
+    `
+  })
+}
+```
+
+**Metrics Tracked:**
+- Jobs per hour (Pin event frequency)
+- Earnings (sum of job costs from Pin metadata)
+- Average job time (Pin start → Pin end delta)
+- Success rate (successful Pin completions / total)
+- Bottlenecks (agent with highest Pin latency)
+
+**References:** `factorio-ui-roadmap.md` Phase 2 (Production Stats & Monitoring)
+
+**Timeline:** Weeks 7-12 (Phase 2 in game roadmap)
+
+---
+
+#### 4. User-Configurable Dashboards
 
 **Description:** Users save/load custom layouts without developer involvement.
 
@@ -2406,33 +2611,155 @@ Effuse Visual Language is successful if:
 
 **Timeline:** 1-2 weeks after visual editor
 
+**Factorio Connection:** Factorio players obsess over optimizing factory layouts. This feature lets OpenAgents users do the same with agent workflows.
+
 ---
 
-#### 3. Component Marketplace
+#### 5. Blueprint Marketplace
 
-**Description:** Share ComponentSpecs as JSON files, import into any Effuse app.
+**Description:** Community-driven library of workflow templates (Factorio's blueprint sharing).
+
+**Description:** Share workflow templates as JSON specs (like Factorio's blueprint library).
 
 **User Flow:**
 
-1. Developer creates reusable component (e.g., "Kanban Board")
-2. Export component spec to JSON file
-3. Upload to component marketplace (website or npm package)
-4. Other developers download JSON spec
-5. Import into their app via spec editor
+1. User builds successful "Code Review Pipeline" workflow
+2. Clicks "Save Blueprint" → adds name, description, tags
+3. Publishes to marketplace (requires Gold tier trust score)
+4. Other users discover it: "★★★★★ 4.8 (1,523 installs)"
+5. One-click install → workflow appears on their canvas
 
 **Technical Implementation:**
 
-- Create component marketplace website
-- JSON spec validation on upload
-- Search/filter by tags, author
-- Download as .json file
-- Import via spec editor
+```typescript
+// Blueprint is just a GraphSpec with metadata
+interface BlueprintSpec extends EffuseGraphSpec {
+  metadata: {
+    author: string
+    version: string  // Semver: 1.0.0
+    description: string
+    tags: string[]   // ["code", "typescript", "review"]
+    rating: number
+    installs: number
+    published: Date
+  }
+}
 
-**Timeline:** 4-6 weeks (requires backend infrastructure)
+// Save workflow as blueprint
+const saveBlueprint = (graph: EffuseGraph): BlueprintSpec => ({
+  ...graphToSpec(graph),
+  metadata: {
+    author: currentUser.username,
+    version: "1.0.0",
+    description: prompt("Describe your workflow..."),
+    tags: promptTags(),
+    rating: 0,
+    installs: 0,
+    published: new Date()
+  }
+})
+
+// Install blueprint (just load GraphSpec)
+const installBlueprint = (blueprint: BlueprintSpec): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const graph = yield* graphFromSpec(blueprint)
+    yield* mountGraph(graph, canvasContainer)
+  })
+```
+
+**Marketplace Features:**
+- Search by tags, author, rating
+- Filter by tier required (Bronze/Silver/Gold)
+- Preview canvas layout before installing
+- Rate and review after using
+- Version updates with changelog
+
+**Unit Advantage:** Specs are JSON, so marketplace is just a JSON database. No code generation or compilation needed.
+
+**References:** `factorio-ui-roadmap.md` Phase 4 (Blueprint System & Marketplace)
+
+**Timeline:** Weeks 19-26 (Phase 4 in game roadmap)
 
 ---
 
-#### 4. AI-Generated UIs
+#### 6. Tech Tree / Progression System
+
+**Description:** Gamified capability unlocking based on trust score (inspired by Factorio's technology tree).
+
+**User Flow:**
+
+1. User completes first 10 jobs → unlocks "Bronze Tier"
+2. Dashboard shows: "Trust Score: 247 / 500" with progress bar
+3. Completes 100 jobs → "Silver Tier" unlocked with confetti animation
+4. New capabilities appear: "Premium Agents", "Blueprint Publishing"
+5. Tech tree visualizes progression: Bronze → Silver → Gold → Platinum
+
+**Technical Implementation:**
+
+```typescript
+// Tech tree is a GraphSpec (nodes = capabilities, connections = prerequisites)
+const TechTreeSpec: EffuseGraphSpec = {
+  id: "tech-tree",
+  children: {
+    signup: {
+      id: "tech-node",
+      initialState: { unlocked: true, label: "Sign Up" }
+    },
+    firstJob: {
+      id: "tech-node",
+      initialState: { unlocked: false, label: "Complete First Job", requires: 1 }
+    },
+    bronzeTier: {
+      id: "tech-node",
+      initialState: { unlocked: false, label: "Bronze Tier", requires: 10 }
+    },
+    silverTier: {
+      id: "tech-node",
+      initialState: { unlocked: false, label: "Silver Tier", requires: 100 }
+    }
+  },
+  merges: {
+    signupToFirst: {
+      input: { "signup/unlocked": {} },
+      output: { "firstJob/canUnlock": {} }
+    },
+    firstToBronze: {
+      input: { "firstJob/unlocked": {} },
+      output: { "bronzeTier/canUnlock": {} }
+    }
+  }
+}
+
+// Unlock logic uses Pin events
+const checkUnlock = (node: TechNode, jobCount: number): boolean => {
+  if (jobCount >= node.requires && allPrerequisitesUnlocked(node)) {
+    node.pins.unlocked.set(true)  // Trigger unlock
+    showCelebration(node.label)
+    return true
+  }
+  return false
+}
+```
+
+**Progression Metrics:**
+- Jobs completed (Pin event count)
+- Success rate (successful Pin completions / total)
+- Earnings (sum of Pin metadata costs)
+- Community contributions (blueprints published, installs)
+
+**Unlockable Capabilities:**
+- Bronze (0-500): Basic agents, 10 jobs/day
+- Silver (500-2000): Standard agents, 100 jobs/day, workflow templates
+- Gold (2000+): Premium agents, unlimited jobs, blueprint publishing
+- Platinum (10000+): Custom agents, API access, priority support
+
+**References:** `factorio-ui-roadmap.md` Phase 3 (Tech Tree & Progression)
+
+**Timeline:** Weeks 13-18 (Phase 3 in game roadmap)
+
+---
+
+#### 7. AI-Generated UIs
 
 **Description:** LLM outputs WidgetSpec JSON, renders instantly without code generation.
 
@@ -2454,9 +2781,11 @@ Effuse Visual Language is successful if:
 
 **Timeline:** 1-2 weeks (LLM prompt engineering)
 
+**Factorio Connection:** LLMs can output valid GraphSpec JSON that renders immediately, no code generation needed.
+
 ---
 
-#### 5. Time Travel Debugging
+#### 8. Time Travel Debugging
 
 **Description:** Snapshot graph state at any point, restore later for debugging.
 
@@ -2479,9 +2808,11 @@ Effuse Visual Language is successful if:
 
 **Timeline:** 2-3 weeks
 
+**Unit Advantage:** Pin snapshot/restore captures full graph state (all component states + all pin states) in one operation.
+
 ---
 
-#### 6. Multi-User Collaboration
+#### 9. Multi-User Collaboration
 
 **Description:** Sync WidgetSpec changes via CRDT, multiple users edit same dashboard.
 
@@ -2503,53 +2834,189 @@ Effuse Visual Language is successful if:
 
 ---
 
-### 8.2 Roadmap After Initial Implementation
+### 8.3 Factorio-Inspired Advanced Features
 
-**Q1 2026 (Weeks 9-12):**
+These advanced features directly leverage Unit primitives to create Factorio-level complexity:
 
-- [ ] Visual graph editor (drag-drop, pin connections)
-- [ ] User-configurable dashboards (save/load layouts)
-- [ ] Time travel debugging (snapshot/restore)
+#### A/B Testing Workflows
 
-**Q2 2026 (Weeks 13-24):**
+**Description:** Run two workflow variants in parallel and compare metrics (inspired by Factorio's experimentation).
 
-- [ ] Component marketplace (JSON spec sharing)
-- [ ] AI-generated UIs (LLM → ComponentSpec)
-- [ ] Advanced visualizations (graph performance metrics, dependency tree)
+```typescript
+// A/B test is two parallel Graphs with a router
+const ABTestSpec: EffuseGraphSpec = {
+  id: "ab-test-code-review",
+  children: {
+    router: { id: "job-router", initialState: { split: 0.5 } },
+    variantA: { id: "code-review-pipeline-sonnet" },
+    variantB: { id: "code-review-pipeline-haiku" },
+    aggregator: { id: "metrics-aggregator" }
+  },
+  merges: {
+    input_to_router: { input: { "input/jobs": {} }, output: { "router/jobs": {} } },
+    router_to_a: { input: { "router/groupA": {} }, output: { "variantA/input": {} } },
+    router_to_b: { input: { "router/groupB": {} }, output: { "variantB/input": {} } },
+    a_to_agg: { input: { "variantA/metrics": {} }, output: { "aggregator/variantA": {} } },
+    b_to_agg: { input: { "variantB/metrics": {} }, output: { "aggregator/variantB": {} } }
+  }
+}
+```
 
-**Q3 2026 (Weeks 25-36):**
+**Metrics Compared:**
+- Average job time (Pin duration)
+- Cost per job (Pin metadata)
+- Success rate (Pin completion status)
+- Output quality (user ratings)
 
-- [ ] Multi-user collaboration (CRDT sync)
-- [ ] Component versioning (semantic versioning for specs)
-- [ ] Component templates (reusable patterns, starter kits)
+**Result:** Dashboard shows statistical significance and recommends winner.
 
-**Q4 2026 (Weeks 37-48):**
+#### Conditional Routing
 
-- [ ] Visual query builder (connect to data sources)
-- [ ] Animation timeline (keyframe animations for components)
-- [ ] Accessibility tools (screen reader support, keyboard nav)
+**Description:** Route jobs based on criteria (like Factorio's circuit network conditions).
+
+```typescript
+// Router component with conditional Pin merges
+const ConditionalRouter: ComponentSpec = {
+  id: "conditional-router",
+  pins: {
+    input: { type: "job" },
+    simple: { type: "job" },    // Routes to fast/cheap agent
+    complex: { type: "job" }    // Routes to slow/expensive agent
+  }
+}
+
+// Router logic examines job metadata
+const routeJob = (job: Job): "simple" | "complex" => {
+  if (job.lines < 100) return "simple"
+  if (job.complexity === "low") return "simple"
+  return "complex"
+}
+
+// Pin connection includes filter
+merges: {
+  input_to_simple: {
+    input: { "router/input": {} },
+    output: { "haikuAgent/input": {} },
+    filter: (job) => routeJob(job) === "simple"  // Conditional Pin merge
+  }
+}
+```
+
+#### Bottleneck Detection
+
+**Description:** Automatically identify slow agents in workflows (Factorio's production analysis).
+
+```typescript
+// Analyze Pin event timings across graph
+const detectBottleneck = (graph: EffuseGraph): Effect.Effect<Bottleneck | null> =>
+  Effect.gen(function* () {
+    const agents = graph.children
+    const timings: Record<string, number> = {}
+
+    // Calculate average Pin duration for each agent
+    for (const [agentId, agent] of Object.entries(agents)) {
+      const pin = agent.pins.output
+      const events = yield* pin.changes.pipe(Stream.take(100), Stream.runCollect)
+      timings[agentId] = average(events.map(e => e.duration))
+    }
+
+    // Find slowest
+    const slowest = maxBy(Object.entries(timings), ([_, time]) => time)
+    if (slowest[1] > average(Object.values(timings)) * 2) {
+      return {
+        agentId: slowest[0],
+        avgTime: slowest[1],
+        suggestion: "Add 2 more agents to parallelize workload"
+      }
+    }
+
+    return null
+  })
+```
+
+**References:** `factorio-ui-roadmap.md` Phase 5 (Advanced Optimization Tools)
 
 ---
 
-### 8.3 Success Metrics (Future)
+### 8.4 Roadmap After Initial Implementation
+
+**Aligned with Factorio-Inspired Roadmap:**
+
+**Phase 1: Spatial Canvas (Weeks 1-6)**
+- [ ] Agent nodes (visual components with status badges)
+- [ ] Connection lines (visual Pin merges with animated flow)
+- [ ] Canvas view (pan/zoom, drag-drop, snap-to-grid)
+- [ ] Real-time status updates (Pin.changes → UI updates)
+
+**Phase 2: Production Stats (Weeks 7-12)**
+- [ ] Metrics dashboard (jobs/hr, earnings, costs)
+- [ ] Agent performance table (per-agent metrics)
+- [ ] Activity feed (live job log)
+- [ ] Bottleneck detection (identify slow agents)
+
+**Phase 3: Tech Tree (Weeks 13-18)**
+- [ ] Trust score system (gamified progression)
+- [ ] Capability unlocking (Bronze/Silver/Gold tiers)
+- [ ] Achievement system (badges for milestones)
+- [ ] Tech tree visualization (GraphSpec!)
+
+**Phase 4: Blueprint Marketplace (Weeks 19-26)**
+- [ ] Save workflows as blueprints (GraphSpec JSON)
+- [ ] Import blueprints (graphFromSpec)
+- [ ] Marketplace UI (search, filter, install)
+- [ ] Blueprint versioning (semantic versioning)
+
+**Phase 5: Advanced Tools (Weeks 27-36)**
+- [ ] Workflow profiler (Pin timing analysis)
+- [ ] Cost optimizer (suggest cheaper models)
+- [ ] A/B testing (parallel graph comparison)
+- [ ] Advanced debugging (step-through execution)
+
+**See:** `/Users/christopherdavid/code/oapreclean/docs/game/factorio-ui-roadmap.md` for full 5-phase roadmap
+
+---
+
+### 8.5 Success Metrics (Future)
+
+**Engagement (Factorio-Inspired):**
+
+- 80% of users try canvas view within first week
+- 50% of workflows created using blueprint templates (not from scratch)
+- Daily active users increase 3x (monitoring vs chatting)
+- Average session time: 5min → 20min (from chat to factory management)
+- Users share screenshots of their "agent factories" on social media
 
 **Adoption:**
 
 - 50% of components use EffuseGraph within 6 months
-- 10+ community-contributed components in marketplace within 1 year
-- 5+ custom dashboards created by users within 3 months
+- 100+ public blueprints in marketplace within 3 months
+- Top blueprint has 500+ installs
+- 20+ community tutorials/guides created
+
+**Business:**
+
+- Conversion to paid increases 2x (value is obvious from visual workflows)
+- Retention: 90% at 30 days (sticky factory management habit)
+- Revenue per user increases 5x (more agent usage, optimization obsession)
 
 **Performance:**
 
 - Graph mount time <50ms (2x faster than current manual patterns)
 - Pin merge latency <1ms (real-time reactivity)
 - Spec serialization <10ms (instant save/load)
+- Canvas render: 60fps with 50+ agents
 
 **Developer Experience:**
 
 - Component creation time reduced by 50% (graph vs manual)
-- Onboarding time reduced by 30% (visual editor vs code)
-- Bug reproduction time reduced by 70% (time travel debugging)
+- Onboarding time reduced by 30% (visual editor + tutorial vs code)
+- Bug reproduction time reduced by 70% (time travel debugging + profiler)
+
+**Qualitative Signals:**
+- "Cracktorio for AI" memes emerge
+- Users obsess over optimizing jobs/$ ratios (like Factorio players with items/minute)
+- Community creates blueprint libraries ("Awesome OpenAgents Workflows")
+- User-generated optimization guides and tutorials
 
 ---
 

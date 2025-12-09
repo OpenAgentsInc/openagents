@@ -61,7 +61,7 @@ export {
 
 // Service interfaces
 export { type TestBrowser, TestBrowserTag } from "./browser.js"
-export { type TestHarness, type WidgetHandle, TestHarnessTag } from "./harness.js"
+export { type TestHarness, type ComponentHandle, TestHarnessTag } from "./harness.js"
 
 // Layer implementations
 export { makeHappyDomLayer, type HappyDomLayerResult } from "./layers/happy-dom.js"

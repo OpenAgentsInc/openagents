@@ -171,8 +171,8 @@ When the TestGen component was refactored from separate `tests` and `reflections
 if (component.id === "tbcc-testgen" && preservedState) {
   const oldState = preservedState as any
   // Check if it has old format (tests/reflections arrays) but not threadItems
-  if (!oldState.threadItems && 
-      ((oldState.tests && Array.isArray(oldState.tests)) || 
+  if (!oldState.threadItems &&
+      ((oldState.tests && Array.isArray(oldState.tests)) ||
        (oldState.reflections && Array.isArray(oldState.reflections)))) {
     // Convert old arrays to new threadItems format
     const threadItems = []

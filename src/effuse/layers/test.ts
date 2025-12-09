@@ -122,7 +122,7 @@ const makeMockSocketService = (
  * import { describe, test, expect } from "bun:test"
  * import { Effect } from "effect"
  * import { makeTestLayer } from "./layers/test.js"
- * import { mountWidget } from "./widget/mount.js"
+ * import { mountComponent } from "./widget/mount.js"
  * import { MyWidget } from "./widgets/my-widget.js"
  *
  * describe("MyWidget", () => {
@@ -133,7 +133,7 @@ const makeMockSocketService = (
  *           const { layer, getRendered } = yield* makeTestLayer()
  *           const container = { id: "test" } as Element
  *
- *           yield* mountWidget(MyWidget, container).pipe(
+ *           yield* mountComponent(MyWidget, container).pipe(
  *             Effect.provide(layer)
  *           )
  *
