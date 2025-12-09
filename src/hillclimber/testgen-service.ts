@@ -239,6 +239,7 @@ export async function runTestGenWithStreaming(
       {
         model: options.model,
         verbose: false,
+        context: "benchmark",  // TB2 benchmark tasks
       }
     );
 
@@ -399,6 +400,7 @@ export async function runCustomTestGen(
       {
         model: options.model,
         verbose: false,
+        context: "commander",  // Free-form user prompts
       }
     );
 
