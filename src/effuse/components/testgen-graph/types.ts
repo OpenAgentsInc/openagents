@@ -131,6 +131,9 @@ export interface TestGenGraphState {
   sessions: Map<string, SessionRunState>
   activeSessionId: string | null
 
+  // UI state
+  isStarting: boolean // True while waiting for server response
+
   // Graph layout (shared)
   nodes: TestGenNode[]
   connections: TestGenConnection[]

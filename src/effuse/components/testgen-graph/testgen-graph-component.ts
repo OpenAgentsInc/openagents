@@ -30,6 +30,9 @@ function initialState(): TestGenGraphState {
     sessions: new Map(),
     activeSessionId: null,
 
+    // UI state
+    isStarting: false,
+
     // Graph layout
     nodes: createTestGenNodes(),
     connections: createTestGenConnections(),
@@ -59,9 +62,15 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
       ? state.sessions.get(state.activeSessionId)
       : null
 
-    const sessionStatus = activeSession
-      ? `${activeSession.status} | Turn ${activeSession.currentTurn}/${activeSession.maxTurns} | Progress: ${(activeSession.progress * 100).toFixed(1)}%`
-      : "No active session"
+    const sessionStatus = state.isStarting
+      ? "STARTING..."
+      : activeSession
+        ? `${activeSession.status.toUpperCase()} | Turn ${activeSession.currentTurn}/${activeSession.maxTurns} | Progress: ${(activeSession.progress * 100).toFixed(1)}%`
+        : "Ready"
+
+    // Disable buttons while starting or running
+    const buttonsDisabled = state.isStarting || (activeSession?.status === "running") || (activeSession?.status === "testgen")
+    const disabledStyle = buttonsDisabled ? "opacity: 0.5; cursor: not-allowed;" : "cursor: pointer;"
 
     // Get status color based on session status
     const getStatusColor = (status: string) => {
@@ -133,22 +142,22 @@ function render(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>) {
 
         <!-- Control Panel -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 100; display: flex; gap: 8px; align-items: center;">
-          <span style="color: #888; font-size: 12px; margin-right: 8px;">${sessionStatus}</span>
+          <span style="color: ${state.isStarting ? '#ff0' : '#888'}; font-size: 12px; margin-right: 8px; font-weight: ${state.isStarting ? 'bold' : 'normal'};">${sessionStatus}</span>
           <button
             data-action="start-quick"
-            style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; cursor: pointer; font-size: 12px;"
+            style="padding: 6px 12px; background: #333; color: #0f0; border: 1px solid #0f0; border-radius: 4px; font-size: 12px; ${disabledStyle}"
           >
-            Quick (3 turns)
+            ${state.isStarting ? "Starting..." : "Quick (3 turns)"}
           </button>
           <button
             data-action="start-standard"
-            style="padding: 6px 12px; background: #333; color: #ff0; border: 1px solid #ff0; border-radius: 4px; cursor: pointer; font-size: 12px;"
+            style="padding: 6px 12px; background: #333; color: #ff0; border: 1px solid #ff0; border-radius: 4px; font-size: 12px; ${disabledStyle}"
           >
             Standard (10 turns)
           </button>
           <button
             data-action="start-full"
-            style="padding: 6px 12px; background: #333; color: #f80; border: 1px solid #f80; border-radius: 4px; cursor: pointer; font-size: 12px;"
+            style="padding: 6px 12px; background: #333; color: #f80; border: 1px solid #f80; border-radius: 4px; font-size: 12px; ${disabledStyle}"
           >
             Full (25 turns)
           </button>
@@ -514,21 +523,40 @@ function handleEvent(
         break
 
       case "startRun": {
+        // Check if already starting or running
+        const currentState = yield* ctx.state.get
+        if (currentState.isStarting) {
+          console.log("[TestGen Graph] Already starting, ignoring")
+          break
+        }
+        const activeSession = currentState.activeSessionId
+          ? currentState.sessions.get(currentState.activeSessionId)
+          : null
+        if (activeSession?.status === "running" || activeSession?.status === "testgen") {
+          console.log("[TestGen Graph] Run in progress, ignoring")
+          break
+        }
+
         console.log("[TestGen Graph] Starting HillClimber run:", event.mode)
+        // Set isStarting immediately for UI feedback
+        yield* ctx.state.update((s) => ({ ...s, isStarting: true }))
+
         yield* pipe(
           Effect.gen(function* () {
             const socket = yield* SocketServiceTag
             const result = yield* socket.startHillClimber("regex-log", event.mode)
             console.log("[TestGen Graph] HillClimber started:", result.sessionId)
-            // Set the new session as active
+            // Set the new session as active and clear isStarting
             yield* ctx.state.update((s) => ({
               ...s,
+              isStarting: false,
               activeSessionId: result.sessionId,
             }))
           }),
           Effect.catchAll((err) => {
             console.error("[TestGen Graph] Failed to start HillClimber:", err)
-            return Effect.void
+            // Clear isStarting on error too
+            return ctx.state.update((s) => ({ ...s, isStarting: false }))
           })
         )
         break
