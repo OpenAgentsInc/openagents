@@ -314,26 +314,29 @@ function buildCategoryPrompt(
   const edgeCases = extractTaskEdgeCases(taskDescription, taskId);
   const edgeCaseGuidance = formatEdgeCasesForCategory(edgeCases, category);
 
-  return `You are a QA engineer generating tests for category: ${category}
+  return `You are generating test cases to verify a solution works correctly.
 
-## Task ID
-${taskId}
+## What We're Testing
+Task: ${taskDescription}
 
-## Task Description
-${taskDescription}
-
-## Category: ${category}
+## Test Category: ${category}
 ${getCategoryDescription(category)}
 ${edgeCaseGuidance}
 
-## Environment Context
+## Context
 - Platform: ${environment.platform.type}
 - Prohibited Tools: ${environment.tools.prohibited.map((t) => t.name).join(", ") || "None"}
 - Files: ${environment.files.listing.length} files, ${environment.files.taskFiles.length} previews
 ${existingTestsText}${reflectionPrompt}
 
+## Your Task
+Generate 2-5 test cases for the ${category} category. Each test should:
+1. Have a clear input (what to test)
+2. Have an expected output (what should happen)
+3. Include reasoning (why this test matters)
+
 ## Output Format
-Generate 2-5 tests as JSON array:
+Generate tests as JSON array:
 [
   {
     "id": "${category}_1",
@@ -347,18 +350,60 @@ Generate 2-5 tests as JSON array:
 Respond with valid JSON array only. No markdown, no explanation.`;
 }
 
+function getCategoryUserExplanation(category: IterativeTestCategory): string {
+  switch (category) {
+    case "anti_cheat":
+      return "checking that forbidden tools aren't used";
+    case "existence":
+      return "verifying required outputs are created";
+    case "correctness":
+      return "testing normal functionality works";
+    case "boundary":
+      return "testing edge cases and limits";
+    case "integration":
+      return "testing system-level behavior";
+    default:
+      return "generating tests";
+  }
+}
+
 function getCategoryDescription(category: IterativeTestCategory): string {
   switch (category) {
     case "anti_cheat":
-      return "Verify prohibited tools/approaches are NOT used. Critical for catching gaming behavior.";
+      return `Verify that the solution follows the rules and doesn't use forbidden tools or shortcuts.
+
+What we're checking:
+- If certain tools are prohibited (e.g., "don't use Python"), verify they're not used
+- If the task says "implement from scratch", verify no pre-built solutions are used
+- Catch attempts to game the system or take shortcuts`;
     case "existence":
-      return "Test that required output files are created in correct paths and are non-empty.";
+      return `Test that the solution produces the required outputs.
+
+What we're checking:
+- Does the output file exist where it should?
+- Is the file non-empty (not just created but actually has content)?
+- Are files created in the correct location?`;
     case "correctness":
-      return "Happy path tests for main functionality. Verify output format matches expectations.";
+      return `Test that the solution works correctly for normal inputs.
+
+What we're checking:
+- Does it produce the right output for typical inputs?
+- Does the output format match what's expected?
+- Does it handle the main use case correctly?`;
     case "boundary":
-      return "Test min/max values, range constraints, and limits mentioned in description.";
+      return `Test edge cases and limits mentioned in the task.
+
+What we're checking:
+- Minimum and maximum values (if ranges are mentioned)
+- Values just outside valid ranges (should fail gracefully)
+- Edge cases like empty input, single item, maximum size`;
     case "integration":
-      return "System-level behavior, multi-step verification, integration with existing files.";
+      return `Test how the solution works with the rest of the system.
+
+What we're checking:
+- Does it work correctly with existing files?
+- Does it handle multi-step processes correctly?
+- Does it integrate properly with other components?`;
     default:
       return "Test for this category.";
   }
@@ -789,6 +834,16 @@ export async function generateTestsIteratively(
   log(`[TestGen] Context: ${context}`);
   log(`[TestGen] Categories: ${categories.join(", ")}`);
 
+  // Emit initial explanation
+  emitter.onProgress({
+    type: "testgen_progress",
+    sessionId: "",
+    phase: "category_generation",
+    currentCategory: null,
+    roundNumber: 0,
+    status: `Analyzing task: "${taskDescription.slice(0, 60)}${taskDescription.length > 60 ? "..." : ""}"`,
+  });
+
   try {
     // Phase 2: Category-based iteration
     for (const category of categories) {
@@ -801,13 +856,15 @@ export async function generateTestsIteratively(
         state.totalRounds < finalConfig.maxTotalRounds &&
         state.totalTokensUsed < finalConfig.maxTotalTokens
       ) {
+        const categoryName = category.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());
+        const categoryExplanation = getCategoryUserExplanation(category);
         emitter.onProgress({
           type: "testgen_progress",
           sessionId: "", // Will be set by caller
           phase: "category_generation",
           currentCategory: category,
           roundNumber: round,
-          status: `Generating ${category} tests (round ${round})...`,
+          status: `Generating ${categoryName} tests: ${categoryExplanation}`,
         });
 
         // Generate tests for this category/round

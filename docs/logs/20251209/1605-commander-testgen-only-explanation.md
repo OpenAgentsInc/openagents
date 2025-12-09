@@ -1,7 +1,7 @@
 # Commander Component: Test Generation Only
 
-**Time:** 16:05 CT  
-**Date:** 2025-12-09  
+**Time:** 16:05 CT
+**Date:** 2025-12-09
 **Status:** Documentation / Issue Explanation
 
 ---
@@ -58,10 +58,10 @@ FM generates test cases (existence, correctness, boundary)
    - `buildCategoryPrompt()` creates prompts like:
      ```
      You are a QA engineer generating tests for category: existence
-     
+
      ## Task Description
      summarize this codebase
-     
+
      ## Category: existence
      Test that required output files are created in correct paths...
      ```
@@ -274,4 +274,3 @@ if (result.tests.length === 0 || result.comprehensivenessScore < 3) {
 ---
 
 **TL;DR:** Commander is a test generation tool, not a general-purpose interface. When you type "summarize this codebase", it tries to generate tests for it, which produces confusing output. We need input validation and/or alternative services for non-coding tasks.
-
