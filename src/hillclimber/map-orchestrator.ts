@@ -982,6 +982,10 @@ async function getNextAction(
           messages: [{ role: "user", content: prompt }],
           temperature,
           maxTokens: 512, // Short responses for tool calls
+          responseFormat: {
+            type: "json_schema",
+            schema_type: "tool_call", // Use guided generation to constrain tool names
+          },
         });
 
         return chatResponse;
@@ -1007,8 +1011,24 @@ async function getNextAction(
       }
     }
 
-    // Parse tool calls from response
-    const toolCalls = parseToolCalls(cleanedContent);
+    // With guided generation, response is direct JSON (ToolCallRequest)
+    // Try parsing as direct JSON first, then fall back to parseToolCalls
+    let toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+    try {
+      const parsed = JSON.parse(cleanedContent);
+      // Check if it's a guided generation ToolCallRequest format
+      if (parsed.name && typeof parsed.name === "string" && parsed.arguments) {
+        toolCalls = [{ name: parsed.name, arguments: parsed.arguments }];
+        log(`[MAP-FM] Parsed guided generation tool call: ${parsed.name}`);
+      }
+    } catch {
+      // Not valid JSON, fall through to parseToolCalls
+    }
+
+    // If guided generation parsing failed, use standard parser
+    if (toolCalls.length === 0) {
+      toolCalls = parseToolCalls(cleanedContent);
+    }
 
     if (toolCalls.length === 0) {
       log(`[MAP-FM] No tool call parsed from response. Raw: ${content.slice(0, 300)}`);

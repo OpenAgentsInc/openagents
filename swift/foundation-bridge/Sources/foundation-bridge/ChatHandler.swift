@@ -115,6 +115,15 @@ actor ChatHandler {
                 )
                 return encodeToJSON(response.content)
 
+            case "tool_call":
+                // Use the Generable ToolCallRequest type
+                // Constrains tool name to valid values: read_file, write_file, verify_progress
+                let response = try await session.respond(
+                    to: prompt,
+                    generating: ToolCallRequest.self
+                )
+                return encodeToJSON(response.content)
+
             default:
                 throw FMError.invalidRequest("Unknown schema type: \(schemaType)")
             }

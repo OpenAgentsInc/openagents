@@ -205,6 +205,33 @@ struct EnvironmentAwareTestResult: Codable {
     var uncertainties: [String]
 }
 
+// MARK: - Tool Call Schema
+
+/// Tool call request from MAP orchestrator.
+/// Constrains tool name to valid values only.
+@Generable(description: "A tool call from the agent")
+struct ToolCallRequest: Codable {
+    @Guide(description: "Tool to call", .anyOf([
+        "read_file",
+        "write_file",
+        "verify_progress"
+    ]))
+    var name: String
+
+    @Guide(description: "Tool arguments as JSON object")
+    var arguments: ToolArguments
+}
+
+/// Tool arguments for MAP orchestrator tools.
+@Generable(description: "Tool arguments")
+struct ToolArguments: Codable {
+    @Guide(description: "File path (for read_file, write_file)")
+    var path: String?
+
+    @Guide(description: "File content (for write_file)")
+    var content: String?
+}
+
 // Note: Dynamic JSON schema types removed to avoid recursive struct issues.
 // Using pre-defined Generable types (TestGenerationResult) for guided generation.
 // For custom schemas, use DynamicGenerationSchema from FoundationModels framework.
