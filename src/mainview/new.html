@@ -49,6 +49,19 @@
       background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
       background-size: 24px 24px;
     }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    .intro-card-fade-in {
+      animation: fadeIn 0.8s ease-out;
+    }
   </style>
   <script>
     // HMR: Connect to WebSocket and listen for reload messages

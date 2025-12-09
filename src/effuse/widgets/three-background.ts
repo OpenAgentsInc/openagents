@@ -77,54 +77,126 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
       renderer.setSize(canvas.width, canvas.height)
       renderer.setPixelRatio(window.devicePixelRatio)
 
-      // Create floating particles/geometry
-      const particles: THREE.Mesh[] = []
-      const particleCount = 50
+      // Create Factorio-inspired factory structures
+      const factoryObjects: THREE.Mesh[] = []
 
-      for (let i = 0; i < particleCount; i++) {
-        const geometry = new THREE.TetrahedronGeometry(
-          0.1 + Math.random() * 0.1,
-          0
-        )
-        // Grayscale colors - white to light gray
-        const brightness = 0.7 + Math.random() * 0.3 // 0.7 to 1.0 (light gray to white)
-        const material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(brightness, brightness, brightness), // Grayscale
-          metalness: 0.3,
-          roughness: 0.4,
+      // Create factory machines (assemblers) - grid-aligned
+      const machineCount = 12
+      const gridSpacing = 3
+      const gridOffset = -15
+
+      for (let i = 0; i < machineCount; i++) {
+        const row = Math.floor(i / 4)
+        const col = i % 4
+
+        // Machine base (rectangular, like Factorio assemblers)
+        const machineGeometry = new THREE.BoxGeometry(1.2, 0.3, 1.2)
+        const machineMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0.85, 0.85, 0.85), // Light gray
+          metalness: 0.5,
+          roughness: 0.3,
           transparent: true,
-          opacity: 0.5 + Math.random() * 0.4,
+          opacity: 0.7,
         })
-        const particle = new THREE.Mesh(geometry, material)
+        const machine = new THREE.Mesh(machineGeometry, machineMaterial)
 
-        // Random position in 3D space
-        particle.position.set(
-          (Math.random() - 0.5) * 20,
-          (Math.random() - 0.5) * 20,
-          (Math.random() - 0.5) * 20
+        // Position on grid
+        machine.position.set(
+          gridOffset + col * gridSpacing,
+          -2 + row * gridSpacing * 0.8,
+          -5 + row * 0.5
         )
 
-        // Random rotation
-        particle.rotation.set(
-          Math.random() * Math.PI * 2,
-          Math.random() * Math.PI * 2,
-          Math.random() * Math.PI * 2
+        // Machine top (status indicator)
+        const topGeometry = new THREE.BoxGeometry(1.0, 0.2, 1.0)
+        const topMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0.6, 0.6, 0.6), // Darker gray
+          metalness: 0.6,
+          roughness: 0.2,
+          transparent: true,
+          opacity: 0.8,
+        })
+        const top = new THREE.Mesh(topGeometry, topMaterial)
+        top.position.set(0, 0.25, 0)
+        machine.add(top)
+
+        // Status light (green for active)
+        const lightGeometry = new THREE.SphereGeometry(0.1, 8, 8)
+        const lightMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0.2, 0.8, 0.2), // Green
+          emissive: new THREE.Color(0.1, 0.4, 0.1),
+          transparent: true,
+          opacity: 0.9,
+        })
+        const statusLight = new THREE.Mesh(lightGeometry, lightMaterial)
+        statusLight.position.set(0.4, 0.35, 0.4)
+        machine.add(statusLight)
+
+        ;(machine as any).statusLight = statusLight
+        ;(machine as any).pulsePhase = Math.random() * Math.PI * 2
+
+        scene.add(machine)
+        factoryObjects.push(machine)
+      }
+
+      // Create conveyor belts (horizontal lines connecting machines)
+      const beltCount = 8
+      for (let i = 0; i < beltCount; i++) {
+        const row = Math.floor(i / 2)
+        const isHorizontal = i % 2 === 0
+
+        const beltGeometry = isHorizontal
+          ? new THREE.BoxGeometry(2.5, 0.1, 0.3)
+          : new THREE.BoxGeometry(0.3, 0.1, 2.5)
+        const beltMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0.5, 0.5, 0.5), // Medium gray
+          metalness: 0.4,
+          roughness: 0.5,
+          transparent: true,
+          opacity: 0.6,
+        })
+        const belt = new THREE.Mesh(beltGeometry, beltMaterial)
+
+        if (isHorizontal) {
+          belt.position.set(
+            gridOffset + 1.5 * gridSpacing,
+            -1.9 + row * gridSpacing * 0.8,
+            -5 + row * 0.5
+          )
+        } else {
+          belt.position.set(
+            gridOffset + 0.5 * gridSpacing,
+            -1.9 + row * gridSpacing * 0.8,
+            -5 + row * 0.5
+          )
+        }
+
+        ;(belt as any).offset = Math.random() * 2
+        scene.add(belt)
+        factoryObjects.push(belt)
+      }
+
+      // Create power poles (vertical structures)
+      const poleCount = 6
+      for (let i = 0; i < poleCount; i++) {
+        const poleGeometry = new THREE.BoxGeometry(0.15, 2, 0.15)
+        const poleMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0.4, 0.4, 0.4), // Dark gray
+          metalness: 0.7,
+          roughness: 0.3,
+          transparent: true,
+          opacity: 0.7,
+        })
+        const pole = new THREE.Mesh(poleGeometry, poleMaterial)
+
+        pole.position.set(
+          gridOffset + (i % 3) * gridSpacing * 1.5,
+          -1,
+          -5 + Math.floor(i / 3) * gridSpacing
         )
 
-        // Store velocity for animation
-        ;(particle as any).velocity = {
-          x: (Math.random() - 0.5) * 0.02,
-          y: (Math.random() - 0.5) * 0.02,
-          z: (Math.random() - 0.5) * 0.02,
-        }
-        ;(particle as any).rotationSpeed = {
-          x: (Math.random() - 0.5) * 0.02,
-          y: (Math.random() - 0.5) * 0.02,
-          z: (Math.random() - 0.5) * 0.02,
-        }
-
-        scene.add(particle)
-        particles.push(particle)
+        scene.add(pole)
+        factoryObjects.push(pole)
       }
 
       // Add dramatic lighting for grayscale scene
@@ -165,29 +237,27 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
         animationId = requestAnimationFrame(animate)
         time += 0.01
 
-        // Animate particles
-        particles.forEach((particle, i) => {
-          const vel = (particle as any).velocity
-          const rotSpeed = (particle as any).rotationSpeed
+        // Animate factory objects
+        factoryObjects.forEach((obj, i) => {
+          // Pulse status lights on machines
+          if ((obj as any).statusLight) {
+            const light = (obj as any).statusLight as THREE.Mesh
+            const phase = (obj as any).pulsePhase + time * 2
+            const intensity = 0.5 + Math.sin(phase) * 0.3
+            const material = light.material as THREE.MeshStandardMaterial
+            material.emissive.setRGB(0.1 * intensity, 0.4 * intensity, 0.1 * intensity)
+          }
 
-          // Move particles
-          particle.position.x += vel.x
-          particle.position.y += vel.y
-          particle.position.z += vel.z
+          // Animate conveyor belts (subtle movement)
+          if ((obj as any).offset !== undefined) {
+            const belt = obj as THREE.Mesh
+            const offset = (obj as any).offset + time * 0.5
+            ;(obj as any).offset = offset % 1
 
-          // Rotate particles
-          particle.rotation.x += rotSpeed.x
-          particle.rotation.y += rotSpeed.y
-          particle.rotation.z += rotSpeed.z
-
-          // Wrap around edges
-          if (Math.abs(particle.position.x) > 10) vel.x *= -1
-          if (Math.abs(particle.position.y) > 10) vel.y *= -1
-          if (Math.abs(particle.position.z) > 10) vel.z *= -1
-
-          // Subtle pulsing opacity
-          const material = particle.material as THREE.MeshStandardMaterial
-          material.opacity = 0.4 + Math.sin(time * 2 + i) * 0.3
+            // Subtle texture offset effect (visual only, no actual texture)
+            const material = belt.material as THREE.MeshStandardMaterial
+            material.opacity = 0.5 + Math.sin(offset * Math.PI * 2) * 0.1
+          }
         })
 
         // Gentle camera movement
@@ -218,9 +288,17 @@ export const ThreeBackgroundWidget: Widget<ThreeBackgroundState, ThreeBackground
           window.removeEventListener("resize", resizeCanvas)
           window.removeEventListener("resize", handleResize)
           renderer.dispose()
-          particles.forEach((particle) => {
-            particle.geometry.dispose()
-            ;(particle.material as THREE.Material).dispose()
+          factoryObjects.forEach((obj) => {
+            obj.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.geometry.dispose()
+                if (Array.isArray(child.material)) {
+                  child.material.forEach((mat) => mat.dispose())
+                } else {
+                  child.material.dispose()
+                }
+              }
+            })
           })
         })
       )
