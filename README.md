@@ -20,3 +20,4 @@ Sell your device's idle compute to the swarm network and get paid in bitcoin str
 
 - [Effect](https://effect.website/)
 - [Effuse](docs/effuse/README.md)
+- [nostr-effect](https://github.com/OpenAgentsInc/nostr-effect)
