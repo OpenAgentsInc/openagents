@@ -37,26 +37,13 @@ export const IntroCardComponent: Component<IntroCardState, IntroCardEvent> = {
   render: (ctx) =>
     Effect.gen(function* () {
       return html`
-        <div class="fixed inset-0 flex items-center justify-center" style="padding: 24px; z-index: 10;">
-          <div
-            class="bg-zinc-950/10 border border-zinc-800/60 shadow-2xl w-full intro-card-fade-in"
-            style="padding: 32px 48px; font-family: 'Berkeley Mono', monospace; border-radius: 0; max-width: 600px;"
+        <div class="fixed top-4 left-4 intro-card-fade-in" style="z-index: 10;">
+          <h1
+            class="text-zinc-400"
+            style="font-family: 'Berkeley Mono', monospace; margin: 0; font-size: 12px; font-weight: normal;"
           >
-            <h1
-              class="font-bold text-zinc-100 text-center tracking-tight"
-              style="font-family: 'Berkeley Mono', monospace; margin: 0; font-size: 24px;"
-            >
-              OpenAgents Gym
-            </h1>
-            <div style="margin-top: 16px; text-align: center;">
-              <p
-                class="text-zinc-400 font-mono"
-                style="font-family: 'Berkeley Mono', monospace; margin: 0; font-size: 12px;"
-              >
-                A training environment for AI agents
-              </p>
-            </div>
-          </div>
+            OpenAgents Gym
+          </h1>
         </div>
       `
     }),

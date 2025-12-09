@@ -45,8 +45,8 @@ async function main() {
       {} as any,
       {
         workspace,
-        timeout: 600, // 10 minutes
-        maxTurns: 5, // Just test first 5 turns
+        timeout: 1200, // 20 minutes
+        maxTurns: 15, // More turns to reach 100%
         taskDescription: task.description,
         verbose: true,
         onOutput: (text) => {

@@ -52,15 +52,13 @@ function render(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
   return Effect.gen(function* () {
     const state = yield* ctx.state.get
 
-    console.log("[AgentGraph] Rendering with", state.nodes.length, "nodes")
-
     return html`
       <svg
         id="agent-graph-svg"
         width="100%"
         height="100%"
         viewBox="0 0 800 600"
-        style="position: absolute; inset: 0; background: #000000;"
+        style="position: absolute; inset: 0; background: #000000; user-select: none;"
       >
         ${rawHtml(
           renderGraph(
@@ -84,9 +82,6 @@ function render(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
 function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
   return Effect.gen(function* () {
     const svg = yield* ctx.dom.queryId<SVGSVGElement>("agent-graph-svg").pipe(Effect.orDie)
-
-    console.log("[AgentGraph] SVG element found:", svg)
-    console.log("[AgentGraph] SVG dimensions:", svg.clientWidth, "x", svg.clientHeight)
 
     // Simulation state
     let simState = createSimulationState()

@@ -177,8 +177,8 @@ export interface SimulationState {
 export function createSimulationState(): SimulationState {
   return {
     alpha: 0.25,
-    alphaTarget: 0,
-    alphaDecay: 0.01,
+    alphaTarget: 0.15, // Keep simulation "warm" for continuous animation
+    alphaDecay: 0.005, // Slower decay
     alphaMin: 0.001,
   }
 }
