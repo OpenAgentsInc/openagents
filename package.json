@@ -68,6 +68,7 @@
     "deps:update": "bun src/deps/update-cli.ts",
     "desktop": "bun src/desktop/main.ts",
     "desktop:debug": "bun --inspect src/desktop/main.ts",
+    "new": "bun src/desktop/main.ts --new",
     "session:export-html": "bun src/sessions/cli.ts export-html",
     "build:health": "bun scripts/generate-build-health.ts",
     "tbench:local": "bun src/cli/tbench-local.ts",

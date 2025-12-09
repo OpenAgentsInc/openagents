@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenAgents</title>
+  <!-- Basecoat CSS (includes Tailwind utilities pre-compiled) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/basecoat.cdn.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
+  <!-- Tailwind Browser for arbitrary values -->
+  <script>
+    window.tailwindConfig = {
+      scan: {
+        debounce: 100,
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000000;
+    }
+    .dot-grid {
+      background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+  </style>
+  <script>
+    // HMR: Connect to WebSocket and listen for reload messages
+    (function() {
+      const WS_URL = 'ws://localhost:8080/ws';
+      let ws = null;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 10;
+
+      function connect() {
+        try {
+          ws = new WebSocket(WS_URL);
+          
+          ws.onopen = () => {
+            console.log('[HMR] Connected to WebSocket');
+            reconnectAttempts = 0;
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const message = JSON.parse(event.data);
+              if (message.type === 'dev_reload') {
+                console.log('[HMR] Reload triggered by', message.changedFile);
+                location.reload();
+              }
+            } catch (e) {
+              // Not JSON or not a dev_reload message, ignore
+            }
+          };
+
+          ws.onerror = (error) => {
+            console.error('[HMR] WebSocket error:', error);
+          };
+
+          ws.onclose = () => {
+            console.log('[HMR] WebSocket closed');
+            ws = null;
+            
+            // Auto-reconnect with exponential backoff
+            if (reconnectAttempts < maxReconnectAttempts) {
+              reconnectAttempts++;
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
+              console.log(`[HMR] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+              setTimeout(connect, delay);
+            }
+          };
+        } catch (e) {
+          console.error('[HMR] Failed to connect:', e);
+          // Retry after delay
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            setTimeout(connect, 1000);
+          }
+        }
+      }
+
+      // Start connection
+      connect();
+    })();
+  </script>
+</head>
+<body class="dot-grid">
+</body>
+</html>

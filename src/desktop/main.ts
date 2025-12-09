@@ -42,11 +42,20 @@ const PROJECT_ROOT = getProjectRoot();
 const MAINVIEW_DIR = join(PROJECT_ROOT, "src/mainview");
 
 // ============================================================================
+// Command-line arguments
+// ============================================================================
+
+const isNewMode = process.argv.includes("--new") || process.env.NEW_MODE === "1";
+
+// ============================================================================
 // Desktop Server (runs in Worker to avoid blocking by webview.run())
 // ============================================================================
 
 log("Desktop", `Project root: ${PROJECT_ROOT}`);
 log("Desktop", `Mainview dir: ${MAINVIEW_DIR}`);
+if (isNewMode) {
+  log("Desktop", "Starting in NEW mode (black background only)");
+}
 
 // Kill any existing process on port 8080 to avoid EADDRINUSE
 try {
@@ -138,7 +147,9 @@ webview.size = { width: 1600, height: 1000, hint: SizeHint.NONE };
 
 // Navigate to localhost HTTP server - this gives the page a real origin
 // so WebSocket connections to localhost will work
-const url = `http://localhost:${DESKTOP_HTTP_PORT}/`;
+const url = isNewMode
+  ? `http://localhost:${DESKTOP_HTTP_PORT}/new.html`
+  : `http://localhost:${DESKTOP_HTTP_PORT}/`;
 log("Desktop", `Navigating to: ${url}`);
 webview.navigate(url);
 
