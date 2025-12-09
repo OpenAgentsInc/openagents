@@ -13,7 +13,7 @@ Sell your device's idle compute to the swarm network and get paid in bitcoin str
 ## Current State
 
 - **MechaCoder** - Autonomous coding agent ([docs/mechacoder/](docs/mechacoder/))
-- **FM Hill Climber** - 89.5% on Terminal-Bench regex-log with local Apple FM ([docs/fm-hillclimber.md](docs/fm-hillclimber.md))
+- **FM Hill Climber** - Pushing toward 100% on Terminal-Bench using local Apple FM ([docs/fm-hillclimber.md](docs/fm-hillclimber.md))
 - **Effuse** - Effect-native UI framework ([docs/effuse/](docs/effuse/))
 
 ## Tech Stack

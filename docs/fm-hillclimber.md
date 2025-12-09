@@ -1,7 +1,7 @@
 # Project FM Hill Climber
 
 - **Last Updated:** 2025-12-09
-- **Status:** Active Development (89.5% → targeting 100% on regex-log)
+- **Status:** Active Development (targeting 100% on regex-log)
 
 ---
 
@@ -9,7 +9,7 @@
 
 FM Hill Climber is a system for solving Terminal-Bench 2 (TB2) tasks using Apple's on-device Foundation Model (FM). The core thesis is that **architecture beats raw model capability** — a well-structured system with decomposition, iterative feedback, and parallel sampling can solve "impossible" tasks that fail with one-shot approaches.
 
-**Key Achievement:** Reached 89.5% (17/19 tests) on the `regex-log` task using only local FM inference — proving the architecture works.
+**Goal:** Achieve 100% on the `regex-log` task using only local FM inference — proving architecture beats model size.
 
 **Stakes:** If MechaCoder + FM Hill Climber achieves #1 on Terminal-Bench using only Apple on-device FM, it validates that local inference can outperform cloud models for agentic work. See `docs/hillclimber/stakes.md` for the full implications.
 
@@ -166,29 +166,28 @@ Runs pytest in isolated Docker containers:
 
 ## Current Status
 
-### Achieved (as of 2025-12-09)
-- ✅ **89.5% (17/19 tests)** on regex-log with simple pattern
-- ✅ TestGen generating 19-24 comprehensive tests
+### Infrastructure Complete (as of 2025-12-09)
+- ✅ TestGen generating 19-31 comprehensive tests from task description
 - ✅ Parallel sampling (N=3) working
 - ✅ Docker verification correctly parsing pytest
 - ✅ Progress tracking accurate during execution
-- ✅ Progress reporting bug fixed (was showing 0% instead of actual)
-- ✅ Monitor warnings now passed to FM prompt
+- ✅ Progress reporting bug fixed
+- ✅ Monitor warnings passed to FM prompt
+- ✅ Decomposer cleaned up (domain knowledge only, no hardcoded solutions)
 
 ### In Progress
-- ⏳ Pushing to 100% (need FM to use IPv4 lookahead)
-- ⏳ Improving prompts to guide FM better
-- ⏳ Adding per-test failure feedback
+- ⏳ Clean validation run (FM must discover solution through iteration)
+- ⏳ TestGen quality improvements
+- ⏳ Per-test failure feedback
 
-### The Gap: 89.5% → 100%
-Current regex: `\d{4}-\d{2}-\d{2}` (simple date pattern)
+### The Challenge
+FM must discover a regex that:
+- Requires IPv4 presence on the line (lookahead)
+- Captures date in YYYY-MM-DD format
+- Handles boundary conditions
+- Captures the LAST date if multiple exist
 
-Missing constraints:
-- IPv4 lookahead: `(?=.*\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)`
-- Word boundaries around date
-- "Last date" logic for multiple dates per line
-
-The decomposer now includes explicit example regex in the subtask goal. Monitor warnings are passed to FM. Next: verify FM follows the guidance.
+The decomposer provides domain knowledge (regex concepts) but NOT the solution. FM must iterate against TestGen tests to discover the correct pattern.
 
 ---
 
@@ -352,12 +351,14 @@ Each turn adds ONE constraint, guided by verification feedback showing which tes
 ### Phase 6: Bug Fixes & Progress (Dec 8-9)
 - Fixed pytest parsing (was matching test names instead of summary)
 - Fixed progress reporting (was returning 0% instead of actual)
-- **Achieved 89.5%** (17/19 tests)
+- Fixed Python string literal generation
+- Fixed pytest discovery in Docker
 
-### Phase 7: FM Guidance Improvements (Dec 9)
+### Phase 7: Clean Architecture (Dec 9)
 - Pass monitor warnings to FM prompt
-- Refactored decomposer with explicit example regex
-- Added IPv4 lookahead guidance
+- **Cleaned decomposer** — removed hardcoded solutions, kept domain knowledge only
+- TestGen edge case extraction from task description
+- Ready for clean validation run
 
 ---
 
@@ -548,6 +549,6 @@ The beautiful thing about this framework: the claims are **falsifiable**. Either
 
 ---
 
-**Status:** 89.5% achieved, pushing to 100%
-**Next:** Verify FM follows IPv4 lookahead guidance
-**Goal:** First definitive solve of regex-log using local FM
+**Status:** Infrastructure complete, ready for clean validation
+**Next:** Run FM iteration without hardcoded hints
+**Goal:** First definitive solve of regex-log using local FM (FM discovers solution, not given it)

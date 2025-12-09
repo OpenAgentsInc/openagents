@@ -114,7 +114,7 @@ Solving Terminal-Bench with on-device Apple FM:
                 └─────────────┘
 ```
 
-**Key Achievement:** 89.5% on Terminal-Bench `regex-log` using only local FM inference.
+**Goal:** 100% on Terminal-Bench `regex-log` using only local FM inference.
 
 **Documentation:** [docs/fm-hillclimber.md](../fm-hillclimber.md)
 
@@ -217,7 +217,7 @@ Data leaves your device          Privacy-preserving local inference
 - [x] MechaCoder core implementation
 - [x] Golden Loop v2 spec
 - [x] Task system (`.openagents/tasks.jsonl`)
-- [x] FM Hill Climber (89.5% on regex-log)
+- [ ] FM Hill Climber (pushing toward 100% on regex-log)
 - [ ] Swarm compute network integration
 - [ ] Built-in bitcoin wallet
 - [ ] Agent Store

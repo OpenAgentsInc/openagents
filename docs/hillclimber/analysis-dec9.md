@@ -38,7 +38,7 @@ Baker's thesis is correct but his timeline is wrong. He's thinking about what ON
 
 We're not waiting for "pruned-down Gemini 5" in three years. We're running Terminal-Bench tasks using Apple's on-device Foundation Model RIGHT NOW.
 
-**Current achievement:** 89.5% on Terminal-Bench `regex-log` using only local FM inference.
+**Current focus:** Pushing toward 100% on Terminal-Bench `regex-log` using only local FM inference.
 
 The MAP (Modular Agentic Planner) architecture demonstrates that **architecture beats raw model size**. A well-structured local system with parallel sampling, test-time compute, and iterative verification can compete with cloud giants.
 
@@ -135,7 +135,7 @@ Cloud AI is a cost center (you pay). Swarm AI is a profit center (you earn). Thi
 - Free, privacy-safe, replaces cloud
 
 **We ship (now):**
-- Apple FM running Terminal-Bench at 89.5%
+- Apple FM running Terminal-Bench tasks (pushing toward 100%)
 - Bitcoin payments for compute (Lightning/Spark)
 - Self-custodial wallet in Commander
 - Swarm network with real inference jobs
