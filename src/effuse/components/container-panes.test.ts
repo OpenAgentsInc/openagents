@@ -8,6 +8,7 @@ import { mountComponent } from "../component/mount.js"
 import {
   ContainerPanesComponent,
   type ContainerPanesState,
+  type ContainerPane,
 } from "./container-panes.js"
 import { makeTestLayer } from "../layers/test.js"
 import { StateServiceTag } from "../services/state.js"

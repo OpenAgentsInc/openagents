@@ -6,6 +6,7 @@
  */
 
 import { Effect, Ref, Stream, pipe } from "effect"
+import type { Component, ComponentContext } from "../component/types.js"
 import { html } from "../template/html.js"
 import * as THREE from "three"
 
@@ -44,12 +45,19 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
       `
     }),
 
-  setupEvents: (ctx) =>
+  setupEvents: (ctx: ComponentContext<ThreeBackgroundState, ThreeBackgroundEvent>) =>
     Effect.gen(function* () {
-      // Get canvas element
-      const canvas = yield* ctx.dom.queryId<HTMLCanvasElement>(
+      // Get canvas element - catch and ignore errors to match Component interface
+      const canvasResult = yield* ctx.dom.queryId<HTMLCanvasElement>(
         `${ctx.container.id}-three-bg-canvas`
-      )
+      ).pipe(Effect.either)
+      
+      if (canvasResult._tag === "Left") {
+        // Canvas not found, return void (component will work without Three.js background)
+        return
+      }
+      
+      const canvas = canvasResult.right
 
       // Set canvas size
       const resizeCanvas = () => {
@@ -282,8 +290,9 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
           if (conn.progress > 1) conn.progress = 0
 
           // Calculate dash offset based on progress
+          // Note: dashOffset may not exist in all Three.js versions, using type assertion
           const totalLength = conn.line.geometry.attributes.position.count * 0.1
-          material.dashOffset = -conn.progress * (material.dashSize + material.gapSize) * 10
+          ;(material as any).dashOffset = -conn.progress * (material.dashSize + material.gapSize) * 10
         })
 
         renderer.render(scene, camera)
@@ -351,41 +360,41 @@ export const ThreeBackgroundComponent: Component<ThreeBackgroundState, ThreeBack
       canvas.addEventListener("mousemove", onMouseMove)
       canvas.addEventListener("click", onMouseClick)
 
-      // Cleanup
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          if (animationId !== null) {
-            cancelAnimationFrame(animationId)
-          }
-          window.removeEventListener("resize", resizeCanvas)
-          window.removeEventListener("resize", handleResize)
-          canvas.removeEventListener("mousemove", onMouseMove)
-          canvas.removeEventListener("click", onMouseClick)
-          if (labelContainer.parentNode) {
-            labelContainer.parentNode.removeChild(labelContainer)
-          }
-          renderer.dispose()
-          nodes.forEach((node) => {
-            node.traverse((child) => {
-              if (child instanceof THREE.Mesh) {
-                child.geometry.dispose()
-                if (Array.isArray(child.material)) {
-                  child.material.forEach((mat) => mat.dispose())
-                } else {
-                  child.material.dispose()
-                }
+      // Store cleanup function - mount system will handle calling it via scope cleanup
+      const cleanup = () => {
+        if (animationId !== null) {
+          cancelAnimationFrame(animationId)
+        }
+        window.removeEventListener("resize", resizeCanvas)
+        window.removeEventListener("resize", handleResize)
+        canvas.removeEventListener("mousemove", onMouseMove)
+        canvas.removeEventListener("click", onMouseClick)
+        if (labelContainer.parentNode) {
+          labelContainer.parentNode.removeChild(labelContainer)
+        }
+        renderer.dispose()
+        nodes.forEach((node) => {
+          node.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.geometry.dispose()
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose())
+              } else {
+                child.material.dispose()
               }
-            })
-          })
-          connections.forEach((line) => {
-            line.geometry.dispose()
-            if (Array.isArray(line.material)) {
-              line.material.forEach((mat) => mat.dispose())
-            } else {
-              line.material.dispose()
             }
           })
         })
-      )
-    }),
+        connections.forEach((line) => {
+          line.geometry.dispose()
+          if (Array.isArray(line.material)) {
+            line.material.forEach((mat) => mat.dispose())
+          } else {
+            line.material.dispose()
+          }
+        })
+      }
+      // Store cleanup on container for mount system to access
+      ;(ctx.container as any).__threeBackgroundCleanup = cleanup
+    }).pipe(Effect.catchAll(() => Effect.void)),
 }

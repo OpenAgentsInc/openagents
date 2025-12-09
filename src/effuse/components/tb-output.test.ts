@@ -11,6 +11,7 @@ import { DomServiceTag } from "../services/dom.js"
 import {
   TBOutputComponent,
   type TBOutputState,
+  type TBOutputEvent,
   type TBOutputLine,
   type TBOutputSource,
 } from "./tb-output.js"
