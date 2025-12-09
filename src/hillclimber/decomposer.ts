@@ -51,96 +51,110 @@ export interface TaskDecomposition {
 // Task-Specific Decompositions
 // ============================================================================
 
+// ============================================================================
+// REGEX-LOG DECOMPOSITION
+//
+// DESIGN PHILOSOPHY: This decomposition provides DOMAIN KNOWLEDGE, not solutions.
+// - FM must DISCOVER the correct regex through iteration
+// - TestGen generates comprehensive tests from task description
+// - Hints teach regex CONCEPTS (lookahead, boundaries) not specific patterns
+//
+// See docs/logs/20251208/1219-benchmark-gaming-analysis.md for the spectrum
+// of legitimate optimization vs cheating.
+// ============================================================================
+
 const REGEX_LOG_DECOMPOSITION: TaskDecomposition = {
   taskId: "regex-log",
   subtaskCount: 4,
   subtasks: [
     {
       id: 1,
-      name: "write-ipv4-aware-regex",
-      goal: `Write a regex with IPv4 lookahead to /app/regex.txt that ONLY matches dates on lines containing IPv4 addresses.
+      name: "write-conditional-regex",
+      goal: `Write a regex to /app/regex.txt that matches dates ONLY on lines meeting certain conditions.
 
-REQUIRED APPROACH:
-1. Use positive lookahead (?=.*IPv4) to require IPv4 presence
-2. Then match the date pattern
+Read the task description carefully to understand:
+1. What condition must the line satisfy? (e.g., contain a specific pattern)
+2. What date format should be captured?
+3. If multiple dates exist, which one should be captured?
 
-EXAMPLE REGEX (copy this exactly):
-(?=.*\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}).*(\\d{4}-\\d{2}-\\d{2})
-
-IMPORTANT JSON ESCAPING: When writing JSON tool calls, backslashes must be doubled:
-- Write \\\\d for digit (\\d in regex)
-- Write \\\\.  for literal dot (\\. in regex)
-- Example in JSON: "content":"(?=.*\\\\d{1,3}\\\\.\\\\d{1,3}..."
-
-TEST CASES (your regex must handle these):
-✓ MATCH: "192.168.1.1 login on 2024-01-15" → captures "2024-01-15"
-✗ NO MATCH: "Error on 2024-01-15" (no IPv4)
-✗ NO MATCH: "User 1234-56-78 logged in" (not a valid date format)
-✓ MATCH LAST: "10.0.0.1 at 2024-01-15 then 2024-01-16" → captures "2024-01-16"`,
-      checkpoint: "File /app/regex.txt exists with a regex containing lookahead (?=",
+Use the appropriate regex technique to enforce the condition before matching.`,
+      checkpoint: "File /app/regex.txt exists with a regex pattern",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [],
       hints: [
-        "CRITICAL: Simple \\d{4}-\\d{2}-\\d{2} is WRONG - it ignores IPv4 requirement",
-        "You MUST use lookahead (?=...) to check for IPv4 first",
-        "Match LAST date by using greedy .* before the date pattern",
+        // Domain knowledge: regex concepts
+        "Lookahead (?=...) checks a condition WITHOUT consuming characters",
+        "Positive lookahead (?=.*pattern) ensures pattern exists somewhere on the line",
+        "Greedy .* matches as much as possible - useful for capturing the LAST match",
+        // Process knowledge
+        "Run verify_progress to see which tests pass and which fail",
+        // JSON escaping knowledge (legitimate tooling help)
+        "In JSON tool calls, backslashes must be doubled: \\\\d for \\d",
       ],
       maxTurns: 5,
     },
     {
       id: 2,
-      name: "add-boundary-assertions",
-      goal: `Improve regex with boundary assertions to prevent false positives.
+      name: "add-boundary-handling",
+      goal: `Improve regex to prevent false positives by adding boundary handling.
 
-The regex must NOT match:
-- "1234-56-78" (looks like date but invalid)
-- "Version-2024-01-15" (preceded by letter)
-- "2024-01-150" (followed by digit)
+False positives occur when:
+- The pattern accidentally matches part of a larger token
+- Invalid values slip through (e.g., out-of-range numbers)
 
-Add non-alphanumeric boundary checks:
-- Before date: (?:^|[^0-9A-Za-z])
-- After date: (?:[^0-9A-Za-z]|$)`,
-      checkpoint: "Regex includes boundary assertions",
+Use boundary assertions to ensure matches are standalone.`,
+      checkpoint: "Regex handles boundaries correctly",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [1],
       hints: [
-        "\\b word boundary may not work - use explicit [^0-9A-Za-z] instead",
-        "Use verify_progress to check for false positives",
+        // Domain knowledge: boundary concepts
+        "\\b word boundary works for alphanumeric boundaries",
+        "For numeric boundaries, use negative lookahead/lookbehind: (?<!\\d) and (?!\\d)",
+        "Character class [^0-9A-Za-z] matches non-alphanumeric characters",
+        // Process knowledge
+        "Test edge cases: patterns at start/end of line, embedded in larger strings",
       ],
       maxTurns: 5,
     },
     {
       id: 3,
-      name: "test-and-iterate",
-      goal: "Run verify_progress to see test results and fix any remaining failures",
+      name: "iterate-on-failures",
+      goal: "Run verify_progress repeatedly, analyze failures, and fix the regex",
       checkpoint: "At least 80% of test cases passing",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [2],
       hints: [
-        "Use verify_progress after each change",
-        "If false positives: tighten boundary conditions",
-        "If false negatives: check IPv4 pattern isn't too strict",
+        // Process knowledge: iteration strategy
+        "After each verify_progress, read which tests failed and WHY",
+        "False positives (wrong matches): tighten boundary conditions or validation",
+        "False negatives (missed matches): loosen overly strict patterns",
+        "Make ONE targeted change per iteration, then verify again",
       ],
       maxTurns: 10,
     },
     {
       id: 4,
       name: "final-validation",
-      goal: "Ensure all test cases pass",
+      goal: "Ensure all test cases pass by fixing remaining edge cases",
       checkpoint: "100% test cases passing",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [3],
       hints: [
-        "Check edge cases: leap years (Feb 29), month boundaries",
-        "IPv4 edge cases: 0.0.0.0, 255.255.255.255",
+        // Domain knowledge: common edge cases
+        "Consider numeric range validation if the task requires it",
+        "Test empty strings, very long strings, special characters",
+        "Consider what happens with multiple matches on one line",
       ],
       maxTurns: 5,
     },
   ],
   globalHints: [
+    // Execution context (legitimate)
     "The regex is applied with re.findall(pattern, text, re.MULTILINE)",
-    "A simple date regex like \\d{4}-\\d{2}-\\d{2} is WRONG - it ignores the IPv4 requirement",
-    "Must use lookahead (?=.*IPv4pattern) to ensure IPv4 is present on the line",
+    "Capture groups () determine what gets returned by findall",
+    // Process guidance
+    "Use verify_progress to get feedback on which tests pass/fail",
+    "Iterate based on failure messages - they tell you what's wrong",
   ],
   filesToRead: [],
   requiredOutputs: ["/app/regex.txt"],
