@@ -139,6 +139,11 @@ export {
   type IntroCardEvent,
 } from "./widgets/intro-card.js"
 export {
+  ThreeBackgroundWidget,
+  type ThreeBackgroundState,
+  type ThreeBackgroundEvent,
+} from "./widgets/three-background.js"
+export {
   ContainerPanesWidget,
   type ContainerPanesState,
   type ContainerPanesEvent,
