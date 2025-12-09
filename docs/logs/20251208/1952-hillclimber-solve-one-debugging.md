@@ -111,7 +111,29 @@ Testing with all fixes:
 
 **Remaining Challenge:** FM keeps trying to read_file instead of writing. This suggests the prompt needs even more emphasis, or we need to adjust the subtask progression logic.
 
-**Next Steps:**
-- Consider making the first subtask "write-initial-regex" instead of "understand-task"
-- Or add a rule: if subtask is "write-initial-regex" and file doesn't exist, skip read_file and go straight to write_file
+**Fix 7: Specific Feedback for Write Subtask**
+- Added special case: when FM tries to read non-existent file during write-initial-regex, provide specific feedback
+- Feedback: "The file doesn't exist yet. Write it using write_file instead of reading it."
+
+**Files Modified:**
+- `src/hillclimber/map-orchestrator.ts` - specific feedback for write subtask
+
+---
+
+## Summary
+
+**All Fixes Applied:**
+1. ✅ Path normalization (/app/ → workspace)
+2. ✅ Action failure feedback
+3. ✅ File listing on errors
+4. ✅ Prompt emphasis on verify_progress
+5. ✅ Proper test workspace setup (using source_path)
+6. ✅ Explicit action guidance per subtask
+7. ✅ Tool inference bug fix
+8. ✅ Path validation for write_file
+9. ✅ Specific feedback for write subtask
+
+**Status:** System is ready for testing. FM should now understand it needs to write the file, not read it first.
+
+**Next Test:** Run again to see if FM writes the file and calls verify_progress.
 
