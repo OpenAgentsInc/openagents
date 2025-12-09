@@ -76,5 +76,27 @@ Testing with all fixes:
 4. ✅ Prompt emphasis on verify_progress
 5. ✅ Proper test workspace setup
 
-Running test again...
+**Fix 5: Explicit Action Guidance**
+- Added explicit instructions for write-initial-regex: "Write the regex file now. Do NOT read files first."
+- Added explicit instructions for test-and-iterate: "Call verify_progress to see test results."
+- Fixed tool inference to parse JSON-like structures from FM responses
+- Added path validation for write_file
+
+**Files Modified:**
+- `src/hillclimber/map-orchestrator.ts` - explicit subtask guidance, tool inference fix
+
+---
+
+## Step 5: Final Test Run
+
+Testing with all fixes:
+1. ✅ Path normalization (/app/ → workspace)
+2. ✅ Action failure feedback
+3. ✅ File listing on errors
+4. ✅ Prompt emphasis on verify_progress
+5. ✅ Proper test workspace setup (using source_path)
+6. ✅ Explicit action guidance per subtask
+7. ✅ Tool inference bug fix
+
+Running final test...
 

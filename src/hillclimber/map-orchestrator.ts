@@ -287,6 +287,13 @@ async function executeAction(
     switch (toolName) {
       case "write_file": {
         const path = toolArgs.path as string || toolArgs.file_path as string;
+        if (!path) {
+          return {
+            success: false,
+            output: `Missing path argument for write_file`,
+            condensed: "write_file requires 'path' argument",
+          };
+        }
         const content = String(toolArgs.content || "");
         
         // Normalize /app/ paths to workspace (TerminalBench convention)
