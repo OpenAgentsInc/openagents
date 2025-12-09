@@ -95,10 +95,10 @@ function extractRequiredOutputs(description: string): string[] {
 
 /**
  * Decompose a Terminal-Bench task into subtasks.
- * 
+ *
  * This is a GENERAL-PURPOSE decomposer that works for ANY task.
  * It uses ONLY the task description to generate subtasks.
- * 
+ *
  * @param task Terminal-Bench task
  * @returns Task decomposition with generic subtasks
  */

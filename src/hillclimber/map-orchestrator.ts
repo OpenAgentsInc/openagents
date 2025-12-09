@@ -250,20 +250,14 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push(`${context.currentSubtask.checkpoint}`);
   lines.push("");
 
-  // Explicit action guidance based on subtask
-  if (context.currentSubtask.name === "write-initial-regex" || context.currentSubtask.name === "write-ipv4-aware-regex") {
-    lines.push(`⚠️ ACTION REQUIRED: Write the regex file now. Do NOT read files first.`);
-    lines.push(`Use write_file to create /app/regex.txt with your regex pattern.`);
-    lines.push(``);
-    lines.push(`IMPORTANT: Write ONLY the plain regex pattern to the file.`);
-    lines.push(`- Do NOT include r"..." or r'...' Python string wrappers`);
-    lines.push(`- Do NOT include quotes around the pattern`);
-    lines.push(`- Example correct content: \\d{4}-\\d{2}-\\d{2}`);
-    lines.push(`- Example WRONG: r"\\d{4}-\\d{2}-\\d{2}" or "\\d{4}-\\d{2}-\\d{2}"`);
+  // Generic action guidance based on subtask phase (not task type)
+  if (context.currentSubtask.name === "write-initial-solution") {
+    lines.push(`⚠️ ACTION REQUIRED: Write your solution file now.`);
+    lines.push(`Use write_file to create the required output file(s).`);
     lines.push("");
   } else if (context.currentSubtask.name === "test-and-iterate") {
     lines.push(`⚠️ ACTION REQUIRED: Call verify_progress to see test results.`);
-    lines.push(`After seeing results, fix the regex if needed.`);
+    lines.push(`After seeing results, fix your solution if needed.`);
     lines.push("");
   }
 
@@ -665,8 +659,8 @@ async function runMAPOrchestratorWithDecomposition(
     }
 
     // Step 3b: Get action from FM with proper error handling
-    // Use parallel sampling for write-initial-regex and test-and-iterate subtasks
-    const useSampling = currentSubtask.name === "write-initial-regex" || currentSubtask.name === "test-and-iterate";
+    // Use parallel sampling for write-initial-solution and test-and-iterate subtasks
+    const useSampling = currentSubtask.name === "write-initial-solution" || currentSubtask.name === "test-and-iterate";
     const action = useSampling
       ? await getNextActionWithSampling(task, fmContext, options.workspace, log, {
           numSamples: 3,
@@ -1066,9 +1060,33 @@ async function getNextAction(
 }
 
 /**
+ * Extract solution filename from task description.
+ * Looks for patterns like "write to /app/X" or "output file: /app/X"
+ */
+function extractSolutionFilename(taskDescription: string): string {
+  // Look for patterns like "write to /app/X" or "output file: /app/X"
+  const outputPattern = /(?:write|output|create|save).*?(\/app\/([\w\-\.]+))/gi;
+  const matches = [...taskDescription.matchAll(outputPattern)];
+  if (matches.length > 0) {
+    // Return just the filename (without /app/ prefix)
+    return matches[0][2];
+  }
+
+  // Fallback: try to find any /app/ path mentioned
+  const pathPattern = /\/app\/([\w\-\.]+)/;
+  const pathMatch = taskDescription.match(pathPattern);
+  if (pathMatch) {
+    return pathMatch[1];
+  }
+
+  // Last resort: return a generic name (shouldn't happen in practice)
+  return "solution.txt";
+}
+
+/**
  * Get next action using parallel sampling (TTC).
  *
- * For write_file actions in critical subtasks (like write-initial-regex),
+ * For write_file actions in critical subtasks (like write-initial-solution),
  * we sample multiple candidates and pick the best based on test progress.
  */
 async function getNextActionWithSampling(
@@ -1085,6 +1103,10 @@ async function getNextActionWithSampling(
 
   log(`[MAP-SAMPLING] Using parallel sampling with N=${numSamples}`);
 
+  // Extract solution filename from task description (no hardcoding)
+  const solutionFilename = extractSolutionFilename(task.description);
+  const solutionPath = `/app/${solutionFilename}`;
+
   try {
     // Run parallel sampling
     const result = await runParallelSampling(
@@ -1098,10 +1120,11 @@ async function getNextActionWithSampling(
         // Get action with this variation and temperature
         const action = await getNextAction(task, samplingContext, workspace, log, temp);
 
-        // Extract regex pattern from write_file action
+        // Extract solution content from write_file action
         if (action && action.toolName === "write_file") {
           const content = action.toolArgs.content as string || "";
-          return extractRegexPattern(content);
+          // For regex tasks, extract pattern; for others, return content as-is
+          return extractRegexPattern(content) || content;
         }
 
         return null;
@@ -1111,7 +1134,7 @@ async function getNextActionWithSampling(
         baseWorkspace: workspace,
         task,
         currentBestProgress,
-        solutionFilename: "regex.txt",
+        solutionFilename, // Extracted from task description
       }
     );
 
@@ -1122,7 +1145,7 @@ async function getNextActionWithSampling(
       return {
         toolName: "write_file",
         toolArgs: {
-          path: "/app/regex.txt",
+          path: solutionPath,
           content: result.best.solution,
         },
         reasoning: `Best of ${numSamples} candidates (${result.best.testsPassing}/${result.best.testsTotal} tests)`,

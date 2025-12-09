@@ -91,51 +91,43 @@ export const STALENESS_THRESHOLD = 5;
 export const RANDOM_PERTURBATION_FREQUENCY = 10;
 
 // ============================================================================
-// Task-Specific Constraints
+// GUARDRAIL: NO TASK-SPECIFIC HARDCODING
+//
+// This file must NEVER contain:
+// - Task IDs (e.g., "regex-log", "path-tracing")
+// - Task-specific patterns (e.g., IPv4 format, date format)
+// - Task-specific hints (e.g., "use lookahead for IPv4")
+// - Task-specific file paths (e.g., "/app/regex.txt")
+//
+// All knowledge must come from:
+// 1. The task description (passed as parameter)
+// 2. General process knowledge (TDD, iteration)
+//
+// If you're tempted to add task-specific code, you're defeating the thesis:
+// "Architecture beats model size"
+// ============================================================================
+
+// ============================================================================
+// Generic Constraints
 // ============================================================================
 
 /**
- * Task-specific constraints for hint generation.
- * Prevents invalid hints like reading forbidden files or using unavailable tools.
+ * Generic constraints for hint generation.
+ * Prevents invalid hints like using unavailable tools.
+ *
+ * NOTE: All task-specific constraints have been removed.
  */
 interface TaskConstraints {
-  /** Forbidden strings that must not appear in hints */
+  /** Forbidden strings that must not appear in hints (generic only) */
   forbidden: string[];
-  /** Required strings that should appear in hints (if applicable) */
-  required?: string[];
-  /** Example of a good hint for this task */
-  example?: string;
 }
 
-const TASK_CONSTRAINTS: Record<string, TaskConstraints> = {
-  "path-tracing": {
-    forbidden: ["image.ppm", "/app/image.ppm", "read image", "read the image"],
-    example: "Write image.c that generates a PPM with same dimensions and color range as a typical Doom frame; you can hardcode simple scene.",
-  },
-  "regex-log": {
-    forbidden: ["python", "read", "parse", "log file"],
-    required: ["/app/regex.txt", "write"],
-    example: "Write regex to /app/regex.txt that matches IPv4 addresses and YYYY-MM-DD dates.",
-  },
-  "video-processing": {
-    forbidden: ["primer3", "python", "ssh", "sudo"],
-    example: "Use OpenCV to compute frame differences; detect jump via large changes; write results to /app/output.toml.",
-  },
-  "dna-assembly": {
-    forbidden: ["primer3", "python", "external tool"],
-    example: "Write a script that finds overlapping DNA sequences and assembles them into a single sequence.",
-  },
-  "model-extraction-relu-logits": {
-    forbidden: ["weights = 1.0", "all weights", "initialized to 1"],
-    example: "Extract the neural network architecture and weights from the provided model file.",
-  },
-};
-
 /**
- * Get constraints for a specific task, or default constraints.
+ * Get generic constraints (no task-specific knowledge).
  */
-const getTaskConstraints = (taskId: string): TaskConstraints => {
-  return TASK_CONSTRAINTS[taskId] ?? {
+const getTaskConstraints = (_taskId: string): TaskConstraints => {
+  // Only generic forbidden strings (no task-specific knowledge)
+  return {
     forbidden: ["primer3", "python", "ssh", "sudo", "external tool"],
   };
 };
@@ -205,7 +197,6 @@ const buildMetaPrompt = (
   const constraints = getTaskConstraints(task.id);
 
   const forbiddenList = constraints.forbidden.map(f => `"${f}"`).join(", ");
-  const requiredList = constraints.required?.map(r => `"${r}"`).join(", ") ?? "none";
 
   const diversityNote = diversityWarning
     ? "\n\n⚠️ IMPORTANT: The current hint has been tried multiple times without success. Propose a COMPLETELY DIFFERENT approach. Think outside the box and try a fundamentally different strategy."
@@ -231,14 +222,11 @@ Existing hint:
 ${historySection}
 
 CONSTRAINTS:
-* The agent CANNOT read /app/image.ppm for path-tracing tasks.
 * It CANNOT rely on tools like primer3/python in this environment.
 * Hint must be <= ${MAX_HINT_LENGTH} characters.
-* Hint MUST be directly actionable given its tools (e.g. "write a regex to /app/regex.txt that does X").
+* Hint MUST be directly actionable given its tools.
 * DO NOT invent network architecture constants unless the task explicitly states them.
 * FORBIDDEN strings (must NOT appear): ${forbiddenList}
-${constraints.required ? `* REQUIRED strings (should appear): ${requiredList}` : ""}
-${constraints.example ? `* Example good hint: "${constraints.example}"` : ""}
 
 Respond ONLY with a JSON object:
 { "hint": "<one-sentence hint>", "reason": "<brief why>" }
@@ -642,15 +630,7 @@ const validateHint = (hint: string, taskId: string): HintValidation => {
     }
   }
 
-  // Check for required strings (if any)
-  if (constraints.required) {
-    const hasRequired = constraints.required.some(req =>
-      hintLower.includes(req.toLowerCase())
-    );
-    if (!hasRequired) {
-      log(`[MetaReasoner] Warning: Hint missing required strings, but accepting anyway`);
-    }
-  }
+  // No required strings check - all task-specific requirements removed
 
   // Sanitize: remove extra whitespace
   const sanitized = hint.replace(/\s+/g, " ").trim();
@@ -730,11 +710,10 @@ const stripModelArtifacts = (content: string): string => {
 
 /**
  * Default hints for specific tasks when no better hint is available.
+ *
+ * NOTE: All task-specific default hints have been removed.
  */
-const DEFAULT_TASK_HINTS: Record<string, string> = {
-  "regex-log":
-    "Write the regex directly to /app/regex.txt. The regex should match dates in YYYY-MM-DD format.",
-};
+const DEFAULT_TASK_HINTS: Record<string, string> = {};
 
 /**
  * Propose a config change using heuristics (no LLM).
