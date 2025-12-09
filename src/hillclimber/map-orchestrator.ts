@@ -389,9 +389,9 @@ function decideNextStep(
     }
   }
 
-  // Stuck detection
+  // No progress detection
   if (state.turnsSinceImprovement > 5) {
-    return "stuck";
+    return "no_progress";
   }
 
   // Max turns for subtask
@@ -399,7 +399,7 @@ function decideNextStep(
     if (state.currentSubtask < decomposition.subtasks.length - 1) {
       return "advance"; // Force advance even if not complete
     }
-    return "stuck";
+    return "no_progress";
   }
 
   return "continue";
@@ -590,9 +590,9 @@ async function runMAPOrchestratorWithDecomposition(
           state.lastEvaluation.suggestion = `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}. ${state.lastEvaluation.suggestion || ""}`;
         }
       }
-      // Force move to next subtask if stuck
+      // Advance to next subtask if monitor rejects actions repeatedly
       if (state.subtaskTurns > 5 && state.currentSubtask < decomposition.subtasks.length - 1) {
-        log(`[MAP] Stuck for ${state.subtaskTurns} turns, moving to next subtask`);
+        log(`[MAP] Advancing to next subtask after ${state.subtaskTurns} turns with monitor rejections`);
         state.currentSubtask++;
         state.subtaskTurns = 0;
       }
