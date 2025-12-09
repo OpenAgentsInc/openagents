@@ -197,8 +197,8 @@ export class DesktopServer {
                 format: format,
                 // For ESM, preserve module structure and external dependencies
                 splitting: format === "esm",
-                // Mark Effect as external so import statements are preserved for import map
-                external: format === "esm" ? ["effect"] : [],
+                // Mark Effect and Three.js as external so import statements are preserved for import map
+                external: format === "esm" ? ["effect", "three"] : [],
               });
               if (result.success && result.outputs.length > 0) {
                 const text = await result.outputs[0].text();
