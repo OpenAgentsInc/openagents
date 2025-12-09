@@ -93,6 +93,8 @@ export interface ExecutionState {
   subtaskStatus: SubtaskStatus[];
   /** Output log */
   output: string;
+  /** Monitor warning from last action (e.g., "Regex might be too simple") */
+  monitorWarning?: string;
 }
 
 // ============================================================================
@@ -162,6 +164,8 @@ function buildFMContext(
     ...currentSubtask.hints,
     ...(state.turnsSinceImprovement > 3 ? ["Try a different approach - current strategy not improving"] : []),
     ...(state.lastEvaluation && state.lastEvaluation.suggestion ? [state.lastEvaluation.suggestion] : []),
+    // Add monitor warning if present (e.g., "Regex might be too simple. Need lookahead...")
+    ...(state.monitorWarning ? [`⚠️ ${state.monitorWarning}`] : []),
   ];
 
   const result: FMContext = {
@@ -589,6 +593,16 @@ async function runMAPOrchestratorWithDecomposition(
   const state = createInitialState(decomposition);
   state.subtaskStatus[0].status = "in_progress";
 
+  // Start heartbeat for visibility (every 30 seconds)
+  const heartbeatInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const currentSubtask = decomposition.subtasks[state.currentSubtask];
+    log(`[HEARTBEAT] Turn ${state.totalTurns}/${options.maxTurns} | Subtask: ${currentSubtask?.name ?? 'unknown'} | Progress: ${(state.bestProgress * 100).toFixed(1)}% | Elapsed: ${elapsed}s`);
+  }, 30_000);
+
+  // Helper to clean up heartbeat
+  const cleanup = () => clearInterval(heartbeatInterval);
+
   // Step 3: Main execution loop
   while (state.totalTurns < options.maxTurns) {
     // Check timeout
@@ -687,6 +701,8 @@ async function runMAPOrchestratorWithDecomposition(
 
     if (monitorDecision.warning) {
       log(`[MAP] Monitor WARNING: ${monitorDecision.warning}`);
+      // Store warning so FM sees it in next turn's context
+      state.monitorWarning = monitorDecision.warning;
     }
 
     // Step 3d: Execute action
@@ -764,6 +780,7 @@ async function runMAPOrchestratorWithDecomposition(
 
         switch (decision) {
           case "complete":
+            cleanup();
             return {
               passed: true,
               turns: state.totalTurns,
@@ -810,6 +827,7 @@ async function runMAPOrchestratorWithDecomposition(
   const finalProgress = state.lastEvaluation?.progress ?? state.bestProgress;
   const finalPassed = state.lastEvaluation?.passed ?? false;
 
+  cleanup();
   return {
     passed: finalPassed,
     turns: state.totalTurns,
