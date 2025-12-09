@@ -19,7 +19,9 @@ import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
 import { monitorAction, createActionSignature, type ActionContext } from "./monitor.js";
-import { evaluateProgress, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
+import { evaluateProgress, evaluateProgressWithDocker, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { FMService, FMServiceLive, FMServiceError } from "../fm/service.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
 
@@ -713,8 +715,12 @@ async function runMAPOrchestratorWithDecomposition(
     if (actionResult.modifiedFile || actionResult.output === "VERIFY_PROGRESS_REQUESTED") {
       log(`[MAP] Running verification...`);
       try {
+        // Use Docker-based verification for TB2 tasks with source_path
+        const useDocker = task.source_path && existsSync(task.source_path) && existsSync(join(task.source_path, "tests"));
         const evaluation = await Effect.runPromise(
-          evaluateProgress(task, options.workspace).pipe(Effect.provide(BunContext.layer)),
+          useDocker
+            ? evaluateProgressWithDocker(task, options.workspace).pipe(Effect.provide(BunContext.layer))
+            : evaluateProgress(task, options.workspace).pipe(Effect.provide(BunContext.layer)),
         );
 
         log(`[MAP] Progress: ${(evaluation.progress * 100).toFixed(1)}% (${evaluation.testsPassing}/${evaluation.testsTotal} tests)`);

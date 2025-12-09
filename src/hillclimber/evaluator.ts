@@ -8,7 +8,10 @@
  */
 
 import { Effect } from "effect";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
+import { runTB2InDocker } from "../bench/tb2-docker-runner.js";
 
 // ============================================================================
 // Types
@@ -93,6 +96,57 @@ export const runVerification = (
       }
     },
     catch: (e) => new Error(`Verification failed: ${e}`),
+  });
+
+/**
+ * Run verification using Docker for TB2 tasks.
+ *
+ * This is the proper way to run TB2 tests - in the Docker environment
+ * where /app/ exists as expected. Uses blind verification (pass/fail only).
+ *
+ * @param task - TB2 task with source_path pointing to task directory
+ * @param workspace - Local workspace with the solution
+ */
+export const runVerificationWithDocker = (
+  task: TerminalBenchTask,
+  workspace: string
+): Effect.Effect<{ exitCode: number; output: string; passed: boolean; progress: number; testsPassing: number; testsTotal: number }, Error> =>
+  Effect.tryPromise({
+    try: async () => {
+      // Check if task has source_path with tests
+      const taskDir = task.source_path;
+      if (!taskDir || !existsSync(taskDir)) {
+        throw new Error(`Task source_path not found: ${taskDir}. Cannot run Docker verification.`);
+      }
+
+      const testsDir = join(taskDir, "tests");
+      if (!existsSync(testsDir)) {
+        throw new Error(`Tests directory not found: ${testsDir}. Cannot run Docker verification.`);
+      }
+
+      // Run verification in Docker
+      const result = await runTB2InDocker({
+        taskDir,
+        workspace,
+        timeout: 120000,
+        captureDetails: false, // Blind verification - no expected values
+      });
+
+      // Format output for compatibility with existing parsers
+      const output = result.passed
+        ? `${result.testsPassing} passed in ${result.durationMs}ms`
+        : `${result.testsPassing} passed, ${result.testsTotal - result.testsPassing} failed in ${result.durationMs}ms${result.feedback ? `\n${result.feedback}` : ""}`;
+
+      return {
+        exitCode: result.exitCode,
+        output,
+        passed: result.passed,
+        progress: result.progress,
+        testsPassing: result.testsPassing,
+        testsTotal: result.testsTotal,
+      };
+    },
+    catch: (e) => new Error(`Docker verification failed: ${e}`),
   });
 
 // ============================================================================
@@ -349,6 +403,44 @@ export const evaluateProgress = (
     }
 
     return result;
+  });
+
+/**
+ * Evaluate progress using Docker-based verification for TB2 tasks.
+ *
+ * This uses the proper Docker environment where /app/ exists.
+ * Returns blind verification results (pass/fail + progress, no expected values).
+ *
+ * @param task Terminal-Bench task definition (must have source_path)
+ * @param workspace Working directory containing solution files
+ * @returns Structured evaluation result with progress score
+ */
+export const evaluateProgressWithDocker = (
+  task: TerminalBenchTask,
+  workspace: string
+): Effect.Effect<EvaluatorResult, Error, never> =>
+  Effect.gen(function* () {
+    const result = yield* runVerificationWithDocker(task, workspace);
+
+    // For blind verification, we don't parse individual failures
+    // We only know pass/fail and generic progress
+    const evalResult: EvaluatorResult = {
+      passed: result.passed,
+      progress: result.progress,
+      testsTotal: result.testsTotal,
+      testsPassing: result.testsPassing,
+      failures: [], // Blind - no individual failure details
+      rawOutput: result.output,
+      durationMs: 0, // Not tracked in Docker result
+    };
+
+    // Add generic suggestion for failures (no expected values)
+    if (!result.passed && result.testsTotal > 0) {
+      const failCount = result.testsTotal - result.testsPassing;
+      evalResult.suggestion = `${failCount} test${failCount > 1 ? "s" : ""} failing. Review edge cases and constraints.`;
+    }
+
+    return evalResult;
   });
 
 /**
