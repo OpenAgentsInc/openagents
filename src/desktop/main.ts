@@ -141,7 +141,7 @@ webview.init(`
   }
 `);
 
-webview.title = "OpenAgents";
+webview.title = isNewMode ? "OpenAgents Gym" : "OpenAgents";
 // Launch near-fullscreen on typical laptop resolutions
 webview.size = { width: 1600, height: 1000, hint: SizeHint.NONE };
 
