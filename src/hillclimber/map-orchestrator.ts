@@ -140,16 +140,22 @@ interface FMContext {
   verificationFeedback?: string;
   hints: string[];
   globalHints: string[];
+  /** Current contents of modified files (passed between subtasks) */
+  fileContents?: Record<string, string>;
 }
 
 /**
  * Build context for FM based on current state.
  * This is what gets injected into the FM prompt.
+ *
+ * IMPORTANT: Reads modified files from workspace to pass context between subtasks.
+ * This prevents context loss when FM advances from one subtask to another.
  */
 function buildFMContext(
   task: TerminalBenchTask,
   decomposition: TaskDecomposition,
   state: ExecutionState,
+  workspacePath: string,
 ): FMContext {
   const currentSubtask = decomposition.subtasks[state.currentSubtask];
 
@@ -157,6 +163,31 @@ function buildFMContext(
   let verificationFeedback: string | undefined;
   if (state.lastEvaluation) {
     verificationFeedback = formatForPrompt(state.lastEvaluation);
+  }
+
+  // Read modified files to pass context forward between subtasks
+  // This is CRITICAL: without this, FM loses context when advancing subtasks
+  const fileContents: Record<string, string> = {};
+  for (const filePath of state.modifiedFiles) {
+    // Normalize /app/ paths to workspace (TerminalBench convention)
+    let normalizedPath = filePath;
+    if (filePath.startsWith("/app/")) {
+      normalizedPath = filePath.replace("/app/", "");
+    } else if (filePath.startsWith("/app")) {
+      normalizedPath = filePath.replace("/app", "");
+    }
+
+    const fullPath = resolve(workspacePath, normalizedPath);
+    if (existsSync(fullPath)) {
+      try {
+        const content = readFileSync(fullPath, "utf-8");
+        // Use /app/ prefix for consistency with FM's view of the workspace
+        const appPath = filePath.startsWith("/app") ? filePath : `/app/${normalizedPath}`;
+        fileContents[appPath] = content;
+      } catch {
+        // Skip unreadable files
+      }
+    }
   }
 
   // Combine subtask hints with decomposition strategy hints
@@ -178,6 +209,11 @@ function buildFMContext(
 
   if (verificationFeedback !== undefined) {
     result.verificationFeedback = verificationFeedback;
+  }
+
+  // Add file contents if any files were modified
+  if (Object.keys(fileContents).length > 0) {
+    result.fileContents = fileContents;
   }
 
   return result;
@@ -233,6 +269,19 @@ export function formatFMPrompt(context: FMContext): string {
   if (context.verificationFeedback) {
     lines.push(`## Verification Status`);
     lines.push(context.verificationFeedback);
+    lines.push("");
+  }
+
+  // Current file contents (CRITICAL for subtask transitions - prevents context loss)
+  if (context.fileContents && Object.keys(context.fileContents).length > 0) {
+    lines.push(`## Current File Contents`);
+    lines.push(`These files were created/modified. BUILD ON these - do NOT start from scratch.`);
+    for (const [filePath, content] of Object.entries(context.fileContents)) {
+      lines.push(`### ${filePath}`);
+      lines.push("```");
+      lines.push(content.trim());
+      lines.push("```");
+    }
     lines.push("");
   }
 
@@ -618,7 +667,7 @@ async function runMAPOrchestratorWithDecomposition(
     log(`\n[MAP] === Turn ${state.totalTurns} (Subtask ${state.currentSubtask + 1}: ${currentSubtask.name}) ===`);
 
     // Step 3a: Build FM context with verification feedback
-    const fmContext = buildFMContext(task, decomposition, state);
+    const fmContext = buildFMContext(task, decomposition, state, options.workspace);
     const promptInjection = formatFMPrompt(fmContext);
 
     if (options.verbose) {
