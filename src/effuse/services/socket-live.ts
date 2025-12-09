@@ -101,6 +101,10 @@ const makeSocketService = (client: SocketClient): SocketService => {
     // Test Generation Operations
     startTestGen: (suitePath, taskId, model) =>
       wrapRequest(() => client.startTestGen(suitePath, taskId, model)),
+
+    // HillClimber Operations
+    startHillClimber: (task, mode, suitePath) =>
+      wrapRequest(() => client.startHillClimber(task, mode, suitePath)),
   }
 }
 
