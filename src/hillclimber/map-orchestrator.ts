@@ -213,7 +213,7 @@ export function formatFMPrompt(context: FMContext): string {
   lines.push("");
 
   // Explicit action guidance based on subtask
-  if (context.currentSubtask.name === "write-initial-regex") {
+  if (context.currentSubtask.name === "write-initial-regex" || context.currentSubtask.name === "write-ipv4-aware-regex") {
     lines.push(`⚠️ ACTION REQUIRED: Write the regex file now. Do NOT read files first.`);
     lines.push(`Use write_file to create /app/regex.txt with your regex pattern.`);
     lines.push(``);
@@ -956,12 +956,28 @@ async function getNextAction(
       return null;
     }
 
-    const firstCall = toolCalls[0];
-    log(`[MAP-FM] Parsed tool call: ${firstCall.name} with args: ${JSON.stringify(firstCall.arguments)}`);
+    // When multiple tool calls present, prefer write_file over read_file
+    // FM often outputs read_file + write_file together, but we should execute write_file
+    let selectedCall = toolCalls[0];
+    if (toolCalls.length > 1) {
+      // Priority order: write_file > edit_file > verify_progress > run_command > read_file
+      const priorityOrder = ["write_file", "edit_file", "verify_progress", "run_command", "read_file", "task_complete"];
+      for (const toolName of priorityOrder) {
+        const found = toolCalls.find(tc => tc.name === toolName);
+        if (found) {
+          selectedCall = found;
+          if (selectedCall !== toolCalls[0]) {
+            log(`[MAP-FM] Selected ${toolName} over ${toolCalls[0].name} (multiple tool calls present)`);
+          }
+          break;
+        }
+      }
+    }
+    log(`[MAP-FM] Parsed tool call: ${selectedCall.name} with args: ${JSON.stringify(selectedCall.arguments)}`);
 
     return {
-      toolName: firstCall.name,
-      toolArgs: firstCall.arguments,
+      toolName: selectedCall.name,
+      toolArgs: selectedCall.arguments,
       reasoning: content.slice(0, 100), // First 100 chars as reasoning
     };
   } catch (error) {

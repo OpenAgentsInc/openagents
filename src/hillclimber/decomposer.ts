@@ -53,57 +53,94 @@ export interface TaskDecomposition {
 
 const REGEX_LOG_DECOMPOSITION: TaskDecomposition = {
   taskId: "regex-log",
-  subtaskCount: 3,
+  subtaskCount: 4,
   subtasks: [
     {
       id: 1,
-      name: "write-initial-regex",
-      goal: "Write an initial regex attempt to /app/regex.txt that matches dates in lines with IPv4 addresses",
-      checkpoint: "File /app/regex.txt exists with a regex pattern",
+      name: "write-ipv4-aware-regex",
+      goal: `Write a regex with IPv4 lookahead to /app/regex.txt that ONLY matches dates on lines containing IPv4 addresses.
+
+REQUIRED APPROACH:
+1. Use positive lookahead (?=.*IPv4) to require IPv4 presence
+2. Then match the date pattern
+
+EXAMPLE REGEX (copy this exactly):
+(?=.*\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}).*(\\d{4}-\\d{2}-\\d{2})
+
+IMPORTANT JSON ESCAPING: When writing JSON tool calls, backslashes must be doubled:
+- Write \\\\d for digit (\\d in regex)
+- Write \\\\.  for literal dot (\\. in regex)
+- Example in JSON: "content":"(?=.*\\\\d{1,3}\\\\.\\\\d{1,3}..."
+
+TEST CASES (your regex must handle these):
+✓ MATCH: "192.168.1.1 login on 2024-01-15" → captures "2024-01-15"
+✗ NO MATCH: "Error on 2024-01-15" (no IPv4)
+✗ NO MATCH: "User 1234-56-78 logged in" (not a valid date format)
+✓ MATCH LAST: "10.0.0.1 at 2024-01-15 then 2024-01-16" → captures "2024-01-16"`,
+      checkpoint: "File /app/regex.txt exists with a regex containing lookahead (?=",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [],
       hints: [
-        "Valid IPv4: 0-255 per octet, no alphanumeric directly before/after",
-        "Valid date: YYYY-MM-DD with month 01-12, day depends on month",
-        "Match LAST date means use greedy .* before the date pattern",
-        "Use lookahead (?=.*IPv4pattern) to require IPv4 presence",
-        "Use boundary assertions (?:^|[^0-9A-Za-z]) to prevent partial matches",
-        "Capture only the date part using parentheses",
+        "CRITICAL: Simple \\d{4}-\\d{2}-\\d{2} is WRONG - it ignores IPv4 requirement",
+        "You MUST use lookahead (?=...) to check for IPv4 first",
+        "Match LAST date by using greedy .* before the date pattern",
       ],
       maxTurns: 5,
     },
     {
       id: 2,
-      name: "test-and-iterate",
-      goal: "Run verify_progress to see test results and fix failures",
-      checkpoint: "At least 5/9 test cases passing",
+      name: "add-boundary-assertions",
+      goal: `Improve regex with boundary assertions to prevent false positives.
+
+The regex must NOT match:
+- "1234-56-78" (looks like date but invalid)
+- "Version-2024-01-15" (preceded by letter)
+- "2024-01-150" (followed by digit)
+
+Add non-alphanumeric boundary checks:
+- Before date: (?:^|[^0-9A-Za-z])
+- After date: (?:[^0-9A-Za-z]|$)`,
+      checkpoint: "Regex includes boundary assertions",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [1],
       hints: [
-        "Use verify_progress after each regex update",
-        "If false positives: check boundary conditions",
-        "If false negatives: check IPv4/date validation is not too strict",
+        "\\b word boundary may not work - use explicit [^0-9A-Za-z] instead",
+        "Use verify_progress to check for false positives",
       ],
-      maxTurns: 15,
+      maxTurns: 5,
     },
     {
       id: 3,
-      name: "final-validation",
-      goal: "Ensure all test cases pass",
-      checkpoint: "All 9 test cases passing (9/9)",
+      name: "test-and-iterate",
+      goal: "Run verify_progress to see test results and fix any remaining failures",
+      checkpoint: "At least 80% of test cases passing",
       expectedArtifacts: ["/app/regex.txt"],
       dependsOn: [2],
       hints: [
-        "Check edge cases: leap years, month boundaries, IPv4 boundaries",
-        "Verify no false positives on invalid dates/IPs",
+        "Use verify_progress after each change",
+        "If false positives: tighten boundary conditions",
+        "If false negatives: check IPv4 pattern isn't too strict",
+      ],
+      maxTurns: 10,
+    },
+    {
+      id: 4,
+      name: "final-validation",
+      goal: "Ensure all test cases pass",
+      checkpoint: "100% test cases passing",
+      expectedArtifacts: ["/app/regex.txt"],
+      dependsOn: [3],
+      hints: [
+        "Check edge cases: leap years (Feb 29), month boundaries",
+        "IPv4 edge cases: 0.0.0.0, 255.255.255.255",
       ],
       maxTurns: 5,
     },
   ],
   globalHints: [
     "The regex is applied with re.findall(pattern, text, re.MULTILINE)",
-    "Must match ONLY dates in lines that contain a valid IPv4 address",
-    "If multiple dates on a line, match only the LAST one",
+    "A simple date regex like \\d{4}-\\d{2}-\\d{2} is WRONG - it ignores the IPv4 requirement",
+    "Must use lookahead (?=.*IPv4pattern) to ensure IPv4 is present on the line",
   ],
   filesToRead: [],
   requiredOutputs: ["/app/regex.txt"],
