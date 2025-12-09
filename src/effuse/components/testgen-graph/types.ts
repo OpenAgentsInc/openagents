@@ -120,6 +120,21 @@ export function createNewSession(sessionId: string): SessionRunState {
 }
 
 // ============================================================================
+// Log Item Types
+// ============================================================================
+
+/**
+ * Log item types for HillClimber output streaming
+ */
+export type LogItem =
+  | { type: "turn"; timestamp: number; data: { turn: number; maxTurns: number; subtask: string } }
+  | { type: "fm_action"; timestamp: number; data: { action: "thinking" | "tool_call" | "complete"; tool?: string; args?: string } }
+  | { type: "verify"; timestamp: number; data: { status: "running" | "passed" | "failed"; passed?: number; total?: number } }
+  | { type: "progress"; timestamp: number; data: { phase: string; message: string } }
+  | { type: "complete"; timestamp: number; data: { passed: boolean; progress: number; duration: number } }
+  | { type: "error"; timestamp: number; data: { message: string } }
+
+// ============================================================================
 // Component State
 // ============================================================================
 
@@ -147,6 +162,10 @@ export interface TestGenGraphState {
     zoom: number
     viewport: { width: number; height: number }
   }
+
+  // Log/output panel
+  logItems: LogItem[]
+  logPanelCollapsed: boolean
 }
 
 // ============================================================================
@@ -167,6 +186,7 @@ export type TestGenGraphEvent =
   | { type: "animationTick" }
   | { type: "selectSession"; sessionId: string }
   | { type: "startRun"; mode: "quick" | "standard" | "full" }
+  | { type: "toggleLogPanel" }
 
 // ============================================================================
 // Initial Graph Structure
