@@ -7,7 +7,7 @@
 import { Effect, Layer } from "effect"
 import {
   DomServiceLive, mountComponent, SocketServiceFromClient,
-  StateServiceLive, AgentGraphComponent
+  StateServiceLive, TestGenGraphComponent
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
@@ -178,8 +178,8 @@ const createNewModeLayer = () => {
 // Component Mounting
 // ============================================================================
 
-const mountAgentGraph = Effect.gen(function* () {
-  console.log("[New Mode] Mounting agent graph background...")
+const mountTestGenGraph = Effect.gen(function* () {
+  console.log("[New Mode] Mounting TestGen graph background...")
 
   // Find or create container
   let container = document.getElementById("three-background-container")
@@ -189,9 +189,9 @@ const mountAgentGraph = Effect.gen(function* () {
     document.body.appendChild(container)
   }
 
-  console.log("[New Mode] Agent graph container found/created:", container)
-  yield* mountComponent(AgentGraphComponent, container)
-  console.log("[New Mode] Agent graph background mounted")
+  console.log("[New Mode] TestGen graph container found/created:", container)
+  yield* mountComponent(TestGenGraphComponent, container)
+  console.log("[New Mode] TestGen graph background mounted")
 })
 
 // ============================================================================
@@ -205,8 +205,8 @@ const initNewMode = () => {
     const layer = createNewModeLayer()
 
     const program = Effect.gen(function* () {
-      // Mount agent graph background
-      yield* mountAgentGraph
+      // Mount TestGen graph background
+      yield* mountTestGenGraph
       // Keep scope alive
       yield* Effect.never
     })

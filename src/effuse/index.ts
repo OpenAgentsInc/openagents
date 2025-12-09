@@ -149,6 +149,11 @@ export {
   type AgentGraphEvent,
 } from "./components/agent-graph/index.js"
 export {
+  TestGenGraphComponent,
+  type TestGenGraphState,
+  type TestGenGraphEvent,
+} from "./components/testgen-graph/index.js"
+export {
   ContainerPanesComponent,
   type ContainerPanesState,
   type ContainerPanesEvent,
