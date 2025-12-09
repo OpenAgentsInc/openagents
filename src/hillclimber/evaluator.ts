@@ -126,6 +126,7 @@ export const runVerificationWithDocker = (
 
       // Run verification in Docker
       const result = await runTB2InDocker({
+        taskId: task.id,
         taskDir,
         workspace,
         timeout: 120000,

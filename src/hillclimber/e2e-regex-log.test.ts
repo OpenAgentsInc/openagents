@@ -47,17 +47,20 @@ describe("E2E: regex-log task", () => {
       throw new Error("regex-log task not found in suite");
     }
 
-    // Copy TB2 task files to workspace using source_path from task
+    // Copy TB2 environment files to workspace (but NOT Dockerfile)
+    // Tests will be run in Docker, so we don't need to copy them here
     const sourcePath = regexLogTask.source_path || join(TB2_ROOT, "regex-log");
     if (existsSync(sourcePath)) {
-      const { readdirSync, statSync, cpSync, readFileSync, writeFileSync, mkdirSync } = await import("fs");
-      
-      // Copy environment files to workspace root
+      const { readdirSync, statSync, cpSync } = await import("fs");
+
+      // Copy environment files to workspace root (these become /app/ contents in Docker)
       const envDir = join(sourcePath, "environment");
       if (existsSync(envDir)) {
         const entries = readdirSync(envDir);
         for (const entry of entries) {
+          // Skip Dockerfile - it's used for image building, not workspace content
           if (entry === "Dockerfile") continue;
+
           const srcPath = join(envDir, entry);
           const destPath = join(workspace, entry);
           if (statSync(srcPath).isDirectory()) {
@@ -67,27 +70,11 @@ describe("E2E: regex-log task", () => {
           }
         }
       }
-      
-      // Copy test files, replacing /app/ paths with workspace path
-      const testsDir = join(sourcePath, "tests");
-      const destTestsDir = join(workspace, "tests");
-      if (existsSync(testsDir)) {
-        mkdirSync(destTestsDir, { recursive: true });
-        const testFiles = readdirSync(testsDir);
-        for (const file of testFiles) {
-          const srcFile = join(testsDir, file);
-          const destFile = join(destTestsDir, file);
-          if (statSync(srcFile).isFile()) {
-            let content = readFileSync(srcFile, "utf-8");
-            // Replace /app/ with workspace path for local execution
-            content = content.replace(/\/app\//g, `${workspace}/`);
-            content = content.replace(/\/app(?=["'])/g, workspace);
-            writeFileSync(destFile, content);
-          }
-        }
-      }
-      
-      console.log(`[E2E] Copied TB2 files from ${sourcePath} to ${workspace}`);
+
+      // Tests stay in source_path - Docker runner will copy them
+      // DO NOT copy or modify test files - that would be gaming the benchmark
+
+      console.log(`[E2E] Copied TB2 environment files from ${sourcePath} to ${workspace}`);
     } else {
       console.warn(`[E2E] TB2 source path not found: ${sourcePath}`);
       console.warn(`[E2E] Tests may fail - workspace not properly set up`);
