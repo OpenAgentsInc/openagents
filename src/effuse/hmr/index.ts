@@ -1,13 +1,13 @@
 /**
  * Effuse HMR Module
  *
- * Hot Module Replacement support for Effuse widgets.
+ * Hot Module Replacement support for Effuse components.
  */
 
 export {
-  saveWidgetState,
-  loadWidgetState,
-  hasWidgetState,
+  saveComponentState,
+  loadComponentState,
+  hasComponentState,
   clearAllState,
   getHMRVersion,
   bumpHMRVersion,

@@ -1,13 +1,13 @@
 /**
  * New Mode Entry Point
  *
- * Mounts the introduction card widget for the TerminalBench Gym.
+ * Mounts the introduction card component for the TerminalBench Gym.
  */
 
 import { Effect, Layer } from "effect"
 import {
-  DomServiceLive, IntroCardWidget, mountWidget, SocketServiceFromClient,
-  StateServiceLive, ThreeBackgroundWidget
+  DomServiceLive, IntroCardComponent, mountComponent, SocketServiceFromClient,
+  StateServiceLive, ThreeBackgroundComponent
 } from "../effuse/index.js"
 import { getSocketClient } from "./socket-client.js"
 
@@ -104,7 +104,7 @@ const createNewModeLayer = () => {
 }
 
 // ============================================================================
-// Widget Mounting
+// Component Mounting
 // ============================================================================
 
 const mountThreeBackground = Effect.gen(function* () {
@@ -119,7 +119,7 @@ const mountThreeBackground = Effect.gen(function* () {
   }
 
   console.log("[New Mode] Three.js container found/created:", container)
-  yield* mountWidget(ThreeBackgroundWidget, container)
+  yield* mountComponent(ThreeBackgroundComponent, container)
   console.log("[New Mode] Three.js background mounted")
 })
 
@@ -136,8 +136,8 @@ const mountIntroCard = Effect.gen(function* () {
 
   console.log("[New Mode] Container found/created:", container)
 
-  console.log("[New Mode] About to mount widget...")
-  yield* mountWidget(IntroCardWidget, container)
+  console.log("[New Mode] About to mount component...")
+  yield* mountComponent(IntroCardComponent, container)
 
   console.log("[New Mode] Intro card mounted")
 })

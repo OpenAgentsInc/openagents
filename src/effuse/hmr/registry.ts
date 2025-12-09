@@ -1,9 +1,9 @@
 /**
  * Effuse HMR State Registry
  *
- * Preserves widget state across hot reloads using a global window object.
+ * Preserves component state across hot reloads using a global window object.
  * State is saved continuously via StateCell.changes stream and restored
- * when widgets remount after reload.
+ * when components remount after reload.
  */
 
 declare global {
@@ -13,7 +13,7 @@ declare global {
 }
 
 interface HMRRegistry {
-  widgets: Map<string, unknown>
+  components: Map<string, unknown>
   version: number
 }
 
@@ -30,7 +30,7 @@ const getRegistry = (): HMRRegistry | null => {
   if (!isBrowser) return null
   if (!window.__EFFUSE_HMR__) {
     window.__EFFUSE_HMR__ = {
-      widgets: new Map(),
+      components: new Map(),
       version: 0,
     }
   }
@@ -38,7 +38,7 @@ const getRegistry = (): HMRRegistry | null => {
 }
 
 /**
- * Save widget state to the registry.
+ * Save component state to the registry.
  * Called continuously via Stream.tap on state.changes.
  *
  * Uses structuredClone to ensure state is safely serializable
@@ -46,48 +46,48 @@ const getRegistry = (): HMRRegistry | null => {
  *
  * No-op in non-browser environments (tests).
  */
-export const saveWidgetState = (widgetId: string, state: unknown): void => {
+export const saveComponentState = (componentId: string, state: unknown): void => {
   const registry = getRegistry()
   if (!registry) return // Not in browser, skip silently
   try {
     // Use structuredClone for deep copy and to ensure serializability
-    registry.widgets.set(widgetId, structuredClone(state))
+    registry.components.set(componentId, structuredClone(state))
   } catch (e) {
     // If structuredClone fails (non-serializable state), skip saving
-    console.warn(`[Effuse HMR] Could not save state for "${widgetId}":`, e)
+    console.warn(`[Effuse HMR] Could not save state for "${componentId}":`, e)
   }
 }
 
 /**
- * Load and consume preserved widget state.
+ * Load and consume preserved component state.
  * Returns the state if available, then removes it from registry.
  *
- * One-time consumption ensures widgets don't accidentally restore
+ * One-time consumption ensures components don't accidentally restore
  * stale state on subsequent mounts.
  *
  * Returns undefined in non-browser environments.
  */
-export const loadWidgetState = <S>(widgetId: string): S | undefined => {
+export const loadComponentState = <S>(componentId: string): S | undefined => {
   const registry = getRegistry()
   if (!registry) return undefined // Not in browser
-  const state = registry.widgets.get(widgetId) as S | undefined
+  const state = registry.components.get(componentId) as S | undefined
   if (state !== undefined) {
-    registry.widgets.delete(widgetId)
-    console.log(`[Effuse HMR] Restored state for "${widgetId}"`)
+    registry.components.delete(componentId)
+    console.log(`[Effuse HMR] Restored state for "${componentId}"`)
   }
   return state
 }
 
 /**
- * Check if preserved state exists for a widget.
+ * Check if preserved state exists for a component.
  * Does not consume the state.
  *
  * Returns false in non-browser environments.
  */
-export const hasWidgetState = (widgetId: string): boolean => {
+export const hasComponentState = (componentId: string): boolean => {
   const registry = getRegistry()
   if (!registry) return false
-  return registry.widgets.has(widgetId)
+  return registry.components.has(componentId)
 }
 
 /**
@@ -99,7 +99,7 @@ export const hasWidgetState = (widgetId: string): boolean => {
 export const clearAllState = (): void => {
   const registry = getRegistry()
   if (!registry) return
-  registry.widgets.clear()
+  registry.components.clear()
   console.log("[Effuse HMR] Cleared all preserved state")
 }
 

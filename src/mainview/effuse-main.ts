@@ -1,26 +1,26 @@
 /**
  * Effuse Mainview Entry Point
  *
- * Mounts all Effuse widgets and provides the runtime layer.
+ * Mounts all Effuse components and provides the runtime layer.
  * This replaces the monolithic index.ts with a clean Effect-based architecture.
  */
 
 import { Effect, Layer, Stream } from "effect"
 import { getSocketClient } from "./socket-client.js"
 import {
-  mountWidgetById,
+  mountComponentById,
   DomServiceLive,
   StateServiceLive,
   SocketServiceFromClient,
-  // TBCC Widgets
-  TBCCShellWidget,
-  TBCCDashboardWidget,
-  TBCCTaskBrowserWidget,
-  TBCCRunBrowserWidget,
-  TBCCSettingsWidget,
-  TBTestGenWidget,
-  // Streaming output widget (fixed overlay)
-  TBOutputWidget,
+  // TBCC Components
+  TBCCShellComponent,
+  TBCCDashboardComponent,
+  TBCCTaskBrowserComponent,
+  TBCCRunBrowserComponent,
+  TBCCSettingsComponent,
+  TBTestGenComponent,
+  // Streaming output component (fixed overlay)
+  TBOutputComponent,
 } from "../effuse/index.js"
 
 console.log("[Effuse] Loading mainview...")
@@ -78,65 +78,65 @@ const createEffuseLayer = () => {
 }
 
 // ============================================================================
-// Widget Mounting
+// Component Mounting
 // ============================================================================
 
 /**
- * Mount all widgets to their respective containers
+ * Mount all components to their respective containers
  */
-const mountAllWidgets = Effect.gen(function* () {
+const mountAllComponents = Effect.gen(function* () {
   console.log("[Effuse] Mounting TB Command Center...")
   if ((window as any).bunLog) {
-    (window as any).bunLog("[Effuse] ========== MOUNTING TBCC WIDGETS ==========")
+    (window as any).bunLog("[Effuse] ========== MOUNTING TBCC COMPONENTS ==========")
   }
 
   // 1. Mount Shell
-  const shellWidget = yield* mountWidgetById(TBCCShellWidget, "tbcc-shell-widget").pipe(
+  const shellComponent = yield* mountComponentById(TBCCShellComponent, "tbcc-shell-widget").pipe(
     Effect.tap(() => console.log("[Effuse] Shell mounted")),
     Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount Shell widget:", e)
+      console.error("[Effuse] Failed to mount Shell component:", e)
       return Effect.die(e)
     })
   )
 
-  // 2. Mount Child Widgets
-  const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard")
-  const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks")
-  const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs")
-  const testGenWidget = yield* mountWidgetById(TBTestGenWidget, "tbcc-tab-testgen")
-  const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings")
+  // 2. Mount Child Components
+  const dashboardComponent = yield* mountComponentById(TBCCDashboardComponent, "tbcc-tab-dashboard")
+  const taskBrowserComponent = yield* mountComponentById(TBCCTaskBrowserComponent, "tbcc-tab-tasks")
+  const runBrowserComponent = yield* mountComponentById(TBCCRunBrowserComponent, "tbcc-tab-runs")
+  const testGenComponent = yield* mountComponentById(TBTestGenComponent, "tbcc-tab-testgen")
+  const settingsComponent = yield* mountComponentById(TBCCSettingsComponent, "tbcc-tab-settings")
 
-  // 3. Mount TBOutputWidget (fixed overlay for streaming output)
-  // Create container dynamically - widget renders as fixed position overlay
-  let outputContainer = document.getElementById("tb-output-widget")
+  // 3. Mount TBOutputComponent (fixed overlay for streaming output)
+  // Create container dynamically - component renders as fixed position overlay
+  let outputContainer = document.getElementById("tb-output-component")
   if (!outputContainer) {
     outputContainer = document.createElement("div")
-    outputContainer.id = "tb-output-widget"
+    outputContainer.id = "tb-output-component"
     document.body.appendChild(outputContainer)
   }
-  const tbOutputWidget = yield* mountWidgetById(TBOutputWidget, "tb-output-widget")
-  void tbOutputWidget
+  const tbOutputComponent = yield* mountComponentById(TBOutputComponent, "tb-output-component")
+  void tbOutputComponent
 
-  // Mark as used (widgets are mounted but not directly referenced)
-  void taskBrowserWidget
-  void testGenWidget
-  void settingsWidget
+  // Mark as used (components are mounted but not directly referenced)
+  void taskBrowserComponent
+  void testGenComponent
+  void settingsComponent
 
-  console.log("[Effuse] Child widgets mounted")
+  console.log("[Effuse] Child components mounted")
 
   // 3. Wire up events
 
   // Dashboard "View Run" -> Switch to Runs tab & Select Run
-  yield* Stream.runForEach(dashboardWidget.events, (event) =>
+  yield* Stream.runForEach(dashboardComponent.events, (event) =>
     Effect.gen(function* () {
       if (event.type === "viewRun") {
         // Switch to Runs tab
-        yield* shellWidget.emit({ type: "changeTab", tab: "runs" })
+        yield* shellComponent.emit({ type: "changeTab", tab: "runs" })
         // Select the run in Run Browser
         // We assume local source for now if coming from dashboard recent runs,
         // but dashboard should probably pass source too.
         // For now, let's try local first.
-        yield* runBrowserWidget.emit({ type: "selectRun", runId: event.runId, source: "local" })
+        yield* runBrowserComponent.emit({ type: "selectRun", runId: event.runId, source: "local" })
       }
     })
   ).pipe(Effect.forkScoped)
@@ -182,10 +182,10 @@ const initEffuse = () => {
     return
   }
 
-  // Mount widgets then wait forever (keeps scope open for event handlers)
+  // Mount components then wait forever (keeps scope open for event handlers)
   const program = Effect.gen(function* () {
-    yield* mountAllWidgets
-    console.log("[Effuse] Widgets mounted, keeping scope alive...")
+    yield* mountAllComponents
+    console.log("[Effuse] Components mounted, keeping scope alive...")
     // Never complete - keeps the scope open so forked fibers keep running
     yield* Effect.never
   })

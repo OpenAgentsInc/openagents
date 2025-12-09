@@ -196,7 +196,7 @@ describe("webview test with widget bundle", () => {
       // Simple widget "bundle"
       window.MyWidget = {
         render: function(root) {
-          root.innerHTML = '<div class="widget-title">My Widget</div>';
+          root.innerHTML = '<div class="widget-title">My Component</div>';
         }
       };
     `

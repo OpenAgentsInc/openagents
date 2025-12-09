@@ -26331,40 +26331,40 @@ ${endStackCall}`;
       return null;
     if (!window.__EFFUSE_HMR__) {
       window.__EFFUSE_HMR__ = {
-        widgets: new Map,
+        components: new Map,
         version: 0
       };
     }
     return window.__EFFUSE_HMR__;
   };
-  var saveWidgetState = (widgetId, state) => {
+  var saveComponentState = (componentId, state) => {
     const registry = getRegistry();
     if (!registry)
       return;
     try {
-      registry.widgets.set(widgetId, structuredClone(state));
+      registry.components.set(componentId, structuredClone(state));
     } catch (e) {
-      console.warn(`[Effuse HMR] Could not save state for "${widgetId}":`, e);
+      console.warn(`[Effuse HMR] Could not save state for "${componentId}":`, e);
     }
   };
-  var loadWidgetState = (widgetId) => {
+  var loadComponentState = (componentId) => {
     const registry = getRegistry();
     if (!registry)
       return;
-    const state = registry.widgets.get(widgetId);
+    const state = registry.components.get(componentId);
     if (state !== undefined) {
-      registry.widgets.delete(widgetId);
-      console.log(`[Effuse HMR] Restored state for "${widgetId}"`);
+      registry.components.delete(componentId);
+      console.log(`[Effuse HMR] Restored state for "${componentId}"`);
     }
     return state;
   };
 
-  // src/effuse/widget/mount.ts
-  var mountWidget = (widget, container) => exports_Effect.gen(function* () {
+  // src/effuse/component/mount.ts
+  var mountComponent = (component, container) => exports_Effect.gen(function* () {
     const dom = yield* DomServiceTag;
     const stateService = yield* StateServiceTag;
-    let preservedState = loadWidgetState(widget.id);
-    if (widget.id === "tbcc-testgen" && preservedState) {
+    let preservedState = loadComponentState(component.id);
+    if (component.id === "tbcc-testgen" && preservedState) {
       const oldState = preservedState;
       if (!oldState.threadItems && (oldState.tests && Array.isArray(oldState.tests) || oldState.reflections && Array.isArray(oldState.reflections))) {
         console.log("[Effuse] Migrating tbcc-testgen state from old format to thread format");
@@ -26399,7 +26399,7 @@ ${endStackCall}`;
         preservedState = migratedState;
       }
     }
-    const initialState = preservedState ?? widget.initialState();
+    const initialState = preservedState ?? component.initialState();
     const state = yield* stateService.cell(initialState);
     const eventQueue = yield* exports_Effect.acquireRelease(exports_Queue.unbounded(), (queue) => exports_Queue.shutdown(queue));
     const emit2 = (event) => exports_Queue.offer(eventQueue, event).pipe(exports_Effect.catchAll(() => exports_Effect.void));
@@ -26409,27 +26409,27 @@ ${endStackCall}`;
       dom,
       container
     };
-    const initialContent = yield* widget.render(ctx);
+    const initialContent = yield* component.render(ctx);
     yield* dom.render(container, initialContent).pipe(exports_Effect.catchAll((error) => {
-      console.error(`[Effuse] Initial render error for "${widget.id}":`, error);
+      console.error(`[Effuse] Initial render error for "${component.id}":`, error);
       return exports_Effect.void;
     }));
-    if (widget.setupEvents) {
-      yield* widget.setupEvents(ctx);
+    if (component.setupEvents) {
+      yield* component.setupEvents(ctx);
     }
-    yield* pipe(state.changes, exports_Stream.tap((s) => exports_Effect.sync(() => saveWidgetState(widget.id, s))), exports_Stream.runDrain, exports_Effect.forkScoped);
+    yield* pipe(state.changes, exports_Stream.tap((s) => exports_Effect.sync(() => saveComponentState(component.id, s))), exports_Stream.runDrain, exports_Effect.forkScoped);
     yield* pipe(state.changes, exports_Stream.tap(() => exports_Effect.gen(function* () {
-      const content = yield* widget.render(ctx);
+      const content = yield* component.render(ctx);
       yield* dom.render(container, content).pipe(exports_Effect.catchAll((error) => {
-        console.error(`[Effuse] Re-render error for "${widget.id}":`, error);
+        console.error(`[Effuse] Re-render error for "${component.id}":`, error);
         return exports_Effect.void;
       }));
     })), exports_Stream.runDrain, exports_Effect.forkScoped);
-    if (widget.handleEvent) {
-      yield* pipe(exports_Stream.fromQueue(eventQueue), exports_Stream.tap((event) => widget.handleEvent(event, ctx)), exports_Stream.runDrain, exports_Effect.forkScoped);
+    if (component.handleEvent) {
+      yield* pipe(exports_Stream.fromQueue(eventQueue), exports_Stream.tap((event) => component.handleEvent(event, ctx)), exports_Stream.runDrain, exports_Effect.forkScoped);
     }
-    if (widget.subscriptions) {
-      const subs = widget.subscriptions(ctx);
+    if (component.subscriptions) {
+      const subs = component.subscriptions(ctx);
       for (const sub of subs) {
         yield* pipe(sub, exports_Stream.tap((effect4) => effect4), exports_Stream.runDrain, exports_Effect.forkScoped);
       }
@@ -26441,12 +26441,12 @@ ${endStackCall}`;
     };
     return mounted;
   });
-  var mountWidgetById = (widget, containerId) => exports_Effect.gen(function* () {
+  var mountComponentById = (component, containerId) => exports_Effect.gen(function* () {
     const dom = yield* DomServiceTag;
     const container = yield* dom.queryId(containerId);
-    return yield* mountWidget(widget, container);
+    return yield* mountComponent(component, container);
   }).pipe(exports_Effect.catchAll((error) => {
-    console.error(`[Effuse] Failed to mount widget "${widget.id}":`, error);
+    console.error(`[Effuse] Failed to mount component "${component.id}":`, error);
     return exports_Effect.succeed({
       unmount: exports_Effect.void,
       events: exports_Stream.empty,
@@ -26456,7 +26456,7 @@ ${endStackCall}`;
   // src/effuse/layers/live.ts
   var EffuseLive = exports_Layer.mergeAll(DomServiceLive, StateServiceLive, SocketServiceDefault);
   var EffuseLiveNoSocket = exports_Layer.mergeAll(DomServiceLive, StateServiceLive);
-  // src/effuse/widgets/apm-widget.ts
+  // src/effuse/components/apm-widget.ts
   var getAPMColorClass = (apm) => {
     if (apm >= 30)
       return "text-emerald-400";
@@ -26484,8 +26484,8 @@ ${endStackCall}`;
   };
   var isAPMUpdate = (msg) => msg.type === "apm_update";
   var isAPMSnapshot = (msg) => msg.type === "apm_snapshot";
-  var APMWidget = {
-    id: "apm-widget",
+  var APMComponent = {
+    id: "apm-component",
     initialState: () => ({
       sessionAPM: 0,
       recentAPM: 0,
@@ -26657,8 +26657,8 @@ ${endStackCall}`;
       ];
     }
   };
-  var initialAPMState = APMWidget.initialState();
-  // src/effuse/widgets/trajectory-pane.ts
+  var initialAPMState = APMComponent.initialState();
+  // src/effuse/components/trajectory-pane.ts
   var formatTimestamp = (iso) => {
     try {
       return new Date(iso).toLocaleString(undefined, {
@@ -26678,7 +26678,7 @@ ${endStackCall}`;
   var getTypeLabel = (type) => {
     return type === "tb-run" ? "TB" : "ATIF";
   };
-  var TrajectoryPaneWidget = {
+  var TrajectoryPaneComponent = {
     id: "trajectory-pane",
     initialState: () => ({
       trajectories: [],
@@ -26827,8 +26827,8 @@ ${endStackCall}`;
       }
     })
   };
-  var initialTrajectoryPaneState = TrajectoryPaneWidget.initialState();
-  // src/effuse/widgets/container-panes.ts
+  var initialTrajectoryPaneState = TrajectoryPaneComponent.initialState();
+  // src/effuse/components/container-panes.ts
   var MAX_VISIBLE_PANES = 10;
   var MAX_LINES_PER_PANE = 500;
   var getStatusIcon = (pane) => {
@@ -26861,7 +26861,7 @@ ${endStackCall}`;
   var isContainerComplete = (msg) => msg.type === "container_complete";
   var isContainerError = (msg) => msg.type === "container_error";
   var isContainerMessage = (msg) => isContainerStart(msg) || isContainerOutput(msg) || isContainerComplete(msg) || isContainerError(msg);
-  var ContainerPanesWidget = {
+  var ContainerPanesComponent = {
     id: "container-panes",
     initialState: () => ({
       panes: new Map,
@@ -27079,13 +27079,13 @@ ${endStackCall}`;
       ];
     }
   };
-  var initialContainerPanesState = ContainerPanesWidget.initialState();
+  var initialContainerPanesState = ContainerPanesComponent.initialState();
   // src/hud/protocol.ts
   var HUD_WS_PORT = 8080;
   var HUD_WS_URL = `ws://localhost:${HUD_WS_PORT}/ws`;
   var isATIFStep = (msg) => msg.type === "atif_step";
 
-  // src/effuse/widgets/tb-output.ts
+  // src/effuse/components/tb-output.ts
   var MAX_OUTPUT_LINES = 500;
   var getSourceColorClass = (source) => {
     switch (source) {
@@ -27139,7 +27139,7 @@ ${endStackCall}`;
   var isTBRunStart = (msg) => msg.type === "tb_run_start";
   var isTBRunComplete = (msg) => msg.type === "tb_run_complete";
   var isTBMessage = (msg) => isTBTaskOutput(msg) || isTBRunStart(msg) || isTBRunComplete(msg) || isATIFStep(msg);
-  var TBOutputWidget = {
+  var TBOutputComponent = {
     id: "tb-output",
     initialState: () => ({
       outputLines: [],
@@ -27433,8 +27433,8 @@ ${endStackCall}`;
       ];
     }
   };
-  var initialTBOutputState = TBOutputWidget.initialState();
-  // src/effuse/widgets/mc-tasks.ts
+  var initialTBOutputState = TBOutputComponent.initialState();
+  // src/effuse/components/mc-tasks.ts
   var getPriorityLabel = (priority) => {
     return `P${priority}`;
   };
@@ -27470,7 +27470,7 @@ ${endStackCall}`;
         return "text-zinc-400";
     }
   };
-  var MCTasksWidget = {
+  var MCTasksComponent = {
     id: "mc-tasks",
     initialState: () => ({
       tasks: [],
@@ -27660,8 +27660,8 @@ ${endStackCall}`;
       }
     })
   };
-  var initialMCTasksState = MCTasksWidget.initialState();
-  // src/effuse/widgets/tb-controls.ts
+  var initialMCTasksState = MCTasksComponent.initialState();
+  // src/effuse/components/tb-controls.ts
   var getDifficultyClass = (difficulty) => {
     switch (difficulty.toLowerCase()) {
       case "easy":
@@ -27699,7 +27699,7 @@ ${endStackCall}`;
   var isTBRunComplete2 = (msg) => msg.type === "tb_run_complete";
   var isTBTaskComplete = (msg) => msg.type === "tb_task_complete";
   var isTBMessage2 = (msg) => isTBRunStart2(msg) || isTBRunComplete2(msg) || isTBTaskComplete(msg);
-  var TBControlsWidget = {
+  var TBControlsComponent = {
     id: "tb-controls",
     initialState: () => ({
       suitePath: "./tasks/terminal-bench-2.json",
@@ -28167,8 +28167,8 @@ ${endStackCall}`;
       ];
     }
   };
-  var initialTBControlsState = TBControlsWidget.initialState();
-  // src/effuse/widgets/category-tree.ts
+  var initialTBControlsState = TBControlsComponent.initialState();
+  // src/effuse/components/category-tree.ts
   var getStatusIcon2 = (status2) => {
     switch (status2) {
       case "passed":
@@ -28237,7 +28237,7 @@ ${endStackCall}`;
   var isTBTaskComplete2 = (msg) => msg.type === "tb_task_complete";
   var isTBSuiteInfo = (msg) => msg.type === "tb_suite_info";
   var isTBMessage3 = (msg) => isTBTaskStart(msg) || isTBTaskComplete2(msg) || isTBSuiteInfo(msg);
-  var CategoryTreeWidget = {
+  var CategoryTreeComponent = {
     id: "category-tree",
     initialState: () => ({
       tasks: new Map,
@@ -28439,8 +28439,8 @@ ${endStackCall}`;
       ];
     }
   };
-  var initialCategoryTreeState = CategoryTreeWidget.initialState();
-  // src/effuse/widgets/hf-trajectory-list.ts
+  var initialCategoryTreeState = CategoryTreeComponent.initialState();
+  // src/effuse/components/hf-trajectory-list.ts
   var extractMetadata = (trajectory, index) => {
     const agent = trajectory.agent;
     const extra = trajectory.extra;
@@ -28473,7 +28473,7 @@ ${endStackCall}`;
       return iso.slice(0, 10);
     }
   };
-  var HFTrajectoryListWidget = {
+  var HFTrajectoryListComponent = {
     id: "hf-trajectory-list",
     initialState: () => {
       if (typeof window !== "undefined" && window.bunLog) {
@@ -28752,7 +28752,7 @@ ${endStackCall}`;
       return [exports_Stream.make(initialLoad)];
     }
   };
-  var initialHFTrajectoryListState = HFTrajectoryListWidget.initialState();
+  var initialHFTrajectoryListState = HFTrajectoryListComponent.initialState();
   // src/atif/schema.ts
   var ATIF_SCHEMA_VERSION = "ATIF-v1.4";
   var StepSource = Literal2("user", "agent", "system");
@@ -28861,7 +28861,7 @@ ${endStackCall}`;
     return "";
   };
 
-  // src/effuse/widgets/hf-trajectory-detail.ts
+  // src/effuse/components/hf-trajectory-detail.ts
   var formatTimestamp2 = (iso) => {
     try {
       return new Date(iso).toLocaleTimeString(undefined, {
@@ -28915,7 +28915,7 @@ ${endStackCall}`;
   var getMessageText = (step4) => {
     return collapseWhitespace(extractStepText(step4));
   };
-  var HFTrajectoryDetailWidget = {
+  var HFTrajectoryDetailComponent = {
     id: "hf-trajectory-detail",
     initialState: () => {
       if (typeof window !== "undefined" && window.bunLog) {
@@ -29161,7 +29161,7 @@ ${endStackCall}`;
           break;
         }
         case "clear":
-          yield* ctx.state.update(() => HFTrajectoryDetailWidget.initialState());
+          yield* ctx.state.update(() => HFTrajectoryDetailComponent.initialState());
           break;
         case "toggleViewMode": {
           yield* ctx.state.update((s) => ({
@@ -29174,8 +29174,8 @@ ${endStackCall}`;
     }),
     subscriptions: () => []
   };
-  var initialHFTrajectoryDetailState = HFTrajectoryDetailWidget.initialState();
-  // src/effuse/widgets/tb-command-center/types.ts
+  var initialHFTrajectoryDetailState = HFTrajectoryDetailComponent.initialState();
+  // src/effuse/components/tb-command-center/types.ts
   var TABS = [
     { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
     { id: "tasks", label: "Tasks", icon: "list-checks" },
@@ -29213,8 +29213,8 @@ ${endStackCall}`;
     error: { bg: "bg-red-900/40", text: "text-red-300", border: "border-red-700/50" },
     aborted: { bg: "bg-zinc-800/40", text: "text-zinc-400", border: "border-zinc-700/50" }
   };
-  // src/effuse/widgets/tb-command-center/tbcc-shell.ts
-  var TBCCShellWidget = {
+  // src/effuse/components/tb-command-center/tbcc-shell.ts
+  var TBCCShellComponent = {
     id: "tbcc-shell",
     initialState: () => ({
       activeTab: "dashboard",
@@ -29392,7 +29392,7 @@ ${endStackCall}`;
       return [exports_Stream.make(socketSub)];
     }
   };
-  // src/effuse/widgets/tb-command-center/tbcc-dashboard.ts
+  // src/effuse/components/tb-command-center/tbcc-dashboard.ts
   var STORAGE_KEY = "tbcc_settings";
   var DEFAULT_SUITE_PATH = "tasks/terminal-bench-2.json";
   var getSettings = () => {
@@ -29433,7 +29433,7 @@ ${endStackCall}`;
   var formatPercent = (value) => {
     return `${(value * 100).toFixed(1)}%`;
   };
-  var TBCCDashboardWidget = {
+  var TBCCDashboardComponent = {
     id: "tbcc-dashboard",
     initialState: () => {
       const bunLog = typeof window !== "undefined" ? window.bunLog : null;
@@ -29858,8 +29858,8 @@ ${endStackCall}`;
       }
     };
   }
-  // src/effuse/widgets/tb-command-center/tbcc-task-browser.ts
-  var TBCCTaskBrowserWidget = {
+  // src/effuse/components/tb-command-center/tbcc-task-browser.ts
+  var TBCCTaskBrowserComponent = {
     id: "tbcc-task-browser",
     initialState: () => ({
       tasks: [],
@@ -30098,7 +30098,7 @@ ${endStackCall}`;
       return [exports_Stream.make(ctx.emit({ type: "loadTasks" }))];
     }
   };
-  // src/effuse/widgets/tb-command-center/tbcc-run-browser.ts
+  // src/effuse/components/tb-command-center/tbcc-run-browser.ts
   var formatDate5 = (iso) => {
     try {
       return new Date(iso).toLocaleDateString(undefined, {
@@ -30121,7 +30121,7 @@ ${endStackCall}`;
     const remainingSeconds = seconds2 % 60;
     return `${minutes2}m ${remainingSeconds}s`;
   };
-  var TBCCRunBrowserWidget = {
+  var TBCCRunBrowserComponent = {
     id: "tbcc-run-browser",
     initialState: () => ({
       runs: [],
@@ -30774,8 +30774,8 @@ ${endStackCall}`;
   `;
   }
 
-  // src/effuse/widgets/tb-command-center/tbcc-testgen.ts
-  var TBTestGenWidget = {
+  // src/effuse/components/tb-command-center/tbcc-testgen.ts
+  var TBTestGenComponent = {
     id: "tbcc-testgen",
     initialState: () => {
       console.log("[TBTestGen] Creating initial state");
@@ -31226,7 +31226,7 @@ ${endStackCall}`;
       return [exports_Stream.make(testgenSub)];
     }
   };
-  // src/effuse/widgets/tb-command-center/tbcc-settings.ts
+  // src/effuse/components/tb-command-center/tbcc-settings.ts
   var STORAGE_KEY2 = "tbcc_settings";
   var loadSettings = () => {
     if (typeof localStorage === "undefined") {
@@ -31251,7 +31251,7 @@ ${endStackCall}`;
       console.error("Failed to save settings", e);
     }
   };
-  var TBCCSettingsWidget = {
+  var TBCCSettingsComponent = {
     id: "tbcc-settings",
     initialState: () => {
       const { execution, logging } = loadSettings();
@@ -31580,32 +31580,32 @@ ${event.reason?.stack || event.reason}`);
     const socketClient = getSocketClient();
     return exports_Layer.mergeAll(DomServiceLive, StateServiceLive, SocketServiceFromClient(socketClient));
   };
-  var mountAllWidgets = exports_Effect.gen(function* () {
+  var mountAllComponents = exports_Effect.gen(function* () {
     console.log("[Effuse] Mounting TB Command Center...");
     if (window.bunLog) {
-      window.bunLog("[Effuse] ========== MOUNTING TBCC WIDGETS ==========");
+      window.bunLog("[Effuse] ========== MOUNTING TBCC COMPONENTS ==========");
     }
-    const shellWidget = yield* mountWidgetById(TBCCShellWidget, "tbcc-shell-widget").pipe(exports_Effect.tap(() => console.log("[Effuse] Shell mounted")), exports_Effect.catchAll((e) => {
-      console.error("[Effuse] Failed to mount Shell widget:", e);
+    const shellComponent = yield* mountComponentById(TBCCShellComponent, "tbcc-shell-widget").pipe(exports_Effect.tap(() => console.log("[Effuse] Shell mounted")), exports_Effect.catchAll((e) => {
+      console.error("[Effuse] Failed to mount Shell component:", e);
       return exports_Effect.die(e);
     }));
-    const dashboardWidget = yield* mountWidgetById(TBCCDashboardWidget, "tbcc-tab-dashboard");
-    const taskBrowserWidget = yield* mountWidgetById(TBCCTaskBrowserWidget, "tbcc-tab-tasks");
-    const runBrowserWidget = yield* mountWidgetById(TBCCRunBrowserWidget, "tbcc-tab-runs");
-    const testGenWidget = yield* mountWidgetById(TBTestGenWidget, "tbcc-tab-testgen");
-    const settingsWidget = yield* mountWidgetById(TBCCSettingsWidget, "tbcc-tab-settings");
-    let outputContainer = document.getElementById("tb-output-widget");
+    const dashboardComponent = yield* mountComponentById(TBCCDashboardComponent, "tbcc-tab-dashboard");
+    const taskBrowserComponent = yield* mountComponentById(TBCCTaskBrowserComponent, "tbcc-tab-tasks");
+    const runBrowserComponent = yield* mountComponentById(TBCCRunBrowserComponent, "tbcc-tab-runs");
+    const testGenComponent = yield* mountComponentById(TBTestGenComponent, "tbcc-tab-testgen");
+    const settingsComponent = yield* mountComponentById(TBCCSettingsComponent, "tbcc-tab-settings");
+    let outputContainer = document.getElementById("tb-output-component");
     if (!outputContainer) {
       outputContainer = document.createElement("div");
-      outputContainer.id = "tb-output-widget";
+      outputContainer.id = "tb-output-component";
       document.body.appendChild(outputContainer);
     }
-    const tbOutputWidget = yield* mountWidgetById(TBOutputWidget, "tb-output-widget");
-    console.log("[Effuse] Child widgets mounted");
-    yield* exports_Stream.runForEach(dashboardWidget.events, (event) => exports_Effect.gen(function* () {
+    const tbOutputComponent = yield* mountComponentById(TBOutputComponent, "tb-output-component");
+    console.log("[Effuse] Child components mounted");
+    yield* exports_Stream.runForEach(dashboardComponent.events, (event) => exports_Effect.gen(function* () {
       if (event.type === "viewRun") {
-        yield* shellWidget.emit({ type: "changeTab", tab: "runs" });
-        yield* runBrowserWidget.emit({ type: "selectRun", runId: event.runId, source: "local" });
+        yield* shellComponent.emit({ type: "changeTab", tab: "runs" });
+        yield* runBrowserComponent.emit({ type: "selectRun", runId: event.runId, source: "local" });
       }
     })).pipe(exports_Effect.forkScoped);
     console.log("[Effuse] TB Command Center ready");
@@ -31635,8 +31635,8 @@ ${event.reason?.stack || event.reason}`);
       return;
     }
     const program = exports_Effect.gen(function* () {
-      yield* mountAllWidgets;
-      console.log("[Effuse] Widgets mounted, keeping scope alive...");
+      yield* mountAllComponents;
+      console.log("[Effuse] Components mounted, keeping scope alive...");
       yield* exports_Effect.never;
     });
     console.log("[Effuse] Starting Effect runtime...");

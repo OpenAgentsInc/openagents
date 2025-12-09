@@ -14,12 +14,12 @@ import { StateServiceLive } from "../../services/state-live.js"
 import { SocketServiceTag, SocketError, type SocketService } from "../../services/socket.js"
 import type { HudMessage } from "../../../hud/protocol.js"
 import type { TemplateResult } from "../../template/types.js"
-import type { Widget, WidgetContext } from "../../widget/types.js"
+import type { Component } from "../../component/types.js"
 import type { StateCell } from "../../state/cell.js"
 import { TestError, type WaitOptions } from "../errors.js"
 import type { TestBrowser } from "../browser.js"
 import { TestBrowserTag } from "../browser.js"
-import type { TestHarness, WidgetHandle } from "../harness.js"
+import type { TestHarness, ComponentHandle } from "../harness.js"
 import { TestHarnessTag } from "../harness.js"
 
 // Type alias for happy-dom's Document type
@@ -479,9 +479,9 @@ export const makeHappyDomLayer = (): Effect.Effect<
     // Create test harness
     const harness: TestHarness = {
       mount: <S, E, R>(
-        widget: Widget<S, E, R>,
+        widget: Component<S, E, R>,
         options?: { containerId?: string; initialState?: S }
-      ): Effect.Effect<WidgetHandle<S, E>, TestError, R | StateServiceTag | Scope.Scope> =>
+      ): Effect.Effect<ComponentHandle<S, E>, TestError, R | StateServiceTag | Scope.Scope> =>
         Effect.gen(function* () {
           const stateService = yield* StateServiceTag
 
@@ -502,7 +502,7 @@ export const makeHappyDomLayer = (): Effect.Effect<
           )
 
           // Build widget context
-          const ctx: WidgetContext<S, E> = {
+          const ctx: ComponentContext<S, E> = {
             state,
             emit: (event) => Queue.offer(eventQueue, event),
             dom: domService,
@@ -565,7 +565,7 @@ export const makeHappyDomLayer = (): Effect.Effect<
           ])
 
           // Return widget handle
-          const handle: WidgetHandle<S, E> = {
+          const handle: ComponentHandle<S, E> = {
             container: container as unknown as Element,
 
             getState: state.get,

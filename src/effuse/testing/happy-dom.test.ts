@@ -9,18 +9,18 @@ import { Effect, Stream, pipe } from "effect"
 import { makeHappyDomLayer } from "./layers/happy-dom.js"
 import { TestBrowserTag } from "./browser.js"
 import { TestHarnessTag } from "./harness.js"
-import type { Widget } from "../widget/types.js"
+import type { Component } from "../component/types.js"
 import { html } from "../template/html.js"
 import { SocketServiceTag } from "../services/socket.js"
 
-// Simple test widget
+// Simple test component
 interface CounterState {
   count: number
 }
 
 type CounterEvent = { type: "increment" } | { type: "decrement" } | { type: "set"; value: number }
 
-const CounterWidget: Widget<CounterState, CounterEvent> = {
+const CounterWidget: Component<CounterState, CounterEvent> = {
   id: "counter-widget",
   initialState: () => ({ count: 0 }),
 
@@ -74,7 +74,7 @@ type MessageEvent = { type: "clear" }
 // Factory to create widget with socket dependency properly injected
 const makeMessageWidget = (
   socketMessages: Stream.Stream<any, never>
-): Widget<MessageState, MessageEvent> => ({
+): Component<MessageState, MessageEvent> => ({
   id: "message-widget",
   initialState: () => ({ messages: [] }),
 
