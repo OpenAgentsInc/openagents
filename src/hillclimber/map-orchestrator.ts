@@ -20,11 +20,12 @@ import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
 import { monitorAction, createActionSignature, type ActionContext } from "./monitor.js";
 import { evaluateProgress, evaluateProgressWithDocker, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FMService, FMServiceLive, FMServiceError } from "../fm/service.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
 import { runTestGenForTask } from "./testgen-integration.js";
+import { runParallelSampling } from "./sampling-orchestrator.js";
 
 // ============================================================================
 // Types
@@ -607,7 +608,14 @@ async function runMAPOrchestratorWithDecomposition(
     }
 
     // Step 3b: Get action from FM with proper error handling
-    const action = await getNextAction(task, fmContext, options.workspace, log);
+    // Use parallel sampling for write-initial-regex and test-and-iterate subtasks
+    const useSampling = currentSubtask.name === "write-initial-regex" || currentSubtask.name === "test-and-iterate";
+    const action = useSampling
+      ? await getNextActionWithSampling(task, fmContext, options.workspace, log, {
+          numSamples: 3,
+          currentBestProgress: state.bestProgress,
+        })
+      : await getNextAction(task, fmContext, options.workspace, log);
 
     if (!action) {
       // Error was already logged by getNextAction with specific reason
@@ -804,8 +812,22 @@ async function runMAPOrchestratorWithDecomposition(
 }
 
 // ============================================================================
-// FM Action Interface (Placeholder)
+// FM Action Interface
 // ============================================================================
+
+/**
+ * Extract regex pattern from write_file action content.
+ * Handles various formats: quoted strings, raw patterns, etc.
+ */
+function extractRegexPattern(content: string): string | null {
+  // Remove common wrapper patterns
+  const cleaned = content
+    .replace(/^r["']/, "") // r"pattern" or r'pattern'
+    .replace(/["']$/, "")  // trailing quotes
+    .trim();
+
+  return cleaned || null;
+}
 
 /**
  * Get next action from FM.
@@ -816,11 +838,12 @@ async function getNextAction(
   context: FMContext,
   workspace: string,
   log: (text: string) => void,
+  temperature: number = 0.3,
 ): Promise<FMAction | null> {
   try {
     const prompt = formatFMPrompt(context);
-    
-    log(`[MAP-FM] Calling FM with prompt (${prompt.length} chars)`);
+
+    log(`[MAP-FM] Calling FM with prompt (${prompt.length} chars, temp=${temperature.toFixed(2)})`);
 
     // Call FM service
     const response = await Effect.runPromise(
@@ -830,7 +853,7 @@ async function getNextAction(
 
         const chatResponse = yield* fm.chat({
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.3,
+          temperature,
           maxTokens: 512, // Short responses for tool calls
         });
 
@@ -839,7 +862,7 @@ async function getNextAction(
     );
 
     const content = response.choices[0]?.message?.content ?? "";
-    
+
     if (!content) {
       log(`[MAP-FM] Empty response from FM`);
       return null;
@@ -899,6 +922,78 @@ async function getNextAction(
   } catch (error) {
     log(`[MAP-FM] Error calling FM: ${error instanceof Error ? error.message : String(error)}`);
     return null;
+  }
+}
+
+/**
+ * Get next action using parallel sampling (TTC).
+ *
+ * For write_file actions in critical subtasks (like write-initial-regex),
+ * we sample multiple candidates and pick the best based on test progress.
+ */
+async function getNextActionWithSampling(
+  task: TerminalBenchTask,
+  context: FMContext,
+  workspace: string,
+  log: (text: string) => void,
+  options: {
+    numSamples?: number;
+    currentBestProgress?: number;
+  } = {}
+): Promise<FMAction | null> {
+  const { numSamples = 3, currentBestProgress = 0 } = options;
+
+  log(`[MAP-SAMPLING] Using parallel sampling with N=${numSamples}`);
+
+  try {
+    // Run parallel sampling
+    const result = await runParallelSampling(
+      async (variation, temp, index) => {
+        // Add variation hint to context
+        const samplingContext: FMContext = {
+          ...context,
+          hints: [...context.hints, variation].filter(h => h),
+        };
+
+        // Get action with this variation and temperature
+        const action = await getNextAction(task, samplingContext, workspace, log, temp);
+
+        // Extract regex pattern from write_file action
+        if (action && action.toolName === "write_file") {
+          const content = action.toolArgs.content as string || "";
+          return extractRegexPattern(content);
+        }
+
+        return null;
+      },
+      {
+        numSamples,
+        baseWorkspace: workspace,
+        task,
+        currentBestProgress,
+        solutionFilename: "regex.txt",
+      }
+    );
+
+    log(`[MAP-SAMPLING] Best candidate: ${result.best.testsPassing}/${result.best.testsTotal} tests`);
+
+    // Return write_file action for best candidate
+    if (result.best.solution) {
+      return {
+        toolName: "write_file",
+        toolArgs: {
+          path: "/app/regex.txt",
+          content: result.best.solution,
+        },
+        reasoning: `Best of ${numSamples} candidates (${result.best.testsPassing}/${result.best.testsTotal} tests)`,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    log(`[MAP-SAMPLING] Error: ${error instanceof Error ? error.message : String(error)}`);
+    // Fallback to single sample
+    return getNextAction(task, context, workspace, log);
   }
 }
 
