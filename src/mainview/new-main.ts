@@ -13,12 +13,83 @@ import { getSocketClient } from "./socket-client.js"
 
 console.log("[New Mode] Loading...")
 
-// Add visible error display
+// Add visible error display as a small toast in bottom-left
 const showError = (msg: string) => {
-  document.body.innerHTML = `<div style="padding:20px;color:red;font-family:monospace;background:#1a1a1a;">
-    <h2>New Mode Error</h2>
-    <pre>${msg}</pre>
-  </div>`
+  // Remove any existing error toasts
+  const existing = document.getElementById("error-toast")
+  if (existing) existing.remove()
+
+  const toast = document.createElement("div")
+  toast.id = "error-toast"
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    max-width: 400px;
+    max-height: 300px;
+    padding: 12px 16px;
+    background: rgba(26, 26, 26, 0.95);
+    border: 2px solid #ef4444;
+    border-radius: 8px;
+    color: #fca5a5;
+    font-family: 'Berkeley Mono', monospace;
+    font-size: 11px;
+    overflow: auto;
+    z-index: 10000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+  `
+
+  const header = document.createElement("div")
+  header.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #7f1d1d;
+  `
+
+  const title = document.createElement("strong")
+  title.textContent = "Error"
+  title.style.cssText = "color: #ef4444; font-size: 12px;"
+
+  const closeBtn = document.createElement("button")
+  closeBtn.textContent = "×"
+  closeBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: #fca5a5;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+  `
+  closeBtn.onclick = () => toast.remove()
+
+  header.appendChild(title)
+  header.appendChild(closeBtn)
+
+  const content = document.createElement("pre")
+  content.textContent = msg
+  content.style.cssText = `
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10px;
+    line-height: 1.4;
+  `
+
+  toast.appendChild(header)
+  toast.appendChild(content)
+  document.body.appendChild(toast)
+
+  // Auto-dismiss after 10 seconds
+  setTimeout(() => {
+    if (toast.parentElement) toast.remove()
+  }, 10000)
 }
 
 // Global error handler
