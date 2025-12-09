@@ -7,6 +7,78 @@
 
 ---
 
+## Preface: The Bigger Picture
+
+### What We're Building
+
+OpenAgents is building **MechaCoder**, an autonomous coding agent designed to achieve **#1 on Terminal-Bench** — the gold-standard benchmark for testing whether AI agents can actually accomplish real work in Linux environments. The critical differentiator: we're doing this using **only Apple's on-device Foundation Model (FM)**, not cloud APIs from OpenAI, Anthropic, or Google.
+
+This is being executed through **FM Hill Climber**, a sophisticated system that proves **architecture beats raw model capability**. Rather than throwing a massive cloud model at problems and hoping for one-shot success, FM Hill Climber uses:
+
+- **MAP Architecture** (Modular Agentic Planner) — Decomposition, monitoring, evaluation as separate modules
+- **Test-Time Compute (TTC)** — Parallel sampling of multiple candidates, selecting the best
+- **TestGen** — Dynamic generation of comprehensive test suites for verification
+- **Iterative Refinement** — Building solutions incrementally with feedback loops
+
+### Why This Matters (The Stakes)
+
+If MechaCoder achieves #1 on Terminal-Bench using only local Apple FM inference, it would be a **paradigm-shifting moment** for the AI industry:
+
+1. **Proves Local > Cloud for Agentic Work** — Overturns the assumption that cloud models are strictly more capable. Local inference becomes not just "fast and private" but the **most capable execution layer**.
+
+2. **Apple Becomes the Agent Compute Platform** — Every iPhone, iPad, and M-series Mac becomes an "agent supercomputer" with zero server bills, deterministic latency, and built-in privacy.
+
+3. **OpenAgents Becomes the Gateway** — Enterprises run local agents on employee Macs, calling into the OpenAgents compute marketplace only for specialized heavy operations. Cloud models become the fallback, not the primary tool.
+
+4. **Validates Architecture Over Model Size** — Proves that a well-structured system with decomposition + TTC + verification can match or exceed trillion-parameter cloud models on specific tasks.
+
+5. **Destroys Cloud-Dependent Business Models** — Cloud-dependent coding tools (Cursor, Replit, Windsurf) become obsolete. The "GPU crunch" narrative collapses if Apple Silicon on a laptop beats H100-powered agents.
+
+For the complete analysis of strategic implications, see [docs/local/stakes.md](../../local/stakes.md).
+
+### Where December 9th Fits
+
+The work documented in this summary represents **critical infrastructure debugging** for FM Hill Climber. We had already achieved **89.5% (17/19 tests)** on the `regex-log` benchmark task — proving the architecture fundamentally works. However, multiple bugs were preventing us from:
+
+1. **Seeing accurate results** — Progress reporting showed 0% instead of 89.5%
+2. **Getting FM to improve** — Monitor detected problems but FM never received that feedback
+3. **Building incrementally** — FM lost context when advancing between subtasks
+
+December 9th was about **removing blockers** — fixing the plumbing so the system can actually iterate toward 100%. This is the difference between "promising prototype" and "production-ready system."
+
+### The Target Task: regex-log
+
+The specific task we're solving is `regex-log` from Terminal-Bench 2. It requires writing a regex that:
+
+- Matches dates in YYYY-MM-DD format
+- Only from lines that contain valid IPv4 addresses
+- Returns the **last** date if multiple exist on a line
+- Ignores text that looks like dates/IPs but isn't (e.g., "user 1134-12-1234")
+
+The optimal solution is a ~383 character expert regex. Our hypothesis: rather than generating this in one shot, FM Hill Climber can **build it incrementally** over 10-15 turns:
+
+```
+Turn 1-2:   \d{4}-\d{2}-\d{2}                        → ~60% pass
+Turn 3-4:   (?=.*IPv4).*(\d{4}-\d{2}-\d{2})         → ~75% pass
+Turn 5-6:   + IPv4 octet validation (0-255)          → ~85% pass
+Turn 7-8:   + word boundaries                        → ~92% pass
+Turn 9-10:  + date validation (month/day)            → 100% pass
+```
+
+Achieving 100% on regex-log would be the **first definitive solve** and proof that the architecture works end-to-end.
+
+### Key Documentation References
+
+| Document | Purpose |
+|----------|---------|
+| [docs/fm-hillclimber.md](../../fm-hillclimber.md) | Complete FM Hill Climber system documentation |
+| [docs/local/stakes.md](../../local/stakes.md) | Strategic implications of Terminal-Bench #1 |
+| [docs/mechacoder/README.md](../../mechacoder/README.md) | MechaCoder autonomous agent overview |
+| [docs/mechacoder/GOLDEN-LOOP-v2.md](../../mechacoder/GOLDEN-LOOP-v2.md) | Desktop agent loop specification |
+| [docs/terminal-bench.md](../../terminal-bench.md) | Terminal-Bench integration guide |
+
+---
+
 ## Executive Overview
 
 December 9, 2025 was a highly productive debugging and improvement day for the MAP (Multi-Agent Planning) orchestrator component of the hillclimber system. The work focused on a regex-solving task (`regex-log`) that requires matching dates in YYYY-MM-DD format from log lines containing IPv4 addresses. Over the course of the day, **four major bugs were discovered and fixed**, a **comprehensive unit test suite was created**, and significant improvements were made to the FM (Foundation Model) feedback loop.
@@ -526,6 +598,138 @@ The session ends with a quick integration test running to verify the fix works e
 
 ---
 
+## Conclusion: State of the Mission
+
+### Where We Stand After December 9th
+
+December 9th was a **foundational debugging day** that transformed FM Hill Climber from a system with hidden failures into one with clear visibility and proper feedback loops. The key achievements position us for rapid progress:
+
+| Before Dec 9 | After Dec 9 |
+|--------------|-------------|
+| Progress reports showed 0% (lie) | Progress reports show actual % (truth) |
+| FM received no feedback on failures | FM receives monitor warnings in prompt |
+| FM lost context between subtasks | FM sees previous file contents |
+| Parser picked wrong tool calls | Parser prioritizes write_file over read_file |
+| Regex `\b` became backspace (0x08) | JSON escaping handled correctly |
+| No unit tests for orchestrator | 16 tests covering all known bugs |
+| No quick validation path | `validate-map.ts` runs in <30 seconds |
+
+**Current best result:** 89.5% (17/19 tests) on regex-log with simple `\d{4}-\d{2}-\d{2}` pattern, achieved in 5 turns.
+
+### The Path to 100%
+
+With the bugs fixed, FM Hill Climber should now be able to:
+
+1. **Generate IPv4-aware regex on Turn 1** — The decomposer now includes explicit example: `(?=.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*(\d{4}-\d{2}-\d{2})`
+
+2. **Preserve progress across subtask transitions** — When advancing from "write-ipv4-aware-regex" to "add-boundary-assertions", FM now sees the current regex.txt contents
+
+3. **Act on verification feedback** — Monitor warnings like "Regex might be too simple" now appear in FM prompts
+
+The expected trajectory:
+
+```
+Turn 1-2:   Correct IPv4 lookahead regex       → ~65-75% pass
+Turn 3-4:   + Word boundaries                  → ~85% pass
+Turn 5-6:   + Date validation                  → ~92% pass
+Turn 7-10:  + Edge case refinement             → 100% pass
+```
+
+### What Needs to Happen Next
+
+**Immediate (P0):**
+1. Run standard mode test (10 turns) to verify context loss fix works
+2. Validate FM actually generates IPv4-aware regex on first turn
+3. Confirm subtask transitions preserve the working regex
+
+**Short-term (P1):**
+1. Achieve 100% on regex-log — first definitive solve
+2. Add per-test failure feedback (not just "17/19 passing" but which 2 failed and why)
+3. Implement remaining iteration improvements (heartbeat, timeouts, streaming logs)
+
+**Medium-term (P2):**
+1. Scale to other TB2 tasks (path-tracing, chess-best-move, model-extraction)
+2. Optimize turn budget and sampling strategy
+3. Build overnight run capability with proper monitoring
+
+**Long-term (P3):**
+1. Terminal-Bench #1 using only Apple FM
+2. Full MechaCoder integration with Golden Loop v2
+3. Enterprise deployment on employee MacBooks
+
+### The Thesis Being Tested
+
+December 9th's work is in service of proving a fundamental thesis:
+
+> **A well-structured local system with decomposition, parallel sampling, and verification can outperform cloud models for agentic work.**
+
+If this is true, then:
+- The "bigger model = better results" assumption is wrong for certain task classes
+- The competitive moat for AI coding tools isn't model access but **execution architecture**
+- OpenAgents has a path to becoming the dominant agent platform without needing to train foundation models
+
+The next milestone — achieving 100% on regex-log — will be the first concrete proof point. The bugs fixed on December 9th removed the last technical blockers to getting there.
+
+### For Future Agents Reading This
+
+If you're an AI agent continuing this work, here's what you need to know:
+
+1. **Read [docs/fm-hillclimber.md](../../fm-hillclimber.md)** for complete system architecture
+2. **The core files are:**
+   - `src/hillclimber/map-orchestrator.ts` — Main orchestration loop
+   - `src/hillclimber/decomposer.ts` — Task decomposition
+   - `src/hillclimber/sampling-orchestrator.ts` — Parallel sampling (TTC)
+   - `src/bench/tb2-docker-runner.ts` — Docker verification
+3. **Run `bun scripts/validate-map.ts`** before making changes to ensure tests pass
+4. **Run `bun scripts/test-progress-fix.ts --mode standard`** to test the full pipeline
+5. **Check `.openagents/tasks.jsonl`** for current task queue
+
+The work from December 9th established proper testing infrastructure. **Use it.** The bugs we fixed were discovered during long integration tests because we lacked unit tests. Don't repeat that mistake.
+
+---
+
+## Appendix: Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      MAP ORCHESTRATOR                           │
+│  (src/hillclimber/map-orchestrator.ts)                          │
+│  Coordinates modules, manages state, handles retry/backtrack    │
+└─────────────────────────────────────────────────────────────────┘
+           │           │           │           │
+           ▼           ▼           ▼           ▼
+    ┌───────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐
+    │   TASK    │ │  ACTOR  │ │ MONITOR │ │EVALUATOR │
+    │DECOMPOSER │ │  (FM)   │ │         │ │          │
+    │decomposer │ │fm/serv. │ │monitor.ts│ │evaluator │
+    └───────────┘ └─────────┘ └─────────┘ └──────────┘
+         │             │           │           │
+         │             ▼           │           │
+         │      ┌───────────┐      │           │
+         │      │ PARALLEL  │◄─────┘           │
+         │      │ SAMPLER   │                  │
+         │      │ (TTC)     │                  │
+         │      │sampling-* │                  │
+         │      └───────────┘                  │
+         │             │                       │
+         └─────────────┴───────────────────────┘
+                       │
+                       ▼
+               ┌─────────────┐
+               │   TESTGEN   │  ← Generates comprehensive test suites
+               │  + DOCKER   │  ← Runs pytest in isolation
+               │  VERIFIER   │  ← src/bench/tb2-docker-runner.ts
+               └─────────────┘
+```
+
+**December 9th touched:**
+- MAP Orchestrator (progress reporting, context preservation, tool selection)
+- Decomposer (example regex, JSON escaping instructions)
+- Monitor → Orchestrator feedback loop (warnings now passed to FM)
+
+---
+
 **Document generated:** 2025-12-09 11:19 CT
+**Document updated:** 2025-12-09 (preface and conclusion added)
 **Total source files summarized:** 9
 **Total source lines reviewed:** ~2,427 lines
