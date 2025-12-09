@@ -113,9 +113,11 @@ export async function runTB2InDocker(
     dockerArgs.push(
       dockerImage,
       "sh", "-c",
-      // Install Python and pytest if not present, then run tests
-      "command -v python3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3 python3-pip) && " +
-      "python3 -m pip install -q --break-system-packages pytest && " +
+      // Install Python and pytest if not present (suppress installation output), then run tests
+      "command -v python3 >/dev/null 2>&1 || " +
+      "(apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq python3 python3-pip >/dev/null 2>&1) && " +
+      "python3 -m pip install -q --break-system-packages pytest 2>&1 | grep -v WARNING >&2 || true && " +
+      "echo '=== PYTEST OUTPUT START ===' && " +
       "python3 -m pytest tests/ -v 2>&1"
     );
 
