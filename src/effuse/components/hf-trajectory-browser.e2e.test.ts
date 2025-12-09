@@ -101,6 +101,7 @@ const createMockSocket = (otService: IOpenThoughtsService): SocketService => ({
     Effect.provideService(FileSystem.FileSystem, {} as any)
   ),
   startTestGen: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  startHillClimber: () => Effect.fail(new SocketError("request_failed", "Mock")),
 })
 
 // ============================================================================

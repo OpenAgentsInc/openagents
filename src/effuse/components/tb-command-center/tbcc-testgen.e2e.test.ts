@@ -61,6 +61,7 @@ const createMockSocketWithTestGen = (
     getHFTrajectories: () => Effect.succeed([]),
     startTestGen: (suitePath: string, taskId?: string, model?: "local" | "claude") =>
       Effect.succeed({ sessionId }),
+    startHillClimber: () => Effect.succeed({ sessionId }),
   };
 };
 

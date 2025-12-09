@@ -124,6 +124,7 @@ const createMockSocket = (): SocketService => ({
   getHFTrajectoryCount: () => Effect.succeed(0),
   getHFTrajectories: () => Effect.succeed([]),
   startTestGen: () => Effect.fail(new SocketError("request_failed", "Mock")),
+  startHillClimber: () => Effect.fail(new SocketError("request_failed", "Mock")),
 })
 
 describe("TB Command Center E2E", () => {

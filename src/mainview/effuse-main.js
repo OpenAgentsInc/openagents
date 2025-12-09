@@ -26045,6 +26045,13 @@ ${endStackCall}`;
       }
       return response.data;
     }
+    async startHillClimber(task, mode, suitePath) {
+      const response = await this.request("request:startHillClimber", { task, mode, suitePath });
+      if (!response.success) {
+        throw new Error(response.error ?? "Failed to start HillClimber");
+      }
+      return response.data;
+    }
     handleMessage(data) {
       const parsed = parseSocketMessage(data);
       if (!parsed) {
@@ -26318,7 +26325,8 @@ ${endStackCall}`;
       loadUnifiedTrajectories: (limit) => wrapRequest(() => client.loadUnifiedTrajectories(limit)),
       getHFTrajectoryCount: () => wrapRequest(() => client.getHFTrajectoryCount()),
       getHFTrajectories: (offset, limit) => wrapRequest(() => client.getHFTrajectories(offset, limit)),
-      startTestGen: (suitePath, taskId, model) => wrapRequest(() => client.startTestGen(suitePath, taskId, model))
+      startTestGen: (suitePath, taskId, model) => wrapRequest(() => client.startTestGen(suitePath, taskId, model)),
+      startHillClimber: (task, mode, suitePath) => wrapRequest(() => client.startHillClimber(task, mode, suitePath))
     };
   };
   var SocketServiceLive = (options) => exports_Layer.succeed(SocketServiceTag, makeSocketService(new SocketClient(options)));
