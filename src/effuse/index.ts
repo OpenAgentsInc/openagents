@@ -134,6 +134,11 @@ export {
   initialTrajectoryPaneState,
 } from "./widgets/trajectory-pane.js"
 export {
+  IntroCardWidget,
+  type IntroCardState,
+  type IntroCardEvent,
+} from "./widgets/intro-card.js"
+export {
   ContainerPanesWidget,
   type ContainerPanesState,
   type ContainerPanesEvent,
