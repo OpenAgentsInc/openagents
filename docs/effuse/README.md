@@ -2,8 +2,6 @@
 
 Effuse is OpenAgents' custom, lightweight UI framework built natively on Effect TypeScript. It powers the mainview desktop HUD with type-safe, reactive, testable components.
 
-**Note:** Effuse currently uses the term "component" throughout the codebase, but it's in the process of being refactored to use "component" instead. This document uses "component" to reflect the intended terminology.
-
 **TL;DR for coding agents:**
 - Components are Effect-native UI elements with typed state, events, and services
 - Use `html` tagged templates with automatic XSS escaping
