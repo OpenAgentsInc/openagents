@@ -274,6 +274,10 @@ function buildCategoryPrompt(
       ? `\n## Reflection\nYou've already generated ${existingTests.length} tests for ${category}. What edge cases or scenarios are still missing? Generate 1-3 additional tests that fill gaps.`
       : "";
 
+  // Extract task-specific edge cases and format for this category
+  const edgeCases = extractTaskEdgeCases(taskDescription, taskId);
+  const edgeCaseGuidance = formatEdgeCasesForCategory(edgeCases, category);
+
   return `You are a QA engineer generating tests for category: ${category}
 
 ## Task ID
@@ -284,6 +288,7 @@ ${taskDescription}
 
 ## Category: ${category}
 ${getCategoryDescription(category)}
+${edgeCaseGuidance}
 
 ## Environment Context
 - Platform: ${environment.platform.type}
@@ -321,6 +326,193 @@ function getCategoryDescription(category: IterativeTestCategory): string {
     default:
       return "Test for this category.";
   }
+}
+
+// ============================================================================
+// Task-Specific Edge Case Extraction
+// ============================================================================
+
+export interface TaskEdgeCases {
+  ipv4?: {
+    validRanges: string;
+    invalidExamples: string[];
+    boundaryRequirements: string[];
+  };
+  date?: {
+    format: string;
+    validRanges: { month: string; day: string };
+    invalidExamples: string[];
+  };
+  regex?: {
+    captureGroup: string;
+    multipleMatches: string;
+  };
+  generic: string[];
+}
+
+/**
+ * Extract task-specific edge cases from the task description.
+ * This helps TestGen generate tests that match what TB2 actually tests.
+ */
+export function extractTaskEdgeCases(taskDescription: string, taskId: string): TaskEdgeCases {
+  const edgeCases: TaskEdgeCases = { generic: [] };
+  const desc = taskDescription.toLowerCase();
+
+  // IPv4 address detection
+  if (desc.includes("ipv4") || desc.includes("ip address") || desc.includes("ip ")) {
+    edgeCases.ipv4 = {
+      validRanges: "Each octet must be 0-255 (not 256+, not negative)",
+      invalidExamples: [
+        "256.1.1.1 (first octet > 255)",
+        "1.2.3.999 (fourth octet > 255)",
+        "1.2.3.4a (alphanumeric suffix - not a valid IP)",
+        "a1.2.3.4 (alphanumeric prefix - not a valid IP)",
+        "1.2.3 (missing octet)",
+        "1.2.3.4.5 (extra octet)",
+      ],
+      boundaryRequirements: [
+        "IP must have word boundaries (not adjacent to alphanumeric)",
+        "Test IPs at start/middle/end of line",
+        "Test multiple IPs on same line",
+      ],
+    };
+  }
+
+  // Date detection (YYYY-MM-DD format)
+  if (desc.includes("date") || desc.includes("yyyy-mm-dd") || desc.includes("yyyy/mm/dd")) {
+    edgeCases.date = {
+      format: "YYYY-MM-DD where month is 01-12 and day is 01-31",
+      validRanges: {
+        month: "01-12 (not 00, not 13+)",
+        day: "01-31 (not 00, not 32+)",
+      },
+      invalidExamples: [
+        "2024-00-15 (month 00 invalid)",
+        "2024-13-15 (month 13 invalid)",
+        "2024-01-00 (day 00 invalid)",
+        "2024-01-32 (day 32 invalid)",
+        "2024-02-30 (Feb 30 doesn't exist)",
+        "2024-04-31 (Apr 31 doesn't exist)",
+        "20240115 (missing dashes)",
+        "2024-1-15 (single digit month)",
+      ],
+    };
+  }
+
+  // Regex-specific patterns
+  if (desc.includes("regex") || desc.includes("regular expression") || desc.includes("pattern")) {
+    edgeCases.regex = {
+      captureGroup: "Test that the correct capture group is returned, not the whole match",
+      multipleMatches: "When multiple matches exist, test which one is captured (first/last/all)",
+    };
+  }
+
+  // Log file patterns
+  if (desc.includes("log") || taskId.includes("log")) {
+    edgeCases.generic.push(
+      "Test multi-line log entries",
+      "Test lines with multiple potential matches",
+      "Test lines that look like matches but aren't (false positives)",
+      "Test empty lines and lines with only whitespace",
+    );
+  }
+
+  // Generic patterns from description
+  if (desc.includes("last") || desc.includes("final")) {
+    edgeCases.generic.push("When multiple matches exist, verify the LAST one is selected");
+  }
+  if (desc.includes("first")) {
+    edgeCases.generic.push("When multiple matches exist, verify the FIRST one is selected");
+  }
+  if (desc.includes("only") || desc.includes("must")) {
+    edgeCases.generic.push("Test lines that should NOT match to verify false positive rejection");
+  }
+
+  return edgeCases;
+}
+
+/**
+ * Format edge cases as additional prompt guidance for a category.
+ */
+export function formatEdgeCasesForCategory(
+  edgeCases: TaskEdgeCases,
+  category: IterativeTestCategory,
+): string {
+  const lines: string[] = [];
+
+  if (category === "boundary") {
+    // Boundary tests should specifically target validation edge cases
+    // IMPORTANT: Tests must include BOTH components (IP and date) to properly test the regex
+    if (edgeCases.ipv4 && edgeCases.date) {
+      lines.push("\n### Combined IP + Date Boundary Cases (CRITICAL)");
+      lines.push("IMPORTANT: Each test MUST include both an IP and a date!");
+      lines.push("The regex requires BOTH a valid IP AND a valid date to match.");
+      lines.push("");
+      lines.push("Test with INVALID IPs (valid date, should NOT match):");
+      lines.push("  - Input: '256.1.1.1 2024-01-15' → expectedOutput: null (invalid IP)");
+      lines.push("  - Input: '1.2.3.999 2024-01-15' → expectedOutput: null (invalid IP)");
+      lines.push("  - Input: '1.2.3.4a 2024-01-15' → expectedOutput: null (alphanumeric suffix)");
+      lines.push("  - Input: 'a1.2.3.4 2024-01-15' → expectedOutput: null (alphanumeric prefix)");
+      lines.push("");
+      lines.push("Test with INVALID dates (valid IP, should NOT match):");
+      lines.push("  - Input: '192.168.1.1 2024-00-15' → expectedOutput: null (month 00)");
+      lines.push("  - Input: '192.168.1.1 2024-13-15' → expectedOutput: null (month 13)");
+      lines.push("  - Input: '192.168.1.1 2024-01-00' → expectedOutput: null (day 00)");
+      lines.push("  - Input: '192.168.1.1 2024-01-32' → expectedOutput: null (day 32)");
+      lines.push("  - Input: '192.168.1.1 2024-02-30' → expectedOutput: null (Feb 30)");
+      lines.push("");
+      lines.push("Test with VALID IP and date (should match):");
+      lines.push("  - Input: '192.168.1.1 2024-01-15' → expectedOutput: '2024-01-15'");
+      lines.push("  - Input: '10.0.0.1 2024-12-31' → expectedOutput: '2024-12-31'");
+    } else if (edgeCases.ipv4) {
+      lines.push("\n### IPv4 Boundary Cases (CRITICAL)");
+      lines.push(`Valid range: ${edgeCases.ipv4.validRanges}`);
+      lines.push("Test these INVALID IPs (should NOT match):");
+      for (const example of edgeCases.ipv4.invalidExamples) {
+        lines.push(`  - ${example}`);
+      }
+      lines.push("Boundary requirements:");
+      for (const req of edgeCases.ipv4.boundaryRequirements) {
+        lines.push(`  - ${req}`);
+      }
+    } else if (edgeCases.date) {
+      lines.push("\n### Date Boundary Cases (CRITICAL)");
+      lines.push(`Format: ${edgeCases.date.format}`);
+      lines.push(`Month range: ${edgeCases.date.validRanges.month}`);
+      lines.push(`Day range: ${edgeCases.date.validRanges.day}`);
+      lines.push("Test these INVALID dates (should NOT match):");
+      for (const example of edgeCases.date.invalidExamples) {
+        lines.push(`  - ${example}`);
+      }
+    }
+  }
+
+  if (category === "correctness" && edgeCases.regex) {
+    lines.push("\n### Regex Correctness Cases");
+    lines.push(`- ${edgeCases.regex.captureGroup}`);
+    lines.push(`- ${edgeCases.regex.multipleMatches}`);
+  }
+
+  if (category === "integration" && edgeCases.generic.length > 0) {
+    lines.push("\n### Task-Specific Integration Cases");
+    for (const g of edgeCases.generic) {
+      lines.push(`- ${g}`);
+    }
+  }
+
+  // Anti-cheat should test that invalid inputs are properly rejected
+  if (category === "anti_cheat") {
+    lines.push("\n### Anti-Cheat: False Positive Prevention");
+    lines.push("Verify the solution does NOT match invalid inputs:");
+    if (edgeCases.ipv4) {
+      lines.push("- Lines with invalid IPs (256+, alphanumeric adjacent) should NOT match");
+    }
+    if (edgeCases.date) {
+      lines.push("- Lines with invalid dates (month 00/13, day 00/32) should NOT match");
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function buildComprehensivenessPrompt(
@@ -468,10 +660,15 @@ function parseTestsResponse(
       })
       .map((t: unknown) => {
         const test = t as Record<string, unknown>;
+        // Handle "null" string as actual null (LLM sometimes outputs "null" instead of null)
+        let expectedOutput = test.expectedOutput as string | null;
+        if (expectedOutput === "null" || expectedOutput === "None" || expectedOutput === "") {
+          expectedOutput = null;
+        }
         return {
           id: test.id as string,
           input: test.input as string,
-          expectedOutput: (test.expectedOutput as string | null) ?? null,
+          expectedOutput: expectedOutput ?? null,
           reasoning: (test.reasoning as string) ?? "",
           category: category as TestCategory,
           confidence: typeof test.confidence === "number" ? test.confidence : 0.5,
