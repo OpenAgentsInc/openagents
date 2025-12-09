@@ -27,7 +27,7 @@ export function renderNode(node: SimNode, hovered: boolean): string {
       stroke-width="2"
       stroke-opacity="${strokeOpacity}"
       data-node-id="${node.id}"
-      style="cursor: pointer;"
+      style="cursor: pointer; user-select: none;"
     />
     <text
       x="${node.x}"
@@ -38,6 +38,7 @@ export function renderNode(node: SimNode, hovered: boolean): string {
       font-family="Berkeley Mono, monospace"
       font-size="11"
       pointer-events="none"
+      style="user-select: none;"
     >
       ${node.label}
     </text>
@@ -127,16 +128,11 @@ export function renderGraph(
     .map((node) => renderNode(node, node.id === hoveredNodeId))
     .join("\n")
 
-  const result = `
+  return `
     ${renderGridPattern()}
     <g transform="translate(${pan.x},${pan.y}) scale(${zoom})">
       ${connectionsHtml}
       ${nodesHtml}
     </g>
   `
-
-  console.log("[AgentGraph] Generated SVG length:", result.length, "chars")
-  console.log("[AgentGraph] Sample output:", result.substring(0, 200))
-
-  return result
 }
