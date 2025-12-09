@@ -41,7 +41,7 @@ export async function runParallelSampling(
   getCandidateFn: (variation: string, temperature: number, index: number) => Promise<string | null>,
   options: SamplingOptions & {
     currentBestProgress?: number;
-    solutionFilename?: string; // e.g., "regex.txt"
+    solutionFilename: string; // REQUIRED - no default, must be extracted from task description
   }
 ): Promise<SamplingResult> {
   const {
@@ -50,7 +50,7 @@ export async function runParallelSampling(
     task,
     temperatureRange = [0.3, 0.7],
     currentBestProgress = 0,
-    solutionFilename = "regex.txt",
+    solutionFilename, // REQUIRED - caller must extract from task description
   } = options;
 
   // Generate variation prompts and temperatures

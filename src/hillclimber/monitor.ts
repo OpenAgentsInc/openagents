@@ -102,28 +102,23 @@ function checkDangerousCommands(ctx: ActionContext): MonitorDecision | null {
 
 /**
  * Rule: Warn about overwriting solution files without testing first
+ *
+ * NOTE: Task-specific solution file mappings have been removed.
+ * This rule now uses a generic heuristic: warn if overwriting any file
+ * that was previously modified without testing.
  */
 function checkTestBeforeSubmit(ctx: ActionContext): MonitorDecision | null {
   if (ctx.toolName === "write_file") {
     const path = ctx.args.path as string || ctx.args.file_path as string || "";
-    const solutionFiles: Record<string, string[]> = {
-      "regex-log": ["regex.txt"],
-      "path-tracing": ["image.c"],
-      "model-extraction-relu-logits": ["steal.py", "stolen_A1.npy"],
-      "video-processing": ["jump_analyzer.py"],
-      "dna-assembly": ["primers.fasta"],
-    };
 
-    const taskSolutionFiles = solutionFiles[ctx.taskId] || [];
-    const isSolutionFile = taskSolutionFiles.some((f) => path.endsWith(f));
-
-    if (isSolutionFile && ctx.turnNumber > 1) {
+    // Generic check: warn if overwriting a previously modified file without testing
+    if (ctx.turnNumber > 1 && ctx.modifiedFiles.includes(path)) {
       // Check if they've tested before rewriting
       const hasTestedRecently = ctx.previousActions.some(
         (a) => a.includes("verify_progress") || a.includes("test") || a.includes("pytest")
       );
 
-      if (!hasTestedRecently && ctx.modifiedFiles.includes(path)) {
+      if (!hasTestedRecently) {
         return {
           allowed: true, // Allow but warn
           warning: `Overwriting ${path} without testing. Consider using verify_progress first.`,
@@ -155,118 +150,27 @@ function checkRepetition(ctx: ActionContext): MonitorDecision | null {
   return null;
 }
 
-/**
- * Rule: Task-specific validation for regex-log
- */
-function checkRegexLogSpecific(ctx: ActionContext): MonitorDecision | null {
-  if (ctx.taskId !== "regex-log") return null;
-
-  if (ctx.toolName === "write_file") {
-    const path = ctx.args.path as string || ctx.args.file_path as string || "";
-    const content = ctx.args.content as string || "";
-
-    if (path.endsWith("regex.txt")) {
-      // Check for common regex mistakes
-      if (content.includes("\\d{3}-\\d{3}-\\d{4}")) {
-        return {
-          allowed: true,
-          warning: "Pattern looks like phone number, not date. Date format is YYYY-MM-DD.",
-        };
-      }
-
-      // Check if regex is too simple
-      if (!content.includes("(?") && content.length < 50) {
-        return {
-          allowed: true,
-          warning: "Regex might be too simple. Need lookahead (?=) for IPv4 constraint and boundary assertions.",
-        };
-      }
-
-      // Check for balanced parentheses
-      const openParens = (content.match(/\(/g) || []).length;
-      const closeParens = (content.match(/\)/g) || []).length;
-      if (openParens !== closeParens) {
-        return {
-          allowed: false,
-          reason: `Unbalanced parentheses: ${openParens} open, ${closeParens} close`,
-          suggestion: "Check regex syntax for balanced parentheses",
-        };
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Rule: Task-specific validation for path-tracing
- */
-function checkPathTracingSpecific(ctx: ActionContext): MonitorDecision | null {
-  if (ctx.taskId !== "path-tracing") return null;
-
-  if (ctx.toolName === "write_file") {
-    const path = ctx.args.path as string || ctx.args.file_path as string || "";
-    const content = ctx.args.content as string || "";
-
-    if (path.endsWith("image.c")) {
-      // Check for PPM format basics
-      if (!content.includes("P6") && !content.includes("P3") && !content.includes("ppm")) {
-        return {
-          allowed: true,
-          warning: "C code should output PPM format (P6 binary or P3 ASCII). Include PPM header.",
-        };
-      }
-
-      // Check for image dimensions
-      if (!content.includes("320") || !content.includes("200")) {
-        return {
-          allowed: true,
-          warning: "Reference image is 320x200 pixels. Ensure dimensions match.",
-        };
-      }
-
-      // Check code size (must be < 2KB compressed)
-      if (content.length > 10000) {
-        return {
-          allowed: true,
-          warning: "Code is very long. Must be < 2KB when gzipped. Consider more concise implementation.",
-        };
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Rule: Task-specific validation for dna-assembly
- */
-function checkDnaAssemblySpecific(ctx: ActionContext): MonitorDecision | null {
-  if (ctx.taskId !== "dna-assembly") return null;
-
-  if (ctx.toolName === "write_file") {
-    const path = ctx.args.path as string || ctx.args.file_path as string || "";
-    const content = ctx.args.content as string || "";
-
-    if (path.endsWith("primers.fasta")) {
-      // Count FASTA headers
-      const headers = (content.match(/^>/gm) || []).length;
-      if (headers !== 8) {
-        return {
-          allowed: true,
-          warning: `FASTA file should have exactly 8 primers (4 pairs). Found ${headers} headers.`,
-        };
-      }
-
-      // Check for BsaI recognition site
-      if (!content.toLowerCase().includes("ggtctc")) {
-        return {
-          allowed: true,
-          warning: "Primers should contain BsaI recognition site 'ggtctc'.",
-        };
-      }
-    }
-  }
-  return null;
-}
+// ============================================================================
+// GUARDRAIL: NO TASK-SPECIFIC HARDCODING
+//
+// All task-specific validation rules have been removed:
+// - checkRegexLogSpecific
+// - checkPathTracingSpecific
+// - checkDnaAssemblySpecific
+//
+// This file must NEVER contain:
+// - Task IDs (e.g., "regex-log", "path-tracing")
+// - Task-specific patterns (e.g., IPv4 format, date format)
+// - Task-specific hints (e.g., "use lookahead for IPv4")
+// - Task-specific file paths (e.g., "/app/regex.txt")
+//
+// All knowledge must come from:
+// 1. The task description (passed as parameter)
+// 2. General process knowledge (TDD, iteration)
+//
+// If you're tempted to add task-specific code, you're defeating the thesis:
+// "Architecture beats model size"
+// ============================================================================
 
 // ============================================================================
 // Main Monitor
@@ -274,14 +178,13 @@ function checkDnaAssemblySpecific(ctx: ActionContext): MonitorDecision | null {
 
 /**
  * All validation rules in priority order
+ *
+ * NOTE: All task-specific validation rules have been removed.
  */
 const VALIDATION_RULES = [
   checkWorkspaceBounds,
   checkDangerousCommands,
   checkRepetition,
-  checkRegexLogSpecific,
-  checkPathTracingSpecific,
-  checkDnaAssemblySpecific,
   checkTestBeforeSubmit,
 ];
 
