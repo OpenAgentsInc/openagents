@@ -13,4 +13,4 @@ MechaCoder is our autonomous coding agent that picks up tasks, implements code, 
 
 ## Project FM Hill Climber
 
-FM Hill Climber is our system for solving Terminal-Bench 2 tasks using Apple's on-device Foundation Model with MAP (Modular Agentic Planner) architecture, parallel sampling, and iterative verification. The goal is to achieve #1 on Terminal-Bench using only local inference. See [docs/fm-hillclimber.md](docs/fm-hillclimber.md) for full documentation.
+FM Hill Climber is our system for solving Terminal-Bench 2 tasks using Apple's on-device Foundation Model with MAP (Modular Agentic Planner) architecture, parallel sampling, and iterative verification. The goal is to achieve #1 on Terminal-Bench using only local inference. See [docs/fm-hillclimber.md](docs/fm-hillclimber.md) for full documentation. For current development status, see the [December 9 comprehensive summary](docs/logs/20251209/1119-comprehensive-daily-summary.md).
