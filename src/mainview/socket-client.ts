@@ -431,6 +431,21 @@ export class SocketClient {
   }
 
   /**
+   * Start custom test generation from free-form task description
+   */
+  async startCustomTestGen(
+    taskDescription: string,
+    sessionId: string,
+    model?: "local" | "claude"
+  ): Promise<{ sessionId: string }> {
+    const response = await this.request("request:startCustomTestGen", { taskDescription, sessionId, model });
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to start custom test generation");
+    }
+    return (response as Extract<SocketResponse, { type: "response:startCustomTestGen" }>).data!;
+  }
+
+  /**
    * Start a HillClimber run (TestGen + MAP orchestrator)
    */
   async startHillClimber(

@@ -102,6 +102,9 @@ const makeSocketService = (client: SocketClient): SocketService => {
     startTestGen: (suitePath, taskId, model) =>
       wrapRequest(() => client.startTestGen(suitePath, taskId, model)),
 
+    startCustomTestGen: (taskDescription, sessionId, model) =>
+      client.startCustomTestGen(taskDescription, sessionId, model),
+
     // HillClimber Operations
     startHillClimber: (task, mode, suitePath) =>
       wrapRequest(() => client.startHillClimber(task, mode, suitePath)),

@@ -150,6 +150,19 @@ export interface StartHillClimberRequest extends BaseRequest {
 }
 
 /**
+ * Start custom test generation from a free-form task description
+ */
+export interface StartCustomTestGenRequest extends BaseRequest {
+  type: "request:startCustomTestGen";
+  /** The task description provided by the user */
+  taskDescription: string;
+  /** Session ID for correlating messages */
+  sessionId: string;
+  /** Model to use for generation */
+  model?: "local" | "claude";
+}
+
+/**
  * Union of all request types
  */
 export type SocketRequest =
@@ -165,7 +178,8 @@ export type SocketRequest =
   | GetHFTrajectoriesRequest
   | GetHFTrajectoryRequest
   | StartTestGenRequest
-  | StartHillClimberRequest;
+  | StartHillClimberRequest
+  | StartCustomTestGenRequest;
 
 // ============================================================================
 // Response Types (Server -> Client)
@@ -334,6 +348,14 @@ export interface StartHillClimberResponse extends BaseResponse {
 }
 
 /**
+ * Response to StartCustomTestGenRequest
+ */
+export interface StartCustomTestGenResponse extends BaseResponse {
+  type: "response:startCustomTestGen";
+  data?: { sessionId: string };
+}
+
+/**
  * Union of all response types
  */
 export type SocketResponse =
@@ -349,7 +371,8 @@ export type SocketResponse =
   | GetHFTrajectoriesResponse
   | GetHFTrajectoryResponse
   | StartTestGenResponse
-  | StartHillClimberResponse;
+  | StartHillClimberResponse
+  | StartCustomTestGenResponse;
 
 // ============================================================================
 // Unified Socket Message Type
@@ -438,6 +461,9 @@ export const isStartTestGenRequest = (msg: SocketRequest): msg is StartTestGenRe
 
 export const isStartHillClimberRequest = (msg: SocketRequest): msg is StartHillClimberRequest =>
   msg.type === "request:startHillClimber";
+
+export const isStartCustomTestGenRequest = (msg: SocketRequest): msg is StartCustomTestGenRequest =>
+  msg.type === "request:startCustomTestGen";
 
 // ============================================================================
 // Serialization Helpers
