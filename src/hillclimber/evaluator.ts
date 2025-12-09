@@ -321,7 +321,7 @@ export function generateSuggestion(
         return `${actual.length - expected.length} false positives. Check boundary conditions and IP validation.`;
       } else {
         // Same length but different values
-        const wrongMatches = actual.filter((a: string) => !expected.includes(a));
+        const wrongMatches = actual.filter((a) => !expected.includes(a));
         if (wrongMatches.length > 0) {
           return `Wrong matches: ${wrongMatches.join(", ")}. Check date validation or IP boundary conditions.`;
         }

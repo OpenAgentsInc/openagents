@@ -30517,7 +30517,11 @@ ${endStackCall}`;
     const itemElements = items.map((item) => {
       const itemId = getItemId(item);
       const isExpanded = itemId === options.expandedItemId;
-      return renderThreadItem(item, { isExpanded, onToggle: options.onToggle });
+      const state = {
+        isExpanded,
+        ...options.onToggle !== undefined ? { onToggle: options.onToggle } : {}
+      };
+      return renderThreadItem(item, state);
     });
     return html`
     <div class="flex flex-col gap-2">

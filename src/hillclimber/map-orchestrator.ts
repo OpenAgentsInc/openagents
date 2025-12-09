@@ -13,16 +13,14 @@
 
 import { Effect } from "effect";
 import { BunContext } from "@effect/platform-bun";
-import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, dirname, join } from "path";
+import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import type { TerminalBenchTask } from "../bench/terminal-bench.js";
 import type { HillClimberConfig } from "./types.js";
 import { decomposeTask, type Subtask, type TaskDecomposition } from "./decomposer.js";
 import { monitorAction, createActionSignature, type ActionContext } from "./monitor.js";
 import { evaluateProgress, evaluateProgressWithDocker, quickEvaluate, formatForPrompt, type EvaluatorResult } from "./evaluator.js";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { FMService, FMServiceLive, FMServiceError } from "../fm/service.js";
+import { FMService, FMServiceLive } from "../fm/service.js";
 import { parseToolCalls } from "../bench/model-adapter.js";
 import { runTestGenForTask } from "./testgen-integration.js";
 import { runParallelSampling } from "./sampling-orchestrator.js";
@@ -292,11 +290,10 @@ async function executeAction(
       case "write_file": {
         const path = toolArgs.path as string || toolArgs.file_path as string;
         if (!path) {
-          return {
-            success: false,
-            output: `Missing path argument for write_file`,
-            condensed: "write_file requires 'path' argument",
-          };
+        return {
+          success: false,
+          output: `Missing path argument for write_file`,
+        };
         }
         const content = String(toolArgs.content || "");
         
@@ -346,14 +343,12 @@ async function executeAction(
           return {
             success: false,
             output: `File not found: ${path}. Available files in workspace: ${fileList || "none"}`,
-            condensed: `File not found: ${path}. Available: ${fileList || "none"}`,
           };
         }
         const content = readFileSync(fullPath, "utf-8");
         return {
           success: true,
           output: content.slice(0, 1000) + (content.length > 1000 ? "..." : ""),
-          condensed: `File ${normalizedPath} contains: ${content.slice(0, 200)}${content.length > 200 ? "..." : ""}`,
         };
       }
 
@@ -525,10 +520,13 @@ export async function runMAPOrchestrator(
   // Step 0: Generate comprehensive test suite using testgen
   log(`[MAP] Running testgen to generate comprehensive tests...`);
   try {
-    const testgenResult = await runTestGenForTask(task, options.workspace, {
+    const testgenOptions: { model: "local"; verbose?: boolean } = {
       model: "local",
-      verbose: options.verbose,
-    });
+    };
+    if (options.verbose) {
+      testgenOptions.verbose = options.verbose;
+    }
+    const testgenResult = await runTestGenForTask(task, options.workspace, testgenOptions);
     log(`[MAP] Generated ${testgenResult.tests.length} tests (score: ${testgenResult.comprehensivenessScore}/10)`);
     log(`[MAP] Tests written to: ${testgenResult.testFilePath}`);
   } catch (error) {
@@ -659,12 +657,14 @@ async function runMAPOrchestratorWithDecomposition(
         // Add rejection feedback to state so FM sees it next turn
         if (!state.lastEvaluation) {
           state.lastEvaluation = {
-            total: 0,
-            passed: 0,
-            failed: 0,
+            passed: false,
             progress: state.bestProgress,
-            suggestion: `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}`,
+            testsTotal: 0,
+            testsPassing: 0,
             failures: [],
+            rawOutput: "",
+            durationMs: 0,
+            suggestion: `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}`,
           };
         } else {
           state.lastEvaluation.suggestion = `Action rejected: ${monitorDecision.reason}. ${monitorDecision.suggestion}. ${state.lastEvaluation.suggestion || ""}`;
@@ -691,12 +691,14 @@ async function runMAPOrchestratorWithDecomposition(
     if (!actionResult.success) {
       if (!state.lastEvaluation) {
         state.lastEvaluation = {
-          total: 0,
-          passed: 0,
-          failed: 0,
+          passed: false,
           progress: state.bestProgress,
-          suggestion: `Action failed: ${actionResult.output}`,
+          testsTotal: 0,
+          testsPassing: 0,
           failures: [],
+          rawOutput: "",
+          durationMs: 0,
+          suggestion: `Action failed: ${actionResult.output}`,
         };
       } else {
         state.lastEvaluation.suggestion = `Action failed: ${actionResult.output}. ${state.lastEvaluation.suggestion || ""}`;
