@@ -402,9 +402,9 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       }
     }
 
-    // Attach single click handler using event delegation
-    console.log("[TestGen Graph] Attaching click handler to container:", container.id || container.tagName)
-    container.addEventListener("click", handleClick)
+    // Attach single click handler using event delegation on document.body
+    console.log("[TestGen Graph] Attaching click handler to document.body")
+    document.body.addEventListener("click", handleClick)
 
     // Cleanup
     return Effect.sync(() => {
@@ -413,7 +413,7 @@ function setupEvents(ctx: ComponentContext<TestGenGraphState, TestGenGraphEvent>
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
       container.removeEventListener("wheel", handleWheel)
-      container.removeEventListener("click", handleClick)
+      document.body.removeEventListener("click", handleClick)
     })
   })
 }

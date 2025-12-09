@@ -70,7 +70,7 @@ describe("TB TestGen Component E2E", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, injectMessage } = yield* makeHappyDomLayer();
+          const { layer } = yield* makeHappyDomLayer();
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag;
@@ -105,7 +105,7 @@ describe("TB TestGen Component E2E", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, injectMessage } = yield* makeHappyDomLayer();
+          const { layer } = yield* makeHappyDomLayer();
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag;
@@ -611,7 +611,7 @@ describe("TB TestGen Component E2E", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, injectMessage } = yield* makeHappyDomLayer();
+          const { layer } = yield* makeHappyDomLayer();
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag;
@@ -742,7 +742,7 @@ describe("TB TestGen Component E2E", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { layer, injectMessage } = yield* makeHappyDomLayer();
+          const { layer } = yield* makeHappyDomLayer();
 
           yield* Effect.gen(function* () {
             const harness = yield* TestHarnessTag;
