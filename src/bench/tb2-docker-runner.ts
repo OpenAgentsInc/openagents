@@ -302,7 +302,35 @@ function parsePytestSummary(output: string): {
   // Parse failed test names
   const failedTests = parseFailedTests(output);
 
-  // Look for pytest summary patterns
+  // Look for pytest summary line (always between === markers)
+  // Examples:
+  // - "=== 1 passed in 0.12s ==="
+  // - "=== 3 passed, 2 failed in 0.45s ==="
+  // - "=== 24 failed in 1.23s ==="
+  const summaryLineMatch = output.match(/===+\s+(.+?)\s+in\s+[\d.]+s\s+===+/);
+
+  if (summaryLineMatch) {
+    const summaryText = summaryLineMatch[1];
+
+    // Try to parse "X passed, Y failed" or "X passed" or "Y failed"
+    const passedMatch = summaryText.match(/(\d+)\s+passed/);
+    const failedMatch = summaryText.match(/(\d+)\s+failed/);
+
+    const passing = passedMatch ? parseInt(passedMatch[1], 10) : 0;
+    const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
+
+    if (passing > 0 || failed > 0) {
+      return {
+        passing,
+        failed,
+        total: passing + failed,
+        passed: failed === 0,
+        failedTests,
+      };
+    }
+  }
+
+  // Fallback: Look for summary patterns anywhere (less reliable)
   const summaryMatch = output.match(
     /(\d+)\s+passed(?:,\s+(\d+)\s+failed)?/i
   );
@@ -315,19 +343,6 @@ function parsePytestSummary(output: string): {
       failed,
       total: passing + failed,
       passed: failed === 0,
-      failedTests,
-    };
-  }
-
-  // Try alternative pattern (just failed)
-  const failedOnlyMatch = output.match(/(\d+)\s+failed/i);
-  if (failedOnlyMatch) {
-    const failed = parseInt(failedOnlyMatch[1], 10);
-    return {
-      passing: 0,
-      failed,
-      total: failed,
-      passed: false,
       failedTests,
     };
   }

@@ -94,10 +94,14 @@ describe("E2E: regex-log task", () => {
     }
 
     const config: HillClimberConfig = {
-      maxTurns: 15,
-      timeout: 120,
-      enableReflection: false,
-      enableMemory: false,
+      id: 0,
+      taskId: "regex-log",
+      hint: null,
+      useSkills: false,
+      maxTurnsOverride: 15,
+      configHash: "",
+      isCurrent: true,
+      createdAt: new Date().toISOString(),
     };
 
     const output: string[] = [];
@@ -134,10 +138,14 @@ describe("E2E: regex-log task", () => {
     }
 
     const config: HillClimberConfig = {
-      maxTurns: 5, // Just enough to see feedback
-      timeout: 60,
-      enableReflection: false,
-      enableMemory: false,
+      id: 0,
+      taskId: "regex-log",
+      hint: null,
+      useSkills: false,
+      maxTurnsOverride: 5,
+      configHash: "",
+      isCurrent: true,
+      createdAt: new Date().toISOString(),
     };
 
     const output: string[] = [];

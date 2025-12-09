@@ -166,29 +166,56 @@ export async function runTestGenWithStreaming(
         // Save trajectory to database (track promise to await later)
         if (startMessage && completeMessage) {
           const durationMs = Date.now() - startTime;
+          const trajectoryData: {
+            sessionId: string;
+            taskId: string;
+            taskDescription: string;
+            totalTests: number;
+            totalRounds: number;
+            categoryRounds: Record<string, number>;
+            comprehensivenessScore: number | null;
+            totalTokensUsed: number;
+            durationMs: number;
+            tests: Array<{ id: string; category: string; input: string; expectedOutput: string | null; reasoning: string; confidence: number }>;
+            reflections: Array<{ category?: string; reflectionText: string; action: "refining" | "assessing" | "complete" }>;
+            environment: unknown;
+            uncertainties: string[];
+            modelName?: string;
+          } = {
+            sessionId,
+            taskId: startMessage.taskId,
+            taskDescription: startMessage.taskDescription,
+            totalTests: completeMessage.totalTests,
+            totalRounds: completeMessage.totalRounds,
+            categoryRounds: completeMessage.categoryRounds,
+            comprehensivenessScore: completeMessage.comprehensivenessScore,
+            totalTokensUsed: completeMessage.totalTokensUsed,
+            durationMs: completeMessage.durationMs || durationMs,
+            tests,
+            reflections: reflections.map((r) => {
+              const reflection: {
+                category?: string;
+                reflectionText: string;
+                action: "refining" | "assessing" | "complete";
+              } = {
+                reflectionText: r.reflectionText,
+                action: r.action,
+              };
+              if (r.category !== undefined) {
+                reflection.category = r.category;
+              }
+              return reflection;
+            }),
+            environment: startMessage.environment,
+            uncertainties: completeMessage.uncertainties,
+          };
+          if (modelName) {
+            trajectoryData.modelName = modelName;
+          }
           savePromise = Effect.runPromise(
             DatabaseService.pipe(
               Effect.flatMap((db) =>
-                db.insertTestGenTrajectory({
-                  sessionId,
-                  taskId: startMessage.taskId,
-                  taskDescription: startMessage.taskDescription,
-                  totalTests: completeMessage.totalTests,
-                  totalRounds: completeMessage.totalRounds,
-                  categoryRounds: completeMessage.categoryRounds,
-                  comprehensivenessScore: completeMessage.comprehensivenessScore,
-                  totalTokensUsed: completeMessage.totalTokensUsed,
-                  durationMs: completeMessage.durationMs || durationMs,
-                  tests,
-                  reflections: reflections.map((r) => ({
-                    category: r.category,
-                    reflectionText: r.reflectionText,
-                    action: r.action,
-                  })),
-                  environment: startMessage.environment,
-                  uncertainties: completeMessage.uncertainties,
-                  modelName,
-                })
+                db.insertTestGenTrajectory(trajectoryData)
               ),
               Effect.provide(DatabaseLive),
               Effect.catchAll((error) => {

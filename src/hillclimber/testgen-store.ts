@@ -536,7 +536,7 @@ export const makeTestGenStoreLive = (
             environmentWeight: 0.7,
             antiCheatWeight: 0.8,
             precisionWeight: 0.6,
-            categoryOrder: ["anti_cheat", "existence", "correctness", "boundary", "integration"],
+            categoryOrder: ["existence", "format", "happy_path", "boundary", "edge_case", "invalid_input", "integration"],
             primaryModel: "local",
             reflectionModel: "local",
             minComprehensivenessScore: 7.0,
