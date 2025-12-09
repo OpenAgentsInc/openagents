@@ -282,7 +282,7 @@ function setupEvents(ctx: ComponentContext<AgentGraphState, AgentGraphEvent>) {
       if (!svg) return
       const rect = svg.getBoundingClientRect()
       const pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-      const delta = e.deltaY > 0 ? 0.95 : 1.05
+      const delta = e.deltaY > 0 ? 0.975 : 1.025
       Effect.runFork(ctx.emit({ type: "canvasZoom", delta, pointer }))
     }, { passive: false })
 
