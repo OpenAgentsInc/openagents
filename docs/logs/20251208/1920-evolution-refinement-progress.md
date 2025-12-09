@@ -81,4 +81,3 @@ Iterating on meta-reasoner prompts to find the right balance:
 - Guardrail-compliant (no violations)
 - Not too conservative (proposes changes when needed)
 - Effective (changes actually improve scores)
-

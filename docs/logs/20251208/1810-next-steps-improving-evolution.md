@@ -155,4 +155,3 @@ Since meta-reasoner is now guardrail-compliant but too conservative, let's give 
 - Update prompt to emphasize weight and temperature changes
 - These have larger guardrails (±0.1) so easier to propose valid changes
 - Add examples of weight/temperature adjustments
-
