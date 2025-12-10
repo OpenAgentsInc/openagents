@@ -1,5 +1,6 @@
 use gpui::*;
 use std::ops::Range;
+use theme::input;
 use unicode_segmentation::*;
 
 actions!(text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]);
@@ -436,16 +437,16 @@ impl Element for TextElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let input = self.input.read(cx);
-        let content = input.content.clone();
-        let selected_range = input.selected_range.clone();
-        let cursor = input.cursor_offset();
+        let text_input = self.input.read(cx);
+        let content = text_input.content.clone();
+        let selected_range = text_input.selected_range.clone();
+        let cursor = text_input.cursor_offset();
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), hsla(0., 0., 1., 0.4))
+            (text_input.placeholder.clone(), input::PLACEHOLDER)
         } else {
-            (content.clone(), hsla(0., 0., 1., 0.7))
+            (content.clone(), input::TEXT)
         };
 
         let run = TextRun {
@@ -463,7 +464,7 @@ impl Element for TextElement {
             .shape_line(display_text, font_size, &[run], None);
 
         let cursor_pos = line.x_for_index(cursor);
-        let cursor_visible = input.cursor_visible;
+        let cursor_visible = text_input.cursor_visible;
         let (selection, cursor) = if selected_range.is_empty() {
             let cursor = if cursor_visible {
                 Some(fill(
@@ -471,7 +472,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    hsla(0., 0., 1., 0.7),
+                    input::CURSOR,
                 ))
             } else {
                 None
@@ -490,7 +491,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0xffffff30),
+                    input::SELECTION,
                 )),
                 None,
             )
