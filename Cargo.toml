@@ -10,6 +10,7 @@ members = [
     "crates/collections",
     "crates/http_client", # Package name is reqwest_client
     "crates/hillclimber",
+    "crates/hud_test",
     "crates/util",
     "crates/util_macros",
     "crates/refineable",
