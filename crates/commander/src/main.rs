@@ -131,6 +131,7 @@ struct CommanderView {
     current_screen: Screen,
     focus_handle: FocusHandle,
     // Chat/Commander view
+    #[allow(dead_code)]
     input: Entity<TextInput>,
     #[allow(dead_code)]
     fm_client: Arc<FMClient>,
@@ -628,6 +629,7 @@ impl CommanderView {
     }
 
     /// Toggle step expansion
+    #[allow(dead_code)]
     fn toggle_step(&mut self, step_id: i64, cx: &mut Context<Self>) {
         if self.expanded_step_ids.contains(&step_id) {
             self.expanded_step_ids.remove(&step_id);
@@ -638,6 +640,7 @@ impl CommanderView {
     }
 
     /// Render a single step with click handler for expansion
+    #[allow(dead_code)]
     fn render_step_with_click(&self, step: &Step, cx: &mut Context<Self>) -> impl IntoElement {
         let step_id = step.step_id;
         let is_expanded = self.expanded_step_ids.contains(&step_id);

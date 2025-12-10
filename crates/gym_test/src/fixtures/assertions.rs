@@ -3,7 +3,7 @@
 //! Provides chainable assertion methods for ergonomic test writing.
 
 use gpui::{Entity, TestAppContext};
-use gym::{GymScreen, GymTab};
+use gym::{GymScreen, GymTab, TrajectoryView};
 use gym::tbcc::{TBCCScreen, TBCCTab};
 use gym::hillclimber::monitor::{HillClimberMonitor, HCSessionStatus, HCMode};
 use gym::testgen::visualizer::{TestGenVisualizer, TestGenStatus};
@@ -333,5 +333,105 @@ pub trait TestGenAssertExt {
 impl TestGenAssertExt for Entity<TestGenVisualizer> {
     fn assert_that<'a>(&'a self, cx: &'a TestAppContext) -> TestGenAssertions<'a> {
         TestGenAssertions::new(self, cx)
+    }
+}
+
+// ============================================================================
+// TrajectoryView Assertions
+// ============================================================================
+
+/// Fluent assertions for TrajectoryView
+pub struct TrajectoryAssertions<'a> {
+    view: &'a Entity<TrajectoryView>,
+    cx: &'a TestAppContext,
+}
+
+impl<'a> TrajectoryAssertions<'a> {
+    pub fn new(view: &'a Entity<TrajectoryView>, cx: &'a TestAppContext) -> Self {
+        Self { view, cx }
+    }
+
+    /// Assert has store configured
+    pub fn has_store(self) -> Self {
+        let has = self.cx.read(|cx| self.view.read(cx).has_store());
+        assert!(has, "Expected TrajectoryView to have a store");
+        self
+    }
+
+    /// Assert no store configured
+    pub fn has_no_store(self) -> Self {
+        let has = self.cx.read(|cx| self.view.read(cx).has_store());
+        assert!(!has, "Expected TrajectoryView to have no store");
+        self
+    }
+
+    /// Assert trajectory count
+    pub fn has_trajectory_count(self, expected: usize) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).trajectory_count());
+        assert_eq!(count, expected, "Expected {} trajectories, got {}", expected, count);
+        self
+    }
+
+    /// Assert has trajectories (at least one)
+    pub fn has_trajectories(self) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).trajectory_count());
+        assert!(count > 0, "Expected at least one trajectory, got {}", count);
+        self
+    }
+
+    /// Assert no trajectories
+    pub fn has_no_trajectories(self) -> Self {
+        self.has_trajectory_count(0)
+    }
+
+    /// Assert a trajectory is selected
+    pub fn has_selection(self) -> Self {
+        let selected = self.cx.read(|cx| self.view.read(cx).selected_trajectory_id().is_some());
+        assert!(selected, "Expected a trajectory to be selected");
+        self
+    }
+
+    /// Assert no trajectory selected
+    pub fn has_no_selection(self) -> Self {
+        let selected = self.cx.read(|cx| self.view.read(cx).selected_trajectory_id().is_some());
+        assert!(!selected, "Expected no trajectory to be selected");
+        self
+    }
+
+    /// Assert specific trajectory is selected
+    pub fn has_selected_id(self, expected: &str) -> Self {
+        let id = self.cx.read(|cx| self.view.read(cx).selected_trajectory_id().map(|s| s.to_string()));
+        assert_eq!(id.as_deref(), Some(expected), "Expected selected ID '{}', got {:?}", expected, id);
+        self
+    }
+
+    /// Assert selected step count
+    pub fn has_selected_step_count(self, expected: usize) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).selected_step_count());
+        assert_eq!(count, expected, "Expected {} selected steps, got {}", expected, count);
+        self
+    }
+
+    /// Assert has selected steps (at least one)
+    pub fn has_selected_steps(self) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).selected_step_count());
+        assert!(count > 0, "Expected at least one selected step, got {}", count);
+        self
+    }
+
+    /// Assert no selected steps
+    pub fn has_no_selected_steps(self) -> Self {
+        self.has_selected_step_count(0)
+    }
+}
+
+/// Extension trait for TrajectoryView assertions
+pub trait TrajectoryAssertExt {
+    fn assert_that<'a>(&'a self, cx: &'a TestAppContext) -> TrajectoryAssertions<'a>;
+}
+
+impl TrajectoryAssertExt for Entity<TrajectoryView> {
+    fn assert_that<'a>(&'a self, cx: &'a TestAppContext) -> TrajectoryAssertions<'a> {
+        TrajectoryAssertions::new(self, cx)
     }
 }

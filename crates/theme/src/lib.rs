@@ -413,3 +413,103 @@ pub mod trust {
     /// Diamond tier border
     pub const DIAMOND_BORDER: Hsla = c(0.54, 0.70, 0.50, 0.5);
 }
+
+/// UI component colors (shadcn-style components)
+pub mod ui {
+    use super::*;
+
+    /// Button colors
+    pub mod button {
+        use super::*;
+
+        // Default variant - primary cyan
+        pub const DEFAULT_BG: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const DEFAULT_TEXT: Hsla = c(0.0, 0.0, 0.0, 1.0);
+        pub const DEFAULT_HOVER_BG: Hsla = c(0.54, 0.43, 0.60, 1.0);
+
+        // Destructive variant - red
+        pub const DESTRUCTIVE_BG: Hsla = c(0.99, 0.42, 0.56, 1.0);
+        pub const DESTRUCTIVE_TEXT: Hsla = c(0.0, 0.0, 1.0, 1.0);
+        pub const DESTRUCTIVE_HOVER_BG: Hsla = c(0.99, 0.42, 0.48, 1.0);
+
+        // Outline variant - transparent with border
+        pub const OUTLINE_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
+        pub const OUTLINE_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
+        pub const OUTLINE_BORDER: Hsla = c(0.0, 0.0, 0.30, 1.0);
+        pub const OUTLINE_HOVER_BG: Hsla = c(0.0, 0.0, 1.0, 0.05);
+
+        // Secondary variant - muted gray
+        pub const SECONDARY_BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
+        pub const SECONDARY_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
+        pub const SECONDARY_HOVER_BG: Hsla = c(0.0, 0.0, 0.22, 1.0);
+
+        // Ghost variant - transparent
+        pub const GHOST_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
+        pub const GHOST_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
+        pub const GHOST_HOVER_BG: Hsla = c(0.0, 0.0, 1.0, 0.08);
+
+        // Link variant - text link style
+        pub const LINK_TEXT: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const LINK_HOVER_TEXT: Hsla = c(0.54, 0.43, 0.60, 1.0);
+    }
+
+    /// Checkbox colors
+    pub mod checkbox {
+        use super::*;
+
+        pub const UNCHECKED_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
+        pub const UNCHECKED_BORDER: Hsla = c(0.0, 0.0, 0.50, 1.0);
+        pub const CHECKED_BG: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const CHECKED_BORDER: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const CHECK_ICON: Hsla = c(0.0, 0.0, 0.0, 1.0);
+    }
+
+    /// Switch/toggle colors
+    pub mod switch {
+        use super::*;
+
+        pub const TRACK_OFF: Hsla = c(0.0, 0.0, 0.25, 1.0);
+        pub const TRACK_ON: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const THUMB: Hsla = c(0.0, 0.0, 1.0, 1.0);
+    }
+
+    /// Progress bar colors
+    pub mod progress {
+        use super::*;
+
+        pub const TRACK_BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
+        pub const INDICATOR: Hsla = c(0.54, 0.43, 0.67, 1.0);
+    }
+
+    /// Skeleton loading colors
+    pub mod skeleton {
+        use super::*;
+
+        pub const BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
+        pub const SHIMMER: Hsla = c(0.0, 0.0, 0.25, 1.0);
+    }
+
+    /// Separator colors
+    pub mod separator {
+        use super::*;
+
+        pub const DEFAULT: Hsla = c(0.0, 0.0, 0.20, 1.0);
+    }
+
+    /// Label colors
+    pub mod label {
+        use super::*;
+
+        pub const TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
+        pub const DISABLED: Hsla = c(0.0, 0.0, 0.50, 1.0);
+    }
+
+    /// Kbd (keyboard) colors
+    pub mod kbd {
+        use super::*;
+
+        pub const BG: Hsla = c(0.0, 0.0, 0.15, 1.0);
+        pub const BORDER: Hsla = c(0.0, 0.0, 0.25, 1.0);
+        pub const TEXT: Hsla = c(0.0, 0.0, 0.80, 1.0);
+    }
+}

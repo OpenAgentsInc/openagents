@@ -1,7 +1,5 @@
 //! WebSocket client for real-time events
 
-use gpui::*;
-
 pub struct WebSocketClient {
     // To be implemented
 }

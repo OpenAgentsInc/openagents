@@ -11,6 +11,7 @@ use crate::services::RunStore;
 pub struct DashboardView {
     stats: Option<DashboardStats>,
     recent_runs: Vec<TBRunSummary>,
+    #[allow(dead_code)]
     loading: bool,
     run_store: Option<Arc<RwLock<RunStore>>>,
     focus_handle: FocusHandle,

@@ -9,10 +9,12 @@ mod gym_screen_fixture;
 mod tbcc_fixture;
 mod hillclimber_fixture;
 mod testgen_fixture;
+mod trajectory_fixture;
 mod assertions;
 
 pub use gym_screen_fixture::*;
 pub use tbcc_fixture::*;
 pub use hillclimber_fixture::*;
 pub use testgen_fixture::*;
+pub use trajectory_fixture::*;
 pub use assertions::*;

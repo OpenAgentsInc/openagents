@@ -146,7 +146,7 @@ impl Sidebar {
                     })
                     .into_any_element()
             }
-            TreeNode::Item { id, kind, label, metadata, status } => {
+            TreeNode::Item { id, kind: _, label, metadata, status } => {
                 let is_selected = self.state.is_selected(id);
                 let id_clone = id.clone();
 

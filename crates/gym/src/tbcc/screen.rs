@@ -14,6 +14,7 @@ use crate::services::TBCCDataService;
 
 pub struct TBCCScreen {
     pub current_tab: TBCCTab,
+    #[allow(dead_code)]
     data_service: TBCCDataService,
     dashboard_view: Entity<DashboardView>,
     task_browser_view: Entity<TaskBrowserView>,
@@ -26,7 +27,7 @@ impl TBCCScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let data_service = TBCCDataService::new();
         let run_store = data_service.runs();
-        let settings_store_path = data_service.settings().load();
+        let _settings_store_path = data_service.settings().load();
 
         // Create views
         let dashboard_view = cx.new(|cx| {
@@ -44,7 +45,7 @@ impl TBCCScreen {
         });
 
         let settings_view = cx.new(|cx| {
-            let mut view = SettingsView::new(cx);
+            let view = SettingsView::new(cx);
             // Note: SettingsStore is not Clone, so we create a new one
             // In a real app, we'd use Arc<RwLock<SettingsStore>> or similar
             view

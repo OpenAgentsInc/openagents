@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 unit = { path = "../unit" }
 hud = { path = "../hud" }
+ui = { path = "../ui" }
 gpui = { path = "../gpui" }
 clap = { version = "4", features = ["derive"] }
 strum = { version = "0.26", features = ["derive"] }

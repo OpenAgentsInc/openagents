@@ -136,7 +136,7 @@ impl GymScreen {
             }))
     }
 
-    fn render_active_tab_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_active_tab_content(&self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         match self.current_tab {
             GymTab::Trajectories => self.trajectory_view.clone().into_any_element(),
             GymTab::TBCC => self.tbcc_screen.clone().into_any_element(),
