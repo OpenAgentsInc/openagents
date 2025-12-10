@@ -1,0 +1,17 @@
+[package]
+name = "storybook"
+version = "0.1.0"
+edition = "2024"
+description = "Visual storybook for unit and hud components"
+license = "MIT"
+
+[[bin]]
+name = "storybook"
+path = "src/main.rs"
+
+[dependencies]
+unit = { path = "../unit" }
+hud = { path = "../hud" }
+gpui = { path = "../gpui" }
+clap = { version = "4", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
