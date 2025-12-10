@@ -2670,6 +2670,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "atif-store",
+ "chrono",
  "gpui",
  "serde",
  "serde_json",

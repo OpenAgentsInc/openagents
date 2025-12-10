@@ -1,7 +1,7 @@
 //! OpenAI provider implementation
 
 use crate::{
-    ApiErrorResponse, ChatOptions, ChatResponse, ChatStream, ContentPart, LlmError, LlmProvider,
+    ChatOptions, ChatResponse, ChatStream, ContentPart, LlmError, LlmProvider,
     LlmResult, Message, ModelCapabilities, ModelInfo, ProviderConfig, Role, StopReason,
     StreamChunk, ToolChoice, Usage,
 };
@@ -259,6 +259,17 @@ impl OpenAIProvider {
 
     /// Parse a response into ChatResponse
     fn parse_response(&self, response: OpenAIResponse) -> ChatResponse {
+        // Extract stop_reason before consuming choices
+        let stop_reason = response.choices.first().and_then(|c| {
+            c.finish_reason.as_ref().map(|s| match s.as_str() {
+                "stop" => StopReason::EndTurn,
+                "length" => StopReason::MaxTokens,
+                "tool_calls" => StopReason::ToolUse,
+                "content_filter" => StopReason::ContentFilter,
+                _ => StopReason::Unknown,
+            })
+        });
+
         let choice = response.choices.into_iter().next();
 
         let content = if let Some(choice) = choice {
@@ -286,16 +297,6 @@ impl OpenAIProvider {
         } else {
             Vec::new()
         };
-
-        let stop_reason = response.choices.first().and_then(|c| {
-            c.finish_reason.as_ref().map(|s| match s.as_str() {
-                "stop" => StopReason::EndTurn,
-                "length" => StopReason::MaxTokens,
-                "tool_calls" => StopReason::ToolUse,
-                "content_filter" => StopReason::ContentFilter,
-                _ => StopReason::Unknown,
-            })
-        });
 
         ChatResponse {
             id: response.id,
@@ -417,10 +418,10 @@ impl LlmProvider for OpenAIProvider {
                 .clone()
                 .unwrap_or_else(|| self.default_model().to_string()),
             messages: openai_messages,
-            max_tokens: options
+            max_tokens: Some(options
                 .max_tokens
                 .or(self.config.default_max_tokens)
-                .unwrap_or(DEFAULT_MAX_TOKENS),
+                .unwrap_or(DEFAULT_MAX_TOKENS)),
             temperature: options.temperature,
             top_p: options.top_p,
             stop: if options.stop_sequences.is_empty() {
@@ -474,10 +475,10 @@ impl LlmProvider for OpenAIProvider {
                 .clone()
                 .unwrap_or_else(|| self.default_model().to_string()),
             messages: openai_messages,
-            max_tokens: options
+            max_tokens: Some(options
                 .max_tokens
                 .or(self.config.default_max_tokens)
-                .unwrap_or(DEFAULT_MAX_TOKENS),
+                .unwrap_or(DEFAULT_MAX_TOKENS)),
             temperature: options.temperature,
             top_p: options.top_p,
             stop: if options.stop_sequences.is_empty() {

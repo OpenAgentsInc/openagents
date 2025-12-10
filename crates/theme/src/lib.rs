@@ -376,3 +376,40 @@ pub mod input {
     /// Input border (#2A2A2A)
     pub const BORDER: Hsla = c(0.0, 0.0, 0.165, 1.0);
 }
+
+/// Trust tier colors (marketplace progression system)
+pub mod trust {
+    use super::*;
+
+    // Bronze tier - warm brown/copper
+    /// Bronze tier primary color
+    pub const BRONZE: Hsla = c(0.08, 0.60, 0.40, 1.0);
+    /// Bronze tier background
+    pub const BRONZE_BG: Hsla = c(0.08, 0.40, 0.20, 0.4);
+    /// Bronze tier border
+    pub const BRONZE_BORDER: Hsla = c(0.08, 0.50, 0.35, 0.5);
+
+    // Silver tier - cool gray
+    /// Silver tier primary color
+    pub const SILVER: Hsla = c(0.0, 0.0, 0.75, 1.0);
+    /// Silver tier background
+    pub const SILVER_BG: Hsla = c(0.0, 0.0, 0.40, 0.4);
+    /// Silver tier border
+    pub const SILVER_BORDER: Hsla = c(0.0, 0.0, 0.60, 0.5);
+
+    // Gold tier - warm yellow/gold
+    /// Gold tier primary color
+    pub const GOLD: Hsla = c(0.14, 1.0, 0.50, 1.0);
+    /// Gold tier background
+    pub const GOLD_BG: Hsla = c(0.14, 0.70, 0.30, 0.4);
+    /// Gold tier border
+    pub const GOLD_BORDER: Hsla = c(0.14, 0.80, 0.45, 0.5);
+
+    // Diamond tier - cyan/blue (premium)
+    /// Diamond tier primary color
+    pub const DIAMOND: Hsla = c(0.54, 0.80, 0.70, 1.0);
+    /// Diamond tier background
+    pub const DIAMOND_BG: Hsla = c(0.54, 0.60, 0.30, 0.4);
+    /// Diamond tier border
+    pub const DIAMOND_BORDER: Hsla = c(0.54, 0.70, 0.50, 0.5);
+}
