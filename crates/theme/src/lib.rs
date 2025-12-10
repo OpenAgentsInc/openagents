@@ -414,102 +414,107 @@ pub mod trust {
     pub const DIAMOND_BORDER: Hsla = c(0.54, 0.70, 0.50, 0.5);
 }
 
-/// UI component colors (shadcn-style components)
+/// UI component colors (shadcn-style components - zinc grayscale theme)
+/// Based on Tailwind zinc palette:
+/// zinc-50: #fafafa, zinc-100: #f4f4f5, zinc-200: #e4e4e7, zinc-300: #d4d4d8
+/// zinc-400: #a1a1aa, zinc-500: #71717a, zinc-600: #52525b, zinc-700: #3f3f46
+/// zinc-800: #27272a, zinc-900: #18181b, zinc-950: #09090b
 pub mod ui {
     use super::*;
 
-    /// Button colors
+    /// Button colors - grayscale zinc theme
     pub mod button {
         use super::*;
 
-        // Default variant - primary cyan
-        pub const DEFAULT_BG: Hsla = c(0.54, 0.43, 0.67, 1.0);
-        pub const DEFAULT_TEXT: Hsla = c(0.0, 0.0, 0.0, 1.0);
-        pub const DEFAULT_HOVER_BG: Hsla = c(0.54, 0.43, 0.60, 1.0);
+        // Default variant - white/light (zinc-50/100) - primary action
+        pub const DEFAULT_BG: Hsla = c(0.0, 0.0, 0.98, 1.0);        // zinc-50 #fafafa
+        pub const DEFAULT_TEXT: Hsla = c(0.0, 0.0, 0.09, 1.0);      // zinc-900 #18181b
+        pub const DEFAULT_HOVER_BG: Hsla = c(0.0, 0.0, 0.90, 1.0);  // zinc-200-ish
 
-        // Destructive variant - red
+        // Destructive variant - red (keep for semantic meaning)
         pub const DESTRUCTIVE_BG: Hsla = c(0.99, 0.42, 0.56, 1.0);
         pub const DESTRUCTIVE_TEXT: Hsla = c(0.0, 0.0, 1.0, 1.0);
         pub const DESTRUCTIVE_HOVER_BG: Hsla = c(0.99, 0.42, 0.48, 1.0);
 
-        // Outline variant - transparent with border
+        // Outline variant - transparent with zinc border
         pub const OUTLINE_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
-        pub const OUTLINE_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
-        pub const OUTLINE_BORDER: Hsla = c(0.0, 0.0, 0.30, 1.0);
-        pub const OUTLINE_HOVER_BG: Hsla = c(0.0, 0.0, 1.0, 0.05);
+        pub const OUTLINE_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);      // zinc-100
+        pub const OUTLINE_BORDER: Hsla = c(0.0, 0.0, 0.27, 1.0);    // zinc-800 #27272a
+        pub const OUTLINE_HOVER_BG: Hsla = c(0.0, 0.0, 0.27, 1.0);  // zinc-800
 
-        // Secondary variant - muted gray
-        pub const SECONDARY_BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
-        pub const SECONDARY_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
-        pub const SECONDARY_HOVER_BG: Hsla = c(0.0, 0.0, 0.22, 1.0);
+        // Secondary variant - zinc-800
+        pub const SECONDARY_BG: Hsla = c(0.0, 0.0, 0.15, 1.0);      // zinc-800-ish
+        pub const SECONDARY_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);    // zinc-100
+        pub const SECONDARY_HOVER_BG: Hsla = c(0.0, 0.0, 0.20, 1.0);
 
-        // Ghost variant - transparent
+        // Ghost variant - transparent, shows on hover
         pub const GHOST_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
-        pub const GHOST_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
-        pub const GHOST_HOVER_BG: Hsla = c(0.0, 0.0, 1.0, 0.08);
+        pub const GHOST_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);        // zinc-100
+        pub const GHOST_HOVER_BG: Hsla = c(0.0, 0.0, 0.27, 1.0);    // zinc-800
 
-        // Link variant - text link style
-        pub const LINK_TEXT: Hsla = c(0.54, 0.43, 0.67, 1.0);
-        pub const LINK_HOVER_TEXT: Hsla = c(0.54, 0.43, 0.60, 1.0);
+        // Link variant - just underlined text, zinc-400
+        pub const LINK_TEXT: Hsla = c(0.0, 0.0, 0.63, 1.0);         // zinc-400 #a1a1aa
+        pub const LINK_HOVER_TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);   // zinc-100
     }
 
-    /// Checkbox colors
+    /// Checkbox colors - grayscale
     pub mod checkbox {
         use super::*;
 
         pub const UNCHECKED_BG: Hsla = c(0.0, 0.0, 0.0, 0.0);
-        pub const UNCHECKED_BORDER: Hsla = c(0.0, 0.0, 0.50, 1.0);
-        pub const CHECKED_BG: Hsla = c(0.54, 0.43, 0.67, 1.0);
-        pub const CHECKED_BORDER: Hsla = c(0.54, 0.43, 0.67, 1.0);
-        pub const CHECK_ICON: Hsla = c(0.0, 0.0, 0.0, 1.0);
+        pub const UNCHECKED_BORDER: Hsla = c(0.0, 0.0, 0.44, 1.0);  // zinc-500
+        pub const CHECKED_BG: Hsla = c(0.0, 0.0, 0.98, 1.0);        // zinc-50 (white)
+        pub const CHECKED_BORDER: Hsla = c(0.0, 0.0, 0.98, 1.0);    // zinc-50
+        pub const CHECK_ICON: Hsla = c(0.0, 0.0, 0.09, 1.0);        // zinc-900 (black)
     }
 
-    /// Switch/toggle colors
+    /// Switch/toggle colors - grayscale
     pub mod switch {
         use super::*;
 
-        pub const TRACK_OFF: Hsla = c(0.0, 0.0, 0.25, 1.0);
-        pub const TRACK_ON: Hsla = c(0.54, 0.43, 0.67, 1.0);
-        pub const THUMB: Hsla = c(0.0, 0.0, 1.0, 1.0);
+        pub const TRACK_OFF: Hsla = c(0.0, 0.0, 0.25, 1.0);         // zinc-800
+        pub const TRACK_ON: Hsla = c(0.0, 0.0, 0.98, 1.0);          // zinc-50 (white)
+        pub const THUMB: Hsla = c(0.0, 0.0, 1.0, 1.0);              // pure white
+        pub const THUMB_ON: Hsla = c(0.0, 0.0, 0.09, 1.0);          // zinc-900 when on
     }
 
-    /// Progress bar colors
+    /// Progress bar colors - grayscale
     pub mod progress {
         use super::*;
 
-        pub const TRACK_BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
-        pub const INDICATOR: Hsla = c(0.54, 0.43, 0.67, 1.0);
+        pub const TRACK_BG: Hsla = c(0.0, 0.0, 0.15, 1.0);          // zinc-800-ish
+        pub const INDICATOR: Hsla = c(0.0, 0.0, 0.98, 1.0);         // zinc-50 (white)
     }
 
-    /// Skeleton loading colors
+    /// Skeleton loading colors - grayscale
     pub mod skeleton {
         use super::*;
 
-        pub const BG: Hsla = c(0.0, 0.0, 0.18, 1.0);
-        pub const SHIMMER: Hsla = c(0.0, 0.0, 0.25, 1.0);
+        pub const BG: Hsla = c(0.0, 0.0, 0.15, 1.0);                // zinc-800
+        pub const SHIMMER: Hsla = c(0.0, 0.0, 0.25, 1.0);           // zinc-700
     }
 
-    /// Separator colors
+    /// Separator colors - grayscale
     pub mod separator {
         use super::*;
 
-        pub const DEFAULT: Hsla = c(0.0, 0.0, 0.20, 1.0);
+        pub const DEFAULT: Hsla = c(0.0, 0.0, 0.17, 1.0);           // zinc-800 #27272a
     }
 
-    /// Label colors
+    /// Label colors - grayscale
     pub mod label {
         use super::*;
 
-        pub const TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);
-        pub const DISABLED: Hsla = c(0.0, 0.0, 0.50, 1.0);
+        pub const TEXT: Hsla = c(0.0, 0.0, 0.90, 1.0);              // zinc-100
+        pub const DISABLED: Hsla = c(0.0, 0.0, 0.44, 1.0);          // zinc-500
     }
 
-    /// Kbd (keyboard) colors
+    /// Kbd (keyboard) colors - grayscale
     pub mod kbd {
         use super::*;
 
-        pub const BG: Hsla = c(0.0, 0.0, 0.15, 1.0);
-        pub const BORDER: Hsla = c(0.0, 0.0, 0.25, 1.0);
-        pub const TEXT: Hsla = c(0.0, 0.0, 0.80, 1.0);
+        pub const BG: Hsla = c(0.0, 0.0, 0.15, 1.0);                // zinc-800
+        pub const BORDER: Hsla = c(0.0, 0.0, 0.25, 1.0);            // zinc-700
+        pub const TEXT: Hsla = c(0.0, 0.0, 0.83, 1.0);              // zinc-200
     }
 }
