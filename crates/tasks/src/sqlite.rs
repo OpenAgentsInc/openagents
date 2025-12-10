@@ -413,8 +413,8 @@ impl TaskRepository for SqliteRepository {
         }
 
         if let Some(ref add_commits) = update.add_commits {
-            let task = self.get(id)?;
-            let mut commits = task.commits;
+            // Use the task we fetched at the start
+            let mut commits = task.commits.clone();
             commits.extend(add_commits.iter().cloned());
             let json = serde_json::to_string(&commits).unwrap_or_else(|_| "[]".into());
             conn.execute(

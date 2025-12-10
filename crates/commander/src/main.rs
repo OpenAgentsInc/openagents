@@ -1,3 +1,5 @@
+mod actions;
+mod app_menus;
 mod components;
 mod markdown;
 mod text_input;
@@ -688,6 +690,7 @@ fn main() {
             .unwrap();
 
         cx.bind_keys([
+            // Text input bindings
             KeyBinding::new("enter", text_input::Submit, None),
             KeyBinding::new("cmd-a", text_input::SelectAll, None),
             KeyBinding::new("cmd-x", text_input::Cut, None),
@@ -699,7 +702,103 @@ fn main() {
             KeyBinding::new("right", text_input::Right, None),
             KeyBinding::new("home", text_input::Home, None),
             KeyBinding::new("end", text_input::End, None),
+            // App bindings
+            KeyBinding::new("cmd-q", actions::Quit, None),
+            KeyBinding::new("cmd-,", actions::ShowSettings, None),
+            // View bindings
+            KeyBinding::new("cmd-b", actions::ToggleSidebar, None),
+            KeyBinding::new("cmd-=", actions::ZoomIn, None),
+            KeyBinding::new("cmd--", actions::ZoomOut, None),
+            KeyBinding::new("cmd-0", actions::ZoomReset, None),
+            KeyBinding::new("cmd-ctrl-f", actions::ToggleFullscreen, None),
+            // Navigate bindings
+            KeyBinding::new("cmd-1", actions::GoToCommander, None),
+            KeyBinding::new("cmd-2", actions::GoToGym, None),
+            KeyBinding::new("cmd-3", actions::GoToCompute, None),
+            KeyBinding::new("cmd-4", actions::GoToWallet, None),
+            KeyBinding::new("cmd-5", actions::GoToStore, None),
         ]);
+
+        // Register action handlers
+        cx.on_action(|_: &actions::Quit, cx| cx.quit());
+        cx.on_action(|_: &actions::ShowSettings, _cx| {
+            // TODO: Open settings panel
+            eprintln!("Settings action triggered");
+        });
+        cx.on_action(|_: &actions::ShowAbout, _cx| {
+            // TODO: Show about dialog
+            eprintln!("About action triggered");
+        });
+
+        // Navigation handlers
+        cx.on_action(|_: &actions::GoToCommander, _cx| {
+            eprintln!("Navigate to Commander");
+        });
+        cx.on_action(|_: &actions::GoToGym, _cx| {
+            eprintln!("Navigate to Gym");
+        });
+        cx.on_action(|_: &actions::GoToCompute, _cx| {
+            eprintln!("Navigate to Compute");
+        });
+        cx.on_action(|_: &actions::GoToWallet, _cx| {
+            eprintln!("Navigate to Wallet");
+        });
+        cx.on_action(|_: &actions::GoToStore, _cx| {
+            eprintln!("Navigate to Store");
+        });
+
+        // View handlers
+        cx.on_action(|_: &actions::ToggleSidebar, _cx| {
+            eprintln!("Toggle sidebar");
+        });
+        cx.on_action(|_: &actions::ZoomIn, _cx| {
+            eprintln!("Zoom in");
+        });
+        cx.on_action(|_: &actions::ZoomOut, _cx| {
+            eprintln!("Zoom out");
+        });
+        cx.on_action(|_: &actions::ZoomReset, _cx| {
+            eprintln!("Zoom reset");
+        });
+        cx.on_action(|_: &actions::ToggleFullscreen, _cx| {
+            eprintln!("Toggle fullscreen");
+        });
+
+        // File handlers
+        cx.on_action(|_: &actions::NewTrajectory, _cx| {
+            eprintln!("New trajectory");
+        });
+        cx.on_action(|_: &actions::OpenTrajectory, _cx| {
+            eprintln!("Open trajectory");
+        });
+        cx.on_action(|_: &actions::SaveTrajectory, _cx| {
+            eprintln!("Save trajectory");
+        });
+        cx.on_action(|_: &actions::ExportTrajectory, _cx| {
+            eprintln!("Export trajectory");
+        });
+
+        // Edit handlers
+        cx.on_action(|_: &actions::Undo, _cx| {
+            eprintln!("Undo");
+        });
+        cx.on_action(|_: &actions::Redo, _cx| {
+            eprintln!("Redo");
+        });
+
+        // Help handlers
+        cx.on_action(|_: &actions::OpenDocs, _cx| {
+            eprintln!("Open docs");
+        });
+        cx.on_action(|_: &actions::OpenDiscord, _cx| {
+            eprintln!("Open Discord");
+        });
+        cx.on_action(|_: &actions::ReportIssue, _cx| {
+            eprintln!("Report issue");
+        });
+
+        // Set application menus
+        cx.set_menus(app_menus::app_menus());
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
 
