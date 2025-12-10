@@ -52,7 +52,7 @@ pub fn golden_loop_sequence(task_id: Option<&str>) -> Vec<HudMessage> {
         verification_start("cargo test"),
         verification_complete("cargo test", true, Some("42 tests passed")),
         // Commit and push
-        commit_created(Some("abc123"), &format!("{}: Implement feature", task_id_str)),
+        commit_created("abc123def456", &format!("{}: Implement feature", task_id_str)),
         push_complete("main"),
         // Session complete
         session_complete(true, "Task completed successfully"),
