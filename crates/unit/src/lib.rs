@@ -28,6 +28,7 @@
 
 mod pin;
 mod any_pin;
+mod cloneable_any;
 mod unit;
 mod primitive;
 mod functional;
@@ -36,14 +37,21 @@ mod graph;
 mod spec;
 mod geometry;
 mod physics;
+mod error;
+mod event;
+mod scheduler;
 
 pub use pin::{Pin, PinOpt, PinState, PinEvent, PinSnapshot};
-pub use any_pin::AnyPin;
+pub use any_pin::{AnyPin, PinTypeError};
+pub use cloneable_any::{CloneableAny, downcast, downcast_ref, downcast_mut};
 pub use unit::{Unit, Lifecycle, UnitEvent, IO};
 pub use primitive::Primitive;
 pub use functional::Functional;
-pub use merge::Merge;
+pub use merge::{Merge, MergeBuilder, MergeSpec, MergePlug};
 pub use graph::{Graph, PinExposure};
 pub use spec::GraphSpec;
 pub use geometry::{Point, Shape, Thing, surface_distance, point_in_node};
 pub use physics::{SimNode, SimConnection, SimulationConfig, apply_forces, integrate, should_stop, cool, reheat, tick, run_until_settled};
+pub use error::{UnitError, PinError, ConnectionError, GraphError, UnitResult};
+pub use event::{RuntimeEvent, EventBus, EventHandler};
+pub use scheduler::{EventScheduler, SchedulerMode, SchedulerStats, SchedulerBuilder};

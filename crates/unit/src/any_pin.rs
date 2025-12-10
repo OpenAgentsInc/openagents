@@ -3,7 +3,9 @@
 //! This trait allows storing pins of different types in a single container
 //! (e.g., HashMap<String, Box<dyn AnyPin>>), enabling dynamic graph construction.
 
+use crate::cloneable_any::CloneableAny;
 use std::any::Any;
+use std::sync::Arc;
 
 /// Type-erased pin operations
 ///
@@ -15,11 +17,21 @@ pub trait AnyPin: Send + Sync {
     /// Returns Err if the data type doesn't match the pin's type.
     fn push_any(&mut self, data: Box<dyn Any + Send>) -> Result<(), PinTypeError>;
 
+    /// Push cloneable data into the pin
+    ///
+    /// This allows pushing data that can later be cloned for fan-out.
+    fn push_cloneable(&mut self, data: Arc<dyn CloneableAny>) -> Result<(), PinTypeError>;
+
     /// Take type-erased data from the pin
     fn take_any(&mut self) -> Option<Box<dyn Any + Send>>;
 
     /// Pull type-erased data (clone if constant, take otherwise)
     fn pull_any(&mut self) -> Option<Box<dyn Any + Send>>;
+
+    /// Clone the current data without consuming it
+    ///
+    /// Returns None if pin is empty or invalid.
+    fn clone_data(&self) -> Option<Arc<dyn CloneableAny>>;
 
     /// Peek at the data without consuming (returns None if empty)
     fn peak_any(&self) -> Option<&dyn Any>;
@@ -74,7 +86,7 @@ impl std::error::Error for PinTypeError {}
 // Implement AnyPin for Pin<T>
 use crate::pin::Pin;
 
-impl<T: Clone + Send + Sync + 'static> AnyPin for Pin<T> {
+impl<T: Clone + Send + Sync + std::fmt::Debug + 'static> AnyPin for Pin<T> {
     fn push_any(&mut self, data: Box<dyn Any + Send>) -> Result<(), PinTypeError> {
         match data.downcast::<T>() {
             Ok(typed_data) => {
@@ -88,12 +100,29 @@ impl<T: Clone + Send + Sync + 'static> AnyPin for Pin<T> {
         }
     }
 
+    fn push_cloneable(&mut self, data: Arc<dyn CloneableAny>) -> Result<(), PinTypeError> {
+        match data.as_any().downcast_ref::<T>() {
+            Some(typed_data) => {
+                self.push(typed_data.clone());
+                Ok(())
+            }
+            None => Err(PinTypeError {
+                expected: std::any::type_name::<T>(),
+                got: data.type_name_of(),
+            }),
+        }
+    }
+
     fn take_any(&mut self) -> Option<Box<dyn Any + Send>> {
         self.take().map(|v| Box::new(v) as Box<dyn Any + Send>)
     }
 
     fn pull_any(&mut self) -> Option<Box<dyn Any + Send>> {
         self.pull().map(|v| Box::new(v) as Box<dyn Any + Send>)
+    }
+
+    fn clone_data(&self) -> Option<Arc<dyn CloneableAny>> {
+        self.peak().map(|v| Arc::new(v.clone()) as Arc<dyn CloneableAny>)
     }
 
     fn peak_any(&self) -> Option<&dyn Any> {

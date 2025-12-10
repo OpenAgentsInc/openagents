@@ -9,12 +9,14 @@
 //! - Only one input can be "active" at a time
 
 use crate::any_pin::AnyPin;
+use crate::cloneable_any::CloneableAny;
 use crate::pin::{Pin, PinOpt};
 use crate::primitive::Primitive;
 use crate::unit::{Lifecycle, Unit};
 use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Merge: Routes data between pins
 ///
@@ -29,8 +31,8 @@ pub struct Merge {
     outputs: HashMap<String, Box<dyn AnyPin>>,
     /// Which input is currently active
     current_input: Option<String>,
-    /// The current data (type-erased) - must be Send + Sync for thread safety
-    current_data: Option<Box<dyn Any + Send + Sync>>,
+    /// The current data (cloneable for fan-out)
+    current_data: Option<Arc<dyn CloneableAny>>,
     /// Lifecycle state
     lifecycle: Lifecycle,
     /// Error state
@@ -54,7 +56,10 @@ impl Merge {
     /// Add an input to the merge
     ///
     /// Type parameter determines what data type this input accepts.
-    pub fn add_input<T: Clone + Send + Sync + 'static>(&mut self, name: impl Into<String>) {
+    pub fn add_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+    ) {
         let pin: Pin<T> = Pin::new(PinOpt::default());
         self.inputs.insert(name.into(), Box::new(pin));
     }
@@ -62,7 +67,10 @@ impl Merge {
     /// Add an output to the merge
     ///
     /// Type parameter determines what data type this output produces.
-    pub fn add_output<T: Clone + Send + Sync + 'static>(&mut self, name: impl Into<String>) {
+    pub fn add_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+    ) {
         let pin: Pin<T> = Pin::new(PinOpt::default());
         self.outputs.insert(name.into(), Box::new(pin));
     }
@@ -79,14 +87,41 @@ impl Merge {
 
     /// Propagate current data to all outputs
     fn propagate_to_outputs(&mut self) {
-        if self.current_data.is_none() {
-            return;
+        let data = match &self.current_data {
+            Some(d) => d.clone(),
+            None => return,
+        };
+
+        // Clone data to each output pin
+        for output in self.outputs.values_mut() {
+            if let Err(e) = output.push_cloneable(data.clone()) {
+                // Type mismatch - this shouldn't happen if merge is set up correctly
+                // Log error but continue with other outputs
+                eprintln!("Merge propagation error: {}", e);
+            }
+        }
+    }
+
+    /// Get the current data (if any)
+    pub fn data(&self) -> Option<&Arc<dyn CloneableAny>> {
+        self.current_data.as_ref()
+    }
+
+    /// Store data from an input and propagate to outputs
+    pub fn set_data(&mut self, input_name: &str, data: Arc<dyn CloneableAny>) {
+        // If different input is now active, clear old state
+        if let Some(ref current) = self.current_input {
+            if current != input_name {
+                self.clear_current();
+            }
         }
 
-        // For each output, push a clone of the current data
-        // This is tricky with type erasure - we need to clone the data
-        // For now, we'll just mark that we have data
-        // Real implementation would need to handle cloning properly
+        self.current_input = Some(input_name.to_string());
+        self.current_data = Some(data);
+
+        if self.lifecycle == Lifecycle::Playing {
+            self.propagate_to_outputs();
+        }
     }
 
     /// Clear current data and propagate drop to outputs
@@ -184,10 +219,9 @@ impl Primitive for Merge {
             return;
         }
 
-        // If we have a current input that's different, invalidate it first
+        // If we have a current input that's different, clear it first
         if let Some(ref current) = self.current_input {
             if current != name {
-                // Different input is now active, clear old state
                 self.clear_current();
             }
         }
@@ -195,12 +229,13 @@ impl Primitive for Merge {
         // Set this input as current
         self.current_input = Some(name.to_string());
 
-        // Note: We can't easily clone type-erased data here
-        // In a full implementation, we'd need a Clone trait object pattern
-        // For now, just track that we have data
-
-        // Propagate to outputs
-        self.propagate_to_outputs();
+        // Try to clone data from the input pin
+        if let Some(input_pin) = self.inputs.get(name) {
+            if let Some(cloned_data) = input_pin.clone_data() {
+                self.current_data = Some(cloned_data);
+                self.propagate_to_outputs();
+            }
+        }
     }
 
     fn on_input_drop(&mut self, name: &str, _data: &dyn Any) {
@@ -237,13 +272,19 @@ impl MergeBuilder {
     }
 
     /// Add a typed input
-    pub fn input<T: Clone + Send + Sync + 'static>(mut self, name: impl Into<String>) -> Self {
+    pub fn input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.merge.add_input::<T>(name);
         self
     }
 
     /// Add a typed output
-    pub fn output<T: Clone + Send + Sync + 'static>(mut self, name: impl Into<String>) -> Self {
+    pub fn output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.merge.add_output::<T>(name);
         self
     }
