@@ -153,6 +153,23 @@ pub struct GraphView {
     style: GraphStyle,
     /// Whether simulation is running
     simulating: bool,
+
+    // =========================================================================
+    // HUD State (for testing and message handling)
+    // =========================================================================
+
+    /// Current session ID (if a session is active)
+    current_session_id: Option<String>,
+    /// Current APM value
+    current_apm: f64,
+    /// Current error message (if any)
+    current_error: Option<String>,
+    /// Error count for this session
+    error_count: usize,
+    /// Total messages received
+    message_count: usize,
+    /// Connection state (simulated for testing)
+    is_connected: bool,
 }
 
 impl GraphView {
@@ -170,6 +187,13 @@ impl GraphView {
             selection: SelectionManager::new(),
             style: GraphStyle::default(),
             simulating: false,
+            // HUD state
+            current_session_id: None,
+            current_apm: 0.0,
+            current_error: None,
+            error_count: 0,
+            message_count: 0,
+            is_connected: true,
         }
     }
 
@@ -470,7 +494,7 @@ impl GraphView {
     }
 
     /// Clear all selection
-    fn clear_selection(&mut self, cx: &mut Context<Self>) {
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
         for id in self.selection.selected_vec() {
             if let Some(node) = self.nodes.get(&id) {
                 node.view.update(cx, |v, _| v.set_selected(false));
@@ -483,6 +507,249 @@ impl GraphView {
     /// Get current selection
     pub fn selected(&self) -> &SelectionManager {
         &self.selection
+    }
+
+    /// Set the visual style
+    pub fn set_style(&mut self, style: GraphStyle) {
+        self.style = style;
+    }
+
+    // =========================================================================
+    // Accessor Methods (for testing)
+    // =========================================================================
+
+    /// Get current zoom level
+    pub fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    /// Get pan X offset
+    pub fn pan_x(&self) -> f32 {
+        self.pan_x
+    }
+
+    /// Get pan Y offset
+    pub fn pan_y(&self) -> f32 {
+        self.pan_y
+    }
+
+    /// Get number of nodes
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Check if a node exists
+    pub fn has_node(&self, id: &str) -> bool {
+        self.nodes.contains_key(id)
+    }
+
+    /// Get all node IDs
+    pub fn node_ids(&self) -> Vec<String> {
+        self.nodes.keys().cloned().collect()
+    }
+
+    /// Get selected node IDs
+    pub fn selected_ids(&self) -> Vec<String> {
+        self.selection.selected_vec()
+    }
+
+    /// Check if a node is selected
+    pub fn is_node_selected(&self, id: &str) -> bool {
+        self.selection.is_selected(id)
+    }
+
+    /// Get selection count
+    pub fn selection_count(&self) -> usize {
+        self.selection.count()
+    }
+
+    /// Check if simulation is running
+    pub fn is_simulating(&self) -> bool {
+        self.simulating
+    }
+
+    /// Get node screen position
+    pub fn node_screen_position(&self, id: &str) -> Option<(f32, f32)> {
+        self.nodes.get(id).map(|node| self.graph_to_screen(node.x, node.y))
+    }
+
+    /// Reset view to default zoom and pan
+    pub fn reset_view(&mut self, _cx: &mut Context<Self>) {
+        self.zoom = 1.0;
+        self.pan_x = 0.0;
+        self.pan_y = 0.0;
+    }
+
+    // =========================================================================
+    // HUD State Accessors (for testing)
+    // =========================================================================
+
+    /// Get current session ID
+    pub fn current_session_id(&self) -> Option<String> {
+        self.current_session_id.clone()
+    }
+
+    /// Get current APM value
+    pub fn current_apm(&self) -> f64 {
+        self.current_apm
+    }
+
+    /// Get current error message
+    pub fn current_error(&self) -> Option<String> {
+        self.current_error.clone()
+    }
+
+    /// Get error count
+    pub fn error_count(&self) -> usize {
+        self.error_count
+    }
+
+    /// Get message count
+    pub fn message_count(&self) -> usize {
+        self.message_count
+    }
+
+    /// Check if connected
+    pub fn is_connected(&self) -> bool {
+        self.is_connected
+    }
+
+    // =========================================================================
+    // HUD Message Handling (for testing)
+    // =========================================================================
+
+    /// Handle a HUD protocol message
+    ///
+    /// This method processes HUD messages for testing purposes.
+    /// In production, messages come via WebSocket; in tests, they're injected directly.
+    pub fn handle_hud_message(&mut self, message: serde_json::Value, cx: &mut Context<Self>) {
+        self.message_count += 1;
+
+        // Extract message type
+        let msg_type = message.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        match msg_type {
+            "session_start" => {
+                if let Some(session_id) = message.get("sessionId").and_then(|v| v.as_str()) {
+                    self.current_session_id = Some(session_id.to_string());
+                    self.current_error = None;
+                    self.error_count = 0;
+                }
+            }
+            "session_complete" => {
+                // Session ended, keep session_id for reference
+            }
+            "task_selected" => {
+                // Could add a node for the task
+                if let Some(task) = message.get("task") {
+                    if let Some(id) = task.get("id").and_then(|v| v.as_str()) {
+                        self.add_task_node(id, task.get("title").and_then(|v| v.as_str()).unwrap_or("Task"), cx);
+                    }
+                }
+            }
+            "apm_update" => {
+                if let Some(apm) = message.get("sessionAPM").and_then(|v| v.as_f64()) {
+                    // Sanitize APM value
+                    self.current_apm = if apm.is_finite() { apm } else { 0.0 };
+                }
+            }
+            "error" => {
+                if let Some(error) = message.get("error").and_then(|v| v.as_str()) {
+                    self.current_error = Some(error.to_string());
+                    self.error_count += 1;
+                }
+            }
+            _ => {
+                // Unknown message type - ignore silently
+            }
+        }
+
+        cx.notify();
+    }
+
+    /// Handle raw/malformed message data (for error handling tests)
+    pub fn handle_raw_message(&mut self, data: &str, cx: &mut Context<Self>) {
+        self.message_count += 1;
+
+        // Try to parse as JSON
+        match serde_json::from_str::<serde_json::Value>(data) {
+            Ok(value) => {
+                self.handle_hud_message(value, cx);
+            }
+            Err(_) => {
+                // Malformed JSON - record as error but don't crash
+                self.current_error = Some(format!("Malformed message: {}", &data[..data.len().min(50)]));
+                self.error_count += 1;
+                cx.notify();
+            }
+        }
+    }
+
+    /// Handle WebSocket disconnect (for testing)
+    pub fn handle_disconnect(&mut self, cx: &mut Context<Self>) {
+        self.is_connected = false;
+        cx.notify();
+    }
+
+    /// Handle WebSocket reconnect (for testing)
+    pub fn handle_reconnect(&mut self, cx: &mut Context<Self>) {
+        self.is_connected = true;
+        cx.notify();
+    }
+
+    /// Add a task node (simplified for testing)
+    fn add_task_node(&mut self, id: &str, title: &str, cx: &mut Context<Self>) {
+        use unit::{Lifecycle, PinState};
+        use crate::pin_view::PinSnapshot;
+
+        // Don't add duplicate nodes
+        if self.nodes.contains_key(id) {
+            return;
+        }
+
+        // Position new nodes in a grid pattern
+        let node_index = self.nodes.len();
+        let x = (node_index % 3) as f32 * 200.0 - 200.0;
+        let y = (node_index / 3) as f32 * 150.0;
+
+        let snapshot = UnitSnapshot {
+            id: id.to_string(),
+            lifecycle: Lifecycle::Playing,
+            inputs: vec![],
+            outputs: vec![
+                PinSnapshot {
+                    name: title.to_string(),
+                    state: PinState::Valid,
+                    is_constant: false,
+                    is_ignored: false,
+                    direction: PinDirection::Output,
+                    type_name: "Task".to_string(),
+                },
+            ],
+            error: None,
+            position: point(px(x), px(y)),
+        };
+
+        let size = snapshot.calculate_size(&self.style.unit_style);
+        let width: f32 = size.width.into();
+        let height: f32 = size.height.into();
+        let view = cx.new(|cx| UnitView::new(snapshot, cx));
+
+        self.nodes.insert(id.to_string(), GraphNode {
+            view,
+            x,
+            y,
+            vx: 0.0,
+            vy: 0.0,
+            width,
+            height,
+            is_dragged: false,
+        });
+
+        // Start simulation if not running
+        if !self.simulating {
+            self.start_simulation(cx);
+        }
     }
 }
 
