@@ -29,6 +29,12 @@ pub enum ComponentStory {
     GraphView,
     /// All components in one view
     KitchenSink,
+    /// Unit runtime: system units execution
+    UnitRuntime,
+    /// Value types: dynamic Value with JS-like coercion
+    ValueTypes,
+    /// Unit chains: connecting units for complex computations
+    UnitChains,
 }
 
 impl ComponentStory {
@@ -39,6 +45,9 @@ impl ComponentStory {
             Self::Connections => cx.new(|_| ConnectionsStory).into(),
             Self::GraphView => cx.new(|cx| GraphViewStory::new(cx)).into(),
             Self::KitchenSink => cx.new(|cx| KitchenSinkStory::new(cx)).into(),
+            Self::UnitRuntime => cx.new(|_| UnitRuntimeStory).into(),
+            Self::ValueTypes => cx.new(|_| ValueTypesStory).into(),
+            Self::UnitChains => cx.new(|_| UnitChainsStory).into(),
         }
     }
 
@@ -49,6 +58,9 @@ impl ComponentStory {
             Self::Connections => "Connection bezier curves with different states",
             Self::GraphView => "Graph view with physics simulation",
             Self::KitchenSink => "All components in one view",
+            Self::UnitRuntime => "System units: arithmetic, logic, comparison, control",
+            Self::ValueTypes => "Dynamic Value type with JS-like coercion",
+            Self::UnitChains => "Connecting units for complex computations",
         }
     }
 }

@@ -44,12 +44,12 @@ impl Render for ValueTypesStory {
                 ])),
             ])),
         ]);
-        let deep_name = nested.deep_get(&["user", "profile", "name"])
+        let deep_name = nested.deep_get("user.profile.name")
             .map(|v| v.to_string_value())
             .unwrap_or_else(|| "not found".to_string());
 
-        // Array access
-        let arr_elem = arr.get(1)
+        // Array access (using string index)
+        let arr_elem = arr.get("1")
             .map(|v| v.to_string_value())
             .unwrap_or_else(|| "not found".to_string());
 
@@ -107,11 +107,11 @@ impl Render for ValueTypesStory {
             .child(
                 Story::section()
                     .child(Story::section_title("Deep Access"))
-                    .child(Story::description("Navigate nested structures with path arrays"))
+                    .child(Story::description("Navigate nested structures with dot-separated paths"))
                     .child(
                         div().flex().flex_col().gap(px(8.0))
-                            .child(string_row("deep_get([\"user\", \"profile\", \"name\"])", &deep_name, "Alice"))
-                            .child(string_row("array.get(1)", &arr_elem, "2"))
+                            .child(string_row("deep_get(\"user.profile.name\")", &deep_name, "Alice"))
+                            .child(string_row("array.get(\"1\")", &arr_elem, "2"))
                     )
             )
             .child(
