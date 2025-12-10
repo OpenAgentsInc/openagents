@@ -46,6 +46,7 @@ pub mod runner;
 pub mod sampler;
 pub mod scoring;
 pub mod store;
+pub mod testgen_writer;
 pub mod types;
 
 // Re-export main types for convenience
@@ -72,6 +73,7 @@ pub use scoring::{
     score_result, EXPORT_THRESHOLD, MIN_CONSECUTIVE_PASSES, MIN_SCORE, PASS_BONUS, TURN_BASE,
 };
 pub use store::{hash_config, HillClimberStore};
+pub use testgen_writer::format_as_pytest;
 pub use types::{
     // Config types
     BestConfig,

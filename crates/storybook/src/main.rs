@@ -35,6 +35,8 @@ pub enum ComponentStory {
     ValueTypes,
     /// Unit chains: connecting units for complex computations
     UnitChains,
+    /// ATIF components: trajectory visualization
+    AtifComponents,
 }
 
 impl ComponentStory {
@@ -48,6 +50,7 @@ impl ComponentStory {
             Self::UnitRuntime => cx.new(|_| UnitRuntimeStory).into(),
             Self::ValueTypes => cx.new(|_| ValueTypesStory).into(),
             Self::UnitChains => cx.new(|_| UnitChainsStory).into(),
+            Self::AtifComponents => cx.new(|_| AtifComponentsStory).into(),
         }
     }
 
@@ -61,6 +64,7 @@ impl ComponentStory {
             Self::UnitRuntime => "System units: arithmetic, logic, comparison, control",
             Self::ValueTypes => "Dynamic Value type with JS-like coercion",
             Self::UnitChains => "Connecting units for complex computations",
+            Self::AtifComponents => "ATIF trajectory visualization components",
         }
     }
 }

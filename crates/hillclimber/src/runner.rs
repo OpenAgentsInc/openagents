@@ -148,6 +148,7 @@ impl HillClimberRunner {
             task_description: options.task.description.clone(),
             verbose: options.verbose,
             use_sampling: options.use_sampling,
+            generate_tests: options.generate_tests,
         };
 
         let tool_executor = WorkspaceExecutor::new(
