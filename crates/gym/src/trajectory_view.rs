@@ -81,10 +81,9 @@ impl TrajectoryView {
         dt.format("%m-%d %H:%M").to_string()
     }
 
-    fn render_trajectory_item(&self, traj: &TrajectoryMetadata, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_trajectory_item(&self, traj: &TrajectoryMetadata) -> impl IntoElement {
         let is_selected = self.selected_id.as_ref() == Some(&traj.session_id);
         let (status_color, status_bg) = self.status_color(traj.status);
-        let session_id = traj.session_id.clone();
 
         let status_label = match traj.status {
             TrajectoryStatus::Completed => "done",
@@ -93,6 +92,7 @@ impl TrajectoryView {
         };
 
         div()
+            .id(SharedString::from(traj.session_id.clone()))
             .p(px(12.0))
             .cursor_pointer()
             .border_b_1()
@@ -106,9 +106,6 @@ impl TrajectoryView {
                 el.bg(bg::ROW)
                     .hover(|el| el.bg(bg::HOVER))
             })
-            .on_mouse_down(MouseButton::Left, cx.listener(move |view, _event, _window, cx| {
-                view.select_trajectory(session_id.clone(), cx);
-            }))
             .child(
                 div()
                     .flex()
@@ -166,7 +163,14 @@ impl TrajectoryView {
             )
     }
 
-    fn render_trajectory_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_trajectory_list(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        // Pre-render items before closures to avoid borrow issues
+        let items: Vec<_> = self.trajectories.iter()
+            .map(|t| self.render_trajectory_item(t))
+            .collect();
+        let is_empty = self.trajectories.is_empty();
+        let count = self.trajectories.len();
+
         div()
             .w(px(300.0))
             .h_full()
@@ -198,7 +202,7 @@ impl TrajectoryView {
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child(format!("{}", self.trajectories.len()))
+                            .child(format!("{}", count))
                     )
             )
             // List
@@ -207,7 +211,7 @@ impl TrajectoryView {
                     .id("trajectory-list-scroll")
                     .flex_1()
                     .overflow_y_scroll()
-                    .when(self.trajectories.is_empty(), |el| {
+                    .when(is_empty, |el| {
                         el.child(
                             div()
                                 .p(px(24.0))
@@ -218,18 +222,17 @@ impl TrajectoryView {
                                 .child("No trajectories yet")
                         )
                     })
-                    .when(!self.trajectories.is_empty(), |el| {
-                        el.children(self.trajectories.iter().map(|t| self.render_trajectory_item(t, cx)))
+                    .when(!is_empty, |el| {
+                        el.children(items)
                     })
             )
     }
 
     fn render_step(&self, step: &Step, index: usize) -> impl IntoElement {
-        let source_color = match step.source.as_str() {
-            "user" => status::INFO,
-            "assistant" | "agent" => status::SUCCESS,
-            "system" => text::MUTED,
-            _ => text::SECONDARY,
+        let (source_color, source_label) = match step.source {
+            StepSource::User => (status::INFO, "USER"),
+            StepSource::Agent => (status::SUCCESS, "AGENT"),
+            StepSource::System => (text::MUTED, "SYSTEM"),
         };
 
         div()
@@ -267,7 +270,7 @@ impl TrajectoryView {
                             .font_family(FONT_FAMILY)
                             .text_color(source_color)
                             .font_weight(FontWeight::MEDIUM)
-                            .child(step.source.to_uppercase())
+                            .child(source_label)
                     )
             )
             // Step content
