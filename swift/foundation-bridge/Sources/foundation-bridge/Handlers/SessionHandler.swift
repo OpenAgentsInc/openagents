@@ -212,7 +212,7 @@ struct SessionHandler {
 
         // Complete using session
         let response = try await session.respond(to: prompt)
-        let content = response.content as? String ?? ""
+        let content = response.content
 
         // Update transcript
         let newMessages = [
@@ -222,7 +222,7 @@ struct SessionHandler {
         await sessionStore.appendToTranscript(id, messages: newMessages)
 
         // Build response
-        let completionResponse = CompletionResponse(
+        let completionResponse = ChatCompletionResponse(
             id: "fm-\(UUID().uuidString)",
             object: "chat.completion",
             created: Int(Date().timeIntervalSince1970),
@@ -234,7 +234,7 @@ struct SessionHandler {
                     finishReason: "stop"
                 )
             ],
-            usage: nil
+            usage: Usage(promptTokens: nil, completionTokens: nil, totalTokens: nil)
         )
 
         let encoder = JSONEncoder()

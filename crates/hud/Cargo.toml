@@ -1,0 +1,12 @@
+[package]
+name = "hud"
+version = "0.1.0"
+edition = "2024"
+description = "GPUI visualization layer for Unit dataflow graphs"
+license = "CC-0"
+
+[dependencies]
+unit = { path = "../unit" }
+gpui = { path = "../gpui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

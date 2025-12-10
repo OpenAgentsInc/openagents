@@ -1,10 +1,10 @@
 [package]
 name = "testgen"
 version = "0.1.0"
-edition = "2021"
-authors = ["OpenAgents Team"]
+edition = "2024"
+authors = ["OpenAgents"]
 description = "Test generation and evolution system for Terminal-Bench"
-license = "MIT"
+license = "CC-0"
 
 [[bin]]
 name = "testgen"

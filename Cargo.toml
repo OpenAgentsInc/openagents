@@ -14,6 +14,8 @@ members = [
     "crates/sum_tree",
     "crates/media",
     "crates/testgen",
+    "crates/unit",
+    "crates/hud",
 ]
 
 [workspace.lints]
@@ -22,8 +24,8 @@ rust.missing_docs = "allow"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-authors = ["OpenAgents Team"]
-license = "MIT"
+authors = ["OpenAgents"]
+license = "CC-0"
 
 [workspace.dependencies]
 # Workspace member crates

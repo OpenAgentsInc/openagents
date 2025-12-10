@@ -1208,7 +1208,10 @@ version = "0.1.0"
 dependencies = [
  "fm-bridge",
  "gpui",
+ "pulldown-cmark",
+ "serde_json",
  "tokio",
+ "tokio-stream",
  "unicode-segmentation",
 ]
 
@@ -2717,6 +2720,16 @@ name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+
+[[package]]
+name = "hud"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "serde",
+ "serde_json",
+ "unit",
+]
 
 [[package]]
 name = "hyper"
@@ -4398,6 +4411,17 @@ checksum = "d11f2fedc3b7dafdc2851bc52f277377c5473d378859be234bc7ebb593144d01"
 dependencies = [
  "ar_archive_writer",
  "cc",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f86ba2052aebccc42cbbb3ed234b8b13ce76f75c3551a303cb2bcffcff12bb14"
+dependencies = [
+ "bitflags 2.10.0",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]
@@ -6369,6 +6393,14 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unit"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "untrusted"

@@ -255,7 +255,7 @@ actor HTTPServer {
             return await handleModels()
 
         case ("POST", "/v1/chat/completions"), ("POST", "/chat/completions"):
-            return await handleChatCompletions(body: body, queryString: queryString)
+            return await handleChatCompletions(body: body)
 
         // Session management endpoints
         case ("POST", "/v1/sessions"):

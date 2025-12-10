@@ -20,14 +20,18 @@ struct StreamHandler {
         let completionId = "fm-\(UUID().uuidString)"
         let created = Int(Date().timeIntervalSince1970)
 
+        // Extract values from request before closure (Sendable compliance)
+        let modelName = request.model ?? "apple-foundation-model"
+        let responseFormat = request.responseFormat
+        let schemaType = responseFormat?.schemaType
+        let isGuidedGeneration = responseFormat?.type == "json_schema" && schemaType != nil
+
         // Return async stream of SSE-formatted strings
         return AsyncStream { continuation in
             Task {
                 do {
                     // Check if this is guided generation
-                    if let responseFormat = request.responseFormat,
-                       responseFormat.type == "json_schema",
-                       let schemaType = responseFormat.schemaType {
+                    if isGuidedGeneration, let schemaType = schemaType {
                         // Streaming with guided generation
                         try await streamGuidedGeneration(
                             session: session,
@@ -35,7 +39,7 @@ struct StreamHandler {
                             schemaType: schemaType,
                             completionId: completionId,
                             created: created,
-                            model: request.model,
+                            model: modelName,
                             continuation: continuation
                         )
                     } else {
@@ -45,7 +49,7 @@ struct StreamHandler {
                             prompt: prompt,
                             completionId: completionId,
                             created: created,
-                            model: request.model,
+                            model: modelName,
                             continuation: continuation
                         )
                     }
@@ -85,26 +89,41 @@ struct StreamHandler {
             continuation.yield(SSEWriter.writeEvent(data: data, id: completionId))
         }
 
-        // Stream response
+        // Stream response - note: snapshots contain ACCUMULATED content, not deltas
         let stream = session.streamResponse(to: prompt)
+        var previousContent = ""
 
         for try await snapshot in stream {
-            // Extract text from snapshot
-            let content = snapshot.content as? String ?? ""
+            // snapshot.content is the full accumulated text so far
+            let currentContent = snapshot.content
 
-            let chunk = StreamChunk(
-                id: completionId,
-                created: created,
-                model: model,
-                choices: [StreamChoice(
-                    index: 0,
-                    delta: Delta(role: nil, content: content),
-                    finishReason: nil
-                )]
-            )
+            // Calculate the delta (new content since last snapshot)
+            let delta: String
+            if currentContent.hasPrefix(previousContent) {
+                delta = String(currentContent.dropFirst(previousContent.count))
+            } else {
+                // In case of any edge case, just use current content
+                delta = currentContent
+            }
 
-            if let data = try? JSONEncoder().encode(chunk) {
-                continuation.yield(SSEWriter.writeEvent(data: data, id: completionId))
+            previousContent = currentContent
+
+            // Only send non-empty deltas
+            if !delta.isEmpty {
+                let chunk = StreamChunk(
+                    id: completionId,
+                    created: created,
+                    model: model,
+                    choices: [StreamChoice(
+                        index: 0,
+                        delta: Delta(role: nil, content: delta),
+                        finishReason: nil
+                    )]
+                )
+
+                if let data = try? JSONEncoder().encode(chunk) {
+                    continuation.yield(SSEWriter.writeEvent(data: data, id: completionId))
+                }
             }
         }
 
@@ -156,20 +175,29 @@ struct StreamHandler {
         // Stream guided response
         let stream = session.streamResponse(to: prompt, schema: schema)
 
-        var accumulatedContent = ""
+        var previousJson = ""
         for try await snapshot in stream {
-            // Convert GeneratedContent to JSON string
-            if let jsonData = try? JSONEncoder().encode(snapshot.rawContent),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                accumulatedContent = jsonString
+            // Use GeneratedContent's built-in jsonString property
+            let currentJson = snapshot.rawContent.jsonString
 
+            // Calculate delta (new content since last snapshot)
+            let delta: String
+            if currentJson.hasPrefix(previousJson) {
+                delta = String(currentJson.dropFirst(previousJson.count))
+            } else {
+                delta = currentJson
+            }
+
+            previousJson = currentJson
+
+            if !delta.isEmpty {
                 let chunk = StreamChunk(
                     id: completionId,
                     created: created,
                     model: model,
                     choices: [StreamChoice(
                         index: 0,
-                        delta: Delta(role: nil, content: jsonString),
+                        delta: Delta(role: nil, content: delta),
                         finishReason: nil
                     )]
                 )

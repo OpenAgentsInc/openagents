@@ -52,8 +52,10 @@ impl TextInput {
     }
 
     fn submit(&mut self, _: &Submit, _window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("[DEBUG] submit() called, content: '{}'", self.content);
         let content = self.content.to_string();
         if content.trim().is_empty() {
+            eprintln!("[DEBUG] content is empty, returning");
             return;
         }
 
@@ -62,6 +64,7 @@ impl TextInput {
         cx.notify();
 
         // Emit event
+        eprintln!("[DEBUG] Emitting SubmitEvent");
         cx.emit(SubmitEvent(content.clone()));
 
         // Call legacy callback if set
