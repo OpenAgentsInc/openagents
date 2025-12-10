@@ -130,6 +130,19 @@ pub trait Unit: Send + Sync {
 
     /// Restore the unit's state from a snapshot
     fn restore(&mut self, state: &Value);
+
+    // Convenience methods for data flow
+
+    /// Push data to an input pin
+    fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>) -> Result<(), String>;
+
+    /// Take data from an output pin
+    fn take_output(&mut self, name: &str) -> Option<Box<dyn std::any::Any + Send>>;
+
+    /// Get a description of what this unit does
+    fn description(&self) -> &str {
+        ""
+    }
 }
 
 /// Input/Output type discriminator

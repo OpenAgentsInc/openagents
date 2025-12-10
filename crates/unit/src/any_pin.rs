@@ -62,6 +62,12 @@ pub trait AnyPin: Send + Sync {
 
     /// Get type name for debugging
     fn type_name(&self) -> &'static str;
+
+    /// Get a pointer to self for downcasting
+    fn as_any(&self) -> &dyn Any;
+
+    /// Get a mutable pointer to self for downcasting
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Error when pushing data of wrong type to a pin
@@ -164,9 +170,46 @@ impl<T: Clone + Send + Sync + std::fmt::Debug + 'static> AnyPin for Pin<T> {
     fn type_name(&self) -> &'static str {
         std::any::type_name::<T>()
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
-// Note: Downcasting functions are not provided as they require unsafe code
+/// Extension trait for downcasting AnyPin to typed Pin
+pub trait AnyPinExt {
+    /// Downcast to a typed Pin reference
+    fn downcast_ref<T: Clone + Send + Sync + 'static>(&self) -> Option<&Pin<T>>;
+
+    /// Downcast to a mutable typed Pin reference
+    fn downcast_mut<T: Clone + Send + Sync + 'static>(&mut self) -> Option<&mut Pin<T>>;
+}
+
+impl AnyPinExt for dyn AnyPin {
+    fn downcast_ref<T: Clone + Send + Sync + 'static>(&self) -> Option<&Pin<T>> {
+        self.as_any().downcast_ref::<Pin<T>>()
+    }
+
+    fn downcast_mut<T: Clone + Send + Sync + 'static>(&mut self) -> Option<&mut Pin<T>> {
+        self.as_any_mut().downcast_mut::<Pin<T>>()
+    }
+}
+
+impl AnyPinExt for Box<dyn AnyPin> {
+    fn downcast_ref<T: Clone + Send + Sync + 'static>(&self) -> Option<&Pin<T>> {
+        (**self).as_any().downcast_ref::<Pin<T>>()
+    }
+
+    fn downcast_mut<T: Clone + Send + Sync + 'static>(&mut self) -> Option<&mut Pin<T>> {
+        (**self).as_any_mut().downcast_mut::<Pin<T>>()
+    }
+}
+
+// Note: Downcasting functions use Any's built-in downcast which is safe
 // and proper lifetime handling. Use push_any/take_any for type-erased operations.
 
 #[cfg(test)]

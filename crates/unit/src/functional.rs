@@ -78,7 +78,7 @@ impl SimpleUnit {
             outputs: HashMap::new(),
             lifecycle: Lifecycle::Paused,
             error: None,
-            state: PrimitiveState::new(),
+            state: PrimitiveState::new("simple"),
         }
     }
 
