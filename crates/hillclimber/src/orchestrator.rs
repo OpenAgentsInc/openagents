@@ -9,14 +9,19 @@ use crate::decomposer::{decompose_task, get_current_subtask, is_subtask_complete
 use crate::error::{HillClimberError, Result};
 use crate::evaluator::parse_pytest_output;
 use crate::monitor::{create_action_signature, monitor_action};
-use crate::prompt::{build_fm_context, build_user_prompt, parse_fm_response, SYSTEM_PROMPT};
+use crate::prompt::{build_fm_context, build_user_prompt, parse_fm_response, sanitize_for_fm, SYSTEM_PROMPT};
 use crate::types::{
     ActionContext, ActionResult, EvaluatorResult, ExecutionState, FMAction, MAPOrchestratorOptions,
     MAPOrchestratorResult, StepDecision, SubtaskState, TerminalBenchTask, VerificationConfig,
 };
+use fm_bridge::FMClient as FMBridgeClient;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
+use testgen::{
+    generator::{IterationConfig, NoopEmitter as TestGenNoopEmitter},
+    EnvironmentInfo, TestGenContext, TestGenerator,
+};
 
 // ============================================================================
 // GUARDRAIL: NO TASK-SPECIFIC HARDCODING
@@ -287,6 +292,84 @@ impl<F: FMClient, T: ToolExecutor, E: HillClimberEmitter> MAPOrchestrator<F, T, 
             if let Ok(result) = self.tool_executor.read_file(path).await {
                 if result.success {
                     file_contents.insert(path.clone(), result.output);
+                }
+            }
+        }
+
+        // Step 3.5: Generate comprehensive tests (if enabled)
+        if self.options.generate_tests {
+            if self.options.verbose {
+                tracing::info!("Generating tests for task {}...", task.id);
+            }
+
+            // Create FM client for testgen (uses fm_bridge directly)
+            let testgen_client = FMBridgeClient::new();
+
+            // Use reduced config to fit within FM context window
+            let testgen_config = IterationConfig {
+                min_tests_per_category: 1,
+                target_tests_per_category: 2,
+                max_rounds_per_category: 2,
+                max_total_rounds: 4,
+                max_total_tokens: 15000, // Reduced from 100000 for small FM context
+                max_total_time_ms: 120000,
+                ..Default::default()
+            };
+            let generator = TestGenerator::with_config(testgen_client, testgen_config);
+
+            // Sanitize task description to avoid FM safety filter
+            let sanitized_description = sanitize_for_fm(&task.description);
+
+            // Set up minimal environment
+            let environment = EnvironmentInfo::default();
+
+            // Generate tests
+            match generator
+                .generate_iteratively(
+                    &sanitized_description,
+                    &task.id,
+                    &environment,
+                    TestGenContext::Benchmark, // All 5 categories
+                    &TestGenNoopEmitter,
+                )
+                .await
+            {
+                Ok(result) => {
+                    if self.options.verbose {
+                        tracing::info!("Generated {} tests", result.tests.len());
+                    }
+
+                    if !result.tests.is_empty() {
+                        // Convert to pytest format
+                        let pytest_content =
+                            crate::testgen_writer::format_as_pytest(&result.tests, &task.id);
+
+                        // Write to workspace
+                        let test_file = "test_generated.py";
+                        match self.tool_executor.write_file(test_file, &pytest_content).await {
+                            Ok(_) => {
+                                if self.options.verbose {
+                                    tracing::info!(
+                                        "Wrote {} tests to {}",
+                                        result.tests.len(),
+                                        test_file
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                if self.options.verbose {
+                                    tracing::warn!("Warning: Failed to write tests: {}", e);
+                                }
+                                // Continue anyway - tests are enhancement, not requirement
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    if self.options.verbose {
+                        tracing::warn!("Warning: Test generation failed: {}", e);
+                    }
+                    // Continue anyway - tests are enhancement, not requirement
                 }
             }
         }

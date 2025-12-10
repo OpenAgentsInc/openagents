@@ -345,6 +345,7 @@ pub struct MAPOrchestratorOptions {
     pub task_description: String,
     pub verbose: bool,
     pub use_sampling: bool,
+    pub generate_tests: bool,
 }
 
 impl Default for MAPOrchestratorOptions {
@@ -356,6 +357,7 @@ impl Default for MAPOrchestratorOptions {
             task_description: String::new(),
             verbose: false,
             use_sampling: true,
+            generate_tests: true,
         }
     }
 }

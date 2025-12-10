@@ -15,3 +15,10 @@ hud = { path = "../hud" }
 gpui = { path = "../gpui" }
 clap = { version = "4", features = ["derive"] }
 strum = { version = "0.26", features = ["derive"] }
+
+# ATIF components from commander
+commander = { path = "../commander" }
+atif = { path = "../atif" }
+atif-store = { path = "../atif-store" }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
