@@ -9,6 +9,7 @@ members = [
     "crates/gpui_macros",
     "crates/collections",
     "crates/http_client", # Package name is reqwest_client
+    "crates/hillclimber",
     "crates/util",
     "crates/util_macros",
     "crates/refineable",

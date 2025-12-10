@@ -123,6 +123,18 @@ EOF
 - **Agents:** Apple FM (local), Claude Code (cloud fallback)
 - **Payments:** Bitcoin Lightning, Spark
 - **Data:** SQLite, JSONL, Nostr
+- **Rust crates:** All crates in `crates/` use edition 2024
+
+---
+
+## Rust Crates
+
+All Rust crates must use `edition = "2024"` in their `Cargo.toml`.
+
+Key crates:
+- `crates/fm-bridge` — HTTP client for Apple Foundation Model
+- `crates/testgen` — Test generation and evolution
+- `crates/hillclimber` — MAP-based overnight optimization
 
 ---
 
