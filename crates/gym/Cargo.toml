@@ -1,0 +1,12 @@
+[package]
+name = "gym"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui = { path = "../gpui" }
+theme = { path = "../theme" }
+atif = { path = "../atif" }
+atif-store = { path = "../atif-store" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
