@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/fm-bridge",
+    "crates/commander",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenAgents Team"]
+license = "MIT"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
