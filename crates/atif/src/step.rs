@@ -106,11 +106,11 @@ pub struct Step {
 }
 
 impl Step {
-    /// Create a new user step
+    /// Create a new user step with current timestamp
     pub fn user(step_id: i64, message: impl Into<String>) -> Self {
         Self {
             step_id,
-            timestamp: None,
+            timestamp: Some(Utc::now()),
             source: StepSource::User,
             model_name: None,
             reasoning_effort: None,
@@ -123,11 +123,11 @@ impl Step {
         }
     }
 
-    /// Create a new system step
+    /// Create a new system step with current timestamp
     pub fn system(step_id: i64, message: impl Into<String>) -> Self {
         Self {
             step_id,
-            timestamp: None,
+            timestamp: Some(Utc::now()),
             source: StepSource::System,
             model_name: None,
             reasoning_effort: None,
@@ -140,11 +140,11 @@ impl Step {
         }
     }
 
-    /// Create a new agent step
+    /// Create a new agent step with current timestamp
     pub fn agent(step_id: i64, message: impl Into<String>) -> Self {
         Self {
             step_id,
-            timestamp: None,
+            timestamp: Some(Utc::now()),
             source: StepSource::Agent,
             model_name: None,
             reasoning_effort: None,

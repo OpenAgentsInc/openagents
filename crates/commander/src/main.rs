@@ -397,6 +397,7 @@ impl CommanderView {
                     .child(
                         div()
                             .text_size(px(10.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                             .child(created_at),
                     ),
@@ -405,6 +406,7 @@ impl CommanderView {
             .child(
                 div()
                     .text_size(px(11.0))
+                    .font_family("Berkeley Mono")
                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                     .mb(px(4.0))
                     .child(format!("model: {}", model_name)),
@@ -416,6 +418,7 @@ impl CommanderView {
                     .items_center()
                     .gap(px(6.0))
                     .text_size(px(10.0))
+                    .font_family("Berkeley Mono")
                     .text_color(hsla(0.0, 0.0, 0.45, 1.0))
                     .child(session_id_display)
                     .child(
@@ -529,6 +532,7 @@ impl Render for CommanderView {
                                         .child(
                                             div()
                                                 .text_size(px(12.0))
+                                                .font_family("Berkeley Mono")
                                                 .text_color(hsla(0., 0., 0.5, 1.0))
                                                 .child(format!("({})", total_trajectories)),
                                         ),

@@ -284,12 +284,14 @@ pub fn render_progress_item(timestamp: DateTime<Utc>, data: &ProgressData) -> im
                 .child(
                     div()
                         .text_size(px(14.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.6, 1.0))
                         .child(data.status.clone()),
                 )
                 .children(data.category.as_ref().map(|cat| {
                     div()
                         .text_size(px(12.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                         .child(format!("({} - round {})", cat, data.round))
                 })),
@@ -340,6 +342,7 @@ pub fn render_reflection_item(timestamp: DateTime<Utc>, data: &ReflectionData) -
                                 .child(
                                     div()
                                         .text_size(px(12.0))
+                                        .font_family("Berkeley Mono")
                                         .text_color(hsla(0.58, 0.6, 0.6, 1.0))
                                         .child(action_label),
                                 )
@@ -458,7 +461,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
                     div()
                         .flex()
                         .gap(px(4.0))
-                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).child("Total Tests:"))
+                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).font_family("Berkeley Mono").child("Total Tests:"))
                         .child(
                             div()
                                 .text_color(hsla(0.38, 0.7, 0.7, 1.0))
@@ -470,7 +473,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
                     div()
                         .flex()
                         .gap(px(4.0))
-                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).child("Total Rounds:"))
+                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).font_family("Berkeley Mono").child("Total Rounds:"))
                         .child(
                             div()
                                 .text_color(hsla(0.38, 0.7, 0.7, 1.0))
@@ -485,6 +488,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
                         .child(
                             div()
                                 .text_color(hsla(0.0, 0.0, 0.6, 1.0))
+                                .font_family("Berkeley Mono")
                                 .child("Comprehensiveness Score:"),
                         )
                         .child(
@@ -498,7 +502,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
                     div()
                         .flex()
                         .gap(px(4.0))
-                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).child("Tokens Used:"))
+                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).font_family("Berkeley Mono").child("Tokens Used:"))
                         .child(
                             div()
                                 .text_color(hsla(0.38, 0.7, 0.7, 1.0))
@@ -510,7 +514,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
                     div()
                         .flex()
                         .gap(px(4.0))
-                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).child("Duration:"))
+                        .child(div().text_color(hsla(0.0, 0.0, 0.6, 1.0)).font_family("Berkeley Mono").child("Duration:"))
                         .child(
                             div()
                                 .text_color(hsla(0.38, 0.7, 0.7, 1.0))
@@ -568,6 +572,7 @@ pub fn render_test_item_header(
                 .child(
                     div()
                         .text_size(px(12.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.6, 1.0))
                         .flex_shrink_0()
                         .child(format!("({}%)", percent)),
@@ -654,6 +659,7 @@ pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(14.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.7, 1.0))
                         .line_height(px(22.0))
                         .child(data.reasoning.clone()),

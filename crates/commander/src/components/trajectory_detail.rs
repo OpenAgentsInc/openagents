@@ -77,6 +77,7 @@ fn render_metadata_row(label: &str, value: String) -> impl IntoElement {
         .child(
             div()
                 .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .font_family("Berkeley Mono")
                 .child(format!("{}:", label_owned)),
         )
         .child(
@@ -141,21 +142,25 @@ pub fn render_trajectory_metadata(trajectory: &Trajectory) -> impl IntoElement {
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child("Agent:"),
                 )
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                        .font_family("Berkeley Mono")
                         .child(agent_name),
                 )
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child(format!("v{}", agent_version)),
                 )
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.4, 1.0))
+                        .font_family("Berkeley Mono")
                         .child(format!("({})", model_name)),
                 ),
         )
@@ -169,16 +174,18 @@ pub fn render_trajectory_metadata(trajectory: &Trajectory) -> impl IntoElement {
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child("Task:"),
                 )
-                .child(div().text_color(hsla(0.0, 0.0, 0.8, 1.0)).child(task))
+                .child(div().text_color(hsla(0.0, 0.0, 0.8, 1.0)).font_family("Berkeley Mono").child(task))
                 .child(div().text_color(hsla(0.0, 0.0, 0.3, 1.0)).child("•"))
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child("Episode:"),
                 )
-                .child(div().text_color(hsla(0.0, 0.0, 0.8, 1.0)).child(episode)),
+                .child(div().text_color(hsla(0.0, 0.0, 0.8, 1.0)).font_family("Berkeley Mono").child(episode)),
         )
         // Steps/Date
         .child(
@@ -190,22 +197,26 @@ pub fn render_trajectory_metadata(trajectory: &Trajectory) -> impl IntoElement {
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child("Steps:"),
                 )
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                        .font_family("Berkeley Mono")
                         .child(format!("{}", step_count)),
                 )
                 .child(div().text_color(hsla(0.0, 0.0, 0.3, 1.0)).child("•"))
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family("Berkeley Mono")
                         .child("Date:"),
                 )
                 .child(
                     div()
                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                        .font_family("Berkeley Mono")
                         .child(date_str),
                 ),
         )
@@ -265,6 +276,7 @@ pub fn render_step_row(step: &Step, is_expanded: bool) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(11.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.75, 0.5, 0.6, 1.0)) // violet
                             .child(format!(
                                 "🔧 {} tool{}",
@@ -278,6 +290,7 @@ pub fn render_step_row(step: &Step, is_expanded: bool) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(11.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.38, 0.5, 0.6, 1.0)) // green
                             .child("✓ obs"),
                     )
@@ -363,11 +376,13 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child("Total Steps:"),
                                 )
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child(format!("{}", total_steps)),
                                 ),
                         )
@@ -379,11 +394,13 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child("Prompt:"),
                                 )
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child(format!("{}", prompt_tokens)),
                                 ),
                         )
@@ -395,11 +412,13 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child("Completion:"),
                                 )
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child(format!("{}", completion_tokens)),
                                 ),
                         )
@@ -411,11 +430,13 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child("Cached:"),
                                 )
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child(format!("{}", cached_tokens)),
                                 ),
                         )
@@ -427,11 +448,13 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
                                 .child(
                                     div()
                                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child("Cost:"),
                                 )
                                 .child(
                                     div()
                                         .text_color(hsla(0.38, 0.5, 0.6, 1.0))
+                                        .font_family("Berkeley Mono")
                                         .child(format!("${:.4}", cost)),
                                 ),
                         ),
@@ -462,6 +485,7 @@ pub fn render_loading_state() -> impl IntoElement {
                 .items_center()
                 .justify_center()
                 .text_size(px(14.0))
+                .font_family("Berkeley Mono")
                 .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                 .child("Loading trajectory..."),
         )
@@ -488,12 +512,14 @@ pub fn render_error_state(error: &str) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(14.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.6, 0.6, 1.0))
                         .child("Error loading trajectory"),
                 )
                 .child(
                     div()
                         .text_size(px(12.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                         .child(error_owned),
                 ),
@@ -517,6 +543,7 @@ pub fn render_empty_state() -> impl IntoElement {
                 .items_center()
                 .justify_center()
                 .text_size(px(14.0))
+                .font_family("Berkeley Mono")
                 .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                 .child("No trajectory selected. Click a trajectory in the sidebar to view details."),
         )

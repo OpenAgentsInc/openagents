@@ -74,6 +74,7 @@ pub fn render_trajectory_item(
                 .child(
                     div()
                         .text_size(px(11.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                         .child(created_at),
                 ),
@@ -82,6 +83,7 @@ pub fn render_trajectory_item(
         .child(
             div()
                 .text_size(px(12.0))
+                .font_family("Berkeley Mono")
                 .text_color(hsla(0.0, 0.0, 0.6, 1.0))
                 .mb(px(4.0))
                 .child(format!("model: {}", model_name)),
@@ -93,6 +95,7 @@ pub fn render_trajectory_item(
                 .items_center()
                 .gap(px(8.0))
                 .text_size(px(11.0))
+                .font_family("Berkeley Mono")
                 .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                 .child(format_session_id(&session_id))
                 .child(div().text_color(hsla(0.0, 0.0, 0.3, 1.0)).child("•"))
@@ -157,6 +160,7 @@ pub fn render_trajectory_list_header(
                     el.child(
                         div()
                             .text_size(px(12.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                             .child(format!("({})", total_count)),
                     )
@@ -202,6 +206,7 @@ pub fn render_search_input(current_query: &str) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(13.0))
+                        .font_family("Berkeley Mono")
                         .text_color(if query.is_empty() {
                             hsla(0.0, 0.0, 0.4, 1.0)
                         } else {
@@ -251,6 +256,7 @@ pub fn render_pagination(
                     hsla(0.0, 0.0, 0.4, 1.0)
                 })
                 .text_size(px(12.0))
+                .font_family("Berkeley Mono")
                 .rounded(px(4.0))
                 .when(has_prev, |el| {
                     el.cursor_pointer()
@@ -262,6 +268,7 @@ pub fn render_pagination(
         .child(
             div()
                 .text_size(px(12.0))
+                .font_family("Berkeley Mono")
                 .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                 .child(format!("Page {} of {}", current_page + 1, total_pages.max(1))),
         )
@@ -281,6 +288,7 @@ pub fn render_pagination(
                     hsla(0.0, 0.0, 0.4, 1.0)
                 })
                 .text_size(px(12.0))
+                .font_family("Berkeley Mono")
                 .rounded(px(4.0))
                 .when(has_next, |el| {
                     el.cursor_pointer()
@@ -355,6 +363,7 @@ fn render_list_content(
         return div()
             .py(px(32.0))
             .text_size(px(14.0))
+            .font_family("Berkeley Mono")
             .text_color(hsla(0.0, 0.0, 0.5, 1.0))
             .flex()
             .items_center()
@@ -373,12 +382,14 @@ fn render_list_content(
             .child(
                 div()
                     .text_size(px(14.0))
+                    .font_family("Berkeley Mono")
                     .text_color(hsla(0.0, 0.6, 0.6, 1.0))
                     .child("Error loading trajectories"),
             )
             .child(
                 div()
                     .text_size(px(12.0))
+                    .font_family("Berkeley Mono")
                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                     .child(err.to_string()),
             )
@@ -395,6 +406,7 @@ fn render_list_content(
         return div()
             .py(px(32.0))
             .text_size(px(14.0))
+            .font_family("Berkeley Mono")
             .text_color(hsla(0.0, 0.0, 0.5, 1.0))
             .flex()
             .items_center()
