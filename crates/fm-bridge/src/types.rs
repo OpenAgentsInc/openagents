@@ -99,6 +99,7 @@ pub(crate) struct StreamChoice {
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct StreamDelta {
     content: Option<String>,
+    #[allow(dead_code)]
     role: Option<String>,
 }
 

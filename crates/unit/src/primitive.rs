@@ -3,8 +3,11 @@
 //! A Primitive extends Unit with reactive callbacks that fire
 //! when data arrives or is consumed on pins.
 
-use crate::unit::Unit;
+use crate::any_pin::{AnyPin, AnyPinExt};
+use crate::pin::{Pin, PinOpt};
+use crate::unit::{Lifecycle, Unit};
 use std::any::Any;
+use std::collections::HashMap;
 
 /// Primitive: Unit with reactive event handlers
 ///
@@ -75,26 +78,153 @@ pub trait Primitive: Unit {
     fn backward(&mut self) {}
 }
 
-/// Helper struct for building Primitive implementations
+/// State container for Primitive/System units
+///
+/// Holds input/output pins, lifecycle state, and tracking for reactive units.
 pub struct PrimitiveState {
-    /// Tracks which inputs have data
-    pub inputs_ready: std::collections::HashSet<String>,
+    /// Unit identifier
+    id: String,
+    /// Input pins by name
+    inputs: HashMap<String, Box<dyn AnyPin>>,
+    /// Output pins by name
+    outputs: HashMap<String, Box<dyn AnyPin>>,
+    /// Current lifecycle state
+    lifecycle: Lifecycle,
+    /// Error message if any
+    error: Option<String>,
+    /// Tracks which inputs have data ready
+    inputs_ready: std::collections::HashSet<String>,
     /// Tracks which outputs have been consumed
-    pub outputs_consumed: std::collections::HashSet<String>,
+    outputs_consumed: std::collections::HashSet<String>,
 }
 
 impl Default for PrimitiveState {
     fn default() -> Self {
-        Self::new()
+        Self::new("default")
+    }
+}
+
+impl std::fmt::Debug for PrimitiveState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrimitiveState")
+            .field("id", &self.id)
+            .field("lifecycle", &self.lifecycle)
+            .field("inputs", &self.inputs.keys().collect::<Vec<_>>())
+            .field("outputs", &self.outputs.keys().collect::<Vec<_>>())
+            .field("error", &self.error)
+            .finish()
     }
 }
 
 impl PrimitiveState {
-    pub fn new() -> Self {
+    /// Create a new PrimitiveState with the given ID
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
+            id: id.into(),
+            inputs: HashMap::new(),
+            outputs: HashMap::new(),
+            lifecycle: Lifecycle::Paused,
+            error: None,
             inputs_ready: std::collections::HashSet::new(),
             outputs_consumed: std::collections::HashSet::new(),
         }
+    }
+
+    /// Get the unit ID
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Get the lifecycle state
+    pub fn lifecycle(&self) -> Lifecycle {
+        self.lifecycle
+    }
+
+    /// Set lifecycle to playing
+    pub fn play(&mut self) {
+        self.lifecycle = Lifecycle::Playing;
+    }
+
+    /// Set lifecycle to paused
+    pub fn pause(&mut self) {
+        self.lifecycle = Lifecycle::Paused;
+    }
+
+    /// Add a typed input pin with default options
+    pub fn add_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(&mut self, name: impl Into<String>) {
+        let pin: Pin<T> = Pin::new(PinOpt::default());
+        self.inputs.insert(name.into(), Box::new(pin));
+    }
+
+    /// Add a typed input pin with options
+    pub fn add_input_with_opt<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+        opt: PinOpt,
+    ) {
+        let pin: Pin<T> = Pin::new(opt);
+        self.inputs.insert(name.into(), Box::new(pin));
+    }
+
+    /// Add a typed output pin with default options
+    pub fn add_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(&mut self, name: impl Into<String>) {
+        let pin: Pin<T> = Pin::new(PinOpt::default());
+        self.outputs.insert(name.into(), Box::new(pin));
+    }
+
+    /// Add a typed output pin with options
+    pub fn add_output_with_opt<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+        opt: PinOpt,
+    ) {
+        let pin: Pin<T> = Pin::new(opt);
+        self.outputs.insert(name.into(), Box::new(pin));
+    }
+
+    /// Push data to an input pin
+    pub fn push_input(&mut self, name: &str, data: Box<dyn Any + Send>) -> Result<(), String> {
+        if let Some(pin) = self.inputs.get_mut(name) {
+            pin.push_any(data)
+                .map_err(|e| e.to_string())?;
+            self.inputs_ready.insert(name.to_string());
+            Ok(())
+        } else {
+            Err(format!("Input pin '{}' not found", name))
+        }
+    }
+
+    /// Take data from an output pin
+    pub fn take_output(&mut self, name: &str) -> Option<Box<dyn Any + Send>> {
+        if let Some(pin) = self.outputs.get_mut(name) {
+            let result = pin.take_any();
+            if result.is_some() {
+                self.outputs_consumed.insert(name.to_string());
+            }
+            result
+        } else {
+            None
+        }
+    }
+
+    /// Get a typed input pin reference
+    pub fn input<T: Clone + Send + Sync + 'static>(&self, name: &str) -> Option<&Pin<T>> {
+        self.inputs.get(name).and_then(|pin| pin.downcast_ref::<T>())
+    }
+
+    /// Get a mutable typed input pin reference
+    pub fn input_mut<T: Clone + Send + Sync + 'static>(&mut self, name: &str) -> Option<&mut Pin<T>> {
+        self.inputs.get_mut(name).and_then(|pin| pin.downcast_mut::<T>())
+    }
+
+    /// Get a typed output pin reference
+    pub fn output<T: Clone + Send + Sync + 'static>(&self, name: &str) -> Option<&Pin<T>> {
+        self.outputs.get(name).and_then(|pin| pin.downcast_ref::<T>())
+    }
+
+    /// Get a mutable typed output pin reference
+    pub fn output_mut<T: Clone + Send + Sync + 'static>(&mut self, name: &str) -> Option<&mut Pin<T>> {
+        self.outputs.get_mut(name).and_then(|pin| pin.downcast_mut::<T>())
     }
 
     /// Mark an input as having data
@@ -137,6 +267,31 @@ impl PrimitiveState {
         self.inputs_ready.clear();
         self.outputs_consumed.clear();
     }
+
+    /// Get input pin names
+    pub fn input_names(&self) -> Vec<&str> {
+        self.inputs.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get output pin names
+    pub fn output_names(&self) -> Vec<&str> {
+        self.outputs.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Set error state
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.error = Some(error.into());
+    }
+
+    /// Clear error state
+    pub fn clear_error(&mut self) {
+        self.error = None;
+    }
+
+    /// Get error if any
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
 }
 
 #[cfg(test)]
@@ -145,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_primitive_state() {
-        let mut state = PrimitiveState::new();
+        let mut state = PrimitiveState::new("test");
 
         state.mark_input_ready("a");
         state.mark_input_ready("b");
@@ -159,5 +314,30 @@ mod tests {
 
         state.mark_input_consumed("a");
         assert!(!state.is_input_ready("a"));
+    }
+
+    #[test]
+    fn test_primitive_state_pins() {
+        let mut state = PrimitiveState::new("test");
+
+        state.add_input::<f64>("x");
+        state.add_output::<f64>("result");
+
+        assert!(state.input::<f64>("x").is_some());
+        assert!(state.output::<f64>("result").is_some());
+        assert!(state.input::<f64>("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_primitive_state_lifecycle() {
+        let mut state = PrimitiveState::new("test");
+
+        assert_eq!(state.lifecycle(), Lifecycle::Paused);
+
+        state.play();
+        assert_eq!(state.lifecycle(), Lifecycle::Playing);
+
+        state.pause();
+        assert_eq!(state.lifecycle(), Lifecycle::Paused);
     }
 }

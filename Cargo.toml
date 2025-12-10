@@ -20,8 +20,9 @@ members = [
     "crates/storybook",
 ]
 
-[workspace.lints]
-rust.missing_docs = "allow"
+[workspace.lints.rust]
+missing_docs = "allow"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(perf_enabled)', 'cfg(cargo-clippy)'] }
 
 [workspace.package]
 version = "0.1.0"
