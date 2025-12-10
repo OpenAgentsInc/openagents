@@ -1277,6 +1277,7 @@ dependencies = [
  "pulldown-cmark",
  "reqwest 0.11.27",
  "serde_json",
+ "theme",
  "tokio",
  "tokio-stream",
  "unicode-segmentation",
@@ -2879,6 +2880,7 @@ dependencies = [
  "gpui",
  "serde",
  "serde_json",
+ "theme",
  "unit",
 ]
 
@@ -5827,6 +5829,7 @@ dependencies = [
  "hud",
  "serde_json",
  "strum 0.26.3",
+ "theme",
  "unit",
 ]
 
@@ -6209,6 +6212,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "theme"
+version = "0.1.0"
+dependencies = [
+ "gpui",
 ]
 
 [[package]]

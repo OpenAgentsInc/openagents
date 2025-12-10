@@ -25,3 +25,6 @@ reqwest = { version = "0.11", features = ["blocking"] }
 atif = { path = "../atif" }
 atif-store = { path = "../atif-store" }
 chrono = { version = "0.4", features = ["serde"] }
+
+# Centralized theme colors
+theme = { path = "../theme" }

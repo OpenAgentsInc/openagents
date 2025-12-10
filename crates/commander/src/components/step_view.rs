@@ -7,6 +7,7 @@ use atif::{Metrics, Observation, Step, StepSource, ToolCall};
 use chrono::{DateTime, Utc};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use theme::{accent, bg, border, source, status, text};
 
 // ============================================================================
 // Source Badge Colors
@@ -15,21 +16,9 @@ use gpui::*;
 /// Get colors for source badge (background, text, border)
 pub fn source_badge_colors(source: &StepSource) -> (Hsla, Hsla, Hsla) {
     match source {
-        StepSource::User => (
-            hsla(0.58, 0.5, 0.2, 0.4),  // blue bg
-            hsla(0.58, 0.6, 0.7, 1.0),  // blue text
-            hsla(0.58, 0.5, 0.35, 0.5), // blue border
-        ),
-        StepSource::Agent => (
-            hsla(0.38, 0.5, 0.2, 0.4),  // green bg
-            hsla(0.38, 0.6, 0.7, 1.0),  // green text
-            hsla(0.38, 0.5, 0.35, 0.5), // green border
-        ),
-        StepSource::System => (
-            hsla(0.0, 0.0, 0.2, 0.4),  // gray bg
-            hsla(0.0, 0.0, 0.7, 1.0),  // gray text
-            hsla(0.0, 0.0, 0.35, 0.5), // gray border
-        ),
+        StepSource::User => (source::USER_BG, source::USER_TEXT, source::USER_BORDER),
+        StepSource::Agent => (source::AGENT_BG, source::AGENT_TEXT, source::AGENT_BORDER),
+        StepSource::System => (source::SYSTEM_BG, source::SYSTEM_TEXT, source::SYSTEM_BORDER),
     }
 }
 
@@ -100,9 +89,9 @@ pub fn render_source_badge(source: &StepSource) -> impl IntoElement {
 pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
     div()
         .p(px(8.0))
-        .bg(hsla(0.0, 0.0, 0.08, 0.6))
+        .bg(bg::ELEVATED)
         .border_1()
-        .border_color(hsla(0.0, 0.0, 0.25, 0.4))
+        .border_color(border::DEFAULT)
         .rounded(px(4.0))
         .mb(px(8.0))
         .child(
@@ -113,32 +102,32 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
                 .mb(px(4.0))
                 .child(
                     div()
-                        .text_color(hsla(0.78, 0.6, 0.7, 1.0)) // violet
+                        .text_color(accent::SECONDARY) // violet
                         .child("🔧"),
                 )
                 .child(
                     div()
                         .text_size(px(13.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.78, 0.6, 0.7, 1.0))
+                        .text_color(accent::SECONDARY)
                         .child(tool_call.function_name.clone()),
                 )
                 .child(
                     div()
                         .text_size(px(10.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .text_color(text::MUTED)
                         .child(format!("id: {}", truncate(&tool_call.tool_call_id, 12))),
                 ),
         )
         .child(
             div()
                 .p(px(8.0))
-                .bg(hsla(0.0, 0.0, 0.05, 0.6))
+                .bg(bg::SURFACE)
                 .rounded(px(4.0))
                 .text_size(px(12.0))
                 .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.6, 1.0))
+                .text_color(text::SECONDARY)
                 .overflow_hidden()
                 .child(format_json(&tool_call.arguments, 500)),
         )
@@ -157,7 +146,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                     div()
                         .text_size(px(11.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .text_color(text::MUTED)
                         .child("TOOL CALLS"),
                 )
                 .child(
@@ -166,8 +155,8 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                         .py(px(2.0))
                         .text_size(px(10.0))
                         .font_family("Berkeley Mono")
-                        .bg(hsla(0.78, 0.5, 0.2, 0.4))
-                        .text_color(hsla(0.78, 0.6, 0.7, 1.0))
+                        .bg(accent::SECONDARY_MUTED)
+                        .text_color(accent::SECONDARY)
                         .rounded(px(4.0))
                         .child(format!("{}", tool_calls.len())),
                 ),
@@ -186,16 +175,16 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
             div()
                 .text_size(px(11.0))
                 .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .mb(px(8.0))
                 .child("OBSERVATION"),
         )
         .children(observation.results.iter().map(|result| {
             div()
                 .p(px(8.0))
-                .bg(hsla(0.0, 0.0, 0.08, 0.6))
+                .bg(bg::ELEVATED)
                 .border_1()
-                .border_color(hsla(0.0, 0.0, 0.25, 0.4))
+                .border_color(border::DEFAULT)
                 .rounded(px(4.0))
                 .mb(px(8.0))
                 .when_some(result.source_call_id.as_ref(), |el, call_id| {
@@ -203,7 +192,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                         div()
                             .text_size(px(10.0))
                             .font_family("Berkeley Mono")
-                            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                            .text_color(text::MUTED)
                             .mb(px(4.0))
                             .child(format!("call: {}", truncate(call_id, 12))),
                     )
@@ -213,7 +202,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                         div()
                             .text_size(px(12.0))
                             .font_family("Berkeley Mono")
-                            .text_color(hsla(0.38, 0.6, 0.7, 1.0)) // emerald
+                            .text_color(accent::TERTIARY) // emerald
                             .overflow_hidden()
                             .child(truncate(content, 1000)),
                     )
@@ -228,14 +217,14 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                                 div()
                                     .text_size(px(11.0))
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.58, 0.6, 0.7, 1.0))
+                                    .text_color(accent::PRIMARY)
                                     .child("Subagent:"),
                             )
                             .children(refs.iter().map(|r| {
                                 div()
                                     .text_size(px(11.0))
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.58, 0.6, 0.7, 1.0))
+                                    .text_color(accent::PRIMARY)
                                     .child(truncate(&r.session_id, 16))
                             })),
                     )
@@ -254,7 +243,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
             div()
                 .text_size(px(11.0))
                 .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .mb(px(8.0))
                 .child("METRICS"),
         )
@@ -272,13 +261,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                    .text_color(text::MUTED)
                                     .child("Prompt:"),
                             )
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.7, 1.0))
+                                    .text_color(text::SECONDARY)
                                     .child(format!("{}", tokens)),
                             ),
                     )
@@ -291,13 +280,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                    .text_color(text::MUTED)
                                     .child("Completion:"),
                             )
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.7, 1.0))
+                                    .text_color(text::SECONDARY)
                                     .child(format!("{}", tokens)),
                             ),
                     )
@@ -310,13 +299,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                    .text_color(text::MUTED)
                                     .child("Cached:"),
                             )
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.15, 0.6, 0.6, 1.0)) // yellow-ish
+                                    .text_color(status::WARNING)
                                     .child(format!("{}", tokens)),
                             ),
                     )
@@ -329,13 +318,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                    .text_color(text::MUTED)
                                     .child("Cost:"),
                             )
                             .child(
                                 div()
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.38, 0.6, 0.6, 1.0)) // green
+                                    .text_color(status::SUCCESS)
                                     .child(format!("${:.4}", cost)),
                             ),
                     )
@@ -357,8 +346,8 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
         .justify_between()
         .px(px(16.0))
         .py(px(10.0))
-        .bg(hsla(0.0, 0.0, 0.12, 0.6))
-        .hover(|s| s.bg(hsla(0.0, 0.0, 0.15, 0.6)))
+        .bg(bg::CARD)
+        .hover(|s| s.bg(bg::HOVER))
         .cursor_pointer()
         .child(
             div()
@@ -372,7 +361,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                     div()
                         .text_size(px(12.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .text_color(text::MUTED)
                         .flex_shrink_0()
                         .child(format!("#{}", step.step_id)),
                 )
@@ -383,7 +372,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                     div()
                         .text_size(px(11.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .text_color(text::MUTED)
                         .flex_shrink_0()
                         .child(format_optional_timestamp(step.timestamp)),
                 )
@@ -393,7 +382,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                         div()
                             .text_size(px(10.0))
                             .font_family("Berkeley Mono")
-                            .text_color(hsla(0.0, 0.0, 0.45, 1.0))
+                            .text_color(text::DISABLED)
                             .child(truncate(model, 20)),
                     )
                 })
@@ -406,7 +395,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
-                                    .text_color(hsla(0.78, 0.6, 0.6, 1.0))
+                                    .text_color(accent::SECONDARY)
                                     .text_size(px(12.0))
                                     .child("🔧"),
                             )
@@ -414,7 +403,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                                 div()
                                     .text_size(px(11.0))
                                     .font_family("Berkeley Mono")
-                                    .text_color(hsla(0.78, 0.6, 0.6, 1.0))
+                                    .text_color(accent::SECONDARY)
                                     .child(format!(
                                         "{} tool{}",
                                         tool_count,
@@ -428,7 +417,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                     div()
                         .text_size(px(12.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.6, 1.0))
+                        .text_color(text::SECONDARY)
                         .truncate()
                         .flex_1()
                         .min_w_0()
@@ -438,7 +427,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
         // Expand/collapse indicator
         .child(
             div()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .flex_shrink_0()
                 .ml(px(8.0))
                 .child(if is_expanded { "▲" } else { "▼" }),
@@ -454,7 +443,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
     div()
         .px(px(16.0))
         .py(px(12.0))
-        .bg(hsla(0.0, 0.0, 0.08, 0.4))
+        .bg(bg::ELEVATED)
         .flex()
         .flex_col()
         .gap(px(16.0))
@@ -465,20 +454,20 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                     div()
                         .text_size(px(11.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .text_color(text::MUTED)
                         .mb(px(8.0))
                         .child("MESSAGE"),
                 )
                 .child(
                     div()
                         .p(px(12.0))
-                        .bg(hsla(0.0, 0.0, 0.05, 0.6))
+                        .bg(bg::SURFACE)
                         .border_1()
-                        .border_color(hsla(0.0, 0.0, 0.2, 0.4))
+                        .border_color(border::DEFAULT)
                         .rounded(px(4.0))
                         .text_size(px(13.0))
                         .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                        .text_color(text::PRIMARY)
                         .line_height(px(20.0))
                         .overflow_hidden()
                         .child(step.message.clone()),
@@ -492,20 +481,20 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                         div()
                             .text_size(px(11.0))
                             .font_family("Berkeley Mono")
-                            .text_color(hsla(0.58, 0.5, 0.5, 1.0))
+                            .text_color(status::INFO)
                             .mb(px(8.0))
                             .child("REASONING"),
                     )
                     .child(
                         div()
                             .p(px(12.0))
-                            .bg(hsla(0.58, 0.3, 0.1, 0.3))
+                            .bg(status::INFO_BG)
                             .border_1()
-                            .border_color(hsla(0.58, 0.3, 0.3, 0.3))
+                            .border_color(status::INFO_BORDER)
                             .rounded(px(4.0))
                             .text_size(px(13.0))
                             .font_family("Berkeley Mono")
-                            .text_color(hsla(0.58, 0.5, 0.75, 1.0))
+                            .text_color(accent::PRIMARY)
                             .line_height(px(20.0))
                             .child(reasoning.clone()),
                     ),
@@ -541,7 +530,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
 pub fn render_step(step: &Step, is_expanded: bool) -> impl IntoElement {
     div()
         .border_b_1()
-        .border_color(hsla(0.0, 0.0, 0.2, 0.4))
+        .border_color(border::DEFAULT)
         .child(render_step_header(step, is_expanded))
         .when(is_expanded, |el| el.child(render_step_details(step)))
 }

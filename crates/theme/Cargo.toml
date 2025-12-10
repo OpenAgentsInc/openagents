@@ -1,0 +1,9 @@
+[package]
+name = "theme"
+version = "0.1.0"
+edition = "2024"
+description = "Centralized UI theme colors for OpenAgents"
+license = "MIT"
+
+[dependencies]
+gpui = { path = "../gpui" }
