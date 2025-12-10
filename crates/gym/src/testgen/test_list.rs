@@ -2,9 +2,13 @@
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::Arc;
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::category_progress::TestCategory;
+
+/// Callback type for test selection
+pub type OnSelectCallback = Arc<dyn Fn(&TestCase, &mut Window, &mut App) + Send + Sync>;
 
 /// Test status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -47,6 +51,7 @@ pub struct TestList {
     selected_id: Option<String>,
     filter_category: Option<TestCategory>,
     focus_handle: FocusHandle,
+    on_select: Option<OnSelectCallback>,
 }
 
 impl TestList {
@@ -56,11 +61,20 @@ impl TestList {
             selected_id: None,
             filter_category: None,
             focus_handle: cx.focus_handle(),
+            on_select: None,
         }
     }
 
     pub fn set_tests(&mut self, tests: Vec<TestCase>) {
         self.tests = tests;
+    }
+
+    pub fn add_test(&mut self, test: TestCase) {
+        self.tests.push(test);
+    }
+
+    pub fn clear_tests(&mut self) {
+        self.tests.clear();
     }
 
     pub fn select(&mut self, id: String) {
@@ -71,8 +85,22 @@ impl TestList {
         self.filter_category = category;
     }
 
-    fn render_test_row(&self, test: &TestCase) -> impl IntoElement {
+    pub fn set_on_select(&mut self, callback: OnSelectCallback) {
+        self.on_select = Some(callback);
+    }
+
+    pub fn get_test(&self, id: &str) -> Option<&TestCase> {
+        self.tests.iter().find(|t| t.id == id)
+    }
+
+    fn render_clickable_test_row(
+        &self,
+        test: &TestCase,
+        idx: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let is_selected = self.selected_id.as_deref() == Some(&test.id);
+        let test_id = test.id.clone();
 
         let (status_color, status_bg) = match test.status {
             TestStatus::Generated => (text::MUTED, bg::ROW),
@@ -88,6 +116,7 @@ impl TestList {
         let confidence = format!("{:.0}%", test.confidence * 100.0);
 
         div()
+            .id(ElementId::Name(format!("test-row-{}", idx).into()))
             .flex()
             .items_center()
             .gap(px(10.0))
@@ -101,6 +130,16 @@ impl TestList {
             })
             .hover(|el| el.bg(if is_selected { bg::SELECTED } else { bg::HOVER }))
             .cursor_pointer()
+            .on_click(cx.listener(move |this, _evt, window, cx| {
+                this.selected_id = Some(test_id.clone());
+                // Call the on_select callback if set
+                if let Some(callback) = &this.on_select {
+                    if let Some(test) = this.tests.iter().find(|t| t.id == test_id) {
+                        callback(test, window, cx);
+                    }
+                }
+                cx.notify();
+            }))
             // Status icon
             .child(
                 div()
@@ -108,7 +147,7 @@ impl TestList {
                     .text_size(px(12.0))
                     .font_family(FONT_FAMILY)
                     .text_color(status_color)
-                    .child(status_icon)
+                    .child(status_icon),
             )
             // Category badge
             .child(
@@ -126,8 +165,8 @@ impl TestList {
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
                             .font_weight(FontWeight::BOLD)
-                            .child(category_icon)
-                    )
+                            .child(category_icon),
+                    ),
             )
             // Test name
             .child(
@@ -135,10 +174,14 @@ impl TestList {
                     .flex_1()
                     .text_size(px(11.0))
                     .font_family(FONT_FAMILY)
-                    .text_color(if is_selected { text::BRIGHT } else { text::PRIMARY })
+                    .text_color(if is_selected {
+                        text::BRIGHT
+                    } else {
+                        text::PRIMARY
+                    })
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(name)
+                    .child(name),
             )
             // Confidence
             .child(
@@ -146,7 +189,7 @@ impl TestList {
                     .text_size(px(10.0))
                     .font_family(FONT_FAMILY)
                     .text_color(text::DISABLED)
-                    .child(confidence)
+                    .child(confidence),
             )
     }
 }
@@ -158,11 +201,20 @@ impl Focusable for TestList {
 }
 
 impl Render for TestList {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Filter tests
-        let filtered: Vec<_> = self.tests.iter()
+        let filtered: Vec<_> = self
+            .tests
+            .iter()
             .filter(|t| self.filter_category.map_or(true, |c| t.category == c))
+            .cloned()
             .collect();
+
+        // Pre-render all rows using a for loop (closures can't capture cx)
+        let mut rows = Vec::with_capacity(filtered.len());
+        for (idx, test) in filtered.iter().enumerate() {
+            rows.push(self.render_clickable_test_row(test, idx, cx));
+        }
 
         div()
             .id("test-list-scroll")
@@ -179,13 +231,9 @@ impl Render for TestList {
                             .text_size(px(12.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child("No tests generated yet")
+                            .child("No tests generated yet"),
                     )
             })
-            .when(!filtered.is_empty(), |el| {
-                el.children(filtered.iter().map(|test| {
-                    self.render_test_row(test)
-                }))
-            })
+            .when(!rows.is_empty(), |el| el.children(rows))
     }
 }

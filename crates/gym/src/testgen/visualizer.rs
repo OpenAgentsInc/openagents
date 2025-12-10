@@ -2,11 +2,18 @@
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::Arc;
+use testgen::TestGenContext;
 use theme::{bg, border, status, text, FONT_FAMILY};
+use tokio::sync::mpsc;
 
-use super::category_progress::{CategoryProgress, TestCategory, CategoryStats};
-use super::test_list::{TestList, TestCase, TestStatus};
-use super::test_detail::TestDetail;
+use super::category_progress::{CategoryProgress, OnCategorySelectCallback, TestCategory};
+use super::service::{load_latest_generation, GenerationRequest, TestGenEvent, TestGenService};
+use super::test_detail::{TestDetail, TestInfo};
+use super::test_list::{OnSelectCallback, TestCase, TestList, TestStatus};
+
+use crate::services::TaskLoader;
+use crate::tbcc::types::TBTask;
 
 /// TestGen session status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -25,6 +32,40 @@ impl TestGenStatus {
             Self::Generating => "Generating",
             Self::Completed => "Completed",
             Self::Failed => "Failed",
+        }
+    }
+}
+
+/// Generation status with detailed progress tracking
+#[derive(Debug, Clone, Default)]
+pub enum GenerationStatus {
+    #[default]
+    Idle,
+    Generating {
+        iteration: u32,
+        max_iterations: u32,
+        tests_so_far: u32,
+    },
+    Complete {
+        total_tests: u32,
+        duration_ms: u64,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+impl GenerationStatus {
+    pub fn is_generating(&self) -> bool {
+        matches!(self, Self::Generating { .. })
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Idle => "Ready",
+            Self::Generating { .. } => "Generating...",
+            Self::Complete { .. } => "Complete",
+            Self::Failed { .. } => "Failed",
         }
     }
 }
@@ -50,36 +91,74 @@ pub struct TestGenVisualizer {
     test_detail: Entity<TestDetail>,
     pub selected_test_id: Option<String>,
     focus_handle: FocusHandle,
+
+    // Task selection state
+    available_tasks: Vec<TBTask>,
+    selected_task_idx: Option<usize>,
+    generation_status: GenerationStatus,
+
+    // Service integration
+    service: Arc<TestGenService>,
+    event_receiver: Option<mpsc::UnboundedReceiver<TestGenEvent>>,
+    generated_tests: Vec<testgen::GeneratedTest>,
 }
 
 impl TestGenVisualizer {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        // Sample session
-        let session = Some(TestGenSession {
-            id: "tg-001".to_string(),
-            task_id: "regex-log".to_string(),
-            task_name: "Regex Log Parser".to_string(),
-            status: TestGenStatus::Generating,
-            iteration: 3,
-            max_iterations: 5,
-            comprehensiveness: 0.72,
-            target_comprehensiveness: 0.85,
+        // Load available tasks from TaskLoader
+        let task_loader = TaskLoader::new();
+        let available_tasks = task_loader.load_all_tasks();
+
+        // Start with no session (user must select task and generate)
+        let session: Option<TestGenSession> = None;
+
+        // Initialize components with empty state
+        let category_progress = cx.new(|cx| CategoryProgress::new(cx));
+
+        let test_list = cx.new(|cx| TestList::new(cx));
+
+        // Clear sample test from detail view - start empty
+        let test_detail = cx.new(|cx| {
+            let mut detail = TestDetail::new(cx);
+            detail.set_test(None);
+            detail
         });
 
-        // Initialize components with sample data
-        let category_progress = cx.new(|cx| {
-            let mut progress = CategoryProgress::new(cx);
-            progress.set_stats(Self::create_sample_stats());
-            progress
+        // Create the service
+        let service = Arc::new(TestGenService::new());
+
+        // Wire up callbacks after creating entities
+        // Test list -> Test detail callback
+        let test_detail_entity = test_detail.clone();
+        let on_test_select: OnSelectCallback = Arc::new(move |test: &TestCase, _window, cx| {
+            test_detail_entity.update(cx, |detail, _cx| {
+                detail.set_test(Some(TestInfo {
+                    id: test.id.clone(),
+                    name: test.name.clone(),
+                    category: test.category,
+                    status: test.status,
+                    description: test.description.clone(),
+                    code: test.code.clone(),
+                    confidence: test.confidence,
+                    reasoning: None,
+                }));
+            });
+        });
+        test_list.update(cx, |list, _cx| {
+            list.set_on_select(on_test_select);
         });
 
-        let test_list = cx.new(|cx| {
-            let mut list = TestList::new(cx);
-            list.set_tests(Self::create_sample_tests());
-            list
+        // Category progress -> Test list filter callback
+        let test_list_entity = test_list.clone();
+        let on_category_select: OnCategorySelectCallback =
+            Arc::new(move |category: Option<TestCategory>, _window, cx| {
+                test_list_entity.update(cx, |list, _cx| {
+                    list.filter_by_category(category);
+                });
+            });
+        category_progress.update(cx, |progress, _cx| {
+            progress.set_on_category_select(on_category_select);
         });
-
-        let test_detail = cx.new(|cx| TestDetail::new(cx));
 
         Self {
             session,
@@ -88,154 +167,70 @@ impl TestGenVisualizer {
             test_detail,
             selected_test_id: None,
             focus_handle: cx.focus_handle(),
+            available_tasks,
+            selected_task_idx: None,
+            generation_status: GenerationStatus::Idle,
+            service,
+            event_receiver: None,
+            generated_tests: Vec::new(),
         }
     }
 
-    fn create_sample_stats() -> Vec<CategoryStats> {
-        vec![
-            CategoryStats {
-                category: TestCategory::AntiCheat,
-                generated: 4,
-                target: 5,
-                passed: 3,
-            },
-            CategoryStats {
-                category: TestCategory::Existence,
-                generated: 3,
-                target: 4,
-                passed: 3,
-            },
-            CategoryStats {
-                category: TestCategory::Correctness,
-                generated: 5,
-                target: 6,
-                passed: 4,
-            },
-            CategoryStats {
-                category: TestCategory::Boundary,
-                generated: 2,
-                target: 4,
-                passed: 1,
-            },
-            CategoryStats {
-                category: TestCategory::Integration,
-                generated: 1,
-                target: 3,
-                passed: 1,
-            },
-        ]
+    /// Get the currently selected task, if any
+    pub fn selected_task(&self) -> Option<&TBTask> {
+        self.selected_task_idx
+            .and_then(|idx| self.available_tasks.get(idx))
     }
 
-    fn create_sample_tests() -> Vec<TestCase> {
-        vec![
-            TestCase {
-                id: "test-ac-1".to_string(),
-                name: "anti_cheat_hardcoded_check".to_string(),
-                category: TestCategory::AntiCheat,
-                status: TestStatus::Passed,
-                description: "Ensures solution doesn't hardcode specific test values".to_string(),
-                code: r#"def test_no_hardcoded():
-    """Anti-cheat: Verify no hardcoded values"""
-    result = parse_log("random_input_xyz")
-    assert result != KNOWN_HARDCODED"#.to_string(),
-                confidence: 0.95,
-            },
-            TestCase {
-                id: "test-ac-2".to_string(),
-                name: "anti_cheat_generalization".to_string(),
-                category: TestCategory::AntiCheat,
-                status: TestStatus::Passed,
-                description: "Tests generalization across input variations".to_string(),
-                code: r#"def test_generalization():
-    """Anti-cheat: Verify generalization"""
-    inputs = generate_variations()
-    for inp in inputs:
-        assert parse_log(inp) is not None"#.to_string(),
-                confidence: 0.88,
-            },
-            TestCase {
-                id: "test-ex-1".to_string(),
-                name: "existence_basic_parse".to_string(),
-                category: TestCategory::Existence,
-                status: TestStatus::Passed,
-                description: "Basic parsing capability test".to_string(),
-                code: r#"def test_basic_parse():
-    """Existence: Basic parsing works"""
-    log = "192.168.1.1 - - [10/Dec/2024:14:30:00]"
-    result = parse_log(log)
-    assert result is not None"#.to_string(),
-                confidence: 0.99,
-            },
-            TestCase {
-                id: "test-co-1".to_string(),
-                name: "correctness_ip_extraction".to_string(),
-                category: TestCategory::Correctness,
-                status: TestStatus::Passed,
-                description: "IP address extraction correctness".to_string(),
-                code: r#"def test_ip_extraction():
-    """Correctness: IP extracted correctly"""
-    log = "192.168.1.1 - - [timestamp]"
-    result = parse_log(log)
-    assert result["ip"] == "192.168.1.1""#.to_string(),
-                confidence: 0.92,
-            },
-            TestCase {
-                id: "test-co-2".to_string(),
-                name: "correctness_timestamp".to_string(),
-                category: TestCategory::Correctness,
-                status: TestStatus::Failed,
-                description: "Timestamp parsing correctness".to_string(),
-                code: r#"def test_timestamp():
-    """Correctness: Timestamp parsed correctly"""
-    log = "... [10/Dec/2024:14:30:00 +0000]"
-    result = parse_log(log)
-    assert result["timestamp"] == expected"#.to_string(),
-                confidence: 0.78,
-            },
-            TestCase {
-                id: "test-bo-1".to_string(),
-                name: "boundary_empty_input".to_string(),
-                category: TestCategory::Boundary,
-                status: TestStatus::Passed,
-                description: "Empty input handling".to_string(),
-                code: r#"def test_empty_input():
-    """Boundary: Empty input handled"""
-    result = parse_log("")
-    assert result is None or result == {}"#.to_string(),
-                confidence: 0.85,
-            },
-            TestCase {
-                id: "test-bo-2".to_string(),
-                name: "boundary_malformed".to_string(),
-                category: TestCategory::Boundary,
-                status: TestStatus::Running,
-                description: "Malformed input handling".to_string(),
-                code: r#"def test_malformed():
-    """Boundary: Malformed input handled"""
-    result = parse_log("not a valid log")
-    # Should not crash"#.to_string(),
-                confidence: 0.72,
-            },
-            TestCase {
-                id: "test-in-1".to_string(),
-                name: "integration_multiline".to_string(),
-                category: TestCategory::Integration,
-                status: TestStatus::Generated,
-                description: "Multi-line log processing".to_string(),
-                code: r#"def test_multiline():
-    """Integration: Multi-line logs"""
-    logs = """line1
-    line2
-    line3"""
-    results = parse_logs(logs)
-    assert len(results) == 3"#.to_string(),
-                confidence: 0.65,
-            },
-        ]
+    /// Select a task by index
+    pub fn select_task(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx < self.available_tasks.len() {
+            self.selected_task_idx = Some(idx);
+            self.generation_status = GenerationStatus::Idle;
+            // Clear previous session when new task selected
+            self.session = None;
+            cx.notify();
+        }
     }
 
-    fn render_header(&self) -> impl IntoElement {
-        let session = self.session.as_ref();
+    /// Select next task in list
+    pub fn select_next_task(&mut self, cx: &mut Context<Self>) {
+        if self.available_tasks.is_empty() {
+            return;
+        }
+        let next_idx = match self.selected_task_idx {
+            Some(idx) => (idx + 1) % self.available_tasks.len(),
+            None => 0,
+        };
+        self.select_task(next_idx, cx);
+    }
+
+    /// Select previous task in list
+    pub fn select_prev_task(&mut self, cx: &mut Context<Self>) {
+        if self.available_tasks.is_empty() {
+            return;
+        }
+        let prev_idx = match self.selected_task_idx {
+            Some(idx) => {
+                if idx == 0 {
+                    self.available_tasks.len() - 1
+                } else {
+                    idx - 1
+                }
+            }
+            None => self.available_tasks.len() - 1,
+        };
+        self.select_task(prev_idx, cx);
+    }
+
+    /// Check if generation can start (task selected and not already generating)
+    pub fn can_generate(&self) -> bool {
+        self.selected_task_idx.is_some() && !self.generation_status.is_generating()
+    }
+
+    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let can_generate = self.can_generate();
+        let is_generating = self.generation_status.is_generating();
 
         div()
             .flex()
@@ -246,6 +241,7 @@ impl TestGenVisualizer {
             .border_b_1()
             .border_color(border::DEFAULT)
             .bg(bg::SURFACE)
+            // Left side: Title + Task Selector
             .child(
                 div()
                     .flex()
@@ -257,49 +253,173 @@ impl TestGenVisualizer {
                             .font_family(FONT_FAMILY)
                             .text_color(text::BRIGHT)
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("TestGen Visualizer")
+                            .child("TestGen"),
                     )
-                    .when_some(session, |el, s| {
-                        el.child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(
-                                    div()
-                                        .text_size(px(12.0))
-                                        .font_family(FONT_FAMILY)
-                                        .text_color(text::MUTED)
-                                        .child("Task:")
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.0))
-                                        .font_family(FONT_FAMILY)
-                                        .text_color(text::PRIMARY)
-                                        .child(s.task_name.clone())
-                                )
-                        )
-                    })
+                    // Task selector
+                    .child(self.render_task_selector(cx)),
             )
-            .when_some(session, |el, s| {
-                el.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(16.0))
-                        .child(self.render_status_badge(s.status))
-                        .child(self.render_iteration_indicator(s))
-                )
-            })
+            // Right side: Status + Generate Button
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.0))
+                    // Status indicator
+                    .child(self.render_generation_status())
+                    // Generate button
+                    .child(
+                        div()
+                            .px(px(16.0))
+                            .py(px(6.0))
+                            .rounded(px(4.0))
+                            .cursor(if can_generate {
+                                CursorStyle::PointingHand
+                            } else {
+                                CursorStyle::default()
+                            })
+                            .bg(if can_generate {
+                                status::INFO
+                            } else {
+                                bg::ELEVATED
+                            })
+                            .text_color(if can_generate {
+                                text::BRIGHT
+                            } else {
+                                text::DISABLED
+                            })
+                            .text_size(px(13.0))
+                            .font_family(FONT_FAMILY)
+                            .font_weight(FontWeight::MEDIUM)
+                            .id("generate-tests-btn")
+                            .when(can_generate && !is_generating, |el| {
+                                el.on_click(cx.listener(|this, _evt, _window, cx| {
+                                    this.start_generation(cx);
+                                }))
+                            })
+                            .child(if is_generating {
+                                "Generating..."
+                            } else {
+                                "Generate Tests"
+                            }),
+                    ),
+            )
     }
 
-    fn render_status_badge(&self, status: TestGenStatus) -> impl IntoElement {
-        let (bg_color, text_color, label) = match status {
-            TestGenStatus::Idle => (bg::ELEVATED, text::MUTED, "Idle"),
-            TestGenStatus::Generating => (status::INFO_BG, status::RUNNING, "Generating"),
-            TestGenStatus::Completed => (status::SUCCESS_BG, status::SUCCESS, "Completed"),
-            TestGenStatus::Failed => (status::ERROR_BG, status::ERROR, "Failed"),
+    fn render_task_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected_task = self.selected_task();
+        let task_count = self.available_tasks.len();
+
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            // Prev button
+            .child(
+                div()
+                    .id("task-prev-btn")
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded(px(3.0))
+                    .cursor(CursorStyle::PointingHand)
+                    .bg(bg::ELEVATED)
+                    .text_color(text::MUTED)
+                    .text_size(px(12.0))
+                    .font_family(FONT_FAMILY)
+                    .on_click(cx.listener(|this, _evt, _window, cx| {
+                        this.select_prev_task(cx);
+                    }))
+                    .child("<"),
+            )
+            // Task name display
+            .child(
+                div()
+                    .min_w(px(200.0))
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .bg(bg::ELEVATED)
+                    .border_1()
+                    .border_color(border::SUBTLE)
+                    .rounded(px(4.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(if selected_task.is_some() {
+                                text::PRIMARY
+                            } else {
+                                text::MUTED
+                            })
+                            .child(
+                                selected_task
+                                    .map(|t| t.name.clone())
+                                    .unwrap_or_else(|| "Select a task...".to_string()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::DISABLED)
+                            .child(format!(
+                                "{}/{}",
+                                self.selected_task_idx.map(|i| i + 1).unwrap_or(0),
+                                task_count
+                            )),
+                    ),
+            )
+            // Next button
+            .child(
+                div()
+                    .id("task-next-btn")
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded(px(3.0))
+                    .cursor(CursorStyle::PointingHand)
+                    .bg(bg::ELEVATED)
+                    .text_color(text::MUTED)
+                    .text_size(px(12.0))
+                    .font_family(FONT_FAMILY)
+                    .on_click(cx.listener(|this, _evt, _window, cx| {
+                        this.select_next_task(cx);
+                    }))
+                    .child(">"),
+            )
+    }
+
+    fn render_generation_status(&self) -> impl IntoElement {
+        let (bg_color, text_color, label) = match &self.generation_status {
+            GenerationStatus::Idle => (bg::ELEVATED, text::MUTED, "Ready".to_string()),
+            GenerationStatus::Generating {
+                iteration,
+                max_iterations,
+                tests_so_far,
+            } => (
+                status::INFO_BG,
+                status::RUNNING,
+                format!(
+                    "Iteration {}/{} ({} tests)",
+                    iteration, max_iterations, tests_so_far
+                ),
+            ),
+            GenerationStatus::Complete {
+                total_tests,
+                duration_ms,
+            } => (
+                status::SUCCESS_BG,
+                status::SUCCESS,
+                format!(
+                    "{} tests in {:.1}s",
+                    total_tests, *duration_ms as f64 / 1000.0
+                ),
+            ),
+            GenerationStatus::Failed { error } => (
+                status::ERROR_BG,
+                status::ERROR,
+                format!("Failed: {}", error.chars().take(30).collect::<String>()),
+            ),
         };
 
         div()
@@ -314,18 +434,134 @@ impl TestGenVisualizer {
             .child(label)
     }
 
-    fn render_iteration_indicator(&self, session: &TestGenSession) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .gap(px(8.0))
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .font_family(FONT_FAMILY)
-                    .text_color(text::MUTED)
-                    .child(format!("Iteration {}/{}", session.iteration, session.max_iterations))
-            )
+    /// Start test generation (placeholder - will be wired in Phase 2)
+    /// Start test generation using the service
+    fn start_generation(&mut self, cx: &mut Context<Self>) {
+        if let Some(task) = self.selected_task().cloned() {
+            // Clear previous results
+            self.generated_tests.clear();
+
+            // Update status
+            self.generation_status = GenerationStatus::Generating {
+                iteration: 1,
+                max_iterations: 8,
+                tests_so_far: 0,
+            };
+
+            // Create generation request
+            let request = GenerationRequest {
+                task_id: task.id.clone(),
+                task_description: task.description.clone(),
+                context: TestGenContext::Benchmark,
+            };
+
+            // Start generation and get event receiver
+            let receiver = self.service.start_generation(request);
+            self.event_receiver = Some(receiver);
+
+            // Schedule polling
+            cx.spawn(async move |this, cx| {
+                loop {
+                    // Small delay between polls
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(100))
+                        .await;
+
+                    // Poll for events
+                    let should_continue = this
+                        .update(cx, |this, cx| this.poll_events(cx))
+                        .unwrap_or(false);
+
+                    if !should_continue {
+                        break;
+                    }
+                }
+            })
+            .detach();
+
+            cx.notify();
+        }
+    }
+
+    /// Poll for events from the generation service
+    fn poll_events(&mut self, cx: &mut Context<Self>) -> bool {
+        // Take the receiver temporarily
+        let mut receiver = match self.event_receiver.take() {
+            Some(r) => r,
+            None => return false,
+        };
+
+        let mut should_continue = true;
+        let mut events = Vec::new();
+
+        // Collect all available events
+        while let Ok(event) = receiver.try_recv() {
+            events.push(event);
+        }
+
+        // Process events
+        for event in events {
+            match event {
+                TestGenEvent::Progress { round, .. } => {
+                    // Update iteration
+                    if let GenerationStatus::Generating {
+                        ref mut iteration, ..
+                    } = self.generation_status
+                    {
+                        *iteration = round;
+                    }
+                    cx.notify();
+                }
+                TestGenEvent::TestGenerated(test) => {
+                    // Add test to list
+                    self.generated_tests.push(test.clone());
+
+                    // Update test count in status
+                    if let GenerationStatus::Generating {
+                        ref mut tests_so_far,
+                        ..
+                    } = self.generation_status
+                    {
+                        *tests_so_far = self.generated_tests.len() as u32;
+                    }
+
+                    // Update test list UI
+                    self.test_list.update(cx, |list, _cx| {
+                        let test_case = convert_generated_test(&test);
+                        list.add_test(test_case);
+                    });
+
+                    cx.notify();
+                }
+                TestGenEvent::Complete {
+                    total_tests,
+                    duration_ms,
+                    ..
+                } => {
+                    self.generation_status = GenerationStatus::Complete {
+                        total_tests,
+                        duration_ms,
+                    };
+                    should_continue = false;
+                    cx.notify();
+                }
+                TestGenEvent::Error(error) => {
+                    self.generation_status = GenerationStatus::Failed { error };
+                    should_continue = false;
+                    cx.notify();
+                }
+                TestGenEvent::Reflection(_) => {
+                    // Could update UI with reflection info
+                }
+            }
+        }
+
+        // Put receiver back if we should continue
+        if should_continue {
+            self.event_receiver = Some(receiver);
+        }
+
+        should_continue
     }
 
     fn render_comprehensiveness(&self) -> impl IntoElement {
@@ -345,56 +581,62 @@ impl TestGenVisualizer {
                 let progress_width = (progress.min(1.0) * 200.0).max(4.0);
                 let is_met = s.comprehensiveness >= s.target_comprehensiveness;
 
-                el
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_family(FONT_FAMILY)
-                                    .text_color(text::MUTED)
-                                    .child("Comprehensiveness Score")
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(12.0))
-                                    .child(
-                                        div()
-                                            .text_size(px(24.0))
-                                            .font_family(FONT_FAMILY)
-                                            .text_color(if is_met { status::SUCCESS } else { text::PRIMARY })
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .child(format!("{:.0}%", s.comprehensiveness * 100.0))
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .font_family(FONT_FAMILY)
-                                            .text_color(text::MUTED)
-                                            .child(format!("/ {:.0}% target", s.target_comprehensiveness * 100.0))
-                                    )
-                            )
-                    )
-                    .child(
-                        div()
-                            .w(px(200.0))
-                            .h(px(8.0))
-                            .bg(bg::ELEVATED)
-                            .rounded(px(4.0))
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .w(px(progress_width))
-                                    .h_full()
-                                    .bg(if is_met { status::SUCCESS } else { status::INFO })
-                                    .rounded(px(4.0))
-                            )
-                    )
+                el.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_family(FONT_FAMILY)
+                                .text_color(text::MUTED)
+                                .child("Comprehensiveness Score"),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(12.0))
+                                .child(
+                                    div()
+                                        .text_size(px(24.0))
+                                        .font_family(FONT_FAMILY)
+                                        .text_color(if is_met {
+                                            status::SUCCESS
+                                        } else {
+                                            text::PRIMARY
+                                        })
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(format!("{:.0}%", s.comprehensiveness * 100.0)),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .font_family(FONT_FAMILY)
+                                        .text_color(text::MUTED)
+                                        .child(format!(
+                                            "/ {:.0}% target",
+                                            s.target_comprehensiveness * 100.0
+                                        )),
+                                ),
+                        ),
+                )
+                .child(
+                    div()
+                        .w(px(200.0))
+                        .h(px(8.0))
+                        .bg(bg::ELEVATED)
+                        .rounded(px(4.0))
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .w(px(progress_width))
+                                .h_full()
+                                .bg(if is_met { status::SUCCESS } else { status::INFO })
+                                .rounded(px(4.0)),
+                        ),
+                )
             })
     }
 }
@@ -406,16 +648,16 @@ impl Focusable for TestGenVisualizer {
 }
 
 impl Render for TestGenVisualizer {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
             .h_full()
             .w_full()
             .bg(bg::APP)
-            // Header
-            .child(self.render_header())
-            // Comprehensiveness bar
+            // Header with task selector and generate button
+            .child(self.render_header(cx))
+            // Comprehensiveness bar (only when session active)
             .child(self.render_comprehensiveness())
             // Main content
             .child(
@@ -444,14 +686,10 @@ impl Render for TestGenVisualizer {
                                             .font_family(FONT_FAMILY)
                                             .text_color(text::MUTED)
                                             .font_weight(FontWeight::MEDIUM)
-                                            .child("Categories")
-                                    )
+                                            .child("Categories"),
+                                    ),
                             )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .child(self.category_progress.clone())
-                            )
+                            .child(div().flex_1().child(self.category_progress.clone())),
                     )
                     // Center: Test List
                     .child(
@@ -477,21 +715,17 @@ impl Render for TestGenVisualizer {
                                             .font_family(FONT_FAMILY)
                                             .text_color(text::MUTED)
                                             .font_weight(FontWeight::MEDIUM)
-                                            .child("Generated Tests")
+                                            .child("Generated Tests"),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(11.0))
                                             .font_family(FONT_FAMILY)
                                             .text_color(text::DISABLED)
-                                            .child("8 tests")
-                                    )
+                                            .child("8 tests"),
+                                    ),
                             )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .child(self.test_list.clone())
-                            )
+                            .child(div().flex_1().child(self.test_list.clone())),
                     )
                     // Right: Test Detail
                     .child(
@@ -512,15 +746,47 @@ impl Render for TestGenVisualizer {
                                             .font_family(FONT_FAMILY)
                                             .text_color(text::MUTED)
                                             .font_weight(FontWeight::MEDIUM)
-                                            .child("Test Details")
-                                    )
+                                            .child("Test Details"),
+                                    ),
                             )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .child(self.test_detail.clone())
-                            )
-                    )
+                            .child(div().flex_1().child(self.test_detail.clone())),
+                    ),
             )
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Convert a testgen::GeneratedTest to our UI TestCase
+fn convert_generated_test(test: &testgen::GeneratedTest) -> TestCase {
+    // Map testgen category to UI category
+    let category = match test.category {
+        testgen::TestCategory::AntiCheat => TestCategory::AntiCheat,
+        testgen::TestCategory::Existence => TestCategory::Existence,
+        testgen::TestCategory::Correctness => TestCategory::Correctness,
+        testgen::TestCategory::Boundary => TestCategory::Boundary,
+        testgen::TestCategory::Integration => TestCategory::Integration,
+        // Map additional testgen categories to nearest UI equivalent
+        testgen::TestCategory::Format => TestCategory::Correctness,
+        testgen::TestCategory::HappyPath => TestCategory::Correctness,
+        testgen::TestCategory::EdgeCase => TestCategory::Boundary,
+        testgen::TestCategory::InvalidInput => TestCategory::Boundary,
+    };
+
+    TestCase {
+        id: test.id.clone(),
+        name: test.id.clone(),
+        category,
+        status: TestStatus::Generated,
+        description: test.reasoning.clone(),
+        code: format!(
+            "# Input: {}\n# Expected: {}\n\n{}",
+            test.input,
+            test.expected_output.as_deref().unwrap_or("N/A"),
+            test.reasoning
+        ),
+        confidence: test.confidence as f32,
     }
 }
