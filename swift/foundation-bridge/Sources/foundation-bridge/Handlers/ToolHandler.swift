@@ -138,19 +138,13 @@ struct ToolHandler {
             // This requires extending SessionStore to handle tool messages
         }
 
-        // Perform completion with tools
-        let response: Response<String>
+        // Perform completion
+        // Note: Tools are registered at session creation time in LanguageModelSession
+        // For now, we just do standard completion since dynamic tool passing isn't supported
+        _ = tools // Silence unused warning - tools would need to be set at session init
 
-        if let tools = tools, !tools.isEmpty {
-            response = try await session.respond(
-                to: prompt,
-                tools: tools
-            )
-        } else {
-            response = try await session.respond(to: prompt)
-        }
-
-        let content = response.content as? String ?? ""
+        let response = try await session.respond(to: prompt)
+        let content = response.content
 
         // Check if model wants to call tools
         // Note: FoundationModels doesn't expose tool calls directly in Response

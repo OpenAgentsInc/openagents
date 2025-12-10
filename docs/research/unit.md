@@ -1400,7 +1400,7 @@ export const TBCCShellSpec: EffuseGraphSpec = {
 
   metadata: {
     description: "TB Command Center with tabbed navigation",
-    author: "OpenAgents Team",
+    author: "OpenAgents",
     version: "2.0.0"
   }
 }

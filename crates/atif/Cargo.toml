@@ -1,10 +1,10 @@
 [package]
 name = "atif"
 version = "1.4.0"
-edition = "2021"
+edition = "2024"
 authors = ["OpenAgents"]
 description = "Agent Trajectory Interchange Format (ATIF) - Rust implementation"
-license = "MIT"
+license = "CC-0"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

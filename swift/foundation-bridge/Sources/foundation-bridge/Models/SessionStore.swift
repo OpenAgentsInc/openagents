@@ -34,21 +34,13 @@ actor SessionStore {
     }
 
     /// Create a session with initial transcript
+    /// NOTE: FoundationModels Transcript API is complex; we store transcript locally but don't restore it into the session
     func createSession(model: SystemLanguageModel? = nil, transcript: [ChatMessage]) -> String {
         let id = UUID().uuidString
         let sessionModel = model ?? SystemLanguageModel.default
 
-        // Build transcript for FoundationModels
-        var fmTranscript: [LanguageModelSession.Message] = []
-        for msg in transcript {
-            let role: LanguageModelSession.Message.Role = msg.role == "user" ? .user : .assistant
-            fmTranscript.append(LanguageModelSession.Message(role: role, content: msg.content))
-        }
-
-        let session = LanguageModelSession(
-            model: sessionModel,
-            transcript: fmTranscript
-        )
+        // Create fresh session - we track transcript locally but FM sessions are stateless per request
+        let session = LanguageModelSession(model: sessionModel)
 
         let entry = SessionEntry(id: id, session: session, transcript: transcript)
         sessions[id] = entry

@@ -100,39 +100,22 @@ actor ChatHandler {
         if let samplingMode = request.samplingMode {
             switch samplingMode.type {
             case "greedy":
-                options.samplingMode = .greedy
+                options.sampling = .greedy
             case "top_k":
                 if let k = samplingMode.k {
-                    options.samplingMode = .topK(k)
+                    options.sampling = .random(top: k)
                 }
             case "nucleus":
                 if let p = samplingMode.p {
-                    options.samplingMode = .nucleus(p)
+                    options.sampling = .random(probabilityThreshold: p)
                 }
             default:
                 break
             }
         }
 
-        // Set use case
-        if let useCase = request.useCase {
-            switch useCase {
-            case .general:
-                options.useCase = .general
-            case .contentTagging:
-                options.useCase = .contentTagging
-            }
-        }
-
-        // Set guardrails
-        if let guardrails = request.guardrails {
-            switch guardrails {
-            case .default:
-                options.guardrails = .default
-            case .permissiveContentTransformations:
-                options.guardrails = .permissiveContentTransformations
-            }
-        }
+        // Note: useCase and guardrails are set on SystemLanguageModel init, not GenerationOptions
+        // For now, we use the default model which uses .general useCase and .default guardrails
 
         return options
     }

@@ -318,5 +318,5 @@ Terminal output component showing:
 ---
 
 **Last Updated:** 2025-12-09
-**Maintained By:** OpenAgents Team
+**Maintained By:** OpenAgents
 **Status:** Ready for Review

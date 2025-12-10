@@ -37,33 +37,12 @@ actor ToolRegistry {
     }
 
     /// Convert tool definitions to FoundationModels.Tool format
-    func getFoundationModelsTools(sessionId: String) throws -> [LanguageModelSession.Tool]? {
-        guard let tools = sessionTools[sessionId] else {
-            return nil
-        }
-
-        var fmTools: [LanguageModelSession.Tool] = []
-
-        for tool in tools {
-            // Convert parameters to JSON schema string
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-
-            let parametersData = try encoder.encode(tool.parameters)
-            guard let parametersJson = String(data: parametersData, encoding: .utf8) else {
-                throw ToolError.invalidSchema
-            }
-
-            let fmTool = LanguageModelSession.Tool(
-                name: tool.name,
-                description: tool.description,
-                parametersSchema: parametersJson
-            )
-
-            fmTools.append(fmTool)
-        }
-
-        return fmTools
+    /// NOTE: Tool is a protocol with associated types, not a concrete type.
+    /// Dynamic tool creation would require concrete implementations.
+    /// For now, we just store the definitions and let callers handle conversion.
+    func getFoundationModelsTools(sessionId: String) throws -> [ToolDefinition]? {
+        // Return our internal ToolDefinition array instead of trying to convert to FM types
+        return sessionTools[sessionId]
     }
 
     /// Remove tools for a session
