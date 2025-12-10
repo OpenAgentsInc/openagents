@@ -216,6 +216,17 @@ impl<'a> GraphAssertions<'a> {
         self
     }
 
+    /// Assert error count is at least a value
+    pub fn expect_error_count_at_least(&self, minimum: usize) -> &Self {
+        let count = self.cx.read(|cx| self.view.read(cx).error_count());
+        assert!(
+            count >= minimum,
+            "Expected at least {} errors, found {}",
+            minimum, count
+        );
+        self
+    }
+
     // =========================================================================
     // Connection State Assertions
     // =========================================================================

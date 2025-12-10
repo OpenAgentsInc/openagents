@@ -62,6 +62,11 @@ pub fn task_selected(task: HudTaskInfo) -> HudMessage {
     HudMessage::TaskSelected { task }
 }
 
+/// Convenience: Create a task_selected message with just id and title
+pub fn task_selected_simple(id: &str, title: &str) -> HudMessage {
+    task_selected(task_info(Some(id), title))
+}
+
 /// Create a HudSubtaskInfo with defaults
 pub fn subtask_info(id: Option<&str>, description: &str) -> HudSubtaskInfo {
     HudSubtaskInfo {
@@ -76,6 +81,15 @@ pub fn task_decomposed(subtasks: Vec<HudSubtaskInfo>) -> HudMessage {
     HudMessage::TaskDecomposed { subtasks }
 }
 
+/// Convenience: Create a task_decomposed message with simple subtask definitions
+pub fn task_decomposed_simple(subtasks: Vec<(&str, &str)>) -> HudMessage {
+    let subtask_infos: Vec<HudSubtaskInfo> = subtasks
+        .into_iter()
+        .map(|(id, desc)| subtask_info(Some(id), desc))
+        .collect();
+    task_decomposed(subtask_infos)
+}
+
 /// Create a subtask_start message
 pub fn subtask_start(subtask: HudSubtaskInfo) -> HudMessage {
     HudMessage::SubtaskStart {
@@ -84,6 +98,11 @@ pub fn subtask_start(subtask: HudSubtaskInfo) -> HudMessage {
             ..subtask
         },
     }
+}
+
+/// Convenience: Create a subtask_start message with just id and description
+pub fn subtask_start_simple(id: &str, description: &str) -> HudMessage {
+    subtask_start(subtask_info(Some(id), description))
 }
 
 /// Create a subtask_complete message
@@ -95,6 +114,28 @@ pub fn subtask_complete(subtask: HudSubtaskInfo, result: Option<HudSubagentResul
         },
         result: result.unwrap_or_default(),
     }
+}
+
+/// Convenience: Create a subtask_complete message with simple parameters
+pub fn subtask_complete_simple(id: &str, description: &str, success: bool, files: Vec<String>) -> HudMessage {
+    let result = if success {
+        Some(HudSubagentResult {
+            success: true,
+            agent: Some(AgentType::ClaudeCode),
+            files_modified: files,
+            turns: 1,
+            error: None,
+        })
+    } else {
+        Some(HudSubagentResult {
+            success: false,
+            agent: Some(AgentType::ClaudeCode),
+            files_modified: vec![],
+            turns: 1,
+            error: Some("Failed".to_string()),
+        })
+    };
+    subtask_complete(subtask_info(Some(id), description), result)
 }
 
 /// Create a subtask_failed message
@@ -133,9 +174,9 @@ pub fn verification_complete(command: &str, passed: bool, output: Option<&str>) 
 // ============================================================================
 
 /// Create a commit_created message
-pub fn commit_created(sha: Option<&str>, message: &str) -> HudMessage {
+pub fn commit_created(sha: &str, message: &str) -> HudMessage {
     HudMessage::CommitCreated {
-        sha: sha.map(String::from).unwrap_or_else(|| "abc123def456".to_string()),
+        sha: sha.to_string(),
         message: message.to_string(),
     }
 }

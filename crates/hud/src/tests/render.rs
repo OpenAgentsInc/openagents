@@ -36,7 +36,7 @@ fn test_graph_structure_renders(cx: &mut TestAppContext) {
     // Add some content
     let mut injector = HudInjector::new(&view, cx);
     injector.inject(factories::session_start(None));
-    injector.inject(factories::task_selected("oa-render-test", "Render Test Task"));
+    injector.inject(factories::task_selected_simple("oa-render-test", "Render Test Task"));
 
     // Verify node was added
     view.assert_that(cx)
@@ -71,7 +71,7 @@ fn test_node_types_display_correctly(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
     let mut injector = HudInjector::new(&view, cx);
-    injector.inject(factories::task_selected("oa-test-theme", "Theme Test Task"));
+    injector.inject(factories::task_selected_simple("oa-test-theme", "Theme Test Task"));
 
     // Should have at least one node
     view.assert_that(cx)
@@ -156,9 +156,9 @@ fn test_multiple_nodes_render(cx: &mut TestAppContext) {
     injector.inject(factories::session_start(None));
 
     // Add multiple tasks
-    injector.inject(factories::task_selected("oa-node-1", "Node 1"));
-    injector.inject(factories::task_selected("oa-node-2", "Node 2"));
-    injector.inject(factories::task_selected("oa-node-3", "Node 3"));
+    injector.inject(factories::task_selected_simple("oa-node-1", "Node 1"));
+    injector.inject(factories::task_selected_simple("oa-node-2", "Node 2"));
+    injector.inject(factories::task_selected_simple("oa-node-3", "Node 3"));
 
     // Verify all nodes exist
     view.assert_that(cx)
@@ -173,13 +173,11 @@ fn test_multiple_nodes_render(cx: &mut TestAppContext) {
 fn test_apm_renders_different_values(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
-    let mut injector = HudInjector::new(&view, cx);
-
     // Test various APM values
     let test_values = [0.0, 10.5, 99.9, 150.0];
 
     for &apm_value in &test_values {
-        injector.inject(factories::apm_update(apm_value, 100));
+        GraphViewFixture::inject_message(&view, factories::apm_update(apm_value, 100), cx);
 
         let displayed_apm = GraphViewFixture::current_apm(&view, cx);
         assert!(
@@ -230,7 +228,7 @@ fn test_error_state_renders(cx: &mut TestAppContext) {
 
     // Inject error
     let mut injector = HudInjector::new(&view, cx);
-    injector.inject(factories::error("testing", "Test error message"));
+    injector.inject(factories::error_in_phase("testing", "Test error message"));
 
     // Error should be visible
     view.assert_that(cx)

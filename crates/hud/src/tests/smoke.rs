@@ -88,7 +88,7 @@ fn test_reset_returns_to_initial_state(cx: &mut TestAppContext) {
     cx.run_until_parked();
 
     // Verify state changed
-    let (pan_x, pan_y) = GraphViewFixture::pan(&view, cx);
+    let (pan_x, _pan_y) = GraphViewFixture::pan(&view, cx);
     assert!((pan_x - 100.0).abs() < 0.1, "Pan X should be modified");
 
     let zoom = GraphViewFixture::zoom_level(&view, cx);
