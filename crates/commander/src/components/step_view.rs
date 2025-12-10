@@ -126,6 +126,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(10.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                         .child(format!("id: {}", truncate(&tool_call.tool_call_id, 12))),
                 ),
@@ -164,6 +165,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                         .px(px(6.0))
                         .py(px(2.0))
                         .text_size(px(10.0))
+                        .font_family("Berkeley Mono")
                         .bg(hsla(0.78, 0.5, 0.2, 0.4))
                         .text_color(hsla(0.78, 0.6, 0.7, 1.0))
                         .rounded(px(4.0))
@@ -200,6 +202,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(10.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                             .mb(px(4.0))
                             .child(format!("call: {}", truncate(call_id, 12))),
@@ -224,6 +227,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                             .child(
                                 div()
                                     .text_size(px(11.0))
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.58, 0.6, 0.7, 1.0))
                                     .child("Subagent:"),
                             )
@@ -267,6 +271,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                                     .child("Prompt:"),
                             )
@@ -285,6 +290,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                                     .child("Completion:"),
                             )
@@ -303,6 +309,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                                     .child("Cached:"),
                             )
@@ -321,6 +328,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.0, 0.0, 0.5, 1.0))
                                     .child("Cost:"),
                             )
@@ -384,6 +392,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(10.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.0, 0.0, 0.45, 1.0))
                             .child(truncate(model, 20)),
                     )
@@ -404,6 +413,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                             .child(
                                 div()
                                     .text_size(px(11.0))
+                                    .font_family("Berkeley Mono")
                                     .text_color(hsla(0.78, 0.6, 0.6, 1.0))
                                     .child(format!(
                                         "{} tool{}",
@@ -417,6 +427,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(12.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.6, 1.0))
                         .truncate()
                         .flex_1()
@@ -466,6 +477,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                         .border_color(hsla(0.0, 0.0, 0.2, 0.4))
                         .rounded(px(4.0))
                         .text_size(px(13.0))
+                        .font_family("Berkeley Mono")
                         .text_color(hsla(0.0, 0.0, 0.8, 1.0))
                         .line_height(px(20.0))
                         .overflow_hidden()
@@ -492,6 +504,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                             .border_color(hsla(0.58, 0.3, 0.3, 0.3))
                             .rounded(px(4.0))
                             .text_size(px(13.0))
+                            .font_family("Berkeley Mono")
                             .text_color(hsla(0.58, 0.5, 0.75, 1.0))
                             .line_height(px(20.0))
                             .child(reasoning.clone()),
