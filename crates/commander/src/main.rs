@@ -250,7 +250,7 @@ impl Render for CommanderView {
                     .w_full()
                     .flex()
                     .justify_center()
-                    .pb(px(40.0))
+                    .pb(px(20.0))
                     .px(px(20.0))
                     .child(
                         div()
@@ -259,7 +259,6 @@ impl Render for CommanderView {
                             .bg(hsla(0., 0., 1., 0.05))
                             .border_1()
                             .border_color(hsla(0., 0., 1., 0.1))
-                            .rounded_lg()
                             .px(px(12.0))
                             .flex()
                             .items_center()

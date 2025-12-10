@@ -95,7 +95,8 @@ pub fn render_markdown(text: &str, style: &MarkdownStyle) -> StyledText {
                     output.push('\n');
                 }
                 TagEnd::Paragraph => {
-                    output.push('\n');
+                    // Add double newline for paragraph spacing
+                    output.push_str("\n\n");
                 }
                 TagEnd::Item => {
                     if !output.ends_with('\n') {
