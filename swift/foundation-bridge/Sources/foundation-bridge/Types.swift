@@ -63,6 +63,9 @@ struct ChatCompletionRequest: Codable {
     let maxTokens: Int?
     let stream: Bool?
     let responseFormat: ResponseFormatRequest?
+    let samplingMode: SamplingModeRequest?
+    let useCase: UseCaseRequest?
+    let guardrails: GuardrailsRequest?
 
     enum CodingKeys: String, CodingKey {
         case model
@@ -71,7 +74,44 @@ struct ChatCompletionRequest: Codable {
         case maxTokens = "max_tokens"
         case stream
         case responseFormat = "response_format"
+        case samplingMode = "sampling_mode"
+        case useCase = "use_case"
+        case guardrails
     }
+}
+
+/// Sampling mode configuration
+struct SamplingModeRequest: Codable {
+    let type: String
+    let k: Int?
+    let p: Double?
+
+    /// Create greedy sampling mode
+    static func greedy() -> Self {
+        Self(type: "greedy", k: nil, p: nil)
+    }
+
+    /// Create top-k sampling mode
+    static func topK(_ k: Int) -> Self {
+        Self(type: "top_k", k: k, p: nil)
+    }
+
+    /// Create nucleus (top-p) sampling mode
+    static func nucleus(_ p: Double) -> Self {
+        Self(type: "nucleus", k: nil, p: p)
+    }
+}
+
+/// Use case for generation
+enum UseCaseRequest: String, Codable {
+    case general = "general"
+    case contentTagging = "content_tagging"
+}
+
+/// Guardrails configuration
+enum GuardrailsRequest: String, Codable {
+    case `default` = "default"
+    case permissiveContentTransformations = "permissive_content_transformations"
 }
 
 /// Request for structured output format
@@ -183,6 +223,14 @@ struct HealthResponse: Codable {
 
 struct ErrorResponse: Codable {
     let error: ErrorDetail
+
+    init(error: ErrorDetail) {
+        self.error = error
+    }
+
+    init(error: String) {
+        self.error = ErrorDetail(message: error, type: "error", code: nil)
+    }
 }
 
 struct ErrorDetail: Codable {
@@ -208,5 +256,27 @@ enum FMError: Error {
         case .serverError(let msg):
             return ErrorResponse(error: ErrorDetail(message: msg, type: "server_error", code: "server_error"))
         }
+    }
+}
+
+enum CompletionError: Error {
+    case modelUnavailable
+    case invalidSchemaType
+    case sessionNotFound
+    case toolNotFound
+}
+
+// MARK: - HTTP Response Type
+
+/// HTTP response for handler methods
+struct HTTPResponse {
+    let status: Int
+    let headers: [String: String]
+    let body: String
+
+    init(status: Int, headers: [String: String], body: String) {
+        self.status = status
+        self.headers = headers
+        self.body = body
     }
 }

@@ -42,6 +42,9 @@ actor ChatHandler {
         // which causes "Exceeded model context window size" errors after a few calls.
         let session = LanguageModelSession()
 
+        // Build GenerationOptions from request
+        let options = buildGenerationOptions(from: request)
+
         // Generate response - use guided generation if schema is specified
         let startTime = Date()
         let content: String
@@ -51,11 +54,12 @@ actor ChatHandler {
                 content = try await handleGuidedGeneration(
                     session: session,
                     prompt: prompt,
-                    responseFormat: responseFormat
+                    responseFormat: responseFormat,
+                    options: options
                 )
             } else {
                 // Standard unguided generation
-                let response = try await session.respond(to: prompt)
+                let response = try await session.respond(to: prompt, options: options)
                 content = response.content
             }
         } catch {
@@ -88,11 +92,57 @@ actor ChatHandler {
         )
     }
 
+    /// Build GenerationOptions from request
+    private func buildGenerationOptions(from request: ChatCompletionRequest) -> GenerationOptions {
+        var options = GenerationOptions()
+
+        // Set sampling mode
+        if let samplingMode = request.samplingMode {
+            switch samplingMode.type {
+            case "greedy":
+                options.samplingMode = .greedy
+            case "top_k":
+                if let k = samplingMode.k {
+                    options.samplingMode = .topK(k)
+                }
+            case "nucleus":
+                if let p = samplingMode.p {
+                    options.samplingMode = .nucleus(p)
+                }
+            default:
+                break
+            }
+        }
+
+        // Set use case
+        if let useCase = request.useCase {
+            switch useCase {
+            case .general:
+                options.useCase = .general
+            case .contentTagging:
+                options.useCase = .contentTagging
+            }
+        }
+
+        // Set guardrails
+        if let guardrails = request.guardrails {
+            switch guardrails {
+            case .default:
+                options.guardrails = .default
+            case .permissiveContentTransformations:
+                options.guardrails = .permissiveContentTransformations
+            }
+        }
+
+        return options
+    }
+
     /// Handle guided generation with constrained output
     private func handleGuidedGeneration(
         session: LanguageModelSession,
         prompt: String,
-        responseFormat: ResponseFormatRequest
+        responseFormat: ResponseFormatRequest,
+        options: GenerationOptions
     ) async throws -> String {
         // Check if using a pre-defined schema type
         if let schemaType = responseFormat.schemaType {
@@ -101,7 +151,8 @@ actor ChatHandler {
                 // Use the Generable TestGenerationResult type
                 let response = try await session.respond(
                     to: prompt,
-                    generating: TestGenerationResult.self
+                    generating: TestGenerationResult.self,
+                    options: options
                 )
                 // Extract the generated content from the response
                 return encodeToJSON(response.content)
@@ -111,7 +162,8 @@ actor ChatHandler {
                 // Prompt should include environment context for anti-cheat and parameter discovery
                 let response = try await session.respond(
                     to: prompt,
-                    generating: EnvironmentAwareTestResult.self
+                    generating: EnvironmentAwareTestResult.self,
+                    options: options
                 )
                 return encodeToJSON(response.content)
 
@@ -120,7 +172,8 @@ actor ChatHandler {
                 // Constrains tool name to valid values: read_file, write_file, verify_progress
                 let response = try await session.respond(
                     to: prompt,
-                    generating: ToolCallRequest.self
+                    generating: ToolCallRequest.self,
+                    options: options
                 )
                 return encodeToJSON(response.content)
 
@@ -133,7 +186,7 @@ actor ChatHandler {
         if responseFormat.type == "json_object" {
             // Add JSON instruction to prompt and use standard generation
             let jsonPrompt = prompt + "\n\nRespond with valid JSON only."
-            let response = try await session.respond(to: jsonPrompt)
+            let response = try await session.respond(to: jsonPrompt, options: options)
             return response.content
         }
 
@@ -143,12 +196,12 @@ actor ChatHandler {
             // TODO: Implement dynamic schema support
             // For now, add the schema description to the prompt
             let jsonPrompt = prompt + "\n\nRespond with valid JSON matching the requested schema."
-            let response = try await session.respond(to: jsonPrompt)
+            let response = try await session.respond(to: jsonPrompt, options: options)
             return response.content
         }
 
         // Default: standard generation
-        let response = try await session.respond(to: prompt)
+        let response = try await session.respond(to: prompt, options: options)
         return response.content
     }
 
