@@ -58,7 +58,7 @@ pub fn render_trajectory_item(
         .bg(item_bg)
         .border_1()
         .border_color(item_border)
-        .rounded(px(8.0))
+        
         .cursor_pointer()
         .hover(|s| s.bg(bg::HOVER))
         // Header row: agent name + date
@@ -125,7 +125,7 @@ fn render_status_badge(item_status: &str) -> impl IntoElement {
         .font_family(FONT_FAMILY)
         .bg(badge_bg)
         .text_color(badge_text)
-        .rounded(px(4.0))
+        
         .child(item_status.to_lowercase())
 }
 
@@ -203,7 +203,7 @@ pub fn render_search_input(current_query: &str) -> impl IntoElement {
                 .bg(bg::ELEVATED)
                 .border_1()
                 .border_color(border::DEFAULT)
-                .rounded(px(6.0))
+                
                 .child(
                     div()
                         .text_color(text::PLACEHOLDER)
@@ -257,7 +257,7 @@ pub fn render_pagination(
                 .text_color(if has_prev { text::PRIMARY } else { text::DISABLED })
                 .text_size(px(12.0))
                 .font_family(FONT_FAMILY)
-                .rounded(px(4.0))
+                
                 .when(has_prev, |el| {
                     el.cursor_pointer()
                         .hover(|s| s.bg(bg::CARD))
@@ -281,7 +281,7 @@ pub fn render_pagination(
                 .text_color(if has_next { text::PRIMARY } else { text::DISABLED })
                 .text_size(px(12.0))
                 .font_family(FONT_FAMILY)
-                .rounded(px(4.0))
+                
                 .when(has_next, |el| {
                     el.cursor_pointer()
                         .hover(|s| s.bg(bg::CARD))
@@ -312,7 +312,7 @@ pub fn render_trajectory_list(
     let has_next = current_page + 1 < total_pages;
 
     div()
-        .rounded(px(12.0))
+        
         .border_1()
         .border_color(border::STRONG)
         .bg(bg::SURFACE)

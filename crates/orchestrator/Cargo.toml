@@ -1,6 +1,6 @@
 [package]
-name = "llm"
-description = "Multi-provider LLM abstraction layer"
+name = "orchestrator"
+description = "Golden Loop agent orchestrator - session management, task selection, verification"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,16 +11,20 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time", "macros"] }
 thiserror = { workspace = true }
-reqwest = { version = "0.12", features = ["json", "stream"] }
 uuid = { workspace = true, features = ["v4"] }
 chrono = { workspace = true, features = ["serde"] }
 tracing = { workspace = true }
-bytes = "1.10"
+
+# Workspace crates
+tasks = { workspace = true }
+tools = { workspace = true }
+llm = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["full", "rt-multi-thread"] }
+tempfile = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = "allow"
