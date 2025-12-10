@@ -1,0 +1,14 @@
+[package]
+name = "commander"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenAgents Team"]
+description = "Commander - Desktop UI for OpenAgents swarm compute network"
+license = "MIT"
+
+[[bin]]
+name = "commander"
+path = "src/main.rs"
+
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "95842c7987" }

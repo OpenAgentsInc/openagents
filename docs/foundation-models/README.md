@@ -4,7 +4,10 @@ Apple Foundation Models integration for local LLM inference on macOS 26+ with Ap
 
 ## Quick Links
 
+- **[Quick Start Guide](./QUICK-START.md)** - 5-minute setup for coding agents
 - **[Guided Generation](./guided-generation.md)** - Constrained output for guaranteed valid JSON (4x faster, 100% reliable)
+- **[Framework Capabilities](./framework-capabilities.md)** - Complete API surface of Apple's FoundationModels framework
+- **[Setup & Troubleshooting](./bridge-setup.md)** - Detailed setup, known issues, fixes
 
 ## Overview
 
