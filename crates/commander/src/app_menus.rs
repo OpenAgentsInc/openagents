@@ -10,11 +10,11 @@ use crate::text_input;
 /// Build the application menus
 pub fn app_menus() -> Vec<Menu> {
     vec![
-        // Commander (app name menu on macOS)
+        // OpenAgents (app name menu on macOS)
         Menu {
-            name: "Commander".into(),
+            name: "OpenAgents".into(),
             items: vec![
-                MenuItem::action("About Commander", ShowAbout),
+                MenuItem::action("About OpenAgents", ShowAbout),
                 MenuItem::separator(),
                 MenuItem::action("Settings...", ShowSettings),
                 MenuItem::separator(),
@@ -22,7 +22,7 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::os_submenu("Services", SystemMenuType::Services),
                 #[cfg(target_os = "macos")]
                 MenuItem::separator(),
-                MenuItem::action("Quit Commander", Quit),
+                MenuItem::action("Quit OpenAgents", Quit),
             ],
         },
         // File menu

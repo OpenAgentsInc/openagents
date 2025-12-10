@@ -22,6 +22,7 @@ members = [
     "crates/storybook",
     "crates/tasks",
     "crates/config",
+    "crates/tools",
 ]
 
 [workspace.lints.rust]
@@ -49,6 +50,7 @@ reqwest_client = { path = "crates/http_client" }
 http_client = { path = "crates/http_client", package = "reqwest_client" }
 tasks = { path = "crates/tasks" }
 config = { path = "crates/config" }
+tools = { path = "crates/tools" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"
