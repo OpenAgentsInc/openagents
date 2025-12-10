@@ -26,6 +26,7 @@ members = [
     "crates/llm",
     "crates/orchestrator",
     "crates/cli",
+    "crates/parallel",
 ]
 
 [workspace.lints.rust]
@@ -57,6 +58,7 @@ tools = { path = "crates/tools" }
 llm = { path = "crates/llm" }
 orchestrator = { path = "crates/orchestrator" }
 cli = { path = "crates/cli" }
+parallel = { path = "crates/parallel" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"
