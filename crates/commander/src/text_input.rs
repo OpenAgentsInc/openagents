@@ -538,6 +538,8 @@ impl Render for TextInput {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
+            .flex_1()
+            .size_full()
             .overflow_hidden()
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
@@ -557,6 +559,7 @@ impl Render for TextInput {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
+            .items_center()
             .child(TextElement {
                 input: cx.entity(),
             })

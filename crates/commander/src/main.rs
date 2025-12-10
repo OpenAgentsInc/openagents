@@ -85,7 +85,7 @@ fn main() {
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
 
-        cx.open_window(
+        let window = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
@@ -96,7 +96,13 @@ fn main() {
                 show: true,
                 ..Default::default()
             },
-            |_, cx| cx.new(|cx| CommanderView::new(cx)),
+            |window, cx| {
+                let view = cx.new(|cx| CommanderView::new(cx));
+                // Focus the input
+                let focus_handle = view.read(cx).input.focus_handle(cx);
+                window.focus(&focus_handle);
+                view
+            },
         )
         .unwrap();
 
