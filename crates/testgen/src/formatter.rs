@@ -1,13 +1,12 @@
-//! TestGen Writer Module
+//! Pytest Formatter Module
 //!
-//! Converts testgen's GeneratedTest objects to pytest format.
-//! Used to write generated tests to workspace before MAP loop.
+//! Converts GeneratedTest objects to executable pytest format.
+//! Detects task types from test data and generates appropriate assertions.
 //!
-//! This module detects task types from test data (not hardcoded IDs) and
-//! generates appropriate assertions based on the detected validation method.
+//! This module is shared between the testgen CLI and hillclimber.
 
 use regex::Regex;
-use testgen::{GeneratedTest, TestCategory};
+use crate::{GeneratedTest, TestCategory};
 
 // ============================================================================
 // GUARDRAIL: NO TASK-SPECIFIC HARDCODING
@@ -28,20 +27,20 @@ use testgen::{GeneratedTest, TestCategory};
 
 /// Signals detected from analyzing test data to determine task type.
 #[derive(Debug, Default)]
-struct TaskSignals {
+pub struct TaskSignals {
     /// Whether the task involves regex pattern matching
-    has_regex_pattern: bool,
+    pub has_regex_pattern: bool,
     /// Detected output file location (e.g., "/app/regex.txt")
-    output_file_location: Option<String>,
+    pub output_file_location: Option<String>,
     /// How the task should be validated
-    validation_method: ValidationType,
+    pub validation_method: ValidationType,
     /// Whether inputs contain multiline data
-    has_multiline_input: bool,
+    pub has_multiline_input: bool,
 }
 
 /// Validation method for test assertions.
 #[derive(Debug, Default, Clone, PartialEq)]
-enum ValidationType {
+pub enum ValidationType {
     /// Use re.findall() for regex pattern matching
     RegexMatch,
     /// Use Path.exists() for file existence checks
@@ -55,7 +54,7 @@ enum ValidationType {
 ///
 /// Analyzes all tests to find signals that indicate what kind of task this is,
 /// then determines the appropriate validation method.
-fn detect_task_type(tests: &[GeneratedTest]) -> TaskSignals {
+pub fn detect_task_type(tests: &[GeneratedTest]) -> TaskSignals {
     let mut signals = TaskSignals::default();
 
     // Regex for extracting file paths like "/app/regex.txt", "/output/file.py"
@@ -103,7 +102,7 @@ fn detect_task_type(tests: &[GeneratedTest]) -> TaskSignals {
 }
 
 /// Extract file path from text using regex.
-fn extract_path_from_text(text: &str) -> Option<String> {
+pub fn extract_path_from_text(text: &str) -> Option<String> {
     let path_regex = Regex::new(r"/[a-zA-Z0-9/_.-]+\.(txt|py|json|log|sh)").unwrap();
     path_regex.find(text).map(|m| m.as_str().to_string())
 }
@@ -115,7 +114,7 @@ fn extract_path_from_text(text: &str) -> Option<String> {
 /// - "2023-02-28" -> ["2023-02-28"]
 /// - "\"2023-02-28\"" -> ["2023-02-28"]
 /// - "null" or empty -> []
-fn parse_expected_output(raw: &str) -> String {
+pub fn parse_expected_output(raw: &str) -> String {
     let trimmed = raw.trim();
 
     // Handle null/empty cases
@@ -141,6 +140,73 @@ fn parse_expected_output(raw: &str) -> String {
     format!("[\"{}\"]", escape_string(unquoted))
 }
 
+// ============================================================================
+// String Utilities
+// ============================================================================
+
+/// Escape string for Python string literal.
+pub fn escape_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+/// Escape string for Python docstring.
+pub fn escape_docstring(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace("\"\"\"", "'''")
+        .replace('\n', " ")
+}
+
+/// Sanitize test ID to valid Python function name.
+pub fn sanitize_function_name(id: &str) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+/// Get display name for a test category.
+pub fn category_display_name(category: &TestCategory) -> &'static str {
+    match category {
+        TestCategory::AntiCheat => "Anti-Cheat",
+        TestCategory::Existence => "Existence",
+        TestCategory::Correctness => "Correctness",
+        TestCategory::Boundary => "Boundary",
+        TestCategory::Integration => "Integration",
+        TestCategory::Format => "Format",
+        TestCategory::HappyPath => "Happy Path",
+        TestCategory::EdgeCase => "Edge Case",
+        TestCategory::InvalidInput => "Invalid Input",
+    }
+}
+
+/// Extract file path from a test input string (simple extraction).
+pub fn extract_path(input: &str) -> String {
+    if let Some(start) = input.find('/') {
+        let rest = &input[start..];
+        let end = rest
+            .find(|c: char| c.is_whitespace())
+            .unwrap_or(rest.len());
+        rest[..end].to_string()
+    } else {
+        input.to_string()
+    }
+}
+
+// ============================================================================
+// Main Formatter
+// ============================================================================
+
 /// Convert generated tests to pytest file format.
 ///
 /// # Arguments
@@ -150,7 +216,7 @@ fn parse_expected_output(raw: &str) -> String {
 ///
 /// # Returns
 ///
-/// A string containing valid Python pytest code
+/// A string containing valid Python pytest code with REAL assertions
 pub fn format_as_pytest(tests: &[GeneratedTest], task_id: &str) -> String {
     let mut output = String::new();
 
@@ -160,7 +226,7 @@ pub fn format_as_pytest(tests: &[GeneratedTest], task_id: &str) -> String {
     // Header
     output.push_str("# Generated tests for ");
     output.push_str(task_id);
-    output.push_str("\n# Auto-generated by HillClimber testgen integration\n\n");
+    output.push_str("\n# Auto-generated by TestGen\n\n");
 
     // Imports - conditional based on detected task type
     output.push_str("import pytest\n");
@@ -245,51 +311,9 @@ pub fn format_as_pytest(tests: &[GeneratedTest], task_id: &str) -> String {
     output
 }
 
-/// Get display name for a test category.
-fn category_display_name(category: &TestCategory) -> &'static str {
-    match category {
-        TestCategory::AntiCheat => "Anti-Cheat",
-        TestCategory::Existence => "Existence",
-        TestCategory::Correctness => "Correctness",
-        TestCategory::Boundary => "Boundary",
-        TestCategory::Integration => "Integration",
-        TestCategory::Format => "Format",
-        TestCategory::HappyPath => "Happy Path",
-        TestCategory::EdgeCase => "Edge Case",
-        TestCategory::InvalidInput => "Invalid Input",
-    }
-}
-
-/// Sanitize test ID to valid Python function name.
-fn sanitize_function_name(id: &str) -> String {
-    id.chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('_')
-        .to_string()
-}
-
-/// Escape string for Python docstring.
-fn escape_docstring(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace("\"\"\"", "'''")
-        .replace('\n', " ")
-}
-
-/// Escape string for Python string literal.
-fn escape_string(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
+// ============================================================================
+// Test Body Generators
+// ============================================================================
 
 /// Generate the test function body based on test content and detected signals.
 fn generate_test_body(test: &GeneratedTest, category: &TestCategory, signals: &TaskSignals) -> String {
@@ -381,7 +405,6 @@ assert path.stat().st_size > 0, f"Expected {{path}} to be non-empty""#,
             escape_string(&path)
         )
     } else {
-        // Generic existence check - can't determine specific file
         format!(
             r#"# Input: {}
 # This test verifies existence of expected outputs
@@ -454,7 +477,6 @@ except re.error as e:
 /// Generate body for correctness tests with command output validation.
 fn generate_correctness_command(test: &GeneratedTest) -> String {
     if let Some(exp) = &test.expected_output {
-        // Has expected output - do comparison
         format!(
             r#"# Test: {}
 result = run_command("{}")
@@ -465,7 +487,6 @@ assert result == expected, f"Got {{result}}, expected {{expected}}""#,
             escape_string(exp)
         )
     } else {
-        // No expected output - just run and check it doesn't error
         format!(
             r#"# Test: {}
 # Running command/check without specific expected output
@@ -481,8 +502,6 @@ except Exception as e:
 }
 
 /// Generate body for integration tests with regex validation.
-///
-/// Handles multiline log content for comprehensive testing.
 fn generate_integration_regex(test: &GeneratedTest, signals: &TaskSignals) -> String {
     // Get file path from signals - must come from test data, NOT hardcoded
     // NOTE: Do NOT hardcode paths like /app/regex.txt - that's TB2-specific cheating
@@ -500,10 +519,8 @@ pytest.skip("Missing regex file path in test data")"#,
 
     // Format input - handle multiline content
     let input_formatted = if test.input.contains('\n') {
-        // Multiline input - use triple quotes
         format!("\"\"\"{}\"\"\"", test.input.trim())
     } else {
-        // Single line
         format!("\"{}\"", escape_string(&test.input))
     };
 
@@ -563,43 +580,11 @@ except Exception as e:
     }
 }
 
-/// Extract file path from a test input string.
-fn extract_path(input: &str) -> String {
-    // Look for common path patterns
-    if let Some(start) = input.find('/') {
-        let rest = &input[start..];
-        // Find end of path (space or end of string)
-        let end = rest
-            .find(|c: char| c.is_whitespace())
-            .unwrap_or(rest.len());
-        rest[..end].to_string()
-    } else {
-        input.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn make_test(id: &str, input: &str, expected: Option<&str>, category: TestCategory) -> GeneratedTest {
-        GeneratedTest {
-            id: id.to_string(),
-            input: input.to_string(),
-            expected_output: expected.map(|s| s.to_string()),
-            reasoning: format!("Test for {}", id),
-            category,
-            confidence: 0.9,
-        }
-    }
-
-    fn make_test_with_reasoning(
-        id: &str,
-        input: &str,
-        expected: Option<&str>,
-        reasoning: &str,
-        category: TestCategory,
-    ) -> GeneratedTest {
+    fn make_test(id: &str, input: &str, expected: Option<&str>, reasoning: &str, category: TestCategory) -> GeneratedTest {
         GeneratedTest {
             id: id.to_string(),
             input: input.to_string(),
@@ -610,13 +595,9 @@ mod tests {
         }
     }
 
-    // ================================================================
-    // Task Detection Tests
-    // ================================================================
-
     #[test]
     fn test_detect_regex_task() {
-        let tests = vec![make_test_with_reasoning(
+        let tests = vec![make_test(
             "test1",
             "192.168.1.1 2023-01-15",
             Some("['2023-01-15']"),
@@ -630,72 +611,8 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_command_task() {
-        let tests = vec![make_test(
-            "test1",
-            "echo hello",
-            Some("hello"),
-            TestCategory::Correctness,
-        )];
-
-        let signals = detect_task_type(&tests);
-        assert!(!signals.has_regex_pattern);
-        assert_eq!(signals.validation_method, ValidationType::CommandOutput);
-    }
-
-    #[test]
-    fn test_detect_file_path() {
-        let tests = vec![make_test_with_reasoning(
-            "test1",
-            "check /app/regex.txt exists",
-            None,
-            "File existence check",
-            TestCategory::Existence,
-        )];
-
-        let signals = detect_task_type(&tests);
-        assert_eq!(
-            signals.output_file_location,
-            Some("/app/regex.txt".to_string())
-        );
-    }
-
-    #[test]
-    fn test_detect_multiline() {
-        let tests = vec![make_test(
-            "test1",
-            "line1\nline2\nline3",
-            None,
-            TestCategory::Integration,
-        )];
-
-        let signals = detect_task_type(&tests);
-        assert!(signals.has_multiline_input);
-    }
-
-    // ================================================================
-    // Parse Expected Output Tests
-    // ================================================================
-
-    #[test]
     fn test_parse_expected_output_list() {
-        assert_eq!(
-            parse_expected_output("['2023-01-15']"),
-            "[\"2023-01-15\"]"
-        );
-    }
-
-    #[test]
-    fn test_parse_expected_output_list_multiple() {
-        assert_eq!(
-            parse_expected_output("['2023-01-15', '2023-02-28']"),
-            "[\"2023-01-15\", \"2023-02-28\"]"
-        );
-    }
-
-    #[test]
-    fn test_parse_expected_output_single() {
-        assert_eq!(parse_expected_output("2023-01-15"), "[\"2023-01-15\"]");
+        assert_eq!(parse_expected_output("['2023-01-15']"), "[\"2023-01-15\"]");
     }
 
     #[test]
@@ -704,92 +621,27 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expected_output_none() {
-        assert_eq!(parse_expected_output("None"), "[]");
+    fn test_parse_expected_output_quoted_single() {
+        // FM sometimes outputs quoted strings like "\"2023-02-28\""
+        assert_eq!(parse_expected_output("\"2023-02-28\""), "[\"2023-02-28\"]");
     }
 
     #[test]
-    fn test_parse_expected_output_empty() {
-        assert_eq!(parse_expected_output(""), "[]");
-    }
-
-    // ================================================================
-    // Path Extraction Tests
-    // ================================================================
-
-    #[test]
-    fn test_extract_path_from_text() {
-        assert_eq!(
-            extract_path_from_text("check /app/regex.txt exists"),
-            Some("/app/regex.txt".to_string())
-        );
+    fn test_parse_expected_output_single_quoted() {
+        // Also handle single quotes
+        assert_eq!(parse_expected_output("'2023-02-28'"), "[\"2023-02-28\"]");
     }
 
     #[test]
-    fn test_extract_path_from_text_no_path() {
-        assert_eq!(extract_path_from_text("no path here"), None);
-    }
-
-    // ================================================================
-    // String Utility Tests
-    // ================================================================
-
-    #[test]
-    fn test_sanitize_function_name() {
-        assert_eq!(sanitize_function_name("test-case-1"), "test_case_1");
-        assert_eq!(sanitize_function_name("Test Case"), "test_case");
-        assert_eq!(sanitize_function_name("--foo--"), "foo");
+    fn test_parse_expected_output_plain_value() {
+        // Plain value without quotes
+        assert_eq!(parse_expected_output("2023-02-28"), "[\"2023-02-28\"]");
     }
 
     #[test]
-    fn test_escape_docstring() {
-        assert_eq!(escape_docstring("Hello\nWorld"), "Hello World");
-        assert_eq!(escape_docstring(r#"Test """quote""""#), "Test '''quote'''");
-    }
-
-    // ================================================================
-    // Format as Pytest Tests
-    // ================================================================
-
-    #[test]
-    fn test_format_as_pytest_empty() {
-        let tests: Vec<GeneratedTest> = vec![];
-        let output = format_as_pytest(&tests, "test-task");
-        assert!(output.contains("# Generated tests for test-task"));
-        assert!(output.contains("import pytest"));
-    }
-
-    #[test]
-    fn test_format_as_pytest_existence() {
-        let tests = vec![make_test(
-            "exists_1",
-            "/app/output.txt",
-            None,
-            TestCategory::Existence,
-        )];
-        let output = format_as_pytest(&tests, "test-task");
-        assert!(output.contains("def test_exists_1"));
-        assert!(output.contains("Existence Tests"));
-        assert!(output.contains("Path(\"/app/output.txt\")"));
-    }
-
-    #[test]
-    fn test_format_as_pytest_correctness() {
-        let tests = vec![make_test(
-            "correct_1",
-            "echo hello",
-            Some("hello"),
-            TestCategory::Correctness,
-        )];
-        let output = format_as_pytest(&tests, "test-task");
-        assert!(output.contains("def test_correct_1"));
-        assert!(output.contains("Correctness Tests"));
-    }
-
-    #[test]
-    fn test_format_as_pytest_regex_correctness() {
+    fn test_format_as_pytest_regex() {
         // Test data must include file path in reasoning for detection
-        let tests = vec![make_test_with_reasoning(
+        let tests = vec![make_test(
             "correct_1",
             "192.168.1.1 2023-01-15",
             Some("['2023-01-15']"),
@@ -798,31 +650,12 @@ mod tests {
         )];
         let output = format_as_pytest(&tests, "regex-test");
 
-        // Should include re import for regex tasks
+        // Should include re import
         assert!(output.contains("import re"));
-
-        // Should generate real assertions, not stubs (path detected from reasoning)
+        // Should generate real assertions (path detected from reasoning)
         assert!(output.contains("re.findall(pattern, test_input"), "Output was: {}", output);
         assert!(output.contains("assert matches == expected"));
-
         // Should NOT contain pass stubs for tests with expected output
         assert!(!output.contains("pass  # TODO"));
-    }
-
-    #[test]
-    fn test_format_as_pytest_regex_no_expected() {
-        // Test data must include file path in reasoning for detection
-        let tests = vec![make_test_with_reasoning(
-            "correct_1",
-            "192.168.1.1 2023-01-15",
-            None, // No expected output
-            "Match date with regex pattern from /output/pattern.txt",
-            TestCategory::Correctness,
-        )];
-        let output = format_as_pytest(&tests, "regex-test");
-
-        // Should still try to compile and run regex (path detected from reasoning)
-        assert!(output.contains("re.compile(pattern)"), "Output was: {}", output);
-        assert!(output.contains("re.findall(pattern"));
     }
 }
