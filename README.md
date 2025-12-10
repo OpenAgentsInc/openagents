@@ -2,7 +2,7 @@
 
 > Build agents. Sell compute. Earn bitcoin. **(Work in Progress)**
 
-Commander is a desktop app for training AI agents and selling your spare compute for bitcoin.
+Commander is a desktop app for training and commanding AI agents like MechaCoder, and selling your spare compute for bitcoin.
 
 ## Vision
 
