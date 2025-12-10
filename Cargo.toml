@@ -27,6 +27,8 @@ members = [
     "crates/orchestrator",
     "crates/cli",
     "crates/parallel",
+    "crates/theme",
+    "crates/gym",
 ]
 
 [workspace.lints.rust]

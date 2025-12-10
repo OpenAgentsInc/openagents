@@ -2665,6 +2665,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12101ecc8225ea6d675bc70263074eab6169079621c2186fe0c66590b2df9681"
 
 [[package]]
+name = "gym"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "atif-store",
+ "gpui",
+ "serde",
+ "serde_json",
+ "theme",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
