@@ -2,7 +2,7 @@ mod components;
 mod markdown;
 mod text_input;
 
-use atif::{Agent, Step, Trajectory};
+use atif::{Agent, Step};
 use atif_store::{TrajectoryMetadata, TrajectoryStore};
 use components::render_steps_list;
 use fm_bridge::FMClient;
@@ -111,11 +111,13 @@ enum MessageUpdate {
 
 struct CommanderView {
     input: Entity<TextInput>,
+    #[allow(dead_code)]
     fm_client: Arc<FMClient>,
     store: Arc<Mutex<TrajectoryStore>>,
     current_session_id: Option<String>,
     steps: Vec<Step>,
     expanded_step_ids: HashSet<i64>,
+    #[allow(dead_code)]
     pending_updates: Arc<Mutex<Vec<MessageUpdate>>>,
     is_loading: bool,
     next_step_id: i64,
@@ -124,8 +126,11 @@ struct CommanderView {
     trajectories: Vec<TrajectoryMetadata>,
     selected_trajectory_id: Option<String>,
     sidebar_collapsed: bool,
+    #[allow(dead_code)]
     sidebar_search_query: String,
+    #[allow(dead_code)]
     sidebar_current_page: usize,
+    #[allow(dead_code)]
     sidebar_page_size: usize,
 }
 
@@ -320,6 +325,7 @@ impl CommanderView {
     }
 
     /// Refresh the trajectory list from the store
+    #[allow(dead_code)]
     fn refresh_trajectories(&mut self) {
         self.trajectories = self
             .store

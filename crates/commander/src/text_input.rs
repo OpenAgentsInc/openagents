@@ -47,6 +47,7 @@ impl TextInput {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     pub fn on_submit(mut self, f: impl Fn(String, &mut Context<Self>) + 'static) -> Self {
         self.on_submit = Some(Box::new(f));
         self

@@ -69,14 +69,6 @@ pub enum TrajectoryStatus {
 }
 
 impl TrajectoryStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-        }
-    }
-
     fn from_str(s: &str) -> Self {
         match s {
             "completed" => Self::Completed,

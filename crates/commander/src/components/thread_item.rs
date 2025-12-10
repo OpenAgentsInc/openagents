@@ -3,7 +3,6 @@
 //! Ported from Effuse's atif-thread.ts
 
 use chrono::{DateTime, Utc};
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use theme::{accent, bg, border, category, status, text, FONT_FAMILY};
 

@@ -6173,6 +6173,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tasks"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
