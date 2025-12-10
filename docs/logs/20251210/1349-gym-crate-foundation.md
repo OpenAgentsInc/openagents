@@ -406,3 +406,92 @@ Only expected warnings for stub components.
 **Progress:** Foundation + Core Structure (Track 1: 85% complete)
 **Lines Modified:** ~60 lines in TrajectoryView
 **Time:** 5 minutes (14:00 → 14:05)
+
+---
+
+## Update 14:10 - Track 1 Complete: Keyboard Shortcuts & Actions
+
+### Work Completed
+
+**Added keyboard shortcuts and action system:**
+
+1. **Created actions.rs:**
+   - Defined all Gym actions (SwitchToTrajectories, SwitchToTBCC, SwitchToHillClimber, SwitchToTestGen, ToggleSidebar)
+   - `register_actions()` function for keybindings
+   - Cmd+1/2/3/4 for tab switching
+   - Cmd+\ for sidebar toggle
+
+2. **Integrated Actions into GymScreen:**
+   - Added action handlers for all tab switching
+   - Proper 4-parameter signature: `(&mut self, &Action, &mut Window, &mut Context<Self>)`
+   - Registered handlers in render() using `.on_action(cx.listener(...))`
+   - All actions wired up and functional
+
+3. **Enhanced types.rs:**
+   - Added `TreeItemKind::tab()` helper method
+   - Maps item kinds to corresponding tabs (Session → Trajectories, HCRun → HillClimber, etc.)
+   - Ready for sidebar-to-tab integration
+
+### Build Status
+
+✅ **Compiles cleanly**
+```bash
+$ cargo check -p gym
+    Finished `dev` profile [optimized + debuginfo] target(s) in 8.74s
+```
+
+Only expected warnings for unused variables in stub components.
+
+### Files Created
+
+- `crates/gym/src/actions.rs` - Complete action system with keybindings (~40 lines)
+
+### Files Modified
+
+- `crates/gym/src/lib.rs` - Exported actions module and `register_actions()`
+- `crates/gym/src/gym_screen.rs` - Added 5 action handlers, registered in render()
+- `crates/gym/src/types.rs` - Added `TreeItemKind::tab()` helper
+
+### Keyboard Shortcuts Implemented
+
+| Shortcut | Action |
+|----------|--------|
+| Cmd+1 | Switch to Trajectories tab |
+| Cmd+2 | Switch to TBCC tab |
+| Cmd+3 | Switch to HillClimber tab |
+| Cmd+4 | Switch to TestGen tab |
+| Cmd+\ | Toggle sidebar collapse |
+
+### Technical Notes
+
+**Action System Pattern:**
+- Actions defined in `actions.rs` using `actions!()` macro
+- Handlers registered in `render()` method using `.on_action(cx.listener(Self::method))`
+- Handler signature: `fn handler(&mut self, _: &Action, _window: &mut Window, cx: &mut Context<Self>)`
+- Pattern learned from commander/main.rs and commander/text_input.rs
+
+**Future Work (Track 2+):**
+- Data loading from SQLite stores (trajectories, HC runs, TestGen suites)
+- Sidebar item click → switch to corresponding tab
+- Full TBCC, HillClimber, TestGen implementations
+
+### Track 1 Status: ✅ COMPLETE
+
+**Completed:**
+- ✅ Multi-view shell with 4 tabs
+- ✅ Expandable tree sidebar with sample data
+- ✅ Tab switching (click + keyboard shortcuts)
+- ✅ Sidebar expand/collapse
+- ✅ Status indicators
+- ✅ Complete action system
+- ✅ Professional placeholders for all views
+
+**Ready for Track 2:**
+- TBCC Native GPUI implementation
+- 4 sub-tabs: Dashboard, Task Browser, Run Browser, Settings
+
+**Progress:** Track 1 (Core Structure): 100% complete
+**Lines Added:** ~100 lines (actions + handlers + helpers)
+**Time:** 10 minutes (14:00 → 14:10)
+
+---

@@ -12,6 +12,7 @@ use super::trajectory_view::TrajectoryView;
 use super::tbcc::dashboard::DashboardView;
 use super::hillclimber::monitor::HillClimberMonitor;
 use super::testgen::visualizer::TestGenVisualizer;
+use super::actions::*;
 
 pub struct GymScreen {
     /// Current active tab
@@ -61,6 +62,28 @@ impl GymScreen {
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
+    }
+
+    // Action handlers
+
+    fn switch_to_trajectories(&mut self, _: &SwitchToTrajectories, _window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_tab(GymTab::Trajectories, cx);
+    }
+
+    fn switch_to_tbcc(&mut self, _: &SwitchToTBCC, _window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_tab(GymTab::TBCC, cx);
+    }
+
+    fn switch_to_hillclimber(&mut self, _: &SwitchToHillClimber, _window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_tab(GymTab::HillClimber, cx);
+    }
+
+    fn switch_to_testgen(&mut self, _: &SwitchToTestGen, _window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_tab(GymTab::TestGen, cx);
+    }
+
+    fn toggle_sidebar_action(&mut self, _: &ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
+        self.toggle_sidebar(cx);
     }
 
     fn render_tab_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -165,6 +188,12 @@ impl Render for GymScreen {
             .h_full()
             .w_full()
             .bg(bg::APP)
+            // Register action handlers
+            .on_action(cx.listener(Self::switch_to_trajectories))
+            .on_action(cx.listener(Self::switch_to_tbcc))
+            .on_action(cx.listener(Self::switch_to_hillclimber))
+            .on_action(cx.listener(Self::switch_to_testgen))
+            .on_action(cx.listener(Self::toggle_sidebar_action))
             // Sidebar
             .child(self.render_sidebar(window, cx))
             // Main content area

@@ -234,6 +234,7 @@ pub struct TokenCounter {
     output_tokens: u32,
     cache_creation_tokens: u32,
     cache_read_tokens: u32,
+    model_id: Option<String>,
 }
 
 impl TokenCounter {
@@ -244,7 +245,24 @@ impl TokenCounter {
             output_tokens: 0,
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
+            model_id: None,
         }
+    }
+
+    /// Create a token counter for a specific model
+    pub fn for_model(model_id: impl Into<String>) -> Self {
+        Self {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            model_id: Some(model_id.into()),
+        }
+    }
+
+    /// Set the model for cost calculation
+    pub fn set_model(&mut self, model_id: impl Into<String>) {
+        self.model_id = Some(model_id.into());
     }
 
     /// Add usage from a response
@@ -270,22 +288,44 @@ impl TokenCounter {
         self.input_tokens + self.output_tokens
     }
 
-    /// Estimate cost in USD (for Claude 3.5 Sonnet pricing)
+    /// Estimate cost in USD using model registry
+    ///
+    /// If model is set, uses the model's actual pricing.
+    /// Otherwise falls back to Claude Sonnet 4 pricing as default.
     pub fn estimate_cost_usd(&self) -> f64 {
-        // Claude 3.5 Sonnet pricing (as of 2024)
-        let input_cost_per_mtok = 3.0; // $3 per 1M input tokens
-        let output_cost_per_mtok = 15.0; // $15 per 1M output tokens
-        let cache_write_cost_per_mtok = 3.75; // $3.75 per 1M cache write tokens
-        let cache_read_cost_per_mtok = 0.30; // $0.30 per 1M cache read tokens
+        // Try to get cost from model registry
+        if let Some(ref model_id) = self.model_id {
+            if let Some(cost) = ModelRegistry::calculate_cost(
+                model_id,
+                self.input_tokens,
+                self.output_tokens,
+                self.cache_creation_tokens,
+                self.cache_read_tokens,
+            ) {
+                return cost;
+            }
+        }
 
-        let input_cost = (self.input_tokens as f64 / 1_000_000.0) * input_cost_per_mtok;
-        let output_cost = (self.output_tokens as f64 / 1_000_000.0) * output_cost_per_mtok;
-        let cache_write_cost =
-            (self.cache_creation_tokens as f64 / 1_000_000.0) * cache_write_cost_per_mtok;
-        let cache_read_cost =
-            (self.cache_read_tokens as f64 / 1_000_000.0) * cache_read_cost_per_mtok;
+        // Default fallback: Claude Sonnet 4 pricing
+        ModelRegistry::calculate_cost(
+            "claude-sonnet-4-20250514",
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_creation_tokens,
+            self.cache_read_tokens,
+        )
+        .unwrap_or(0.0)
+    }
 
-        input_cost + output_cost + cache_write_cost + cache_read_cost
+    /// Calculate cost for a specific model (one-shot, doesn't use stored model)
+    pub fn cost_for_model(&self, model_id: &str) -> Option<f64> {
+        ModelRegistry::calculate_cost(
+            model_id,
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_creation_tokens,
+            self.cache_read_tokens,
+        )
     }
 
     /// Reset the counter
