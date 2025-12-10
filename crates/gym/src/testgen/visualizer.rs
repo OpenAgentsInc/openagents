@@ -44,11 +44,11 @@ pub struct TestGenSession {
 
 /// Main TestGen Visualizer view
 pub struct TestGenVisualizer {
-    session: Option<TestGenSession>,
+    pub session: Option<TestGenSession>,
     category_progress: Entity<CategoryProgress>,
     test_list: Entity<TestList>,
     test_detail: Entity<TestDetail>,
-    selected_test_id: Option<String>,
+    pub selected_test_id: Option<String>,
     focus_handle: FocusHandle,
 }
 

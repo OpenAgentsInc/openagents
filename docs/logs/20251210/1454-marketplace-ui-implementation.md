@@ -145,11 +145,14 @@ All views use mock data for UI development:
 
 ## Visual Design
 
-Following StarCraft/Factorio HUD inspiration:
-- Berkeley Mono font throughout
-- Dark theme with subtle borders
-- Status colors from theme (SUCCESS green, ERROR red)
-- Consistent spacing (8px, 12px, 16px, 20px grid)
+**Bloomberg Terminal style:**
+- **No emojis** - text labels only (RTG, INST, TB, EARN, etc.)
+- **Dense layouts** - tighter padding (8px, 4px), smaller fonts (9-11px)
+- **Sharp corners** - no rounded corners anywhere
+- **Color semantics**: Yellow = primary/highlight, Green = positive/success, Red = negative/error, Orange = trending/hot
+- **Monospace throughout** - Berkeley Mono
+- **Instrument panel feel** - function over aesthetics
+- **Single-line items** - transactions and notifications are dense rows, not cards
 
 ## Next Steps
 

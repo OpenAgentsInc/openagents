@@ -1,4 +1,5 @@
 //! Agent grid component - Grid layout of agent cards
+//! Bloomberg-style: dense, text-first, no emojis
 
 use gpui::*;
 use theme::{bg, border, text, FONT_FAMILY};
@@ -7,7 +8,7 @@ use crate::types::{AgentListing, AgentCategory, AgentSortOption, TrustTier};
 use crate::text_input::TextInput;
 use super::agent_card::render_agent_card;
 
-/// Render the search bar with a real TextInput
+/// Render the search bar with a real TextInput - Bloomberg style
 pub fn render_search_bar_with_input(
     search_input: Entity<TextInput>,
     selected_category: AgentCategory,
@@ -17,131 +18,134 @@ pub fn render_search_bar_with_input(
         .w_full()
         .flex()
         .items_center()
-        .gap(px(12.0))
-        .p(px(16.0))
-        // Search input - real text input!
-        .child(
-            div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(12.0))
-                .py(px(10.0))
-                .bg(bg::ELEVATED)
-                .border_1()
-                .border_color(border::DEFAULT)
-                .rounded(px(6.0))
-                .child(
-                    div()
-                        .text_size(px(14.0))
-                        .child("🔍"),
-                )
-                .child(search_input),
-        )
-        // Category filter
-        .child(render_dropdown("category", "Category", selected_category.label()))
-        // Sort dropdown
-        .child(render_dropdown("sort", "Sort", selected_sort.label()))
-}
-
-/// Render a dropdown filter
-fn render_dropdown(id: &str, label: &str, value: &str) -> impl IntoElement {
-    div()
-        .id(SharedString::from(format!("dropdown-{}", id)))
-        .flex()
-        .items_center()
         .gap(px(8.0))
         .px(px(12.0))
-        .py(px(10.0))
-        .bg(bg::ELEVATED)
-        .border_1()
+        .py(px(8.0))
+        .bg(bg::SURFACE)
+        .border_b_1()
         .border_color(border::DEFAULT)
-        .rounded(px(6.0))
-        .cursor_pointer()
-        .hover(|s| s.bg(bg::HOVER).border_color(border::SELECTED))
+        // Search input - Bloomberg command bar style
         .child(
             div()
                 .text_size(px(11.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::MUTED)
-                .child(label.to_string()),
+                .child("SEARCH:"),
         )
         .child(
             div()
-                .text_size(px(12.0))
-                .font_family(FONT_FAMILY)
-                .text_color(text::PRIMARY)
-                .child(value.to_string()),
-        )
-        .child(
-            div()
-                .text_size(px(10.0))
-                .text_color(text::MUTED)
-                .child("▼"),
-        )
-}
-
-/// Render the trending agents horizontal strip
-pub fn render_trending_strip(agents: &[AgentListing]) -> impl IntoElement {
-    div()
-        .w_full()
-        .flex()
-        .flex_col()
-        .gap(px(8.0))
-        .px(px(16.0))
-        .child(
-            div()
+                .flex_1()
                 .flex()
                 .items_center()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .text_size(px(14.0))
-                        .child("🔥"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .child("HOT THIS WEEK"),
-                ),
+                .px(px(8.0))
+                .py(px(4.0))
+                .bg(bg::ELEVATED)
+                .border_1()
+                .border_color(border::DEFAULT)
+                // No rounded corners
+                .child(search_input),
         )
-        .child(
-            div()
-                .id("trending-strip")
-                .flex()
-                .gap(px(8.0))
-                .overflow_x_scroll()
-                .children(agents.iter().take(5).map(|agent| {
-                    render_trending_chip(&agent.name)
-                })),
-        )
+        // Category filter
+        .child(render_dropdown("CAT", selected_category.label()))
+        // Sort dropdown
+        .child(render_dropdown("SORT", selected_sort.label()))
 }
 
-/// Render a trending agent chip
-fn render_trending_chip(name: &str) -> impl IntoElement {
+/// Render a dropdown filter - Bloomberg style
+fn render_dropdown(label: &str, value: &str) -> impl IntoElement {
     div()
-        .flex_shrink_0()
-        .px(px(12.0))
-        .py(px(6.0))
-        .bg(bg::CARD)
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .px(px(8.0))
+        .py(px(4.0))
+        .bg(bg::ELEVATED)
         .border_1()
         .border_color(border::DEFAULT)
-        .rounded(px(16.0))
         .cursor_pointer()
         .hover(|s| s.bg(bg::HOVER).border_color(border::SELECTED))
         .child(
             div()
-                .text_size(px(12.0))
+                .text_size(px(10.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
+                .child(format!("{}:", label)),
+        )
+        .child(
+            div()
+                .text_size(px(10.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
+                .child(value.to_string()),
+        )
+}
+
+/// Render the trending agents horizontal strip - Bloomberg style
+pub fn render_trending_strip(agents: &[AgentListing]) -> impl IntoElement {
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(12.0))
+        .py(px(6.0))
+        .bg(bg::PANEL)
+        .border_b_1()
+        .border_color(border::DEFAULT)
+        // Label
+        .child(
+            div()
+                .text_size(px(10.0))
+                .font_family(FONT_FAMILY)
+                .text_color(Hsla { h: 0.08, s: 0.9, l: 0.5, a: 1.0 })  // Orange for "hot"
+                .child("TRENDING:"),
+        )
+        // Trending items - horizontal list
+        .child(
+            div()
+                .id("trending-strip")
+                .flex()
+                .gap(px(6.0))
+                .overflow_x_scroll()
+                .children(agents.iter().take(6).enumerate().map(|(i, agent)| {
+                    render_trending_item(i + 1, &agent.name)
+                })),
+        )
+}
+
+/// Render a trending agent item - Bloomberg style (numbered list)
+fn render_trending_item(rank: usize, name: &str) -> impl IntoElement {
+    div()
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .px(px(6.0))
+        .py(px(2.0))
+        .bg(bg::CARD)
+        .border_1()
+        .border_color(border::SUBTLE)
+        .cursor_pointer()
+        .hover(|s| s.bg(bg::HOVER).border_color(border::SELECTED))
+        // Rank number
+        .child(
+            div()
+                .text_size(px(9.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::DIM)
+                .child(format!("{}.", rank)),
+        )
+        // Name
+        .child(
+            div()
+                .text_size(px(10.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::PRIMARY)
                 .child(name.to_string()),
         )
 }
 
-/// Render the agent grid
+/// Render the agent grid - denser layout
 pub fn render_agent_grid(
     agents: &[AgentListing],
     selected_agent_id: Option<&str>,
@@ -150,17 +154,17 @@ pub fn render_agent_grid(
         .id("agent-grid")
         .flex_1()
         .w_full()
-        .p(px(16.0))
+        .p(px(8.0))  // Tighter padding
         .overflow_y_scroll()
         .child(
             div()
                 .flex()
                 .flex_wrap()
-                .gap(px(16.0))
+                .gap(px(8.0))  // Tighter gap
                 .children(agents.iter().map(|agent| {
                     let is_selected = selected_agent_id.map_or(false, |id| id == agent.id);
                     div()
-                        .w(px(280.0))
+                        .w(px(200.0))  // Narrower cards
                         .child(render_agent_card(agent, is_selected))
                 })),
         )

@@ -19,6 +19,7 @@ use std::time::Duration;
 use text_input::TextInput;
 use theme::{bg, border, input, status, text, FONT_FAMILY};
 use marketplace::MarketplaceScreen;
+use gym::GymScreen;
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle
@@ -152,6 +153,8 @@ struct CommanderView {
     sidebar_page_size: usize,
     // Marketplace screen
     marketplace_screen: Entity<MarketplaceScreen>,
+    // Gym screen (TBCC, Trajectories, HillClimber, TestGen)
+    gym_screen: Entity<GymScreen>,
 }
 
 impl CommanderView {
@@ -331,6 +334,9 @@ impl CommanderView {
         // Create marketplace screen
         let marketplace_screen = cx.new(|cx| MarketplaceScreen::new(cx));
 
+        // Create gym screen (TBCC, Trajectories, HillClimber, TestGen)
+        let gym_screen = cx.new(|cx| GymScreen::new(cx));
+
         Self {
             current_screen: Screen::Gym,
             focus_handle: cx.focus_handle(),
@@ -352,6 +358,7 @@ impl CommanderView {
             sidebar_current_page: 0,
             sidebar_page_size: 20,
             marketplace_screen,
+            gym_screen,
         }
     }
 
@@ -573,88 +580,9 @@ impl CommanderView {
             )
     }
 
-    /// Render the Gym screen (formerly Commander - showing trajectories and chat)
-    fn render_gym_screen(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Build step elements with click handlers
-        let step_elements: Vec<AnyElement> = self
-            .steps
-            .iter()
-            .map(|step| self.render_step_with_click(step, cx).into_any_element())
-            .collect();
-
-        div()
-            .flex_1()
-            .h_full()
-            .flex()
-            .flex_col()
-            // Messages area
-            .child(
-                div()
-                    .id("gym-messages-scroll")
-                    .flex_1()
-                    .w_full()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(
-                        div()
-                            .w_full()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .child(
-                                div()
-                                    .id("gym-steps")
-                                    .flex()
-                                    .flex_col()
-                                    .w_full()
-                                    .max_w(px(768.0))
-                                    .p(px(20.0))
-                                    .gap(px(16.0))
-                                    // Render ATIF steps with click handlers
-                                    .children(step_elements)
-                                    // Loading indicator
-                                    .children(if self.is_loading {
-                                        Some(
-                                            div()
-                                                .w_full()
-                                                .max_w(px(768.0))
-                                                .text_color(text::MUTED)
-                                                .font_family(FONT_FAMILY)
-                                                .text_size(px(14.0))
-                                                .line_height(px(22.0))
-                                                .child("..."),
-                                        )
-                                    } else {
-                                        None
-                                    }),
-                            ),
-                    ),
-            )
-            // Input area
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .justify_center()
-                    .pb(px(20.0))
-                    .px(px(20.0))
-                    .child(
-                        div()
-                            .w(px(768.0))
-                            .h(px(44.0))
-                            .bg(input::BG)
-                            .border_1()
-                            .border_color(input::BORDER)
-                            .px(px(12.0))
-                            .flex()
-                            .items_center()
-                            .text_color(text::BRIGHT)
-                            .font_family(FONT_FAMILY)
-                            .text_size(px(14.0))
-                            .line_height(px(20.0))
-                            .child(self.input.clone()),
-                    ),
-            )
+    /// Render the Gym screen (TBCC, Trajectories, HillClimber, TestGen)
+    fn render_gym_screen(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.gym_screen.clone()
     }
 
     /// Render the Compute screen

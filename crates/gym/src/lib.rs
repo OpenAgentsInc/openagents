@@ -31,3 +31,7 @@ pub use sidebar::Sidebar;
 pub use trajectory_view::TrajectoryView;
 pub use types::{GymTab, TreeNode, TreeItemKind, ItemStatus};
 pub use actions::register_actions;
+
+// Tests
+#[cfg(test)]
+mod tests;
