@@ -594,6 +594,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "atif-store"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "atomic"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,6 +1225,9 @@ dependencies = [
 name = "commander"
 version = "0.1.0"
 dependencies = [
+ "atif",
+ "atif-store",
+ "chrono",
  "fm-bridge",
  "gpui",
  "pulldown-cmark",
