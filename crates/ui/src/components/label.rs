@@ -11,6 +11,7 @@ use theme::ui::label;
 /// Label::new("Email address")
 /// Label::new("Password").disabled(true)
 /// ```
+#[derive(IntoElement)]
 pub struct Label {
     text: SharedString,
     disabled: bool,

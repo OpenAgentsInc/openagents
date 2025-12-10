@@ -2,7 +2,7 @@
 
 use gpui::*;
 use ui::{
-    Button, ButtonVariant, ButtonSize,
+    Button, ButtonVariant,
     Label, Separator, Kbd, Skeleton, Spinner,
     Progress, Checkbox, Switch,
 };

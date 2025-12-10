@@ -12,6 +12,7 @@ use theme::ui::kbd;
 /// Kbd::new("Enter")
 /// Kbd::new("Ctrl+C")
 /// ```
+#[derive(IntoElement)]
 pub struct Kbd {
     text: SharedString,
 }

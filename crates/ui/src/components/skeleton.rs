@@ -11,6 +11,7 @@ use theme::ui::skeleton;
 /// Skeleton::new().w(px(100.0)).h(px(20.0))
 /// Skeleton::new().rounded_full()  // For circular avatars
 /// ```
+#[derive(IntoElement)]
 pub struct Skeleton {
     width: Option<Pixels>,
     height: Option<Pixels>,

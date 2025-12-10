@@ -12,7 +12,7 @@ use chrono::Utc;
 use commander::components::{
     render_category_badge, render_complete_item, render_confidence_bar, render_error_item,
     render_metrics, render_observation, render_progress_item, render_reflection_item,
-    render_source_badge, render_step, render_step_header, render_test_item_details,
+    render_source_badge, render_step_details, render_step_row, render_test_item_details,
     render_test_item_header, render_tool_call, render_tool_calls, render_trajectory_detail,
     render_trajectory_item, render_trajectory_list, CompleteData, ErrorData, ProgressData,
     ReflectionAction, ReflectionData, TestCategory, TestData,
@@ -268,17 +268,17 @@ fn render_step_views_section() -> impl IntoElement {
         .child(
             Story::column()
                 .child(Story::label("Headers (Collapsed)"))
-                .child(render_step_header(&user_step, false))
-                .child(render_step_header(&agent_step, false))
-                .child(render_step_header(&system_step, false)),
+                .child(render_step_row(&user_step, false))
+                .child(render_step_row(&agent_step, false))
+                .child(render_step_row(&system_step, false)),
         )
         .child(Story::divider())
         .child(
             Story::column()
                 .child(Story::label("Full Step (Expanded)"))
-                .child(render_step(&user_step, true))
-                .child(render_step(&agent_step, true))
-                .child(render_step(&agent_with_reasoning, true)),
+                .child(render_step_details(&user_step))
+                .child(render_step_details(&agent_step))
+                .child(render_step_details(&agent_with_reasoning)),
         )
 }
 

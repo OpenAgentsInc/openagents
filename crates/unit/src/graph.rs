@@ -453,10 +453,12 @@ impl Primitive for Graph {
 }
 
 /// Builder for creating Graph instances
+#[allow(dead_code)]
 pub struct GraphBuilder {
     graph: Graph,
 }
 
+#[allow(dead_code)]
 impl GraphBuilder {
     pub fn new(id: impl Into<String>) -> Self {
         Self {

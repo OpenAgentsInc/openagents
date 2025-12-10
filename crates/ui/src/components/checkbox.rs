@@ -11,6 +11,7 @@ use theme::ui::checkbox;
 /// Checkbox::new().checked(true)
 /// Checkbox::new().on_change(|checked, _, _| println!("{}", checked))
 /// ```
+#[derive(IntoElement)]
 pub struct Checkbox {
     checked: bool,
     disabled: bool,

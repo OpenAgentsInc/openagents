@@ -4,8 +4,6 @@
 
 use gpui::{Entity, TestAppContext};
 use gym::hillclimber::monitor::{HillClimberMonitor, HCSession, HCSessionStatus, HCMode};
-use gym::hillclimber::workflow_graph::NodeStatus;
-use gym::hillclimber::test_results::TestOutcome;
 
 /// Page Object Model fixture for HillClimberMonitor
 pub struct HillClimberFixture;
