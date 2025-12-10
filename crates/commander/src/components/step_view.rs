@@ -4,7 +4,6 @@
 //! Displays step-by-step details including tool calls, observations, and metrics.
 
 use atif::{Metrics, Observation, Step, StepSource, ToolCall};
-use chrono::{DateTime, Utc};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use theme::{accent, bg, border, source, status, text, FONT_FAMILY};
@@ -25,16 +24,6 @@ pub fn source_badge_colors(source: &StepSource) -> (Hsla, Hsla, Hsla) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Format timestamp as HH:MM:SS
-fn format_timestamp(dt: DateTime<Utc>) -> String {
-    dt.format("%H:%M:%S").to_string()
-}
-
-/// Format optional timestamp
-fn format_optional_timestamp(dt: Option<DateTime<Utc>>) -> String {
-    dt.map(format_timestamp).unwrap_or_else(|| "--:--:--".to_string())
-}
 
 /// Format JSON value for display (truncated if too long)
 fn format_json(value: &serde_json::Value, max_len: usize) -> String {
@@ -76,7 +65,7 @@ pub fn render_source_badge(source: &StepSource) -> impl IntoElement {
         .text_color(text)
         .border_1()
         .border_color(border)
-        
+
         .flex_shrink_0()
         .child(label)
 }
@@ -92,7 +81,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
         .bg(bg::ELEVATED)
         .border_1()
         .border_color(border::DEFAULT)
-        
+
         .mb(px(8.0))
         .child(
             div()
@@ -124,7 +113,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
             div()
                 .p(px(8.0))
                 .bg(bg::SURFACE)
-                
+
                 .text_size(px(12.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::SECONDARY)
@@ -157,7 +146,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                         .font_family(FONT_FAMILY)
                         .bg(accent::SECONDARY_MUTED)
                         .text_color(accent::SECONDARY)
-                        
+
                         .child(format!("{}", tool_calls.len())),
                 ),
         )
@@ -185,7 +174,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                 .bg(bg::ELEVATED)
                 .border_1()
                 .border_color(border::DEFAULT)
-                
+
                 .mb(px(8.0))
                 .when_some(result.source_call_id.as_ref(), |el, call_id| {
                     el.child(
@@ -333,108 +322,6 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
 }
 
 // ============================================================================
-// Step Header Rendering
-// ============================================================================
-
-/// Render step header (collapsed view)
-pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
-    let tool_count = step.tool_calls.as_ref().map(|tc| tc.len()).unwrap_or(0);
-
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .px(px(16.0))
-        .py(px(10.0))
-        .bg(bg::CARD)
-        .hover(|s| s.bg(bg::HOVER))
-        .cursor_pointer()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(12.0))
-                .flex_1()
-                .min_w_0()
-                // Step ID
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .flex_shrink_0()
-                        .child(format!("#{}", step.step_id)),
-                )
-                // Source badge
-                .child(render_source_badge(&step.source))
-                // Timestamp
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .flex_shrink_0()
-                        .child(format_optional_timestamp(step.timestamp)),
-                )
-                // Model (if agent)
-                .when_some(step.model_name.as_ref(), |el, model| {
-                    el.child(
-                        div()
-                            .text_size(px(10.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(text::DISABLED)
-                            .child(truncate(model, 20)),
-                    )
-                })
-                // Tool count (if any)
-                .when(tool_count > 0, |el| {
-                    el.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .text_color(accent::SECONDARY)
-                                    .text_size(px(12.0))
-                                    .child("🔧"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_family(FONT_FAMILY)
-                                    .text_color(accent::SECONDARY)
-                                    .child(format!(
-                                        "{} tool{}",
-                                        tool_count,
-                                        if tool_count == 1 { "" } else { "s" }
-                                    )),
-                            ),
-                    )
-                })
-                // Message preview (truncated)
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::SECONDARY)
-                        .truncate()
-                        .flex_1()
-                        .min_w_0()
-                        .child(truncate(&step.message, 60)),
-                ),
-        )
-        // Expand/collapse indicator
-        .child(
-            div()
-                .text_color(text::MUTED)
-                .flex_shrink_0()
-                .ml(px(8.0))
-                .child(if is_expanded { "▲" } else { "▼" }),
-        )
-}
-
-// ============================================================================
 // Step Details Rendering (Expanded)
 // ============================================================================
 
@@ -464,7 +351,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                         .bg(bg::SURFACE)
                         .border_1()
                         .border_color(border::DEFAULT)
-                        
+
                         .text_size(px(13.0))
                         .font_family(FONT_FAMILY)
                         .text_color(text::PRIMARY)
@@ -491,7 +378,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                             .bg(status::INFO_BG)
                             .border_1()
                             .border_color(status::INFO_BORDER)
-                            
+
                             .text_size(px(13.0))
                             .font_family(FONT_FAMILY)
                             .text_color(accent::PRIMARY)
@@ -520,32 +407,4 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
         .when_some(step.metrics.as_ref(), |el, metrics| {
             el.child(render_metrics(metrics))
         })
-}
-
-// ============================================================================
-// Full Step Rendering
-// ============================================================================
-
-/// Render a complete step (header + optional details)
-pub fn render_step(step: &Step, is_expanded: bool) -> impl IntoElement {
-    div()
-        .border_b_1()
-        .border_color(border::DEFAULT)
-        .child(render_step_header(step, is_expanded))
-        .when(is_expanded, |el| el.child(render_step_details(step)))
-}
-
-// ============================================================================
-// Steps List Rendering
-// ============================================================================
-
-/// Render a list of steps with expansion state
-pub fn render_steps_list(steps: &[Step], expanded_step_ids: &std::collections::HashSet<i64>) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .children(steps.iter().map(|step| {
-            let is_expanded = expanded_step_ids.contains(&step.step_id);
-            render_step(step, is_expanded)
-        }))
 }

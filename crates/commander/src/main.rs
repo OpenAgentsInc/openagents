@@ -107,8 +107,8 @@ fn get_trajectories_db_path() -> PathBuf {
 /// The current screen/view in the application
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Screen {
-    #[default]
     Commander,
+    #[default]
     Gym,
     Compute,
     Wallet,
@@ -326,7 +326,7 @@ impl CommanderView {
             .collect();
 
         Self {
-            current_screen: Screen::Commander,
+            current_screen: Screen::Gym,
             focus_handle: cx.focus_handle(),
             input,
             fm_client,
@@ -934,7 +934,7 @@ impl CommanderView {
                             ),
                     ),
             )
-            // Main Canvas Area (Factorio-inspired factory view)
+            // Main Canvas Area (Factorio-inspired factory view with dot grid)
             .child(
                 div()
                     .id("hud-canvas")
@@ -942,47 +942,37 @@ impl CommanderView {
                     .w_full()
                     .relative()
                     .bg(hsla(0.0, 0.0, 0.0, 1.0))
-                    // Grid background (dots pattern)
-                    .child(
-                        div()
+                    // Dot grid pattern - render grid dots manually
+                    .child({
+                        let mut grid_container = div()
                             .absolute()
                             .inset_0()
-                            .child(
-                                div()
-                                    .size_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .items_center()
-                                            .gap(px(16.0))
-                                            .child(
-                                                div()
-                                                    .text_size(px(24.0))
-                                                    .font_family(FONT_FAMILY)
-                                                    .text_color(text::PRIMARY)
-                                                    .child("⚡ COMMAND & CONTROL"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(14.0))
-                                                    .font_family(FONT_FAMILY)
-                                                    .text_color(text::MUTED)
-                                                    .child("Visual agent management interface"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(12.0))
-                                                    .font_family(FONT_FAMILY)
-                                                    .text_color(text::DISABLED)
-                                                    .child("Press Cmd+2 for Gym (training interface)"),
-                                            ),
-                                    ),
-                            ),
-                    ),
+                            .overflow_hidden();
+
+                        // Create a grid of dots (20px spacing)
+                        // For performance, we'll render a reasonable number of dots
+                        let dot_spacing = 20.0;
+                        let canvas_width = 1200.0; // Approximate canvas width
+                        let canvas_height = 800.0; // Approximate canvas height
+                        let cols = (canvas_width / dot_spacing) as i32;
+                        let rows = (canvas_height / dot_spacing) as i32;
+
+                        for row in 0..rows {
+                            for col in 0..cols {
+                                grid_container = grid_container.child(
+                                    div()
+                                        .absolute()
+                                        .left(px(col as f32 * dot_spacing))
+                                        .top(px(row as f32 * dot_spacing))
+                                        .w(px(1.0))
+                                        .h(px(1.0))
+                                        .bg(hsla(0.0, 0.0, 1.0, 0.05))
+                                );
+                            }
+                        }
+
+                        grid_container
+                    }),
             )
             // Bottom Panel (StarCraft-inspired selection panel)
             .child(
@@ -1286,7 +1276,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("OpenAgents Commander".into()),
+                        title: Some("OpenAgents Gym".into()),
                         ..Default::default()
                     }),
                     focus: true,
