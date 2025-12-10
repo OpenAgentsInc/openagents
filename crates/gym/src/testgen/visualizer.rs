@@ -189,6 +189,35 @@ impl TestGenVisualizer {
             self.generation_status = GenerationStatus::Idle;
             // Clear previous session when new task selected
             self.session = None;
+
+            // Clear current tests
+            self.generated_tests.clear();
+            self.test_list.update(cx, |list, _cx| {
+                list.clear_tests();
+            });
+            self.test_detail.update(cx, |detail, _cx| {
+                detail.set_test(None);
+            });
+
+            // Try to load previous generation
+            let task = &self.available_tasks[idx];
+            if let Some(saved) = load_latest_generation(&task.id) {
+                // Update status to show we have previous results
+                self.generation_status = GenerationStatus::Complete {
+                    total_tests: saved.total_tests as u32,
+                    duration_ms: 0, // Unknown for loaded results
+                };
+
+                // Populate test list with saved tests
+                for test in &saved.tests {
+                    let test_case = convert_generated_test(test);
+                    self.test_list.update(cx, |list, _cx| {
+                        list.add_test(test_case);
+                    });
+                }
+                self.generated_tests = saved.tests;
+            }
+
             cx.notify();
         }
     }
