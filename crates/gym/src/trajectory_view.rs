@@ -19,6 +19,7 @@ pub struct TrajectoryView {
     /// Steps for selected trajectory
     selected_steps: Vec<Step>,
     /// Loading state
+    #[allow(dead_code)]
     loading: bool,
     /// Focus handle
     focus_handle: FocusHandle,
@@ -81,9 +82,10 @@ impl TrajectoryView {
         dt.format("%m-%d %H:%M").to_string()
     }
 
-    fn render_trajectory_item(&self, traj: &TrajectoryMetadata) -> impl IntoElement {
+    fn render_trajectory_item(&self, traj: &TrajectoryMetadata, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_id.as_ref() == Some(&traj.session_id);
         let (status_color, status_bg) = self.status_color(traj.status);
+        let session_id_for_click = traj.session_id.clone();
 
         let status_label = match traj.status {
             TrajectoryStatus::Completed => "done",
@@ -106,6 +108,9 @@ impl TrajectoryView {
                 el.bg(bg::ROW)
                     .hover(|el| el.bg(bg::HOVER))
             })
+            .on_click(cx.listener(move |this, _event, _window, cx| {
+                this.select_trajectory(session_id_for_click.clone(), cx);
+            }))
             .child(
                 div()
                     .flex()
@@ -163,13 +168,18 @@ impl TrajectoryView {
             )
     }
 
-    fn render_trajectory_list(&self, _cx: &mut Context<Self>) -> impl IntoElement {
-        // Pre-render items before closures to avoid borrow issues
-        let items: Vec<_> = self.trajectories.iter()
-            .map(|t| self.render_trajectory_item(t))
-            .collect();
+    fn render_trajectory_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let is_empty = self.trajectories.is_empty();
         let count = self.trajectories.len();
+
+        // Pre-render items to avoid borrow issues in closures
+        let items: Vec<AnyElement> = if !is_empty {
+            self.trajectories.clone().iter()
+                .map(|t| self.render_trajectory_item(t, cx).into_any_element())
+                .collect()
+        } else {
+            vec![]
+        };
 
         div()
             .w(px(300.0))
@@ -226,6 +236,7 @@ impl TrajectoryView {
                         el.children(items)
                     })
             )
+            .into_any_element()
     }
 
     fn render_step(&self, step: &Step, index: usize) -> impl IntoElement {
@@ -424,14 +435,18 @@ impl Focusable for TrajectoryView {
 
 impl Render for TrajectoryView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Render components
+        let list = self.render_trajectory_list(cx);
+        let detail = self.render_detail_view();
+
         div()
             .flex()
             .h_full()
             .w_full()
             .bg(bg::APP)
             // Left panel: Trajectory list
-            .child(self.render_trajectory_list(cx))
+            .child(list)
             // Right panel: Detail view
-            .child(self.render_detail_view())
+            .child(detail)
     }
 }
