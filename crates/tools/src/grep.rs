@@ -119,9 +119,11 @@ impl GrepTool {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                // Skip hidden files and directories
                 let entry_path = entry.path();
-                if Self::is_hidden_or_ignored(entry_path) {
+                let relative_path = entry_path.strip_prefix(path).unwrap_or(entry_path);
+
+                // Skip hidden files and directories (check relative path only)
+                if Self::is_hidden_or_ignored(relative_path) {
                     continue;
                 }
 
@@ -131,11 +133,7 @@ impl GrepTool {
                 }
 
                 files_searched += 1;
-                let relative = entry_path
-                    .strip_prefix(path)
-                    .unwrap_or(entry_path)
-                    .to_string_lossy()
-                    .to_string();
+                let relative = relative_path.to_string_lossy().to_string();
 
                 Self::search_file(entry_path, &relative, &regex, &mut matches, max)?;
 
@@ -246,7 +244,6 @@ impl GrepTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use tempfile::TempDir;
 
     fn create_test_files(dir: &TempDir) {

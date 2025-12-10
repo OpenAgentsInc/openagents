@@ -194,8 +194,8 @@ impl FindTool {
         })
     }
 
-    /// Check if a path is hidden
-    fn is_hidden(path: &Path) -> bool {
+    /// Check if a relative path contains hidden components
+    fn is_hidden_relative(path: &Path) -> bool {
         for component in path.components() {
             if let std::path::Component::Normal(name) = component {
                 let name_str = name.to_string_lossy();
@@ -258,8 +258,13 @@ impl FindTool {
 
             entries_visited += 1;
 
-            // Skip hidden unless requested
-            if !include_hidden && Self::is_hidden(entry.path()) {
+            let relative_path = entry
+                .path()
+                .strip_prefix(path)
+                .unwrap_or(entry.path());
+
+            // Skip hidden unless requested (check relative path only)
+            if !include_hidden && Self::is_hidden_relative(relative_path) {
                 continue;
             }
 
@@ -268,12 +273,7 @@ impl FindTool {
                 directories_visited += 1;
             }
 
-            let mut relative = entry
-                .path()
-                .strip_prefix(path)
-                .unwrap_or(entry.path())
-                .to_string_lossy()
-                .to_string();
+            let mut relative = relative_path.to_string_lossy().to_string();
 
             // Append / to directories
             if is_dir {

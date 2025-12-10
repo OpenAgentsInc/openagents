@@ -1,0 +1,25 @@
+[package]
+name = "llm"
+description = "Multi-provider LLM abstraction layer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+thiserror = { workspace = true }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true, features = ["serde"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
+
+[lints.rust]
+unexpected_cfgs = "allow"

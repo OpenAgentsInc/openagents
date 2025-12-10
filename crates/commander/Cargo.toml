@@ -7,7 +7,7 @@ description = "Commander - Desktop UI for OpenAgents swarm compute network"
 license = "CC-0"
 
 [[bin]]
-name = "commander"
+name = "openagents"
 path = "src/main.rs"
 
 [dependencies]

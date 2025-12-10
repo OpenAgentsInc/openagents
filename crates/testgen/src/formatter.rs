@@ -142,6 +142,26 @@ pub fn extract_path_from_text(text: &str) -> Option<String> {
     path_regex.find(text).map(|m| m.as_str().to_string())
 }
 
+/// Convert Docker paths to relative paths for local execution.
+///
+/// Terminal-Bench tasks use `/app/` as the container working directory.
+/// When running locally, we need to convert these to relative paths
+/// since pytest runs from the workspace directory.
+///
+/// Examples:
+/// - `/app/regex.txt` -> `regex.txt`
+/// - `/app/subdir/file.py` -> `subdir/file.py`
+/// - `/other/path.txt` -> `/other/path.txt` (unchanged, absolute path outside /app/)
+pub fn docker_path_to_relative(path: &str) -> String {
+    if path.starts_with("/app/") {
+        // Strip /app/ prefix - pytest runs from workspace which maps to /app/
+        path[5..].to_string()
+    } else {
+        // Keep other paths as-is
+        path.to_string()
+    }
+}
+
 /// Parse expected output string into Python list format.
 ///
 /// Handles various formats:
@@ -439,12 +459,15 @@ fn generate_existence_body(test: &GeneratedTest, signals: &TaskSignals) -> Strin
         extract_path(&test.input)
     };
 
+    // Convert Docker paths to relative for local execution
+    let relative_path = docker_path_to_relative(&path);
+
     if !path.is_empty() && path.contains('/') {
         format!(
             r#"path = Path("{}")
 assert path.exists(), f"Expected {{path}} to exist"
 assert path.stat().st_size > 0, f"Expected {{path}} to be non-empty""#,
-            escape_string(&path)
+            escape_string(&relative_path)
         )
     } else {
         format!(
@@ -473,8 +496,9 @@ pass  # Anti-cheat validation happens at runtime"#,
 fn generate_correctness_regex(test: &GeneratedTest, signals: &TaskSignals) -> String {
     // Get file path from signals - must come from test data, NOT hardcoded
     // NOTE: Do NOT hardcode paths like /app/regex.txt - that's TB2-specific cheating
+    // Convert Docker paths to relative for local execution
     let file_path = match &signals.output_file_location {
-        Some(p) => p.as_str(),
+        Some(p) => docker_path_to_relative(p),
         None => {
             // No path found in test data - generate a skip
             return format!(
@@ -495,7 +519,7 @@ test_input = "{}"
 matches = re.findall(pattern, test_input, re.MULTILINE)
 expected = {}
 assert matches == expected, f"Expected {{expected}}, got {{matches}}""#,
-            escape_string(file_path),
+            escape_string(&file_path),
             escape_string(&test.input),
             expected_parsed
         )
@@ -510,7 +534,7 @@ try:
     # Pattern compiled and executed successfully
 except re.error as e:
     pytest.fail(f"Invalid regex pattern: {{e}}")"#,
-            escape_string(file_path),
+            escape_string(&file_path),
             escape_string(&test.input)
         )
     }
@@ -547,8 +571,9 @@ except Exception as e:
 fn generate_integration_regex(test: &GeneratedTest, signals: &TaskSignals) -> String {
     // Get file path from signals - must come from test data, NOT hardcoded
     // NOTE: Do NOT hardcode paths like /app/regex.txt - that's TB2-specific cheating
+    // Convert Docker paths to relative for local execution
     let file_path = match &signals.output_file_location {
-        Some(p) => p.as_str(),
+        Some(p) => docker_path_to_relative(p),
         None => {
             return format!(
                 r#"# Integration test: {}
@@ -575,7 +600,7 @@ log_content = {}.strip()
 matches = re.findall(pattern, log_content, re.MULTILINE)
 expected = {}
 assert matches == expected, f"Expected {{expected}}, got {{matches}}""#,
-            escape_string(file_path),
+            escape_string(&file_path),
             input_formatted,
             expected_parsed
         )
@@ -589,7 +614,7 @@ try:
     # Integration test executed successfully
 except re.error as e:
     pytest.fail(f"Invalid regex pattern: {{e}}")"#,
-            escape_string(file_path),
+            escape_string(&file_path),
             input_formatted
         )
     }
