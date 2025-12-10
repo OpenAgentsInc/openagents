@@ -457,6 +457,25 @@ fn build_category_prompt(
         "None".to_string()
     };
 
+    // Detect if this is a regex task to add format-specific guidance
+    let task_lower = task_description.to_lowercase();
+    let format_requirements = if task_lower.contains("regex")
+        || task_lower.contains("re.findall")
+        || task_lower.contains("pattern")
+    {
+        r#"
+
+## CRITICAL: Output Format Requirements
+- expectedOutput MUST be a JSON array of strings
+- Example: ["2023-01-15"] or ["2023-02-28"]
+- Python's re.findall() returns a list of strings
+- Use [] (empty array) for non-matching cases, NOT null
+- Input MUST be a concrete log line, not "test input with..." descriptions
+- Date format is YYYY-MM-DD (e.g., "2023-01-15"), NOT timestamps with time"#
+    } else {
+        ""
+    };
+
     format!(
         r#"You are generating test cases to verify a solution works correctly.
 
@@ -470,12 +489,12 @@ Task: {}
 - Platform: {}
 - Prohibited Tools: {}
 - Files: {} files, {} previews
-{}{}
+{}{}{}
 
 ## Your Task
 Generate 2-5 test cases for the {} category. Each test should:
-1. Have a clear input (what to test)
-2. Have an expected output (what should happen)
+1. Have a CONCRETE input (actual test data, not descriptions)
+2. Have a CONCRETE expected output (never null for correctness tests)
 3. Include reasoning (why this test matters)
 
 ## Output Format
@@ -483,12 +502,17 @@ Generate tests as JSON array:
 [
   {{
     "id": "{}_1",
-    "input": "test input command or data",
-    "expectedOutput": "expected output or null",
+    "input": "CONCRETE test data here (e.g., '192.168.1.1 2023-01-15')",
+    "expectedOutput": "['2023-01-15']",
     "reasoning": "why this test is important",
     "confidence": 0.9
   }}
 ]
+
+IMPORTANT:
+- Input must be ACTUAL data, not descriptions like "test input with dates"
+- expectedOutput must be CONCRETE, not null (use [] for no-match cases)
+- For regex tasks, expectedOutput should be a JSON array of strings
 
 Respond with valid JSON array only. No markdown, no explanation."#,
         task_description,
@@ -500,6 +524,7 @@ Respond with valid JSON array only. No markdown, no explanation."#,
         environment.files.task_files.len(),
         existing_tests_text,
         reflection_prompt,
+        format_requirements,
         category,
         category.as_str()
     )

@@ -37,6 +37,7 @@
 pub mod analyzer;
 pub mod environment;
 pub mod error;
+pub mod formatter;
 pub mod generator;
 pub mod meta_reasoner;
 pub mod scoring;
@@ -62,3 +63,6 @@ pub use types::{
     TestGenConfig, TestGenConfigChange, TestGenConfigInput, TestGenContext, TestGenEvolution,
     TestGenRun, TestGenRunInput, TestGenStats, TestGenTaskStats,
 };
+
+// Re-export formatter for pytest generation
+pub use formatter::format_as_pytest;

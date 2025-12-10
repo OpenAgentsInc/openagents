@@ -145,6 +145,75 @@ Key crates:
 
 ---
 
+## CRITICAL: Terminal-Bench Anti-Cheating Policy
+
+**READ THIS BEFORE ANY HILLCLIMBER/TESTGEN WORK**
+
+See `docs/logs/20251208/1219-benchmark-gaming-analysis.md` and `docs/logs/20251209/1454-decomposer-cleanup-no-cheating.md` for full context.
+
+### The Spectrum
+
+```
+LEGITIMATE                                                      CHEATING
+    |                                                               |
+    |   Domain     Process    Test         Expected    Hardcoded   |
+    |   Knowledge  Knowledge  Feedback     Output      Solutions   |
+    |   (regex     (TDD       (pass/fail)  Leakage     (if/else    |
+    |   syntax)    approach)               ("got X,    task==X)    |
+    |                                       expected               |
+    |                                       Y")                    |
+    +---------------------------------------------------------------+
+```
+
+### NEVER DO THESE (Cheating)
+
+1. **NEVER hardcode task IDs**: No `if task_id == "regex-log"` or `match task_id { "regex-log" => ... }`
+2. **NEVER hardcode solutions**: No "EXAMPLE REGEX (copy this exactly)" or known-working patterns
+3. **NEVER parse TB2 test files**: No extracting expected outputs from `test_outputs.py`
+4. **NEVER leak specific test cases**: No "TEST CASES: '192.168.1.1 2024-01-15' → captures '2024-01-15'"
+5. **NEVER hardcode TB2 paths**: No `/app/regex.txt` defaults based on knowing TB2 structure
+
+### ALWAYS DO THESE (Legitimate)
+
+1. **Data-driven detection is OK**: Detect task type from test DATA keywords, not task IDs
+2. **TestGen discovers patterns**: FM learns from TestGen-generated tests, not injected hints
+3. **Skills libraries are separate**: If domain knowledge is needed, it comes from skills, not hardcoded hints
+
+### NO INJECTED HINTS
+
+Do NOT inject domain knowledge hints like:
+- "Use lookahead (?=...) for conditions"
+- "Word boundary \b prevents partial matches"
+- "Greedy .* matches as much as possible"
+
+These hints should come from:
+1. **TestGen** - generates tests from task description
+2. **Skills libraries** - if we have general domain skills
+3. **NOT** from hardcoded decomposer hints or task-specific prompts
+
+The FM must DISCOVER techniques through iteration against TestGen tests.
+
+### The Philosophy
+
+The HillClimber architecture proves "architecture beats model size" by:
+
+1. **TestGen** generates tests from task DESCRIPTION (not TB2 tests)
+2. **FM** DISCOVERS solutions through iteration against TestGen tests
+3. **If TestGen is good**, discovered solutions pass TB2 too
+4. **Giving FM the answer defeats the entire purpose**
+
+### Why This Matters
+
+If we hardcode TB2 knowledge:
+- We're not proving architecture beats model size
+- We're just proving "hardcoding answers passes tests"
+- Results won't generalize to TB3 or novel tasks
+- The entire thesis is invalidated
+
+**The real test**: Would this system perform equally well on Terminal-Bench 3 with completely different tasks?
+
+---
+
 ## MechaCoder
 
 Autonomous coding agent. Picks tasks, implements, tests, commits.
