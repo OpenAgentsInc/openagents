@@ -17,13 +17,13 @@ doctest = false
 arrayvec = "0.7.1"
 rayon.workspace = true
 log.workspace = true
-ztracing.workspace = true
+# ztracing.workspace = true  # Disabled - we don't have this crate
 tracing.workspace = true
 
 [dev-dependencies]
 ctor.workspace = true
 rand.workspace = true
-zlog.workspace = true
+# zlog.workspace = true  # Disabled - we don't have this crate
 
 [package.metadata.cargo-machete]
 ignored = ["tracing"]

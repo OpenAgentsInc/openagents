@@ -10,14 +10,18 @@ actor HTTPServer {
     private let sessionHandler: SessionHandler
     private let toolRegistry: ToolRegistry
     private let toolHandler: ToolHandler
+    private let adapterRegistry: AdapterRegistry
+    private let adapterHandler: AdapterHandler
 
     init(port: UInt16, chatHandler: ChatHandler) {
         self.port = port
         self.chatHandler = chatHandler
         self.sessionStore = SessionStore()
         self.toolRegistry = ToolRegistry()
+        self.adapterRegistry = AdapterRegistry()
         self.sessionHandler = SessionHandler(sessionStore: sessionStore)
         self.toolHandler = ToolHandler(toolRegistry: toolRegistry, sessionStore: sessionStore)
+        self.adapterHandler = AdapterHandler(adapterRegistry: adapterRegistry)
     }
 
     /// Start the HTTP server
@@ -294,6 +298,33 @@ actor HTTPServer {
             let sessionId = String(pathWithoutPrefix.dropLast("/tools".count))
             return await handleToolRemove(sessionId: sessionId)
 
+        // Adapter management endpoints
+        case ("POST", "/v1/adapters/load"):
+            return await handleAdapterLoad(body: body)
+
+        case ("GET", "/v1/adapters"):
+            return await handleAdapterList()
+
+        case ("POST", "/v1/adapters/cleanup"):
+            return await handleAdapterCleanup()
+
+        case ("GET", "/v1/adapters/compatible") where actualPath.hasPrefix("/v1/adapters/compatible/"):
+            let name = String(actualPath.dropFirst("/v1/adapters/compatible/".count))
+            return await handleAdapterCompatible(name: name)
+
+        case ("POST", "/v1/adapters") where actualPath.hasPrefix("/v1/adapters/") && actualPath.hasSuffix("/compile"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/adapters/".count)
+            let adapterId = String(pathWithoutPrefix.dropLast("/compile".count))
+            return await handleAdapterRecompile(id: adapterId)
+
+        case ("GET", "/v1/adapters") where actualPath.hasPrefix("/v1/adapters/"):
+            let adapterId = String(actualPath.dropFirst("/v1/adapters/".count))
+            return await handleAdapterGet(id: adapterId)
+
+        case ("DELETE", "/v1/adapters") where actualPath.hasPrefix("/v1/adapters/"):
+            let adapterId = String(actualPath.dropFirst("/v1/adapters/".count))
+            return await handleAdapterUnload(id: adapterId)
+
         default:
             return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
         }
@@ -448,6 +479,71 @@ actor HTTPServer {
     private func handleToolRemove(sessionId: String) async -> Data {
         do {
             let response = try await toolHandler.removeTools(sessionId: sessionId)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    // MARK: - Adapter Handlers
+
+    private func handleAdapterLoad(body: String?) async -> Data {
+        do {
+            let response = try await adapterHandler.loadAdapter(body: body)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterList() async -> Data {
+        do {
+            let response = try await adapterHandler.listAdapters()
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterGet(id: String) async -> Data {
+        do {
+            let response = try await adapterHandler.getAdapter(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterUnload(id: String) async -> Data {
+        do {
+            let response = try await adapterHandler.unloadAdapter(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterRecompile(id: String) async -> Data {
+        do {
+            let response = try await adapterHandler.recompileAdapter(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterCompatible(name: String) async -> Data {
+        do {
+            let response = try await adapterHandler.getCompatibleIdentifiers(name: name)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleAdapterCleanup() async -> Data {
+        do {
+            let response = try await adapterHandler.cleanupObsoleteAdapters()
             return httpResponseToData(response)
         } catch {
             return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)

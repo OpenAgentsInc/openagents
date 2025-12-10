@@ -1,5 +1,5 @@
 [package]
-name = "http_client"
+name = "reqwest_client"
 version = "0.1.0"
 edition.workspace = true
 publish = false
