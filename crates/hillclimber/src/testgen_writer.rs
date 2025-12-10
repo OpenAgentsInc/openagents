@@ -143,6 +143,26 @@ fn extract_path_from_text(text: &str) -> Option<String> {
     path_regex.find(text).map(|m| m.as_str().to_string())
 }
 
+/// Convert Docker paths to relative paths for local execution.
+///
+/// Terminal-Bench tasks use `/app/` as the container working directory.
+/// When running locally, we need to convert these to relative paths
+/// since pytest runs from the workspace directory.
+///
+/// Examples:
+/// - `/app/regex.txt` -> `regex.txt`
+/// - `/app/subdir/file.py` -> `subdir/file.py`
+/// - `/other/path.txt` -> `/other/path.txt` (unchanged, absolute path outside /app/)
+fn docker_path_to_relative(path: &str) -> String {
+    if path.starts_with("/app/") {
+        // Strip /app/ prefix - pytest runs from workspace which maps to /app/
+        path[5..].to_string()
+    } else {
+        // Keep other paths as-is
+        path.to_string()
+    }
+}
+
 /// Parse expected output string into Python list format.
 ///
 /// Handles various formats:
@@ -415,12 +435,15 @@ fn generate_existence_body(test: &GeneratedTest, signals: &TaskSignals) -> Strin
         extract_path(&test.input)
     };
 
+    // Convert Docker paths to relative for local execution
+    let relative_path = docker_path_to_relative(&path);
+
     if !path.is_empty() && path.contains('/') {
         format!(
             r#"path = Path("{}")
 assert path.exists(), f"Expected {{path}} to exist"
 assert path.stat().st_size > 0, f"Expected {{path}} to be non-empty""#,
-            escape_string(&path)
+            escape_string(&relative_path)
         )
     } else {
         // Generic existence check - can't determine specific file

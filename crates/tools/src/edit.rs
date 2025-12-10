@@ -137,12 +137,12 @@ impl EditTool {
         output.push_str(&format!("--- a/{}\n", filename));
         output.push_str(&format!("+++ b/{}\n", filename));
 
-        for (idx, group) in diff.grouped_ops(4).iter().enumerate() {
+        for (idx, group) in diff.grouped_ops(3).iter().enumerate() {
             if idx > 0 {
                 output.push_str("\n");
             }
 
-            // Output hunk header
+            // Calculate hunk range
             let mut old_start = 0;
             let mut old_count = 0;
             let mut new_start = 0;
@@ -150,7 +150,11 @@ impl EditTool {
 
             for op in group {
                 match op {
-                    similar::DiffOp::Equal { old_index, new_index, len } => {
+                    similar::DiffOp::Equal {
+                        old_index,
+                        new_index,
+                        len,
+                    } => {
                         if old_start == 0 {
                             old_start = old_index + 1;
                             new_start = new_index + 1;
@@ -158,19 +162,34 @@ impl EditTool {
                         old_count += len;
                         new_count += len;
                     }
-                    similar::DiffOp::Delete { old_index, old_len, .. } => {
+                    similar::DiffOp::Delete {
+                        old_index,
+                        old_len,
+                        new_index,
+                    } => {
                         if old_start == 0 {
                             old_start = old_index + 1;
+                            new_start = new_index + 1;
                         }
                         old_count += old_len;
                     }
-                    similar::DiffOp::Insert { new_index, new_len, .. } => {
-                        if new_start == 0 {
+                    similar::DiffOp::Insert {
+                        old_index,
+                        new_index,
+                        new_len,
+                    } => {
+                        if old_start == 0 {
+                            old_start = old_index + 1;
                             new_start = new_index + 1;
                         }
                         new_count += new_len;
                     }
-                    similar::DiffOp::Replace { old_index, old_len, new_index, new_len } => {
+                    similar::DiffOp::Replace {
+                        old_index,
+                        old_len,
+                        new_index,
+                        new_len,
+                    } => {
                         if old_start == 0 {
                             old_start = old_index + 1;
                             new_start = new_index + 1;
@@ -186,18 +205,16 @@ impl EditTool {
                 old_start, old_count, new_start, new_count
             ));
 
-            // Output changes
+            // Output changes using iter_changes
             for op in group {
-                for change in diff.iter_inline_changes(op) {
+                for change in diff.iter_changes(op) {
                     let sign = match change.tag() {
                         ChangeTag::Equal => " ",
                         ChangeTag::Delete => "-",
                         ChangeTag::Insert => "+",
                     };
                     output.push_str(sign);
-                    for (_, value) in change.iter_strings_lossy() {
-                        output.push_str(&value);
-                    }
+                    output.push_str(change.value());
                     if change.missing_newline() {
                         output.push_str("\n\\ No newline at end of file\n");
                     }

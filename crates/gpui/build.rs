@@ -10,6 +10,8 @@ fn main() {
     let target = env::var("CARGO_CFG_TARGET_OS");
     println!("cargo::rustc-check-cfg=cfg(gles)");
     println!("cargo::rustc-check-cfg=cfg(rust_analyzer)");
+    // Note: cargo-clippy is a special cfg set by cargo-clippy itself
+    // We can't add it to check-cfg, but we can suppress the warnings via lints
 
     #[cfg(any(
         not(any(target_os = "macos", target_os = "windows")),
