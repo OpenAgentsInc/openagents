@@ -11,6 +11,7 @@ use theme::accent;
 /// Spinner::new()
 /// Spinner::new().size(SpinnerSize::Lg)
 /// ```
+#[derive(IntoElement)]
 pub struct Spinner {
     size: Pixels,
 }

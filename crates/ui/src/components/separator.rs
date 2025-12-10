@@ -19,6 +19,7 @@ pub enum SeparatorOrientation {
 /// Separator::horizontal()
 /// Separator::vertical()
 /// ```
+#[derive(IntoElement)]
 pub struct Separator {
     orientation: SeparatorOrientation,
 }

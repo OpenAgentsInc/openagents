@@ -2787,11 +2787,15 @@ dependencies = [
  "atif-store",
  "chrono",
  "directories",
+ "fm-bridge",
  "gpui",
  "gym_test",
+ "parking_lot",
  "serde",
  "serde_json",
+ "testgen",
  "theme",
+ "tokio",
  "uuid",
 ]
 

@@ -1,11 +1,11 @@
 mod actions;
 mod app_menus;
-mod chat;
 mod components;
 mod markdown;
 
 use atif::{Agent, Step};
 use atif_store::{TrajectoryMetadata, TrajectoryStore};
+use commander::chat::ChatScreen;
 use components::{render_source_badge, render_step_details};
 use fm_bridge::FMClient;
 use gpui::prelude::FluentBuilder;
@@ -20,7 +20,6 @@ use theme::{bg, border, status, text, FONT_FAMILY};
 use ui::{TextInput, SubmitEvent, bind_text_input_keys};
 use marketplace::MarketplaceScreen;
 use gym::GymScreen;
-use chat::ChatScreen;
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle

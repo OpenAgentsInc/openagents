@@ -10,9 +10,71 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use nostr_chat::ChatState;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 use theme::{bg, border, status, text, FONT_FAMILY};
+use tokio::sync::mpsc;
 use ui::{SubmitEvent, TextInput};
+
+/// Parsed command result for testing
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParsedCommand {
+    Help,
+    Connect,
+    Join(String),
+    Job(u16, String),
+    Clear,
+    Message(String),
+    Invalid(String),
+    Empty,
+}
+
+/// Parse a command string into a ParsedCommand
+pub fn parse_command(input: &str) -> ParsedCommand {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.is_empty() {
+        return ParsedCommand::Empty;
+    }
+
+    let cmd = parts[0].to_lowercase();
+    let cmd = cmd.trim_start_matches('/');
+
+    match cmd.as_ref() {
+        "help" => ParsedCommand::Help,
+        "connect" => ParsedCommand::Connect,
+        "join" => {
+            if parts.len() > 1 {
+                let channel = parts[1].trim_start_matches('#');
+                ParsedCommand::Join(channel.to_string())
+            } else {
+                ParsedCommand::Invalid("Usage: join #channel".to_string())
+            }
+        }
+        "job" => {
+            if parts.len() > 2 {
+                let kind_str = parts[1];
+                let input = parts[2..].join(" ");
+                if let Ok(kind) = kind_str.parse::<u16>() {
+                    ParsedCommand::Job(kind, input)
+                } else {
+                    ParsedCommand::Invalid(format!(
+                        "Invalid job kind '{}'. Use a number like 5050.",
+                        kind_str
+                    ))
+                }
+            } else {
+                ParsedCommand::Invalid(
+                    "Usage: job <kind> <input> (e.g., job 5050 summarize this)".to_string(),
+                )
+            }
+        }
+        "clear" => ParsedCommand::Clear,
+        _ => ParsedCommand::Message(input.to_string()),
+    }
+}
+
 
 /// Bloomberg-style color constants
 mod colors {
@@ -46,6 +108,15 @@ mod colors {
 /// Pending messages from command handler
 type PendingMessages = Arc<Mutex<Vec<MockMessage>>>;
 
+/// Commands sent to the background tokio task
+#[derive(Debug)]
+enum ChatCommand {
+    Connect,
+    JoinChannel(String),
+    SendMessage(String, String), // channel_id, content
+    SubmitJob(u16, String),      // kind, input
+}
+
 /// Chat screen state
 pub struct ChatScreen {
     focus_handle: FocusHandle,
@@ -55,10 +126,13 @@ pub struct ChatScreen {
 
     /// Chat state (manages relays, channels, messages)
     #[allow(dead_code)]
-    chat_state: ChatState,
+    chat_state: Arc<Mutex<Option<ChatState>>>,
 
     /// Pending messages from commands
     pending_messages: PendingMessages,
+
+    /// Command sender to background tokio task
+    command_tx: mpsc::UnboundedSender<ChatCommand>,
 
     /// Selected channel ID
     selected_channel_id: Option<String>,
@@ -78,6 +152,9 @@ pub struct ChatScreen {
 
     /// Connection status
     connection_status: ConnectionStatus,
+
+    /// Connected relay count
+    connected_relay_count: Arc<AtomicUsize>,
 
     /// User's npub (for display)
     npub_display: String,
@@ -139,6 +216,7 @@ impl ChatScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let command_input = cx.new(|cx| TextInput::new("", cx));
         let pending_messages: PendingMessages = Arc::new(Mutex::new(Vec::new()));
+        let connected_relay_count = Arc::new(AtomicUsize::new(0));
 
         // Create chat state and set identity
         let mut chat_state = ChatState::new();
@@ -150,18 +228,152 @@ impl ChatScreen {
             .map(|n| format!("{}...{}", &n[..10], &n[n.len() - 5..]))
             .unwrap_or_else(|| "No identity".to_string());
 
+        // Create command channel for background tokio task
+        let (command_tx, mut command_rx) = mpsc::unbounded_channel::<ChatCommand>();
+        let chat_state = Arc::new(Mutex::new(Some(chat_state)));
+
+        // Spawn background thread with tokio runtime for relay communication
+        let pending_for_tokio = pending_messages.clone();
+        let relay_count_for_tokio = connected_relay_count.clone();
+        let chat_state_for_tokio = chat_state.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create tokio runtime");
+
+            rt.block_on(async move {
+                while let Some(cmd) = command_rx.recv().await {
+                    match cmd {
+                        ChatCommand::Connect => {
+                            let chat = chat_state_for_tokio.lock().unwrap().take();
+                            if let Some(chat) = chat {
+                                match chat.connect().await {
+                                    Ok(count) => {
+                                        relay_count_for_tokio.store(count, Ordering::SeqCst);
+                                        let msg = MockMessage {
+                                            id: format!("sys-{}", std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()),
+                                            author: "SYSTEM".to_string(),
+                                            content: format!("Connected to {} relays", count),
+                                            timestamp: current_timestamp(),
+                                            is_own: false,
+                                            is_dvm: false,
+                                            dvm_kind: None,
+                                        };
+                                        pending_for_tokio.lock().unwrap().push(msg);
+                                    }
+                                    Err(e) => {
+                                        let msg = MockMessage {
+                                            id: format!("sys-{}", std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()),
+                                            author: "SYSTEM".to_string(),
+                                            content: format!("Connection error: {}", e),
+                                            timestamp: current_timestamp(),
+                                            is_own: false,
+                                            is_dvm: false,
+                                            dvm_kind: None,
+                                        };
+                                        pending_for_tokio.lock().unwrap().push(msg);
+                                    }
+                                }
+                                // Put it back
+                                *chat_state_for_tokio.lock().unwrap() = Some(chat);
+                            }
+                        }
+                        ChatCommand::JoinChannel(channel_id) => {
+                            let chat = chat_state_for_tokio.lock().unwrap().take();
+                            if let Some(chat) = chat {
+                                match chat.join_channel(&channel_id).await {
+                                    Ok(()) => {
+                                        let msg = MockMessage {
+                                            id: format!("sys-{}", std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()),
+                                            author: "SYSTEM".to_string(),
+                                            content: format!("Joined channel: {}", channel_id),
+                                            timestamp: current_timestamp(),
+                                            is_own: false,
+                                            is_dvm: false,
+                                            dvm_kind: None,
+                                        };
+                                        pending_for_tokio.lock().unwrap().push(msg);
+                                    }
+                                    Err(e) => {
+                                        let msg = MockMessage {
+                                            id: format!("sys-{}", std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()),
+                                            author: "SYSTEM".to_string(),
+                                            content: format!("Failed to join channel: {}", e),
+                                            timestamp: current_timestamp(),
+                                            is_own: false,
+                                            is_dvm: false,
+                                            dvm_kind: None,
+                                        };
+                                        pending_for_tokio.lock().unwrap().push(msg);
+                                    }
+                                }
+                                *chat_state_for_tokio.lock().unwrap() = Some(chat);
+                            }
+                        }
+                        ChatCommand::SendMessage(_channel_id, _content) => {
+                            // TODO: Implement message sending
+                            let msg = MockMessage {
+                                id: format!("sys-{}", std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis()),
+                                author: "SYSTEM".to_string(),
+                                content: "Message sending not yet implemented".to_string(),
+                                timestamp: current_timestamp(),
+                                is_own: false,
+                                is_dvm: false,
+                                dvm_kind: None,
+                            };
+                            pending_for_tokio.lock().unwrap().push(msg);
+                        }
+                        ChatCommand::SubmitJob(kind, input) => {
+                            // TODO: Implement DVM job submission
+                            let msg = MockMessage {
+                                id: format!("sys-{}", std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis()),
+                                author: "SYSTEM".to_string(),
+                                content: format!("DVM job submission not yet implemented (kind={}, input={})", kind, input),
+                                timestamp: current_timestamp(),
+                                is_own: false,
+                                is_dvm: false,
+                                dvm_kind: None,
+                            };
+                            pending_for_tokio.lock().unwrap().push(msg);
+                        }
+                    }
+                }
+            });
+        });
+
         // Subscribe to command input submit events
         let pending_for_submit = pending_messages.clone();
+        let cmd_tx_for_submit = command_tx.clone();
         cx.subscribe(&command_input, move |_this, _input, event: &SubmitEvent, _cx| {
-            let command = event.text.trim().to_string();
+            let command = event.0.trim().to_string();
             if !command.is_empty() {
-                Self::handle_command(&command, &pending_for_submit);
+                Self::handle_command(&command, &pending_for_submit, &cmd_tx_for_submit);
             }
         })
         .detach();
 
         // Start background polling for pending messages
         let pending_poll = pending_messages.clone();
+        let relay_count_poll = connected_relay_count.clone();
         cx.spawn(async move |view, cx| {
             loop {
                 cx.background_executor()
@@ -173,9 +385,15 @@ impl ChatScreen {
                     std::mem::take(&mut *pending)
                 };
 
-                if !messages.is_empty() {
+                // Also update connection status based on relay count
+                let relay_count = relay_count_poll.load(Ordering::SeqCst);
+
+                if !messages.is_empty() || relay_count > 0 {
                     let _ = view.update(cx, |view, cx| {
                         view.mock_messages.extend(messages);
+                        if relay_count > 0 {
+                            view.connection_status = ConnectionStatus::Connected(relay_count as u32);
+                        }
                         cx.notify();
                     });
                 }
@@ -284,18 +502,24 @@ impl ChatScreen {
             command_input,
             chat_state,
             pending_messages,
+            command_tx,
             selected_channel_id: Some("ch1".to_string()),
             mock_channels,
             mock_messages,
             mock_jobs,
             info_panel_collapsed: false,
             connection_status: ConnectionStatus::Disconnected,
+            connected_relay_count,
             npub_display,
         }
     }
 
     /// Handle a command from the command bar
-    fn handle_command(command: &str, pending: &PendingMessages) {
+    fn handle_command(
+        command: &str,
+        pending: &PendingMessages,
+        cmd_tx: &mpsc::UnboundedSender<ChatCommand>,
+    ) {
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
             return;
@@ -310,11 +534,15 @@ impl ChatScreen {
                 "Commands: connect, join #channel, job <kind> <input>, clear, help".to_string()
             }
             "connect" => {
-                "Connecting to relays... (wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band)".to_string()
+                // Send connect command to background tokio task
+                let _ = cmd_tx.send(ChatCommand::Connect);
+                "Connecting to relays... (wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band, wss://nostr.wine)".to_string()
             }
             "join" => {
                 if parts.len() > 1 {
                     let channel = parts[1].trim_start_matches('#');
+                    // Send join command to background tokio task
+                    let _ = cmd_tx.send(ChatCommand::JoinChannel(channel.to_string()));
                     format!("Joining channel: #{}", channel)
                 } else {
                     "Usage: join #channel".to_string()
@@ -322,9 +550,15 @@ impl ChatScreen {
             }
             "job" => {
                 if parts.len() > 2 {
-                    let kind = parts[1];
+                    let kind_str = parts[1];
                     let input = parts[2..].join(" ");
-                    format!("Submitting DVM job: kind={}, input=\"{}\"", kind, input)
+                    if let Ok(kind) = kind_str.parse::<u16>() {
+                        // Send job command to background tokio task
+                        let _ = cmd_tx.send(ChatCommand::SubmitJob(kind, input.clone()));
+                        format!("Submitting DVM job: kind={}, input=\"{}\"", kind, input)
+                    } else {
+                        format!("Invalid job kind '{}'. Use a number like 5050.", kind_str)
+                    }
                 } else {
                     "Usage: job <kind> <input> (e.g., job 5050 summarize this)".to_string()
                 }

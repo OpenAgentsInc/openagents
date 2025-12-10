@@ -45,6 +45,7 @@ pub enum ButtonSize {
 ///     .size(ButtonSize::Default)
 ///     .on_click(|_, _| println!("clicked"))
 /// ```
+#[derive(IntoElement)]
 pub struct Button {
     label: SharedString,
     variant: ButtonVariant,

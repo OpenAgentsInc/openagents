@@ -70,6 +70,7 @@ pub struct SimpleUnit {
     state: PrimitiveState,
 }
 
+#[allow(dead_code)]
 impl SimpleUnit {
     /// Create a new SimpleUnit with the given ID
     pub fn new(id: impl Into<String>) -> Self {
@@ -288,6 +289,7 @@ pub struct SimpleUnitBuilder {
     unit: SimpleUnit,
 }
 
+#[allow(dead_code)]
 impl SimpleUnitBuilder {
     pub fn new(id: impl Into<String>) -> Self {
         Self {

@@ -321,6 +321,7 @@ pub fn rad_between(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
 // SVG Path utilities
 
 /// Generate SVG path for a rectangle
+#[allow(dead_code)]
 pub fn describe_rect(x: f64, y: f64, width: f64, height: f64) -> String {
     format!(
         "M {} {} H {} V {} H {} Z",
@@ -333,6 +334,7 @@ pub fn describe_rect(x: f64, y: f64, width: f64, height: f64) -> String {
 }
 
 /// Generate SVG path for a circle
+#[allow(dead_code)]
 pub fn describe_circle(x: f64, y: f64, r: f64) -> String {
     format!(
         "M {} {} A {} {} 0 1 0 {} {} z",

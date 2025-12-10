@@ -11,6 +11,7 @@ use theme::ui::progress;
 /// Progress::new().value(0.5)   // 50%
 /// Progress::new().value(0.75).h(px(8.0))
 /// ```
+#[derive(IntoElement)]
 pub struct Progress {
     value: f32, // 0.0 to 1.0
     height: Pixels,

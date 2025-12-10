@@ -15,6 +15,4 @@ pub mod types {
     pub use gym::tbcc::TBCCTab;
     pub use gym::hillclimber::monitor::{HCMode, HCSession, HCSessionStatus};
     pub use gym::testgen::visualizer::{TestGenStatus, TestGenSession};
-    pub use gym::testgen::category_progress::TestCategory;
-    pub use gym::testgen::test_list::TestStatus;
 }
