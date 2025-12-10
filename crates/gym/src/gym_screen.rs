@@ -16,15 +16,15 @@ use super::actions::*;
 
 pub struct GymScreen {
     /// Current active tab
-    current_tab: GymTab,
+    pub current_tab: GymTab,
 
     /// Focus handle
     focus_handle: FocusHandle,
 
     /// Sidebar
     sidebar: Entity<Sidebar>,
-    sidebar_width: Pixels,
-    sidebar_collapsed: bool,
+    pub sidebar_width: Pixels,
+    pub sidebar_collapsed: bool,
 
     /// View entities
     trajectory_view: Entity<TrajectoryView>,

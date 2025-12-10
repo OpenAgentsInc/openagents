@@ -29,6 +29,7 @@ members = [
     "crates/parallel",
     "crates/theme",
     "crates/gym",
+    "crates/gym_test",
     "crates/sandbox",
     "crates/nostr",
 ]
