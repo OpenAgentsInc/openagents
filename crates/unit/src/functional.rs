@@ -83,7 +83,7 @@ impl SimpleUnit {
     }
 
     /// Add a typed input pin
-    pub fn add_input<T: Clone + Send + Sync + 'static>(
+    pub fn add_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         &mut self,
         name: impl Into<String>,
         opt: PinOpt,
@@ -93,7 +93,7 @@ impl SimpleUnit {
     }
 
     /// Add a typed output pin
-    pub fn add_output<T: Clone + Send + Sync + 'static>(
+    pub fn add_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         &mut self,
         name: impl Into<String>,
         opt: PinOpt,
@@ -278,13 +278,16 @@ impl SimpleUnitBuilder {
     }
 
     /// Add a typed input pin
-    pub fn input<T: Clone + Send + Sync + 'static>(mut self, name: impl Into<String>) -> Self {
+    pub fn input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.unit.add_input::<T>(name, PinOpt::default());
         self
     }
 
     /// Add a typed input pin with options
-    pub fn input_with_opt<T: Clone + Send + Sync + 'static>(
+    pub fn input_with_opt<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         mut self,
         name: impl Into<String>,
         opt: PinOpt,
@@ -294,13 +297,16 @@ impl SimpleUnitBuilder {
     }
 
     /// Add a typed output pin
-    pub fn output<T: Clone + Send + Sync + 'static>(mut self, name: impl Into<String>) -> Self {
+    pub fn output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.unit.add_output::<T>(name, PinOpt::default());
         self
     }
 
     /// Add a typed output pin with options
-    pub fn output_with_opt<T: Clone + Send + Sync + 'static>(
+    pub fn output_with_opt<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         mut self,
         name: impl Into<String>,
         opt: PinOpt,

@@ -137,7 +137,7 @@ impl Graph {
     // Pin exposure
 
     /// Expose an internal input as part of the graph's interface
-    pub fn expose_input<T: Clone + Send + Sync + 'static>(
+    pub fn expose_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         &mut self,
         exposed_name: impl Into<String>,
         unit_id: impl Into<String>,
@@ -157,7 +157,7 @@ impl Graph {
     }
 
     /// Expose an internal output as part of the graph's interface
-    pub fn expose_output<T: Clone + Send + Sync + 'static>(
+    pub fn expose_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         &mut self,
         exposed_name: impl Into<String>,
         unit_id: impl Into<String>,
@@ -461,7 +461,7 @@ impl GraphBuilder {
     }
 
     /// Expose an input
-    pub fn expose_input<T: Clone + Send + Sync + 'static>(
+    pub fn expose_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         mut self,
         exposed_name: impl Into<String>,
         unit_id: impl Into<String>,
@@ -472,7 +472,7 @@ impl GraphBuilder {
     }
 
     /// Expose an output
-    pub fn expose_output<T: Clone + Send + Sync + 'static>(
+    pub fn expose_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
         mut self,
         exposed_name: impl Into<String>,
         unit_id: impl Into<String>,
