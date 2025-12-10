@@ -39,11 +39,11 @@ mod physics;
 
 pub use pin::{Pin, PinOpt, PinState, PinEvent, PinSnapshot};
 pub use any_pin::AnyPin;
-pub use unit::{Unit, Lifecycle, UnitEvent};
+pub use unit::{Unit, Lifecycle, UnitEvent, IO};
 pub use primitive::Primitive;
 pub use functional::Functional;
 pub use merge::Merge;
 pub use graph::{Graph, PinExposure};
 pub use spec::GraphSpec;
 pub use geometry::{Point, Shape, Thing, surface_distance, point_in_node};
-pub use physics::{SimNode, SimConnection, SimulationConfig, apply_forces, integrate, should_stop};
+pub use physics::{SimNode, SimConnection, SimulationConfig, apply_forces, integrate, should_stop, cool, reheat, tick, run_until_settled};

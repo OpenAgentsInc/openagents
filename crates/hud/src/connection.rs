@@ -7,7 +7,7 @@ use gpui::{
     Background, Hsla, Path, PathBuilder, Pixels, Point, Window,
     hsla, point, px,
 };
-use unit::geometry::Point as UnitPoint;
+use unit::Point as UnitPoint;
 
 /// Connection visual style
 #[derive(Debug, Clone)]
@@ -82,7 +82,9 @@ impl Connection {
 
     /// Build the bezier path for this connection
     pub fn build_path(&self, style: &ConnectionStyle) -> Option<Path<Pixels>> {
-        let dx = (self.to.x - self.from.x).0.abs();
+        let from_x: f32 = self.from.x.into();
+        let to_x: f32 = self.to.x.into();
+        let dx = (to_x - from_x).abs();
         let control_offset = px(dx * style.curvature);
 
         // Control points for horizontal-biased bezier
@@ -91,7 +93,7 @@ impl Connection {
 
         let mut builder = PathBuilder::stroke(style.stroke_width);
         builder.move_to(self.from);
-        builder.curve_to(cp1, cp2, self.to);
+        builder.cubic_bezier_to(self.to, cp1, cp2);
 
         builder.build().ok()
     }
@@ -185,10 +187,14 @@ mod tests {
         let to = UnitPoint::new(100.0, 80.0);
         let conn = Connection::from_unit_points(&from, &to);
 
-        assert_eq!(conn.from.x.0, 10.0);
-        assert_eq!(conn.from.y.0, 20.0);
-        assert_eq!(conn.to.x.0, 100.0);
-        assert_eq!(conn.to.y.0, 80.0);
+        let from_x: f32 = conn.from.x.into();
+        let from_y: f32 = conn.from.y.into();
+        let to_x: f32 = conn.to.x.into();
+        let to_y: f32 = conn.to.y.into();
+        assert_eq!(from_x, 10.0);
+        assert_eq!(from_y, 20.0);
+        assert_eq!(to_x, 100.0);
+        assert_eq!(to_y, 80.0);
     }
 
     #[test]

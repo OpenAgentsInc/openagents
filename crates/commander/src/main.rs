@@ -5,9 +5,101 @@ use fm_bridge::FMClient;
 use markdown::{render_markdown, MarkdownStyle};
 use gpui::*;
 use std::borrow::Cow;
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use text_input::TextInput;
 use tokio_stream::StreamExt;
+
+/// Manages the foundation-bridge process lifecycle
+struct BridgeManager {
+    process: Option<Child>,
+}
+
+impl BridgeManager {
+    fn new() -> Self {
+        Self { process: None }
+    }
+
+    /// Check if bridge is healthy
+    fn is_healthy(&self) -> bool {
+        // Quick sync check using reqwest blocking client
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok();
+
+        if let Some(client) = client {
+            if let Ok(resp) = client.get("http://localhost:3030/health").send() {
+                return resp.status().is_success();
+            }
+        }
+        false
+    }
+
+    /// Start the bridge process if not running
+    fn ensure_running(&mut self) -> Result<(), String> {
+        if self.is_healthy() {
+            eprintln!("[BRIDGE] Already running and healthy");
+            return Ok(());
+        }
+
+        eprintln!("[BRIDGE] Not running, starting...");
+
+        // Find the bridge binary - check multiple locations
+        let possible_paths = [
+            "swift/foundation-bridge/.build/release/foundation-bridge",
+            "../swift/foundation-bridge/.build/release/foundation-bridge",
+            "../../swift/foundation-bridge/.build/release/foundation-bridge",
+        ];
+
+        let bridge_path = possible_paths.iter()
+            .find(|p| std::path::Path::new(p).exists())
+            .ok_or_else(|| "foundation-bridge binary not found".to_string())?;
+
+        eprintln!("[BRIDGE] Found at: {}", bridge_path);
+
+        // Start the bridge process
+        let child = Command::new(bridge_path)
+            .arg("3030")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to start bridge: {}", e))?;
+
+        self.process = Some(child);
+        eprintln!("[BRIDGE] Process started, waiting for health...");
+
+        // Wait for it to be healthy (up to 10 seconds)
+        for i in 0..20 {
+            std::thread::sleep(Duration::from_millis(500));
+            if self.is_healthy() {
+                eprintln!("[BRIDGE] Healthy after {}ms", (i + 1) * 500);
+                return Ok(());
+            }
+        }
+
+        Err("Bridge started but failed health check".to_string())
+    }
+}
+
+impl Drop for BridgeManager {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.process.take() {
+            eprintln!("[BRIDGE] Shutting down...");
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+// Global bridge manager (kept alive for app lifetime)
+static BRIDGE_MANAGER: std::sync::OnceLock<Mutex<BridgeManager>> = std::sync::OnceLock::new();
+
+fn ensure_bridge_running() -> Result<(), String> {
+    let manager = BRIDGE_MANAGER.get_or_init(|| Mutex::new(BridgeManager::new()));
+    manager.lock().unwrap().ensure_running()
+}
 
 #[derive(Clone)]
 struct Message {
@@ -27,6 +119,7 @@ struct CommanderView {
     fm_client: Arc<FMClient>,
     messages: Vec<Message>,
     pending_updates: Arc<Mutex<Vec<MessageUpdate>>>,
+    is_loading: bool,
     _subscription: Subscription,
 }
 
@@ -49,6 +142,7 @@ impl CommanderView {
                 role: "user".to_string(),
                 content: prompt.clone(),
             });
+            this.is_loading = true;
             cx.notify();
 
             // Call FM API with streaming in background thread
@@ -129,8 +223,10 @@ impl CommanderView {
                                     if let Some(last) = view.messages.last_mut() {
                                         last.content.push_str(&text);
                                     }
+                                    view.is_loading = false;
                                 }
                                 MessageUpdate::Error(error_msg) => {
+                                    view.is_loading = false;
                                     // Replace last message with error or add new error
                                     if let Some(last) = view.messages.last_mut() {
                                         if last.role == "assistant" && last.content.is_empty() {
@@ -157,6 +253,7 @@ impl CommanderView {
             fm_client,
             messages: Vec::new(),
             pending_updates,
+            is_loading: false,
             _subscription: subscription,
         }
     }
@@ -241,6 +338,18 @@ impl Render for CommanderView {
                             base.child(msg.content.clone())
                         }
                     }))
+                                    .child(if self.is_loading {
+                                        div()
+                                            .w_full()
+                                            .max_w(px(768.0))
+                                            .text_color(hsla(0., 0., 0.5, 1.0))
+                                            .font_family("Berkeley Mono")
+                                            .text_size(px(14.0))
+                                            .line_height(px(22.0))
+                                            .child("...")
+                                    } else {
+                                        div()
+                                    })
                             )
                     )
             )
@@ -279,6 +388,11 @@ impl Focusable for CommanderView {
 }
 
 fn main() {
+    // Auto-start foundation-bridge if not running
+    if let Err(e) = ensure_bridge_running() {
+        eprintln!("[BRIDGE] Warning: {}", e);
+    }
+
     Application::new().run(|cx: &mut App| {
         // Load Berkeley Mono fonts
         cx.text_system()
