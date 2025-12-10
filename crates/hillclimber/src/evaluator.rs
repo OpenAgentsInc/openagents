@@ -30,25 +30,27 @@ const TB2_IMAGE: &str = "terminal-bench-2:latest";
 pub fn parse_pytest_output(output: &str) -> ParseResult {
     let mut failures: Vec<FailureDetail> = Vec::new();
 
-    // Parse pytest summary line (e.g., "1 passed, 2 failed in 0.05s")
-    let summary_re = Regex::new(r"(\d+)\s+passed.*?(\d+)\s+failed").unwrap();
-    let passed_only_re = Regex::new(r"(\d+)\s+passed").unwrap();
-    let failed_only_re = Regex::new(r"(\d+)\s+failed").unwrap();
+    // Parse pytest summary line - handles both orders:
+    // "1 passed, 2 failed in 0.05s" OR "2 failed, 1 passed in 0.05s"
+    let passed_re = Regex::new(r"(\d+)\s+passed").unwrap();
+    let failed_re = Regex::new(r"(\d+)\s+failed").unwrap();
+    // Also parse our own summary format: "Verification: FAILED (10/21 tests)"
+    let summary_format_re = Regex::new(r"Verification:\s*\w+\s*\((\d+)/(\d+)\s*tests?\)").unwrap();
 
     let (mut passed, mut failed) = (0u32, 0u32);
 
-    if let Some(caps) = summary_re.captures(output) {
+    // First try our summary format (takes precedence since it's already parsed)
+    if let Some(caps) = summary_format_re.captures(output) {
         passed = caps[1].parse().unwrap_or(0);
-        failed = caps[2].parse().unwrap_or(0);
-    } else if let Some(caps) = passed_only_re.captures(output) {
-        passed = caps[1].parse().unwrap_or(0);
-        if failed_only_re.captures(output).is_none() {
-            failed = 0;
+        let total: u32 = caps[2].parse().unwrap_or(0);
+        failed = total.saturating_sub(passed);
+    } else {
+        // Parse pytest format: passed and failed independently (order doesn't matter)
+        if let Some(caps) = passed_re.captures(output) {
+            passed = caps[1].parse().unwrap_or(0);
         }
-    } else if let Some(caps) = failed_only_re.captures(output) {
-        failed = caps[1].parse().unwrap_or(0);
-        if let Some(p) = passed_only_re.captures(output) {
-            passed = p[1].parse().unwrap_or(0);
+        if let Some(caps) = failed_re.captures(output) {
+            failed = caps[1].parse().unwrap_or(0);
         }
     }
 
