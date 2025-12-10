@@ -11,8 +11,10 @@
 //! - `ConnectionView` - Bezier curve connections between pins
 //! - `SelectionManager` - Multi-select state management
 //! - `CommandHistory` - Undo/redo with command pattern
+//! - `ApmWidget` - Actions Per Minute display for agent velocity tracking
 
 mod actions;
+mod apm_widget;
 mod connection;
 mod graph_view;
 mod history;
@@ -21,6 +23,7 @@ mod selection;
 mod unit_view;
 
 pub use actions::*;
+pub use apm_widget::*;
 pub use connection::*;
 pub use graph_view::*;
 pub use history::*;

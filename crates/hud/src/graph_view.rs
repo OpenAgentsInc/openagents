@@ -8,8 +8,8 @@
 //! - Animation loop for smooth physics updates
 
 use gpui::{
-    App, Context, Entity, EventEmitter, Hsla, MouseButton, MouseMoveEvent,
-    MouseUpEvent, PathBuilder, Render, ScrollWheelEvent, Window,
+    App, Context, Entity, EventEmitter, Focusable, FocusHandle, Hsla,
+    MouseButton, MouseMoveEvent, MouseUpEvent, PathBuilder, Render, ScrollWheelEvent, Window,
     canvas, div, point, prelude::*, px,
 };
 use std::collections::HashMap;
@@ -18,6 +18,8 @@ use theme::hud;
 
 use unit::{Point as UnitPoint, Graph, SimConnection, SimNode, SimulationConfig, tick, should_stop, reheat};
 
+use crate::actions::{DeselectAll, ResetView, SelectAll, ZoomIn, ZoomOut, ZoomToFit};
+use crate::apm_widget::{ApmWidget, ApmState, ApmSnapshot, ApmComparison};
 use crate::connection::{Connection, ConnectionState, ConnectionStyle};
 use crate::pin_view::PinDirection;
 use crate::selection::{SelectionManager, SelectionRect};
@@ -171,11 +173,27 @@ pub struct GraphView {
     message_count: usize,
     /// Connection state (simulated for testing)
     is_connected: bool,
+
+    // =========================================================================
+    // APM Widget State
+    // =========================================================================
+
+    /// APM widget entity (if created)
+    apm_widget: Option<Entity<ApmWidget>>,
+    /// APM state (for direct access without widget)
+    apm_state: ApmState,
+
+    // =========================================================================
+    // Focus & Input
+    // =========================================================================
+
+    /// Focus handle for keyboard input
+    focus_handle: FocusHandle,
 }
 
 impl GraphView {
     /// Create a new empty GraphView
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             graph: None,
             nodes: HashMap::new(),
@@ -195,6 +213,41 @@ impl GraphView {
             error_count: 0,
             message_count: 0,
             is_connected: true,
+            // APM widget state
+            apm_widget: None,
+            apm_state: ApmState::new(),
+            // Focus handle
+            focus_handle: cx.focus_handle(),
+        }
+    }
+
+    /// Create a new GraphView with APM widget enabled
+    pub fn new_with_apm(cx: &mut Context<Self>) -> Self {
+        let apm_widget = cx.new(|cx| ApmWidget::new(cx));
+        Self {
+            graph: None,
+            nodes: HashMap::new(),
+            sim_connections: Vec::new(),
+            sim_config: SimulationConfig::default(),
+            pan_x: 0.0,
+            pan_y: 0.0,
+            zoom: 1.0,
+            drag_state: DragState::None,
+            selection: SelectionManager::new(),
+            style: GraphStyle::default(),
+            simulating: false,
+            // HUD state
+            current_session_id: None,
+            current_apm: 0.0,
+            current_error: None,
+            error_count: 0,
+            message_count: 0,
+            is_connected: true,
+            // APM widget state
+            apm_widget: Some(apm_widget),
+            apm_state: ApmState::new(),
+            // Focus handle
+            focus_handle: cx.focus_handle(),
         }
     }
 
@@ -632,6 +685,50 @@ impl GraphView {
     }
 
     // =========================================================================
+    // APM Widget Accessors
+    // =========================================================================
+
+    /// Get the APM state
+    pub fn apm_state(&self) -> &ApmState {
+        &self.apm_state
+    }
+
+    /// Get APM widget entity (if created)
+    pub fn apm_widget(&self) -> Option<&Entity<ApmWidget>> {
+        self.apm_widget.as_ref()
+    }
+
+    /// Check if APM widget is visible
+    pub fn is_apm_visible(&self) -> bool {
+        self.apm_state.visible
+    }
+
+    /// Toggle APM widget visibility
+    pub fn toggle_apm_visibility(&mut self, cx: &mut Context<Self>) {
+        self.apm_state.toggle_visibility();
+        if let Some(ref widget) = self.apm_widget {
+            widget.update(cx, |w, cx| {
+                w.toggle_visibility(cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// Enable APM widget (creates entity if not present)
+    pub fn enable_apm_widget(&mut self, cx: &mut Context<Self>) {
+        if self.apm_widget.is_none() {
+            let widget = cx.new(|cx| ApmWidget::new(cx));
+            // Initialize with current state
+            let state = self.apm_state.clone();
+            widget.update(cx, |w, cx| {
+                w.update_state(state, cx);
+            });
+            self.apm_widget = Some(widget);
+            cx.notify();
+        }
+    }
+
+    // =========================================================================
     // HUD Message Handling (for testing)
     // =========================================================================
 
@@ -651,6 +748,8 @@ impl GraphView {
                     self.current_session_id = Some(session_id.to_string());
                     self.current_error = None;
                     self.error_count = 0;
+                    // Reset APM state for new session
+                    self.apm_state = ApmState::new();
                 }
             }
             "session_complete" => {
@@ -665,9 +764,52 @@ impl GraphView {
                 }
             }
             "apm_update" => {
-                if let Some(apm) = message.get("sessionAPM").and_then(|v| v.as_f64()) {
-                    // Sanitize APM value
-                    self.current_apm = if apm.is_finite() { apm } else { 0.0 };
+                let session_apm = message.get("sessionAPM").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let recent_apm = message.get("recentAPM").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let total_actions = message.get("totalActions").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let duration_minutes = message.get("durationMinutes").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+                // Sanitize APM value (legacy field)
+                self.current_apm = if session_apm.is_finite() { session_apm } else { 0.0 };
+
+                // Update APM state
+                self.apm_state.update_from_message(session_apm, recent_apm, total_actions, duration_minutes);
+
+                // Update APM widget if present
+                if let Some(ref widget) = self.apm_widget {
+                    widget.update(cx, |w, cx| {
+                        w.handle_apm_update(session_apm, recent_apm, total_actions, duration_minutes, cx);
+                    });
+                }
+            }
+            "apm_snapshot" => {
+                // Handle historical APM snapshot
+                if let Some(combined) = message.get("combined") {
+                    let snapshot = ApmSnapshot {
+                        apm_1h: combined.get("apm1h").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        apm_6h: combined.get("apm6h").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        apm_24h: combined.get("apm1d").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        total_sessions: combined.get("totalSessions").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+                        total_actions: combined.get("totalActions").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+                    };
+                    self.apm_state.update_snapshot(snapshot);
+                }
+
+                if let Some(comparison) = message.get("comparison") {
+                    let comp = ApmComparison {
+                        claude_code_apm: comparison.get("claudeCodeAPM").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        mecha_coder_apm: comparison.get("mechaCoderAPM").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        efficiency_ratio: comparison.get("efficiencyRatio").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    };
+                    self.apm_state.update_comparison(comp);
+                }
+
+                // Update widget with new state
+                if let Some(ref widget) = self.apm_widget {
+                    let state = self.apm_state.clone();
+                    widget.update(cx, |w, cx| {
+                        w.update_state(state, cx);
+                    });
                 }
             }
             "error" => {
@@ -772,6 +914,117 @@ impl GraphView {
 
 impl EventEmitter<GraphEvent> for GraphView {}
 
+impl Focusable for GraphView {
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl GraphView {
+    // =========================================================================
+    // Action Handlers (Keyboard Shortcuts)
+    // =========================================================================
+
+    /// Handle SelectAll action (Cmd+A)
+    fn handle_select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+        for (id, node) in &self.nodes {
+            if !self.selection.is_selected(id) {
+                self.selection.add(id.clone());
+                node.view.update(cx, |v, _| v.set_selected(true));
+            }
+        }
+        let selected = self.selection.selected_vec();
+        if !selected.is_empty() {
+            cx.emit(GraphEvent::MultipleSelected { ids: selected });
+        }
+        cx.notify();
+    }
+
+    /// Handle DeselectAll action (Escape)
+    fn handle_deselect_all(&mut self, _: &DeselectAll, _: &mut Window, cx: &mut Context<Self>) {
+        self.clear_selection(cx);
+    }
+
+    /// Handle ZoomIn action (Cmd+=)
+    fn handle_zoom_in(&mut self, _: &ZoomIn, _: &mut Window, cx: &mut Context<Self>) {
+        // Zoom toward center of viewport
+        let old_zoom = self.zoom;
+        self.zoom = (self.zoom * 1.25).clamp(self.style.min_zoom, self.style.max_zoom);
+        // Adjust pan to keep center stable (assuming 800x600 viewport)
+        let center_x = 400.0;
+        let center_y = 300.0;
+        let zoom_ratio = self.zoom / old_zoom;
+        self.pan_x = center_x - (center_x - self.pan_x) * zoom_ratio;
+        self.pan_y = center_y - (center_y - self.pan_y) * zoom_ratio;
+        cx.notify();
+    }
+
+    /// Handle ZoomOut action (Cmd+-)
+    fn handle_zoom_out(&mut self, _: &ZoomOut, _: &mut Window, cx: &mut Context<Self>) {
+        let old_zoom = self.zoom;
+        self.zoom = (self.zoom / 1.25).clamp(self.style.min_zoom, self.style.max_zoom);
+        let center_x = 400.0;
+        let center_y = 300.0;
+        let zoom_ratio = self.zoom / old_zoom;
+        self.pan_x = center_x - (center_x - self.pan_x) * zoom_ratio;
+        self.pan_y = center_y - (center_y - self.pan_y) * zoom_ratio;
+        cx.notify();
+    }
+
+    /// Handle ResetView action (Cmd+0)
+    fn handle_reset_view(&mut self, _: &ResetView, _: &mut Window, cx: &mut Context<Self>) {
+        self.zoom = 1.0;
+        self.pan_x = 0.0;
+        self.pan_y = 0.0;
+        cx.notify();
+    }
+
+    /// Handle ZoomToFit action
+    fn handle_zoom_to_fit(&mut self, _: &ZoomToFit, _: &mut Window, cx: &mut Context<Self>) {
+        if self.nodes.is_empty() {
+            return;
+        }
+
+        // Calculate bounding box of all nodes
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+
+        for node in self.nodes.values() {
+            min_x = min_x.min(node.x);
+            min_y = min_y.min(node.y);
+            max_x = max_x.max(node.x + node.width);
+            max_y = max_y.max(node.y + node.height);
+        }
+
+        // Add padding
+        let padding = 50.0;
+        min_x -= padding;
+        min_y -= padding;
+        max_x += padding;
+        max_y += padding;
+
+        // Calculate zoom to fit (assuming 800x600 viewport)
+        let viewport_width = 800.0;
+        let viewport_height = 600.0;
+        let content_width = max_x - min_x;
+        let content_height = max_y - min_y;
+
+        let zoom_x = viewport_width / content_width;
+        let zoom_y = viewport_height / content_height;
+        self.zoom = zoom_x.min(zoom_y).clamp(self.style.min_zoom, self.style.max_zoom);
+
+        // Center the content
+        let center_x = (min_x + max_x) / 2.0;
+        let center_y = (min_y + max_y) / 2.0;
+        self.pan_x = viewport_width / 2.0 - center_x * self.zoom;
+        self.pan_y = viewport_height / 2.0 - center_y * self.zoom;
+
+        cx.notify();
+    }
+}
+
 impl Render for GraphView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let zoom = self.zoom;
@@ -795,6 +1048,14 @@ impl Render for GraphView {
         div()
             .size_full()
             .bg(style.background)
+            .track_focus(&self.focus_handle)
+            // Action handlers for keyboard shortcuts
+            .on_action(cx.listener(Self::handle_select_all))
+            .on_action(cx.listener(Self::handle_deselect_all))
+            .on_action(cx.listener(Self::handle_zoom_in))
+            .on_action(cx.listener(Self::handle_zoom_out))
+            .on_action(cx.listener(Self::handle_reset_view))
+            .on_action(cx.listener(Self::handle_zoom_to_fit))
             .child(
                 canvas(
                     move |bounds, _window, _cx| bounds,
@@ -896,6 +1157,10 @@ impl Render for GraphView {
                     .top(px(screen_y))
                     .child(node.view.clone())
             }))
+            // Render APM widget overlay (if enabled)
+            .when_some(self.apm_widget.clone(), |this, widget| {
+                this.child(widget)
+            })
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
                 let delta = event.delta.pixel_delta(px(1.0));
                 let delta_x: f32 = delta.x.into();
