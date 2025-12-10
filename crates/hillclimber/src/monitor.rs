@@ -133,6 +133,56 @@ fn check_test_before_submit(ctx: &ActionContext) -> Option<MonitorDecision> {
     None
 }
 
+/// Rule: Enforce tool sequencing rules.
+/// Prevents bad sequences like double writes without verify, or repeated reads of non-existent files.
+fn check_tool_sequence(ctx: &ActionContext) -> Option<MonitorDecision> {
+    if ctx.previous_actions.is_empty() {
+        return None;
+    }
+
+    let last_action = ctx.previous_actions.last().unwrap();
+
+    // Rule 1: Can't call write_file twice without verify in between
+    // (Backup for auto-verify - if FM somehow bypasses, this catches it)
+    if ctx.tool_name == "write_file" && last_action.contains("write_file") {
+        // Check if there was an auto-verify or manual verify after the last write
+        if !last_action.contains("verify_progress") && !last_action.contains("[AUTO]") {
+            return Some(MonitorDecision::deny_with_suggestion(
+                "Cannot write_file twice without verifying".to_string(),
+                "Call verify_progress() to check your previous changes first".to_string(),
+            ));
+        }
+    }
+
+    // Rule 2: Can't read_file more than twice for same path
+    // Prevents FM from repeatedly trying to read a file that doesn't exist
+    if ctx.tool_name == "read_file" {
+        let path = ctx
+            .args
+            .get("path")
+            .or_else(|| ctx.args.get("file_path"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if !path.is_empty() {
+            let read_count = ctx
+                .previous_actions
+                .iter()
+                .filter(|a| a.contains("read_file") && a.contains(path))
+                .count();
+
+            if read_count >= 2 {
+                return Some(MonitorDecision::deny_with_suggestion(
+                    format!("Already read {} twice", path),
+                    "The file either doesn't exist or you've seen its contents. Try write_file instead.".to_string(),
+                ));
+            }
+        }
+    }
+
+    None
+}
+
 /// Rule: Prevent infinite loops (same action repeated).
 fn check_repetition(ctx: &ActionContext) -> Option<MonitorDecision> {
     if ctx.previous_actions.len() >= 3 {
@@ -159,6 +209,7 @@ fn check_repetition(ctx: &ActionContext) -> Option<MonitorDecision> {
 type ValidationRule = fn(&ActionContext) -> Option<MonitorDecision>;
 
 const VALIDATION_RULES: &[ValidationRule] = &[
+    check_tool_sequence, // FIRST - enforce sequencing before other checks
     check_workspace_bounds,
     check_dangerous_commands,
     check_repetition,
@@ -321,13 +372,11 @@ mod tests {
 
     #[test]
     fn test_repetition_detection() {
-        // Create signature with same args as the action (including content)
-        let signature = create_action_signature("write_file", &serde_json::json!({"path": "/app/test.txt", "content": "test"}));
+        // Use verify_progress for repetition test (not affected by sequencing rules)
+        let signature =
+            create_action_signature("verify_progress", &serde_json::json!({}));
 
-        let mut ctx = create_test_context(
-            "write_file",
-            serde_json::json!({"path": "/app/test.txt", "content": "test"}),
-        );
+        let mut ctx = create_test_context("verify_progress", serde_json::json!({}));
         ctx.previous_actions = vec![
             "other_action".to_string(),
             signature.clone(),
@@ -337,6 +386,51 @@ mod tests {
         let decision = monitor_action(&ctx);
         assert!(!decision.allowed);
         assert!(decision.reason.unwrap().contains("repeated"));
+    }
+
+    #[test]
+    fn test_tool_sequence_double_write() {
+        // Double write without verify should be blocked
+        let mut ctx = create_test_context(
+            "write_file",
+            serde_json::json!({"path": "/app/test.txt", "content": "test"}),
+        );
+        ctx.previous_actions = vec!["write_file(/app/test.txt) -> OK".to_string()];
+
+        let decision = monitor_action(&ctx);
+        assert!(!decision.allowed);
+        assert!(decision.reason.unwrap().contains("without verifying"));
+    }
+
+    #[test]
+    fn test_tool_sequence_write_after_auto_verify() {
+        // Write after auto-verify should be allowed
+        let mut ctx = create_test_context(
+            "write_file",
+            serde_json::json!({"path": "/app/test.txt", "content": "test"}),
+        );
+        ctx.previous_actions =
+            vec!["[AUTO] verify_progress() -> OK: Tests: 10/20 passing".to_string()];
+
+        let decision = monitor_action(&ctx);
+        assert!(decision.allowed);
+    }
+
+    #[test]
+    fn test_tool_sequence_read_limit() {
+        // Reading same file 3 times should be blocked
+        let mut ctx = create_test_context(
+            "read_file",
+            serde_json::json!({"path": "/app/data.txt"}),
+        );
+        ctx.previous_actions = vec![
+            "read_file(/app/data.txt) -> FAILED: not found".to_string(),
+            "read_file(/app/data.txt) -> FAILED: not found".to_string(),
+        ];
+
+        let decision = monitor_action(&ctx);
+        assert!(!decision.allowed);
+        assert!(decision.reason.unwrap().contains("Already read"));
     }
 
     #[test]

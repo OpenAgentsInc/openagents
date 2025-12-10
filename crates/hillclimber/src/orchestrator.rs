@@ -38,6 +38,34 @@ use testgen::{
 // ============================================================================
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Format an action for display to the FM.
+/// This is different from the monitor signature - it shows human-readable info.
+fn format_action_for_display(tool_name: &str, args: &serde_json::Value) -> String {
+    match tool_name {
+        "write_file" => {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            let content_len = args.get("content").and_then(|v| v.as_str()).map(|s| s.len()).unwrap_or(0);
+            format!("write_file({}, {} chars)", path, content_len)
+        }
+        "read_file" => {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("read_file({})", path)
+        }
+        "run_command" => {
+            let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("?");
+            // Truncate long commands
+            let truncated = if cmd.len() > 50 { &cmd[..50] } else { cmd };
+            format!("run_command({})", truncated)
+        }
+        "verify_progress" => "verify_progress()".to_string(),
+        _ => format!("{}({})", tool_name, args),
+    }
+}
+
+// ============================================================================
 // Emitter Trait
 // ============================================================================
 
@@ -409,15 +437,33 @@ impl<F: FMClient, T: ToolExecutor, E: HillClimberEmitter> MAPOrchestrator<F, T, 
             let context = build_fm_context(task, &decomposition, &state, file_contents.clone());
             let user_prompt = build_user_prompt(&context, state.total_turns, self.options.max_turns);
 
+            // DEBUG: Log the full prompt (only on first turn or after failures)
+            if self.options.verbose && (state.total_turns == 1 || !state.previous_actions.is_empty()) {
+                tracing::debug!("=== USER PROMPT (turn {}) ===\n{}\n=== END PROMPT ===", state.total_turns, user_prompt);
+            }
+
             // Get action from FM
             let response = self
                 .fm_client
                 .generate(SYSTEM_PROMPT, &user_prompt)
                 .await?;
 
+            // DEBUG: Log FM response
+            if self.options.verbose {
+                tracing::debug!("FM response (turn {}): {}", state.total_turns, &response[..response.len().min(500)]);
+            }
+
             let action = match parse_fm_response(&response) {
-                Ok(a) => a,
+                Ok(a) => {
+                    if self.options.verbose {
+                        tracing::debug!("Parsed action: {} with args {:?}", a.tool_name, a.tool_args);
+                    }
+                    a
+                },
                 Err(e) => {
+                    if self.options.verbose {
+                        tracing::warn!("Failed to parse FM response: {}. Response was: {}", e, &response[..response.len().min(300)]);
+                    }
                     self.emitter.on_error(&format!("Failed to parse FM response: {}", e));
                     continue;
                 }
@@ -455,9 +501,19 @@ impl<F: FMClient, T: ToolExecutor, E: HillClimberEmitter> MAPOrchestrator<F, T, 
             // Execute action
             let result = self.execute_action(&action, &task.verification).await?;
 
-            // Track action and result
-            let signature = create_action_signature(&action.tool_name, &action.tool_args);
-            state.previous_actions.push(signature);
+            // Track action and result - INCLUDE the result so FM knows what happened!
+            // Use a human-readable format instead of the monitor signature
+            let action_display = format_action_for_display(&action.tool_name, &action.tool_args);
+            let result_summary = if result.success {
+                if result.output.len() > 200 {
+                    format!("OK: {}...", &result.output[..200])
+                } else {
+                    format!("OK: {}", result.output)
+                }
+            } else {
+                format!("FAILED: {}", result.output)
+            };
+            state.previous_actions.push(format!("{} -> {}", action_display, result_summary));
 
             if let Some(modified_file) = &result.modified_file {
                 if !state.modified_files.contains(modified_file) {
@@ -471,7 +527,95 @@ impl<F: FMClient, T: ToolExecutor, E: HillClimberEmitter> MAPOrchestrator<F, T, 
                 }
             }
 
-            // Handle verification results
+            // ================================================================
+            // AUTO-VERIFY: Automatically run verify_progress after write_file
+            // The FM is too weak to reliably call verify after writes, so we
+            // enforce it deterministically. This guarantees feedback loop.
+            // ================================================================
+            if action.tool_name == "write_file" && result.success {
+                tracing::debug!("Auto-verifying after write_file");
+
+                let auto_verify = FMAction {
+                    tool_name: "verify_progress".to_string(),
+                    tool_args: serde_json::json!({}),
+                    reasoning: Some("Automatic post-write verification".to_string()),
+                };
+
+                let verify_result = self.execute_action(&auto_verify, &task.verification).await?;
+                let verify_display =
+                    format_action_for_display("verify_progress", &serde_json::json!({}));
+                let verify_summary = if verify_result.success {
+                    if verify_result.output.len() > 200 {
+                        format!("OK: {}...", &verify_result.output[..200])
+                    } else {
+                        format!("OK: {}", verify_result.output)
+                    }
+                } else {
+                    format!("FAILED: {}", verify_result.output)
+                };
+                state
+                    .previous_actions
+                    .push(format!("[AUTO] {} -> {}", verify_display, verify_summary));
+
+                // Parse and handle auto-verification result
+                if let Some(eval) = self.parse_verification_result(&verify_result) {
+                    let progress = eval.progress;
+                    let passed = eval.passed;
+
+                    self.emitter
+                        .on_verify_complete(eval.tests_passing, eval.tests_total, progress);
+
+                    // Update state
+                    if progress > state.best_progress {
+                        state.best_progress = progress;
+                        state.turns_since_improvement = 0;
+                    } else {
+                        state.turns_since_improvement += 1;
+                    }
+
+                    state.last_evaluation = Some(eval);
+
+                    // Check for completion
+                    if passed {
+                        state.output = "All tests pass!".to_string();
+                        let duration_ms = start_time.elapsed().as_millis() as u64;
+                        self.emitter.on_run_complete(true, 1.0);
+
+                        return Ok(MAPOrchestratorResult {
+                            passed: true,
+                            turns: state.total_turns,
+                            duration_ms,
+                            progress: 1.0,
+                            output: state.output,
+                            error: None,
+                            subtask_status: state.subtask_status,
+                            evaluation: state.last_evaluation,
+                        });
+                    }
+
+                    // Decide next step based on auto-verify result
+                    let decision = self.decide_step(&state, current_subtask);
+                    match decision {
+                        StepDecision::Advance => {
+                            state.current_subtask += 1;
+                            state.subtask_turns = 0;
+                            if state.current_subtask < state.subtask_status.len() {
+                                state.subtask_status[state.current_subtask - 1].status =
+                                    SubtaskState::Completed;
+                                state.subtask_status[state.current_subtask].status =
+                                    SubtaskState::InProgress;
+                            }
+                        }
+                        StepDecision::NoProgress => {
+                            state.monitor_warning =
+                                Some("No progress for several turns".to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Handle verification results (for manual verify_progress calls)
             if action.tool_name == "verify_progress" {
                 if let Some(eval) = self.parse_verification_result(&result) {
                     let progress = eval.progress;

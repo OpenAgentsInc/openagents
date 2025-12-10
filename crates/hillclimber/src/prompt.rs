@@ -82,21 +82,37 @@ pub const SYSTEM_PROMPT: &str = r#"You are a helpful coding assistant working on
 You can use these tools:
 
 1. **read_file(path)** - Read a file's contents
-2. **write_file(path, content)** - Write content to a file
+2. **write_file(path, content)** - Create or overwrite a file with content
 3. **run_command(command)** - Run a shell command
 4. **verify_progress()** - Run tests to check your solution
 
-## Workflow
+## CRITICAL: Creating Files
 
-1. Read the task requirements carefully
-2. Examine any example files mentioned
-3. Write an initial solution
-4. Use verify_progress() to test
-5. Iterate based on test feedback until all tests pass
+If the task says "Save your X in /path/file.txt" or "Write to /path/file.txt":
+- The file does NOT exist yet - YOU must CREATE it
+- Use write_file(path, content) to create the file
+- Do NOT try to read a file that you need to create
+
+If read_file fails with "No such file or directory":
+- The file doesn't exist - you may need to CREATE it with write_file
+- Do NOT keep trying to read a non-existent file
+
+## CRITICAL: Workflow
+
+Follow this EXACT sequence:
+1. Use write_file to CREATE the output file with your solution
+2. Call verify_progress() IMMEDIATELY after write_file succeeds
+3. Read the test failures from verify_progress output
+4. Use write_file to update your solution based on failures
+5. Call verify_progress() again to check your changes
+6. Repeat steps 3-5 until all tests pass
+
+NEVER repeat write_file without calling verify_progress() first!
+After EVERY write_file, you MUST call verify_progress().
 
 ## Guidelines
 
-- Use verify_progress() after making changes
+- Use verify_progress() after EVERY write_file
 - Read test output carefully to understand what needs adjustment
 - Make ONE targeted change per iteration
 - If matching too much: tighten constraints
@@ -284,6 +300,53 @@ pub fn build_user_prompt(context: &FMContext, turn: u32, max_turns: u32) -> Stri
     sections.join("\n\n")
 }
 
+/// Sanitize JSON string to fix common FM escaping mistakes.
+///
+/// The FM often writes regex patterns with invalid JSON escapes like `\d` instead of `\\d`.
+/// Even `\b` and `\n` which are valid JSON escapes likely mean regex word-boundary and
+/// literal newline, not JSON control characters.
+///
+/// Strategy: double all backslashes except `\"` (needed for JSON strings) and `\\` (already doubled).
+fn sanitize_json_escapes(json_str: &str) -> String {
+    let mut result = String::with_capacity(json_str.len() * 2);
+    let chars: Vec<char> = json_str.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        if chars[i] == '\\' && i + 1 < len {
+            let next = chars[i + 1];
+            match next {
+                '"' => {
+                    // Keep \" as-is (needed for JSON string boundaries)
+                    result.push('\\');
+                    result.push('"');
+                    i += 2;
+                }
+                '\\' => {
+                    // Already doubled \\ - keep as-is
+                    result.push('\\');
+                    result.push('\\');
+                    i += 2;
+                }
+                _ => {
+                    // Any other backslash sequence (including \b, \n, \d, etc.)
+                    // Double it for regex safety
+                    result.push('\\');
+                    result.push('\\');
+                    result.push(next);
+                    i += 2;
+                }
+            }
+        } else {
+            result.push(chars[i]);
+            i += 1;
+        }
+    }
+
+    result
+}
+
 /// Parse an FM response into an action.
 ///
 /// # Arguments
@@ -301,7 +364,9 @@ pub fn parse_fm_response(response: &str) -> Result<crate::types::FMAction, Strin
     match (json_start, json_end) {
         (Some(start), Some(end)) if start < end => {
             let json_str = &response[start..=end];
-            match serde_json::from_str::<serde_json::Value>(json_str) {
+            // Sanitize invalid JSON escapes (e.g., \d -> \\d)
+            let sanitized = sanitize_json_escapes(json_str);
+            match serde_json::from_str::<serde_json::Value>(&sanitized) {
                 Ok(json) => {
                     let tool_name = json
                         .get("tool_name")
@@ -380,6 +445,51 @@ I'll write the file.
     fn test_parse_fm_response_invalid() {
         let response = "I don't know what to do.";
         assert!(parse_fm_response(response).is_err());
+    }
+
+    #[test]
+    fn test_sanitize_json_escapes() {
+        // Invalid escape \d should become \\d
+        let input = r#"{"content": "\d+"}"#;
+        let sanitized = sanitize_json_escapes(input);
+        assert_eq!(sanitized, r#"{"content": "\\d+"}"#);
+
+        // \b (word boundary) should become \\b
+        let input = r#"{"content": "\b\d{4}\b"}"#;
+        let sanitized = sanitize_json_escapes(input);
+        assert_eq!(sanitized, r#"{"content": "\\b\\d{4}\\b"}"#);
+
+        // Already doubled \\ should stay doubled (not become \\\\)
+        let input = r#"{"content": "\\d+"}"#;
+        let sanitized = sanitize_json_escapes(input);
+        assert_eq!(sanitized, r#"{"content": "\\d+"}"#);
+
+        // \" should stay as \"
+        let input = r#"{"content": "test \"value\""}"#;
+        let sanitized = sanitize_json_escapes(input);
+        assert_eq!(sanitized, r#"{"content": "test \"value\""}"#);
+    }
+
+    #[test]
+    fn test_parse_fm_response_with_invalid_escapes() {
+        // FM often outputs invalid JSON like this
+        let response = r#"```json
+{
+  "tool_name": "write_file",
+  "tool_args": {
+    "path": "/app/regex.txt",
+    "content": "^\b\d{4}-\d{2}-\d{2}\b$"
+  },
+  "reasoning": "Writing regex"
+}
+```"#;
+
+        let action = parse_fm_response(response).unwrap();
+        assert_eq!(action.tool_name, "write_file");
+        // The content should be properly escaped
+        let content = action.tool_args.get("content").unwrap().as_str().unwrap();
+        assert!(content.contains("\\b"));
+        assert!(content.contains("\\d"));
     }
 
     #[test]
