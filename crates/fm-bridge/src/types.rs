@@ -92,14 +92,20 @@ pub(crate) struct StreamResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct StreamChoice {
-    text: String,
+    delta: Option<StreamDelta>,
     finish_reason: Option<FinishReason>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct StreamDelta {
+    content: Option<String>,
+    role: Option<String>,
 }
 
 impl StreamResponse {
     pub fn into_chunk(self) -> Option<StreamChunk> {
         self.choices.first().map(|choice| StreamChunk {
-            text: choice.text.clone(),
+            text: choice.delta.as_ref().and_then(|d| d.content.clone()).unwrap_or_default(),
             finish_reason: choice.finish_reason,
         })
     }
