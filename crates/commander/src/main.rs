@@ -15,6 +15,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use text_input::TextInput;
+use theme::{bg, border, input, status, text, FONT_FAMILY};
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle
@@ -353,10 +354,10 @@ impl CommanderView {
         let status = format!("{:?}", metadata.status);
         let is_selected = self.selected_trajectory_id.as_deref() == Some(&metadata.session_id);
 
-        let (bg, border) = if is_selected {
-            (hsla(0.58, 0.5, 0.15, 0.3), hsla(0.58, 0.5, 0.35, 0.5))
+        let (item_bg, item_border) = if is_selected {
+            (bg::SELECTED, border::SELECTED)
         } else {
-            (hsla(0.0, 0.0, 0.12, 0.4), hsla(0.0, 0.0, 0.25, 0.4))
+            (bg::CARD, border::DEFAULT)
         };
 
         let session_id_for_click = session_id.clone();
@@ -370,12 +371,12 @@ impl CommanderView {
             .id(SharedString::from(format!("traj-{}", session_id)))
             .p(px(12.0))
             .mb(px(8.0))
-            .bg(bg)
+            .bg(item_bg)
             .border_1()
-            .border_color(border)
+            .border_color(item_border)
             .rounded(px(8.0))
             .cursor_pointer()
-            .hover(|s| s.bg(hsla(0.0, 0.0, 0.18, 0.6)))
+            .hover(|s| s.bg(bg::HOVER))
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 this.load_trajectory(&session_id_for_click);
                 cx.notify();
@@ -390,15 +391,15 @@ impl CommanderView {
                     .child(
                         div()
                             .text_size(px(13.0))
-                            .font_family("Berkeley Mono")
-                            .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::PRIMARY)
                             .child(agent_name),
                     )
                     .child(
                         div()
                             .text_size(px(10.0))
-                            .font_family("Berkeley Mono")
-                            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::MUTED)
                             .child(created_at),
                     ),
             )
@@ -406,8 +407,8 @@ impl CommanderView {
             .child(
                 div()
                     .text_size(px(11.0))
-                    .font_family("Berkeley Mono")
-                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
                     .mb(px(4.0))
                     .child(format!("model: {}", model_name)),
             )
@@ -418,18 +419,18 @@ impl CommanderView {
                     .items_center()
                     .gap(px(6.0))
                     .text_size(px(10.0))
-                    .font_family("Berkeley Mono")
-                    .text_color(hsla(0.0, 0.0, 0.45, 1.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::DISABLED)
                     .child(session_id_display)
                     .child(
                         div()
-                            .text_color(hsla(0.0, 0.0, 0.3, 1.0))
+                            .text_color(text::DIM)
                             .child("•"),
                     )
                     .child(format!("{} steps", step_count))
                     .child(
                         div()
-                            .text_color(hsla(0.0, 0.0, 0.3, 1.0))
+                            .text_color(text::DIM)
                             .child("•"),
                     )
                     .child(self.render_status_badge(&status)),
@@ -437,22 +438,22 @@ impl CommanderView {
     }
 
     /// Render status badge
-    fn render_status_badge(&self, status: &str) -> impl IntoElement {
-        let (bg, text) = match status.to_lowercase().as_str() {
-            "completed" => (hsla(0.38, 0.5, 0.2, 0.4), hsla(0.38, 0.6, 0.7, 1.0)),
-            "failed" => (hsla(0.0, 0.5, 0.2, 0.4), hsla(0.0, 0.6, 0.7, 1.0)),
-            _ => (hsla(0.15, 0.5, 0.2, 0.4), hsla(0.15, 0.6, 0.7, 1.0)),
+    fn render_status_badge(&self, badge_status: &str) -> impl IntoElement {
+        let (badge_bg, badge_text) = match badge_status.to_lowercase().as_str() {
+            "completed" => (status::SUCCESS_BG, status::SUCCESS),
+            "failed" => (status::ERROR_BG, status::ERROR),
+            _ => (status::WARNING_BG, status::WARNING),
         };
 
         div()
             .px(px(6.0))
             .py(px(2.0))
             .text_size(px(9.0))
-            .font_family("Berkeley Mono")
-            .bg(bg)
-            .text_color(text)
+            .font_family(FONT_FAMILY)
+            .bg(badge_bg)
+            .text_color(badge_text)
             .rounded(px(4.0))
-            .child(status.to_lowercase())
+            .child(badge_status.to_lowercase())
     }
 }
 
@@ -494,7 +495,7 @@ impl Render for CommanderView {
             .flex()
             .flex_row()
             .size_full()
-            .bg(rgb(0x000000))
+            .bg(bg::APP)
             // Sidebar with trajectory list
             .when(!self.sidebar_collapsed, |el| {
                 el.child(
@@ -502,8 +503,8 @@ impl Render for CommanderView {
                         .w(px(320.0))
                         .h_full()
                         .border_r_1()
-                        .border_color(hsla(0., 0., 0.2, 0.6))
-                        .bg(hsla(0., 0., 0.02, 1.0))
+                        .border_color(border::DEFAULT)
+                        .bg(bg::SIDEBAR)
                         .flex()
                         .flex_col()
                         // Header
@@ -515,8 +516,8 @@ impl Render for CommanderView {
                                 .px(px(16.0))
                                 .py(px(12.0))
                                 .border_b_1()
-                                .border_color(hsla(0., 0., 0.2, 0.6))
-                                .bg(hsla(0., 0., 0.04, 1.0))
+                                .border_color(border::DEFAULT)
+                                .bg(bg::SIDEBAR_HEADER)
                                 .child(
                                     div()
                                         .flex()
@@ -525,15 +526,15 @@ impl Render for CommanderView {
                                         .child(
                                             div()
                                                 .text_size(px(14.0))
-                                                .font_family("Berkeley Mono")
-                                                .text_color(hsla(0., 0., 0.9, 1.0))
+                                                .font_family(FONT_FAMILY)
+                                                .text_color(text::PRIMARY)
                                                 .child("Trajectories"),
                                         )
                                         .child(
                                             div()
                                                 .text_size(px(12.0))
-                                                .font_family("Berkeley Mono")
-                                                .text_color(hsla(0., 0., 0.5, 1.0))
+                                                .font_family(FONT_FAMILY)
+                                                .text_color(text::MUTED)
                                                 .child(format!("({})", total_trajectories)),
                                         ),
                                 ),
@@ -556,16 +557,16 @@ impl Render for CommanderView {
                         .w(px(40.0))
                         .h_full()
                         .border_r_1()
-                        .border_color(hsla(0., 0., 0.2, 0.6))
-                        .bg(hsla(0., 0., 0.02, 1.0))
+                        .border_color(border::DEFAULT)
+                        .bg(bg::SIDEBAR)
                         .flex()
                         .items_center()
                         .justify_center()
                         .cursor_pointer()
-                        .hover(|s| s.bg(hsla(0., 0., 0.05, 1.0)))
+                        .hover(|s| s.bg(bg::SURFACE))
                         .child(
                             div()
-                                .text_color(hsla(0., 0., 0.5, 1.0))
+                                .text_color(text::MUTED)
                                 .text_size(px(14.0))
                                 .child("▶"),
                         ),
@@ -612,8 +613,8 @@ impl Render for CommanderView {
                                                     div()
                                                         .w_full()
                                                         .max_w(px(768.0))
-                                                        .text_color(hsla(0., 0., 0.5, 1.0))
-                                                        .font_family("Berkeley Mono")
+                                                        .text_color(text::MUTED)
+                                                        .font_family(FONT_FAMILY)
                                                         .text_size(px(14.0))
                                                         .line_height(px(22.0))
                                                         .child("..."),
@@ -636,14 +637,14 @@ impl Render for CommanderView {
                                 div()
                                     .w(px(768.0))
                                     .h(px(44.0))
-                                    .bg(hsla(0., 0., 1., 0.05))
+                                    .bg(input::BG)
                                     .border_1()
-                                    .border_color(hsla(0., 0., 1., 0.1))
+                                    .border_color(input::BORDER)
                                     .px(px(12.0))
                                     .flex()
                                     .items_center()
-                                    .text_color(rgb(0xffffff))
-                                    .font_family("Berkeley Mono")
+                                    .text_color(text::BRIGHT)
+                                    .font_family(FONT_FAMILY)
                                     .text_size(px(14.0))
                                     .line_height(px(20.0))
                                     .child(self.input.clone()),

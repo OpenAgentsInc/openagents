@@ -1,6 +1,7 @@
 use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla, StyledText};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::ops::Range;
+use theme::accent;
 
 /// Style configuration for markdown rendering
 pub struct MarkdownStyle {
@@ -11,7 +12,7 @@ pub struct MarkdownStyle {
 impl Default for MarkdownStyle {
     fn default() -> Self {
         Self {
-            code_color: gpui::hsla(0.55, 0.6, 0.6, 1.0), // Cyan-ish for code
+            code_color: accent::PRIMARY,
             heading_weight: FontWeight::BOLD,
         }
     }
