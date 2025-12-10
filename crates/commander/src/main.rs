@@ -1,10 +1,15 @@
+mod components;
 mod markdown;
 mod text_input;
 
+use atif::{Agent, Step};
+use atif_store::TrajectoryStore;
+use components::render_steps_list;
 use fm_bridge::FMClient;
-use markdown::{render_markdown, MarkdownStyle};
 use gpui::*;
 use std::borrow::Cow;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,7 +51,8 @@ impl BridgeManager {
             "../../swift/foundation-bridge/.build/release/foundation-bridge",
         ];
 
-        let bridge_path = possible_paths.iter()
+        let bridge_path = possible_paths
+            .iter()
             .find(|p| std::path::Path::new(p).exists())
             .ok_or_else(|| "foundation-bridge binary not found".to_string())?;
 
@@ -86,10 +92,12 @@ fn ensure_bridge_running() -> Result<(), String> {
     manager.lock().unwrap().ensure_running()
 }
 
-#[derive(Clone)]
-struct Message {
-    role: String,
-    content: String,
+/// Get the path to the trajectories database
+fn get_trajectories_db_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let data_dir = PathBuf::from(home).join(".openagents");
+    std::fs::create_dir_all(&data_dir).ok();
+    data_dir.join("trajectories.db")
 }
 
 #[derive(Clone)]
@@ -102,9 +110,13 @@ enum MessageUpdate {
 struct CommanderView {
     input: Entity<TextInput>,
     fm_client: Arc<FMClient>,
-    messages: Vec<Message>,
+    store: Arc<Mutex<TrajectoryStore>>,
+    current_session_id: Option<String>,
+    steps: Vec<Step>,
+    expanded_step_ids: HashSet<i64>,
     pending_updates: Arc<Mutex<Vec<MessageUpdate>>>,
     is_loading: bool,
+    next_step_id: i64,
     _subscription: Subscription,
 }
 
@@ -113,68 +125,122 @@ impl CommanderView {
         let fm_client = Arc::new(FMClient::new());
         let pending_updates: Arc<Mutex<Vec<MessageUpdate>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let input = cx.new(|cx| {
-            TextInput::new("Message OpenAgents", cx)
-        });
+        // Initialize trajectory store
+        let db_path = get_trajectories_db_path();
+        let store = Arc::new(Mutex::new(
+            TrajectoryStore::new(&db_path).expect("Failed to create trajectory store"),
+        ));
+
+        // Create a new trajectory session on startup
+        let agent = Agent {
+            name: "commander".to_string(),
+            version: "0.1.0".to_string(),
+            model_name: Some("apple-fm".to_string()),
+            extra: None,
+        };
+        let session_id = store
+            .lock()
+            .unwrap()
+            .create_trajectory(&agent)
+            .expect("Failed to create trajectory");
+
+        let input = cx.new(|cx| TextInput::new("Message OpenAgents", cx));
 
         let pending_clone = pending_updates.clone();
         let client_clone = fm_client.clone();
-        let subscription = cx.subscribe(&input, move |this, _, event: &text_input::SubmitEvent, cx| {
-            let prompt = event.0.clone();
-            this.messages.push(Message {
-                role: "user".to_string(),
-                content: prompt.clone(),
-            });
-            // Add empty assistant message placeholder immediately
-            this.messages.push(Message {
-                role: "assistant".to_string(),
-                content: String::new(),
-            });
-            this.is_loading = true;
-            cx.notify();
+        let store_clone = store.clone();
+        let session_id_clone = session_id.clone();
+        let subscription = cx.subscribe(
+            &input,
+            move |this, _, event: &text_input::SubmitEvent, cx| {
+                let prompt = event.0.clone();
 
-            let client = client_clone.clone();
-            let pending = pending_clone.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async {
-                    match client.stream(&prompt, None).await {
-                        Ok(mut stream) => {
-                            while let Some(chunk_result) = stream.next().await {
-                                match chunk_result {
-                                    Ok(chunk) => {
-                                        if !chunk.text.is_empty() {
-                                            pending.lock().unwrap().push(
-                                                MessageUpdate::AppendToLast(chunk.text)
-                                            );
+                // Create user step
+                let user_step_id = this.next_step_id;
+                this.next_step_id += 1;
+                let user_step = Step::user(user_step_id, &prompt);
+
+                // Store user step
+                if let Err(e) = store_clone.lock().unwrap().add_step(&session_id_clone, &user_step) {
+                    eprintln!("Failed to store user step: {}", e);
+                }
+
+                this.steps.push(user_step);
+
+                // Create empty assistant step placeholder
+                let agent_step_id = this.next_step_id;
+                this.next_step_id += 1;
+                let agent_step = Step::agent(agent_step_id, "");
+
+                // Store agent step placeholder
+                if let Err(e) = store_clone.lock().unwrap().add_step(&session_id_clone, &agent_step) {
+                    eprintln!("Failed to store agent step: {}", e);
+                }
+
+                this.steps.push(agent_step);
+                this.expanded_step_ids.insert(agent_step_id);
+                this.is_loading = true;
+                cx.notify();
+
+                let client = client_clone.clone();
+                let pending = pending_clone.clone();
+                let store_for_thread = store_clone.clone();
+                let session_for_thread = session_id_clone.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(async {
+                        match client.stream(&prompt, None).await {
+                            Ok(mut stream) => {
+                                let mut accumulated_content = String::new();
+                                while let Some(chunk_result) = stream.next().await {
+                                    match chunk_result {
+                                        Ok(chunk) => {
+                                            if !chunk.text.is_empty() {
+                                                accumulated_content.push_str(&chunk.text);
+                                                pending.lock().unwrap().push(
+                                                    MessageUpdate::AppendToLast(chunk.text.clone()),
+                                                );
+                                                // Update step content in store (streaming)
+                                                if let Err(e) = store_for_thread.lock().unwrap().update_step_content(
+                                                    &session_for_thread,
+                                                    agent_step_id,
+                                                    &accumulated_content,
+                                                ) {
+                                                    eprintln!(
+                                                        "Failed to update step content: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            let error_msg = format_error(&e);
+                                            pending
+                                                .lock()
+                                                .unwrap()
+                                                .push(MessageUpdate::Error(error_msg));
+                                            break;
                                         }
                                     }
-                                    Err(e) => {
-                                        let error_msg = format_error(&e);
-                                        pending.lock().unwrap().push(
-                                            MessageUpdate::Error(error_msg)
-                                        );
-                                        break;
-                                    }
                                 }
+                                pending.lock().unwrap().push(MessageUpdate::StreamComplete);
                             }
-                            pending.lock().unwrap().push(MessageUpdate::StreamComplete);
+                            Err(e) => {
+                                let error_msg = format_error(&e);
+                                pending.lock().unwrap().push(MessageUpdate::Error(error_msg));
+                            }
                         }
-                        Err(e) => {
-                            let error_msg = format_error(&e);
-                            pending.lock().unwrap().push(
-                                MessageUpdate::Error(error_msg)
-                            );
-                        }
-                    }
+                    });
                 });
-            });
-        });
+            },
+        );
 
         let pending_poll = pending_updates.clone();
         cx.spawn(async move |view, cx| {
             loop {
-                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
                 let updates: Vec<MessageUpdate> = {
                     let mut pending = pending_poll.lock().unwrap();
                     std::mem::take(&mut *pending)
@@ -185,31 +251,25 @@ impl CommanderView {
                         for update in updates {
                             match update {
                                 MessageUpdate::AppendToLast(text) => {
-                                    if let Some(last) = view.messages.last_mut() {
-                                        last.content.push_str(&text);
+                                    if let Some(last) = view.steps.last_mut() {
+                                        last.message.push_str(&text);
                                     }
                                     view.is_loading = false;
                                 }
                                 MessageUpdate::Error(error_msg) => {
                                     view.is_loading = false;
-                                    if let Some(last) = view.messages.last_mut() {
-                                        if last.role == "assistant" && last.content.is_empty() {
-                                            last.role = "error".to_string();
-                                            last.content = error_msg;
-                                        } else {
-                                            view.messages.push(Message {
-                                                role: "error".to_string(),
-                                                content: error_msg,
-                                            });
+                                    if let Some(last) = view.steps.last_mut() {
+                                        if last.message.is_empty() {
+                                            last.message = format!("Error: {}", error_msg);
                                         }
                                     }
                                 }
                                 MessageUpdate::StreamComplete => {
                                     view.is_loading = false;
-                                    // Remove empty assistant messages
-                                    if let Some(last) = view.messages.last() {
-                                        if last.role == "assistant" && last.content.is_empty() {
-                                            view.messages.pop();
+                                    // Remove empty agent steps
+                                    if let Some(last) = view.steps.last() {
+                                        if last.message.is_empty() {
+                                            view.steps.pop();
                                         }
                                     }
                                 }
@@ -219,14 +279,19 @@ impl CommanderView {
                     });
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         Self {
             input,
             fm_client,
-            messages: Vec::new(),
+            store,
+            current_session_id: Some(session_id),
+            steps: Vec::new(),
+            expanded_step_ids: HashSet::new(),
             pending_updates,
             is_loading: false,
+            next_step_id: 1,
             _subscription: subscription,
         }
     }
@@ -236,7 +301,8 @@ fn format_error(e: &fm_bridge::FMError) -> String {
     match e {
         fm_bridge::FMError::ApiError { status, message } => {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(message) {
-                let msg = json.get("error")
+                let msg = json
+                    .get("error")
                     .and_then(|e| e.get("message"))
                     .and_then(|m| m.as_str())
                     .or_else(|| json.get("message").and_then(|m| m.as_str()));
@@ -277,54 +343,32 @@ impl Render for CommanderView {
                             .items_center()
                             .child(
                                 div()
-                                    .id("messages")
+                                    .id("steps")
                                     .flex()
                                     .flex_col()
                                     .w_full()
                                     .max_w(px(768.0))
                                     .p(px(20.0))
-                                    .gap(px(24.0))
-                                    // Only render non-empty messages
-                                    .children(self.messages.iter().filter(|msg| !msg.content.is_empty()).map(|msg| {
-                                        let is_user = msg.role == "user";
-                                        let is_assistant = msg.role == "assistant";
-                                        let text_color = match msg.role.as_str() {
-                                            "user" => hsla(0., 0., 1.0, 1.0),
-                                            "assistant" => hsla(0., 0., 0.7, 1.0),
-                                            _ => hsla(0., 0.7, 0.5, 1.0),
-                                        };
-
-                                        let base = div()
-                                            .w_full()
-                                            .max_w(px(768.0))
-                                            .text_color(text_color)
-                                            .font_family("Berkeley Mono")
-                                            .text_size(px(14.0))
-                                            .line_height(px(22.0));
-
-                                        if is_user {
-                                            base.child(format!("> {}", msg.content))
-                                        } else if is_assistant {
-                                            let md_style = MarkdownStyle::default();
-                                            base.child(render_markdown(&msg.content, &md_style))
-                                        } else {
-                                            base.child(msg.content.clone())
-                                        }
-                                    }))
+                                    .gap(px(16.0))
+                                    // Render ATIF steps
+                                    .child(render_steps_list(&self.steps, &self.expanded_step_ids))
+                                    // Loading indicator
                                     .children(if self.is_loading {
-                                        Some(div()
-                                            .w_full()
-                                            .max_w(px(768.0))
-                                            .text_color(hsla(0., 0., 0.5, 1.0))
-                                            .font_family("Berkeley Mono")
-                                            .text_size(px(14.0))
-                                            .line_height(px(22.0))
-                                            .child("..."))
+                                        Some(
+                                            div()
+                                                .w_full()
+                                                .max_w(px(768.0))
+                                                .text_color(hsla(0., 0., 0.5, 1.0))
+                                                .font_family("Berkeley Mono")
+                                                .text_size(px(14.0))
+                                                .line_height(px(22.0))
+                                                .child("..."),
+                                        )
                                     } else {
                                         None
-                                    })
-                            )
-                    )
+                                    }),
+                            ),
+                    ),
             )
             .child(
                 div()
@@ -347,8 +391,8 @@ impl Render for CommanderView {
                             .font_family("Berkeley Mono")
                             .text_size(px(14.0))
                             .line_height(px(20.0))
-                            .child(self.input.clone())
-                    )
+                            .child(self.input.clone()),
+                    ),
             )
     }
 }
@@ -367,10 +411,16 @@ fn main() {
     Application::new().run(|cx: &mut App| {
         cx.text_system()
             .add_fonts(vec![
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Regular.ttf").as_slice()),
+                Cow::Borrowed(
+                    include_bytes!("../assets/fonts/BerkeleyMono-Regular.ttf").as_slice(),
+                ),
                 Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Bold.ttf").as_slice()),
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Italic.ttf").as_slice()),
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-BoldItalic.ttf").as_slice()),
+                Cow::Borrowed(
+                    include_bytes!("../assets/fonts/BerkeleyMono-Italic.ttf").as_slice(),
+                ),
+                Cow::Borrowed(
+                    include_bytes!("../assets/fonts/BerkeleyMono-BoldItalic.ttf").as_slice(),
+                ),
             ])
             .unwrap();
 
@@ -390,25 +440,26 @@ fn main() {
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
 
-        let _window = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("OpenAgents Commander".into()),
+        let _window = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("OpenAgents Commander".into()),
+                        ..Default::default()
+                    }),
+                    focus: true,
+                    show: true,
                     ..Default::default()
-                }),
-                focus: true,
-                show: true,
-                ..Default::default()
-            },
-            |window, cx| {
-                let view = cx.new(|cx| CommanderView::new(cx));
-                let focus_handle = view.read(cx).input.focus_handle(cx);
-                window.focus(&focus_handle);
-                view
-            },
-        )
-        .unwrap();
+                },
+                |window, cx| {
+                    let view = cx.new(|cx| CommanderView::new(cx));
+                    let focus_handle = view.read(cx).input.focus_handle(cx);
+                    window.focus(&focus_handle);
+                    view
+                },
+            )
+            .unwrap();
 
         cx.activate(true);
     });
