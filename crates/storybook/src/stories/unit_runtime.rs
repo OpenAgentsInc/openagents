@@ -3,8 +3,9 @@
 //! Tests all system units (arithmetic, logic, comparison, control) by
 //! running them with real inputs and displaying outputs.
 
-use gpui::{Context, Render, Window, div, hsla, prelude::*, px};
+use gpui::{Context, Render, Window, div, prelude::*, px};
 use unit::{Unit, system};
+use theme::{accent, status, text, FONT_FAMILY};
 
 use crate::story::Story;
 
@@ -181,9 +182,9 @@ impl Render for UnitRuntimeStory {
                         div().flex().flex_col().gap(px(8.0))
                             .child(
                                 div().flex().flex_row().gap(px(8.0))
-                                    .child(div().text_sm().text_color(hsla(0.0, 0.0, 0.7, 1.0)).child("Registered unit types:"))
+                                    .child(div().text_sm().text_color(text::SECONDARY).child("Registered unit types:"))
                                     .child(div().text_sm().font_weight(gpui::FontWeight::BOLD)
-                                        .text_color(hsla(0.6, 0.8, 0.6, 1.0))
+                                        .text_color(accent::PRIMARY)
                                         .child(format!("{}", registry_count)))
                             )
                     )
@@ -195,9 +196,9 @@ impl Render for UnitRuntimeStory {
 fn result_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
     let passed = actual == expected;
     let status_color = if passed {
-        hsla(0.33, 0.8, 0.5, 1.0) // green
+        status::SUCCESS
     } else {
-        hsla(0.0, 0.8, 0.5, 1.0) // red
+        status::ERROR
     };
 
     div()
@@ -209,14 +210,14 @@ fn result_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
             div()
                 .w(px(180.0))
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
                 .child(expr.to_string())
         )
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child("=")
         )
         .child(
@@ -230,13 +231,13 @@ fn result_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child(if passed { "" } else { "(expected: " })
         )
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child(if passed { "".to_string() } else { format!("{})", expected) })
         )
 }

@@ -5,9 +5,10 @@
 
 use gpui::{
     App, Context, Entity, EventEmitter, Hsla, Pixels, Point, Render, Window,
-    div, hsla, point, prelude::*, px,
+    div, point, prelude::*, px,
 };
 use unit::{AnyPin, PinState, IO};
+use theme::{hud, text};
 
 /// Pin visual style configuration
 #[derive(Debug, Clone)]
@@ -32,11 +33,11 @@ impl Default for PinStyle {
     fn default() -> Self {
         Self {
             radius: px(6.0),
-            empty_color: hsla(0.0, 0.0, 0.3, 1.0),        // Dark gray
-            valid_color: hsla(0.33, 0.8, 0.5, 1.0),       // Green
-            invalid_color: hsla(0.0, 0.8, 0.5, 1.0),      // Red
-            constant_color: hsla(0.58, 0.8, 0.6, 1.0),    // Cyan
-            border_color: hsla(0.0, 0.0, 0.8, 1.0),       // Light gray
+            empty_color: hud::PIN_EMPTY,
+            valid_color: hud::PIN_VALID,
+            invalid_color: hud::PIN_INVALID,
+            constant_color: hud::PIN_CONSTANT,
+            border_color: text::SECONDARY,
             border_width: px(1.0),
         }
     }

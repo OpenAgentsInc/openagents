@@ -5,9 +5,10 @@
 
 use gpui::{
     App, Context, Entity, EventEmitter, Hsla, Pixels, Point, Render, Window,
-    div, hsla, point, prelude::*, px,
+    div, point, prelude::*, px,
 };
 use unit::{Lifecycle, Unit};
+use theme::{border, hud, text};
 
 use crate::pin_view::{PinDirection, PinSnapshot, PinView};
 
@@ -41,17 +42,17 @@ pub struct UnitStyle {
 impl Default for UnitStyle {
     fn default() -> Self {
         Self {
-            playing_bg: hsla(0.0, 0.0, 0.15, 0.95),       // Dark gray
-            paused_bg: hsla(0.0, 0.0, 0.1, 0.95),         // Darker gray
-            error_bg: hsla(0.0, 0.5, 0.15, 0.95),         // Dark red
-            border_color: hsla(0.0, 0.0, 0.3, 1.0),       // Gray border
+            playing_bg: hud::UNIT_PLAYING_BG,
+            paused_bg: hud::UNIT_PAUSED_BG,
+            error_bg: hud::UNIT_ERROR_BG,
+            border_color: border::STRONG,
             border_radius: px(8.0),
             min_width: px(120.0),
             min_height: px(60.0),
             padding: px(12.0),
             pin_spacing: px(20.0),
             header_height: px(24.0),
-            text_color: hsla(0.0, 0.0, 0.9, 1.0),         // Light gray
+            text_color: text::PRIMARY,
         }
     }
 }
@@ -253,9 +254,9 @@ impl UnitView {
     /// Get border color based on selection/hover state
     fn border_color(&self) -> Hsla {
         if self.selected {
-            hsla(0.58, 0.8, 0.6, 1.0) // Cyan for selected
+            border::SELECTED
         } else if self.hovered {
-            hsla(0.0, 0.0, 0.5, 1.0) // Lighter gray for hover
+            text::MUTED
         } else {
             self.style.border_color
         }

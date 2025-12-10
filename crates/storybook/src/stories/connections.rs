@@ -2,6 +2,7 @@
 
 use gpui::{Context, Render, Window, canvas, div, point, prelude::*, px};
 use hud::{Connection, ConnectionState, ConnectionStyle};
+use theme::bg;
 
 use crate::story::Story;
 
@@ -20,7 +21,7 @@ impl Render for ConnectionsStory {
                         div()
                             .h(px(200.0))
                             .w_full()
-                            .bg(gpui::hsla(0.0, 0.0, 0.05, 1.0))
+                            .bg(bg::APP)
                             .rounded(px(8.0))
                             .child(
                                 canvas(
@@ -67,7 +68,7 @@ impl Render for ConnectionsStory {
                         div()
                             .h(px(250.0))
                             .w_full()
-                            .bg(gpui::hsla(0.0, 0.0, 0.05, 1.0))
+                            .bg(bg::APP)
                             .rounded(px(8.0))
                             .child(
                                 canvas(

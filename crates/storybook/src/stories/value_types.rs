@@ -2,8 +2,9 @@
 //!
 //! Tests type coercion, deep access, and JSON interoperability.
 
-use gpui::{Context, Render, Window, div, hsla, prelude::*, px};
+use gpui::{Context, Render, Window, div, prelude::*, px};
 use unit::Value;
+use theme::{accent, status, text, FONT_FAMILY};
 
 use crate::story::Story;
 
@@ -139,14 +140,14 @@ fn value_row(label: &str, actual: &str, _expected: &str) -> gpui::Div {
             div()
                 .w(px(100.0))
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.7, 1.0))
+                .text_color(text::SECONDARY)
                 .child(label.to_string())
         )
         .child(
             div()
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.6, 0.5, 0.7, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(accent::SECONDARY)
                 .child(actual.to_string())
         )
 }
@@ -154,9 +155,9 @@ fn value_row(label: &str, actual: &str, _expected: &str) -> gpui::Div {
 fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui::Div {
     let passed = actual == expected;
     let status_color = if passed {
-        hsla(0.33, 0.8, 0.5, 1.0)
+        status::SUCCESS
     } else {
-        hsla(0.0, 0.8, 0.5, 1.0)
+        status::ERROR
     };
 
     div()
@@ -168,14 +169,14 @@ fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui::Div {
             div()
                 .w(px(280.0))
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
                 .child(expr.to_string())
         )
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child("=")
         )
         .child(
@@ -190,9 +191,9 @@ fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui::Div {
 fn number_row(expr: &str, actual: f64, expected: f64) -> gpui::Div {
     let passed = (actual - expected).abs() < f64::EPSILON;
     let status_color = if passed {
-        hsla(0.33, 0.8, 0.5, 1.0)
+        status::SUCCESS
     } else {
-        hsla(0.0, 0.8, 0.5, 1.0)
+        status::ERROR
     };
 
     div()
@@ -204,14 +205,14 @@ fn number_row(expr: &str, actual: f64, expected: f64) -> gpui::Div {
             div()
                 .w(px(280.0))
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
                 .child(expr.to_string())
         )
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child("=")
         )
         .child(
@@ -226,9 +227,9 @@ fn number_row(expr: &str, actual: f64, expected: f64) -> gpui::Div {
 fn string_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
     let passed = actual == expected;
     let status_color = if passed {
-        hsla(0.33, 0.8, 0.5, 1.0)
+        status::SUCCESS
     } else {
-        hsla(0.0, 0.8, 0.5, 1.0)
+        status::ERROR
     };
 
     div()
@@ -240,14 +241,14 @@ fn string_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
             div()
                 .w(px(280.0))
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
                 .child(expr.to_string())
         )
         .child(
             div()
                 .text_sm()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child("=")
         )
         .child(
