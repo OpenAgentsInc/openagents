@@ -19,6 +19,7 @@ use unit::{Point as UnitPoint, Graph, SimConnection, SimNode, SimulationConfig, 
 
 use crate::connection::{Connection, ConnectionState, ConnectionStyle};
 use crate::pin_view::PinDirection;
+use crate::selection::{SelectionManager, SelectionRect};
 use crate::unit_view::{UnitSnapshot, UnitStyle, UnitView};
 
 /// Graph view style configuration
@@ -62,10 +63,14 @@ impl Default for GraphStyle {
 pub enum GraphEvent {
     /// A unit was selected
     UnitSelected { id: String },
+    /// Multiple units were selected
+    MultipleSelected { ids: Vec<String> },
     /// Selection was cleared
     SelectionCleared,
     /// A unit was moved
     UnitMoved { id: String, x: f32, y: f32 },
+    /// Multiple units were moved
+    MultipleUnitsMoved { ids: Vec<String> },
     /// Connection drag started
     ConnectionDragStarted {
         unit_id: String,
@@ -90,11 +95,17 @@ enum DragState {
     None,
     /// Panning the canvas
     Panning { start_x: f32, start_y: f32 },
-    /// Dragging a unit
+    /// Dragging a unit (or multiple selected units)
     DraggingUnit {
         unit_id: String,
         offset_x: f32,
         offset_y: f32,
+    },
+    /// Rubber band selection
+    RubberBand {
+        rect: SelectionRect,
+        /// Whether to add to existing selection (shift held)
+        additive: bool,
     },
 }
 
@@ -136,8 +147,8 @@ pub struct GraphView {
     zoom: f32,
     /// Current drag state
     drag_state: DragState,
-    /// Selected node ID
-    selected: Option<String>,
+    /// Selection manager for multi-select
+    selection: SelectionManager,
     /// Visual style
     style: GraphStyle,
     /// Whether simulation is running
@@ -156,7 +167,7 @@ impl GraphView {
             pan_y: 0.0,
             zoom: 1.0,
             drag_state: DragState::None,
-            selected: None,
+            selection: SelectionManager::new(),
             style: GraphStyle::default(),
             simulating: false,
         }
@@ -373,17 +384,19 @@ impl GraphView {
         None
     }
 
-    /// Select a node
+    /// Select a single node, clearing previous selection
     fn select_node(&mut self, id: Option<String>, cx: &mut Context<Self>) {
-        // Deselect previous
-        if let Some(ref old_id) = self.selected {
-            if let Some(node) = self.nodes.get(old_id) {
+        // Deselect all previous
+        for old_id in self.selection.selected_vec() {
+            if let Some(node) = self.nodes.get(&old_id) {
                 node.view.update(cx, |v, _| v.set_selected(false));
             }
         }
+        self.selection.clear();
 
         // Select new
         if let Some(ref new_id) = id {
+            self.selection.select(new_id.clone());
             if let Some(node) = self.nodes.get(new_id) {
                 node.view.update(cx, |v, _| v.set_selected(true));
             }
@@ -391,8 +404,85 @@ impl GraphView {
         } else {
             cx.emit(GraphEvent::SelectionCleared);
         }
+    }
 
-        self.selected = id;
+    /// Toggle node selection (for Shift+click)
+    fn toggle_node_selection(&mut self, id: &str, cx: &mut Context<Self>) {
+        let was_selected = self.selection.is_selected(id);
+        self.selection.toggle(id);
+
+        if let Some(node) = self.nodes.get(id) {
+            node.view.update(cx, |v, _| v.set_selected(!was_selected));
+        }
+
+        // Emit appropriate event
+        let selected = self.selection.selected_vec();
+        if selected.is_empty() {
+            cx.emit(GraphEvent::SelectionCleared);
+        } else if selected.len() == 1 {
+            cx.emit(GraphEvent::UnitSelected { id: selected[0].clone() });
+        } else {
+            cx.emit(GraphEvent::MultipleSelected { ids: selected });
+        }
+    }
+
+    /// Select nodes within a rectangle (for rubber band selection)
+    fn select_in_rect(&mut self, rect: &SelectionRect, additive: bool, cx: &mut Context<Self>) {
+        if !additive {
+            // Clear previous selection
+            for old_id in self.selection.selected_vec() {
+                if let Some(node) = self.nodes.get(&old_id) {
+                    node.view.update(cx, |v, _| v.set_selected(false));
+                }
+            }
+            self.selection.clear();
+        }
+
+        // Find and select nodes in rectangle (in graph coordinates)
+        let (min_x, min_y, max_x, max_y) = rect.bounds();
+        let (graph_min_x, graph_min_y) = self.screen_to_graph(min_x, min_y);
+        let (graph_max_x, graph_max_y) = self.screen_to_graph(max_x, max_y);
+
+        for (id, node) in &self.nodes {
+            // Check if node overlaps with selection rect
+            let node_right = node.x + node.width;
+            let node_bottom = node.y + node.height;
+
+            if node.x < graph_max_x && node_right > graph_min_x
+                && node.y < graph_max_y && node_bottom > graph_min_y
+            {
+                if !self.selection.is_selected(id) {
+                    self.selection.add(id.clone());
+                    node.view.update(cx, |v, _| v.set_selected(true));
+                }
+            }
+        }
+
+        // Emit event
+        let selected = self.selection.selected_vec();
+        if selected.is_empty() {
+            cx.emit(GraphEvent::SelectionCleared);
+        } else if selected.len() == 1 {
+            cx.emit(GraphEvent::UnitSelected { id: selected[0].clone() });
+        } else {
+            cx.emit(GraphEvent::MultipleSelected { ids: selected });
+        }
+    }
+
+    /// Clear all selection
+    fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        for id in self.selection.selected_vec() {
+            if let Some(node) = self.nodes.get(&id) {
+                node.view.update(cx, |v, _| v.set_selected(false));
+            }
+        }
+        self.selection.clear();
+        cx.emit(GraphEvent::SelectionCleared);
+    }
+
+    /// Get current selection
+    pub fn selected(&self) -> &SelectionManager {
+        &self.selection
     }
 }
 
@@ -411,6 +501,12 @@ impl Render for GraphView {
             .collect();
 
         let sim_connections = self.sim_connections.clone();
+
+        // Capture rubber band state for painting
+        let rubber_band = match &self.drag_state {
+            DragState::RubberBand { rect, .. } => Some(*rect),
+            _ => None,
+        };
 
         div()
             .size_full()
@@ -471,6 +567,37 @@ impl Render for GraphView {
                                 conn.paint(connection_style, window);
                             }
                         }
+
+                        // Paint rubber band selection rectangle
+                        if let Some(rect) = rubber_band {
+                            let (min_x, min_y, max_x, max_y) = rect.bounds();
+
+                            // Draw filled rectangle with low opacity
+                            let fill_color = hsla(0.6, 0.8, 0.5, 0.15);
+                            let stroke_color = hsla(0.6, 0.8, 0.5, 0.8);
+
+                            // Fill
+                            let mut fill_builder = PathBuilder::fill();
+                            fill_builder.move_to(point(px(min_x), px(min_y)));
+                            fill_builder.line_to(point(px(max_x), px(min_y)));
+                            fill_builder.line_to(point(px(max_x), px(max_y)));
+                            fill_builder.line_to(point(px(min_x), px(max_y)));
+                            fill_builder.close();
+                            if let Ok(path) = fill_builder.build() {
+                                window.paint_path(path, fill_color);
+                            }
+
+                            // Stroke
+                            let mut stroke_builder = PathBuilder::stroke(px(1.0));
+                            stroke_builder.move_to(point(px(min_x), px(min_y)));
+                            stroke_builder.line_to(point(px(max_x), px(min_y)));
+                            stroke_builder.line_to(point(px(max_x), px(max_y)));
+                            stroke_builder.line_to(point(px(min_x), px(max_y)));
+                            stroke_builder.close();
+                            if let Ok(path) = stroke_builder.build() {
+                                window.paint_path(path, stroke_color);
+                            }
+                        }
                     },
                 )
                 .size_full()
@@ -505,11 +632,22 @@ impl Render for GraphView {
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 let pos_x: f32 = event.position.x.into();
                 let pos_y: f32 = event.position.y.into();
+                let shift_held = event.modifiers.shift;
                 let hit = this.hit_test(pos_x, pos_y);
 
                 if let Some(id) = hit {
-                    // Start dragging node
-                    this.select_node(Some(id.clone()), cx);
+                    if shift_held {
+                        // Shift+click: toggle selection
+                        this.toggle_node_selection(&id, cx);
+                    } else if this.selection.is_selected(&id) {
+                        // Clicking already selected node: prepare to drag selection
+                        // Keep current selection
+                    } else {
+                        // Clicking unselected node: select it only
+                        this.select_node(Some(id.clone()), cx);
+                    }
+
+                    // Start dragging the clicked node
                     let (graph_x, graph_y) = this.screen_to_graph(pos_x, pos_y);
                     if let Some(node) = this.nodes.get_mut(&id) {
                         let offset_x = graph_x - node.x;
@@ -522,9 +660,20 @@ impl Render for GraphView {
                         };
                     }
                 } else {
-                    // Start panning
-                    this.select_node(None, cx);
-                    this.drag_state = DragState::Panning { start_x: pos_x, start_y: pos_y };
+                    // Clicked empty space
+                    if shift_held {
+                        // Shift+drag: additive rubber band selection
+                        let rect = SelectionRect::new(pos_x, pos_y);
+                        this.drag_state = DragState::RubberBand { rect, additive: true };
+                    } else if event.modifiers.platform {
+                        // Cmd+drag: pan the canvas
+                        this.drag_state = DragState::Panning { start_x: pos_x, start_y: pos_y };
+                    } else {
+                        // Regular drag: rubber band selection (clears existing)
+                        this.clear_selection(cx);
+                        let rect = SelectionRect::new(pos_x, pos_y);
+                        this.drag_state = DragState::RubberBand { rect, additive: false };
+                    }
                 }
                 cx.notify();
             }))
@@ -557,18 +706,38 @@ impl Render for GraphView {
                         this.drag_state = DragState::DraggingUnit { unit_id, offset_x, offset_y };
                         cx.notify();
                     }
+                    DragState::RubberBand { rect, additive } => {
+                        let mut new_rect = *rect;
+                        new_rect.update(pos_x, pos_y);
+                        let additive = *additive;
+                        this.drag_state = DragState::RubberBand { rect: new_rect, additive };
+                        cx.notify();
+                    }
                     DragState::None => {}
                 }
             }))
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _event: &MouseUpEvent, _, cx| {
-                // Release any dragged node
-                if let DragState::DraggingUnit { ref unit_id, .. } = this.drag_state {
-                    if let Some(node) = this.nodes.get_mut(unit_id) {
-                        node.is_dragged = false;
+                // Clone data we need from drag_state before mutating
+                let drag_action = match &this.drag_state {
+                    DragState::DraggingUnit { unit_id, .. } => Some((true, unit_id.clone(), None)),
+                    DragState::RubberBand { rect, additive } => Some((false, String::new(), Some((*rect, *additive)))),
+                    DragState::Panning { .. } | DragState::None => None,
+                };
+
+                if let Some((is_unit_drag, unit_id, rubber_band)) = drag_action {
+                    if is_unit_drag {
+                        // Release dragged node
+                        if let Some(node) = this.nodes.get_mut(&unit_id) {
+                            node.is_dragged = false;
+                        }
+                        // Restart simulation to settle
+                        this.start_simulation(cx);
+                    } else if let Some((rect, additive)) = rubber_band {
+                        // Finalize rubber band selection
+                        this.select_in_rect(&rect, additive, cx);
                     }
-                    // Restart simulation to settle
-                    this.start_simulation(cx);
                 }
+
                 this.drag_state = DragState::None;
                 cx.notify();
             }))
