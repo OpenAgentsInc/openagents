@@ -249,7 +249,6 @@ http_client = { workspace = true, features = ["test-support"] }
 lyon = { version = "1.0", features = ["extra"] }
 pretty_assertions.workspace = true
 rand.workspace = true
-reqwest_client = { workspace = true, features = ["test-support"] }
 unicode-segmentation.workspace = true
 util = { workspace = true, features = ["test-support"] }
 
