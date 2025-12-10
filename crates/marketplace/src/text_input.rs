@@ -2,7 +2,7 @@
 
 use gpui::*;
 use std::ops::Range;
-use theme::input;
+use theme::{input, FONT_FAMILY};
 use unicode_segmentation::*;
 
 actions!(marketplace_text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]);
@@ -426,7 +426,6 @@ impl Element for TextElement {
         let content = text_input.content.clone();
         let selected_range = text_input.selected_range.clone();
         let cursor = text_input.cursor_offset();
-        let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
             (text_input.placeholder.clone(), input::PLACEHOLDER)
@@ -434,16 +433,25 @@ impl Element for TextElement {
             (content.clone(), input::TEXT)
         };
 
+        // Use Berkeley Mono font explicitly
+        let font = Font {
+            family: FONT_FAMILY.into(),
+            features: FontFeatures::default(),
+            fallbacks: None,
+            weight: FontWeight::NORMAL,
+            style: FontStyle::Normal,
+        };
+
         let run = TextRun {
             len: display_text.len(),
-            font: style.font(),
+            font,
             color: text_color,
             background_color: None,
             underline: None,
             strikethrough: None,
         };
 
-        let font_size = style.font_size.to_pixels(window.rem_size());
+        let font_size = px(13.0);  // Match Bloomberg terminal text size
         let line = window
             .text_system()
             .shape_line(display_text, font_size, &[run], None);

@@ -1,0 +1,42 @@
+[package]
+name = "nostr-relay"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Nostr relay WebSocket client for OpenAgents"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Nostr protocol types
+nostr = { path = "../nostr" }
+
+# WebSocket
+async-tungstenite.workspace = true
+futures.workspace = true
+futures-lite.workspace = true
+
+# Async runtime
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Utilities
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros"] }
