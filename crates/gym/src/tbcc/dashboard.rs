@@ -18,9 +18,11 @@ impl DashboardView {
         // Sample data for development
         let stats = Some(DashboardStats {
             success_rate: 67.5,
+            last_50_success_rate: 72.0,
             avg_steps: 12.3,
-            avg_duration: 45.2,
+            avg_duration_secs: 45.2,
             total_runs: 24,
+            ..Default::default()
         });
 
         let recent_runs = vec![
@@ -30,8 +32,11 @@ impl DashboardView {
                 task_name: "Regex Log Parser".to_string(),
                 status: TBRunStatus::Completed,
                 outcome: Some(TBRunOutcome::Success),
+                started_at: "2024-12-10T14:30:00Z".to_string(),
+                finished_at: Some("2024-12-10T14:31:00Z".to_string()),
                 duration_ms: Some(42500),
-                steps: 15,
+                steps_count: 15,
+                tokens_used: Some(4500),
             },
             TBRunSummary {
                 id: "run-002".to_string(),
@@ -39,8 +44,11 @@ impl DashboardView {
                 task_name: "File Operations".to_string(),
                 status: TBRunStatus::Completed,
                 outcome: Some(TBRunOutcome::Failure),
+                started_at: "2024-12-10T14:25:00Z".to_string(),
+                finished_at: Some("2024-12-10T14:26:00Z".to_string()),
                 duration_ms: Some(38200),
-                steps: 10,
+                steps_count: 10,
+                tokens_used: Some(3200),
             },
             TBRunSummary {
                 id: "run-003".to_string(),
@@ -48,8 +56,11 @@ impl DashboardView {
                 task_name: "API Client".to_string(),
                 status: TBRunStatus::Running,
                 outcome: None,
+                started_at: "2024-12-10T14:35:00Z".to_string(),
+                finished_at: None,
                 duration_ms: None,
-                steps: 7,
+                steps_count: 7,
+                tokens_used: None,
             },
         ];
 
@@ -164,7 +175,7 @@ impl DashboardView {
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child(format!("{} steps", run.steps))
+                            .child(format!("{} steps", run.steps_count))
                             .child("•")
                             .child(duration_text)
                     )
@@ -252,7 +263,7 @@ impl Render for DashboardView {
                             ))
                             .child(self.render_kpi_card(
                                 "Avg Duration",
-                                format!("{:.1}s", stats.avg_duration),
+                                format!("{:.1}s", stats.avg_duration_secs),
                                 Some("per run".to_string())
                             ))
                             .child(self.render_kpi_card(
