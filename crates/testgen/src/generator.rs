@@ -414,6 +414,10 @@ fn build_category_prompt(
     existing_tests: &[GeneratedTest],
     round: u32,
 ) -> String {
+    // Extract output file path from task description
+    // Look for patterns like "Save ... in /path", "Write to /path", file paths in code examples
+    let output_file_context = extract_output_file_context(task_description);
+
     let existing_tests_text = if !existing_tests.is_empty() {
         format!(
             "\n## Existing Tests for {}\n{}",
@@ -476,6 +480,24 @@ fn build_category_prompt(
         ""
     };
 
+    // Build output file context section if we found paths
+    let output_file_section = if !output_file_context.is_empty() {
+        format!(
+            r#"
+
+## CRITICAL: Solution Output Location
+The task specifies the solution should be saved to: {}
+
+YOU MUST include this file path in your test reasoning field!
+Example reasoning: "Tests regex from {} with single date and IPv4"
+
+Tests need to know where to read the solution from. Without the path in reasoning, tests cannot execute."#,
+            output_file_context, output_file_context
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         r#"You are generating test cases to verify a solution works correctly.
 
@@ -489,7 +511,7 @@ Task: {}
 - Platform: {}
 - Prohibited Tools: {}
 - Files: {} files, {} previews
-{}{}{}
+{}{}{}{}
 
 ## Your Task
 Generate 2-5 test cases for the {} category. Each test should:
@@ -525,9 +547,37 @@ Respond with valid JSON array only. No markdown, no explanation."#,
         existing_tests_text,
         reflection_prompt,
         format_requirements,
+        output_file_section,
         category,
         category.as_str()
     )
+}
+
+/// Extract output file path from task description
+/// Looks for patterns like "Save ... in /path", "Write to /path", etc.
+fn extract_output_file_context(task_description: &str) -> String {
+    // Use regex to find file paths in the task description
+    // Pattern: looks for /app/... or /path/... style paths
+    let path_regex = regex::Regex::new(r"(/(?:app|tmp|home|var|usr|opt)[/\w.-]+\.\w+)")
+        .expect("Invalid regex");
+
+    // Also look for "Save ... in /path" or "Write to /path" patterns
+    let save_regex = regex::Regex::new(r"(?i)(?:save|write|output|store)\s+(?:your\s+)?(?:\w+\s+)*(?:in|to|at)\s+(/[/\w.-]+)")
+        .expect("Invalid regex");
+
+    // Try save/write pattern first (more specific)
+    if let Some(caps) = save_regex.captures(task_description) {
+        if let Some(m) = caps.get(1) {
+            return m.as_str().to_string();
+        }
+    }
+
+    // Fall back to general path detection
+    if let Some(m) = path_regex.find(task_description) {
+        return m.as_str().to_string();
+    }
+
+    String::new()
 }
 
 fn get_category_description(category: TestCategory) -> &'static str {
