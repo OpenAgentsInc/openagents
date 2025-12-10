@@ -206,6 +206,60 @@ impl GraphView {
         self.start_simulation(cx);
     }
 
+    /// Add a demo node for storybook/testing purposes
+    pub fn add_demo_node_with_cx(&mut self, id: &str, x: f32, y: f32, cx: &mut Context<Self>) {
+        use unit::{Lifecycle, PinState};
+        use crate::pin_view::PinSnapshot;
+
+        let snapshot = UnitSnapshot {
+            id: id.to_string(),
+            lifecycle: Lifecycle::Playing,
+            inputs: vec![
+                PinSnapshot {
+                    name: "in".to_string(),
+                    state: PinState::Valid,
+                    is_constant: false,
+                    is_ignored: false,
+                    direction: PinDirection::Input,
+                    type_name: "T".to_string(),
+                },
+            ],
+            outputs: vec![
+                PinSnapshot {
+                    name: "out".to_string(),
+                    state: PinState::Valid,
+                    is_constant: false,
+                    is_ignored: false,
+                    direction: PinDirection::Output,
+                    type_name: "T".to_string(),
+                },
+            ],
+            error: None,
+            position: point(px(x), px(y)),
+        };
+
+        let size = snapshot.calculate_size(&self.style.unit_style);
+        let width: f32 = size.width.into();
+        let height: f32 = size.height.into();
+        let view = cx.new(|cx| UnitView::new(snapshot, cx));
+
+        self.nodes.insert(id.to_string(), GraphNode {
+            view,
+            x,
+            y,
+            vx: 0.0,
+            vy: 0.0,
+            width,
+            height,
+            is_dragged: false,
+        });
+
+        // Start simulation if we have nodes
+        if !self.simulating && !self.nodes.is_empty() {
+            self.start_simulation(cx);
+        }
+    }
+
     /// Start the physics simulation
     pub fn start_simulation(&mut self, cx: &mut Context<Self>) {
         reheat(&mut self.sim_config);

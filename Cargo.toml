@@ -16,6 +16,7 @@ members = [
     "crates/testgen",
     "crates/unit",
     "crates/hud",
+    "crates/storybook",
 ]
 
 [workspace.lints]
