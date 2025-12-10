@@ -32,6 +32,7 @@ members = [
     "crates/gym_test",
     "crates/sandbox",
     "crates/nostr",
+    "crates/nostr-relay",
 ]
 
 [workspace.lints.rust]

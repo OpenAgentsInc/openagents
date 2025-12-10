@@ -1121,7 +1121,7 @@ fn main() {
             .unwrap();
 
         cx.bind_keys([
-            // Text input bindings
+            // Text input bindings (commander)
             KeyBinding::new("enter", text_input::Submit, None),
             KeyBinding::new("cmd-a", text_input::SelectAll, None),
             KeyBinding::new("cmd-x", text_input::Cut, None),
@@ -1133,6 +1133,18 @@ fn main() {
             KeyBinding::new("right", text_input::Right, None),
             KeyBinding::new("home", text_input::Home, None),
             KeyBinding::new("end", text_input::End, None),
+            // Text input bindings (marketplace)
+            KeyBinding::new("enter", marketplace::text_input::Submit, None),
+            KeyBinding::new("cmd-a", marketplace::text_input::SelectAll, None),
+            KeyBinding::new("cmd-x", marketplace::text_input::Cut, None),
+            KeyBinding::new("cmd-c", marketplace::text_input::Copy, None),
+            KeyBinding::new("cmd-v", marketplace::text_input::Paste, None),
+            KeyBinding::new("backspace", marketplace::text_input::Backspace, None),
+            KeyBinding::new("delete", marketplace::text_input::Delete, None),
+            KeyBinding::new("left", marketplace::text_input::Left, None),
+            KeyBinding::new("right", marketplace::text_input::Right, None),
+            KeyBinding::new("home", marketplace::text_input::Home, None),
+            KeyBinding::new("end", marketplace::text_input::End, None),
             // App bindings
             KeyBinding::new("cmd-q", actions::Quit, None),
             KeyBinding::new("cmd-,", actions::ShowSettings, None),

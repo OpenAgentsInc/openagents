@@ -118,6 +118,33 @@ Copied from commander's text_input.rs to marketplace crate. Uses:
 - `FocusHandle` for keyboard navigation
 - Custom `TextElement` for text rendering with cursor/selection
 
+**Keyboard bindings:** Actions are defined with `actions!(marketplace_text_input, [...])` macro. Key bindings for these actions are registered in `crates/commander/src/main.rs`:
+```rust
+// Text input bindings (marketplace)
+KeyBinding::new("enter", marketplace::text_input::Submit, None),
+KeyBinding::new("cmd-a", marketplace::text_input::SelectAll, None),
+KeyBinding::new("cmd-x", marketplace::text_input::Cut, None),
+KeyBinding::new("cmd-c", marketplace::text_input::Copy, None),
+KeyBinding::new("cmd-v", marketplace::text_input::Paste, None),
+KeyBinding::new("backspace", marketplace::text_input::Backspace, None),
+KeyBinding::new("delete", marketplace::text_input::Delete, None),
+KeyBinding::new("left", marketplace::text_input::Left, None),
+KeyBinding::new("right", marketplace::text_input::Right, None),
+KeyBinding::new("home", marketplace::text_input::Home, None),
+KeyBinding::new("end", marketplace::text_input::End, None),
+```
+
+**Font styling:** Uses Berkeley Mono font explicitly in the TextElement via:
+```rust
+let font = Font {
+    family: FONT_FAMILY.into(),
+    features: FontFeatures::default(),
+    fallbacks: None,
+    weight: FontWeight::NORMAL,
+    style: FontStyle::Normal,
+};
+```
+
 ### GPUI Patterns Used
 - `Entity<T>` for stateful components
 - `cx.listener()` for event handlers
