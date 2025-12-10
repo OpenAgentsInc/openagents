@@ -40,6 +40,7 @@ mod physics;
 mod error;
 mod event;
 mod scheduler;
+mod value;
 
 pub use pin::{Pin, PinOpt, PinState, PinEvent, PinSnapshot};
 pub use any_pin::{AnyPin, PinTypeError};
@@ -55,3 +56,4 @@ pub use physics::{SimNode, SimConnection, SimulationConfig, apply_forces, integr
 pub use error::{UnitError, PinError, ConnectionError, GraphError, UnitResult};
 pub use event::{RuntimeEvent, EventBus, EventHandler};
 pub use scheduler::{EventScheduler, SchedulerMode, SchedulerStats, SchedulerBuilder};
+pub use value::Value;
