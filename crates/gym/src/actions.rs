@@ -1,0 +1,39 @@
+//! Gym Actions
+//!
+//! Keyboard shortcuts and actions for the Gym workbench.
+
+use gpui::*;
+
+actions!(
+    gym,
+    [
+        // Tab navigation
+        SwitchToTrajectories,
+        SwitchToTBCC,
+        SwitchToHillClimber,
+        SwitchToTestGen,
+
+        // Sidebar
+        ToggleSidebar,
+        ExpandAll,
+        CollapseAll,
+
+        // General
+        FocusGym,
+    ]
+);
+
+/// Register Gym actions and keybindings
+pub fn register_actions(cx: &mut App) {
+    // Tab navigation shortcuts
+    cx.bind_keys([
+        // Cmd+1/2/3/4 for tab switching
+        KeyBinding::new("cmd-1", SwitchToTrajectories, None),
+        KeyBinding::new("cmd-2", SwitchToTBCC, None),
+        KeyBinding::new("cmd-3", SwitchToHillClimber, None),
+        KeyBinding::new("cmd-4", SwitchToTestGen, None),
+
+        // Cmd+\ to toggle sidebar
+        KeyBinding::new("cmd-\\", ToggleSidebar, None),
+    ]);
+}

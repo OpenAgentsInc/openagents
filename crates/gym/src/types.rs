@@ -70,6 +70,17 @@ pub enum TreeItemKind {
     TestGenSuite,
 }
 
+impl TreeItemKind {
+    /// Get the corresponding GymTab for this item type
+    pub fn tab(&self) -> GymTab {
+        match self {
+            TreeItemKind::Session | TreeItemKind::Trajectory => GymTab::Trajectories,
+            TreeItemKind::HillClimberRun => GymTab::HillClimber,
+            TreeItemKind::TestGenSuite => GymTab::TestGen,
+        }
+    }
+}
+
 /// Status of a tree item
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ItemStatus {

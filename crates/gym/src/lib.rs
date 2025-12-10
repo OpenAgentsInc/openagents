@@ -3,6 +3,7 @@
 //! A comprehensive workbench for Terminal-Bench with multi-view navigation,
 //! real-time HillClimber visualization, TestGen monitoring, and TBCC integration.
 
+pub mod actions;
 pub mod types;
 pub mod gym_screen;
 pub mod sidebar;
@@ -28,3 +29,4 @@ pub use gym_screen::GymScreen;
 pub use sidebar::Sidebar;
 pub use trajectory_view::TrajectoryView;
 pub use types::{GymTab, TreeNode, TreeItemKind, ItemStatus};
+pub use actions::register_actions;
