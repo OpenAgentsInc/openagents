@@ -11,6 +11,7 @@ use theme::{accent, bg, border, category, status, text, FONT_FAMILY};
 // ============================================================================
 
 /// Test category for categorization badges
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestCategory {
     AntiCheat,
@@ -21,6 +22,7 @@ pub enum TestCategory {
     Other(String),
 }
 
+#[allow(dead_code)]
 impl TestCategory {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
@@ -58,6 +60,7 @@ impl TestCategory {
 }
 
 /// Reflection action type
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReflectionAction {
     Refining,
@@ -65,6 +68,7 @@ pub enum ReflectionAction {
     Complete,
 }
 
+#[allow(dead_code)]
 impl ReflectionAction {
     pub fn label(&self) -> &str {
         match self {
@@ -76,6 +80,7 @@ impl ReflectionAction {
 }
 
 /// Progress data for progress items
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ProgressData {
     pub phase: String,
@@ -85,6 +90,7 @@ pub struct ProgressData {
 }
 
 /// Reflection data
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ReflectionData {
     pub category: Option<String>,
@@ -93,6 +99,7 @@ pub struct ReflectionData {
 }
 
 /// Test data
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TestData {
     pub id: String,
@@ -104,6 +111,7 @@ pub struct TestData {
 }
 
 /// Completion data
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CompleteData {
     pub total_tests: i32,
@@ -115,12 +123,14 @@ pub struct CompleteData {
 }
 
 /// Error data
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ErrorData {
     pub error: String,
 }
 
 /// Thread item types (from atif-thread.ts ThreadItem)
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ThreadItem {
     Progress {
@@ -145,6 +155,7 @@ pub enum ThreadItem {
     },
 }
 
+#[allow(dead_code)]
 impl ThreadItem {
     /// Get a unique ID for the thread item
     pub fn id(&self) -> String {
@@ -174,11 +185,13 @@ impl ThreadItem {
 // ============================================================================
 
 /// Format timestamp as HH:MM:SS
+#[allow(dead_code)]
 fn format_timestamp(dt: DateTime<Utc>) -> String {
     dt.format("%H:%M:%S").to_string()
 }
 
 /// Render a confidence bar
+#[allow(dead_code)]
 pub fn render_confidence_bar(confidence: f32) -> impl IntoElement {
     let percent = (confidence * 100.0).round() as i32;
     let _width_percent = format!("{}%", percent);
@@ -211,6 +224,7 @@ pub fn render_confidence_bar(confidence: f32) -> impl IntoElement {
 }
 
 /// Render a category badge
+#[allow(dead_code)]
 pub fn render_category_badge(category: &TestCategory) -> impl IntoElement {
     let (bg, text, border) = category.badge_colors();
     let label = category.as_str().to_string();
@@ -230,6 +244,7 @@ pub fn render_category_badge(category: &TestCategory) -> impl IntoElement {
 }
 
 /// Render a progress item
+#[allow(dead_code)]
 pub fn render_progress_item(timestamp: DateTime<Utc>, data: &ProgressData) -> impl IntoElement {
     div()
         .p(px(12.0))
@@ -275,6 +290,7 @@ pub fn render_progress_item(timestamp: DateTime<Utc>, data: &ProgressData) -> im
 }
 
 /// Render a reflection item
+#[allow(dead_code)]
 pub fn render_reflection_item(timestamp: DateTime<Utc>, data: &ReflectionData) -> impl IntoElement {
     let action_label = data.action.label().to_string();
     let reflection_text = data.text.clone();
@@ -349,6 +365,7 @@ pub fn render_reflection_item(timestamp: DateTime<Utc>, data: &ReflectionData) -
 }
 
 /// Render an error item
+#[allow(dead_code)]
 pub fn render_error_item(timestamp: DateTime<Utc>, data: &ErrorData) -> impl IntoElement {
     div()
         .p(px(12.0))
@@ -398,6 +415,7 @@ pub fn render_error_item(timestamp: DateTime<Utc>, data: &ErrorData) -> impl Int
 }
 
 /// Render a complete item
+#[allow(dead_code)]
 pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> impl IntoElement {
     div()
         .p(px(16.0))
@@ -502,6 +520,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
 }
 
 /// Render a test item (header only, not expanded)
+#[allow(dead_code)]
 pub fn render_test_item_header(
     timestamp: DateTime<Utc>,
     data: &TestData,
@@ -564,6 +583,7 @@ pub fn render_test_item_header(
 }
 
 /// Render test item details (expanded view)
+#[allow(dead_code)]
 pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
     div()
         .mt(px(8.0))
@@ -657,6 +677,7 @@ pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
 }
 
 /// Render a full thread item
+#[allow(dead_code)]
 pub fn render_thread_item(item: &ThreadItem, is_expanded: bool) -> impl IntoElement {
     match item {
         ThreadItem::Progress { timestamp, data } => render_progress_item(*timestamp, data).into_any_element(),

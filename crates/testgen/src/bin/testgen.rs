@@ -227,7 +227,7 @@ async fn main() -> Result<()> {
 
             // Write to output file if specified
             if let Some(output_path) = output {
-                let pytest_content = format_as_pytest(&result.tests, &task);
+                let pytest_content = format_as_pytest(&result.tests, &task, Some(&description));
                 std::fs::write(&output_path, pytest_content)?;
                 println!("Wrote pytest file to: {}", output_path.display());
             }
@@ -353,7 +353,7 @@ async fn main() -> Result<()> {
 
                 // Write output
                 let output_path = output.unwrap_or_else(|| task_dir.join("test_generated.py"));
-                let pytest_content = format_as_pytest(&result.tests, &task);
+                let pytest_content = format_as_pytest(&result.tests, &task, Some(&description));
                 std::fs::write(&output_path, &pytest_content)?;
                 println!("Wrote pytest file to: {}", output_path.display());
 

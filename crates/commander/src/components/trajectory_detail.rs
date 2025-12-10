@@ -17,6 +17,7 @@ use theme::{accent, bg, border, status, text, FONT_FAMILY};
 // ============================================================================
 
 /// Format timestamp for display (HH:MM:SS)
+#[allow(dead_code)]
 fn format_timestamp(dt: Option<DateTime<Utc>>) -> String {
     match dt {
         Some(dt) => dt.format("%H:%M:%S").to_string(),
@@ -25,6 +26,7 @@ fn format_timestamp(dt: Option<DateTime<Utc>>) -> String {
 }
 
 /// Format date for display (Mon DD, YYYY HH:MM)
+#[allow(dead_code)]
 fn format_date(dt: Option<DateTime<Utc>>) -> String {
     match dt {
         Some(dt) => dt.format("%b %d, %Y %H:%M").to_string(),
@@ -37,6 +39,7 @@ fn format_date(dt: Option<DateTime<Utc>>) -> String {
 // ============================================================================
 
 /// Render the detail header with title and collapse toggle
+#[allow(dead_code)]
 pub fn render_detail_header(is_collapsed: bool) -> impl IntoElement {
     div()
         .flex()
@@ -68,6 +71,7 @@ pub fn render_detail_header(is_collapsed: bool) -> impl IntoElement {
 // ============================================================================
 
 /// Render the metadata row
+#[allow(dead_code)]
 fn render_metadata_row(label: &str, value: String) -> impl IntoElement {
     let label_owned = label.to_string();
     div()
@@ -90,6 +94,7 @@ fn render_metadata_row(label: &str, value: String) -> impl IntoElement {
 }
 
 /// Render the trajectory metadata section
+#[allow(dead_code)]
 pub fn render_trajectory_metadata(trajectory: &Trajectory) -> impl IntoElement {
     let session_id = trajectory.session_id.clone();
     let agent_name = trajectory.agent.name.clone();
@@ -228,6 +233,7 @@ pub fn render_trajectory_metadata(trajectory: &Trajectory) -> impl IntoElement {
 // ============================================================================
 
 /// Render a single step row with header
+#[allow(dead_code)]
 pub fn render_step_row(step: &Step, is_expanded: bool) -> impl IntoElement {
     let step_id = step.step_id;
     let timestamp = format_timestamp(step.timestamp);
@@ -316,6 +322,7 @@ pub fn render_step_row(step: &Step, is_expanded: bool) -> impl IntoElement {
 // ============================================================================
 
 /// Render the list of steps with expansion state
+#[allow(dead_code)]
 pub fn render_detail_steps(steps: &[Step], expanded_step_ids: &HashSet<i64>) -> impl IntoElement {
     div()
         .max_h(px(500.0))
@@ -338,6 +345,7 @@ pub fn render_detail_steps(steps: &[Step], expanded_step_ids: &HashSet<i64>) -> 
 // ============================================================================
 
 /// Render the final metrics section
+#[allow(dead_code)]
 pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
     let metrics = &trajectory.final_metrics;
 
@@ -470,6 +478,7 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
 // ============================================================================
 
 /// Render the loading state
+#[allow(dead_code)]
 pub fn render_loading_state() -> impl IntoElement {
     div()
         .rounded(px(12.0))
@@ -493,6 +502,7 @@ pub fn render_loading_state() -> impl IntoElement {
 }
 
 /// Render the error state
+#[allow(dead_code)]
 pub fn render_error_state(error: &str) -> impl IntoElement {
     let error_owned = error.to_string();
     div()
@@ -528,6 +538,7 @@ pub fn render_error_state(error: &str) -> impl IntoElement {
 }
 
 /// Render the empty state (no trajectory selected)
+#[allow(dead_code)]
 pub fn render_empty_state() -> impl IntoElement {
     div()
         .rounded(px(12.0))
@@ -555,6 +566,7 @@ pub fn render_empty_state() -> impl IntoElement {
 // ============================================================================
 
 /// Render the complete trajectory detail view
+#[allow(dead_code)]
 pub fn render_trajectory_detail(
     trajectory: Option<&Trajectory>,
     expanded_step_ids: &HashSet<i64>,
