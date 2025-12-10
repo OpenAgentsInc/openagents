@@ -4,7 +4,7 @@
 //! Displays a full trajectory with metadata, step-by-step accordion view,
 //! tool calls, observations, and metrics.
 
-use crate::components::step_view::{render_source_badge, render_step_details, render_step_header};
+use crate::components::step_view::{render_source_badge, render_step_details};
 use atif::{Step, Trajectory};
 use chrono::{DateTime, Utc};
 use gpui::prelude::FluentBuilder;
