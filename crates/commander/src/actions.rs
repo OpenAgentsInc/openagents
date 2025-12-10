@@ -31,6 +31,7 @@ actions!(
         GoToCompute,
         GoToWallet,
         GoToMarketplace,
+        GoToChat,
         // Help
         OpenDocs,
         OpenDiscord,

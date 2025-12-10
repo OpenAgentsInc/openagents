@@ -1,5 +1,6 @@
 mod actions;
 mod app_menus;
+mod chat;
 mod components;
 mod markdown;
 
@@ -19,6 +20,7 @@ use theme::{bg, border, status, text, FONT_FAMILY};
 use ui::{TextInput, SubmitEvent, bind_text_input_keys};
 use marketplace::MarketplaceScreen;
 use gym::GymScreen;
+use chat::ChatScreen;
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle
@@ -114,6 +116,7 @@ enum Screen {
     Compute,
     Wallet,
     Marketplace,
+    Chat,
 }
 
 #[derive(Clone)]
@@ -154,6 +157,8 @@ struct CommanderView {
     marketplace_screen: Entity<MarketplaceScreen>,
     // Gym screen (TBCC, Trajectories, HillClimber, TestGen)
     gym_screen: Entity<GymScreen>,
+    // Chat screen (Bloomberg Terminal-style Nostr chat)
+    chat_screen: Entity<ChatScreen>,
 }
 
 impl CommanderView {
@@ -334,7 +339,10 @@ impl CommanderView {
         let marketplace_screen = cx.new(|cx| MarketplaceScreen::new(cx));
 
         // Create gym screen (TBCC, Trajectories, HillClimber, TestGen)
-        let gym_screen = cx.new(|cx| GymScreen::new(cx));
+        let gym_screen = cx.new(|cx| GymScreen::with_store(cx, Some(store.clone())));
+
+        // Create chat screen (Bloomberg Terminal-style Nostr chat)
+        let chat_screen = cx.new(|cx| ChatScreen::new(cx));
 
         Self {
             current_screen: Screen::Gym,
@@ -358,6 +366,7 @@ impl CommanderView {
             sidebar_page_size: 20,
             marketplace_screen,
             gym_screen,
+            chat_screen,
         }
     }
 
@@ -369,6 +378,7 @@ impl CommanderView {
             Screen::Compute => "OpenAgents Compute",
             Screen::Wallet => "OpenAgents Wallet",
             Screen::Marketplace => "OpenAgents Marketplace",
+            Screen::Chat => "OpenAgents Chat",
         }
     }
 
@@ -404,6 +414,13 @@ impl CommanderView {
     fn go_to_marketplace(&mut self, _: &actions::GoToMarketplace, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Marketplace;
         window.set_window_title(Self::get_window_title(Screen::Marketplace));
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_chat(&mut self, _: &actions::GoToChat, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Chat;
+        window.set_window_title(Self::get_window_title(Screen::Chat));
         window.focus(&self.focus_handle);
         cx.notify();
     }
@@ -603,6 +620,11 @@ impl CommanderView {
     /// Render the Marketplace screen
     fn render_marketplace_screen(&self) -> impl IntoElement {
         self.marketplace_screen.clone()
+    }
+
+    /// Render the Chat screen (Bloomberg Terminal-style Nostr chat)
+    fn render_chat_screen(&self) -> impl IntoElement {
+        self.chat_screen.clone()
     }
 
     /// Toggle step expansion
@@ -989,6 +1011,7 @@ impl Render for CommanderView {
             Screen::Compute => self.render_compute_screen().into_any_element(),
             Screen::Wallet => self.render_wallet_screen().into_any_element(),
             Screen::Marketplace => self.render_marketplace_screen().into_any_element(),
+            Screen::Chat => self.render_chat_screen().into_any_element(),
         };
 
         div()
@@ -1005,6 +1028,7 @@ impl Render for CommanderView {
             .on_action(cx.listener(Self::go_to_compute))
             .on_action(cx.listener(Self::go_to_wallet))
             .on_action(cx.listener(Self::go_to_marketplace))
+            .on_action(cx.listener(Self::go_to_chat))
             .on_action(cx.listener(Self::toggle_sidebar))
             // Sidebar with trajectory list (only show on Gym screen)
             .when(!self.sidebar_collapsed && current_screen == Screen::Gym, |el| {
@@ -1138,6 +1162,7 @@ fn main() {
             KeyBinding::new("cmd-3", actions::GoToCompute, None),
             KeyBinding::new("cmd-4", actions::GoToWallet, None),
             KeyBinding::new("cmd-5", actions::GoToMarketplace, None),
+            KeyBinding::new("cmd-6", actions::GoToChat, None),
         ]);
 
         // Register app-level action handlers

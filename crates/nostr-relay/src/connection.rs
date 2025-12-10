@@ -288,7 +288,7 @@ impl RelayConnection {
                 };
 
                 let mut sender_guard = ws_sender.lock().await;
-                if let Some(ref mut sender) = *sender_guard {
+                if let Some(sender) = sender_guard.as_mut() {
                     if let Err(e) = sender.send(WsMessage::Text(json)).await {
                         error!("Failed to send to {}: {}", url, e);
                         break;
@@ -383,7 +383,7 @@ impl RelayConnection {
         info!("Disconnecting from {}", self.config.url);
 
         // Close WebSocket
-        if let Some(ref mut sender) = *self.ws_sender.lock().await {
+        if let Some(sender) = self.ws_sender.lock().await.as_mut() {
             let _ = sender.close().await;
         }
         *self.ws_sender.lock().await = None;
