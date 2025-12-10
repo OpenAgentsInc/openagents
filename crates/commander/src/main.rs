@@ -11,7 +11,7 @@ struct CommanderView {
 impl CommanderView {
     fn new(cx: &mut ViewContext<Self>) -> Self {
         let input = cx.new_view(|cx| {
-            TextInput::new("Type your message and press Enter...", cx)
+            TextInput::new("Message OpenAgents", cx)
                 .on_submit(|text, _cx| {
                     println!("Submitted: {}", text);
                 })
@@ -35,9 +35,9 @@ impl Render for CommanderView {
                 div()
                     .w(px(600.0))
                     .h(px(44.0))
-                    .bg(hsla(0., 0., 1., 0.1))
+                    .bg(hsla(0., 0., 1., 0.05))
                     .border_1()
-                    .border_color(hsla(0., 0., 1., 0.4))
+                    .border_color(hsla(0., 0., 1., 0.1))
                     .px(px(12.0))
                     .flex()
                     .items_center()
