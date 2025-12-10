@@ -76,7 +76,7 @@ impl HCSessionStatus {
 /// Main HillClimber Monitor view
 pub struct HillClimberMonitor {
     /// Current session being monitored
-    session: Option<HCSession>,
+    pub session: Option<HCSession>,
     /// Workflow graph component
     workflow_graph: Entity<WorkflowGraph>,
     /// Turn log component
@@ -86,7 +86,7 @@ pub struct HillClimberMonitor {
     /// Controls component
     controls: Entity<HCControls>,
     /// Whether the left panel is collapsed
-    left_collapsed: bool,
+    pub left_collapsed: bool,
     focus_handle: FocusHandle,
 }
 

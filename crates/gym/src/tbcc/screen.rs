@@ -13,7 +13,7 @@ use super::settings::SettingsView;
 use crate::services::TBCCDataService;
 
 pub struct TBCCScreen {
-    current_tab: TBCCTab,
+    pub current_tab: TBCCTab,
     data_service: TBCCDataService,
     dashboard_view: Entity<DashboardView>,
     task_browser_view: Entity<TaskBrowserView>,
@@ -61,7 +61,8 @@ impl TBCCScreen {
         }
     }
 
-    fn switch_tab(&mut self, tab: TBCCTab, cx: &mut Context<Self>) {
+    /// Switch to a specific TBCC tab
+    pub fn switch_tab(&mut self, tab: TBCCTab, cx: &mut Context<Self>) {
         self.current_tab = tab;
         cx.notify();
     }
