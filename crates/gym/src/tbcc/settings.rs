@@ -91,7 +91,7 @@ impl SettingsView {
             )
     }
 
-    fn render_model_card(&self, model: TBModelOption, is_selected: bool, title: &str, subtitle: &str) -> impl IntoElement {
+    fn render_model_card(&self, _model: TBModelOption, is_selected: bool, title: &str, subtitle: &str) -> impl IntoElement {
         let border_color = if is_selected {
             status::SUCCESS.opacity(0.5)
         } else {

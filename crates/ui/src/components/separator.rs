@@ -1,5 +1,6 @@
 //! Separator component for dividing content
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::separator;
 
@@ -50,13 +51,5 @@ impl RenderOnce for Separator {
                 .w(px(1.0))
                 .bg(separator::DEFAULT),
         }
-    }
-}
-
-impl IntoElement for Separator {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

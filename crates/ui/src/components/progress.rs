@@ -1,5 +1,6 @@
 //! Progress bar component
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::progress;
 
@@ -45,8 +46,6 @@ impl Default for Progress {
 
 impl RenderOnce for Progress {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let percent = (self.value * 100.0) as i32;
-
         div()
             .w_full()
             .h(self.height)
@@ -60,13 +59,5 @@ impl RenderOnce for Progress {
                     .bg(progress::INDICATOR)
                     .rounded_full()
             )
-    }
-}
-
-impl IntoElement for Progress {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

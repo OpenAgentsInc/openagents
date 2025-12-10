@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
 
-use crate::tbcc::types::{ExecutionSettings, ContainerSettings, TBModelOption};
+use crate::tbcc::types::{ExecutionSettings, ContainerSettings};
 
 /// Combined settings for persistence
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 //! Skeleton loading placeholder component
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::skeleton;
 
@@ -76,13 +77,5 @@ impl RenderOnce for Skeleton {
         }
 
         el
-    }
-}
-
-impl IntoElement for Skeleton {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

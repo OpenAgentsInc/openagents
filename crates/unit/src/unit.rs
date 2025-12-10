@@ -162,6 +162,7 @@ impl std::fmt::Display for IO {
 }
 
 /// Extension trait for convenient pin access
+#[allow(dead_code)]
 pub trait UnitExt: Unit {
     /// Get a pin by type and name
     fn pin(&self, io: IO, name: &str) -> Option<&dyn AnyPin> {

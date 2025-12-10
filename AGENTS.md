@@ -101,6 +101,8 @@ Before making code changes:
 - NEVER `push --force` to main
 - NEVER commit unless explicitly asked (exception: MechaCoder autonomous loop)
 - NEVER use `-i` flag (interactive not supported)
+- NEVER `git stash` or `git checkout` to revert/discard changes you don't understand
+- If you see modified files causing build errors, another agent may be working on them - work around it or ask the user
 
 **Commit format:**
 ```bash

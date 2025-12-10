@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::tbcc::types::{TBRunSummary, TBRunStatus, TBRunOutcome, DashboardStats, DifficultyStats, DifficultyCount, TBDifficulty};
+use crate::tbcc::types::{TBRunSummary, TBRunStatus, TBRunOutcome, DashboardStats, DifficultyStats, TBDifficulty};
 
 /// Detailed run record for storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
