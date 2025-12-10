@@ -11,6 +11,7 @@ use theme::ui::switch;
 /// Switch::new().on(true)
 /// Switch::new().on_change(|on, _, _| println!("{}", on))
 /// ```
+#[derive(IntoElement)]
 pub struct Switch {
     on: bool,
     disabled: bool,
@@ -72,12 +73,18 @@ impl RenderOnce for Switch {
             .items_center()
             .px(px(2.0));
 
-        // Thumb position
+        // Thumb - dark on white track, white on dark track
+        let thumb_color = if self.on {
+            switch::THUMB_ON  // dark thumb on white track
+        } else {
+            switch::THUMB     // white thumb on dark track
+        };
+
         let thumb = div()
             .w(px(16.0))
             .h(px(16.0))
             .rounded_full()
-            .bg(switch::THUMB);
+            .bg(thumb_color);
 
         // Position thumb based on state
         if self.on {
