@@ -1,0 +1,20 @@
+[package]
+name = "fm-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.11", features = ["json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+thiserror = "1.0"
+futures = "0.3"
+bytes = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bin]]
+name = "fm"
+path = "src/bin/cli.rs"

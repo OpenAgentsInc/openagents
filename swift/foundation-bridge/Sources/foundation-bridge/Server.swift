@@ -6,10 +6,18 @@ actor HTTPServer {
     private let port: UInt16
     private var listener: NWListener?
     private let chatHandler: ChatHandler
+    private let sessionStore: SessionStore
+    private let sessionHandler: SessionHandler
+    private let toolRegistry: ToolRegistry
+    private let toolHandler: ToolHandler
 
     init(port: UInt16, chatHandler: ChatHandler) {
         self.port = port
         self.chatHandler = chatHandler
+        self.sessionStore = SessionStore()
+        self.toolRegistry = ToolRegistry()
+        self.sessionHandler = SessionHandler(sessionStore: sessionStore)
+        self.toolHandler = ToolHandler(toolRegistry: toolRegistry, sessionStore: sessionStore)
     }
 
     /// Start the HTTP server
@@ -65,13 +73,130 @@ actor HTTPServer {
 
             if let data = data, !data.isEmpty {
                 Task {
-                    let response = await self.processRequest(data)
-                    await self.sendResponse(connection: connection, response: response)
+                    await self.processRequestAndRespond(data: data, connection: connection)
                 }
             } else if let error = error {
                 print("Receive error: \(error)")
                 connection.cancel()
             }
+        }
+    }
+
+    /// Process request and send appropriate response (regular or streaming)
+    private func processRequestAndRespond(data: Data, connection: NWConnection) async {
+        // Parse HTTP request
+        guard let requestString = String(data: data, encoding: .utf8) else {
+            await sendResponse(connection: connection, response: buildErrorResponse(status: 400, message: "Invalid request encoding"))
+            return
+        }
+
+        let lines = requestString.split(separator: "\r\n", omittingEmptySubsequences: false)
+        guard let requestLine = lines.first else {
+            await sendResponse(connection: connection, response: buildErrorResponse(status: 400, message: "Empty request"))
+            return
+        }
+
+        let parts = requestLine.split(separator: " ")
+        guard parts.count >= 2 else {
+            await sendResponse(connection: connection, response: buildErrorResponse(status: 400, message: "Invalid request line"))
+            return
+        }
+
+        let method = String(parts[0])
+        let path = String(parts[1])
+
+        // Find body (after empty line)
+        var body: String?
+        if let emptyLineIndex = lines.firstIndex(of: "") {
+            let bodyLines = lines[(emptyLineIndex + 1)...]
+            body = bodyLines.joined(separator: "\r\n")
+        }
+
+        // Parse path and query string
+        let pathComponents = path.split(separator: "?", maxSplits: 1)
+        let actualPath = String(pathComponents[0])
+        let queryString = pathComponents.count > 1 ? String(pathComponents[1]) : nil
+
+        // Check if this is a streaming request
+        if method == "POST" && (actualPath == "/v1/chat/completions" || actualPath == "/chat/completions") {
+            // Check if request wants streaming
+            if await shouldStream(body: body, queryString: queryString) {
+                await handleStreamingRequest(body: body, connection: connection)
+                return
+            }
+        }
+
+        // Regular (non-streaming) request
+        let response = await routeRequest(method: method, path: path, body: body)
+        await sendResponse(connection: connection, response: response)
+    }
+
+    /// Check if request should use streaming
+    private func shouldStream(body: String?, queryString: String?) async -> Bool {
+        // Check query string for stream=true
+        if let query = queryString, query.contains("stream=true") {
+            return true
+        }
+
+        // Check request body for "stream": true
+        if let bodyString = body,
+           let bodyData = bodyString.data(using: .utf8),
+           let request = try? JSONDecoder().decode(ChatCompletionRequest.self, from: bodyData) {
+            return request.stream == true
+        }
+
+        return false
+    }
+
+    /// Handle streaming SSE request
+    private func handleStreamingRequest(body: String?, connection: NWConnection) async {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            await sendResponse(connection: connection, response: buildErrorResponse(status: 400, message: "Missing request body"))
+            return
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            await sendResponse(connection: connection, response: buildErrorResponse(status: 400, message: "Invalid body encoding"))
+            return
+        }
+
+        do {
+            let request = try JSONDecoder().decode(ChatCompletionRequest.self, from: bodyData)
+            let stream = try await StreamHandler.handleStreamingCompletion(request: request)
+
+            // Send SSE headers
+            let headers = [
+                "HTTP/1.1 200 OK",
+                "Content-Type: text/event-stream",
+                "Cache-Control: no-cache",
+                "Connection: keep-alive",
+                "Access-Control-Allow-Origin: *",
+                "",
+                ""
+            ].joined(separator: "\r\n")
+
+            connection.send(content: headers.data(using: .utf8)!, completion: .contentProcessed { _ in })
+
+            // Send SSE events
+            for await event in stream {
+                if let eventData = event.data(using: .utf8) {
+                    connection.send(content: eventData, completion: .contentProcessed { _ in })
+                }
+            }
+
+            // Close connection after stream completes
+            connection.cancel()
+        } catch let error as FMError {
+            let status: Int
+            switch error {
+            case .modelUnavailable: status = 503
+            case .requestFailed: status = 500
+            case .invalidRequest: status = 400
+            case .serverError: status = 500
+            }
+            await sendResponse(connection: connection, response: buildJSONResponse(status: status, body: error.errorResponse))
+        } catch {
+            await sendResponse(connection: connection, response: buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse))
         }
     }
 
@@ -113,7 +238,12 @@ actor HTTPServer {
             return buildCORSResponse()
         }
 
-        switch (method, path) {
+        // Parse path and query string
+        let pathComponents = path.split(separator: "?", maxSplits: 1)
+        let actualPath = String(pathComponents[0])
+        let queryString = pathComponents.count > 1 ? String(pathComponents[1]) : nil
+
+        switch (method, actualPath) {
         case ("GET", "/health"):
             return await handleHealth()
 
@@ -121,7 +251,48 @@ actor HTTPServer {
             return await handleModels()
 
         case ("POST", "/v1/chat/completions"), ("POST", "/chat/completions"):
-            return await handleChatCompletions(body: body)
+            return await handleChatCompletions(body: body, queryString: queryString)
+
+        // Session management endpoints
+        case ("POST", "/v1/sessions"):
+            return await handleSessionCreate(body: body)
+
+        case ("GET", "/v1/sessions"):
+            return await handleSessionList()
+
+        case ("DELETE", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/"):
+            let sessionId = String(actualPath.dropFirst("/v1/sessions/".count))
+            return await handleSessionDelete(id: sessionId)
+
+        case ("GET", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/") && actualPath.hasSuffix("/transcript"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/sessions/".count)
+            let sessionId = String(pathWithoutPrefix.dropLast("/transcript".count))
+            return await handleSessionTranscript(id: sessionId)
+
+        case ("GET", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/"):
+            let sessionId = String(actualPath.dropFirst("/v1/sessions/".count))
+            return await handleSessionGet(id: sessionId)
+
+        case ("POST", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/") && actualPath.hasSuffix("/complete"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/sessions/".count)
+            let sessionId = String(pathWithoutPrefix.dropLast("/complete".count))
+            return await handleSessionComplete(id: sessionId, body: body)
+
+        // Tool management endpoints
+        case ("POST", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/") && actualPath.hasSuffix("/tools"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/sessions/".count)
+            let sessionId = String(pathWithoutPrefix.dropLast("/tools".count))
+            return await handleToolRegister(sessionId: sessionId, body: body)
+
+        case ("GET", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/") && actualPath.hasSuffix("/tools"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/sessions/".count)
+            let sessionId = String(pathWithoutPrefix.dropLast("/tools".count))
+            return await handleToolList(sessionId: sessionId)
+
+        case ("DELETE", "/v1/sessions") where actualPath.hasPrefix("/v1/sessions/") && actualPath.hasSuffix("/tools"):
+            let pathWithoutPrefix = actualPath.dropFirst("/v1/sessions/".count)
+            let sessionId = String(pathWithoutPrefix.dropLast("/tools".count))
+            return await handleToolRemove(sessionId: sessionId)
 
         default:
             return buildErrorResponse(status: 404, message: "Not found: \(method) \(path)")
@@ -180,6 +351,104 @@ actor HTTPServer {
             return buildJSONResponse(status: status, body: error.errorResponse)
         } catch let error as DecodingError {
             return buildJSONResponse(status: 400, body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)").errorResponse)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    // MARK: - Session Handlers
+
+    private func handleSessionCreate(body: String?) async -> Data {
+        do {
+            let response = try await sessionHandler.createSession(body: body)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleSessionList() async -> Data {
+        do {
+            let response = try await sessionHandler.listSessions()
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleSessionGet(id: String) async -> Data {
+        do {
+            let response = try await sessionHandler.getSession(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleSessionTranscript(id: String) async -> Data {
+        do {
+            let response = try await sessionHandler.getTranscript(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleSessionDelete(id: String) async -> Data {
+        do {
+            let response = try await sessionHandler.deleteSession(id: id)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleSessionComplete(id: String, body: String?) async -> Data {
+        do {
+            let response = try await sessionHandler.completeWithSession(id: id, body: body)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    /// Convert HTTPResponse to Data
+    private func httpResponseToData(_ response: HTTPResponse) -> Data {
+        let statusText = httpStatusText(response.status)
+        let headers = ["HTTP/1.1 \(response.status) \(statusText)"] + response.headers.map { "\($0.key): \($0.value)" } + ["", ""]
+        let headerString = headers.joined(separator: "\r\n")
+
+        var data = headerString.data(using: .utf8)!
+        if let bodyData = response.body.data(using: .utf8) {
+            data.append(bodyData)
+        }
+        return data
+    }
+
+    // MARK: - Tool Handlers
+
+    private func handleToolRegister(sessionId: String, body: String?) async -> Data {
+        do {
+            let response = try await toolHandler.registerTools(sessionId: sessionId, body: body)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleToolList(sessionId: String) async -> Data {
+        do {
+            let response = try await toolHandler.listTools(sessionId: sessionId)
+            return httpResponseToData(response)
+        } catch {
+            return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
+        }
+    }
+
+    private func handleToolRemove(sessionId: String) async -> Data {
+        do {
+            let response = try await toolHandler.removeTools(sessionId: sessionId)
+            return httpResponseToData(response)
         } catch {
             return buildJSONResponse(status: 500, body: FMError.serverError(error.localizedDescription).errorResponse)
         }
