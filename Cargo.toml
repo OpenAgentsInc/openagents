@@ -3,6 +3,15 @@ resolver = "2"
 members = [
     "crates/fm-bridge",
     "crates/commander",
+    "crates/gpui",
+    "crates/gpui_macros",
+    "crates/collections",
+    "crates/http_client",
+    "crates/util",
+    "crates/util_macros",
+    "crates/refineable",
+    "crates/sum_tree",
+    "crates/media",
 ]
 
 [workspace.package]
@@ -10,6 +19,61 @@ version = "0.1.0"
 edition = "2021"
 authors = ["OpenAgents Team"]
 license = "MIT"
+
+[workspace.dependencies]
+# Workspace member crates
+gpui = { path = "crates/gpui" }
+gpui_macros = { path = "crates/gpui_macros" }
+collections = { path = "crates/collections" }
+http_client = { path = "crates/http_client" }
+util = { path = "crates/util" }
+util_macros = { path = "crates/util_macros" }
+refineable = { path = "crates/refineable" }
+sum_tree = { path = "crates/sum_tree" }
+media = { path = "crates/media" }
+
+# External dependencies
+anyhow = "1.0.86"
+async-task = "4.7"
+backtrace = "0.3"
+bitflags = "2.6.0"
+blade-graphics = "0.7.0"
+blade-macros = "0.3.0"
+blade-util = "0.3.0"
+circular-buffer = "1.0"
+cocoa = "=0.26.0"
+cocoa-foundation = "=0.2.0"
+core-foundation = "=0.10.0"
+core-foundation-sys = "0.8.6"
+core-video = { version = "0.4.3", features = ["metal"] }
+ctor = "0.4.0"
+derive_more = "0.99.17"
+futures = "0.3"
+image = "0.25.1"
+inventory = "0.3.19"
+itertools = "0.14.0"
+libc = "0.2"
+log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
+metal = "0.29"
+objc = "0.2"
+parking_lot = "0.12.1"
+postage = { version = "0.5", features = ["futures-traits"] }
+profiling = "1"
+rand = "0.9"
+schemars = { version = "1.0", features = ["indexmap2"] }
+semver = { version = "1.0", features = ["serde"] }
+serde = { version = "1.0.221", features = ["derive", "rc"] }
+serde_json = { version = "1.0.144", features = ["preserve_order", "raw_value"] }
+slotmap = "1.0.6"
+smallvec = { version = "1.6", features = ["union"] }
+smol = "2.0"
+stacksafe = "0.1"
+strum = { version = "0.27.2", features = ["derive"] }
+thiserror = "2.0.12"
+uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
+ashpd = { version = "0.11", default-features = false, features = ["async-std"] }
+env_logger = "0.11"
+pretty_assertions = { version = "1.3.0", features = ["unstable"] }
 
 [profile.dev]
 opt-level = 1
