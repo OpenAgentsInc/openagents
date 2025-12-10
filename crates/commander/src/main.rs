@@ -435,7 +435,6 @@ impl CommanderView {
             .bg(item_bg)
             .border_1()
             .border_color(item_border)
-            .rounded(px(8.0))
             .cursor_pointer()
             .hover(|s| s.bg(bg::HOVER))
             .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -513,12 +512,11 @@ impl CommanderView {
             .font_family(FONT_FAMILY)
             .bg(badge_bg)
             .text_color(badge_text)
-            .rounded(px(4.0))
             .child(badge_status.to_lowercase())
     }
 
     /// Render a placeholder screen with title and description
-    fn render_placeholder_screen(&self, title: &'static str, description: &'static str, icon: &'static str) -> impl IntoElement {
+    fn render_placeholder_screen(&self, title: &'static str, description: &'static str) -> impl IntoElement {
         div()
             .flex_1()
             .h_full()
@@ -527,11 +525,6 @@ impl CommanderView {
             .items_center()
             .justify_center()
             .gap(px(16.0))
-            .child(
-                div()
-                    .text_size(px(64.0))
-                    .child(icon),
-            )
             .child(
                 div()
                     .text_size(px(32.0))
@@ -555,7 +548,6 @@ impl CommanderView {
         self.render_placeholder_screen(
             "Gym",
             "Train agents on Terminal-Bench. Push toward 100% using Apple Foundation Model.",
-            "🏋️",
         )
     }
 
@@ -564,7 +556,6 @@ impl CommanderView {
         self.render_placeholder_screen(
             "Compute",
             "Sell your device's idle compute for bitcoin. Join the swarm network.",
-            "⚡",
         )
     }
 
@@ -573,7 +564,6 @@ impl CommanderView {
         self.render_placeholder_screen(
             "Wallet",
             "Built-in Bitcoin wallet. Self-custodial Lightning & Spark.",
-            "💰",
         )
     }
 
@@ -582,7 +572,6 @@ impl CommanderView {
         self.render_placeholder_screen(
             "Store",
             "Publish and discover agents that use swarm compute.",
-            "🏪",
         )
     }
 
@@ -931,7 +920,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("OpenAgents Commander".into()),
+                        title: Some("OpenAgents".into()),
                         ..Default::default()
                     }),
                     focus: true,

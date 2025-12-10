@@ -43,8 +43,8 @@ pub mod bg {
     /// Hover state background (#2A2A2A99)
     pub const HOVER: Hsla = c(0.0, 0.0, 0.165, 0.6);
 
-    /// Selected item background (#434C5E)
-    pub const SELECTED: Hsla = c(0.61, 0.15, 0.32, 1.0);
+    /// Selected item background (white 5% opacity)
+    pub const SELECTED: Hsla = c(0.0, 0.0, 1.0, 0.05);
 
     /// Darker surface for contrast
     pub const DARK: Hsla = c(0.0, 0.0, 0.02, 1.0);
@@ -87,8 +87,8 @@ pub mod border {
     /// Strong/prominent border (#2A2A2A)
     pub const STRONG: Hsla = c(0.0, 0.0, 0.165, 1.0);
 
-    /// Selected item border (cyan #88C0D0)
-    pub const SELECTED: Hsla = c(0.54, 0.43, 0.67, 0.6);
+    /// Selected item border (white 30% opacity)
+    pub const SELECTED: Hsla = c(0.0, 0.0, 1.0, 0.30);
 
     /// Focus ring color (cyan)
     pub const FOCUS: Hsla = c(0.54, 0.43, 0.67, 0.8);

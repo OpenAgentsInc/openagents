@@ -76,7 +76,7 @@ pub fn render_source_badge(source: &StepSource) -> impl IntoElement {
         .text_color(text)
         .border_1()
         .border_color(border)
-        .rounded(px(4.0))
+        
         .flex_shrink_0()
         .child(label)
 }
@@ -92,7 +92,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
         .bg(bg::ELEVATED)
         .border_1()
         .border_color(border::DEFAULT)
-        .rounded(px(4.0))
+        
         .mb(px(8.0))
         .child(
             div()
@@ -124,7 +124,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
             div()
                 .p(px(8.0))
                 .bg(bg::SURFACE)
-                .rounded(px(4.0))
+                
                 .text_size(px(12.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::SECONDARY)
@@ -157,7 +157,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                         .font_family(FONT_FAMILY)
                         .bg(accent::SECONDARY_MUTED)
                         .text_color(accent::SECONDARY)
-                        .rounded(px(4.0))
+                        
                         .child(format!("{}", tool_calls.len())),
                 ),
         )
@@ -185,7 +185,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                 .bg(bg::ELEVATED)
                 .border_1()
                 .border_color(border::DEFAULT)
-                .rounded(px(4.0))
+                
                 .mb(px(8.0))
                 .when_some(result.source_call_id.as_ref(), |el, call_id| {
                     el.child(
@@ -464,7 +464,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                         .bg(bg::SURFACE)
                         .border_1()
                         .border_color(border::DEFAULT)
-                        .rounded(px(4.0))
+                        
                         .text_size(px(13.0))
                         .font_family(FONT_FAMILY)
                         .text_color(text::PRIMARY)
@@ -491,7 +491,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                             .bg(status::INFO_BG)
                             .border_1()
                             .border_color(status::INFO_BORDER)
-                            .rounded(px(4.0))
+                            
                             .text_size(px(13.0))
                             .font_family(FONT_FAMILY)
                             .text_color(accent::PRIMARY)

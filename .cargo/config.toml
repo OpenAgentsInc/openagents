@@ -1,2 +1,2 @@
 [alias]
-commander = "run --bin commander"
+openagents = "run --bin OpenAgents"

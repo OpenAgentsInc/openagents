@@ -205,7 +205,7 @@ pub fn render_confidence_bar(confidence: f32) -> impl IntoElement {
                 .flex_1()
                 .h(px(8.0))
                 .bg(bg::CARD)
-                .rounded(px(4.0))
+                
                 .overflow_hidden()
                 .child(
                     div()
@@ -238,7 +238,7 @@ pub fn render_category_badge(category: &TestCategory) -> impl IntoElement {
         .text_color(text)
         .border_1()
         .border_color(border)
-        .rounded(px(4.0))
+        
         .flex_shrink_0()
         .child(label)
 }
@@ -251,7 +251,7 @@ pub fn render_progress_item(timestamp: DateTime<Utc>, data: &ProgressData) -> im
         .bg(bg::HOVER)
         .border_1()
         .border_color(border::STRONG)
-        .rounded(px(8.0))
+        
         .child(
             div()
                 .flex()
@@ -301,7 +301,7 @@ pub fn render_reflection_item(timestamp: DateTime<Utc>, data: &ReflectionData) -
         .bg(status::INFO_BG)
         .border_1()
         .border_color(status::INFO_BORDER)
-        .rounded(px(8.0))
+        
         .child(
             div()
                 .flex()
@@ -345,7 +345,7 @@ pub fn render_reflection_item(timestamp: DateTime<Utc>, data: &ReflectionData) -
                                         .bg(status::INFO_BG)
                                         .border_1()
                                         .border_color(status::INFO_BORDER)
-                                        .rounded(px(4.0))
+                                        
                                         .text_size(px(12.0))
                                         .text_color(accent::PRIMARY)
                                         .font_family(FONT_FAMILY)
@@ -372,7 +372,7 @@ pub fn render_error_item(timestamp: DateTime<Utc>, data: &ErrorData) -> impl Int
         .bg(status::ERROR_BG)
         .border_1()
         .border_color(status::ERROR_BORDER)
-        .rounded(px(8.0))
+        
         .child(
             div()
                 .flex()
@@ -422,7 +422,7 @@ pub fn render_complete_item(timestamp: DateTime<Utc>, data: &CompleteData) -> im
         .bg(status::SUCCESS_BG)
         .border_1()
         .border_color(status::SUCCESS_BORDER)
-        .rounded(px(8.0))
+        
         .child(
             div()
                 .flex()
@@ -537,7 +537,7 @@ pub fn render_test_item_header(
         .bg(bg::HOVER)
         .border_1()
         .border_color(border::STRONG)
-        .rounded(px(8.0))
+        
         .cursor_pointer()
         .hover(|s| s.bg(bg::CARD))
         .child(
@@ -591,7 +591,7 @@ pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
         .bg(bg::ELEVATED)
         .border_1()
         .border_color(border::DEFAULT)
-        .rounded(px(8.0))
+        
         .flex()
         .flex_col()
         .gap(px(12.0))
@@ -610,7 +610,7 @@ pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
                     div()
                         .p(px(8.0))
                         .bg(bg::SURFACE)
-                        .rounded(px(4.0))
+                        
                         .text_size(px(14.0))
                         .font_family(FONT_FAMILY)
                         .text_color(status::SUCCESS)
@@ -633,7 +633,7 @@ pub fn render_test_item_details(data: &TestData) -> impl IntoElement {
                     div()
                         .p(px(8.0))
                         .bg(bg::SURFACE)
-                        .rounded(px(4.0))
+                        
                         .text_size(px(14.0))
                         .font_family(FONT_FAMILY)
                         .text_color(accent::PRIMARY)

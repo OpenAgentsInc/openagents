@@ -481,7 +481,7 @@ pub fn render_final_metrics(trajectory: &Trajectory) -> impl IntoElement {
 #[allow(dead_code)]
 pub fn render_loading_state() -> impl IntoElement {
     div()
-        .rounded(px(12.0))
+        
         .border_1()
         .border_color(border::STRONG)
         .bg(bg::PANEL)
@@ -506,7 +506,7 @@ pub fn render_loading_state() -> impl IntoElement {
 pub fn render_error_state(error: &str) -> impl IntoElement {
     let error_owned = error.to_string();
     div()
-        .rounded(px(12.0))
+        
         .border_1()
         .border_color(border::STRONG)
         .bg(bg::PANEL)
@@ -541,7 +541,7 @@ pub fn render_error_state(error: &str) -> impl IntoElement {
 #[allow(dead_code)]
 pub fn render_empty_state() -> impl IntoElement {
     div()
-        .rounded(px(12.0))
+        
         .border_1()
         .border_color(border::STRONG)
         .bg(bg::PANEL)
@@ -592,7 +592,7 @@ pub fn render_trajectory_detail(
     // Collapsed state
     if is_collapsed {
         return div()
-            .rounded(px(12.0))
+            
             .border_1()
             .border_color(border::STRONG)
             .bg(bg::PANEL)
@@ -603,7 +603,7 @@ pub fn render_trajectory_detail(
 
     // Full trajectory view
     div()
-        .rounded(px(12.0))
+        
         .border_1()
         .border_color(border::STRONG)
         .bg(bg::PANEL)
