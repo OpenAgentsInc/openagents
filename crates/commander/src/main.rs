@@ -35,9 +35,9 @@ impl Render for CommanderView {
                 div()
                     .w(px(600.0))
                     .h(px(44.0))
-                    .bg(rgb(0x1a1a1a))
+                    .bg(hsla(0., 0., 1., 0.1))
                     .border_1()
-                    .border_color(rgb(0x333333))
+                    .border_color(hsla(0., 0., 1., 0.4))
                     .px(px(12.0))
                     .flex()
                     .items_center()
@@ -72,6 +72,9 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("enter", text_input::Submit, None),
             KeyBinding::new("cmd-a", text_input::SelectAll, None),
+            KeyBinding::new("cmd-x", text_input::Cut, None),
+            KeyBinding::new("cmd-c", text_input::Copy, None),
+            KeyBinding::new("cmd-v", text_input::Paste, None),
             KeyBinding::new("backspace", text_input::Backspace, None),
             KeyBinding::new("delete", text_input::Delete, None),
             KeyBinding::new("left", text_input::Left, None),

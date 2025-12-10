@@ -2,7 +2,7 @@ use gpui::*;
 use std::ops::Range;
 use unicode_segmentation::*;
 
-actions!(text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll]);
+actions!(text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]);
 
 pub struct TextInput {
     focus_handle: FocusHandle,
@@ -116,6 +116,29 @@ impl TextInput {
             self.select_to(self.next_boundary(self.cursor_offset()), cx)
         }
         self.replace_text_in_range(None, "", cx)
+    }
+
+    fn cut(&mut self, _: &Cut, cx: &mut ViewContext<Self>) {
+        if !self.selected_range.is_empty() {
+            let selected_text = self.content[self.selected_range.clone()].to_string();
+            cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
+            self.replace_text_in_range(None, "", cx);
+        }
+    }
+
+    fn copy(&mut self, _: &Copy, cx: &mut ViewContext<Self>) {
+        if !self.selected_range.is_empty() {
+            let selected_text = self.content[self.selected_range.clone()].to_string();
+            cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
+        }
+    }
+
+    fn paste(&mut self, _: &Paste, cx: &mut ViewContext<Self>) {
+        if let Some(clipboard_text) = cx.read_from_clipboard() {
+            if let Some(text) = clipboard_text.text() {
+                self.replace_text_in_range(None, &text, cx);
+            }
+        }
     }
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut ViewContext<Self>) {
@@ -474,6 +497,9 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::end))
             .on_action(cx.listener(Self::submit))
             .on_action(cx.listener(Self::select_all))
+            .on_action(cx.listener(Self::cut))
+            .on_action(cx.listener(Self::copy))
+            .on_action(cx.listener(Self::paste))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
