@@ -2,9 +2,9 @@ mod components;
 mod markdown;
 mod text_input;
 
-use atif::{Agent, Step};
+use atif::{Agent, Step, Trajectory};
 use atif_store::{TrajectoryMetadata, TrajectoryStore};
-use components::{render_steps_list, render_trajectory_list};
+use components::render_steps_list;
 use fm_bridge::FMClient;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -327,6 +327,130 @@ impl CommanderView {
             .list_trajectories(100, 0)
             .unwrap_or_default();
     }
+
+    /// Load a trajectory by session ID
+    fn load_trajectory(&mut self, session_id: &str) {
+        if let Ok(trajectory) = self.store.lock().unwrap().get_trajectory(session_id) {
+            self.steps = trajectory.steps;
+            self.selected_trajectory_id = Some(session_id.to_string());
+            self.current_session_id = Some(session_id.to_string());
+            // Update next_step_id to be after the highest existing step
+            self.next_step_id = self.steps.iter().map(|s| s.step_id).max().unwrap_or(0) + 1;
+            self.expanded_step_ids.clear();
+        }
+    }
+
+    /// Render a single trajectory item with click handler
+    fn render_trajectory_item(&self, metadata: &TrajectoryMetadata, cx: &mut Context<Self>) -> impl IntoElement {
+        let session_id = metadata.session_id.clone();
+        let agent_name = metadata.agent_name.clone();
+        let model_name = metadata
+            .model_name
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let step_count = metadata.total_steps;
+        let created_at = metadata.created_at.format("%b %d, %H:%M").to_string();
+        let status = format!("{:?}", metadata.status);
+        let is_selected = self.selected_trajectory_id.as_deref() == Some(&metadata.session_id);
+
+        let (bg, border) = if is_selected {
+            (hsla(0.58, 0.5, 0.15, 0.3), hsla(0.58, 0.5, 0.35, 0.5))
+        } else {
+            (hsla(0.0, 0.0, 0.12, 0.4), hsla(0.0, 0.0, 0.25, 0.4))
+        };
+
+        let session_id_for_click = session_id.clone();
+        let session_id_display = if session_id.len() > 8 {
+            format!("...{}", &session_id[session_id.len() - 8..])
+        } else {
+            session_id.clone()
+        };
+
+        div()
+            .id(SharedString::from(format!("traj-{}", session_id)))
+            .p(px(12.0))
+            .mb(px(8.0))
+            .bg(bg)
+            .border_1()
+            .border_color(border)
+            .rounded(px(8.0))
+            .cursor_pointer()
+            .hover(|s| s.bg(hsla(0.0, 0.0, 0.18, 0.6)))
+            .on_click(cx.listener(move |this, _event, _window, cx| {
+                this.load_trajectory(&session_id_for_click);
+                cx.notify();
+            }))
+            // Header row: agent name + date
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .mb(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_family("Berkeley Mono")
+                            .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                            .child(agent_name),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                            .child(created_at),
+                    ),
+            )
+            // Model row
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                    .mb(px(4.0))
+                    .child(format!("model: {}", model_name)),
+            )
+            // Footer row: session ID, steps, status
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .text_size(px(10.0))
+                    .text_color(hsla(0.0, 0.0, 0.45, 1.0))
+                    .child(session_id_display)
+                    .child(
+                        div()
+                            .text_color(hsla(0.0, 0.0, 0.3, 1.0))
+                            .child("•"),
+                    )
+                    .child(format!("{} steps", step_count))
+                    .child(
+                        div()
+                            .text_color(hsla(0.0, 0.0, 0.3, 1.0))
+                            .child("•"),
+                    )
+                    .child(self.render_status_badge(&status)),
+            )
+    }
+
+    /// Render status badge
+    fn render_status_badge(&self, status: &str) -> impl IntoElement {
+        let (bg, text) = match status.to_lowercase().as_str() {
+            "completed" => (hsla(0.38, 0.5, 0.2, 0.4), hsla(0.38, 0.6, 0.7, 1.0)),
+            "failed" => (hsla(0.0, 0.5, 0.2, 0.4), hsla(0.0, 0.6, 0.7, 1.0)),
+            _ => (hsla(0.15, 0.5, 0.2, 0.4), hsla(0.15, 0.6, 0.7, 1.0)),
+        };
+
+        div()
+            .px(px(6.0))
+            .py(px(2.0))
+            .text_size(px(9.0))
+            .font_family("Berkeley Mono")
+            .bg(bg)
+            .text_color(text)
+            .rounded(px(4.0))
+            .child(status.to_lowercase())
+    }
 }
 
 fn format_error(e: &fm_bridge::FMError) -> String {
@@ -354,8 +478,14 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 }
 
 impl Render for CommanderView {
-    fn render(&mut self, _window: &mut gpui::Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let total_trajectories = self.trajectories.len();
+
+        // Build trajectory items with click handlers
+        let mut trajectory_items: Vec<AnyElement> = Vec::new();
+        for traj in &self.trajectories {
+            trajectory_items.push(self.render_trajectory_item(traj, cx).into_any_element());
+        }
 
         div()
             .flex()
@@ -373,17 +503,46 @@ impl Render for CommanderView {
                         .bg(hsla(0., 0., 0.02, 1.0))
                         .flex()
                         .flex_col()
-                        .child(render_trajectory_list(
-                            &self.trajectories,
-                            self.selected_trajectory_id.as_deref(),
-                            total_trajectories,
-                            self.sidebar_current_page,
-                            self.sidebar_page_size,
-                            false, // is_loading
-                            None,  // error
-                            false, // is_collapsed (we handle this at parent level)
-                            &self.sidebar_search_query,
-                        )),
+                        // Header
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .px(px(16.0))
+                                .py(px(12.0))
+                                .border_b_1()
+                                .border_color(hsla(0., 0., 0.2, 0.6))
+                                .bg(hsla(0., 0., 0.04, 1.0))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(14.0))
+                                                .font_family("Berkeley Mono")
+                                                .text_color(hsla(0., 0., 0.9, 1.0))
+                                                .child("Trajectories"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(12.0))
+                                                .text_color(hsla(0., 0., 0.5, 1.0))
+                                                .child(format!("({})", total_trajectories)),
+                                        ),
+                                ),
+                        )
+                        // Trajectory list
+                        .child(
+                            div()
+                                .id("trajectory-list-scroll")
+                                .flex_1()
+                                .overflow_y_scroll()
+                                .p(px(12.0))
+                                .children(trajectory_items),
+                        ),
                 )
             })
             // Collapsed sidebar toggle
