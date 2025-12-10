@@ -6,4 +6,6 @@
 pub mod actions;
 pub mod app_menus;
 pub mod components;
-pub mod text_input;
+
+// Re-export TextInput from ui crate for backwards compatibility
+pub use ui::{TextInput, SubmitEvent, bind_text_input_keys};

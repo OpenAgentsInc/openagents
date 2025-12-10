@@ -13,5 +13,5 @@ gpui = { path = "../gpui" }
 # Centralized theme colors
 theme = { path = "../theme" }
 
-# Text input unicode handling
-unicode-segmentation = "1.10"
+# Shared UI components
+ui = { path = "../ui" }

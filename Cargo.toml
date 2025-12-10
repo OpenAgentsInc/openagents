@@ -33,6 +33,9 @@ members = [
     "crates/sandbox",
     "crates/nostr",
     "crates/nostr-relay",
+    "crates/nostr-chat",
+    "crates/ui",
+    "crates/marketplace",
 ]
 
 [workspace.lints.rust]

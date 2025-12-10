@@ -18,9 +18,6 @@ mod resource_bar;
 mod tab_bar;
 mod activity_feed;
 mod screen;
-pub mod text_input;
-
-pub use text_input::TextInput;
 
 pub mod agents;
 pub mod compute;
@@ -29,3 +26,6 @@ pub mod services;
 // Re-export main types
 pub use types::*;
 pub use screen::MarketplaceScreen;
+
+// Re-export TextInput from ui crate for convenience
+pub use ui::TextInput;

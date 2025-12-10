@@ -2,7 +2,6 @@ mod actions;
 mod app_menus;
 mod components;
 mod markdown;
-mod text_input;
 
 use atif::{Agent, Step};
 use atif_store::{TrajectoryMetadata, TrajectoryStore};
@@ -16,8 +15,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use text_input::TextInput;
-use theme::{bg, border, input, status, text, FONT_FAMILY};
+use theme::{bg, border, status, text, FONT_FAMILY};
+use ui::{TextInput, SubmitEvent, bind_text_input_keys};
 use marketplace::MarketplaceScreen;
 use gym::GymScreen;
 use tokio_stream::StreamExt;
@@ -189,7 +188,7 @@ impl CommanderView {
         let session_id_clone = session_id.clone();
         let subscription = cx.subscribe(
             &input,
-            move |this, _, event: &text_input::SubmitEvent, cx| {
+            move |this, _, event: &SubmitEvent, cx| {
                 let prompt = event.0.clone();
 
                 // Create user step
@@ -1120,31 +1119,10 @@ fn main() {
             ])
             .unwrap();
 
+        // Bind text input keys (centralized in ui crate)
+        bind_text_input_keys(cx);
+
         cx.bind_keys([
-            // Text input bindings (commander)
-            KeyBinding::new("enter", text_input::Submit, None),
-            KeyBinding::new("cmd-a", text_input::SelectAll, None),
-            KeyBinding::new("cmd-x", text_input::Cut, None),
-            KeyBinding::new("cmd-c", text_input::Copy, None),
-            KeyBinding::new("cmd-v", text_input::Paste, None),
-            KeyBinding::new("backspace", text_input::Backspace, None),
-            KeyBinding::new("delete", text_input::Delete, None),
-            KeyBinding::new("left", text_input::Left, None),
-            KeyBinding::new("right", text_input::Right, None),
-            KeyBinding::new("home", text_input::Home, None),
-            KeyBinding::new("end", text_input::End, None),
-            // Text input bindings (marketplace)
-            KeyBinding::new("enter", marketplace::text_input::Submit, None),
-            KeyBinding::new("cmd-a", marketplace::text_input::SelectAll, None),
-            KeyBinding::new("cmd-x", marketplace::text_input::Cut, None),
-            KeyBinding::new("cmd-c", marketplace::text_input::Copy, None),
-            KeyBinding::new("cmd-v", marketplace::text_input::Paste, None),
-            KeyBinding::new("backspace", marketplace::text_input::Backspace, None),
-            KeyBinding::new("delete", marketplace::text_input::Delete, None),
-            KeyBinding::new("left", marketplace::text_input::Left, None),
-            KeyBinding::new("right", marketplace::text_input::Right, None),
-            KeyBinding::new("home", marketplace::text_input::Home, None),
-            KeyBinding::new("end", marketplace::text_input::End, None),
             // App bindings
             KeyBinding::new("cmd-q", actions::Quit, None),
             KeyBinding::new("cmd-,", actions::ShowSettings, None),

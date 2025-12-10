@@ -1,11 +1,36 @@
-//! Text input component for marketplace search
+//! Centralized TextInput component
+//!
+//! A reusable text input with proper keyboard handling, cursor, selection,
+//! copy/paste, and Berkeley Mono font styling.
 
 use gpui::*;
 use std::ops::Range;
 use theme::{input, FONT_FAMILY};
 use unicode_segmentation::*;
 
-actions!(marketplace_text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]);
+// Define actions centrally - these are used app-wide
+actions!(
+    text_input,
+    [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]
+);
+
+/// Bind all text input keyboard shortcuts.
+/// Call this once during app initialization.
+pub fn bind_text_input_keys(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("enter", Submit, None),
+        KeyBinding::new("cmd-a", SelectAll, None),
+        KeyBinding::new("cmd-x", Cut, None),
+        KeyBinding::new("cmd-c", Copy, None),
+        KeyBinding::new("cmd-v", Paste, None),
+        KeyBinding::new("backspace", Backspace, None),
+        KeyBinding::new("delete", Delete, None),
+        KeyBinding::new("left", Left, None),
+        KeyBinding::new("right", Right, None),
+        KeyBinding::new("home", Home, None),
+        KeyBinding::new("end", End, None),
+    ]);
+}
 
 #[derive(Clone)]
 pub struct SubmitEvent(pub String);
@@ -43,6 +68,18 @@ impl TextInput {
 
     pub fn content(&self) -> &str {
         &self.content
+    }
+
+    pub fn set_content(&mut self, content: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.content = content.into();
+        self.selected_range = self.content.len()..self.content.len();
+        cx.notify();
+    }
+
+    pub fn clear(&mut self, cx: &mut Context<Self>) {
+        self.content = "".into();
+        self.selected_range = 0..0;
+        cx.notify();
     }
 
     fn reset_cursor_blink(&mut self, cx: &mut Context<Self>) {
@@ -451,7 +488,7 @@ impl Element for TextElement {
             strikethrough: None,
         };
 
-        let font_size = px(13.0);  // Match Bloomberg terminal text size
+        let font_size = px(13.0);
         let line = window
             .text_system()
             .shape_line(display_text, font_size, &[run], None);
@@ -538,7 +575,7 @@ impl Render for TextInput {
             .flex_1()
             .size_full()
             .overflow_hidden()
-            .key_context("MarketplaceTextInput")
+            .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
             .on_action(cx.listener(Self::backspace))
