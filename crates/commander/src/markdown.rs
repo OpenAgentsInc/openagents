@@ -103,6 +103,12 @@ pub fn render_markdown(text: &str, style: &MarkdownStyle) -> StyledText {
                         output.push('\n');
                     }
                 }
+                TagEnd::List(_) => {
+                    // Add extra newline after list ends for spacing before next paragraph
+                    if !output.ends_with("\n\n") {
+                        output.push('\n');
+                    }
+                }
                 _ => {}
             },
             Event::Text(text) => {
