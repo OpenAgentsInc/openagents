@@ -9,7 +9,7 @@ struct CommanderView {
 }
 
 impl CommanderView {
-    fn new(cx: &mut ViewContext<Self>) -> Self {
+    fn new(cx: &mut Context<Self>) -> Self {
         let input = cx.new_view(|cx| {
             TextInput::new("Message OpenAgents", cx)
                 .on_submit(|text, _cx| {
@@ -22,7 +22,7 @@ impl CommanderView {
 }
 
 impl Render for CommanderView {
-    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()

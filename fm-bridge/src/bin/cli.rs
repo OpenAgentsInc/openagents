@@ -53,6 +53,10 @@ enum Commands {
     /// Session management commands
     #[command(subcommand)]
     Session(SessionCommands),
+
+    /// Adapter management commands
+    #[command(subcommand)]
+    Adapter(AdapterCommands),
 }
 
 #[derive(Subcommand)]
@@ -89,6 +93,59 @@ enum SessionCommands {
         /// Prompt to complete
         prompt: String,
     },
+}
+
+#[derive(Subcommand)]
+enum AdapterCommands {
+    /// Load adapter from file
+    Load {
+        /// File path to .mlpackage
+        file_path: String,
+
+        /// Optional adapter ID
+        #[arg(short, long)]
+        id: Option<String>,
+    },
+
+    /// Load adapter by name
+    LoadName {
+        /// Adapter name
+        name: String,
+
+        /// Optional adapter ID
+        #[arg(short, long)]
+        id: Option<String>,
+    },
+
+    /// List all loaded adapters
+    List,
+
+    /// Get adapter info
+    Get {
+        /// Adapter ID
+        adapter_id: String,
+    },
+
+    /// Unload adapter
+    Unload {
+        /// Adapter ID
+        adapter_id: String,
+    },
+
+    /// Recompile adapter
+    Compile {
+        /// Adapter ID
+        adapter_id: String,
+    },
+
+    /// Get compatible adapter identifiers
+    Compatible {
+        /// Adapter name
+        name: String,
+    },
+
+    /// Cleanup obsolete adapters
+    Cleanup,
 }
 
 #[tokio::main]
@@ -314,6 +371,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     if let Some(choice) = response.choices.first() {
                         println!("{}", choice.message.content.as_ref().unwrap_or(&"".to_string()));
+                    }
+                }
+            }
+        }
+
+        Commands::Adapter(adapter_cmd) => {
+            let adapter_client = client.adapters();
+
+            match adapter_cmd {
+                AdapterCommands::Load { file_path, id } => {
+                    let result = adapter_client.load_from_file(&file_path, id).await?;
+                    println!("Loaded adapter:");
+                    println!("  ID: {}", result.id);
+                    println!("  Name: {}", result.adapter.name.as_ref().unwrap_or(&"N/A".to_string()));
+                    println!("  File: {}", result.adapter.file_url.as_ref().unwrap_or(&"N/A".to_string()));
+                    println!("  Loaded at: {}", result.adapter.loaded_at);
+                }
+
+                AdapterCommands::LoadName { name, id } => {
+                    let result = adapter_client.load_by_name(&name, id).await?;
+                    println!("Loaded adapter:");
+                    println!("  ID: {}", result.id);
+                    println!("  Name: {}", result.adapter.name.as_ref().unwrap_or(&"N/A".to_string()));
+                    println!("  Loaded at: {}", result.adapter.loaded_at);
+                }
+
+                AdapterCommands::List => {
+                    let adapters = adapter_client.list_adapters().await?;
+                    println!("Loaded adapters ({}):", adapters.count);
+                    for adapter in adapters.adapters {
+                        println!("  - {}", adapter.id);
+                        if let Some(name) = adapter.name {
+                            println!("    Name: {}", name);
+                        }
+                        if let Some(file) = adapter.file_url {
+                            println!("    File: {}", file);
+                        }
+                        println!("    Loaded at: {}", adapter.loaded_at);
+                        println!("    Last used: {}", adapter.last_used);
+                    }
+                }
+
+                AdapterCommands::Get { adapter_id } => {
+                    let adapter = adapter_client.get_adapter(&adapter_id).await?;
+                    println!("Adapter {}:", adapter.id);
+                    if let Some(name) = adapter.name {
+                        println!("  Name: {}", name);
+                    }
+                    if let Some(file) = adapter.file_url {
+                        println!("  File: {}", file);
+                    }
+                    println!("  Loaded at: {}", adapter.loaded_at);
+                    println!("  Last used: {}", adapter.last_used);
+                    if !adapter.metadata.is_empty() {
+                        println!("  Metadata:");
+                        for (key, value) in adapter.metadata {
+                            println!("    {}: {:?}", key, value);
+                        }
+                    }
+                }
+
+                AdapterCommands::Unload { adapter_id } => {
+                    let result = adapter_client.unload_adapter(&adapter_id).await?;
+                    if result.unloaded {
+                        println!("Unloaded adapter: {}", result.id);
+                    } else {
+                        println!("Failed to unload adapter: {}", result.id);
+                    }
+                }
+
+                AdapterCommands::Compile { adapter_id } => {
+                    let result = adapter_client.recompile_adapter(&adapter_id).await?;
+                    if result.compiled {
+                        println!("Recompiled adapter: {}", result.id);
+                        println!("  Compiled at: {}", result.compiled_at);
+                    }
+                }
+
+                AdapterCommands::Compatible { name } => {
+                    let result = adapter_client.get_compatible_identifiers(&name).await?;
+                    println!("Compatible adapters for '{}' ({}):", result.name, result.count);
+                    for id in result.compatible_identifiers {
+                        println!("  - {}", id);
+                    }
+                }
+
+                AdapterCommands::Cleanup => {
+                    let result = adapter_client.cleanup_obsolete_adapters().await?;
+                    if result.cleaned {
+                        println!("{}", result.message);
                     }
                 }
             }

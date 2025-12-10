@@ -40,6 +40,11 @@ impl FMClient {
         crate::tools::ToolClient::new(&self.base_url, self.http_client.clone())
     }
 
+    /// Create an adapters client
+    pub fn adapters(&self) -> crate::adapters::AdapterClient {
+        crate::adapters::AdapterClient::new(&self.base_url, self.http_client.clone())
+    }
+
     /// Check health status
     pub async fn health(&self) -> Result<HealthResponse> {
         let url = format!("{}/health", self.base_url);

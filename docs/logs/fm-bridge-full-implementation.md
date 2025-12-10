@@ -80,7 +80,33 @@
    - Updated Rust types (SamplingMode, UseCase, Guardrails enums)
    - Exported enhanced types from lib.rs
 
-### ⏳ Remaining Work (optional, ~4 hours):
+8. **Phase 5: Adapter Management** (COMPLETE ✅)
+   - Created `Models/AdapterRegistry.swift` - Actor for adapter storage and lifecycle
+   - Created `Handlers/AdapterHandler.swift` - Adapter management endpoints
+   - Updated `Server.swift` with adapter routing:
+     - POST /v1/adapters/load - Load from file or name
+     - GET /v1/adapters - List loaded adapters
+     - GET /v1/adapters/{id} - Get adapter info
+     - DELETE /v1/adapters/{id} - Unload adapter
+     - POST /v1/adapters/{id}/compile - Recompile adapter
+     - GET /v1/adapters/compatible/{name} - Get compatible IDs
+     - POST /v1/adapters/cleanup - Remove obsolete adapters
+   - Created `fm-bridge/src/adapters.rs` - Complete Rust adapter client
+   - Added `adapters()` method to FMClient
+   - Exported adapter types from lib.rs
+   - Added CLI commands:
+     - `fm adapter load <path>`
+     - `fm adapter load-name <name>`
+     - `fm adapter list`
+     - `fm adapter get <id>`
+     - `fm adapter unload <id>`
+     - `fm adapter compile <id>`
+     - `fm adapter compatible <name>`
+     - `fm adapter cleanup`
+   - Full support for .mlpackage loading and compilation
+   - LRU eviction and cleanup strategies
+
+### ⏳ Remaining Work (optional, ~1 hour):
 
 **Phase 5: Adapters** (~3 hours)
 - Swift: AdapterRegistry, AdapterHandler

@@ -1,3 +1,4 @@
+pub mod adapters;
 pub mod client;
 pub mod error;
 pub mod sessions;
@@ -6,6 +7,10 @@ pub mod tools;
 pub mod types;
 
 // Re-export main types
+pub use adapters::{
+    AdapterClient, AdapterInfo, CleanupResponse, CompileAdapterResponse,
+    CompatibleAdaptersResponse, ListAdaptersResponse, LoadAdapterResponse, UnloadAdapterResponse,
+};
 pub use client::{FMClient, FMClientBuilder};
 pub use error::{FMError, Result};
 pub use sessions::{

@@ -4,6 +4,9 @@ use unicode_segmentation::*;
 
 actions!(text_input, [Backspace, Delete, Left, Right, Home, End, Submit, SelectAll, Cut, Copy, Paste]);
 
+#[derive(Clone)]
+pub struct SubmitEvent(pub String);
+
 pub struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
@@ -13,13 +16,13 @@ pub struct TextInput {
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,
-    on_submit: Option<Box<dyn Fn(String, &mut ViewContext<Self>)>>,
+    on_submit: Option<Box<dyn Fn(String, &mut Context<Self>)>>,
     cursor_visible: bool,
     blink_epoch: usize,
 }
 
 impl TextInput {
-    pub fn new(placeholder: impl Into<SharedString>, cx: &mut ViewContext<Self>) -> Self {
+    pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
         let this = Self {
             focus_handle: cx.focus_handle(),
             content: "".into(),
@@ -37,7 +40,7 @@ impl TextInput {
         this
     }
 
-    fn start_cursor_blink(&self, cx: &mut ViewContext<Self>) {
+    fn start_cursor_blink(&self, cx: &mut Context<Self>) {
         let epoch = self.blink_epoch;
         cx.spawn(|this, mut cx| async move {
             loop {
@@ -52,35 +55,44 @@ impl TextInput {
         }).detach();
     }
 
-    fn reset_cursor_blink(&mut self, cx: &mut ViewContext<Self>) {
+    fn reset_cursor_blink(&mut self, cx: &mut Context<Self>) {
         self.blink_epoch += 1;
         self.cursor_visible = true;
         self.start_cursor_blink(cx);
         cx.notify();
     }
 
-    pub fn on_submit(mut self, f: impl Fn(String, &mut ViewContext<Self>) + 'static) -> Self {
+    pub fn on_submit(mut self, f: impl Fn(String, &mut Context<Self>) + 'static) -> Self {
         self.on_submit = Some(Box::new(f));
         self
     }
 
-    fn submit(&mut self, _: &Submit, cx: &mut ViewContext<Self>) {
+    fn submit(&mut self, _: &Submit, cx: &mut Context<Self>) {
+        let content = self.content.to_string();
+        if content.trim().is_empty() {
+            return;
+        }
+
+        self.content = "".into();
+        self.selected_range = 0..0;
+        cx.notify();
+
+        // Emit event
+        cx.emit(SubmitEvent(content.clone()));
+
+        // Call legacy callback if set
         if let Some(on_submit) = &self.on_submit {
-            let content = self.content.to_string();
-            self.content = "".into();
-            self.selected_range = 0..0;
-            cx.notify();
             (on_submit)(content, cx);
         }
     }
 
-    fn select_all(&mut self, _: &SelectAll, cx: &mut ViewContext<Self>) {
+    fn select_all(&mut self, _: &SelectAll, cx: &mut Context<Self>) {
         self.selected_range = 0..self.content.len();
         self.selection_reversed = false;
         cx.notify();
     }
 
-    fn left(&mut self, _: &Left, cx: &mut ViewContext<Self>) {
+    fn left(&mut self, _: &Left, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.move_to(self.previous_boundary(self.cursor_offset()), cx);
         } else {
@@ -88,7 +100,7 @@ impl TextInput {
         }
     }
 
-    fn right(&mut self, _: &Right, cx: &mut ViewContext<Self>) {
+    fn right(&mut self, _: &Right, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.move_to(self.next_boundary(self.selected_range.end), cx);
         } else {
@@ -96,29 +108,29 @@ impl TextInput {
         }
     }
 
-    fn home(&mut self, _: &Home, cx: &mut ViewContext<Self>) {
+    fn home(&mut self, _: &Home, cx: &mut Context<Self>) {
         self.move_to(0, cx);
     }
 
-    fn end(&mut self, _: &End, cx: &mut ViewContext<Self>) {
+    fn end(&mut self, _: &End, cx: &mut Context<Self>) {
         self.move_to(self.content.len(), cx);
     }
 
-    fn backspace(&mut self, _: &Backspace, cx: &mut ViewContext<Self>) {
+    fn backspace(&mut self, _: &Backspace, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor_offset()), cx)
         }
         self.replace_text_in_range(None, "", cx)
     }
 
-    fn delete(&mut self, _: &Delete, cx: &mut ViewContext<Self>) {
+    fn delete(&mut self, _: &Delete, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor_offset()), cx)
         }
         self.replace_text_in_range(None, "", cx)
     }
 
-    fn cut(&mut self, _: &Cut, cx: &mut ViewContext<Self>) {
+    fn cut(&mut self, _: &Cut, cx: &mut Context<Self>) {
         if !self.selected_range.is_empty() {
             let selected_text = self.content[self.selected_range.clone()].to_string();
             cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
@@ -126,14 +138,14 @@ impl TextInput {
         }
     }
 
-    fn copy(&mut self, _: &Copy, cx: &mut ViewContext<Self>) {
+    fn copy(&mut self, _: &Copy, cx: &mut Context<Self>) {
         if !self.selected_range.is_empty() {
             let selected_text = self.content[self.selected_range.clone()].to_string();
             cx.write_to_clipboard(ClipboardItem::new_string(selected_text));
         }
     }
 
-    fn paste(&mut self, _: &Paste, cx: &mut ViewContext<Self>) {
+    fn paste(&mut self, _: &Paste, cx: &mut Context<Self>) {
         if let Some(clipboard_text) = cx.read_from_clipboard() {
             if let Some(text) = clipboard_text.text() {
                 self.replace_text_in_range(None, &text, cx);
@@ -141,22 +153,22 @@ impl TextInput {
         }
     }
 
-    fn on_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut ViewContext<Self>) {
+    fn on_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
         self.is_selecting = true;
         self.move_to(self.index_for_mouse_position(event.position), cx)
     }
 
-    fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut ViewContext<Self>) {
+    fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Context<Self>) {
         self.is_selecting = false;
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut ViewContext<Self>) {
+    fn on_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         if self.is_selecting {
             self.select_to(self.index_for_mouse_position(event.position), cx);
         }
     }
 
-    fn move_to(&mut self, offset: usize, cx: &mut ViewContext<Self>) {
+    fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         self.selected_range = offset..offset;
         self.reset_cursor_blink(cx);
     }
@@ -186,7 +198,7 @@ impl TextInput {
         line.closest_index_for_x(position.x - bounds.left())
     }
 
-    fn select_to(&mut self, offset: usize, cx: &mut ViewContext<Self>) {
+    fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         if self.selection_reversed {
             self.selected_range.start = offset
         } else {
@@ -253,7 +265,7 @@ impl ViewInputHandler for TextInput {
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
-        _cx: &mut ViewContext<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<String> {
         let range = self.range_from_utf16(&range_utf16);
         Some(self.content[range].to_string())
@@ -262,7 +274,7 @@ impl ViewInputHandler for TextInput {
     fn selected_text_range(
         &mut self,
         _ignore_disabled_input: bool,
-        _cx: &mut ViewContext<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         Some(UTF16Selection {
             range: self.range_to_utf16(&self.selected_range),
@@ -270,17 +282,17 @@ impl ViewInputHandler for TextInput {
         })
     }
 
-    fn marked_text_range(&self, _cx: &mut ViewContext<Self>) -> Option<Range<usize>> {
+    fn marked_text_range(&self, _cx: &mut Context<Self>) -> Option<Range<usize>> {
         None
     }
 
-    fn unmark_text(&mut self, _cx: &mut ViewContext<Self>) {}
+    fn unmark_text(&mut self, _cx: &mut Context<Self>) {}
 
     fn replace_text_in_range(
         &mut self,
         range_utf16: Option<Range<usize>>,
         new_text: &str,
-        cx: &mut ViewContext<Self>,
+        cx: &mut Context<Self>,
     ) {
         let range = range_utf16
             .as_ref()
@@ -299,7 +311,7 @@ impl ViewInputHandler for TextInput {
         range_utf16: Option<Range<usize>>,
         new_text: &str,
         new_selected_range_utf16: Option<Range<usize>>,
-        cx: &mut ViewContext<Self>,
+        cx: &mut Context<Self>,
     ) {
         let range = range_utf16
             .as_ref()
@@ -322,7 +334,7 @@ impl ViewInputHandler for TextInput {
         &mut self,
         range_utf16: Range<usize>,
         bounds: Bounds<Pixels>,
-        _cx: &mut ViewContext<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
         let last_layout = self.last_layout.as_ref()?;
         let range = self.range_from_utf16(&range_utf16);
@@ -483,7 +495,7 @@ impl Element for TextElement {
 }
 
 impl Render for TextInput {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .overflow_hidden()
@@ -516,3 +528,5 @@ impl FocusableView for TextInput {
         self.focus_handle.clone()
     }
 }
+
+impl EventEmitter<SubmitEvent> for TextInput {}
