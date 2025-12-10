@@ -319,6 +319,22 @@ pub mod hud {
     pub const RUBBER_BAND_FILL: Hsla = c(0.54, 0.43, 0.50, 0.15);
     /// Rubber band selection stroke
     pub const RUBBER_BAND_STROKE: Hsla = c(0.54, 0.43, 0.67, 0.8);
+
+    // APM widget colors
+    /// APM widget background (#141017)
+    pub const APM_WIDGET_BG: Hsla = c(0.75, 0.17, 0.08, 0.95);
+    /// APM widget border
+    pub const APM_WIDGET_BORDER: Hsla = c(0.11, 0.91, 0.60, 0.25);
+
+    // APM velocity levels (based on actions per minute)
+    /// APM baseline/idle (0-5 APM) - gray #6b7280
+    pub const APM_BASELINE: Hsla = c(0.61, 0.07, 0.46, 1.0);
+    /// APM active (5-15 APM) - blue #3b82f6
+    pub const APM_ACTIVE: Hsla = c(0.61, 0.91, 0.60, 1.0);
+    /// APM high velocity (15-30 APM) - green #22c55e
+    pub const APM_HIGH: Hsla = c(0.40, 0.70, 0.45, 1.0);
+    /// APM elite performance (30+ APM) - amber/gold #f59e0b
+    pub const APM_ELITE: Hsla = c(0.11, 0.91, 0.50, 1.0);
 }
 
 /// Syntax highlighting colors
