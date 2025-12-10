@@ -1,11 +1,13 @@
 //! Agent Store view - Main view for the Agents tab
 
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use theme::bg;
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption};
-use super::agent_grid::{render_search_bar, render_trending_strip, render_agent_grid, mock_agents};
-use super::agent_detail::{render_agent_detail, DETAIL_PANEL_WIDTH};
+use crate::text_input::TextInput;
+use super::agent_grid::{render_search_bar_with_input, render_trending_strip, render_agent_grid, mock_agents};
+use super::agent_detail::render_agent_detail;
 
 /// State for the Agent Store view
 pub struct AgentStoreState {
@@ -30,8 +32,8 @@ impl Default for AgentStoreState {
     }
 }
 
-/// Render the Agent Store view
-pub fn render_agent_store(state: &AgentStoreState) -> impl IntoElement {
+/// Render the Agent Store view with a proper text input
+pub fn render_agent_store_with_input(state: &AgentStoreState, search_input: Entity<TextInput>) -> impl IntoElement {
     let selected_agent = state.selected_agent_id.as_ref().and_then(|id| {
         state.agents.iter().find(|a| &a.id == id)
     });
@@ -48,9 +50,9 @@ pub fn render_agent_store(state: &AgentStoreState) -> impl IntoElement {
                 .h_full()
                 .flex()
                 .flex_col()
-                // Search bar
-                .child(render_search_bar(
-                    &state.search_query,
+                // Search bar with real text input
+                .child(render_search_bar_with_input(
+                    search_input,
                     state.selected_category,
                     state.selected_sort,
                 ))

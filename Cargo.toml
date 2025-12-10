@@ -30,6 +30,7 @@ members = [
     "crates/theme",
     "crates/gym",
     "crates/sandbox",
+    "crates/nostr",
 ]
 
 [workspace.lints.rust]

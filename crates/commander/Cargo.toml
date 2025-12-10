@@ -28,3 +28,6 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Centralized theme colors
 theme = { path = "../theme" }
+
+# Marketplace UI
+marketplace = { path = "../marketplace" }

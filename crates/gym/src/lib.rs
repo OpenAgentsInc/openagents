@@ -23,6 +23,7 @@ pub mod testgen;
 pub mod websocket_client;
 pub mod data_loader;
 pub mod event_protocol;
+pub mod services;
 
 // Re-exports
 pub use gym_screen::GymScreen;

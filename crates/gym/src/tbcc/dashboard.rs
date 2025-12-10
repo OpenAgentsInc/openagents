@@ -2,74 +2,51 @@
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::{Arc, RwLock};
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{DashboardStats, TBRunSummary, TBRunStatus, TBRunOutcome};
+use crate::services::RunStore;
 
 pub struct DashboardView {
     stats: Option<DashboardStats>,
     recent_runs: Vec<TBRunSummary>,
     loading: bool,
+    run_store: Option<Arc<RwLock<RunStore>>>,
     focus_handle: FocusHandle,
 }
 
 impl DashboardView {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        // Sample data for development
-        let stats = Some(DashboardStats {
-            success_rate: 67.5,
-            last_50_success_rate: 72.0,
-            avg_steps: 12.3,
-            avg_duration_secs: 45.2,
-            total_runs: 24,
-            ..Default::default()
-        });
-
-        let recent_runs = vec![
-            TBRunSummary {
-                id: "run-001".to_string(),
-                task_id: "regex-log".to_string(),
-                task_name: "Regex Log Parser".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Success),
-                started_at: "2024-12-10T14:30:00Z".to_string(),
-                finished_at: Some("2024-12-10T14:31:00Z".to_string()),
-                duration_ms: Some(42500),
-                steps_count: 15,
-                tokens_used: Some(4500),
-            },
-            TBRunSummary {
-                id: "run-002".to_string(),
-                task_id: "file-ops".to_string(),
-                task_name: "File Operations".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Failure),
-                started_at: "2024-12-10T14:25:00Z".to_string(),
-                finished_at: Some("2024-12-10T14:26:00Z".to_string()),
-                duration_ms: Some(38200),
-                steps_count: 10,
-                tokens_used: Some(3200),
-            },
-            TBRunSummary {
-                id: "run-003".to_string(),
-                task_id: "api-client".to_string(),
-                task_name: "API Client".to_string(),
-                status: TBRunStatus::Running,
-                outcome: None,
-                started_at: "2024-12-10T14:35:00Z".to_string(),
-                finished_at: None,
-                duration_ms: None,
-                steps_count: 7,
-                tokens_used: None,
-            },
-        ];
-
         Self {
-            stats,
-            recent_runs,
+            stats: None,
+            recent_runs: vec![],
             loading: false,
+            run_store: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Set the run store and refresh data
+    pub fn set_run_store(&mut self, store: Arc<RwLock<RunStore>>, cx: &mut Context<Self>) {
+        self.run_store = Some(store);
+        self.refresh(cx);
+    }
+
+    /// Refresh dashboard data from the run store
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref store) = self.run_store {
+            if let Ok(guard) = store.read() {
+                self.stats = Some(guard.calculate_stats());
+                self.recent_runs = guard.get_recent_runs(5);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Check if we have any data
+    pub fn has_data(&self) -> bool {
+        self.stats.as_ref().map(|s| s.total_runs > 0).unwrap_or(false)
     }
 
     fn render_kpi_card(&self, title: &str, value: String, subtitle: Option<String>) -> impl IntoElement {

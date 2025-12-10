@@ -27,7 +27,7 @@ impl Default for ResourceBarProps {
 }
 
 /// Render the resource bar HUD
-pub fn render(props: &ResourceBarProps) -> impl IntoElement {
+pub fn render(props: ResourceBarProps) -> impl IntoElement {
     div()
         .h(px(48.0))
         .w_full()

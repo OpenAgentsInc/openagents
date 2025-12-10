@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use text_input::TextInput;
 use theme::{bg, border, input, status, text, FONT_FAMILY};
+use marketplace::MarketplaceScreen;
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle
@@ -149,6 +150,8 @@ struct CommanderView {
     sidebar_current_page: usize,
     #[allow(dead_code)]
     sidebar_page_size: usize,
+    // Marketplace screen
+    marketplace_screen: Entity<MarketplaceScreen>,
 }
 
 impl CommanderView {
@@ -325,6 +328,9 @@ impl CommanderView {
             .filter(|t| t.total_steps > 0)
             .collect();
 
+        // Create marketplace screen
+        let marketplace_screen = cx.new(|cx| MarketplaceScreen::new(cx));
+
         Self {
             current_screen: Screen::Gym,
             focus_handle: cx.focus_handle(),
@@ -345,6 +351,7 @@ impl CommanderView {
             sidebar_search_query: String::new(),
             sidebar_current_page: 0,
             sidebar_page_size: 20,
+            marketplace_screen,
         }
     }
 
@@ -668,10 +675,7 @@ impl CommanderView {
 
     /// Render the Marketplace screen
     fn render_marketplace_screen(&self) -> impl IntoElement {
-        self.render_placeholder_screen(
-            "Marketplace",
-            "Publish and discover agents that use swarm compute.",
-        )
+        self.marketplace_screen.clone()
     }
 
     /// Toggle step expansion

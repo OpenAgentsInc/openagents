@@ -9,7 +9,7 @@ use theme::{bg, border, text, FONT_FAMILY};
 use super::types::GymTab;
 use super::sidebar::Sidebar;
 use super::trajectory_view::TrajectoryView;
-use super::tbcc::dashboard::DashboardView;
+use super::tbcc::TBCCScreen;
 use super::hillclimber::monitor::HillClimberMonitor;
 use super::testgen::visualizer::TestGenVisualizer;
 use super::actions::*;
@@ -28,7 +28,7 @@ pub struct GymScreen {
 
     /// View entities
     trajectory_view: Entity<TrajectoryView>,
-    dashboard_view: Entity<DashboardView>,
+    tbcc_screen: Entity<TBCCScreen>,
     hillclimber_view: Entity<HillClimberMonitor>,
     testgen_view: Entity<TestGenVisualizer>,
 }
@@ -37,7 +37,7 @@ impl GymScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let sidebar = cx.new(|cx| Sidebar::new(cx));
         let trajectory_view = cx.new(|cx| TrajectoryView::new(cx));
-        let dashboard_view = cx.new(|cx| DashboardView::new(cx));
+        let tbcc_screen = cx.new(|cx| TBCCScreen::new(cx));
         let hillclimber_view = cx.new(|cx| HillClimberMonitor::new(cx));
         let testgen_view = cx.new(|cx| TestGenVisualizer::new(cx));
 
@@ -48,7 +48,7 @@ impl GymScreen {
             sidebar_width: px(260.0),
             sidebar_collapsed: false,
             trajectory_view,
-            dashboard_view,
+            tbcc_screen,
             hillclimber_view,
             testgen_view,
         }
@@ -127,7 +127,7 @@ impl GymScreen {
     fn render_active_tab_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.current_tab {
             GymTab::Trajectories => self.trajectory_view.clone().into_any_element(),
-            GymTab::TBCC => self.dashboard_view.clone().into_any_element(),
+            GymTab::TBCC => self.tbcc_screen.clone().into_any_element(),
             GymTab::HillClimber => self.hillclimber_view.clone().into_any_element(),
             GymTab::TestGen => self.testgen_view.clone().into_any_element(),
         }
