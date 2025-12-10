@@ -27,3 +27,6 @@ pub use history::*;
 pub use pin_view::*;
 pub use selection::*;
 pub use unit_view::*;
+
+#[cfg(test)]
+mod tests;
