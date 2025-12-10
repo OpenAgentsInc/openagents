@@ -4,11 +4,12 @@ use gpui::*;
 use theme::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption, TrustTier};
+use crate::text_input::TextInput;
 use super::agent_card::render_agent_card;
 
-/// Render the search bar with filters
-pub fn render_search_bar(
-    search_query: &str,
+/// Render the search bar with a real TextInput
+pub fn render_search_bar_with_input(
+    search_input: Entity<TextInput>,
     selected_category: AgentCategory,
     selected_sort: AgentSortOption,
 ) -> impl IntoElement {
@@ -18,7 +19,7 @@ pub fn render_search_bar(
         .items_center()
         .gap(px(12.0))
         .p(px(16.0))
-        // Search input
+        // Search input - real text input!
         .child(
             div()
                 .flex_1()
@@ -36,32 +37,18 @@ pub fn render_search_bar(
                         .text_size(px(14.0))
                         .child("🔍"),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(14.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(if search_query.is_empty() {
-                            text::PLACEHOLDER
-                        } else {
-                            text::PRIMARY
-                        })
-                        .child(if search_query.is_empty() {
-                            "Search agents...".to_string()
-                        } else {
-                            search_query.to_string()
-                        }),
-                ),
+                .child(search_input),
         )
         // Category filter
-        .child(render_dropdown("Category", selected_category.label()))
+        .child(render_dropdown("category", "Category", selected_category.label()))
         // Sort dropdown
-        .child(render_dropdown("Sort", selected_sort.label()))
+        .child(render_dropdown("sort", "Sort", selected_sort.label()))
 }
 
 /// Render a dropdown filter
-fn render_dropdown(label: &str, value: &str) -> impl IntoElement {
+fn render_dropdown(id: &str, label: &str, value: &str) -> impl IntoElement {
     div()
+        .id(SharedString::from(format!("dropdown-{}", id)))
         .flex()
         .items_center()
         .gap(px(8.0))
@@ -72,7 +59,7 @@ fn render_dropdown(label: &str, value: &str) -> impl IntoElement {
         .border_color(border::DEFAULT)
         .rounded(px(6.0))
         .cursor_pointer()
-        .hover(|s| s.bg(bg::HOVER))
+        .hover(|s| s.bg(bg::HOVER).border_color(border::SELECTED))
         .child(
             div()
                 .text_size(px(11.0))
@@ -123,6 +110,7 @@ pub fn render_trending_strip(agents: &[AgentListing]) -> impl IntoElement {
         )
         .child(
             div()
+                .id("trending-strip")
                 .flex()
                 .gap(px(8.0))
                 .overflow_x_scroll()
@@ -159,6 +147,7 @@ pub fn render_agent_grid(
     selected_agent_id: Option<&str>,
 ) -> impl IntoElement {
     div()
+        .id("agent-grid")
         .flex_1()
         .w_full()
         .p(px(16.0))

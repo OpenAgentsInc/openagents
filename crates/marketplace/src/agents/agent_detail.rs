@@ -23,6 +23,7 @@ pub fn render_agent_detail(agent: &AgentListing) -> impl IntoElement {
         // Content (scrollable)
         .child(
             div()
+                .id("agent-detail-content")
                 .flex_1()
                 .overflow_y_scroll()
                 .p(px(16.0))

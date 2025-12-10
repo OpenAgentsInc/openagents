@@ -2,9 +2,11 @@
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::{Arc, RwLock};
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBRunSummary, TBRunStatus, TBRunOutcome, format_duration};
+use crate::services::RunStore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataSource {
@@ -28,82 +30,36 @@ pub struct RunBrowserView {
     selected_run_id: Option<String>,
     data_source: DataSource,
     loading: bool,
+    run_store: Option<Arc<RwLock<RunStore>>>,
     focus_handle: FocusHandle,
 }
 
 impl RunBrowserView {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        // Sample runs for development
-        let runs = vec![
-            TBRunSummary {
-                id: "run-001".to_string(),
-                task_id: "regex-log".to_string(),
-                task_name: "Regex Log Parser".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Success),
-                started_at: "2024-12-10T14:30:00Z".to_string(),
-                finished_at: Some("2024-12-10T14:32:15Z".to_string()),
-                duration_ms: Some(135_000),
-                steps_count: 12,
-                tokens_used: Some(4500),
-            },
-            TBRunSummary {
-                id: "run-002".to_string(),
-                task_id: "file-ops".to_string(),
-                task_name: "File Operations".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Success),
-                started_at: "2024-12-10T13:15:00Z".to_string(),
-                finished_at: Some("2024-12-10T13:16:30Z".to_string()),
-                duration_ms: Some(90_000),
-                steps_count: 8,
-                tokens_used: Some(2800),
-            },
-            TBRunSummary {
-                id: "run-003".to_string(),
-                task_id: "api-client".to_string(),
-                task_name: "REST API Client".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Failure),
-                started_at: "2024-12-10T12:00:00Z".to_string(),
-                finished_at: Some("2024-12-10T12:05:00Z".to_string()),
-                duration_ms: Some(300_000),
-                steps_count: 25,
-                tokens_used: Some(8200),
-            },
-            TBRunSummary {
-                id: "run-004".to_string(),
-                task_id: "data-transform".to_string(),
-                task_name: "Data Transformation".to_string(),
-                status: TBRunStatus::Running,
-                outcome: None,
-                started_at: "2024-12-10T14:45:00Z".to_string(),
-                finished_at: None,
-                duration_ms: None,
-                steps_count: 5,
-                tokens_used: Some(1200),
-            },
-            TBRunSummary {
-                id: "run-005".to_string(),
-                task_id: "regex-log".to_string(),
-                task_name: "Regex Log Parser".to_string(),
-                status: TBRunStatus::Completed,
-                outcome: Some(TBRunOutcome::Timeout),
-                started_at: "2024-12-09T16:20:00Z".to_string(),
-                finished_at: Some("2024-12-09T16:22:00Z".to_string()),
-                duration_ms: Some(120_000),
-                steps_count: 15,
-                tokens_used: Some(5100),
-            },
-        ];
-
         Self {
-            runs,
+            runs: vec![],
             selected_run_id: None,
             data_source: DataSource::All,
             loading: false,
+            run_store: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Set the run store and refresh data
+    pub fn set_run_store(&mut self, store: Arc<RwLock<RunStore>>, cx: &mut Context<Self>) {
+        self.run_store = Some(store);
+        self.refresh(cx);
+    }
+
+    /// Refresh runs from the run store
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref store) = self.run_store {
+            if let Ok(guard) = store.read() {
+                self.runs = guard.get_all_runs();
+            }
+        }
+        cx.notify();
     }
 
     fn select_run(&mut self, run_id: String, cx: &mut Context<Self>) {

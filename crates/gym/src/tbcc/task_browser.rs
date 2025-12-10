@@ -5,71 +5,77 @@ use gpui::*;
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBTask, TBDifficulty};
+use crate::services::TaskLoader;
 
 pub struct TaskBrowserView {
     tasks: Vec<TBTask>,
     selected_task_id: Option<String>,
     difficulty_filter: Option<TBDifficulty>,
+    loading: bool,
+    error: Option<String>,
+    task_loader: TaskLoader,
     focus_handle: FocusHandle,
 }
 
 impl TaskBrowserView {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        // Sample tasks from TB2
-        let tasks = vec![
-            TBTask {
-                id: "regex-log".to_string(),
-                name: "Regex Log Parser".to_string(),
-                description: "Parse and extract structured data from log files using regular expressions. Handle multiple log formats and edge cases.".to_string(),
-                difficulty: TBDifficulty::Medium,
-                timeout_ms: 120_000,
-                max_turns: 15,
-                tags: vec!["regex".to_string(), "parsing".to_string()],
-            },
-            TBTask {
-                id: "file-ops".to_string(),
-                name: "File Operations".to_string(),
-                description: "Perform file system operations including reading, writing, moving, and organizing files efficiently.".to_string(),
-                difficulty: TBDifficulty::Easy,
-                timeout_ms: 60_000,
-                max_turns: 10,
-                tags: vec!["files".to_string(), "io".to_string()],
-            },
-            TBTask {
-                id: "api-client".to_string(),
-                name: "REST API Client".to_string(),
-                description: "Build a client that correctly handles REST API requests, authentication, error handling, and retries.".to_string(),
-                difficulty: TBDifficulty::Hard,
-                timeout_ms: 180_000,
-                max_turns: 20,
-                tags: vec!["http".to_string(), "api".to_string()],
-            },
-            TBTask {
-                id: "data-transform".to_string(),
-                name: "Data Transformation".to_string(),
-                description: "Transform and normalize data between different formats (JSON, CSV, XML) while preserving data integrity.".to_string(),
-                difficulty: TBDifficulty::Medium,
-                timeout_ms: 90_000,
-                max_turns: 12,
-                tags: vec!["json".to_string(), "csv".to_string(), "xml".to_string()],
-            },
-            TBTask {
-                id: "db-query".to_string(),
-                name: "Database Query Builder".to_string(),
-                description: "Construct complex SQL queries with joins, aggregations, and filtering based on natural language requirements.".to_string(),
-                difficulty: TBDifficulty::Expert,
-                timeout_ms: 240_000,
-                max_turns: 25,
-                tags: vec!["sql".to_string(), "database".to_string()],
-            },
-        ];
+        let task_loader = TaskLoader::new();
+
+        // Load tasks from available suites
+        let tasks = task_loader.load_all_tasks();
 
         Self {
             tasks,
             selected_task_id: None,
             difficulty_filter: None,
+            loading: false,
+            error: None,
+            task_loader,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Refresh tasks from disk
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.loading = true;
+        self.tasks = self.task_loader.load_all_tasks();
+        self.loading = false;
+        cx.notify();
+    }
+
+    /// Load tasks from a specific suite file
+    pub fn load_suite(&mut self, path: &std::path::Path, cx: &mut Context<Self>) {
+        self.loading = true;
+        match self.task_loader.load_suite(path) {
+            Ok(suite) => {
+                self.tasks = suite.tasks;
+                self.error = None;
+            }
+            Err(e) => {
+                self.error = Some(e.to_string());
+            }
+        }
+        self.loading = false;
+        cx.notify();
+    }
+
+    /// Get task count info
+    pub fn task_count(&self) -> (usize, usize) {
+        let filtered = self.filtered_tasks().len();
+        (filtered, self.tasks.len())
+    }
+
+    /// Get filtered tasks based on current filter
+    fn filtered_tasks(&self) -> Vec<&TBTask> {
+        self.tasks.iter()
+            .filter(|task| {
+                if let Some(filter) = self.difficulty_filter {
+                    task.difficulty == filter
+                } else {
+                    true
+                }
+            })
+            .collect()
     }
 
     fn render_difficulty_badge(&self, difficulty: TBDifficulty) -> impl IntoElement {

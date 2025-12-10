@@ -44,6 +44,7 @@ impl Default for ComputeMarketState {
 /// Render the Compute Market view
 pub fn render_compute_market(state: &ComputeMarketState) -> impl IntoElement {
     div()
+        .id("compute-market")
         .flex_1()
         .h_full()
         .flex()

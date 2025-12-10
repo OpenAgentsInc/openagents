@@ -5,11 +5,13 @@ use gpui::*;
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBModelOption, ExecutionSettings, ContainerSettings};
+use crate::services::{SettingsStore, TBCCSettings};
 
 pub struct SettingsView {
     execution: ExecutionSettings,
     container: ContainerSettings,
     saved: bool,
+    settings_store: Option<SettingsStore>,
     focus_handle: FocusHandle,
 }
 
@@ -19,8 +21,53 @@ impl SettingsView {
             execution: ExecutionSettings::default(),
             container: ContainerSettings::default(),
             saved: false,
+            settings_store: None,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Set the settings store and load persisted settings
+    pub fn set_settings_store(&mut self, store: SettingsStore, cx: &mut Context<Self>) {
+        let settings = store.load();
+        self.execution = settings.execution;
+        self.container = settings.container;
+        self.settings_store = Some(store);
+        cx.notify();
+    }
+
+    /// Save current settings to disk
+    pub fn save(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref store) = self.settings_store {
+            let settings = TBCCSettings {
+                execution: self.execution.clone(),
+                container: self.container.clone(),
+            };
+            if store.save(&settings).is_ok() {
+                self.saved = true;
+                cx.notify();
+            }
+        }
+    }
+
+    /// Reset to defaults
+    pub fn reset(&mut self, cx: &mut Context<Self>) {
+        self.execution = ExecutionSettings::default();
+        self.container = ContainerSettings::default();
+        self.saved = false;
+        if let Some(ref store) = self.settings_store {
+            let _ = store.reset();
+        }
+        cx.notify();
+    }
+
+    /// Get current execution settings
+    pub fn get_execution_settings(&self) -> &ExecutionSettings {
+        &self.execution
+    }
+
+    /// Get current container settings
+    pub fn get_container_settings(&self) -> &ContainerSettings {
+        &self.container
     }
 
     fn render_section_header(&self, icon: &str, title: &str) -> impl IntoElement {
