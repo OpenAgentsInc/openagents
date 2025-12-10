@@ -12,3 +12,4 @@ path = "src/main.rs"
 
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", rev = "95842c7987" }
+unicode-segmentation = "1.12"

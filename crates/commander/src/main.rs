@@ -1,11 +1,23 @@
+mod text_input;
+
 use gpui::*;
 use std::borrow::Cow;
+use text_input::TextInput;
 
-struct CommanderView;
+struct CommanderView {
+    input: View<TextInput>,
+}
 
 impl CommanderView {
-    fn new(_cx: &mut ViewContext<Self>) -> Self {
-        Self
+    fn new(cx: &mut ViewContext<Self>) -> Self {
+        let input = cx.new_view(|cx| {
+            TextInput::new("Type your message and press Enter...", cx)
+                .on_submit(|text, _cx| {
+                    println!("Submitted: {}", text);
+                })
+        });
+
+        Self { input }
     }
 }
 
@@ -13,17 +25,34 @@ impl Render for CommanderView {
     fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
         div()
             .flex()
-            .items_center()
-            .justify_center()
+            .flex_col()
             .size_full()
             .bg(rgb(0x000000))
+            .justify_end()
+            .items_center()
+            .pb(px(40.0))
             .child(
                 div()
+                    .w(px(600.0))
+                    .h(px(44.0))
+                    .bg(rgb(0x1a1a1a))
+                    .border_1()
+                    .border_color(rgb(0x333333))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
                     .text_color(rgb(0xffffff))
-                    .text_size(px(48.0))
                     .font_family("Berkeley Mono")
-                    .child("OpenAgents")
+                    .text_size(px(14.0))
+                    .line_height(px(20.0))
+                    .child(self.input.clone())
             )
+    }
+}
+
+impl FocusableView for CommanderView {
+    fn focus_handle(&self, cx: &AppContext) -> FocusHandle {
+        self.input.focus_handle(cx)
     }
 }
 
@@ -39,23 +68,36 @@ fn main() {
             ])
             .unwrap();
 
+        // Bind keyboard shortcuts
+        cx.bind_keys([
+            KeyBinding::new("enter", text_input::Submit, None),
+            KeyBinding::new("cmd-a", text_input::SelectAll, None),
+        ]);
+
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
 
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("OpenAgents Commander".into()),
+        let window = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("OpenAgents Commander".into()),
+                        ..Default::default()
+                    }),
+                    focus: true,
+                    show: true,
                     ..Default::default()
-                }),
-                focus: true,
-                show: true,
-                ..Default::default()
-            },
-            |cx| cx.new_view(|cx| CommanderView::new(cx)),
-        )
-        .unwrap();
+                },
+                |cx| cx.new_view(|cx| CommanderView::new(cx)),
+            )
+            .unwrap();
 
-        cx.activate(true);
+        // Focus the input and activate window
+        window
+            .update(cx, |view, cx| {
+                cx.focus_view(&view.input);
+                cx.activate(true);
+            })
+            .unwrap();
     });
 }
