@@ -18,7 +18,7 @@ mod resource_bar;
 mod tab_bar;
 mod activity_feed;
 mod screen;
-mod text_input;
+pub mod text_input;
 
 pub use text_input::TextInput;
 

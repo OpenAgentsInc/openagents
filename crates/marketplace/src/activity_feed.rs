@@ -1,12 +1,13 @@
 //! Activity feed component - Collapsible panel showing transactions and notifications
+//! Bloomberg-style: dense, text-first, no emojis
 
 use gpui::*;
 use theme::{bg, border, text, status, FONT_FAMILY};
 
 use crate::types::{Transaction, TransactionDirection, Notification, NotificationKind};
 
-/// Width of the activity feed panel
-pub const ACTIVITY_FEED_WIDTH: f32 = 280.0;
+/// Width of the activity feed panel - narrower for Bloomberg density
+pub const ACTIVITY_FEED_WIDTH: f32 = 220.0;
 
 /// Render the activity feed panel
 pub fn render_activity_feed(
@@ -47,10 +48,10 @@ pub fn render_activity_feed(
         .into_any_element()
 }
 
-/// Render collapsed feed (just a toggle button)
+/// Render collapsed feed (just a toggle button) - Bloomberg style
 fn render_collapsed_feed() -> impl IntoElement {
     div()
-        .w(px(40.0))
+        .w(px(24.0))
         .h_full()
         .flex()
         .items_center()
@@ -62,36 +63,36 @@ fn render_collapsed_feed() -> impl IntoElement {
         .hover(|s| s.bg(bg::HOVER))
         .child(
             div()
-                .text_size(px(14.0))
+                .text_size(px(10.0))
                 .text_color(text::MUTED)
-                .child("◀"),
+                .child("<"),
         )
 }
 
-/// Render the header
+/// Render the header - Bloomberg style
 fn render_header() -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .justify_between()
-        .px(px(12.0))
-        .py(px(12.0))
+        .px(px(8.0))
+        .py(px(6.0))
         .border_b_1()
         .border_color(border::DEFAULT)
         .child(
             div()
-                .text_size(px(12.0))
+                .text_size(px(10.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::MUTED)
-                .child("ACTIVITY FEED"),
+                .child("ACTIVITY"),
         )
         .child(
             div()
-                .text_size(px(12.0))
+                .text_size(px(10.0))
                 .text_color(text::MUTED)
                 .cursor_pointer()
                 .hover(|s| s.text_color(text::PRIMARY))
-                .child("▶"),
+                .child(">"),
         )
 }
 
@@ -113,59 +114,45 @@ fn render_transactions_section(transactions: &[Transaction]) -> impl IntoElement
         }))
 }
 
-/// Render a transaction item
+/// Render a transaction item - Bloomberg style (single line, dense)
 fn render_transaction_item(tx: &Transaction) -> impl IntoElement {
-    let (icon, amount_color) = match tx.direction {
-        TransactionDirection::Incoming => ("↓", status::SUCCESS),
-        TransactionDirection::Outgoing => ("↑", status::ERROR),
-    };
-
-    let amount_text = match tx.direction {
-        TransactionDirection::Incoming => format!("+{} sats", tx.amount_sats),
-        TransactionDirection::Outgoing => format!("-{} sats", tx.amount_sats),
+    let (sign, amount_color) = match tx.direction {
+        TransactionDirection::Incoming => ("+", status::SUCCESS),
+        TransactionDirection::Outgoing => ("-", status::ERROR),
     };
 
     div()
         .flex()
         .items_center()
-        .gap(px(8.0))
-        .py(px(6.0))
-        // Direction icon
-        .child(
-            div()
-                .text_size(px(12.0))
-                .text_color(amount_color)
-                .child(icon.to_string()),
-        )
-        // Amount and description
-        .child(
-            div()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .gap(px(2.0))
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(amount_color)
-                        .child(amount_text),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .child(tx.description.clone()),
-                ),
-        )
+        .gap(px(4.0))
+        .py(px(2.0))
         // Timestamp
         .child(
             div()
-                .text_size(px(10.0))
+                .text_size(px(8.0))
                 .font_family(FONT_FAMILY)
                 .text_color(text::DIM)
+                .w(px(24.0))
                 .child(tx.timestamp.clone()),
+        )
+        // Amount (colored)
+        .child(
+            div()
+                .text_size(px(9.0))
+                .font_family(FONT_FAMILY)
+                .text_color(amount_color)
+                .w(px(50.0))
+                .child(format!("{}{}", sign, tx.amount_sats)),
+        )
+        // Description
+        .child(
+            div()
+                .flex_1()
+                .text_size(px(9.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::SECONDARY)
+                .overflow_hidden()
+                .child(tx.description.clone()),
         )
 }
 
@@ -187,14 +174,22 @@ fn render_notifications_section(notifications: &[Notification]) -> impl IntoElem
         }))
 }
 
-/// Render a notification item
+/// Render a notification item - Bloomberg style (dense, no emoji)
 fn render_notification_item(notif: &Notification) -> impl IntoElement {
-    let icon = match notif.kind {
-        NotificationKind::AgentInstalled => "📦",
-        NotificationKind::EarningsMilestone => "🎉",
-        NotificationKind::TrustTierUp => "🏆",
-        NotificationKind::SystemAlert => "⚠️",
-        NotificationKind::JobCompleted => "✅",
+    let type_code = match notif.kind {
+        NotificationKind::AgentInstalled => "INST",
+        NotificationKind::EarningsMilestone => "EARN",
+        NotificationKind::TrustTierUp => "TIER",
+        NotificationKind::SystemAlert => "ALRT",
+        NotificationKind::JobCompleted => "DONE",
+    };
+
+    let type_color = match notif.kind {
+        NotificationKind::AgentInstalled => text::SECONDARY,
+        NotificationKind::EarningsMilestone => status::SUCCESS,
+        NotificationKind::TrustTierUp => Hsla { h: 0.14, s: 1.0, l: 0.5, a: 1.0 },  // Yellow
+        NotificationKind::SystemAlert => status::WARNING,
+        NotificationKind::JobCompleted => status::SUCCESS,
     };
 
     let bg_color = if notif.read {
@@ -205,38 +200,37 @@ fn render_notification_item(notif: &Notification) -> impl IntoElement {
 
     div()
         .flex()
-        .items_start()
-        .gap(px(8.0))
-        .p(px(8.0))
+        .items_center()
+        .gap(px(4.0))
+        .px(px(4.0))
+        .py(px(2.0))
         .bg(bg_color)
-        .rounded(px(4.0))
-        // Icon
+        // Type code
         .child(
             div()
-                .text_size(px(14.0))
-                .child(icon.to_string()),
+                .text_size(px(8.0))
+                .font_family(FONT_FAMILY)
+                .text_color(type_color)
+                .w(px(28.0))
+                .child(type_code),
         )
-        // Content
+        // Title/message
         .child(
             div()
                 .flex_1()
-                .flex()
-                .flex_col()
-                .gap(px(2.0))
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::PRIMARY)
-                        .child(notif.title.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .child(notif.message.clone()),
-                ),
+                .text_size(px(9.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::PRIMARY)
+                .overflow_hidden()
+                .child(notif.title.clone()),
+        )
+        // Timestamp
+        .child(
+            div()
+                .text_size(px(8.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::DIM)
+                .child(notif.timestamp.clone()),
         )
 }
 

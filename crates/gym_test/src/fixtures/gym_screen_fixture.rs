@@ -25,9 +25,9 @@ impl GymScreenFixture {
         cx.read(|cx| view.read(cx).sidebar_collapsed)
     }
 
-    /// Get sidebar width
-    pub fn sidebar_width(view: &Entity<GymScreen>, cx: &TestAppContext) -> f32 {
-        cx.read(|cx| view.read(cx).sidebar_width.0)
+    /// Get sidebar width in pixels
+    pub fn sidebar_width(view: &Entity<GymScreen>, cx: &TestAppContext) -> gpui::Pixels {
+        cx.read(|cx| view.read(cx).sidebar_width)
     }
 
     /// Switch to a specific tab

@@ -1,7 +1,8 @@
 //! Resource bar component - Top HUD showing sats, tier, earnings, status
+//! Bloomberg-style: dense, text-first, no emojis, yellow highlights
 
 use gpui::*;
-use theme::{bg, border, text, FONT_FAMILY};
+use theme::{bg, border, text, status, FONT_FAMILY};
 
 use crate::types::TrustTier;
 
@@ -26,31 +27,31 @@ impl Default for ResourceBarProps {
     }
 }
 
-/// Render the resource bar HUD
+/// Render the resource bar HUD - Bloomberg style
 pub fn render(props: ResourceBarProps) -> impl IntoElement {
     div()
-        .h(px(48.0))
+        .h(px(32.0))  // Denser
         .w_full()
         .flex()
         .items_center()
-        .px(px(20.0))
-        .gap(px(24.0))
+        .px(px(12.0))
+        .gap(px(16.0))
         .bg(bg::PANEL)
         .border_b_1()
         .border_color(border::DEFAULT)
-        // Wallet balance
+        // Wallet balance - yellow highlight for primary value
         .child(render_stat_item(
-            "💰",
+            "BAL",
             &format_sats(props.wallet_balance_sats),
-            "SATS",
+            true,  // is_primary (yellow)
         ))
         // Trust tier badge
         .child(render_tier_badge(props.trust_tier))
-        // Earnings today
+        // Earnings today - green for positive
         .child(render_stat_item(
-            "📈",
-            &format!("+{}", format_sats(props.earnings_today_sats)),
             "TODAY",
+            &format!("+{}", format_sats(props.earnings_today_sats)),
+            false,
         ))
         // Spacer
         .child(div().flex_1())
@@ -58,108 +59,90 @@ pub fn render(props: ResourceBarProps) -> impl IntoElement {
         .child(render_online_status(props.is_online, props.connected_relays))
 }
 
-/// Render a single stat item (icon + value + label)
-fn render_stat_item(icon: &str, value: &str, label: &str) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .child(
-            div()
-                .text_size(px(14.0))
-                .child(icon.to_string()),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_size(px(16.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::BRIGHT)
-                        .child(value.to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(text::MUTED)
-                        .child(label.to_string()),
-                ),
-        )
-}
-
-/// Render the trust tier badge
-fn render_tier_badge(tier: TrustTier) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .px(px(10.0))
-        .py(px(4.0))
-        .bg(tier.bg_color())
-        .border_1()
-        .border_color(tier.border_color())
-        .rounded(px(4.0))
-        .child(
-            div()
-                .text_size(px(12.0))
-                .child("🏆"),
-        )
-        .child(
-            div()
-                .text_size(px(12.0))
-                .font_family(FONT_FAMILY)
-                .text_color(tier.color())
-                .child(tier.label().to_string()),
-        )
-}
-
-/// Render the online/offline status indicator
-fn render_online_status(is_online: bool, relay_count: u32) -> impl IntoElement {
-    let (status_text, status_color, dot_color) = if is_online {
-        (
-            format!("ONLINE ({} relays)", relay_count),
-            theme::status::SUCCESS,
-            theme::status::SUCCESS,
-        )
+/// Render a single stat item - Bloomberg style (LABEL: VALUE)
+fn render_stat_item(label: &str, value: &str, is_primary: bool) -> impl IntoElement {
+    // Yellow for primary values, green for positive earnings
+    let value_color = if is_primary {
+        Hsla { h: 0.14, s: 1.0, l: 0.5, a: 1.0 }  // Yellow/orange
+    } else if value.starts_with('+') {
+        status::SUCCESS  // Green for positive
     } else {
-        (
-            "OFFLINE".to_string(),
-            text::DISABLED,
-            text::DISABLED,
-        )
+        text::BRIGHT
     };
 
     div()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(px(4.0))
         .child(
             div()
-                .text_size(px(14.0))
-                .child("⚡"),
+                .text_size(px(11.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
+                .child(format!("{}:", label)),
         )
         .child(
             div()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    // Status dot
-                    div()
-                        .size(px(8.0))
-                        .rounded_full()
-                        .bg(dot_color),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_family(FONT_FAMILY)
-                        .text_color(status_color)
-                        .child(status_text),
-                ),
+                .text_size(px(13.0))
+                .font_family(FONT_FAMILY)
+                .text_color(value_color)
+                .child(value.to_string()),
+        )
+}
+
+/// Render the trust tier badge - Bloomberg style (no emoji, sharp edges)
+fn render_tier_badge(tier: TrustTier) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .px(px(6.0))
+        .py(px(2.0))
+        .bg(tier.bg_color())
+        .border_1()
+        .border_color(tier.border_color())
+        // No rounded corners - Bloomberg style
+        .child(
+            div()
+                .text_size(px(11.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
+                .child("TIER:"),
+        )
+        .child(
+            div()
+                .text_size(px(11.0))
+                .font_family(FONT_FAMILY)
+                .text_color(tier.color())
+                .child(tier.label().to_uppercase()),
+        )
+}
+
+/// Render the online/offline status indicator - Bloomberg style
+fn render_online_status(is_online: bool, relay_count: u32) -> impl IntoElement {
+    let (status_text, status_color) = if is_online {
+        (format!("ONLINE [{}]", relay_count), status::SUCCESS)
+    } else {
+        ("OFFLINE".to_string(), status::ERROR)
+    };
+
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .child(
+            div()
+                .text_size(px(11.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
+                .child("NET:"),
+        )
+        .child(
+            div()
+                .text_size(px(11.0))
+                .font_family(FONT_FAMILY)
+                .text_color(status_color)
+                .child(status_text),
         )
 }
 

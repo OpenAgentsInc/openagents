@@ -92,11 +92,11 @@ impl MarketplaceScreen {
         })
     }
 
-    /// Render a single tab button
+    /// Render a single tab button - Bloomberg style (no icons, sharp edges)
     fn render_tab_button(&self, tab: MarketplaceTab, cx: &mut Context<Self>) -> impl IntoElement {
         let is_active = tab == self.current_tab;
         let (bg_color, text_color, border_color) = if is_active {
-            (bg::SELECTED, text::BRIGHT, border::SELECTED)
+            (bg::SELECTED, Hsla { h: 0.14, s: 1.0, l: 0.5, a: 1.0 }, border::SELECTED)  // Yellow when active
         } else {
             (Hsla::transparent_black(), text::MUTED, Hsla::transparent_black())
         };
@@ -105,13 +105,12 @@ impl MarketplaceScreen {
             .id(SharedString::from(format!("tab-{}", tab.label())))
             .flex()
             .items_center()
-            .gap(px(6.0))
-            .px(px(16.0))
-            .py(px(10.0))
+            .px(px(12.0))
+            .py(px(6.0))
             .bg(bg_color)
             .border_1()
             .border_color(border_color)
-            .rounded(px(6.0))
+            // No rounded corners - Bloomberg style
             .cursor_pointer()
             .hover(|s| s.bg(bg::HOVER).text_color(text::PRIMARY))
             .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -119,15 +118,10 @@ impl MarketplaceScreen {
             }))
             .child(
                 div()
-                    .text_size(px(13.0))
-                    .child(tab.icon().to_string()),
-            )
-            .child(
-                div()
-                    .text_size(px(13.0))
+                    .text_size(px(11.0))
                     .font_family(FONT_FAMILY)
                     .text_color(text_color)
-                    .child(tab.label().to_string()),
+                    .child(tab.label().to_uppercase()),
             )
     }
 

@@ -1,11 +1,12 @@
 //! Agent card component - Individual agent listing in the grid
+//! Bloomberg-style: dense, tabular, no emojis, sharp edges
 
 use gpui::*;
 use theme::{bg, border, text, accent, status, FONT_FAMILY};
 
 use crate::types::{AgentListing, TrustTier};
 
-/// Render an agent card
+/// Render an agent card - Bloomberg style (dense, tabular)
 pub fn render_agent_card(agent: &AgentListing, is_selected: bool) -> impl IntoElement {
     let (card_bg, card_border) = if is_selected {
         (bg::SELECTED, border::SELECTED)
@@ -13,187 +14,156 @@ pub fn render_agent_card(agent: &AgentListing, is_selected: bool) -> impl IntoEl
         (bg::CARD, border::DEFAULT)
     };
 
+    // Yellow highlight for name if high score
+    let name_color = if agent.terminal_bench_score.unwrap_or(0.0) > 90.0 {
+        Hsla { h: 0.14, s: 1.0, l: 0.5, a: 1.0 }  // Yellow
+    } else {
+        text::PRIMARY
+    };
+
     div()
         .flex()
         .flex_col()
-        .p(px(16.0))
-        .gap(px(12.0))
+        .p(px(8.0))  // Denser padding
+        .gap(px(6.0))
         .bg(card_bg)
         .border_1()
         .border_color(card_border)
-        .rounded(px(8.0))
+        // No rounded corners - Bloomberg style
         .cursor_pointer()
         .hover(|s| s.bg(bg::HOVER).border_color(border::SELECTED))
-        // Thumbnail placeholder
-        .child(render_thumbnail())
-        // Title and description
-        .child(render_info(agent))
-        // Stats row
-        .child(render_stats(agent))
-        // Footer with author, tier, install button
+        // Header: Name + Tier
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_size(px(13.0))
+                        .font_family(FONT_FAMILY)
+                        .text_color(name_color)
+                        .child(agent.name.clone()),
+                )
+                .child(render_tier_badge_small(agent.trust_tier)),
+        )
+        // Stats table - Bloomberg dense layout
+        .child(render_stats_table(agent))
+        // Footer: author + action
         .child(render_footer(agent))
 }
 
-/// Render the thumbnail placeholder
-fn render_thumbnail() -> impl IntoElement {
-    div()
-        .h(px(100.0))
-        .w_full()
-        .bg(bg::ELEVATED)
-        .rounded(px(4.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(
-            div()
-                .text_size(px(32.0))
-                .text_color(text::DIM)
-                .child("🤖"),
-        )
-}
-
-/// Render agent name and description
-fn render_info(agent: &AgentListing) -> impl IntoElement {
+/// Render stats as a dense table - Bloomberg style
+fn render_stats_table(agent: &AgentListing) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .gap(px(4.0))
+        .gap(px(2.0))
+        .py(px(4.0))
+        .border_t_1()
+        .border_b_1()
+        .border_color(border::SUBTLE)
+        // Row 1: Rating + Installs
         .child(
             div()
-                .text_size(px(16.0))
-                .font_family(FONT_FAMILY)
-                .text_color(text::PRIMARY)
-                .child(agent.name.clone()),
+                .flex()
+                .justify_between()
+                .child(render_stat_row("RTG", &format!("{:.1}", agent.rating), text::SECONDARY))
+                .child(render_stat_row("INST", &format_k(agent.installs), text::SECONDARY)),
         )
+        // Row 2: TB Score + Earnings
         .child(
             div()
-                .text_size(px(13.0))
-                .font_family(FONT_FAMILY)
-                .text_color(text::SECONDARY)
-                .line_height(px(18.0))
-                .max_h(px(36.0))
-                .overflow_hidden()
-                .child(agent.description.clone()),
+                .flex()
+                .justify_between()
+                .child(render_stat_row(
+                    "TB",
+                    &format!("{}%", agent.terminal_bench_score.unwrap_or(0.0) as u32),
+                    if agent.terminal_bench_score.unwrap_or(0.0) > 90.0 {
+                        status::SUCCESS
+                    } else {
+                        text::SECONDARY
+                    },
+                ))
+                .child(render_stat_row(
+                    "EARN",
+                    &format!("{}", format_k(agent.earnings_total_sats)),
+                    status::SUCCESS,
+                )),
         )
 }
 
-/// Render stats row (rating, installs, benchmark, earnings)
-fn render_stats(agent: &AgentListing) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_wrap()
-        .gap(px(12.0))
-        // Rating
-        .child(render_stat(
-            "⭐",
-            &format!("{:.1} ({:.1}k)", agent.rating, agent.review_count as f32 / 1000.0),
-            status::WARNING,
-        ))
-        // Installs
-        .child(render_stat(
-            "📦",
-            &format_k(agent.installs),
-            text::SECONDARY,
-        ))
-        // Benchmark score
-        .child(render_stat(
-            "🎯",
-            &format!("TB: {}%", agent.terminal_bench_score.unwrap_or(0.0) as u32),
-            if agent.terminal_bench_score.unwrap_or(0.0) > 90.0 {
-                status::SUCCESS
-            } else {
-                text::SECONDARY
-            },
-        ))
-        // Earnings
-        .child(render_stat(
-            "💰",
-            &format!("{} sats", format_k(agent.earnings_total_sats)),
-            status::SUCCESS,
-        ))
-}
-
-/// Render a single stat
-fn render_stat(icon: &str, value: &str, color: Hsla) -> impl IntoElement {
+/// Render a single stat row (LABEL: VALUE)
+fn render_stat_row(label: &str, value: &str, value_color: Hsla) -> impl IntoElement {
     div()
         .flex()
         .items_center()
-        .gap(px(4.0))
+        .gap(px(2.0))
         .child(
             div()
-                .text_size(px(11.0))
-                .child(icon.to_string()),
+                .text_size(px(9.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
+                .w(px(32.0))
+                .child(format!("{}:", label)),
         )
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(px(10.0))
                 .font_family(FONT_FAMILY)
-                .text_color(color)
+                .text_color(value_color)
                 .child(value.to_string()),
         )
 }
 
-/// Render footer with author, tier badge, and install button
+/// Render footer with author and install button
 fn render_footer(agent: &AgentListing) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .justify_between()
-        .pt(px(8.0))
-        .border_t_1()
-        .border_color(border::SUBTLE)
         // Author
-        .child(
-            div()
-                .text_size(px(11.0))
-                .font_family(FONT_FAMILY)
-                .text_color(text::MUTED)
-                .child(format!("by {}", agent.author_name)),
-        )
-        // Tier badge and install button
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .child(render_tier_badge_small(agent.trust_tier))
-                .child(render_install_button()),
-        )
-}
-
-/// Render small tier badge
-fn render_tier_badge_small(tier: TrustTier) -> impl IntoElement {
-    div()
-        .px(px(6.0))
-        .py(px(2.0))
-        .bg(tier.bg_color())
-        .border_1()
-        .border_color(tier.border_color())
-        .rounded(px(3.0))
         .child(
             div()
                 .text_size(px(9.0))
                 .font_family(FONT_FAMILY)
-                .text_color(tier.color())
-                .child(tier.label().to_string()),
+                .text_color(text::DIM)
+                .child(format!("@{}", agent.author_name)),
+        )
+        // Install button - Bloomberg style action
+        .child(
+            div()
+                .id(SharedString::from(format!("install-{}", agent.id)))
+                .px(px(8.0))
+                .py(px(3.0))
+                .bg(accent::PRIMARY_MUTED)
+                .cursor_pointer()
+                .hover(|s| s.bg(accent::PRIMARY))
+                .child(
+                    div()
+                        .text_size(px(9.0))
+                        .font_family(FONT_FAMILY)
+                        .text_color(accent::PRIMARY)
+                        .child("GET"),
+                ),
         )
 }
 
-/// Render install button
-fn render_install_button() -> impl IntoElement {
+/// Render small tier badge - no rounded corners
+fn render_tier_badge_small(tier: TrustTier) -> impl IntoElement {
     div()
-        .px(px(12.0))
-        .py(px(6.0))
-        .bg(accent::PRIMARY_MUTED)
-        .rounded(px(4.0))
-        .cursor_pointer()
-        .hover(|s| s.bg(accent::PRIMARY))
+        .px(px(4.0))
+        .py(px(1.0))
+        .bg(tier.bg_color())
+        .border_1()
+        .border_color(tier.border_color())
+        // No rounded corners
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(px(8.0))
                 .font_family(FONT_FAMILY)
-                .text_color(accent::PRIMARY)
-                .child("INSTALL"),
+                .text_color(tier.color())
+                .child(tier.label().chars().next().unwrap_or('?').to_string()),  // Just first letter: B/S/G/D
         )
 }
 

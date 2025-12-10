@@ -31,3 +31,6 @@ theme = { path = "../theme" }
 
 # Marketplace UI
 marketplace = { path = "../marketplace" }
+
+# Gym - Terminal-Bench Command Center
+gym = { path = "../gym" }
