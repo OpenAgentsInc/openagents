@@ -3,9 +3,10 @@ mod markdown;
 mod text_input;
 
 use atif::{Agent, Step};
-use atif_store::TrajectoryStore;
-use components::render_steps_list;
+use atif_store::{TrajectoryMetadata, TrajectoryStore};
+use components::{render_steps_list, render_trajectory_list};
 use fm_bridge::FMClient;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -118,6 +119,13 @@ struct CommanderView {
     is_loading: bool,
     next_step_id: i64,
     _subscription: Subscription,
+    // Sidebar state
+    trajectories: Vec<TrajectoryMetadata>,
+    selected_trajectory_id: Option<String>,
+    sidebar_collapsed: bool,
+    sidebar_search_query: String,
+    sidebar_current_page: usize,
+    sidebar_page_size: usize,
 }
 
 impl CommanderView {
@@ -282,18 +290,42 @@ impl CommanderView {
         })
         .detach();
 
+        // Load existing trajectories
+        let trajectories = store
+            .lock()
+            .unwrap()
+            .list_trajectories(100, 0)
+            .unwrap_or_default();
+
         Self {
             input,
             fm_client,
             store,
-            current_session_id: Some(session_id),
+            current_session_id: Some(session_id.clone()),
             steps: Vec::new(),
             expanded_step_ids: HashSet::new(),
             pending_updates,
             is_loading: false,
             next_step_id: 1,
             _subscription: subscription,
+            // Sidebar state
+            trajectories,
+            selected_trajectory_id: Some(session_id),
+            sidebar_collapsed: false,
+            sidebar_search_query: String::new(),
+            sidebar_current_page: 0,
+            sidebar_page_size: 20,
         }
+    }
+
+    /// Refresh the trajectory list from the store
+    fn refresh_trajectories(&mut self) {
+        self.trajectories = self
+            .store
+            .lock()
+            .unwrap()
+            .list_trajectories(100, 0)
+            .unwrap_or_default();
     }
 }
 
@@ -323,75 +355,136 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 
 impl Render for CommanderView {
     fn render(&mut self, _window: &mut gpui::Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let total_trajectories = self.trajectories.len();
+
         div()
             .flex()
-            .flex_col()
+            .flex_row()
             .size_full()
             .bg(rgb(0x000000))
+            // Sidebar with trajectory list
+            .when(!self.sidebar_collapsed, |el| {
+                el.child(
+                    div()
+                        .w(px(320.0))
+                        .h_full()
+                        .border_r_1()
+                        .border_color(hsla(0., 0., 0.2, 0.6))
+                        .bg(hsla(0., 0., 0.02, 1.0))
+                        .flex()
+                        .flex_col()
+                        .child(render_trajectory_list(
+                            &self.trajectories,
+                            self.selected_trajectory_id.as_deref(),
+                            total_trajectories,
+                            self.sidebar_current_page,
+                            self.sidebar_page_size,
+                            false, // is_loading
+                            None,  // error
+                            false, // is_collapsed (we handle this at parent level)
+                            &self.sidebar_search_query,
+                        )),
+                )
+            })
+            // Collapsed sidebar toggle
+            .when(self.sidebar_collapsed, |el| {
+                el.child(
+                    div()
+                        .w(px(40.0))
+                        .h_full()
+                        .border_r_1()
+                        .border_color(hsla(0., 0., 0.2, 0.6))
+                        .bg(hsla(0., 0., 0.02, 1.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(hsla(0., 0., 0.05, 1.0)))
+                        .child(
+                            div()
+                                .text_color(hsla(0., 0., 0.5, 1.0))
+                                .text_size(px(14.0))
+                                .child("▶"),
+                        ),
+                )
+            })
+            // Main content area
             .child(
                 div()
-                    .id("messages-scroll")
                     .flex_1()
-                    .w_full()
-                    .min_h_0()
-                    .overflow_y_scroll()
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    // Messages area
+                    .child(
+                        div()
+                            .id("messages-scroll")
+                            .flex_1()
+                            .w_full()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .id("steps")
+                                            .flex()
+                                            .flex_col()
+                                            .w_full()
+                                            .max_w(px(768.0))
+                                            .p(px(20.0))
+                                            .gap(px(16.0))
+                                            // Render ATIF steps
+                                            .child(render_steps_list(
+                                                &self.steps,
+                                                &self.expanded_step_ids,
+                                            ))
+                                            // Loading indicator
+                                            .children(if self.is_loading {
+                                                Some(
+                                                    div()
+                                                        .w_full()
+                                                        .max_w(px(768.0))
+                                                        .text_color(hsla(0., 0., 0.5, 1.0))
+                                                        .font_family("Berkeley Mono")
+                                                        .text_size(px(14.0))
+                                                        .line_height(px(22.0))
+                                                        .child("..."),
+                                                )
+                                            } else {
+                                                None
+                                            }),
+                                    ),
+                            ),
+                    )
+                    // Input area
                     .child(
                         div()
                             .w_full()
                             .flex()
-                            .flex_col()
-                            .items_center()
+                            .justify_center()
+                            .pb(px(20.0))
+                            .px(px(20.0))
                             .child(
                                 div()
-                                    .id("steps")
+                                    .w(px(768.0))
+                                    .h(px(44.0))
+                                    .bg(hsla(0., 0., 1., 0.05))
+                                    .border_1()
+                                    .border_color(hsla(0., 0., 1., 0.1))
+                                    .px(px(12.0))
                                     .flex()
-                                    .flex_col()
-                                    .w_full()
-                                    .max_w(px(768.0))
-                                    .p(px(20.0))
-                                    .gap(px(16.0))
-                                    // Render ATIF steps
-                                    .child(render_steps_list(&self.steps, &self.expanded_step_ids))
-                                    // Loading indicator
-                                    .children(if self.is_loading {
-                                        Some(
-                                            div()
-                                                .w_full()
-                                                .max_w(px(768.0))
-                                                .text_color(hsla(0., 0., 0.5, 1.0))
-                                                .font_family("Berkeley Mono")
-                                                .text_size(px(14.0))
-                                                .line_height(px(22.0))
-                                                .child("..."),
-                                        )
-                                    } else {
-                                        None
-                                    }),
+                                    .items_center()
+                                    .text_color(rgb(0xffffff))
+                                    .font_family("Berkeley Mono")
+                                    .text_size(px(14.0))
+                                    .line_height(px(20.0))
+                                    .child(self.input.clone()),
                             ),
-                    ),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .justify_center()
-                    .pb(px(20.0))
-                    .px(px(20.0))
-                    .child(
-                        div()
-                            .w(px(768.0))
-                            .h(px(44.0))
-                            .bg(hsla(0., 0., 1., 0.05))
-                            .border_1()
-                            .border_color(hsla(0., 0., 1., 0.1))
-                            .px(px(12.0))
-                            .flex()
-                            .items_center()
-                            .text_color(rgb(0xffffff))
-                            .font_family("Berkeley Mono")
-                            .text_size(px(14.0))
-                            .line_height(px(20.0))
-                            .child(self.input.clone()),
                     ),
             )
     }
