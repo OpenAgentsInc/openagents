@@ -72,6 +72,12 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("enter", text_input::Submit, None),
             KeyBinding::new("cmd-a", text_input::SelectAll, None),
+            KeyBinding::new("backspace", text_input::Backspace, None),
+            KeyBinding::new("delete", text_input::Delete, None),
+            KeyBinding::new("left", text_input::Left, None),
+            KeyBinding::new("right", text_input::Right, None),
+            KeyBinding::new("home", text_input::Home, None),
+            KeyBinding::new("end", text_input::End, None),
         ]);
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
