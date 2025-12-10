@@ -100,3 +100,4 @@ logs/test-gen-*.json
 
 # GPUI example assets (large gifs from Zed)
 crates/gpui/examples/**/*.gif
+*.db
