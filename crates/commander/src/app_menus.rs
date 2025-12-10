@@ -70,7 +70,7 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action("Gym", GoToGym),
                 MenuItem::action("Compute", GoToCompute),
                 MenuItem::action("Wallet", GoToWallet),
-                MenuItem::action("Store", GoToStore),
+                MenuItem::action("Marketplace", GoToMarketplace),
             ],
         },
         // Help menu

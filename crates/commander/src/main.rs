@@ -112,7 +112,7 @@ enum Screen {
     Gym,
     Compute,
     Wallet,
-    Store,
+    Marketplace,
 }
 
 #[derive(Clone)]
@@ -348,33 +348,49 @@ impl CommanderView {
         }
     }
 
+    /// Get the window title for the current screen
+    fn get_window_title(screen: Screen) -> &'static str {
+        match screen {
+            Screen::Commander => "OpenAgents Commander",
+            Screen::Gym => "OpenAgents Gym",
+            Screen::Compute => "OpenAgents Compute",
+            Screen::Wallet => "OpenAgents Wallet",
+            Screen::Marketplace => "OpenAgents Marketplace",
+        }
+    }
+
     // Navigation handlers
     fn go_to_commander(&mut self, _: &actions::GoToCommander, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Commander;
+        window.set_window_title(Self::get_window_title(Screen::Commander));
         window.focus(&self.focus_handle);
         cx.notify();
     }
 
     fn go_to_gym(&mut self, _: &actions::GoToGym, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Gym;
+        window.set_window_title(Self::get_window_title(Screen::Gym));
         window.focus(&self.focus_handle);
         cx.notify();
     }
 
     fn go_to_compute(&mut self, _: &actions::GoToCompute, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Compute;
+        window.set_window_title(Self::get_window_title(Screen::Compute));
         window.focus(&self.focus_handle);
         cx.notify();
     }
 
     fn go_to_wallet(&mut self, _: &actions::GoToWallet, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Wallet;
+        window.set_window_title(Self::get_window_title(Screen::Wallet));
         window.focus(&self.focus_handle);
         cx.notify();
     }
 
-    fn go_to_store(&mut self, _: &actions::GoToStore, window: &mut Window, cx: &mut Context<Self>) {
-        self.current_screen = Screen::Store;
+    fn go_to_marketplace(&mut self, _: &actions::GoToMarketplace, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Marketplace;
+        window.set_window_title(Self::get_window_title(Screen::Marketplace));
         window.focus(&self.focus_handle);
         cx.notify();
     }
@@ -574,10 +590,10 @@ impl CommanderView {
         )
     }
 
-    /// Render the Store screen
-    fn render_store_screen(&self) -> impl IntoElement {
+    /// Render the Marketplace screen
+    fn render_marketplace_screen(&self) -> impl IntoElement {
         self.render_placeholder_screen(
-            "Store",
+            "Marketplace",
             "Publish and discover agents that use swarm compute.",
         )
     }
@@ -843,7 +859,7 @@ impl Render for CommanderView {
             Screen::Gym => self.render_gym_screen().into_any_element(),
             Screen::Compute => self.render_compute_screen().into_any_element(),
             Screen::Wallet => self.render_wallet_screen().into_any_element(),
-            Screen::Store => self.render_store_screen().into_any_element(),
+            Screen::Marketplace => self.render_marketplace_screen().into_any_element(),
         };
 
         div()
@@ -859,7 +875,7 @@ impl Render for CommanderView {
             .on_action(cx.listener(Self::go_to_gym))
             .on_action(cx.listener(Self::go_to_compute))
             .on_action(cx.listener(Self::go_to_wallet))
-            .on_action(cx.listener(Self::go_to_store))
+            .on_action(cx.listener(Self::go_to_marketplace))
             .on_action(cx.listener(Self::toggle_sidebar))
             // Sidebar with trajectory list (only show on Commander screen)
             .when(!self.sidebar_collapsed && current_screen == Screen::Commander, |el| {
@@ -1001,7 +1017,7 @@ fn main() {
             KeyBinding::new("cmd-2", actions::GoToGym, None),
             KeyBinding::new("cmd-3", actions::GoToCompute, None),
             KeyBinding::new("cmd-4", actions::GoToWallet, None),
-            KeyBinding::new("cmd-5", actions::GoToStore, None),
+            KeyBinding::new("cmd-5", actions::GoToMarketplace, None),
         ]);
 
         // Register app-level action handlers
@@ -1062,7 +1078,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("OpenAgents".into()),
+                        title: Some("OpenAgents Commander".into()),
                         ..Default::default()
                     }),
                     focus: true,
