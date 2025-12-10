@@ -1,5 +1,6 @@
 //! Button component with variants and sizes
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::button;
 
@@ -193,13 +194,5 @@ impl RenderOnce for Button {
         }
 
         el.child(self.label)
-    }
-}
-
-impl IntoElement for Button {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

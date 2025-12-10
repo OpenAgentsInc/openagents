@@ -5,7 +5,7 @@ use gpui::*;
 use std::sync::{Arc, RwLock};
 use theme::{bg, border, status, text, FONT_FAMILY};
 
-use super::types::{TBRunSummary, TBRunStatus, TBRunOutcome, format_duration};
+use super::types::{TBRunSummary, TBRunOutcome, format_duration};
 use crate::services::RunStore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,7 +315,7 @@ impl RunBrowserView {
 
         match selected_run {
             Some(run) => {
-                let (outcome_text, outcome_bg) = self.outcome_color(run.outcome);
+                let (outcome_text, _outcome_bg) = self.outcome_color(run.outcome);
                 let outcome_label = match run.outcome {
                     Some(TBRunOutcome::Success) => "Success",
                     Some(TBRunOutcome::Failure) => "Failed",

@@ -60,6 +60,7 @@ where
 }
 
 /// A simple concrete Unit implementation for building functional units
+#[allow(dead_code)]
 pub struct SimpleUnit {
     id: String,
     inputs: HashMap<String, Box<dyn AnyPin>>,
@@ -282,6 +283,7 @@ impl Primitive for SimpleUnit {
 }
 
 /// Builder for creating SimpleUnit instances
+#[allow(dead_code)]
 pub struct SimpleUnitBuilder {
     unit: SimpleUnit,
 }

@@ -145,7 +145,7 @@ impl GymScreen {
         }
     }
 
-    fn render_sidebar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_sidebar(&self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .when(!self.sidebar_collapsed, |el| el.w(self.sidebar_width))
             .when(self.sidebar_collapsed, |el| el.w(px(0.0)))

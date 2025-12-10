@@ -8,7 +8,7 @@
 use crate::decomposer::{decompose_task, get_current_subtask, is_subtask_complete};
 use crate::error::{HillClimberError, Result};
 use crate::evaluator::parse_pytest_output;
-use crate::monitor::{create_action_signature, monitor_action};
+use crate::monitor::monitor_action;
 use crate::prompt::{build_fm_context, build_user_prompt, parse_fm_response, sanitize_for_fm, SYSTEM_PROMPT};
 use crate::types::{
     ActionContext, ActionResult, EvaluatorResult, ExecutionState, FMAction, MAPOrchestratorOptions,

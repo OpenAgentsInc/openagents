@@ -1,5 +1,6 @@
 //! Checkbox component
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::checkbox;
 
@@ -98,13 +99,5 @@ impl RenderOnce for Checkbox {
         }
 
         el
-    }
-}
-
-impl IntoElement for Checkbox {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

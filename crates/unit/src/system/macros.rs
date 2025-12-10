@@ -52,19 +52,19 @@ macro_rules! binary_op_unit {
                 self.primitive.reset();
             }
 
-            fn input(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn input(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None // PrimitiveState doesn't expose AnyPin directly
             }
 
-            fn input_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
-            fn output(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn output(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn output_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
@@ -170,19 +170,19 @@ macro_rules! unary_math_unit {
                 self.primitive.reset();
             }
 
-            fn input(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn input(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn input_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
-            fn output(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn output(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn output_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
@@ -284,19 +284,19 @@ macro_rules! logic_gate_unit {
                 self.primitive.reset();
             }
 
-            fn input(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn input(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn input_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
-            fn output(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn output(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn output_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
@@ -457,19 +457,19 @@ macro_rules! comparison_unit {
                 self.primitive.reset();
             }
 
-            fn input(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn input(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn input_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
-            fn output(&self, name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
+            fn output(&self, _name: &str) -> Option<&dyn $crate::any_pin::AnyPin> {
                 None
             }
 
-            fn output_mut(&mut self, name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 

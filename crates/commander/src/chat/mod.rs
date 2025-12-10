@@ -10,8 +10,9 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use nostr_chat::ChatState;
+use std::sync::{Arc, Mutex};
 use theme::{bg, border, status, text, FONT_FAMILY};
-use ui::TextInput;
+use ui::{SubmitEvent, TextInput};
 
 /// Bloomberg-style color constants
 mod colors {
@@ -42,6 +43,9 @@ mod colors {
     };
 }
 
+/// Pending messages from command handler
+type PendingMessages = Arc<Mutex<Vec<MockMessage>>>;
+
 /// Chat screen state
 pub struct ChatScreen {
     focus_handle: FocusHandle,
@@ -50,7 +54,11 @@ pub struct ChatScreen {
     command_input: Entity<TextInput>,
 
     /// Chat state (manages relays, channels, messages)
+    #[allow(dead_code)]
     chat_state: ChatState,
+
+    /// Pending messages from commands
+    pending_messages: PendingMessages,
 
     /// Selected channel ID
     selected_channel_id: Option<String>,
@@ -65,10 +73,14 @@ pub struct ChatScreen {
     mock_jobs: Vec<MockJob>,
 
     /// Info panel collapsed
+    #[allow(dead_code)]
     info_panel_collapsed: bool,
 
     /// Connection status
     connection_status: ConnectionStatus,
+
+    /// User's npub (for display)
+    npub_display: String,
 }
 
 /// Mock channel for UI development
@@ -82,6 +94,7 @@ struct MockChannel {
 /// Mock message for UI development
 #[derive(Clone)]
 struct MockMessage {
+    #[allow(dead_code)]
     id: String,
     author: String,
     content: String,
@@ -94,6 +107,7 @@ struct MockMessage {
 /// Mock DVM job for UI development
 #[derive(Clone)]
 struct MockJob {
+    #[allow(dead_code)]
     id: String,
     kind: u16,
     status: &'static str,
@@ -103,14 +117,71 @@ struct MockJob {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConnectionStatus {
     Disconnected,
+    #[allow(dead_code)]
     Connecting,
     Connected(u32), // Number of relays
+}
+
+fn current_timestamp() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let secs = now % 86400;
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let s = secs % 60;
+    format!("{:02}:{:02}:{:02}", hours, mins, s)
 }
 
 impl ChatScreen {
     /// Create a new ChatScreen
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let command_input = cx.new(|cx| TextInput::new("> join #bitcoin", cx));
+        let command_input = cx.new(|cx| TextInput::new("", cx));
+        let pending_messages: PendingMessages = Arc::new(Mutex::new(Vec::new()));
+
+        // Create chat state and set identity
+        let mut chat_state = ChatState::new();
+        let _ = chat_state.set_identity_from_mnemonic(
+            "leader monkey parrot ring guide accident before fence cannon height naive bean",
+        );
+        let npub_display = chat_state
+            .npub()
+            .map(|n| format!("{}...{}", &n[..10], &n[n.len() - 5..]))
+            .unwrap_or_else(|| "No identity".to_string());
+
+        // Subscribe to command input submit events
+        let pending_for_submit = pending_messages.clone();
+        cx.subscribe(&command_input, move |_this, _input, event: &SubmitEvent, _cx| {
+            let command = event.text.trim().to_string();
+            if !command.is_empty() {
+                Self::handle_command(&command, &pending_for_submit);
+            }
+        })
+        .detach();
+
+        // Start background polling for pending messages
+        let pending_poll = pending_messages.clone();
+        cx.spawn(async move |view, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(100))
+                    .await;
+
+                let messages: Vec<MockMessage> = {
+                    let mut pending = pending_poll.lock().unwrap();
+                    std::mem::take(&mut *pending)
+                };
+
+                if !messages.is_empty() {
+                    let _ = view.update(cx, |view, cx| {
+                        view.mock_messages.extend(messages);
+                        cx.notify();
+                    });
+                }
+            }
+        })
+        .detach();
 
         // Create mock data for UI development
         let mock_channels = vec![
@@ -211,14 +282,76 @@ impl ChatScreen {
         Self {
             focus_handle: cx.focus_handle(),
             command_input,
-            chat_state: ChatState::new(),
+            chat_state,
+            pending_messages,
             selected_channel_id: Some("ch1".to_string()),
             mock_channels,
             mock_messages,
             mock_jobs,
             info_panel_collapsed: false,
-            connection_status: ConnectionStatus::Connected(3),
+            connection_status: ConnectionStatus::Disconnected,
+            npub_display,
         }
+    }
+
+    /// Handle a command from the command bar
+    fn handle_command(command: &str, pending: &PendingMessages) {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return;
+        }
+
+        let timestamp = current_timestamp();
+        let cmd = parts[0].to_lowercase();
+        let cmd = cmd.trim_start_matches('/');
+
+        let response = match cmd {
+            "help" => {
+                "Commands: connect, join #channel, job <kind> <input>, clear, help".to_string()
+            }
+            "connect" => {
+                "Connecting to relays... (wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band)".to_string()
+            }
+            "join" => {
+                if parts.len() > 1 {
+                    let channel = parts[1].trim_start_matches('#');
+                    format!("Joining channel: #{}", channel)
+                } else {
+                    "Usage: join #channel".to_string()
+                }
+            }
+            "job" => {
+                if parts.len() > 2 {
+                    let kind = parts[1];
+                    let input = parts[2..].join(" ");
+                    format!("Submitting DVM job: kind={}, input=\"{}\"", kind, input)
+                } else {
+                    "Usage: job <kind> <input> (e.g., job 5050 summarize this)".to_string()
+                }
+            }
+            "clear" => {
+                "Use Cmd+K to clear messages (not implemented yet)".to_string()
+            }
+            _ => {
+                // Treat as a message to send
+                format!("Sending: {}", command)
+            }
+        };
+
+        let msg = MockMessage {
+            id: format!("sys-{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()),
+            author: "SYSTEM".to_string(),
+            content: response,
+            timestamp,
+            is_own: false,
+            is_dvm: false,
+            dvm_kind: None,
+        };
+
+        pending.lock().unwrap().push(msg);
     }
 
     /// Render the command bar (top)
@@ -226,7 +359,7 @@ impl ChatScreen {
         let (status_color, status_text) = match self.connection_status {
             ConnectionStatus::Disconnected => (status::ERROR, "DISCONNECTED"),
             ConnectionStatus::Connecting => (status::WARNING, "CONNECTING"),
-            ConnectionStatus::Connected(n) => (status::SUCCESS, "CONNECTED"),
+            ConnectionStatus::Connected(_n) => (status::SUCCESS, "CONNECTED"),
         };
 
         div()
@@ -259,7 +392,7 @@ impl ChatScreen {
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child("npub1zut...mytsd"),
+                            .child(self.npub_display.clone()),
                     )
                     // Connection status
                     .child(
@@ -359,7 +492,7 @@ impl ChatScreen {
             )
     }
 
-    /// Render a channel item (click handlers removed to avoid borrow issues)
+    /// Render a channel item
     fn render_channel_item(&self, channel: &MockChannel, _cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let is_selected = self.selected_channel_id.as_ref() == Some(&channel.id);
         let (item_bg, item_text) = if is_selected {
@@ -468,6 +601,8 @@ impl ChatScreen {
             .map(|c| c.name.clone())
             .unwrap_or_else(|| "No channel selected".to_string());
 
+        let msg_count = self.mock_messages.len();
+
         div()
             .id("message-view")
             .flex_1()
@@ -497,7 +632,7 @@ impl ChatScreen {
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child("1,234 users"),
+                            .child(format!("{} messages", msg_count)),
                     ),
             )
             // Messages
@@ -524,12 +659,16 @@ impl ChatScreen {
             } else {
                 colors::DVM_PENDING
             }
+        } else if msg.author == "SYSTEM" {
+            text::MUTED
         } else {
             text::SECONDARY
         };
 
         let content_color = if msg.is_own {
             colors::OUTGOING
+        } else if msg.author == "SYSTEM" {
+            text::MUTED
         } else {
             text::PRIMARY
         };
@@ -641,7 +780,7 @@ impl ChatScreen {
                         )
                     }),
             )
-            // Recent users header
+            // Commands help header
             .child(
                 div()
                     .px(px(12.0))
@@ -655,10 +794,10 @@ impl ChatScreen {
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
-                            .child("RECENT USERS"),
+                            .child("COMMANDS"),
                     ),
             )
-            // Recent users list
+            // Commands list
             .child(
                 div()
                     .flex_1()
@@ -669,24 +808,31 @@ impl ChatScreen {
                     .gap(px(2.0))
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(10.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::SECONDARY)
-                            .child("satoshi"),
+                            .child("connect"),
                     )
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(10.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::SECONDARY)
-                            .child("hal"),
+                            .child("join #channel"),
                     )
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(10.0))
                             .font_family(FONT_FAMILY)
                             .text_color(text::SECONDARY)
-                            .child("adam"),
+                            .child("job <kind> <input>"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::SECONDARY)
+                            .child("help"),
                     ),
             )
     }
@@ -694,7 +840,7 @@ impl ChatScreen {
     /// Render the status bar (bottom)
     fn render_status_bar(&self) -> impl IntoElement {
         let relay_info = match self.connection_status {
-            ConnectionStatus::Disconnected => "No relays connected".to_string(),
+            ConnectionStatus::Disconnected => "Type 'connect' to join relays".to_string(),
             ConnectionStatus::Connecting => "Connecting...".to_string(),
             ConnectionStatus::Connected(n) => format!("{} relays connected", n),
         };
@@ -718,13 +864,17 @@ impl ChatScreen {
                     .text_color(text::MUTED)
                     .child(relay_info),
             )
-            // Right: timestamp
+            // Right: channels + messages count
             .child(
                 div()
                     .text_size(px(10.0))
                     .font_family(FONT_FAMILY)
                     .text_color(text::MUTED)
-                    .child("15:36:02 UTC"),
+                    .child(format!(
+                        "{} channels | {} messages",
+                        self.mock_channels.len(),
+                        self.mock_messages.len()
+                    )),
             )
     }
 }
@@ -757,9 +907,7 @@ impl Render for ChatScreen {
                     // Message view (center)
                     .child(self.render_message_view())
                     // Info panel (right)
-                    .when(!self.info_panel_collapsed, |el| {
-                        el.child(self.render_info_panel())
-                    }),
+                    .child(self.render_info_panel()),
             )
             // Status bar (bottom)
             .child(self.render_status_bar())

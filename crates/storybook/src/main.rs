@@ -38,6 +38,12 @@ pub enum ComponentStory {
     UnitChains,
     /// ATIF components: trajectory visualization
     AtifComponents,
+    /// Button component with all variants and sizes
+    Button,
+    /// All primitive UI components
+    Primitives,
+    /// UI kitchen sink: all shadcn-style components
+    UiKitchenSink,
 }
 
 impl ComponentStory {
@@ -52,6 +58,9 @@ impl ComponentStory {
             Self::ValueTypes => cx.new(|_| ValueTypesStory).into(),
             Self::UnitChains => cx.new(|_| UnitChainsStory).into(),
             Self::AtifComponents => cx.new(|_| AtifComponentsStory).into(),
+            Self::Button => cx.new(|_| ButtonStory).into(),
+            Self::Primitives => cx.new(|_| PrimitivesStory).into(),
+            Self::UiKitchenSink => cx.new(|_| UiKitchenSinkStory).into(),
         }
     }
 
@@ -66,6 +75,9 @@ impl ComponentStory {
             Self::ValueTypes => "Dynamic Value type with JS-like coercion",
             Self::UnitChains => "Connecting units for complex computations",
             Self::AtifComponents => "ATIF trajectory visualization components",
+            Self::Button => "Button component with all variants and sizes",
+            Self::Primitives => "All primitive UI components (shadcn-style)",
+            Self::UiKitchenSink => "UI kitchen sink: all shadcn-style components",
         }
     }
 }

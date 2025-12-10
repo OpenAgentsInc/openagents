@@ -125,7 +125,7 @@ pub fn unit_from_spec(
     spec: &UnitSpec,
     registry: &UnitRegistry,
 ) -> Result<Box<dyn Unit>, FromSpecError> {
-    let mut unit = registry.create(&spec.id)?;
+    let unit = registry.create(&spec.id)?;
 
     // Apply input configurations
     // Note: This would need runtime introspection to set values

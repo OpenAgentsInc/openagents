@@ -1,5 +1,6 @@
 //! Keyboard key display component
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::kbd;
 
@@ -36,13 +37,5 @@ impl RenderOnce for Kbd {
             .text_xs()
             .font_family("Berkeley Mono")
             .child(self.text)
-    }
-}
-
-impl IntoElement for Kbd {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

@@ -1,5 +1,6 @@
 //! Spinner/loading indicator component
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::accent;
 
@@ -57,15 +58,6 @@ impl RenderOnce for Spinner {
             .h(self.size)
             .rounded_full()
             .border_2()
-            .border_color(accent::PRIMARY.opacity(0.3))
-            .border_t_color(accent::PRIMARY)
-    }
-}
-
-impl IntoElement for Spinner {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
+            .border_color(accent::PRIMARY)
     }
 }

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::fs;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::tbcc::types::{TBTask, TBDifficulty};
 

@@ -1,5 +1,6 @@
 //! Label component for form inputs
 
+use gpui::prelude::*;
 use gpui::*;
 use theme::ui::label;
 
@@ -45,13 +46,5 @@ impl RenderOnce for Label {
             .text_color(text_color)
             .when(self.disabled, |d| d.cursor_not_allowed())
             .child(self.text)
-    }
-}
-
-impl IntoElement for Label {
-    type Element = <Self as RenderOnce>::Element;
-
-    fn into_element(self) -> Self::Element {
-        self.render_once()
     }
 }

@@ -2,7 +2,6 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use std::sync::{Arc, RwLock};
 use theme::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::TBCCTab;

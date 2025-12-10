@@ -11,7 +11,7 @@ use crate::pin::Pin;
 use crate::unit::Unit;
 
 use super::types::{
-    BundleSpec, ExposureSpec, GraphSpec, MergePlugSpec, MergeSpec, PinSpec, PositionSpec, UnitSpec,
+    BundleSpec, GraphSpec, MergeSpec, PinSpec, UnitSpec,
 };
 
 /// Convert a Pin to a PinSpec
@@ -36,7 +36,7 @@ where
 ///
 /// Note: This function requires the unit type ID to be provided externally
 /// since the Unit trait doesn't include type information.
-pub fn unit_to_spec(unit: &dyn Unit, type_id: &str) -> UnitSpec {
+pub fn unit_to_spec(_unit: &dyn Unit, type_id: &str) -> UnitSpec {
     UnitSpec {
         id: type_id.to_string(),
         input: HashMap::new(),  // Would need introspection to fill
@@ -46,7 +46,7 @@ pub fn unit_to_spec(unit: &dyn Unit, type_id: &str) -> UnitSpec {
 }
 
 /// Convert a Merge to a MergeSpec
-pub fn merge_to_spec(merge: &Merge) -> MergeSpec {
+pub fn merge_to_spec(_merge: &Merge) -> MergeSpec {
     // Note: The Merge structure doesn't currently expose connection details
     // This would need to be enhanced to track connection metadata
     MergeSpec {
@@ -68,7 +68,7 @@ pub fn graph_to_spec(graph: &Graph) -> GraphSpec {
             // A real implementation would use a type registry
             let type_id = format!("unit/{}", unit_id);
             let unit_spec = unit_to_spec(unit, &type_id);
-            spec.add_unit(unit_id.clone(), unit_spec);
+            spec.add_unit(unit_id, unit_spec);
         }
     }
 
@@ -76,7 +76,7 @@ pub fn graph_to_spec(graph: &Graph) -> GraphSpec {
     for merge_id in graph.merge_ids() {
         if let Some(merge) = graph.get_merge(&merge_id) {
             let merge_spec = merge_to_spec(merge);
-            spec.add_merge(merge_id.clone(), merge_spec);
+            spec.add_merge(merge_id, merge_spec);
         }
     }
 
