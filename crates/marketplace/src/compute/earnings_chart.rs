@@ -95,7 +95,7 @@ fn render_chart_bars(data: &[EarningsDataPoint]) -> impl IntoElement {
 }
 
 /// Render a single bar
-fn render_bar(label: &str, height_ratio: f32, sats: u64) -> impl IntoElement {
+fn render_bar(label: &str, height_ratio: f32, _sats: u64) -> impl IntoElement {
     let bar_height = (height_ratio * 100.0).max(4.0);
 
     div()

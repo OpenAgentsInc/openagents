@@ -55,6 +55,44 @@ impl TrajectoryView {
         cx.notify();
     }
 
+    // ========================================================================
+    // Public getters for testing
+    // ========================================================================
+
+    /// Get the number of loaded trajectories
+    pub fn trajectory_count(&self) -> usize {
+        self.trajectories.len()
+    }
+
+    /// Get the currently selected trajectory ID
+    pub fn selected_trajectory_id(&self) -> Option<&str> {
+        self.selected_id.as_deref()
+    }
+
+    /// Get the number of steps in the selected trajectory
+    pub fn selected_step_count(&self) -> usize {
+        self.selected_steps.len()
+    }
+
+    /// Check if a store is configured
+    pub fn has_store(&self) -> bool {
+        self.store.is_some()
+    }
+
+    /// Get trajectory metadata by index (for testing)
+    pub fn get_trajectory(&self, index: usize) -> Option<&TrajectoryMetadata> {
+        self.trajectories.get(index)
+    }
+
+    /// Public method to select a trajectory (for testing)
+    pub fn select(&mut self, id: String, cx: &mut Context<Self>) {
+        self.select_trajectory(id, cx);
+    }
+
+    // ========================================================================
+    // Private methods
+    // ========================================================================
+
     /// Select a trajectory and load its steps
     fn select_trajectory(&mut self, id: String, cx: &mut Context<Self>) {
         self.selected_id = Some(id.clone());

@@ -62,6 +62,7 @@ impl RunBrowserView {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn select_run(&mut self, run_id: String, cx: &mut Context<Self>) {
         self.selected_run_id = Some(run_id);
         cx.notify();

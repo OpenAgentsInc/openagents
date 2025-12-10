@@ -84,6 +84,7 @@ pub struct HillClimberMonitor {
     /// Test results component
     test_results: Entity<TestResults>,
     /// Controls component
+    #[allow(dead_code)]
     controls: Entity<HCControls>,
     /// Whether the left panel is collapsed
     pub left_collapsed: bool,

@@ -6,4 +6,5 @@ mod smoke;
 mod tbcc;
 mod hillclimber;
 mod testgen;
+mod trajectory;
 mod integration;

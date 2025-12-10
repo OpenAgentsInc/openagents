@@ -2799,6 +2799,7 @@ dependencies = [
 name = "gym_test"
 version = "0.1.0"
 dependencies = [
+ "atif-store",
  "gpui",
  "gym",
  "serde",
@@ -6252,6 +6253,7 @@ dependencies = [
  "serde_json",
  "strum 0.26.3",
  "theme",
+ "ui",
  "unit",
 ]
 
