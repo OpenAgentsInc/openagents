@@ -5,7 +5,7 @@ use gpui::*;
 use theme::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption, TrustTier};
-use crate::text_input::TextInput;
+use ui::TextInput;
 use super::agent_card::render_agent_card;
 
 /// Render the search bar with a real TextInput - Bloomberg style

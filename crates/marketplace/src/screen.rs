@@ -9,7 +9,7 @@ use crate::activity_feed::{self, mock_transactions, mock_notifications};
 use crate::agents::{AgentStoreState, render_agent_store_with_input};
 use crate::compute::{ComputeMarketState, render_compute_market};
 use crate::services::{ServicesMarketState, render_services_market};
-use crate::text_input::TextInput;
+use ui::TextInput;
 
 /// The main Marketplace screen component
 pub struct MarketplaceScreen {

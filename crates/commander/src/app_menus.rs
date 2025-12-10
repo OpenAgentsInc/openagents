@@ -5,7 +5,7 @@
 use gpui::{Menu, MenuItem, OsAction, SystemMenuType};
 
 use crate::actions::*;
-use crate::text_input;
+use ui::text_input;
 
 /// Build the application menus
 pub fn app_menus() -> Vec<Menu> {

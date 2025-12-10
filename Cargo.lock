@@ -579,7 +579,10 @@ dependencies = [
  "futures-io",
  "futures-util",
  "log",
+ "native-tls",
  "pin-project-lite",
+ "tokio",
+ "tokio-native-tls",
  "tungstenite",
 ]
 
@@ -1414,7 +1417,7 @@ dependencies = [
  "theme",
  "tokio",
  "tokio-stream",
- "unicode-segmentation",
+ "ui",
 ]
 
 [[package]]
@@ -3921,7 +3924,7 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "theme",
- "unicode-segmentation",
+ "ui",
 ]
 
 [[package]]
@@ -4187,6 +4190,21 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "nostr-chat"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "nostr",
+ "nostr-relay",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -7151,6 +7169,7 @@ dependencies = [
  "http 1.4.0",
  "httparse",
  "log",
+ "native-tls",
  "rand 0.8.5",
  "sha1",
  "thiserror 1.0.69",
@@ -7179,6 +7198,15 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "theme",
+ "unicode-segmentation",
 ]
 
 [[package]]

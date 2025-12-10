@@ -1,0 +1,10 @@
+[package]
+name = "ui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# NEVER CHANGE THIS TO GIT DEPENDENCY - USE LOCAL GPUI CRATE
+gpui = { path = "../gpui" }
+theme = { path = "../theme" }
+unicode-segmentation = "1.10"

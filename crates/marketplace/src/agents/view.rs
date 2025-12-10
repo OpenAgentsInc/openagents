@@ -5,7 +5,7 @@ use gpui::*;
 use theme::bg;
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption};
-use crate::text_input::TextInput;
+use ui::TextInput;
 use super::agent_grid::{render_search_bar_with_input, render_trending_strip, render_agent_grid, mock_agents};
 use super::agent_detail::render_agent_detail;
 
