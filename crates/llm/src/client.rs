@@ -1,14 +1,15 @@
 //! High-level LLM client
 
 use crate::{
-    AnthropicProvider, ChatOptions, ChatResponse, ChatStream, LlmProvider, LlmResult, Message,
-    ModelInfo, ProviderConfig,
+    AnthropicProvider, ChatOptions, ChatResponse, ChatStream, LlmError, LlmProvider, LlmResult,
+    Message, ModelInfo, ModelRegistry, OpenAIProvider, ProviderConfig,
 };
 use std::sync::Arc;
 
 /// High-level LLM client that wraps providers
 pub struct LlmClient {
     provider: Arc<dyn LlmProvider>,
+    model_id: Option<String>,
 }
 
 impl LlmClient {
@@ -16,6 +17,7 @@ impl LlmClient {
     pub fn new(provider: impl LlmProvider + 'static) -> Self {
         Self {
             provider: Arc::new(provider),
+            model_id: None,
         }
     }
 
@@ -30,6 +32,68 @@ impl LlmClient {
     pub fn anthropic_with_config(config: ProviderConfig) -> LlmResult<Self> {
         let provider = AnthropicProvider::new(config)?;
         Ok(Self::new(provider))
+    }
+
+    /// Create an OpenAI client
+    pub fn openai(api_key: impl Into<String>) -> LlmResult<Self> {
+        let config = ProviderConfig::new(api_key);
+        let provider = OpenAIProvider::new(config)?;
+        Ok(Self::new(provider))
+    }
+
+    /// Create an OpenAI client with custom configuration
+    pub fn openai_with_config(config: ProviderConfig) -> LlmResult<Self> {
+        let provider = OpenAIProvider::new(config)?;
+        Ok(Self::new(provider))
+    }
+
+    /// Create a client from environment variables
+    ///
+    /// Tries providers in order: Anthropic, OpenAI
+    /// Returns the first one with valid credentials
+    pub fn from_env() -> LlmResult<Self> {
+        // Try Anthropic first
+        if let Some(config) = ProviderConfig::anthropic_from_env() {
+            return Self::anthropic_with_config(config);
+        }
+
+        // Try OpenAI
+        if let Some(config) = ProviderConfig::openai_from_env() {
+            return Self::openai_with_config(config);
+        }
+
+        Err(LlmError::ConfigurationError(
+            "No LLM provider credentials found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+                .to_string(),
+        ))
+    }
+
+    /// Create a client for a specific provider from environment
+    pub fn from_env_for_provider(provider: &str) -> LlmResult<Self> {
+        match provider.to_lowercase().as_str() {
+            "anthropic" | "claude" => {
+                let config = ProviderConfig::anthropic_from_env().ok_or_else(|| {
+                    LlmError::ConfigurationError("ANTHROPIC_API_KEY not set".to_string())
+                })?;
+                Self::anthropic_with_config(config)
+            }
+            "openai" | "gpt" => {
+                let config = ProviderConfig::openai_from_env().ok_or_else(|| {
+                    LlmError::ConfigurationError("OPENAI_API_KEY not set".to_string())
+                })?;
+                Self::openai_with_config(config)
+            }
+            _ => Err(LlmError::ConfigurationError(format!(
+                "Unknown provider: {}",
+                provider
+            ))),
+        }
+    }
+
+    /// Set the model to use (for cost tracking)
+    pub fn with_model(mut self, model_id: impl Into<String>) -> Self {
+        self.model_id = Some(model_id.into());
+        self
     }
 
     /// Get the provider name
@@ -111,10 +175,7 @@ pub struct LlmClientBuilder {
 #[derive(Debug, Clone, Copy)]
 pub enum ProviderType {
     Anthropic,
-    // Future providers:
-    // OpenAI,
-    // OpenRouter,
-    // AppleFM,
+    OpenAI,
 }
 
 impl LlmClientBuilder {
@@ -122,6 +183,14 @@ impl LlmClientBuilder {
     pub fn anthropic(api_key: impl Into<String>) -> Self {
         Self {
             provider_type: ProviderType::Anthropic,
+            config: ProviderConfig::new(api_key),
+        }
+    }
+
+    /// Create a builder for OpenAI
+    pub fn openai(api_key: impl Into<String>) -> Self {
+        Self {
+            provider_type: ProviderType::OpenAI,
             config: ProviderConfig::new(api_key),
         }
     }
@@ -154,6 +223,7 @@ impl LlmClientBuilder {
     pub fn build(self) -> LlmResult<LlmClient> {
         match self.provider_type {
             ProviderType::Anthropic => LlmClient::anthropic_with_config(self.config),
+            ProviderType::OpenAI => LlmClient::openai_with_config(self.config),
         }
     }
 }

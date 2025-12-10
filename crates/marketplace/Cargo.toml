@@ -1,0 +1,14 @@
+[package]
+name = "marketplace"
+version = "0.1.0"
+edition = "2024"
+authors = ["OpenAgents"]
+description = "Marketplace UI for OpenAgents - Agent Store, Compute Market, Services Market"
+license = "CC-0"
+
+[dependencies]
+# NEVER CHANGE THIS TO GIT DEPENDENCY - USE LOCAL GPUI CRATE
+gpui = { path = "../gpui" }
+
+# Centralized theme colors
+theme = { path = "../theme" }

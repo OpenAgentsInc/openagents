@@ -337,3 +337,72 @@ Only warnings for unused variables in stub components (expected).
 **Progress:** Foundation + Core Structure (Track 1: 75% complete)
 **Lines Modified:** ~10 lines in GymScreen
 **Time:** 6 minutes (13:54 → 14:00)
+
+---
+
+## Update 14:05 - TrajectoryView Enhanced
+
+### Work Completed
+
+**Enhanced TrajectoryView component with proper placeholder:**
+
+1. **Improved Component Structure:**
+   - Added comprehensive TODO comments for future state (trajectory list, pagination, search, expanded steps)
+   - Created `render_placeholder()` method with polished UI
+   - Better documentation explaining component purpose
+
+2. **Placeholder Design:**
+   - Centered layout with icon, title, description
+   - Styled info card explaining upcoming features
+   - Uses theme colors throughout (bg, border, text)
+   - Professional placeholder that matches Gym aesthetic
+
+3. **Dependency Considerations:**
+   - Identified circular dependency issue (gym cannot depend on commander)
+   - Decision: Keep TrajectoryView self-contained for now
+   - Plan: Full trajectory rendering will be added later when we create shared UI components
+
+4. **Added chrono Dependency:**
+   - Added `chrono = "0.4"` to gym's Cargo.toml for future timestamp formatting
+
+### Build Status
+
+✅ **Compiles cleanly**
+```bash
+$ cargo check -p gym
+    Finished `dev` profile [optimized + debuginfo] target(s) in 34.85s
+```
+
+Only expected warnings for stub components.
+
+### Files Modified
+
+- `crates/gym/src/trajectory_view.rs` - Enhanced with proper placeholder (~93 lines)
+  - Added TODO comments for future state
+  - Created polished placeholder UI
+  - Better documentation
+- `crates/gym/Cargo.toml` - Added chrono dependency
+
+### Technical Notes
+
+**Circular Dependency Issue:**
+- Initial attempt to add `commander` as dependency to gym failed
+- Commander will USE gym, so gym cannot depend on commander
+- Solution: Keep TrajectoryView self-contained, move shared rendering to future shared crate
+
+**Next Implementation Steps (for later):**
+1. Move trajectory rendering functions from commander to shared crate (or `atif` crate)
+2. Integrate atif-store for loading trajectory data
+3. Add state management for pagination, search, selection
+4. Wire up click handlers to load trajectory details from SQLite
+
+### Next Steps
+
+1. Begin TBCC implementation (4 sub-tabs: Dashboard, Tasks, Runs, Settings)
+2. Create HillClimber Monitor layout
+3. Create TestGen Visualizer layout
+4. Wire up WebSocket client for real-time events
+
+**Progress:** Foundation + Core Structure (Track 1: 85% complete)
+**Lines Modified:** ~60 lines in TrajectoryView
+**Time:** 5 minutes (14:00 → 14:05)

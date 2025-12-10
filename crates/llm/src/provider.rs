@@ -234,6 +234,68 @@ impl ProviderConfig {
         }
     }
 
+    /// Create config for Anthropic from environment variables
+    ///
+    /// Reads from:
+    /// - `ANTHROPIC_API_KEY` (required)
+    /// - `ANTHROPIC_BASE_URL` (optional)
+    /// - `ANTHROPIC_MODEL` (optional, default: claude-sonnet-4-20250514)
+    pub fn anthropic_from_env() -> Option<Self> {
+        let api_key = std::env::var("ANTHROPIC_API_KEY").ok()?;
+        let mut config = Self::new(api_key);
+
+        if let Ok(base_url) = std::env::var("ANTHROPIC_BASE_URL") {
+            config = config.base_url(base_url);
+        }
+        if let Ok(model) = std::env::var("ANTHROPIC_MODEL") {
+            config = config.default_model(model);
+        }
+
+        Some(config)
+    }
+
+    /// Create config for OpenAI from environment variables
+    ///
+    /// Reads from:
+    /// - `OPENAI_API_KEY` (required)
+    /// - `OPENAI_BASE_URL` (optional)
+    /// - `OPENAI_ORGANIZATION` (optional)
+    /// - `OPENAI_MODEL` (optional, default: gpt-4o)
+    pub fn openai_from_env() -> Option<Self> {
+        let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+        let mut config = Self::new(api_key);
+
+        if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
+            config = config.base_url(base_url);
+        }
+        if let Ok(org) = std::env::var("OPENAI_ORGANIZATION") {
+            config.organization_id = Some(org);
+        }
+        if let Ok(model) = std::env::var("OPENAI_MODEL") {
+            config = config.default_model(model);
+        }
+
+        Some(config)
+    }
+
+    /// Create config for any provider from its environment variable name
+    ///
+    /// For provider "foo", reads FOO_API_KEY, FOO_BASE_URL, FOO_MODEL
+    pub fn from_env(provider_name: &str) -> Option<Self> {
+        let prefix = provider_name.to_uppercase();
+        let api_key = std::env::var(format!("{}_API_KEY", prefix)).ok()?;
+        let mut config = Self::new(api_key);
+
+        if let Ok(base_url) = std::env::var(format!("{}_BASE_URL", prefix)) {
+            config = config.base_url(base_url);
+        }
+        if let Ok(model) = std::env::var(format!("{}_MODEL", prefix)) {
+            config = config.default_model(model);
+        }
+
+        Some(config)
+    }
+
     /// Set base URL
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
