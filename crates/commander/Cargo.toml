@@ -34,3 +34,6 @@ marketplace = { path = "../marketplace" }
 
 # Gym - Terminal-Bench Command Center
 gym = { path = "../gym" }
+
+# Chat - Bloomberg Terminal-style Nostr chat
+nostr-chat = { path = "../nostr-chat" }

@@ -1411,6 +1411,7 @@ dependencies = [
  "gpui",
  "gym",
  "marketplace",
+ "nostr-chat",
  "pulldown-cmark",
  "reqwest 0.11.27",
  "serde_json",

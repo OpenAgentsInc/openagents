@@ -4,6 +4,8 @@
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::{Arc, Mutex};
+use atif_store::TrajectoryStore;
 use theme::{bg, border, text, FONT_FAMILY};
 
 use super::types::GymTab;
@@ -35,8 +37,18 @@ pub struct GymScreen {
 
 impl GymScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        Self::with_store(cx, None)
+    }
+
+    pub fn with_store(cx: &mut Context<Self>, store: Option<Arc<Mutex<TrajectoryStore>>>) -> Self {
         let sidebar = cx.new(|cx| Sidebar::new(cx));
-        let trajectory_view = cx.new(|cx| TrajectoryView::new(cx));
+        let trajectory_view = cx.new(|cx| {
+            let mut view = TrajectoryView::new(cx);
+            if let Some(ref s) = store {
+                view.set_store(s.clone(), cx);
+            }
+            view
+        });
         let tbcc_screen = cx.new(|cx| TBCCScreen::new(cx));
         let hillclimber_view = cx.new(|cx| HillClimberMonitor::new(cx));
         let testgen_view = cx.new(|cx| TestGenVisualizer::new(cx));
