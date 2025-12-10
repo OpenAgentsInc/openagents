@@ -30,7 +30,7 @@ actions!(
         GoToGym,
         GoToCompute,
         GoToWallet,
-        GoToStore,
+        GoToMarketplace,
         // Help
         OpenDocs,
         OpenDiscord,

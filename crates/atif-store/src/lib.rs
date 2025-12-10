@@ -594,6 +594,9 @@ mod tests {
         assert_eq!(trajectory.steps.len(), 2);
         assert_eq!(trajectory.steps[0].message, "Hello, world!");
         assert_eq!(trajectory.steps[1].message, "Hello! How can I help you?");
+        // Verify timestamps are stored and retrieved
+        assert!(trajectory.steps[0].timestamp.is_some(), "User step should have timestamp");
+        assert!(trajectory.steps[1].timestamp.is_some(), "Agent step should have timestamp");
     }
 
     #[test]
