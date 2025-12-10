@@ -3,6 +3,7 @@
 use gpui::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px};
 use unit::{Lifecycle, PinState};
 use hud::{Connection, ConnectionState, ConnectionStyle, GraphView, PinSnapshot, PinDirection, UnitSnapshot, UnitView, PinView};
+use theme::bg;
 
 use crate::story::Story;
 
@@ -164,7 +165,7 @@ impl Render for KitchenSinkStory {
                         div()
                             .h(px(120.0))
                             .w_full()
-                            .bg(gpui::hsla(0.0, 0.0, 0.05, 1.0))
+                            .bg(bg::APP)
                             .rounded(px(8.0))
                             .child(
                                 canvas(

@@ -10,10 +10,11 @@
 use gpui::{
     App, Context, Entity, EventEmitter, Hsla, MouseButton, MouseMoveEvent,
     MouseUpEvent, PathBuilder, Render, ScrollWheelEvent, Window,
-    canvas, div, hsla, point, prelude::*, px,
+    canvas, div, point, prelude::*, px,
 };
 use std::collections::HashMap;
 use std::time::Duration;
+use theme::hud;
 
 use unit::{Point as UnitPoint, Graph, SimConnection, SimNode, SimulationConfig, tick, should_stop, reheat};
 
@@ -46,8 +47,8 @@ pub struct GraphStyle {
 impl Default for GraphStyle {
     fn default() -> Self {
         Self {
-            background: hsla(0.0, 0.0, 0.05, 1.0),   // Near black
-            grid_color: hsla(0.0, 0.0, 0.1, 1.0),    // Subtle grid
+            background: hud::GRAPH_BG,
+            grid_color: hud::GRID,
             grid_spacing: 50.0,
             show_grid: true,
             unit_style: UnitStyle::default(),
@@ -580,6 +581,22 @@ impl GraphView {
         self.pan_y = 0.0;
     }
 
+    /// Set zoom level (clamped to valid range)
+    pub fn set_zoom(&mut self, zoom: f32, _cx: &mut Context<Self>) {
+        self.zoom = zoom.clamp(0.1, 5.0);
+    }
+
+    /// Set pan offset
+    pub fn set_pan(&mut self, x: f32, y: f32, _cx: &mut Context<Self>) {
+        self.pan_x = x;
+        self.pan_y = y;
+    }
+
+    /// Notify the view for testing purposes
+    pub fn notify(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
     // =========================================================================
     // HUD State Accessors (for testing)
     // =========================================================================
@@ -840,8 +857,8 @@ impl Render for GraphView {
                             let (min_x, min_y, max_x, max_y) = rect.bounds();
 
                             // Draw filled rectangle with low opacity
-                            let fill_color = hsla(0.6, 0.8, 0.5, 0.15);
-                            let stroke_color = hsla(0.6, 0.8, 0.5, 0.8);
+                            let fill_color = hud::RUBBER_BAND_FILL;
+                            let stroke_color = hud::RUBBER_BAND_STROKE;
 
                             // Fill
                             let mut fill_builder = PathBuilder::fill();

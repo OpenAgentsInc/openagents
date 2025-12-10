@@ -5,9 +5,10 @@
 
 use gpui::{
     Background, Hsla, Path, PathBuilder, Pixels, Point, Window,
-    hsla, point, px,
+    point, px,
 };
 use unit::Point as UnitPoint;
+use theme::hud;
 
 /// Connection visual style
 #[derive(Debug, Clone)]
@@ -28,9 +29,9 @@ impl Default for ConnectionStyle {
     fn default() -> Self {
         Self {
             stroke_width: px(2.0),
-            active_color: hsla(0.0, 0.0, 1.0, 0.8),        // White
-            inactive_color: hsla(0.0, 0.0, 0.5, 0.5),      // Gray
-            selected_color: hsla(0.58, 0.8, 0.6, 1.0),     // Cyan
+            active_color: hud::CONNECTION_ACTIVE,
+            inactive_color: hud::CONNECTION_INACTIVE,
+            selected_color: hud::CONNECTION_SELECTED,
             curvature: 0.4,
         }
     }

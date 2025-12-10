@@ -3,8 +3,9 @@
 //! Shows data flowing through multiple connected units to perform
 //! complex computations.
 
-use gpui::{Context, Render, Window, div, hsla, prelude::*, px};
+use gpui::{Context, Render, Window, div, prelude::*, px};
 use unit::{Unit, system};
+use theme::{accent, bg, status, text, FONT_FAMILY};
 
 use crate::story::Story;
 
@@ -203,9 +204,9 @@ impl Render for UnitChainsStory {
 fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -> gpui::Div {
     let passed = actual == expected;
     let status_color = if passed {
-        hsla(0.33, 0.8, 0.5, 1.0)
+        status::SUCCESS
     } else {
-        hsla(0.0, 0.8, 0.5, 1.0)
+        status::ERROR
     };
 
     div()
@@ -213,7 +214,7 @@ fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -
         .flex_col()
         .gap(px(4.0))
         .p(px(12.0))
-        .bg(hsla(0.0, 0.0, 0.15, 1.0))
+        .bg(bg::CARD)
         .rounded(px(6.0))
         .child(
             div()
@@ -224,7 +225,7 @@ fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -
                     div()
                         .text_sm()
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(hsla(0.55, 0.6, 0.7, 1.0))
+                        .text_color(accent::PRIMARY)
                         .child(chain_name.to_string())
                 )
                 .child(
@@ -238,8 +239,8 @@ fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -
         .child(
             div()
                 .text_sm()
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.8, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::SECONDARY)
                 .child(expression.to_string())
         )
 }

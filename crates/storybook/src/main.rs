@@ -13,6 +13,7 @@ use gpui::{
 };
 use std::borrow::Cow;
 use strum::IntoEnumIterator;
+use theme::{bg, text, FONT_FAMILY};
 
 use crate::stories::*;
 
@@ -149,9 +150,9 @@ impl Render for StoryWrapper {
             .flex()
             .flex_col()
             .size_full()
-            .bg(gpui::rgb(0x1e1e1e))
-            .text_color(gpui::rgb(0xe0e0e0))
-            .font_family("Berkeley Mono")
+            .bg(bg::APP)
+            .text_color(text::PRIMARY)
+            .font_family(FONT_FAMILY)
             .child(self.story.clone())
     }
 }

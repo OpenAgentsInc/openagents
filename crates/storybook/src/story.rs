@@ -1,6 +1,7 @@
 //! Story helper utilities for consistent storybook styling
 
-use gpui::{Div, SharedString, div, hsla, prelude::*, px};
+use gpui::{Div, SharedString, div, prelude::*, px};
+use theme::{bg, border, text};
 
 /// Helper struct for building story UI
 pub struct Story;
@@ -24,10 +25,10 @@ impl Story {
         div()
             .text_xl()
             .font_weight(gpui::FontWeight::BOLD)
-            .text_color(hsla(0.0, 0.0, 1.0, 1.0))
+            .text_color(text::BRIGHT)
             .pb(px(8.0))
             .border_b_1()
-            .border_color(hsla(0.0, 0.0, 0.3, 1.0))
+            .border_color(border::STRONG)
             .child(title.into())
     }
 
@@ -36,7 +37,7 @@ impl Story {
         div()
             .text_lg()
             .font_weight(gpui::FontWeight::MEDIUM)
-            .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+            .text_color(text::PRIMARY)
             .pt(px(12.0))
             .pb(px(4.0))
             .child(title.into())
@@ -46,7 +47,7 @@ impl Story {
     pub fn label(label: impl Into<SharedString>) -> Div {
         div()
             .text_sm()
-            .text_color(hsla(0.0, 0.0, 0.7, 1.0))
+            .text_color(text::SECONDARY)
             .child(label.into())
     }
 
@@ -54,7 +55,7 @@ impl Story {
     pub fn description(desc: impl Into<SharedString>) -> Div {
         div()
             .text_sm()
-            .text_color(hsla(0.0, 0.0, 0.6, 1.0))
+            .text_color(text::MUTED)
             .child(desc.into())
     }
 
@@ -63,9 +64,9 @@ impl Story {
         div()
             .p(px(16.0))
             .border_1()
-            .border_color(hsla(0.0, 0.0, 0.3, 1.0))
+            .border_color(border::STRONG)
             .rounded(px(8.0))
-            .bg(hsla(0.0, 0.0, 0.1, 1.0))
+            .bg(bg::ELEVATED)
     }
 
     /// Horizontal flex row
@@ -100,7 +101,7 @@ impl Story {
         div()
             .h(px(1.0))
             .w_full()
-            .bg(hsla(0.0, 0.0, 0.3, 1.0))
+            .bg(border::STRONG)
             .my(px(12.0))
     }
 }
