@@ -283,3 +283,57 @@ Only minor warnings (unused imports, unused variables in stubs).
 **Progress:** Foundation + Core Structure (Track 1: 60% complete)
 **Lines Added:** +140 lines to GymScreen
 **Time:** 5 minutes (13:49 → 13:54)
+
+---
+
+## Update 14:00 - Sidebar Integration Complete
+
+### Work Completed
+
+**Integrated expandable tree sidebar into GymScreen:**
+
+1. **Replaced Placeholder with Real Component:**
+   - Removed placeholder text ("Sessions", "HillClimber Runs", "TestGen Suites")
+   - Added `sidebar: Entity<Sidebar>` field to GymScreen
+   - Initialize sidebar in `GymScreen::new()` with `cx.new(|cx| Sidebar::new(cx))`
+   - Render actual tree component with `self.sidebar.clone()`
+
+2. **Removed Unused Imports:**
+   - Removed `SidebarState` from `gym_screen.rs` imports (now encapsulated in Sidebar)
+
+3. **Full Feature Set:**
+   - Working expandable tree with 3 categories (Sessions, HillClimber Runs, TestGen Suites)
+   - Sample data with status indicators (Idle, Running, Success, Failed)
+   - Click to expand/collapse categories (▶/▼ chevrons)
+   - Click to select items (visual feedback with border + background)
+   - Depth-based indentation
+   - Status-colored icons (○ ● ✓ ✗ ◐)
+   - Hover states throughout
+
+### Build Status
+
+✅ **Compiles cleanly**
+```bash
+$ cargo check -p gym
+    Finished `dev` profile [optimized + debuginfo] target(s) in 19.60s
+```
+
+Only warnings for unused variables in stub components (expected).
+
+### Files Modified
+
+- `crates/gym/src/gym_screen.rs` - Integrated Sidebar entity
+  - Added `sidebar: Entity<Sidebar>` field
+  - Initialized in `new()`
+  - Replaced placeholder content with `self.sidebar.clone()`
+  - Removed unused `SidebarState` import
+
+### Next Steps
+
+1. Extract trajectory viewer from commander
+2. Wire up data loading from SQLite stores
+3. Begin parallel implementation of TBCC, HillClimber, TestGen views
+
+**Progress:** Foundation + Core Structure (Track 1: 75% complete)
+**Lines Modified:** ~10 lines in GymScreen
+**Time:** 6 minutes (13:54 → 14:00)

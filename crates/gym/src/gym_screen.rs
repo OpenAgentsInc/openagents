@@ -6,7 +6,7 @@ use gpui::prelude::*;
 use gpui::*;
 use theme::{bg, border, text, FONT_FAMILY};
 
-use super::types::{GymTab, SidebarState};
+use super::types::GymTab;
 use super::sidebar::Sidebar;
 use super::trajectory_view::TrajectoryView;
 use super::tbcc::dashboard::DashboardView;
@@ -20,8 +20,8 @@ pub struct GymScreen {
     /// Focus handle
     focus_handle: FocusHandle,
 
-    /// Sidebar state
-    sidebar_state: SidebarState,
+    /// Sidebar
+    sidebar: Entity<Sidebar>,
     sidebar_width: Pixels,
     sidebar_collapsed: bool,
 
@@ -34,6 +34,7 @@ pub struct GymScreen {
 
 impl GymScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let sidebar = cx.new(|cx| Sidebar::new(cx));
         let trajectory_view = cx.new(|cx| TrajectoryView::new(cx));
         let dashboard_view = cx.new(|cx| DashboardView::new(cx));
         let hillclimber_view = cx.new(|cx| HillClimberMonitor::new(cx));
@@ -42,7 +43,7 @@ impl GymScreen {
         Self {
             current_tab: GymTab::default(),
             focus_handle: cx.focus_handle(),
-            sidebar_state: SidebarState::new(),
+            sidebar,
             sidebar_width: px(260.0),
             sidebar_collapsed: false,
             trajectory_view,
@@ -138,18 +139,13 @@ impl GymScreen {
                                 .child("WORKSPACE")
                         )
                         .child(
-                            // Sidebar content (tree will go here)
+                            // Sidebar content - actual tree
                             div()
                                 .id("gym-sidebar-scroll")
                                 .flex_1()
                                 .overflow_y_scroll()
                                 .p(px(8.0))
-                                .font_family(FONT_FAMILY)
-                                .text_size(px(12.0))
-                                .text_color(text::MUTED)
-                                .child("Sessions")
-                                .child("HillClimber Runs")
-                                .child("TestGen Suites")
+                                .child(self.sidebar.clone())
                         )
                 )
             })
