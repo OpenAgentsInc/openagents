@@ -211,6 +211,31 @@ impl Unit for Merge {
             self.current_input = Some(current.to_string());
         }
     }
+
+    fn push_input(&mut self, name: &str, data: Box<dyn Any + Send>) -> Result<(), String> {
+        if let Some(pin) = self.inputs.get_mut(name) {
+            pin.push_any(data).map_err(|e| e.to_string())?;
+            // Also trigger data handling if playing
+            if self.lifecycle == Lifecycle::Playing {
+                if let Some(cloned_data) = pin.clone_data() {
+                    self.current_input = Some(name.to_string());
+                    self.current_data = Some(cloned_data);
+                    self.propagate_to_outputs();
+                }
+            }
+            Ok(())
+        } else {
+            Err(format!("Input '{}' not found", name))
+        }
+    }
+
+    fn take_output(&mut self, name: &str) -> Option<Box<dyn Any + Send>> {
+        if let Some(pin) = self.outputs.get_mut(name) {
+            pin.take_any()
+        } else {
+            None
+        }
+    }
 }
 
 impl Primitive for Merge {

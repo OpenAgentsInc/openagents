@@ -22,7 +22,7 @@ members = [
 
 [workspace.lints.rust]
 missing_docs = "allow"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(perf_enabled)', 'cfg(cargo-clippy)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(perf_enabled)'] }
 
 [workspace.package]
 version = "0.1.0"
