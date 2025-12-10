@@ -10,3 +10,6 @@ unit = { path = "../unit" }
 gpui = { path = "../gpui" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Centralized theme colors
+theme = { path = "../theme" }
