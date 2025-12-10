@@ -5,11 +5,9 @@
 
 use gpui::{
     App, Context, Entity, EventEmitter, Hsla, Pixels, Point, Render, Window,
-    div, hsla, point, prelude::*, px, size,
+    div, hsla, point, prelude::*, px,
 };
-use unit::any_pin::AnyPin;
-use unit::pin::PinState;
-use unit::unit::IO;
+use unit::{AnyPin, PinState, IO};
 
 /// Pin visual style configuration
 #[derive(Debug, Clone)]
@@ -100,9 +98,9 @@ impl PinSnapshot {
         let state = if pin.is_active() {
             PinState::Valid
         } else if pin.is_idle() {
-            PinState::Idle
-        } else {
             PinState::Empty
+        } else {
+            PinState::Invalid
         };
 
         Self {
@@ -122,8 +120,8 @@ pub struct PinView {
     snapshot: PinSnapshot,
     /// Visual style
     style: PinStyle,
-    /// Whether currently hovered
-    hovered: bool,
+    /// Whether currently hovered (reserved for future use)
+    _hovered: bool,
 }
 
 impl PinView {
@@ -132,7 +130,7 @@ impl PinView {
         Self {
             snapshot,
             style: PinStyle::default(),
-            hovered: false,
+            _hovered: false,
         }
     }
 
@@ -154,7 +152,7 @@ impl PinView {
             match self.snapshot.state {
                 PinState::Empty => self.style.empty_color,
                 PinState::Valid => self.style.valid_color,
-                PinState::Idle | PinState::Invalid => self.style.invalid_color,
+                PinState::Invalid => self.style.invalid_color,
             }
         }
     }
@@ -174,12 +172,7 @@ impl Render for PinView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let color = self.state_color();
         let radius = self.style.radius;
-        let border_color = if self.hovered {
-            hsla(0.0, 0.0, 1.0, 1.0) // White on hover
-        } else {
-            self.style.border_color
-        };
-
+        let border_color = self.style.border_color;
         let diameter = radius * 2.0;
 
         div()
@@ -189,19 +182,9 @@ impl Render for PinView {
             .border_1()
             .border_color(border_color)
             .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_this, _, _, cx| {
                 cx.emit(PinEvent::Clicked);
                 cx.emit(PinEvent::DragStarted);
-            }))
-            .on_mouse_enter(cx.listener(|this, _, _, cx| {
-                this.hovered = true;
-                cx.emit(PinEvent::Hovered);
-                cx.notify();
-            }))
-            .on_mouse_leave(cx.listener(|this, _, _, cx| {
-                this.hovered = false;
-                cx.emit(PinEvent::Unhovered);
-                cx.notify();
             }))
     }
 }

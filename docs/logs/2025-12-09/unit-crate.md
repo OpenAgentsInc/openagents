@@ -110,9 +110,116 @@ on_invalid: Vec<Box<dyn Fn() + Send + Sync>>,
 2. **Center gravity overpowering repulsion**: Test fix - disable center gravity when testing pure repulsion
 3. **Lifetime issues with trait object returns**: Added `+ 'static` bounds
 
+---
+
+# HUD Crate Implementation - 2025-12-09
+
+## Summary
+
+Created `crates/hud/` - GPUI visualization layer for Unit dataflow graphs. Provides Entity wrappers for rendering units, pins, and connections with force-directed layout.
+
+## What Was Built
+
+### Crate Structure
+
+```
+crates/hud/
+├── Cargo.toml
+└── src/
+    ├── lib.rs           # Re-exports
+    ├── connection.rs    # Bezier curve rendering for connections
+    ├── pin_view.rs      # PinView GPUI Entity
+    ├── unit_view.rs     # UnitView GPUI Entity
+    └── graph_view.rs    # GraphView with physics simulation
+```
+
+### Core Components
+
+| Component | Description |
+|-----------|-------------|
+| `Connection` | Cubic bezier curve between two points with state-based coloring |
+| `ConnectionLayer` | Collection of connections to paint together |
+| `PinView` | GPUI Entity for pins with state-based color indicator |
+| `PinSnapshot` | Immutable snapshot of pin state for rendering |
+| `UnitView` | GPUI Entity for unit boxes with input/output pins |
+| `UnitSnapshot` | Immutable snapshot of unit state for rendering |
+| `GraphView` | Full graph canvas with physics, pan/zoom, selection |
+| `GraphStyle` | Visual configuration for all graph elements |
+
+### Key Features
+
+**Connection Rendering:**
+- Cubic bezier curves via GPUI PathBuilder
+- Three states: Inactive (gray), Active (white), Selected (cyan)
+- Horizontal-biased control points for clean routing
+
+**PinView:**
+- Circular pin indicators
+- Color-coded states: Empty (gray), Valid (green), Invalid (red), Constant (cyan)
+- Click/drag events for connection creation
+
+**UnitView:**
+- Box with header (unit ID) and pin columns
+- Background color based on lifecycle (Paused/Playing/Error)
+- Selection/hover visual feedback
+- Pin connection point calculation
+
+**GraphView:**
+- Force-directed physics simulation using unit crate
+- Pan (drag) and zoom (scroll wheel)
+- Node selection with Cmd+click for multi-select
+- Node dragging with real-time physics updates
+- Animation loop at ~60fps during active simulation
+- Grid background for visual reference
+
+### Tests
+
+8 tests passing:
+
+```
+test connection::tests::test_connection_creation ... ok
+test connection::tests::test_connection_from_unit_points ... ok
+test connection::tests::test_connection_layer ... ok
+test pin_view::tests::test_pin_snapshot ... ok
+test pin_view::tests::test_pin_direction_from_io ... ok
+test unit_view::tests::test_unit_snapshot_size ... ok
+test graph_view::tests::test_graph_style_defaults ... ok
+test graph_view::tests::test_coordinate_transform ... ok
+```
+
+## GPUI API Notes
+
+Key learnings from GPUI integration:
+
+1. **Pixels private field**: Cannot access `Pixels.0` directly, must use `.into()` for f32 conversion
+2. **Cubic bezier signature**: `cubic_bezier_to(to, control_a, control_b)` - destination first
+3. **Mouse events**: Use explicit type annotations like `event: &gpui::MouseDownEvent`
+4. **Spawn syntax**: `cx.spawn(async move |view, cx| { ... })`
+5. **Platform modifier**: Use `event.modifiers.platform` for Cmd key (not `.command`)
+6. **No on_mouse_enter/leave**: GPUI has `on_hover` instead but different API
+
+## Integration with Unit Crate
+
+The bridge pattern connects unit's pure runtime to GPUI reactivity:
+
+```rust
+// Snapshot pattern - take immutable copy for rendering
+impl UnitSnapshot {
+    pub fn from_unit(unit: &dyn Unit, position: Point<Pixels>) -> Self { ... }
+}
+
+// GraphView owns simulation state
+pub struct GraphView {
+    graph: Option<Graph>,
+    sim_nodes: Vec<SimNode>,     // From unit::physics
+    sim_config: SimulationConfig,
+    // ... GPUI state
+}
+```
+
 ## Next Steps
 
-Create `hud` crate with GPUI integration:
-- `PinView` - Entity wrapping Pin with visual state indicator
-- `UnitView` - Entity for unit boxes with pins
-- `GraphView` - Full canvas with physics animation
+- Integrate with Commander for live graph visualization
+- Add connection drag-creation between pins
+- Add right-click context menus for unit/pin actions
+- Add inspector panel for selected unit details
