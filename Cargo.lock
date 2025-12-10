@@ -2885,6 +2885,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hud_test"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui",
+ "hud",
+ "serde",
+ "serde_json",
+ "unit",
+ "uuid",
+]
+
+[[package]]
 name = "hyper"
 version = "0.14.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"

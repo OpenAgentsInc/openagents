@@ -7,7 +7,7 @@ use atif::{Metrics, Observation, Step, StepSource, ToolCall};
 use chrono::{DateTime, Utc};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use theme::{accent, bg, border, source, status, text};
+use theme::{accent, bg, border, source, status, text, FONT_FAMILY};
 
 // ============================================================================
 // Source Badge Colors
@@ -71,7 +71,7 @@ pub fn render_source_badge(source: &StepSource) -> impl IntoElement {
         .px(px(6.0))
         .py(px(2.0))
         .text_size(px(10.0))
-        .font_family("Berkeley Mono")
+        .font_family(FONT_FAMILY)
         .bg(bg)
         .text_color(text)
         .border_1()
@@ -108,14 +108,14 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(13.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(accent::SECONDARY)
                         .child(tool_call.function_name.clone()),
                 )
                 .child(
                     div()
                         .text_size(px(10.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::MUTED)
                         .child(format!("id: {}", truncate(&tool_call.tool_call_id, 12))),
                 ),
@@ -126,7 +126,7 @@ pub fn render_tool_call(tool_call: &ToolCall) -> impl IntoElement {
                 .bg(bg::SURFACE)
                 .rounded(px(4.0))
                 .text_size(px(12.0))
-                .font_family("Berkeley Mono")
+                .font_family(FONT_FAMILY)
                 .text_color(text::SECONDARY)
                 .overflow_hidden()
                 .child(format_json(&tool_call.arguments, 500)),
@@ -145,7 +145,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::MUTED)
                         .child("TOOL CALLS"),
                 )
@@ -154,7 +154,7 @@ pub fn render_tool_calls(tool_calls: &[ToolCall]) -> impl IntoElement {
                         .px(px(6.0))
                         .py(px(2.0))
                         .text_size(px(10.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .bg(accent::SECONDARY_MUTED)
                         .text_color(accent::SECONDARY)
                         .rounded(px(4.0))
@@ -174,7 +174,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Berkeley Mono")
+                .font_family(FONT_FAMILY)
                 .text_color(text::MUTED)
                 .mb(px(8.0))
                 .child("OBSERVATION"),
@@ -191,7 +191,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(10.0))
-                            .font_family("Berkeley Mono")
+                            .font_family(FONT_FAMILY)
                             .text_color(text::MUTED)
                             .mb(px(4.0))
                             .child(format!("call: {}", truncate(call_id, 12))),
@@ -201,7 +201,7 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(12.0))
-                            .font_family("Berkeley Mono")
+                            .font_family(FONT_FAMILY)
                             .text_color(accent::TERTIARY) // emerald
                             .overflow_hidden()
                             .child(truncate(content, 1000)),
@@ -216,14 +216,14 @@ pub fn render_observation(observation: &Observation) -> impl IntoElement {
                             .child(
                                 div()
                                     .text_size(px(11.0))
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(accent::PRIMARY)
                                     .child("Subagent:"),
                             )
                             .children(refs.iter().map(|r| {
                                 div()
                                     .text_size(px(11.0))
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(accent::PRIMARY)
                                     .child(truncate(&r.session_id, 16))
                             })),
@@ -242,7 +242,7 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Berkeley Mono")
+                .font_family(FONT_FAMILY)
                 .text_color(text::MUTED)
                 .mb(px(8.0))
                 .child("METRICS"),
@@ -260,13 +260,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::MUTED)
                                     .child("Prompt:"),
                             )
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::SECONDARY)
                                     .child(format!("{}", tokens)),
                             ),
@@ -279,13 +279,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::MUTED)
                                     .child("Completion:"),
                             )
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::SECONDARY)
                                     .child(format!("{}", tokens)),
                             ),
@@ -298,13 +298,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::MUTED)
                                     .child("Cached:"),
                             )
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(status::WARNING)
                                     .child(format!("{}", tokens)),
                             ),
@@ -317,13 +317,13 @@ pub fn render_metrics(metrics: &Metrics) -> impl IntoElement {
                             .gap(px(4.0))
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(text::MUTED)
                                     .child("Cost:"),
                             )
                             .child(
                                 div()
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(status::SUCCESS)
                                     .child(format!("${:.4}", cost)),
                             ),
@@ -360,7 +360,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(12.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::MUTED)
                         .flex_shrink_0()
                         .child(format!("#{}", step.step_id)),
@@ -371,7 +371,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::MUTED)
                         .flex_shrink_0()
                         .child(format_optional_timestamp(step.timestamp)),
@@ -381,7 +381,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                     el.child(
                         div()
                             .text_size(px(10.0))
-                            .font_family("Berkeley Mono")
+                            .font_family(FONT_FAMILY)
                             .text_color(text::DISABLED)
                             .child(truncate(model, 20)),
                     )
@@ -402,7 +402,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                             .child(
                                 div()
                                     .text_size(px(11.0))
-                                    .font_family("Berkeley Mono")
+                                    .font_family(FONT_FAMILY)
                                     .text_color(accent::SECONDARY)
                                     .child(format!(
                                         "{} tool{}",
@@ -416,7 +416,7 @@ pub fn render_step_header(step: &Step, is_expanded: bool) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(12.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::SECONDARY)
                         .truncate()
                         .flex_1()
@@ -453,7 +453,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::MUTED)
                         .mb(px(8.0))
                         .child("MESSAGE"),
@@ -466,7 +466,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                         .border_color(border::DEFAULT)
                         .rounded(px(4.0))
                         .text_size(px(13.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(text::PRIMARY)
                         .line_height(px(20.0))
                         .overflow_hidden()
@@ -480,7 +480,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Berkeley Mono")
+                            .font_family(FONT_FAMILY)
                             .text_color(status::INFO)
                             .mb(px(8.0))
                             .child("REASONING"),
@@ -493,7 +493,7 @@ pub fn render_step_details(step: &Step) -> impl IntoElement {
                             .border_color(status::INFO_BORDER)
                             .rounded(px(4.0))
                             .text_size(px(13.0))
-                            .font_family("Berkeley Mono")
+                            .font_family(FONT_FAMILY)
                             .text_color(accent::PRIMARY)
                             .line_height(px(20.0))
                             .child(reasoning.clone()),

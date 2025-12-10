@@ -7,6 +7,7 @@ use atif_store::TrajectoryMetadata;
 use chrono::{DateTime, Utc};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use theme::{bg, border, status, text, FONT_FAMILY};
 
 // ============================================================================
 // Helper Functions
@@ -40,23 +41,23 @@ pub fn render_trajectory_item(
     let model_name = metadata.model_name.clone().unwrap_or_else(|| "unknown".to_string());
     let step_count = metadata.total_steps as i32;
     let created_at = format_date(metadata.created_at);
-    let status = format!("{:?}", metadata.status);
+    let item_status = format!("{:?}", metadata.status);
 
-    let (bg, border) = if is_selected {
-        (hsla(0.58, 0.5, 0.15, 0.3), hsla(0.58, 0.5, 0.35, 0.5))
+    let (item_bg, item_border) = if is_selected {
+        (bg::SELECTED, border::SELECTED)
     } else {
-        (hsla(0.0, 0.0, 0.12, 0.4), hsla(0.0, 0.0, 0.25, 0.4))
+        (bg::CARD, border::DEFAULT)
     };
 
     div()
         .p(px(12.0))
         .mb(px(8.0))
-        .bg(bg)
+        .bg(item_bg)
         .border_1()
-        .border_color(border)
+        .border_color(item_border)
         .rounded(px(8.0))
         .cursor_pointer()
-        .hover(|s| s.bg(hsla(0.0, 0.0, 0.15, 0.6)))
+        .hover(|s| s.bg(bg::HOVER))
         // Header row: agent name + date
         .child(
             div()
@@ -67,15 +68,15 @@ pub fn render_trajectory_item(
                 .child(
                     div()
                         .text_size(px(14.0))
-                        .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                        .font_family(FONT_FAMILY)
+                        .text_color(text::PRIMARY)
                         .child(agent_name),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .font_family(FONT_FAMILY)
+                        .text_color(text::MUTED)
                         .child(created_at),
                 ),
         )
@@ -83,8 +84,8 @@ pub fn render_trajectory_item(
         .child(
             div()
                 .text_size(px(12.0))
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.6, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::SECONDARY)
                 .mb(px(4.0))
                 .child(format!("model: {}", model_name)),
         )
@@ -95,33 +96,33 @@ pub fn render_trajectory_item(
                 .items_center()
                 .gap(px(8.0))
                 .text_size(px(11.0))
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
                 .child(format_session_id(&session_id))
-                .child(div().text_color(hsla(0.0, 0.0, 0.3, 1.0)).child("•"))
+                .child(div().text_color(text::DISABLED).child("•"))
                 .child(format!("{} steps", step_count))
-                .child(div().text_color(hsla(0.0, 0.0, 0.3, 1.0)).child("•"))
-                .child(render_status_badge(&status)),
+                .child(div().text_color(text::DISABLED).child("•"))
+                .child(render_status_badge(&item_status)),
         )
 }
 
 /// Render status badge
-fn render_status_badge(status: &str) -> impl IntoElement {
-    let (bg, text) = match status.to_lowercase().as_str() {
-        "completed" => (hsla(0.38, 0.5, 0.2, 0.4), hsla(0.38, 0.6, 0.7, 1.0)),
-        "failed" => (hsla(0.0, 0.5, 0.2, 0.4), hsla(0.0, 0.6, 0.7, 1.0)),
-        _ => (hsla(0.15, 0.5, 0.2, 0.4), hsla(0.15, 0.6, 0.7, 1.0)),
+fn render_status_badge(item_status: &str) -> impl IntoElement {
+    let (badge_bg, badge_text) = match item_status.to_lowercase().as_str() {
+        "completed" => (status::SUCCESS_BG, status::SUCCESS),
+        "failed" => (status::ERROR_BG, status::ERROR),
+        _ => (status::WARNING_BG, status::WARNING),
     };
 
     div()
         .px(px(6.0))
         .py(px(2.0))
         .text_size(px(10.0))
-        .font_family("Berkeley Mono")
-        .bg(bg)
-        .text_color(text)
+        .font_family(FONT_FAMILY)
+        .bg(badge_bg)
+        .text_color(badge_text)
         .rounded(px(4.0))
-        .child(status.to_lowercase())
+        .child(item_status.to_lowercase())
 }
 
 // ============================================================================
@@ -139,11 +140,11 @@ pub fn render_trajectory_list_header(
         .justify_between()
         .px(px(16.0))
         .py(px(12.0))
-        .bg(hsla(0.0, 0.0, 0.1, 0.4))
+        .bg(bg::SURFACE)
         .border_b_1()
-        .border_color(hsla(0.0, 0.0, 0.2, 0.6))
+        .border_color(border::STRONG)
         .cursor_pointer()
-        .hover(|s| s.bg(hsla(0.0, 0.0, 0.12, 0.6)))
+        .hover(|s| s.bg(bg::CARD))
         .child(
             div()
                 .flex()
@@ -152,23 +153,23 @@ pub fn render_trajectory_list_header(
                 .child(
                     div()
                         .text_size(px(14.0))
-                        .font_family("Berkeley Mono")
-                        .text_color(hsla(0.0, 0.0, 0.9, 1.0))
+                        .font_family(FONT_FAMILY)
+                        .text_color(text::PRIMARY)
                         .child("Trajectories"),
                 )
                 .when(total_count > 0, |el| {
                     el.child(
                         div()
                             .text_size(px(12.0))
-                            .font_family("Berkeley Mono")
-                            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::MUTED)
                             .child(format!("({})", total_count)),
                     )
                 }),
         )
         .child(
             div()
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .text_color(text::MUTED)
                 .child(if is_collapsed { "▼" } else { "▲" }),
         )
 }
@@ -185,7 +186,7 @@ pub fn render_search_input(current_query: &str) -> impl IntoElement {
         .px(px(16.0))
         .py(px(12.0))
         .border_b_1()
-        .border_color(hsla(0.0, 0.0, 0.2, 0.4))
+        .border_color(border::DEFAULT)
         .child(
             div()
                 .flex()
@@ -193,24 +194,24 @@ pub fn render_search_input(current_query: &str) -> impl IntoElement {
                 .gap(px(8.0))
                 .px(px(12.0))
                 .py(px(8.0))
-                .bg(hsla(0.0, 0.0, 0.08, 0.6))
+                .bg(bg::ELEVATED)
                 .border_1()
-                .border_color(hsla(0.0, 0.0, 0.2, 0.4))
+                .border_color(border::DEFAULT)
                 .rounded(px(6.0))
                 .child(
                     div()
-                        .text_color(hsla(0.0, 0.0, 0.4, 1.0))
+                        .text_color(text::PLACEHOLDER)
                         .text_size(px(14.0))
                         .child("🔍"),
                 )
                 .child(
                     div()
                         .text_size(px(13.0))
-                        .font_family("Berkeley Mono")
+                        .font_family(FONT_FAMILY)
                         .text_color(if query.is_empty() {
-                            hsla(0.0, 0.0, 0.4, 1.0)
+                            text::PLACEHOLDER
                         } else {
-                            hsla(0.0, 0.0, 0.8, 1.0)
+                            text::PRIMARY
                         })
                         .child(if query.is_empty() {
                             "Search trajectories...".to_string()
@@ -239,28 +240,20 @@ pub fn render_pagination(
         .px(px(16.0))
         .py(px(12.0))
         .border_t_1()
-        .border_color(hsla(0.0, 0.0, 0.2, 0.4))
+        .border_color(border::DEFAULT)
         // Prev button
         .child(
             div()
                 .px(px(12.0))
                 .py(px(6.0))
-                .bg(if has_prev {
-                    hsla(0.0, 0.0, 0.15, 0.6)
-                } else {
-                    hsla(0.0, 0.0, 0.1, 0.3)
-                })
-                .text_color(if has_prev {
-                    hsla(0.0, 0.0, 0.8, 1.0)
-                } else {
-                    hsla(0.0, 0.0, 0.4, 1.0)
-                })
+                .bg(if has_prev { bg::HOVER } else { bg::SURFACE })
+                .text_color(if has_prev { text::PRIMARY } else { text::DISABLED })
                 .text_size(px(12.0))
-                .font_family("Berkeley Mono")
+                .font_family(FONT_FAMILY)
                 .rounded(px(4.0))
                 .when(has_prev, |el| {
                     el.cursor_pointer()
-                        .hover(|s| s.bg(hsla(0.0, 0.0, 0.2, 0.6)))
+                        .hover(|s| s.bg(bg::CARD))
                 })
                 .child("← Prev"),
         )
@@ -268,8 +261,8 @@ pub fn render_pagination(
         .child(
             div()
                 .text_size(px(12.0))
-                .font_family("Berkeley Mono")
-                .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                .font_family(FONT_FAMILY)
+                .text_color(text::MUTED)
                 .child(format!("Page {} of {}", current_page + 1, total_pages.max(1))),
         )
         // Next button
@@ -277,22 +270,14 @@ pub fn render_pagination(
             div()
                 .px(px(12.0))
                 .py(px(6.0))
-                .bg(if has_next {
-                    hsla(0.0, 0.0, 0.15, 0.6)
-                } else {
-                    hsla(0.0, 0.0, 0.1, 0.3)
-                })
-                .text_color(if has_next {
-                    hsla(0.0, 0.0, 0.8, 1.0)
-                } else {
-                    hsla(0.0, 0.0, 0.4, 1.0)
-                })
+                .bg(if has_next { bg::HOVER } else { bg::SURFACE })
+                .text_color(if has_next { text::PRIMARY } else { text::DISABLED })
                 .text_size(px(12.0))
-                .font_family("Berkeley Mono")
+                .font_family(FONT_FAMILY)
                 .rounded(px(4.0))
                 .when(has_next, |el| {
                     el.cursor_pointer()
-                        .hover(|s| s.bg(hsla(0.0, 0.0, 0.2, 0.6)))
+                        .hover(|s| s.bg(bg::CARD))
                 })
                 .child("Next →"),
         )
@@ -321,8 +306,8 @@ pub fn render_trajectory_list(
     div()
         .rounded(px(12.0))
         .border_1()
-        .border_color(hsla(0.0, 0.0, 0.2, 0.6))
-        .bg(hsla(0.0, 0.0, 0.05, 0.8))
+        .border_color(border::STRONG)
+        .bg(bg::SURFACE)
         .overflow_hidden()
         // Header
         .child(render_trajectory_list_header(total_count, is_collapsed))
@@ -363,8 +348,8 @@ fn render_list_content(
         return div()
             .py(px(32.0))
             .text_size(px(14.0))
-            .font_family("Berkeley Mono")
-            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+            .font_family(FONT_FAMILY)
+            .text_color(text::MUTED)
             .flex()
             .items_center()
             .justify_center()
@@ -382,15 +367,15 @@ fn render_list_content(
             .child(
                 div()
                     .text_size(px(14.0))
-                    .font_family("Berkeley Mono")
-                    .text_color(hsla(0.0, 0.6, 0.6, 1.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(status::ERROR)
                     .child("Error loading trajectories"),
             )
             .child(
                 div()
                     .text_size(px(12.0))
-                    .font_family("Berkeley Mono")
-                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
                     .child(err.to_string()),
             )
             .into_any_element();
@@ -406,8 +391,8 @@ fn render_list_content(
         return div()
             .py(px(32.0))
             .text_size(px(14.0))
-            .font_family("Berkeley Mono")
-            .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+            .font_family(FONT_FAMILY)
+            .text_color(text::MUTED)
             .flex()
             .items_center()
             .justify_center()
