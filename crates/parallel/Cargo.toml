@@ -1,0 +1,36 @@
+[package]
+name = "parallel"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Parallel agent execution with git worktree isolation"
+
+[dependencies]
+# Workspace crates
+tasks.workspace = true
+orchestrator.workspace = true
+llm.workspace = true
+
+# Async runtime
+tokio = { workspace = true, features = ["full", "process"] }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+# Git operations
+git2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

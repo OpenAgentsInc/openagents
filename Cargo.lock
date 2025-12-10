@@ -4404,6 +4404,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "parallel"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "git2",
+ "llm",
+ "orchestrator",
+ "serde",
+ "serde_json",
+ "tasks",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
