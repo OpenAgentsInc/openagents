@@ -58,10 +58,6 @@ pub fn register_system_units(registry: &mut UnitRegistry) {
     // Logic units
     registry.register("system/And", Box::new(|| Box::new(And::new())));
     registry.register("system/Or", Box::new(|| Box::new(Or::new())));
-    registry.register("system/Xor", Box::new(|| Box::new(Xor::new())));
-    registry.register("system/Not", Box::new(|| Box::new(Not::new())));
-    registry.register("system/Nand", Box::new(|| Box::new(Nand::new())));
-    registry.register("system/Nor", Box::new(|| Box::new(Nor::new())));
 
     // Comparison units
     registry.register("system/LessThan", Box::new(|| Box::new(LessThan::new())));
@@ -123,8 +119,8 @@ mod tests {
         let registry = system_registry();
         let types = registry.type_ids();
 
-        // Should have: 8 arithmetic + 6 logic + 6 comparison + 4 control = 24 total
-        assert_eq!(types.len(), 24);
+        // Should have: 8 arithmetic + 2 logic + 6 comparison + 4 control = 20 total
+        assert_eq!(types.len(), 20);
     }
 
     #[test]

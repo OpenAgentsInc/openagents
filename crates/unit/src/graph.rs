@@ -401,6 +401,22 @@ impl Unit for Graph {
             }
         }
     }
+
+    fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>) -> Result<(), String> {
+        if let Some(pin) = self.inputs.get_mut(name) {
+            pin.push_any(data).map_err(|e| e.to_string())
+        } else {
+            Err(format!("Input '{}' not found", name))
+        }
+    }
+
+    fn take_output(&mut self, name: &str) -> Option<Box<dyn std::any::Any + Send>> {
+        if let Some(pin) = self.outputs.get_mut(name) {
+            pin.take_any()
+        } else {
+            None
+        }
+    }
 }
 
 impl Primitive for Graph {

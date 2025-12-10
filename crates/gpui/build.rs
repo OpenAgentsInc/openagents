@@ -9,7 +9,6 @@ use std::env;
 fn main() {
     let target = env::var("CARGO_CFG_TARGET_OS");
     println!("cargo::rustc-check-cfg=cfg(gles)");
-    println!("cargo::rustc-check-cfg=cfg(cargo-clippy)");
 
     #[cfg(any(
         not(any(target_os = "macos", target_os = "windows")),
