@@ -4,6 +4,7 @@ use std::ops::Range;
 use theme::accent;
 
 /// Style configuration for markdown rendering
+#[allow(dead_code)]
 pub struct MarkdownStyle {
     pub code_color: Hsla,
     pub heading_weight: FontWeight,
@@ -19,6 +20,7 @@ impl Default for MarkdownStyle {
 }
 
 /// Parse markdown text and return StyledText with appropriate formatting
+#[allow(dead_code)]
 pub fn render_markdown(text: &str, style: &MarkdownStyle) -> StyledText {
     let mut output = String::new();
     let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();

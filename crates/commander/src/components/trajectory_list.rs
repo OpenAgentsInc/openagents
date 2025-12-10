@@ -14,11 +14,13 @@ use theme::{bg, border, status, text, FONT_FAMILY};
 // ============================================================================
 
 /// Format date for display
+#[allow(dead_code)]
 fn format_date(dt: DateTime<Utc>) -> String {
     dt.format("%b %d, %H:%M").to_string()
 }
 
 /// Format session ID for display (show last 8 chars)
+#[allow(dead_code)]
 fn format_session_id(id: &str) -> String {
     if id.len() > 8 {
         format!("...{}", &id[id.len() - 8..])
@@ -32,6 +34,7 @@ fn format_session_id(id: &str) -> String {
 // ============================================================================
 
 /// Render a single trajectory item in the list
+#[allow(dead_code)]
 pub fn render_trajectory_item(
     metadata: &TrajectoryMetadata,
     is_selected: bool,
@@ -107,6 +110,7 @@ pub fn render_trajectory_item(
 }
 
 /// Render status badge
+#[allow(dead_code)]
 fn render_status_badge(item_status: &str) -> impl IntoElement {
     let (badge_bg, badge_text) = match item_status.to_lowercase().as_str() {
         "completed" => (status::SUCCESS_BG, status::SUCCESS),
@@ -130,6 +134,7 @@ fn render_status_badge(item_status: &str) -> impl IntoElement {
 // ============================================================================
 
 /// Render the list header with title and count
+#[allow(dead_code)]
 pub fn render_trajectory_list_header(
     total_count: usize,
     is_collapsed: bool,
@@ -179,6 +184,7 @@ pub fn render_trajectory_list_header(
 // ============================================================================
 
 /// Render the search input
+#[allow(dead_code)]
 pub fn render_search_input(current_query: &str) -> impl IntoElement {
     let query = current_query.to_string();
 
@@ -227,6 +233,7 @@ pub fn render_search_input(current_query: &str) -> impl IntoElement {
 // ============================================================================
 
 /// Render pagination controls
+#[allow(dead_code)]
 pub fn render_pagination(
     current_page: usize,
     total_pages: usize,
@@ -288,6 +295,7 @@ pub fn render_pagination(
 // ============================================================================
 
 /// Render the complete trajectory list
+#[allow(dead_code)]
 pub fn render_trajectory_list(
     trajectories: &[TrajectoryMetadata],
     selected_session_id: Option<&str>,
@@ -337,6 +345,7 @@ pub fn render_trajectory_list(
 }
 
 /// Render the list content (loading, error, empty, or items)
+#[allow(dead_code)]
 fn render_list_content(
     trajectories: &[TrajectoryMetadata],
     selected_session_id: Option<&str>,

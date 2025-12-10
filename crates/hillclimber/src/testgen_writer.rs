@@ -51,15 +51,50 @@ enum ValidationType {
     CommandOutput,
 }
 
-/// Detect task type from test data without hardcoding task IDs.
+/// Detect task type from test data and task description without hardcoding task IDs.
 ///
-/// Analyzes all tests to find signals that indicate what kind of task this is,
-/// then determines the appropriate validation method.
-fn detect_task_type(tests: &[GeneratedTest]) -> TaskSignals {
+/// Analyzes all tests and the task description to find signals that indicate
+/// what kind of task this is, then determines the appropriate validation method.
+///
+/// The `task_description` parameter is optional but highly recommended - it allows
+/// extraction of output file paths that may not appear in the generated tests.
+/// This is LEGITIMATE because the path comes from the task itself, not TB2 knowledge.
+fn detect_task_type(tests: &[GeneratedTest], task_description: Option<&str>) -> TaskSignals {
     let mut signals = TaskSignals::default();
 
     // Regex for extracting file paths like "/app/regex.txt", "/output/file.py"
     let path_regex = Regex::new(r"/[a-zA-Z0-9/_.-]+\.(txt|py|json|log|sh)").unwrap();
+
+    // FIRST: Try to extract file path from task description (most reliable source)
+    // This is legitimate because the path comes from the task itself, not hardcoded.
+    if let Some(desc) = task_description {
+        // Look for "Save ... in /path" patterns
+        let save_regex =
+            Regex::new(r"(?i)(?:save|write|output|store)\s+(?:your\s+)?(?:\w+\s+)*(?:in|to|at)\s+(/[/\w.-]+)")
+                .unwrap();
+
+        if let Some(caps) = save_regex.captures(desc) {
+            if let Some(m) = caps.get(1) {
+                signals.output_file_location = Some(m.as_str().to_string());
+            }
+        }
+
+        // Fall back to general path extraction from description
+        if signals.output_file_location.is_none() {
+            if let Some(m) = path_regex.find(desc) {
+                signals.output_file_location = Some(m.as_str().to_string());
+            }
+        }
+
+        // Check for regex keywords in description
+        let desc_lower = desc.to_lowercase();
+        if desc_lower.contains("regex")
+            || desc_lower.contains("re.findall")
+            || desc_lower.contains("pattern")
+        {
+            signals.has_regex_pattern = true;
+        }
+    }
 
     for test in tests {
         // Combine input and reasoning for keyword scanning
@@ -75,7 +110,7 @@ fn detect_task_type(tests: &[GeneratedTest]) -> TaskSignals {
             signals.has_regex_pattern = true;
         }
 
-        // Extract file paths from test input or reasoning
+        // Extract file paths from test input or reasoning (fallback if not in description)
         if signals.output_file_location.is_none() {
             if let Some(m) = path_regex.find(&test.input) {
                 signals.output_file_location = Some(m.as_str().to_string());
@@ -147,15 +182,22 @@ fn parse_expected_output(raw: &str) -> String {
 ///
 /// * `tests` - Vector of generated tests from testgen
 /// * `task_id` - Task identifier for the header comment
+/// * `task_description` - Optional task description to extract output file paths from
 ///
 /// # Returns
 ///
 /// A string containing valid Python pytest code
-pub fn format_as_pytest(tests: &[GeneratedTest], task_id: &str) -> String {
+pub fn format_as_pytest(
+    tests: &[GeneratedTest],
+    task_id: &str,
+    task_description: Option<&str>,
+) -> String {
     let mut output = String::new();
 
-    // Detect task type from test data
-    let signals = detect_task_type(tests);
+    // Detect task type from test data AND task description
+    // The task_description is used to extract output file paths (e.g., "/app/regex.txt")
+    // This is LEGITIMATE because the path comes from the task itself, not TB2 knowledge
+    let signals = detect_task_type(tests, task_description);
 
     // Header
     output.push_str("# Generated tests for ");
@@ -624,7 +666,7 @@ mod tests {
             TestCategory::Correctness,
         )];
 
-        let signals = detect_task_type(&tests);
+        let signals = detect_task_type(&tests, None);
         assert!(signals.has_regex_pattern);
         assert_eq!(signals.validation_method, ValidationType::RegexMatch);
     }
@@ -638,7 +680,7 @@ mod tests {
             TestCategory::Correctness,
         )];
 
-        let signals = detect_task_type(&tests);
+        let signals = detect_task_type(&tests, None);
         assert!(!signals.has_regex_pattern);
         assert_eq!(signals.validation_method, ValidationType::CommandOutput);
     }
@@ -653,7 +695,7 @@ mod tests {
             TestCategory::Existence,
         )];
 
-        let signals = detect_task_type(&tests);
+        let signals = detect_task_type(&tests, None);
         assert_eq!(
             signals.output_file_location,
             Some("/app/regex.txt".to_string())
@@ -669,8 +711,27 @@ mod tests {
             TestCategory::Integration,
         )];
 
-        let signals = detect_task_type(&tests);
+        let signals = detect_task_type(&tests, None);
         assert!(signals.has_multiline_input);
+    }
+
+    #[test]
+    fn test_detect_task_type_with_description() {
+        let tests = vec![make_test(
+            "test1",
+            "192.168.1.1 2023-01-15",
+            Some("['2023-01-15']"),
+            TestCategory::Correctness,
+        )];
+
+        // Without task description - no path found (reasoning doesn't have path)
+        let signals = detect_task_type(&tests, None);
+        assert!(signals.output_file_location.is_none());
+
+        // With task description - path extracted
+        let signals = detect_task_type(&tests, Some("Save your regex in /app/regex.txt"));
+        assert_eq!(signals.output_file_location, Some("/app/regex.txt".to_string()));
+        assert!(signals.has_regex_pattern);
     }
 
     // ================================================================
@@ -754,7 +815,7 @@ mod tests {
     #[test]
     fn test_format_as_pytest_empty() {
         let tests: Vec<GeneratedTest> = vec![];
-        let output = format_as_pytest(&tests, "test-task");
+        let output = format_as_pytest(&tests, "test-task", None);
         assert!(output.contains("# Generated tests for test-task"));
         assert!(output.contains("import pytest"));
     }
@@ -767,7 +828,7 @@ mod tests {
             None,
             TestCategory::Existence,
         )];
-        let output = format_as_pytest(&tests, "test-task");
+        let output = format_as_pytest(&tests, "test-task", None);
         assert!(output.contains("def test_exists_1"));
         assert!(output.contains("Existence Tests"));
         assert!(output.contains("Path(\"/app/output.txt\")"));
@@ -781,7 +842,7 @@ mod tests {
             Some("hello"),
             TestCategory::Correctness,
         )];
-        let output = format_as_pytest(&tests, "test-task");
+        let output = format_as_pytest(&tests, "test-task", None);
         assert!(output.contains("def test_correct_1"));
         assert!(output.contains("Correctness Tests"));
     }
@@ -796,12 +857,14 @@ mod tests {
             "Match date with regex pattern from /output/pattern.txt",
             TestCategory::Correctness,
         )];
-        let output = format_as_pytest(&tests, "regex-test");
+        // Pass task description with file path for detection
+        let task_desc = "Write a regex and save it in /output/pattern.txt";
+        let output = format_as_pytest(&tests, "regex-test", Some(task_desc));
 
         // Should include re import for regex tasks
         assert!(output.contains("import re"));
 
-        // Should generate real assertions, not stubs (path detected from reasoning)
+        // Should generate real assertions, not stubs (path detected from task description)
         assert!(output.contains("re.findall(pattern, test_input"), "Output was: {}", output);
         assert!(output.contains("assert matches == expected"));
 
@@ -819,9 +882,11 @@ mod tests {
             "Match date with regex pattern from /output/pattern.txt",
             TestCategory::Correctness,
         )];
-        let output = format_as_pytest(&tests, "regex-test");
+        // Pass task description with file path for detection
+        let task_desc = "Write a regex and save it in /output/pattern.txt";
+        let output = format_as_pytest(&tests, "regex-test", Some(task_desc));
 
-        // Should still try to compile and run regex (path detected from reasoning)
+        // Should still try to compile and run regex (path detected from task description)
         assert!(output.contains("re.compile(pattern)"), "Output was: {}", output);
         assert!(output.contains("re.findall(pattern"));
     }

@@ -285,6 +285,8 @@ impl TaskRepository for SqliteRepository {
             .map_err(|e| TaskError::DatabaseError(e.to_string()))?;
         }
 
+        // Drop the lock before calling self.get() to avoid deadlock
+        drop(conn);
         self.get(&id)
     }
 

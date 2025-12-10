@@ -21,6 +21,7 @@ members = [
     "crates/hud",
     "crates/storybook",
     "crates/tasks",
+    "crates/config",
 ]
 
 [workspace.lints.rust]
@@ -46,6 +47,8 @@ media = { path = "crates/media" }
 derive_refineable = { path = "crates/refineable/derive_refineable" }
 reqwest_client = { path = "crates/http_client" }
 http_client = { path = "crates/http_client", package = "reqwest_client" }
+tasks = { path = "crates/tasks" }
+config = { path = "crates/config" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"

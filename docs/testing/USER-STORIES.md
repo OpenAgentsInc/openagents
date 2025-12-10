@@ -558,6 +558,73 @@ The TBCC is a unified interface for managing and visualizing TerminalBench runs.
 
 ---
 
+## 10. HillClimber / MAP Optimization
+
+Overnight evolution and optimization for Terminal-Bench benchmarks.
+
+### 10.1 Optimization Execution
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| HILL-001 | P1 | As a user, I can run overnight optimization | Start hillclimber, runs until stopped or complete |
+| HILL-002 | P1 | As a user, I can see evolution progress | Live stats: generation, best score, time elapsed |
+| HILL-003 | P1 | As a user, I can configure MAP parameters | Set population size, mutation rate, selection pressure |
+| HILL-004 | P2 | As a user, I can pause/resume evolution | State saved, resumable from checkpoint |
+| HILL-005 | P2 | As a user, I can view generation history | Historical scores, prompts, test results |
+| HILL-006 | P2 | As a user, I can export best candidates | Save top N performers for deployment |
+
+---
+
+## 11. TestGen / Test Generation
+
+Automated test generation and evolution system.
+
+### 11.1 Test Generation
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| TGEN-001 | P1 | As a user, I can generate tests for a category | Specify TB category, generate tests |
+| TGEN-002 | P1 | As a user, I can evolve test quality | Iteratively improve tests via scoring |
+| TGEN-003 | P2 | As a user, I can validate generated tests | Run tests against known-good implementations |
+| TGEN-004 | P2 | As a user, I can export test suites | Save to JSON format for Terminal-Bench |
+| TGEN-005 | P3 | As a user, I can compare test coverage | Visualize coverage across categories |
+
+---
+
+## 12. ATIF / Agent Trajectories
+
+Agent Trajectory Interchange Format for recording and analysis.
+
+### 12.1 Trajectory Recording
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| ATIF-001 | P1 | As a user, I can record agent trajectories | Capture all actions, observations, thoughts |
+| ATIF-002 | P1 | As a user, I can replay trajectories | Step through recorded session |
+| ATIF-003 | P2 | As a user, I can export trajectories | Save as ATIF JSON, compatible with HuggingFace |
+| ATIF-004 | P2 | As a user, I can import trajectories | Load external ATIF files for analysis |
+| ATIF-005 | P2 | As a user, I can search trajectories | Query by action type, tool use, outcome |
+| ATIF-006 | P3 | As a user, I can visualize trajectory graphs | Interactive timeline of agent actions |
+
+---
+
+## 13. Foundation Model Bridge
+
+Apple on-device Foundation Model integration.
+
+### 13.1 FM Inference
+
+| ID | Priority | User Story | Acceptance Criteria |
+|----|----------|------------|---------------------|
+| FM-001 | P0 | As a user, I can use Apple FM for inference | Local model responds to prompts |
+| FM-002 | P1 | As a user, I can list available models | Query FM server for model capabilities |
+| FM-003 | P1 | As a user, I can use guided generation | Constrained output with grammar/schema |
+| FM-004 | P2 | As a user, I can track FM token usage | Count input/output tokens |
+| FM-005 | P2 | As a user, I can configure FM parameters | Temperature, max tokens, stop sequences |
+| FM-006 | P3 | As a user, I can use streaming responses | Real-time token generation |
+
+---
+
 ## Task Tracking Matrix
 
 This matrix maps user stories to OpenAgents tasks. Update this when creating or completing test tasks.
@@ -607,6 +674,25 @@ Smoke coverage for HUD-001/002/010/012 lives in `e2e/tests/smoke/basic-smoke.spe
 | CONF-001..033 | - | Config validation tests | |
 | PAR-001..013 | - | Parallel/worktree tests | |
 
+### HillClimber / TestGen Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| HILL-001..006 | - | MAP optimization tests | |
+| TGEN-001..005 | - | Test generation tests | |
+
+### ATIF / Trajectory Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| ATIF-001..006 | - | Trajectory recording tests | |
+
+### Foundation Model Tests
+
+| Story ID(s) | Task ID | Description | Status |
+|-------------|---------|-------------|--------|
+| FM-001..006 | - | FM bridge tests | |
+
 ---
 
-*Last updated: 2025-12-03*
+*Last updated: 2025-12-10*

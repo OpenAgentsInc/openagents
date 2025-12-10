@@ -104,6 +104,17 @@ fn get_trajectories_db_path() -> PathBuf {
     data_dir.join("trajectories.db")
 }
 
+/// The current screen/view in the application
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Screen {
+    #[default]
+    Commander,
+    Gym,
+    Compute,
+    Wallet,
+    Store,
+}
+
 #[derive(Clone)]
 enum MessageUpdate {
     AppendToLast(String),
@@ -112,6 +123,10 @@ enum MessageUpdate {
 }
 
 struct CommanderView {
+    // Navigation
+    current_screen: Screen,
+    focus_handle: FocusHandle,
+    // Chat/Commander view
     input: Entity<TextInput>,
     #[allow(dead_code)]
     fm_client: Arc<FMClient>,
@@ -306,6 +321,8 @@ impl CommanderView {
             .unwrap_or_default();
 
         Self {
+            current_screen: Screen::Commander,
+            focus_handle: cx.focus_handle(),
             input,
             fm_client,
             store,
@@ -324,6 +341,42 @@ impl CommanderView {
             sidebar_current_page: 0,
             sidebar_page_size: 20,
         }
+    }
+
+    // Navigation handlers
+    fn go_to_commander(&mut self, _: &actions::GoToCommander, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Commander;
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_gym(&mut self, _: &actions::GoToGym, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Gym;
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_compute(&mut self, _: &actions::GoToCompute, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Compute;
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_wallet(&mut self, _: &actions::GoToWallet, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Wallet;
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_store(&mut self, _: &actions::GoToStore, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Store;
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn toggle_sidebar(&mut self, _: &actions::ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
+        self.sidebar_collapsed = !self.sidebar_collapsed;
+        cx.notify();
     }
 
     /// Refresh the trajectory list from the store
@@ -463,6 +516,155 @@ impl CommanderView {
             .rounded(px(4.0))
             .child(badge_status.to_lowercase())
     }
+
+    /// Render a placeholder screen with title and description
+    fn render_placeholder_screen(&self, title: &'static str, description: &'static str, icon: &'static str) -> impl IntoElement {
+        div()
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(16.0))
+            .child(
+                div()
+                    .text_size(px(64.0))
+                    .child(icon),
+            )
+            .child(
+                div()
+                    .text_size(px(32.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::PRIMARY)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .text_size(px(16.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
+                    .max_w(px(400.0))
+                    .text_center()
+                    .child(description),
+            )
+    }
+
+    /// Render the Gym screen
+    fn render_gym_screen(&self) -> impl IntoElement {
+        self.render_placeholder_screen(
+            "Gym",
+            "Train agents on Terminal-Bench. Push toward 100% using Apple Foundation Model.",
+            "🏋️",
+        )
+    }
+
+    /// Render the Compute screen
+    fn render_compute_screen(&self) -> impl IntoElement {
+        self.render_placeholder_screen(
+            "Compute",
+            "Sell your device's idle compute for bitcoin. Join the swarm network.",
+            "⚡",
+        )
+    }
+
+    /// Render the Wallet screen
+    fn render_wallet_screen(&self) -> impl IntoElement {
+        self.render_placeholder_screen(
+            "Wallet",
+            "Built-in Bitcoin wallet. Self-custodial Lightning & Spark.",
+            "💰",
+        )
+    }
+
+    /// Render the Store screen
+    fn render_store_screen(&self) -> impl IntoElement {
+        self.render_placeholder_screen(
+            "Store",
+            "Publish and discover agents that use swarm compute.",
+            "🏪",
+        )
+    }
+
+    /// Render the Commander (chat) content area
+    fn render_commander_content(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            // Messages area
+            .child(
+                div()
+                    .id("messages-scroll")
+                    .flex_1()
+                    .w_full()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .child(
+                                div()
+                                    .id("steps")
+                                    .flex()
+                                    .flex_col()
+                                    .w_full()
+                                    .max_w(px(768.0))
+                                    .p(px(20.0))
+                                    .gap(px(16.0))
+                                    // Render ATIF steps
+                                    .child(render_steps_list(
+                                        &self.steps,
+                                        &self.expanded_step_ids,
+                                    ))
+                                    // Loading indicator
+                                    .children(if self.is_loading {
+                                        Some(
+                                            div()
+                                                .w_full()
+                                                .max_w(px(768.0))
+                                                .text_color(text::MUTED)
+                                                .font_family(FONT_FAMILY)
+                                                .text_size(px(14.0))
+                                                .line_height(px(22.0))
+                                                .child("..."),
+                                        )
+                                    } else {
+                                        None
+                                    }),
+                            ),
+                    ),
+            )
+            // Input area
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_center()
+                    .pb(px(20.0))
+                    .px(px(20.0))
+                    .child(
+                        div()
+                            .w(px(768.0))
+                            .h(px(44.0))
+                            .bg(input::BG)
+                            .border_1()
+                            .border_color(input::BORDER)
+                            .px(px(12.0))
+                            .flex()
+                            .items_center()
+                            .text_color(text::BRIGHT)
+                            .font_family(FONT_FAMILY)
+                            .text_size(px(14.0))
+                            .line_height(px(20.0))
+                            .child(self.input.clone()),
+                    ),
+            )
+    }
 }
 
 fn format_error(e: &fm_bridge::FMError) -> String {
@@ -492,20 +694,44 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 impl Render for CommanderView {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let total_trajectories = self.trajectories.len();
+        let current_screen = self.current_screen;
 
-        // Build trajectory items with click handlers
-        let mut trajectory_items: Vec<AnyElement> = Vec::new();
-        for traj in &self.trajectories {
-            trajectory_items.push(self.render_trajectory_item(traj, cx).into_any_element());
-        }
+        // Build trajectory items with click handlers (only for Commander screen)
+        let trajectory_items: Vec<AnyElement> = if current_screen == Screen::Commander {
+            self.trajectories
+                .iter()
+                .map(|traj| self.render_trajectory_item(traj, cx).into_any_element())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Render main content based on current screen
+        let main_content: AnyElement = match current_screen {
+            Screen::Commander => self.render_commander_content(cx).into_any_element(),
+            Screen::Gym => self.render_gym_screen().into_any_element(),
+            Screen::Compute => self.render_compute_screen().into_any_element(),
+            Screen::Wallet => self.render_wallet_screen().into_any_element(),
+            Screen::Store => self.render_store_screen().into_any_element(),
+        };
 
         div()
+            .id("commander-root")
+            .key_context("Commander")
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_row()
             .size_full()
             .bg(bg::APP)
-            // Sidebar with trajectory list
-            .when(!self.sidebar_collapsed, |el| {
+            // Register navigation action handlers on the view
+            .on_action(cx.listener(Self::go_to_commander))
+            .on_action(cx.listener(Self::go_to_gym))
+            .on_action(cx.listener(Self::go_to_compute))
+            .on_action(cx.listener(Self::go_to_wallet))
+            .on_action(cx.listener(Self::go_to_store))
+            .on_action(cx.listener(Self::toggle_sidebar))
+            // Sidebar with trajectory list (only show on Commander screen)
+            .when(!self.sidebar_collapsed && current_screen == Screen::Commander, |el| {
                 el.child(
                     div()
                         .w(px(320.0))
@@ -558,10 +784,11 @@ impl Render for CommanderView {
                         ),
                 )
             })
-            // Collapsed sidebar toggle
-            .when(self.sidebar_collapsed, |el| {
+            // Collapsed sidebar toggle (only show on Commander screen)
+            .when(self.sidebar_collapsed && current_screen == Screen::Commander, |el| {
                 el.child(
                     div()
+                        .id("sidebar-toggle")
                         .w(px(40.0))
                         .h_full()
                         .border_r_1()
@@ -572,6 +799,10 @@ impl Render for CommanderView {
                         .justify_center()
                         .cursor_pointer()
                         .hover(|s| s.bg(bg::SURFACE))
+                        .on_click(cx.listener(|this, _event, _window, cx| {
+                            this.sidebar_collapsed = false;
+                            cx.notify();
+                        }))
                         .child(
                             div()
                                 .text_color(text::MUTED)
@@ -581,90 +812,13 @@ impl Render for CommanderView {
                 )
             })
             // Main content area
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .flex()
-                    .flex_col()
-                    // Messages area
-                    .child(
-                        div()
-                            .id("messages-scroll")
-                            .flex_1()
-                            .w_full()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .child(
-                                div()
-                                    .w_full()
-                                    .flex()
-                                    .flex_col()
-                                    .items_center()
-                                    .child(
-                                        div()
-                                            .id("steps")
-                                            .flex()
-                                            .flex_col()
-                                            .w_full()
-                                            .max_w(px(768.0))
-                                            .p(px(20.0))
-                                            .gap(px(16.0))
-                                            // Render ATIF steps
-                                            .child(render_steps_list(
-                                                &self.steps,
-                                                &self.expanded_step_ids,
-                                            ))
-                                            // Loading indicator
-                                            .children(if self.is_loading {
-                                                Some(
-                                                    div()
-                                                        .w_full()
-                                                        .max_w(px(768.0))
-                                                        .text_color(text::MUTED)
-                                                        .font_family(FONT_FAMILY)
-                                                        .text_size(px(14.0))
-                                                        .line_height(px(22.0))
-                                                        .child("..."),
-                                                )
-                                            } else {
-                                                None
-                                            }),
-                                    ),
-                            ),
-                    )
-                    // Input area
-                    .child(
-                        div()
-                            .w_full()
-                            .flex()
-                            .justify_center()
-                            .pb(px(20.0))
-                            .px(px(20.0))
-                            .child(
-                                div()
-                                    .w(px(768.0))
-                                    .h(px(44.0))
-                                    .bg(input::BG)
-                                    .border_1()
-                                    .border_color(input::BORDER)
-                                    .px(px(12.0))
-                                    .flex()
-                                    .items_center()
-                                    .text_color(text::BRIGHT)
-                                    .font_family(FONT_FAMILY)
-                                    .text_size(px(14.0))
-                                    .line_height(px(20.0))
-                                    .child(self.input.clone()),
-                            ),
-                    ),
-            )
+            .child(main_content)
     }
 }
 
 impl Focusable for CommanderView {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.focus_handle(cx)
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
 
@@ -719,82 +873,52 @@ fn main() {
             KeyBinding::new("cmd-5", actions::GoToStore, None),
         ]);
 
-        // Register action handlers
+        // Register app-level action handlers
         cx.on_action(|_: &actions::Quit, cx| cx.quit());
         cx.on_action(|_: &actions::ShowSettings, _cx| {
             // TODO: Open settings panel
-            eprintln!("Settings action triggered");
         });
         cx.on_action(|_: &actions::ShowAbout, _cx| {
             // TODO: Show about dialog
-            eprintln!("About action triggered");
         });
 
-        // Navigation handlers
-        cx.on_action(|_: &actions::GoToCommander, _cx| {
-            eprintln!("Navigate to Commander");
-        });
-        cx.on_action(|_: &actions::GoToGym, _cx| {
-            eprintln!("Navigate to Gym");
-        });
-        cx.on_action(|_: &actions::GoToCompute, _cx| {
-            eprintln!("Navigate to Compute");
-        });
-        cx.on_action(|_: &actions::GoToWallet, _cx| {
-            eprintln!("Navigate to Wallet");
-        });
-        cx.on_action(|_: &actions::GoToStore, _cx| {
-            eprintln!("Navigate to Store");
-        });
+        // Note: Navigation handlers (GoToCommander, GoToGym, etc.) are registered
+        // on the view in CommanderView::render() using cx.listener()
 
-        // View handlers
-        cx.on_action(|_: &actions::ToggleSidebar, _cx| {
-            eprintln!("Toggle sidebar");
-        });
-        cx.on_action(|_: &actions::ZoomIn, _cx| {
-            eprintln!("Zoom in");
-        });
-        cx.on_action(|_: &actions::ZoomOut, _cx| {
-            eprintln!("Zoom out");
-        });
-        cx.on_action(|_: &actions::ZoomReset, _cx| {
-            eprintln!("Zoom reset");
-        });
-        cx.on_action(|_: &actions::ToggleFullscreen, _cx| {
-            eprintln!("Toggle fullscreen");
-        });
+        // File handlers (TODO: implement properly)
+        cx.on_action(|_: &actions::NewTrajectory, _cx| {});
+        cx.on_action(|_: &actions::OpenTrajectory, _cx| {});
+        cx.on_action(|_: &actions::SaveTrajectory, _cx| {});
+        cx.on_action(|_: &actions::ExportTrajectory, _cx| {});
 
-        // File handlers
-        cx.on_action(|_: &actions::NewTrajectory, _cx| {
-            eprintln!("New trajectory");
-        });
-        cx.on_action(|_: &actions::OpenTrajectory, _cx| {
-            eprintln!("Open trajectory");
-        });
-        cx.on_action(|_: &actions::SaveTrajectory, _cx| {
-            eprintln!("Save trajectory");
-        });
-        cx.on_action(|_: &actions::ExportTrajectory, _cx| {
-            eprintln!("Export trajectory");
-        });
+        // Edit handlers (TODO: implement properly)
+        cx.on_action(|_: &actions::Undo, _cx| {});
+        cx.on_action(|_: &actions::Redo, _cx| {});
 
-        // Edit handlers
-        cx.on_action(|_: &actions::Undo, _cx| {
-            eprintln!("Undo");
-        });
-        cx.on_action(|_: &actions::Redo, _cx| {
-            eprintln!("Redo");
-        });
+        // View handlers (TODO: implement zoom)
+        cx.on_action(|_: &actions::ZoomIn, _cx| {});
+        cx.on_action(|_: &actions::ZoomOut, _cx| {});
+        cx.on_action(|_: &actions::ZoomReset, _cx| {});
+        cx.on_action(|_: &actions::ToggleFullscreen, _cx| {});
 
         // Help handlers
         cx.on_action(|_: &actions::OpenDocs, _cx| {
-            eprintln!("Open docs");
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open")
+                .arg("https://openagents.com/docs")
+                .spawn();
         });
         cx.on_action(|_: &actions::OpenDiscord, _cx| {
-            eprintln!("Open Discord");
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open")
+                .arg("https://discord.gg/openagents")
+                .spawn();
         });
         cx.on_action(|_: &actions::ReportIssue, _cx| {
-            eprintln!("Report issue");
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open")
+                .arg("https://github.com/OpenAgentsInc/openagents/issues")
+                .spawn();
         });
 
         // Set application menus
@@ -816,7 +940,7 @@ fn main() {
                 },
                 |window, cx| {
                     let view = cx.new(|cx| CommanderView::new(cx));
-                    let focus_handle = view.read(cx).input.focus_handle(cx);
+                    let focus_handle = view.read(cx).focus_handle.clone();
                     window.focus(&focus_handle);
                     view
                 },

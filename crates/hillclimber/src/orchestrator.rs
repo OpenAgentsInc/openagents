@@ -341,8 +341,12 @@ impl<F: FMClient, T: ToolExecutor, E: HillClimberEmitter> MAPOrchestrator<F, T, 
 
                     if !result.tests.is_empty() {
                         // Convert to pytest format
-                        let pytest_content =
-                            crate::testgen_writer::format_as_pytest(&result.tests, &task.id);
+                        // Pass task.description (not sanitized) for file path extraction
+                        let pytest_content = crate::testgen_writer::format_as_pytest(
+                            &result.tests,
+                            &task.id,
+                            Some(&task.description),
+                        );
 
                         // Write to workspace
                         let test_file = "test_generated.py";
