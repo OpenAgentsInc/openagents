@@ -6,7 +6,7 @@ mod text_input;
 
 use atif::{Agent, Step};
 use atif_store::{TrajectoryMetadata, TrajectoryStore};
-use components::render_steps_list;
+use components::{render_source_badge, render_step_details};
 use fm_bridge::FMClient;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -303,6 +303,8 @@ impl CommanderView {
                                             view.steps.pop();
                                         }
                                     }
+                                    // Refresh trajectory list to show updated step counts
+                                    view.refresh_trajectories();
                                 }
                             }
                         }
@@ -313,12 +315,15 @@ impl CommanderView {
         })
         .detach();
 
-        // Load existing trajectories
-        let trajectories = store
+        // Load existing trajectories (filter out empty ones)
+        let trajectories: Vec<TrajectoryMetadata> = store
             .lock()
             .unwrap()
             .list_trajectories(100, 0)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| t.total_steps > 0)
+            .collect();
 
         Self {
             current_screen: Screen::Commander,
@@ -380,14 +385,16 @@ impl CommanderView {
     }
 
     /// Refresh the trajectory list from the store
-    #[allow(dead_code)]
     fn refresh_trajectories(&mut self) {
         self.trajectories = self
             .store
             .lock()
             .unwrap()
             .list_trajectories(100, 0)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| t.total_steps > 0)
+            .collect();
     }
 
     /// Load a trajectory by session ID
@@ -575,8 +582,146 @@ impl CommanderView {
         )
     }
 
+    /// Toggle step expansion
+    fn toggle_step(&mut self, step_id: i64, cx: &mut Context<Self>) {
+        if self.expanded_step_ids.contains(&step_id) {
+            self.expanded_step_ids.remove(&step_id);
+        } else {
+            self.expanded_step_ids.insert(step_id);
+        }
+        cx.notify();
+    }
+
+    /// Render a single step with click handler for expansion
+    fn render_step_with_click(&self, step: &Step, cx: &mut Context<Self>) -> impl IntoElement {
+        let step_id = step.step_id;
+        let is_expanded = self.expanded_step_ids.contains(&step_id);
+        let tool_count = step.tool_calls.as_ref().map(|tc| tc.len()).unwrap_or(0);
+        let message_preview = if step.message.len() > 60 {
+            format!("{}...", &step.message[..60])
+        } else {
+            step.message.clone()
+        };
+        let timestamp = step
+            .timestamp
+            .map(|t| t.format("%H:%M:%S").to_string())
+            .unwrap_or_else(|| "--:--:--".to_string());
+
+        div()
+            .id(SharedString::from(format!("step-{}", step_id)))
+            .border_b_1()
+            .border_color(border::DEFAULT)
+            // Header (always shown, clickable)
+            .child(
+                div()
+                    .id(SharedString::from(format!("step-header-{}", step_id)))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(16.0))
+                    .py(px(10.0))
+                    .bg(bg::CARD)
+                    .hover(|s| s.bg(bg::HOVER))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.toggle_step(step_id, cx);
+                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.0))
+                            .flex_1()
+                            .min_w_0()
+                            // Step ID
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::MUTED)
+                                    .flex_shrink_0()
+                                    .child(format!("#{}", step_id)),
+                            )
+                            // Source badge
+                            .child(render_source_badge(&step.source))
+                            // Timestamp
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::MUTED)
+                                    .flex_shrink_0()
+                                    .child(timestamp),
+                            )
+                            // Model (if agent)
+                            .when_some(step.model_name.clone(), |el, model| {
+                                let truncated = if model.len() > 20 {
+                                    format!("{}...", &model[..20])
+                                } else {
+                                    model
+                                };
+                                el.child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .font_family(FONT_FAMILY)
+                                        .text_color(text::DISABLED)
+                                        .child(truncated),
+                                )
+                            })
+                            // Tool count (if any)
+                            .when(tool_count > 0, |el| {
+                                el.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(4.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .font_family(FONT_FAMILY)
+                                                .text_color(text::SECONDARY)
+                                                .child(format!(
+                                                    "{} tool{}",
+                                                    tool_count,
+                                                    if tool_count == 1 { "" } else { "s" }
+                                                )),
+                                        ),
+                                )
+                            })
+                            // Message preview (truncated)
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::SECONDARY)
+                                    .truncate()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(message_preview),
+                            ),
+                    )
+                    // Expand/collapse indicator
+                    .child(
+                        div()
+                            .text_color(text::MUTED)
+                            .flex_shrink_0()
+                            .ml(px(8.0))
+                            .child(if is_expanded { "▲" } else { "▼" }),
+                    ),
+            )
+            // Details (shown when expanded)
+            .when(is_expanded, |el| el.child(render_step_details(step)))
+    }
+
     /// Render the Commander (chat) content area
-    fn render_commander_content(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_commander_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Build step elements with click handlers
+        let step_elements: Vec<AnyElement> = self
+            .steps
+            .iter()
+            .map(|step| self.render_step_with_click(step, cx).into_any_element())
+            .collect();
+
         div()
             .flex_1()
             .h_full()
@@ -605,11 +750,8 @@ impl CommanderView {
                                     .max_w(px(768.0))
                                     .p(px(20.0))
                                     .gap(px(16.0))
-                                    // Render ATIF steps
-                                    .child(render_steps_list(
-                                        &self.steps,
-                                        &self.expanded_step_ids,
-                                    ))
+                                    // Render ATIF steps with click handlers
+                                    .children(step_elements)
                                     // Loading indicator
                                     .children(if self.is_loading {
                                         Some(
