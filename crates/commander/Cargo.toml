@@ -14,3 +14,5 @@ path = "src/main.rs"
 # NEVER CHANGE THIS TO GIT DEPENDENCY - USE LOCAL GPUI CRATE
 gpui = { path = "../gpui" }
 unicode-segmentation = "1.12"
+fm-bridge = { path = "../fm-bridge" }
+tokio = { version = "1", features = ["rt-multi-thread"] }

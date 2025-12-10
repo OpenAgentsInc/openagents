@@ -1,23 +1,48 @@
 mod text_input;
 
+use fm_bridge::FMClient;
 use gpui::*;
 use std::borrow::Cow;
+use std::sync::Arc;
 use text_input::TextInput;
 
 struct CommanderView {
     input: Entity<TextInput>,
+    fm_client: Arc<FMClient>,
 }
 
 impl CommanderView {
     fn new(cx: &mut Context<Self>) -> Self {
+        let fm_client = Arc::new(FMClient::new());
+        let fm_client_clone = fm_client.clone();
+
         let input = cx.new(|cx| {
             TextInput::new("Message OpenAgents", cx)
-                .on_submit(|text, _cx| {
-                    println!("Submitted: {}", text);
+                .on_submit(move |text, _cx| {
+                    let client = fm_client_clone.clone();
+                    let prompt = text.to_string();
+
+                    // Spawn async task to call FM API
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        rt.block_on(async {
+                            println!("Sending to FM API: {}", prompt);
+                            match client.complete(&prompt, None).await {
+                                Ok(response) => {
+                                    if let Some(choice) = response.choices.first() {
+                                        println!("FM Response: {}", choice.message.content);
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("FM API Error: {:?}", e);
+                                }
+                            }
+                        });
+                    });
                 })
         });
 
-        Self { input }
+        Self { input, fm_client }
     }
 }
 
