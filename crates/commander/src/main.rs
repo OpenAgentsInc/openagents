@@ -5,12 +5,12 @@ use std::borrow::Cow;
 use text_input::TextInput;
 
 struct CommanderView {
-    input: View<TextInput>,
+    input: Entity<TextInput>,
 }
 
 impl CommanderView {
     fn new(cx: &mut Context<Self>) -> Self {
-        let input = cx.new_view(|cx| {
+        let input = cx.new(|cx| {
             TextInput::new("Message OpenAgents", cx)
                 .on_submit(|text, _cx| {
                     println!("Submitted: {}", text);
@@ -50,21 +50,21 @@ impl Render for CommanderView {
     }
 }
 
-impl FocusableView for CommanderView {
-    fn focus_handle(&self, cx: &AppContext) -> FocusHandle {
+impl Focusable for CommanderView {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.input.focus_handle(cx)
     }
 }
 
 fn main() {
-    App::new().run(|cx: &mut AppContext| {
+    Application::new().run(|cx: &mut App| {
         // Load Berkeley Mono fonts
         cx.text_system()
             .add_fonts(vec![
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Regular.ttf")),
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Bold.ttf")),
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Italic.ttf")),
-                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-BoldItalic.ttf")),
+                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Regular.ttf").as_slice()),
+                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Bold.ttf").as_slice()),
+                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-Italic.ttf").as_slice()),
+                Cow::Borrowed(include_bytes!("../assets/fonts/BerkeleyMono-BoldItalic.ttf").as_slice()),
             ])
             .unwrap();
 
@@ -85,28 +85,21 @@ fn main() {
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
 
-        let window = cx
-            .open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("OpenAgents Commander".into()),
-                        ..Default::default()
-                    }),
-                    focus: true,
-                    show: true,
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("OpenAgents Commander".into()),
                     ..Default::default()
-                },
-                |cx| cx.new_view(|cx| CommanderView::new(cx)),
-            )
-            .unwrap();
+                }),
+                focus: true,
+                show: true,
+                ..Default::default()
+            },
+            |_, cx| cx.new(|cx| CommanderView::new(cx)),
+        )
+        .unwrap();
 
-        // Focus the input and activate window
-        window
-            .update(cx, |view, cx| {
-                cx.focus_view(&view.input);
-                cx.activate(true);
-            })
-            .unwrap();
+        cx.activate(true);
     });
 }
