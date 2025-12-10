@@ -208,3 +208,78 @@ All errors fixed. Only warnings remain (expected for stub implementations).
 **Lines of Code:** ~950 lines (stubs + types)
 **Build Status:** ✅ Compiling
 **Ready for:** Implementation (Track 1 starts now)
+
+---
+
+## Update 13:54 - GymScreen Tab Navigation Complete
+
+### Work Completed
+
+**Implemented full GymScreen with working tab navigation:**
+
+1. **Tab System** (4 tabs):
+   - Trajectories (default)
+   - TBCC (Terminal-Bench Command Center)
+   - HillClimber (real-time visualization)
+   - TestGen (test generation progress)
+
+2. **Tab Bar Features**:
+   - Click to switch tabs
+   - Visual feedback (active tab highlighted)
+   - Hover states
+   - Proper styling with theme colors
+   - Uses `on_mouse_down` for click handling (4-parameter closure)
+
+3. **Layout Structure**:
+   - Sidebar (left, 260px wide, collapsible)
+   - Main content area (flex-1)
+     - Tab bar (48px height, top)
+     - Tab content (scrollable, fills remaining space)
+
+4. **Entity Management**:
+   - Created view entities for each tab
+   - `trajectory_view: Entity<TrajectoryView>`
+   - `dashboard_view: Entity<DashboardView>` (TBCC)
+   - `hillclimber_view: Entity<HillClimberMonitor>`
+   - `testgen_view: Entity<TestGenVisualizer>`
+
+5. **Sidebar Placeholder**:
+   - Header with "WORKSPACE" label
+   - Scrollable content area (tree will go here)
+   - Currently shows: Sessions, HillClimber Runs, TestGen Suites
+   - Toggle collapse functionality ready
+
+### Key Learnings
+
+1. **GPUI Trait Imports**: Need `use gpui::prelude::*;` for fluent builder methods like `when()`
+2. **Stateful Divs**: Must call `.id("some-id")` before `.overflow_y_scroll()` to make div stateful
+3. **Click Handlers**: Use `.on_mouse_down(MouseButton::Left, ...)` with 4-parameter closure: `|view, _event, _window, cx|`
+4. **Entity Cloning**: Can clone Entity<T> to pass to child elements
+
+### Build Status
+
+✅ **Compiles cleanly**
+```bash
+$ cargo check -p gym
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.39s
+```
+
+Only minor warnings (unused imports, unused variables in stubs).
+
+### Files Modified
+
+- `crates/gym/src/gym_screen.rs` - Complete implementation (~190 lines)
+  - Full tab bar rendering
+  - Tab switching logic
+  - Sidebar layout
+  - Content routing based on active tab
+
+### Next Steps
+
+1. Implement expandable tree in Sidebar
+2. Extract trajectory viewer from commander
+3. Begin parallel implementation of TBCC, HillClimber, TestGen views
+
+**Progress:** Foundation + Core Structure (Track 1: 60% complete)
+**Lines Added:** +140 lines to GymScreen
+**Time:** 5 minutes (13:49 → 13:54)
