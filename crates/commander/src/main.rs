@@ -566,12 +566,88 @@ impl CommanderView {
             )
     }
 
-    /// Render the Gym screen
-    fn render_gym_screen(&self) -> impl IntoElement {
-        self.render_placeholder_screen(
-            "Gym",
-            "Train agents on Terminal-Bench. Push toward 100% using Apple Foundation Model.",
-        )
+    /// Render the Gym screen (formerly Commander - showing trajectories and chat)
+    fn render_gym_screen(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Build step elements with click handlers
+        let step_elements: Vec<AnyElement> = self
+            .steps
+            .iter()
+            .map(|step| self.render_step_with_click(step, cx).into_any_element())
+            .collect();
+
+        div()
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            // Messages area
+            .child(
+                div()
+                    .id("gym-messages-scroll")
+                    .flex_1()
+                    .w_full()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .child(
+                                div()
+                                    .id("gym-steps")
+                                    .flex()
+                                    .flex_col()
+                                    .w_full()
+                                    .max_w(px(768.0))
+                                    .p(px(20.0))
+                                    .gap(px(16.0))
+                                    // Render ATIF steps with click handlers
+                                    .children(step_elements)
+                                    // Loading indicator
+                                    .children(if self.is_loading {
+                                        Some(
+                                            div()
+                                                .w_full()
+                                                .max_w(px(768.0))
+                                                .text_color(text::MUTED)
+                                                .font_family(FONT_FAMILY)
+                                                .text_size(px(14.0))
+                                                .line_height(px(22.0))
+                                                .child("..."),
+                                        )
+                                    } else {
+                                        None
+                                    }),
+                            ),
+                    ),
+            )
+            // Input area
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_center()
+                    .pb(px(20.0))
+                    .px(px(20.0))
+                    .child(
+                        div()
+                            .w(px(768.0))
+                            .h(px(44.0))
+                            .bg(input::BG)
+                            .border_1()
+                            .border_color(input::BORDER)
+                            .px(px(12.0))
+                            .flex()
+                            .items_center()
+                            .text_color(text::BRIGHT)
+                            .font_family(FONT_FAMILY)
+                            .text_size(px(14.0))
+                            .line_height(px(20.0))
+                            .child(self.input.clone()),
+                    ),
+            )
     }
 
     /// Render the Compute screen
@@ -729,86 +805,218 @@ impl CommanderView {
             .when(is_expanded, |el| el.child(render_step_details(step)))
     }
 
-    /// Render the Commander (chat) content area
-    fn render_commander_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Build step elements with click handlers
-        let step_elements: Vec<AnyElement> = self
-            .steps
-            .iter()
-            .map(|step| self.render_step_with_click(step, cx).into_any_element())
-            .collect();
-
+    /// Render the new Commander HUD screen (visual agent interface)
+    fn render_commander_screen(&self) -> impl IntoElement {
         div()
             .flex_1()
             .h_full()
             .flex()
             .flex_col()
-            // Messages area
+            .bg(bg::APP)
+            // HUD Top Bar (Resource Counters - StarCraft inspired)
             .child(
                 div()
-                    .id("messages-scroll")
-                    .flex_1()
+                    .id("hud-top-bar")
                     .w_full()
-                    .min_h_0()
-                    .overflow_y_scroll()
+                    .h(px(48.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(20.0))
+                    .bg(hsla(0.0, 0.0, 0.05, 0.9))
+                    .border_b_1()
+                    .border_color(border::DEFAULT)
+                    // Left side: Agent status
                     .child(
                         div()
-                            .w_full()
                             .flex()
-                            .flex_col()
                             .items_center()
+                            .gap(px(24.0))
                             .child(
                                 div()
-                                    .id("steps")
                                     .flex()
-                                    .flex_col()
-                                    .w_full()
-                                    .max_w(px(768.0))
-                                    .p(px(20.0))
-                                    .gap(px(16.0))
-                                    // Render ATIF steps with click handlers
-                                    .children(step_elements)
-                                    // Loading indicator
-                                    .children(if self.is_loading {
-                                        Some(
-                                            div()
-                                                .w_full()
-                                                .max_w(px(768.0))
-                                                .text_color(text::MUTED)
-                                                .font_family(FONT_FAMILY)
-                                                .text_size(px(14.0))
-                                                .line_height(px(22.0))
-                                                .child("..."),
-                                        )
-                                    } else {
-                                        None
-                                    }),
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::MUTED)
+                                            .child("AGENTS:"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(16.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::PRIMARY)
+                                            .child("0 / 0"),
+                                    )
+                                    .child(
+                                        div()
+                                            .px(px(6.0))
+                                            .py(px(2.0))
+                                            .bg(status::SUCCESS_BG)
+                                            .text_size(px(10.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(status::SUCCESS)
+                                            .child("IDLE"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::MUTED)
+                                            .child("JOBS/HR:"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(16.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::PRIMARY)
+                                            .child("0"),
+                                    ),
+                            ),
+                    )
+                    // Right side: Resource counters
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(24.0))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .child("💰"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(16.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::PRIMARY)
+                                            .child("0 sats"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .child("🔥"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::PRIMARY)
+                                            .child("0 / 10k"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::MUTED)
+                                            .child("tokens"),
+                                    ),
                             ),
                     ),
             )
-            // Input area
+            // Main Canvas Area (Factorio-inspired factory view)
             .child(
                 div()
+                    .id("hud-canvas")
+                    .flex_1()
                     .w_full()
-                    .flex()
-                    .justify_center()
-                    .pb(px(20.0))
-                    .px(px(20.0))
+                    .relative()
+                    .bg(hsla(0.0, 0.0, 0.0, 1.0))
+                    // Grid background (dots pattern)
                     .child(
                         div()
-                            .w(px(768.0))
-                            .h(px(44.0))
-                            .bg(input::BG)
-                            .border_1()
-                            .border_color(input::BORDER)
-                            .px(px(12.0))
+                            .absolute()
+                            .inset_0()
+                            .child(
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .items_center()
+                                            .gap(px(16.0))
+                                            .child(
+                                                div()
+                                                    .text_size(px(24.0))
+                                                    .font_family(FONT_FAMILY)
+                                                    .text_color(text::PRIMARY)
+                                                    .child("⚡ COMMAND & CONTROL"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(14.0))
+                                                    .font_family(FONT_FAMILY)
+                                                    .text_color(text::MUTED)
+                                                    .child("Visual agent management interface"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .font_family(FONT_FAMILY)
+                                                    .text_color(text::DISABLED)
+                                                    .child("Press Cmd+2 for Gym (training interface)"),
+                                            ),
+                                    ),
+                            ),
+                    ),
+            )
+            // Bottom Panel (StarCraft-inspired selection panel)
+            .child(
+                div()
+                    .id("hud-bottom-panel")
+                    .w_full()
+                    .h(px(120.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .px(px(20.0))
+                    .bg(hsla(0.0, 0.0, 0.05, 0.9))
+                    .border_t_1()
+                    .border_color(border::DEFAULT)
+                    .child(
+                        div()
                             .flex()
+                            .flex_col()
                             .items_center()
-                            .text_color(text::BRIGHT)
-                            .font_family(FONT_FAMILY)
-                            .text_size(px(14.0))
-                            .line_height(px(20.0))
-                            .child(self.input.clone()),
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::MUTED)
+                                    .child("NO AGENTS SELECTED"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::DISABLED)
+                                    .child("Click agents in the canvas to select • Hold Shift for multi-select"),
+                            ),
                     ),
             )
     }
@@ -843,8 +1051,8 @@ impl Render for CommanderView {
         let total_trajectories = self.trajectories.len();
         let current_screen = self.current_screen;
 
-        // Build trajectory items with click handlers (only for Commander screen)
-        let trajectory_items: Vec<AnyElement> = if current_screen == Screen::Commander {
+        // Build trajectory items with click handlers (only for Gym screen)
+        let trajectory_items: Vec<AnyElement> = if current_screen == Screen::Gym {
             self.trajectories
                 .iter()
                 .map(|traj| self.render_trajectory_item(traj, cx).into_any_element())
@@ -855,8 +1063,8 @@ impl Render for CommanderView {
 
         // Render main content based on current screen
         let main_content: AnyElement = match current_screen {
-            Screen::Commander => self.render_commander_content(cx).into_any_element(),
-            Screen::Gym => self.render_gym_screen().into_any_element(),
+            Screen::Commander => self.render_commander_screen().into_any_element(),
+            Screen::Gym => self.render_gym_screen(cx).into_any_element(),
             Screen::Compute => self.render_compute_screen().into_any_element(),
             Screen::Wallet => self.render_wallet_screen().into_any_element(),
             Screen::Marketplace => self.render_marketplace_screen().into_any_element(),
@@ -877,8 +1085,8 @@ impl Render for CommanderView {
             .on_action(cx.listener(Self::go_to_wallet))
             .on_action(cx.listener(Self::go_to_marketplace))
             .on_action(cx.listener(Self::toggle_sidebar))
-            // Sidebar with trajectory list (only show on Commander screen)
-            .when(!self.sidebar_collapsed && current_screen == Screen::Commander, |el| {
+            // Sidebar with trajectory list (only show on Gym screen)
+            .when(!self.sidebar_collapsed && current_screen == Screen::Gym, |el| {
                 el.child(
                     div()
                         .w(px(320.0))
@@ -931,8 +1139,8 @@ impl Render for CommanderView {
                         ),
                 )
             })
-            // Collapsed sidebar toggle (only show on Commander screen)
-            .when(self.sidebar_collapsed && current_screen == Screen::Commander, |el| {
+            // Collapsed sidebar toggle (only show on Gym screen)
+            .when(self.sidebar_collapsed && current_screen == Screen::Gym, |el| {
                 el.child(
                     div()
                         .id("sidebar-toggle")
