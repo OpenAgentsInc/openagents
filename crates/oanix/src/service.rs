@@ -3,6 +3,7 @@
 //! Plan 9-style file services that can be mounted into namespaces.
 
 use crate::error::FsError;
+use serde::Serialize;
 
 /// Flags for opening files
 #[derive(Debug, Clone, Copy, Default)]
@@ -47,7 +48,7 @@ impl OpenFlags {
 }
 
 /// A directory entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DirEntry {
     /// Name of the entry
     pub name: String,
@@ -58,7 +59,7 @@ pub struct DirEntry {
 }
 
 /// File metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Metadata {
     /// Whether this is a directory
     pub is_dir: bool,
