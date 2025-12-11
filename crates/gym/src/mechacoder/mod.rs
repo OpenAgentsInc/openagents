@@ -424,30 +424,19 @@ impl MechaCoderScreen {
 
         // Build query options - let claude pick the default model
         let max_turns = 30u32;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         info!(
             target: "mechacoder::cc",
             max_turns,
-            "Building query options (default model)"
+            cwd = ?cwd,
+            "Building query options (default model, SDK finds claude)"
         );
-
-        // Set explicit path to claude since we're running from a different context
-        let home = std::env::var("HOME").unwrap_or_default();
-        let claude_path = format!("{}/.claude/local/claude", home);
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        info!(target: "mechacoder::cc", claude_path = %claude_path, cwd = ?cwd, "Using explicit claude path and cwd");
-
-        let mut exec_config = claude_agent_sdk::transport::ExecutableConfig::default();
-        exec_config.path = Some(std::path::PathBuf::from(&claude_path));
 
         let query_options = QueryOptions::new()
             .max_turns(max_turns)
             .cwd(cwd)
             .setting_sources(vec![SettingSource::Project, SettingSource::User])
             .dangerously_skip_permissions(true);
-
-        // We need to set the executable config on the options
-        let mut query_options = query_options;
-        query_options.executable = exec_config;
 
         eprintln!("[MECHACODER::CC] Query options built");
         debug!(target: "mechacoder::cc", "Query options built - dangerously_skip_permissions=true");
