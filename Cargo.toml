@@ -45,6 +45,8 @@ members = [
     "crates/vibe",
     "crates/harbor",
     "crates/telemetry",
+    "crates/acp",
+    "crates/mechacoder",
 ]
 
 [workspace.lints.rust]
@@ -79,6 +81,10 @@ cli = { path = "crates/cli" }
 parallel = { path = "crates/parallel" }
 sandbox = { path = "crates/sandbox" }
 telemetry = { path = "crates/telemetry" }
+
+# ACP protocol for Claude Code integration
+agent-client-protocol = { version = "0.9.0", features = ["unstable"] }
+acp = { path = "crates/acp" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"
