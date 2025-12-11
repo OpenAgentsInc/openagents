@@ -202,10 +202,10 @@ impl Default for RunSubagentOptions {
     }
 }
 
-/// Agent type used for the subtask
+/// Agent type used for routing subtasks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum AgentType {
+pub enum RouterAgentType {
     /// Claude Code SDK
     ClaudeCode,
     /// Apple Foundation Models
@@ -214,12 +214,12 @@ pub enum AgentType {
     Minimal,
 }
 
-impl std::fmt::Display for AgentType {
+impl std::fmt::Display for RouterAgentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AgentType::ClaudeCode => write!(f, "claude-code"),
-            AgentType::Fm => write!(f, "fm"),
-            AgentType::Minimal => write!(f, "minimal"),
+            RouterRouterAgentType::ClaudeCode => write!(f, "claude-code"),
+            RouterRouterAgentType::Fm => write!(f, "fm"),
+            RouterRouterAgentType::Minimal => write!(f, "minimal"),
         }
     }
 }
@@ -228,7 +228,7 @@ impl std::fmt::Display for AgentType {
 #[derive(Debug, Clone)]
 pub struct RoutingDecision {
     /// Which agent to use
-    pub agent: AgentType,
+    pub agent: RouterAgentType,
     /// Reason for the decision
     pub reason: String,
 }
@@ -246,7 +246,7 @@ pub fn route_subtask(
 
         if availability.available {
             return Ok(RoutingDecision {
-                agent: AgentType::ClaudeCode,
+                agent: RouterAgentType::ClaudeCode,
                 reason: "Claude Code available and task is complex".to_string(),
             });
         }
@@ -261,7 +261,7 @@ pub fn route_subtask(
 
         if fm_availability.available {
             return Ok(RoutingDecision {
-                agent: AgentType::Fm,
+                agent: RouterAgentType::Fm,
                 reason: "FM available on macOS".to_string(),
             });
         }
@@ -269,14 +269,14 @@ pub fn route_subtask(
 
     // Fall back to minimal
     Ok(RoutingDecision {
-        agent: AgentType::Minimal,
+        agent: RouterAgentType::Minimal,
         reason: "Using minimal subagent (default fallback)".to_string(),
     })
 }
 
-/// Verification result
+/// Verification result from subagent routing
 #[derive(Debug, Clone)]
-pub struct VerificationResult {
+pub struct RouterVerificationResult {
     /// Whether verification passed
     pub passed: bool,
     /// Output from verification commands
@@ -320,10 +320,10 @@ pub fn merge_files_modified(file_sets: &[&[String]]) -> Vec<String> {
     merged.into_iter().collect()
 }
 
-/// Learning metrics from FM subagent
+/// Learning metrics from FM subagent routing
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LearningMetrics {
+pub struct RouterLearningMetrics {
     /// IDs of skills that were injected
     #[serde(default)]
     pub skills_injected: Vec<String>,
@@ -434,9 +434,9 @@ mod tests {
 
     #[test]
     fn test_agent_type_display() {
-        assert_eq!(format!("{}", AgentType::ClaudeCode), "claude-code");
-        assert_eq!(format!("{}", AgentType::Fm), "fm");
-        assert_eq!(format!("{}", AgentType::Minimal), "minimal");
+        assert_eq!(format!("{}", RouterAgentType::ClaudeCode), "claude-code");
+        assert_eq!(format!("{}", RouterAgentType::Fm), "fm");
+        assert_eq!(format!("{}", RouterAgentType::Minimal), "minimal");
     }
 
     #[test]
@@ -451,6 +451,6 @@ mod tests {
 
         let decision = route_subtask(&subtask, &options).unwrap();
         // Should fall back to minimal since Claude Code likely not available in tests
-        assert_eq!(decision.agent, AgentType::Minimal);
+        assert_eq!(decision.agent, RouterAgentType::Minimal);
     }
 }

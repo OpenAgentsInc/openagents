@@ -14,6 +14,8 @@ path = "src/bin/hillclimber.rs"
 # Workspace member crates
 fm-bridge = { path = "../fm-bridge" }
 testgen = { path = "../testgen" }
+llm = { path = "../llm" }
+sandbox = { path = "../sandbox" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

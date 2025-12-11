@@ -29,6 +29,10 @@ pub enum HillClimberError {
     #[error("Configuration not found: {0}")]
     ConfigNotFound(String),
 
+    /// Configuration error (LLM provider setup)
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+
     /// Task not found
     #[error("Task not found: {0}")]
     TaskNotFound(String),

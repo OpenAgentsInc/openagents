@@ -9,12 +9,14 @@
 use crate::channel::Channel;
 use crate::message::ChatMessage;
 use nostr::{
-    derive_keypair, Event, Keypair, Nip06Error,
+    derive_keypair, Event, EventTemplate, Keypair, Nip06Error, finalize_event,
     KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA,
+    JobInput, JobRequest,
 };
 use nostr_relay::{Filter, PoolEvent, RelayPool};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
@@ -31,11 +33,20 @@ pub enum ChatError {
     #[error("not connected")]
     NotConnected,
 
+    #[error("no identity set")]
+    NoIdentity,
+
     #[error("channel not found: {0}")]
     ChannelNotFound(String),
 
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    #[error("nip-90 error: {0}")]
+    Nip90(#[from] nostr::Nip90Error),
+
+    #[error("event signing error: {0}")]
+    Signing(#[from] nostr::Nip01Error),
 }
 
 /// Events emitted by the chat state.
@@ -88,15 +99,22 @@ pub struct DvmJob {
     pub created_at: u64,
 }
 
-/// DVM job status.
+/// DVM job status (aligned with NIP-90 JobStatus).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DvmJobStatus {
     /// Job submitted, waiting for response
     Pending,
+    /// Service provider requires payment before processing
+    PaymentRequired {
+        amount_msats: Option<u64>,
+        bolt11: Option<String>,
+    },
     /// Service provider is processing
     Processing,
     /// Job completed successfully
     Completed,
+    /// Service provider returned partial results
+    Partial,
     /// Job failed
     Failed(String),
 }
@@ -304,6 +322,13 @@ impl ChatState {
                                         job.status = match status.as_str() {
                                             "processing" => DvmJobStatus::Processing,
                                             "error" => DvmJobStatus::Failed(event.content.clone()),
+                                            "partial" => DvmJobStatus::Partial,
+                                            "payment-required" => {
+                                                // Extract amount and bolt11 from tags
+                                                let amount = Self::extract_amount(&event);
+                                                let bolt11 = Self::extract_bolt11(&event);
+                                                DvmJobStatus::PaymentRequired { amount_msats: amount, bolt11 }
+                                            }
                                             _ => job.status.clone(),
                                         };
                                     }
@@ -364,6 +389,27 @@ impl ChatState {
         None
     }
 
+    /// Extract amount (in millisats) from event tags.
+    fn extract_amount(event: &Event) -> Option<u64> {
+        for tag in &event.tags {
+            if tag.len() >= 2 && tag[0] == "amount" {
+                return tag[1].parse().ok();
+            }
+        }
+        None
+    }
+
+    /// Extract bolt11 invoice from event tags.
+    fn extract_bolt11(event: &Event) -> Option<String> {
+        for tag in &event.tags {
+            // Check for amount tag with bolt11 as second element
+            if tag.len() >= 3 && tag[0] == "amount" {
+                return Some(tag[2].clone());
+            }
+        }
+        None
+    }
+
     /// Get all known channels.
     pub async fn channels(&self) -> Vec<Channel> {
         self.channels.read().await.values().cloned().collect()
@@ -392,6 +438,119 @@ impl ChatState {
     /// Get a specific job.
     pub async fn job(&self, id: &str) -> Option<DvmJob> {
         self.dvm_jobs.read().await.get(id).cloned()
+    }
+
+    /// Submit a DVM job request to relays (NIP-90).
+    ///
+    /// # Arguments
+    /// * `kind` - The job kind (5000-5999)
+    /// * `input` - The input data for the job
+    /// * `params` - Optional key-value parameters
+    /// * `preferred_providers` - Optional list of preferred service provider pubkeys
+    /// * `max_bid_msats` - Optional maximum bid in millisats
+    ///
+    /// # Returns
+    /// The event ID of the published job request
+    pub async fn submit_job(
+        &self,
+        kind: u16,
+        input: String,
+        params: Vec<(String, String)>,
+        preferred_providers: Option<Vec<String>>,
+        max_bid_msats: Option<u64>,
+    ) -> Result<String, ChatError> {
+        let keypair = self.identity.as_ref().ok_or(ChatError::NoIdentity)?;
+
+        // Build job request using NIP-90 builder
+        let mut request = JobRequest::new(kind)?
+            .add_input(JobInput::text(&input));
+
+        // Add parameters
+        for (key, value) in params {
+            request = request.add_param(key, value);
+        }
+
+        // Add bid if specified
+        if let Some(bid) = max_bid_msats {
+            request = request.with_bid(bid);
+        }
+
+        // Add preferred service providers
+        if let Some(providers) = preferred_providers {
+            for provider in providers {
+                request = request.add_service_provider(provider);
+            }
+        }
+
+        // Get current timestamp
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // Create event template
+        let template = EventTemplate {
+            kind: request.kind,
+            tags: request.to_tags(),
+            content: request.content.clone(),
+            created_at,
+        };
+
+        // Sign the event
+        let event = finalize_event(&template, &keypair.private_key)?;
+        let event_id = event.id.clone();
+
+        info!("Submitting DVM job: id={}, kind={}", event_id, kind);
+
+        // Store job locally
+        {
+            let mut jobs = self.dvm_jobs.write().await;
+            jobs.insert(
+                event_id.clone(),
+                DvmJob {
+                    id: event_id.clone(),
+                    kind,
+                    status: DvmJobStatus::Pending,
+                    input: input.clone(),
+                    result: None,
+                    created_at,
+                },
+            );
+        }
+
+        // Publish to relays
+        self.pool.publish(event).await;
+
+        // Emit event
+        let _ = self.events_tx.send(ChatEvent::JobSubmitted {
+            job_id: event_id.clone(),
+            kind,
+        });
+
+        Ok(event_id)
+    }
+
+    /// Subscribe to DVM results and feedback for jobs we've submitted.
+    pub async fn subscribe_to_dvm_results(&self) -> Result<(), ChatError> {
+        let pubkey = self.pubkey().ok_or(ChatError::NoIdentity)?;
+
+        // Subscribe to job results (6000-6999) and feedback (7000)
+        // where we are tagged as the customer (p tag)
+        let kinds: Vec<u16> = (6000..=6999).chain(std::iter::once(7000)).collect();
+
+        let filter = Filter::new()
+            .kinds(kinds)
+            .pubkey_refs(vec![pubkey]);
+
+        let sub_id = self.pool.subscribe_all(vec![filter]).await?;
+
+        {
+            let mut subs = self.subscriptions.write().await;
+            subs.push(sub_id);
+        }
+
+        info!("Subscribed to DVM results and feedback");
+        Ok(())
     }
 
     /// Join a channel by subscribing to its messages.

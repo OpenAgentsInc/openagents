@@ -10,7 +10,7 @@
 
 use clap::{Parser, Subcommand};
 use hillclimber::{
-    format_score, HillClimberRunner, HillClimberStore, TerminalBenchTask, VerificationConfig,
+    format_score, HillClimberRunner, HillClimberStore, ModelProvider, TerminalBenchTask, VerificationConfig,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,6 +59,18 @@ struct Cli {
     /// Maximum turns per run
     #[arg(long, default_value = "30")]
     max_turns: u32,
+
+    /// Model to use (fm, claude-sonnet-4, gpt-4o, etc.)
+    #[arg(long, default_value = "fm")]
+    model: String,
+
+    /// Run in sandboxed container (requires Docker or macOS Container)
+    #[arg(long)]
+    sandbox: bool,
+
+    /// Container image for sandbox mode (default: python:3.11)
+    #[arg(long, default_value = "python:3.11")]
+    image: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -72,6 +84,18 @@ enum Commands {
         /// Maximum number of runs
         #[arg(short, long, default_value = "100")]
         max_runs: u32,
+
+        /// Model to use (fm, claude-sonnet-4, gpt-4o, etc.)
+        #[arg(long, default_value = "fm")]
+        model: String,
+
+        /// Run in sandboxed container
+        #[arg(long)]
+        sandbox: bool,
+
+        /// Container image for sandbox mode
+        #[arg(long, default_value = "python:3.11")]
+        image: String,
     },
 
     /// Show statistics
@@ -118,8 +142,9 @@ async fn main() -> anyhow::Result<()> {
     // Handle subcommands
     if let Some(command) = cli.command {
         match command {
-            Commands::Run { tasks, max_runs } => {
-                run_tasks(&cli.database, tasks, max_runs, cli.sleep_ms, cli.verbose, &cli.workspace, cli.max_turns).await?;
+            Commands::Run { tasks, max_runs, model, sandbox, image } => {
+                let provider = ModelProvider::from_str(&model);
+                run_tasks(&cli.database, tasks, max_runs, cli.sleep_ms, cli.verbose, &cli.workspace, cli.max_turns, provider, sandbox, image).await?;
             }
             Commands::Stats { task } => {
                 show_stats(&store, task)?;
@@ -147,11 +172,15 @@ async fn main() -> anyhow::Result<()> {
         println!("Sleep: {}ms", cli.sleep_ms);
         println!("Workspace: {:?}", cli.workspace);
         println!("Max turns: {}", cli.max_turns);
+        println!("Model: {}", cli.model);
+        println!("Sandbox: {}", cli.sandbox);
+        println!("Image: {}", cli.image);
         return Ok(());
     }
 
     if !cli.tasks.is_empty() {
-        run_tasks(&cli.database, cli.tasks, cli.max_runs, cli.sleep_ms, cli.verbose, &cli.workspace, cli.max_turns).await?;
+        let provider = ModelProvider::from_str(&cli.model);
+        run_tasks(&cli.database, cli.tasks, cli.max_runs, cli.sleep_ms, cli.verbose, &cli.workspace, cli.max_turns, provider, cli.sandbox, cli.image).await?;
     } else {
         println!("HillClimber: MAP-based overnight optimization for Terminal-Bench");
         println!();
@@ -176,6 +205,9 @@ async fn run_tasks(
     verbose: bool,
     workspace: &PathBuf,
     max_turns: u32,
+    model: ModelProvider,
+    sandbox: bool,
+    sandbox_image: String,
 ) -> anyhow::Result<()> {
     // Open store for runner
     let store = HillClimberStore::open(db_path)?;
@@ -222,12 +254,17 @@ async fn run_tasks(
     println!("║ Tasks: {:60} ║", task_ids.join(", "));
     println!("║ Max runs: {:57} ║", max_runs);
     println!("║ Sleep: {:57}ms ║", sleep_ms);
+    println!("║ Model: {:60?} ║", model);
+    println!("║ Sandbox: {:58} ║", if sandbox { "enabled" } else { "disabled" });
+    if sandbox {
+        println!("║ Image: {:60} ║", sandbox_image);
+    }
     println!("╚══════════════════════════════════════════════════════════════════╝");
     println!();
 
     let store_arc = Arc::new(store);
     let runner = HillClimberRunner::new(store_arc.clone());
-    let runs = runner.run_loop(tasks, max_runs, sleep_ms, verbose, max_turns).await?;
+    let runs = runner.run_loop(tasks, max_runs, sleep_ms, verbose, max_turns, model, sandbox, sandbox_image).await?;
 
     // Summary
     let passed = runs.iter().filter(|r| r.passed).count();

@@ -374,13 +374,14 @@ impl PricingUnit {
     }
 }
 
-/// A Data Vending Machine listing
+/// A Data Vending Machine listing (NIP-90)
 #[derive(Clone, Debug)]
 pub struct DVMListing {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub kind: u32,
+    /// NIP-90 job kind (5000-5999)
+    pub kind: u16,
     pub provider_pubkey: String,
     pub provider_name: String,
     pub sats_per_unit: u64,
@@ -391,7 +392,7 @@ pub struct DVMListing {
 }
 
 impl DVMListing {
-    pub fn mock(name: &str, kind: u32, sats: u64, unit: PricingUnit) -> Self {
+    pub fn mock(name: &str, kind: u16, sats: u64, unit: PricingUnit) -> Self {
         Self {
             id: format!("dvm_{}", name.to_lowercase().replace(' ', "_")),
             name: name.to_string(),

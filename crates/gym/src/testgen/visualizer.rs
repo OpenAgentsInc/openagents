@@ -87,20 +87,22 @@ pub struct TestGenSession {
 pub struct TestGenVisualizer {
     pub session: Option<TestGenSession>,
     category_progress: Entity<CategoryProgress>,
-    test_list: Entity<TestList>,
-    test_detail: Entity<TestDetail>,
+    /// Test list component (public for testing)
+    pub test_list: Entity<TestList>,
+    /// Test detail component (public for testing)
+    pub test_detail: Entity<TestDetail>,
     pub selected_test_id: Option<String>,
     focus_handle: FocusHandle,
 
     // Task selection state
-    available_tasks: Vec<TBTask>,
-    selected_task_idx: Option<usize>,
-    generation_status: GenerationStatus,
+    pub available_tasks: Vec<TBTask>,
+    pub selected_task_idx: Option<usize>,
+    pub generation_status: GenerationStatus,
 
     // Service integration
     service: Arc<TestGenService>,
     event_receiver: Option<mpsc::UnboundedReceiver<TestGenEvent>>,
-    generated_tests: Vec<testgen::GeneratedTest>,
+    pub generated_tests: Vec<testgen::GeneratedTest>,
 }
 
 impl TestGenVisualizer {

@@ -6,7 +6,7 @@ use gpui::{Entity, TestAppContext};
 use gym::{GymScreen, GymTab, TrajectoryView};
 use gym::tbcc::{TBCCScreen, TBCCTab};
 use gym::hillclimber::monitor::{HillClimberMonitor, HCSessionStatus, HCMode};
-use gym::testgen::visualizer::{TestGenVisualizer, TestGenStatus};
+use gym::testgen::visualizer::{TestGenVisualizer, TestGenStatus, GenerationStatus};
 
 // ============================================================================
 // GymScreen Assertions
@@ -317,10 +317,127 @@ impl<'a> TestGenAssertions<'a> {
         self
     }
 
-    /// Assert task name
+    /// Assert task name (legacy session-based)
     pub fn has_task_name(self, expected: &str) -> Self {
         let name = self.cx.read(|cx| self.view.read(cx).session.as_ref().map(|s| s.task_name.clone()));
         assert_eq!(name.as_deref(), Some(expected), "Expected task name '{}', got {:?}", expected, name);
+        self
+    }
+
+    // ========================================================================
+    // New Task Selection Assertions
+    // ========================================================================
+
+    /// Assert has tasks available
+    pub fn has_tasks(self) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).available_tasks.len());
+        assert!(count > 0, "Expected at least one task available");
+        self
+    }
+
+    /// Assert task count
+    pub fn has_task_count(self, expected: usize) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).available_tasks.len());
+        assert_eq!(count, expected, "Expected {} tasks, got {}", expected, count);
+        self
+    }
+
+    /// Assert a task is selected
+    pub fn has_task_selected(self) -> Self {
+        let selected = self.cx.read(|cx| self.view.read(cx).selected_task_idx.is_some());
+        assert!(selected, "Expected a task to be selected");
+        self
+    }
+
+    /// Assert no task selected
+    pub fn has_no_task_selected(self) -> Self {
+        let selected = self.cx.read(|cx| self.view.read(cx).selected_task_idx.is_some());
+        assert!(!selected, "Expected no task to be selected");
+        self
+    }
+
+    /// Assert selected task index
+    pub fn has_selected_task_idx(self, expected: usize) -> Self {
+        let idx = self.cx.read(|cx| self.view.read(cx).selected_task_idx);
+        assert_eq!(idx, Some(expected), "Expected task index {}, got {:?}", expected, idx);
+        self
+    }
+
+    /// Assert selected task name
+    pub fn has_selected_task_name(self, expected: &str) -> Self {
+        let name = self.cx.read(|cx| self.view.read(cx).selected_task().map(|t| t.name.clone()));
+        assert_eq!(name.as_deref(), Some(expected), "Expected selected task '{}', got {:?}", expected, name);
+        self
+    }
+
+    // ========================================================================
+    // Generation Status Assertions
+    // ========================================================================
+
+    /// Assert generation is idle
+    pub fn generation_is_idle(self) -> Self {
+        let status = self.cx.read(|cx| self.view.read(cx).generation_status.clone());
+        assert!(matches!(status, GenerationStatus::Idle), "Expected generation to be idle, got {:?}", status);
+        self
+    }
+
+    /// Assert generation is in progress
+    pub fn generation_is_running(self) -> Self {
+        let status = self.cx.read(|cx| self.view.read(cx).generation_status.clone());
+        assert!(matches!(status, GenerationStatus::Generating { .. }), "Expected generation to be running, got {:?}", status);
+        self
+    }
+
+    /// Assert generation is complete
+    pub fn generation_is_complete(self) -> Self {
+        let status = self.cx.read(|cx| self.view.read(cx).generation_status.clone());
+        assert!(matches!(status, GenerationStatus::Complete { .. }), "Expected generation to be complete, got {:?}", status);
+        self
+    }
+
+    /// Assert generation failed
+    pub fn generation_is_failed(self) -> Self {
+        let status = self.cx.read(|cx| self.view.read(cx).generation_status.clone());
+        assert!(matches!(status, GenerationStatus::Failed { .. }), "Expected generation to have failed, got {:?}", status);
+        self
+    }
+
+    /// Assert can generate (task selected and not generating)
+    pub fn can_generate(self) -> Self {
+        let can = self.cx.read(|cx| self.view.read(cx).can_generate());
+        assert!(can, "Expected to be able to generate");
+        self
+    }
+
+    /// Assert cannot generate
+    pub fn cannot_generate(self) -> Self {
+        let can = self.cx.read(|cx| self.view.read(cx).can_generate());
+        assert!(!can, "Expected to not be able to generate");
+        self
+    }
+
+    // ========================================================================
+    // Generated Tests Assertions
+    // ========================================================================
+
+    /// Assert has generated tests
+    pub fn has_generated_tests(self) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).generated_tests.len());
+        assert!(count > 0, "Expected at least one generated test");
+        self
+    }
+
+    /// Assert generated test count
+    pub fn has_generated_test_count(self, expected: usize) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).generated_tests.len());
+        assert_eq!(count, expected, "Expected {} generated tests, got {}", expected, count);
+        self
+    }
+
+    /// Assert no generated tests
+    pub fn has_no_generated_tests(self) -> Self {
+        let count = self.cx.read(|cx| self.view.read(cx).generated_tests.len());
+        assert_eq!(count, 0, "Expected no generated tests, got {}", count);
         self
     }
 }

@@ -426,6 +426,17 @@ pub struct Task {
     pub status: Option<String>,
 }
 
+impl Default for Task {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            description: None,
+            status: None,
+        }
+    }
+}
+
 // ============================================================================
 // Event Types
 // ============================================================================

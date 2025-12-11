@@ -13,11 +13,6 @@ actions!(
         SwitchToHillClimber,
         SwitchToTestGen,
 
-        // Sidebar
-        ToggleSidebar,
-        ExpandAll,
-        CollapseAll,
-
         // General
         FocusGym,
     ]
@@ -32,8 +27,5 @@ pub fn register_actions(cx: &mut App) {
         KeyBinding::new("cmd-2", SwitchToTBCC, None),
         KeyBinding::new("cmd-3", SwitchToHillClimber, None),
         KeyBinding::new("cmd-4", SwitchToTestGen, None),
-
-        // Cmd+\ to toggle sidebar
-        KeyBinding::new("cmd-\\", ToggleSidebar, None),
     ]);
 }

@@ -30,6 +30,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "atif",
+ "chrono",
+ "libc",
+ "llm",
+ "rand 0.8.5",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-test",
+ "tools",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2974,8 +2996,10 @@ dependencies = [
  "fm-bridge",
  "futures",
  "hex",
+ "llm",
  "regex",
  "rusqlite",
+ "sandbox",
  "serde",
  "serde_json",
  "sha2",
@@ -3929,7 +3953,10 @@ name = "marketplace"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "nostr",
+ "nostr-chat",
  "theme",
+ "tokio",
  "ui",
 ]
 

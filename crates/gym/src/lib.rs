@@ -6,7 +6,6 @@
 pub mod actions;
 pub mod types;
 pub mod gym_screen;
-pub mod sidebar;
 pub mod trajectory_view;
 pub mod trajectory_detail;
 
@@ -27,9 +26,8 @@ pub mod services;
 
 // Re-exports
 pub use gym_screen::GymScreen;
-pub use sidebar::Sidebar;
 pub use trajectory_view::TrajectoryView;
-pub use types::{GymTab, TreeNode, TreeItemKind, ItemStatus};
+pub use types::GymTab;
 pub use actions::register_actions;
 
 // Tests
