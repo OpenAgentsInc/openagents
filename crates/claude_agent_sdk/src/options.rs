@@ -180,6 +180,12 @@ pub struct AgentDefinition {
     /// Model to use.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<AgentModel>,
+    /// Critical reminder added to system prompt (experimental).
+    #[serde(
+        rename = "criticalSystemReminder_EXPERIMENTAL",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub critical_system_reminder_experimental: Option<String>,
 }
 
 /// Model selection for agents.
@@ -468,14 +474,18 @@ impl QueryOptions {
             args.push("--include-partial-messages".to_string());
         }
 
-        for source in &self.setting_sources {
-            let source_str = match source {
-                SettingSource::User => "user",
-                SettingSource::Project => "project",
-                SettingSource::Local => "local",
-            };
-            args.push("--setting-source".to_string());
-            args.push(source_str.to_string());
+        if !self.setting_sources.is_empty() {
+            let sources: Vec<&str> = self
+                .setting_sources
+                .iter()
+                .map(|source| match source {
+                    SettingSource::User => "user",
+                    SettingSource::Project => "project",
+                    SettingSource::Local => "local",
+                })
+                .collect();
+            args.push("--setting-sources".to_string());
+            args.push(sources.join(","));
         }
 
         for beta in &self.betas {
