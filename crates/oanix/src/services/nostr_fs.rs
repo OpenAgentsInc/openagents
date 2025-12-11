@@ -51,6 +51,92 @@ pub use nostr::{
     public_key_to_npub,
 };
 
+/// NIP-01 filter for subscriptions
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Filter {
+    /// Event IDs to match
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ids: Option<Vec<String>>,
+    /// Author public keys to match
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authors: Option<Vec<String>>,
+    /// Event kinds to match
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kinds: Option<Vec<u16>>,
+    /// Event e-tag references to match
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "#e")]
+    pub e_tags: Option<Vec<String>>,
+    /// Event p-tag references to match
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "#p")]
+    pub p_tags: Option<Vec<String>>,
+    /// Events created after this timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<u64>,
+    /// Events created before this timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub until: Option<u64>,
+    /// Maximum number of events to return
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u64>,
+}
+
+impl Filter {
+    /// Create a new empty filter
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Filter by event IDs
+    pub fn ids(mut self, ids: Vec<String>) -> Self {
+        self.ids = Some(ids);
+        self
+    }
+
+    /// Filter by authors
+    pub fn authors(mut self, authors: Vec<String>) -> Self {
+        self.authors = Some(authors);
+        self
+    }
+
+    /// Filter by event kinds
+    pub fn kinds(mut self, kinds: Vec<u16>) -> Self {
+        self.kinds = Some(kinds);
+        self
+    }
+
+    /// Filter by e-tags (event references)
+    pub fn e_tags(mut self, tags: Vec<String>) -> Self {
+        self.e_tags = Some(tags);
+        self
+    }
+
+    /// Filter by p-tags (pubkey references)
+    pub fn p_tags(mut self, tags: Vec<String>) -> Self {
+        self.p_tags = Some(tags);
+        self
+    }
+
+    /// Events since timestamp
+    pub fn since(mut self, timestamp: u64) -> Self {
+        self.since = Some(timestamp);
+        self
+    }
+
+    /// Events until timestamp
+    pub fn until(mut self, timestamp: u64) -> Self {
+        self.until = Some(timestamp);
+        self
+    }
+
+    /// Limit number of results
+    pub fn limit(mut self, limit: u64) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+}
+
 /// Nostr capability service
 ///
 /// Provides Nostr event signing and NIP-90 DVM capabilities to agents.
@@ -69,6 +155,10 @@ pub struct NostrFs {
     inbox: Arc<RwLock<HashMap<String, Event>>>,
     /// Preferred relays
     relays: Arc<RwLock<Vec<String>>>,
+    /// Active subscriptions: sub_id -> filters
+    subscriptions: Arc<RwLock<HashMap<String, Vec<Filter>>>>,
+    /// Track which events have been sent to which relays
+    sent_events: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
 impl NostrFs {
@@ -93,6 +183,8 @@ impl NostrFs {
             outbox: Arc::new(RwLock::new(HashMap::new())),
             inbox: Arc::new(RwLock::new(HashMap::new())),
             relays: Arc::new(RwLock::new(Vec::new())),
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            sent_events: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -206,6 +298,57 @@ impl NostrFs {
     /// Clear all events from the inbox
     pub fn clear_inbox(&self) {
         self.inbox.write().unwrap().clear();
+    }
+
+    /// Add a subscription with filters (for executor to manage)
+    ///
+    /// The executor will send a REQ message to relays with these filters.
+    pub fn add_subscription(&self, sub_id: String, filters: Vec<Filter>) {
+        let mut subs = self.subscriptions.write().unwrap();
+        subs.insert(sub_id, filters);
+    }
+
+    /// Get all active subscriptions
+    ///
+    /// Returns (subscription_id, filters) pairs for the executor to manage.
+    pub fn subscriptions(&self) -> Vec<(String, Vec<Filter>)> {
+        let subs = self.subscriptions.read().unwrap();
+        subs.iter()
+            .map(|(id, filters)| (id.clone(), filters.clone()))
+            .collect()
+    }
+
+    /// Remove a subscription
+    pub fn remove_subscription(&self, sub_id: &str) {
+        let mut subs = self.subscriptions.write().unwrap();
+        subs.remove(sub_id);
+    }
+
+    /// Clear all subscriptions
+    pub fn clear_subscriptions(&self) {
+        self.subscriptions.write().unwrap().clear();
+    }
+
+    /// Mark an event as sent to a relay (for tracking)
+    ///
+    /// The executor calls this after successfully sending an event.
+    pub fn mark_sent(&self, event_id: &str, relay: &str) {
+        let mut sent = self.sent_events.write().unwrap();
+        sent.entry(event_id.to_string())
+            .or_default()
+            .push(relay.to_string());
+    }
+
+    /// Get relays an event was sent to
+    pub fn sent_to(&self, event_id: &str) -> Vec<String> {
+        let sent = self.sent_events.read().unwrap();
+        sent.get(event_id).cloned().unwrap_or_default()
+    }
+
+    /// Clear sent tracking for an event
+    pub fn clear_sent(&self, event_id: &str) {
+        let mut sent = self.sent_events.write().unwrap();
+        sent.remove(event_id);
     }
 }
 

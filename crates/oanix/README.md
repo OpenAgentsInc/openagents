@@ -62,6 +62,35 @@ Agent B: /workspace (read-only)
 Agent C: /task (read-only)
 ```
 
+**Connect to real networks (HTTP, WebSocket, Nostr):**
+```rust
+use oanix::executor::{ExecutorManager, ExecutorConfig};
+
+// Create capability services
+let http_fs = Arc::new(HttpFs::new());
+let ws_fs = Arc::new(WsFs::new());
+let nostr_fs = Arc::new(NostrFs::generate()?);
+
+// Attach executors that do real network I/O
+let mut executor = ExecutorManager::new(ExecutorConfig::default())?;
+executor.attach_http(Arc::clone(&http_fs));
+executor.attach_ws(Arc::clone(&ws_fs));
+executor.attach_nostr(Arc::clone(&nostr_fs));
+executor.start()?;
+
+// Now mount in namespace - agent writes files, executors handle network
+let ns = Namespace::builder()
+    .mount("/cap/http", http_fs)
+    .mount("/cap/ws", ws_fs)
+    .mount("/cap/nostr", nostr_fs)
+    .build();
+
+// Agent writes to /cap/http/request → executor makes HTTP call
+// Response appears in /cap/http/responses/{id}.json
+
+executor.shutdown()?;
+```
+
 ### Why This is Cool
 
 **1. Security by Default**
@@ -146,6 +175,17 @@ python -m http.server 8080
 | **NostrFs** | Nostr event signing + NIP-90 DVM (requires `nostr` feature) |
 | **WsFs** | WebSocket connection management (outbox/inbox pattern) |
 | **HttpFs** | HTTP request/response client (queue-based) |
+
+### Network Executors (requires `net-executor` feature)
+
+| Executor | Description |
+|----------|-------------|
+| **ExecutorManager** | Coordinates all network executors, owns tokio runtime |
+| **HttpExecutor** | Executes HTTP requests from HttpFs via reqwest |
+| **WsConnector** | Manages WebSocket connections for WsFs |
+| **NostrRelayConnector** | Connects to Nostr relays, routes events |
+
+The executors bridge OANIX's sync filesystem APIs to real async network I/O. Your agent writes to `/cap/http/request`, the executor makes the actual HTTP call, and the response appears in `/cap/http/responses/`.
 
 ### Runtime
 
@@ -368,6 +408,49 @@ let response = http.get_response(&req_id)?;
 // /status               - Read service status
 ```
 
+### ExecutorManager - Real Network I/O (requires `net-executor` feature)
+
+```rust
+use oanix::executor::{ExecutorManager, ExecutorConfig, RetryPolicy};
+use std::sync::Arc;
+use std::time::Duration;
+
+// Configure execution behavior
+let config = ExecutorConfig::builder()
+    .poll_interval(Duration::from_millis(50))
+    .http_timeout(Duration::from_secs(30))
+    .http_retry(RetryPolicy::exponential(3, Duration::from_millis(100)))
+    .ws_connect_timeout(Duration::from_secs(10))
+    .ws_max_concurrent(100)
+    .build();
+
+// Create capability services
+let http_fs = Arc::new(HttpFs::new());
+let ws_fs = Arc::new(WsFs::new());
+
+// Create executor manager
+let mut executor = ExecutorManager::new(config)?;
+executor.attach_http(Arc::clone(&http_fs));
+executor.attach_ws(Arc::clone(&ws_fs));
+
+// Start executors (spawns async tasks)
+executor.start()?;
+
+// Now http_fs and ws_fs are "live" - requests get executed
+// Submit HTTP request via HttpFs
+let req_id = http_fs.submit_request(HttpRequest {
+    method: HttpMethod::Get,
+    url: "https://api.example.com/data".to_string(),
+    ..Default::default()
+});
+
+// Wait for response (executor handles it automatically)
+// Response appears in http_fs.get_response(&req_id)
+
+// Clean shutdown
+executor.shutdown()?;
+```
+
 ### Namespace - Mount Points
 
 ```rust
@@ -447,12 +530,24 @@ println!("Completed: {}", status.completed_count);
 
 ## Current Status
 
-- **150 tests passing** (117 unit + 33 integration)
+- **180+ tests passing** (unit + integration + E2E executor tests)
 - Native Rust with optional WASM browser support
 - WASI execution via wasmtime
 - Full capability suite: NostrFs, WsFs, HttpFs
+- Network executors with real I/O (HTTP, WebSocket, Nostr relays)
 - OanixEnv environment abstraction
 - Priority-based job scheduler
+- Comprehensive E2E test suite with mock servers
+
+### Running Tests
+
+```bash
+# All tests (fast, uses mock servers)
+cargo test --features "net-executor,nostr" -p oanix
+
+# Include live network smoke tests (requires internet)
+cargo test --features "net-executor,nostr" -p oanix -- --ignored
+```
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation progress.
 

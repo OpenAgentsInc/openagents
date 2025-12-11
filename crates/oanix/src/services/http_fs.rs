@@ -294,6 +294,26 @@ impl HttpFs {
             self.failures.read().unwrap().len(),
         )
     }
+
+    /// Check if there are any pending requests
+    ///
+    /// This is more efficient than `list_pending().is_empty()` as it doesn't
+    /// allocate a vector.
+    pub fn has_pending(&self) -> bool {
+        !self.pending.read().unwrap().is_empty()
+    }
+
+    /// Take a batch of pending requests (for executor efficiency)
+    ///
+    /// Takes up to `limit` pending requests atomically. Returns the requests
+    /// that were removed from the pending queue.
+    pub fn take_pending_batch(&self, limit: usize) -> Vec<HttpRequest> {
+        let mut pending = self.pending.write().unwrap();
+        let ids: Vec<String> = pending.keys().take(limit).cloned().collect();
+        ids.into_iter()
+            .filter_map(|id| pending.remove(&id))
+            .collect()
+    }
 }
 
 impl Default for HttpFs {

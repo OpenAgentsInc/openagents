@@ -46,6 +46,9 @@ pub mod web;
 #[cfg(all(feature = "wasi", not(target_arch = "wasm32")))]
 pub mod wasi;
 
+#[cfg(all(feature = "net-executor", not(target_arch = "wasm32")))]
+pub mod executor;
+
 // Re-exports
 pub use error::OanixError;
 pub use namespace::{Mount, Namespace, NamespaceBuilder};
@@ -66,7 +69,7 @@ pub use scheduler::{JobKind, JobResult, JobSpec, JobStatus, Scheduler, Scheduler
 pub use services::WorkspaceFs;
 
 #[cfg(feature = "nostr")]
-pub use services::NostrFs;
+pub use services::{Filter, NostrFs};
 
 #[cfg(all(feature = "wasi", not(target_arch = "wasm32")))]
 pub use wasi::{RunConfig, RunResult, WasiRuntime};

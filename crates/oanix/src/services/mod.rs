@@ -49,7 +49,7 @@ pub use ws_fs::{ConnectionInfo, WsConnection, WsFs, WsState};
 pub use workspace_fs::WorkspaceFs;
 
 #[cfg(feature = "nostr")]
-pub use nostr_fs::NostrFs;
+pub use nostr_fs::{Filter, NostrFs};
 
 // Internal re-export for sibling modules
 pub(crate) use mem_fs::now as mem_fs_now;
