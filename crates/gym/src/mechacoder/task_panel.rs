@@ -5,26 +5,56 @@ use gpui::*;
 use hillclimber::HillClimberBackend;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
-use super::types::{MechaSession, MechaStatus};
+use super::types::{tasks, MechaSession, MechaStatus, MechaTask};
 
 /// Action to switch backend
 #[derive(Clone, Debug)]
 pub struct SwitchBackend(pub HillClimberBackend);
 
+/// Action to select a different task
+#[derive(Clone, Debug)]
+pub struct SelectTask(pub MechaTask);
+
 impl EventEmitter<SwitchBackend> for TaskPanel {}
+impl EventEmitter<SelectTask> for TaskPanel {}
 
 /// Task info panel component
 pub struct TaskPanel {
     session: MechaSession,
     focus_handle: FocusHandle,
+    /// Available tasks (loaded from TB2)
+    available_tasks: Vec<MechaTask>,
+    /// Whether the task selector is expanded
+    task_selector_expanded: bool,
 }
 
 impl TaskPanel {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        // Load available TB2 tasks
+        let available_tasks = tasks::all_tasks();
+
         Self {
             session: MechaSession::default(),
             focus_handle: cx.focus_handle(),
+            available_tasks,
+            task_selector_expanded: false,
         }
+    }
+
+    /// Toggle the task selector dropdown
+    fn toggle_task_selector(&mut self, cx: &mut Context<Self>) {
+        if self.session.status.is_busy() {
+            return; // Don't allow task change while busy
+        }
+        self.task_selector_expanded = !self.task_selector_expanded;
+        cx.notify();
+    }
+
+    /// Select a task from the dropdown
+    fn select_task(&mut self, task: MechaTask, cx: &mut Context<Self>) {
+        self.task_selector_expanded = false;
+        cx.emit(SelectTask(task));
+        cx.notify();
     }
 
     pub fn set_session(&mut self, session: MechaSession, cx: &mut Context<Self>) {
@@ -340,9 +370,25 @@ impl TaskPanel {
     }
 
     fn render_cwd(&self) -> impl IntoElement {
-        let cwd = std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "Unknown".to_string());
+        // Show Docker environment for TB2 tasks
+        let (cwd_display, env_label) = if self.session.task.is_tb2_task() {
+            (
+                "/app".to_string(),
+                format!(
+                    "Docker: {}",
+                    self.session
+                        .task
+                        .docker_image
+                        .as_deref()
+                        .unwrap_or("unknown")
+                ),
+            )
+        } else {
+            let cwd = std::env::current_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "Unknown".to_string());
+            (cwd, "Local".to_string())
+        };
 
         div()
             .flex()
@@ -355,11 +401,36 @@ impl TaskPanel {
             .border_color(border::DEFAULT)
             .child(
                 div()
-                    .text_size(px(10.0))
-                    .font_family(FONT_FAMILY)
-                    .text_color(text::MUTED)
-                    .font_weight(FontWeight::MEDIUM)
-                    .child("Working Directory"),
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::MUTED)
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Working Directory"),
+                    )
+                    .child(
+                        div()
+                            .px(px(6.0))
+                            .py(px(2.0))
+                            .bg(if self.session.task.is_tb2_task() {
+                                status::INFO_BG
+                            } else {
+                                bg::SURFACE
+                            })
+                            .rounded(px(3.0))
+                            .text_size(px(9.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(if self.session.task.is_tb2_task() {
+                                status::INFO
+                            } else {
+                                text::DISABLED
+                            })
+                            .child(env_label),
+                    ),
             )
             .child(
                 div()
@@ -369,8 +440,162 @@ impl TaskPanel {
                     .font_weight(FontWeight::SEMIBOLD)
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(cwd),
+                    .child(cwd_display),
             )
+    }
+
+    fn render_task_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_busy = self.session.status.is_busy();
+        let is_expanded = self.task_selector_expanded;
+        let current_task_id = self.session.task.id.clone();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .px(px(16.0))
+            .py(px(10.0))
+            .border_b_1()
+            .border_color(border::DEFAULT)
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("Task"),
+            )
+            // Task selector button
+            .child(
+                div()
+                    .id("task-selector")
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(10.0))
+                    .py(px(8.0))
+                    .bg(bg::ELEVATED)
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(if is_expanded { status::INFO } else { border::SUBTLE })
+                    .cursor_pointer()
+                    .when(!is_busy, |el| {
+                        el.on_click(cx.listener(|this, _event, _window, cx| {
+                            this.toggle_task_selector(cx);
+                        }))
+                    })
+                    .when(is_busy, |el| el.opacity(0.5))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(text::PRIMARY)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(self.session.task.display_label()),
+                            )
+                            .when(self.session.task.category.is_some(), |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(9.0))
+                                        .font_family(FONT_FAMILY)
+                                        .text_color(text::DISABLED)
+                                        .child(
+                                            self.session
+                                                .task
+                                                .category
+                                                .clone()
+                                                .unwrap_or_default(),
+                                        ),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(text::MUTED)
+                            .child(if is_expanded { "▲" } else { "▼" }),
+                    ),
+            )
+            // Dropdown list
+            .when(is_expanded, |el| {
+                el.child(
+                    div()
+                        .id("task-dropdown-list")
+                        .flex()
+                        .flex_col()
+                        .bg(bg::SURFACE)
+                        .border_1()
+                        .border_color(border::DEFAULT)
+                        .rounded(px(4.0))
+                        .max_h(px(200.0))
+                        .overflow_y_scroll()
+                        .children(self.available_tasks.iter().map(|task| {
+                            let task_clone = task.clone();
+                            let is_selected = task.id == current_task_id;
+
+                            div()
+                                .id(ElementId::from(SharedString::from(format!(
+                                    "task-option-{}",
+                                    task.id
+                                ))))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .px(px(10.0))
+                                .py(px(8.0))
+                                .bg(if is_selected { status::INFO_BG } else { bg::SURFACE })
+                                .cursor_pointer()
+                                .hover(|s| s.bg(bg::ELEVATED))
+                                .on_click(cx.listener(move |this, _event, _window, cx| {
+                                    this.select_task(task_clone.clone(), cx);
+                                }))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(2.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .font_family(FONT_FAMILY)
+                                                .text_color(if is_selected {
+                                                    status::INFO
+                                                } else {
+                                                    text::PRIMARY
+                                                })
+                                                .font_weight(if is_selected {
+                                                    FontWeight::SEMIBOLD
+                                                } else {
+                                                    FontWeight::NORMAL
+                                                })
+                                                .child(task.display_label()),
+                                        )
+                                        .when(task.category.is_some(), |el| {
+                                            el.child(
+                                                div()
+                                                    .text_size(px(9.0))
+                                                    .font_family(FONT_FAMILY)
+                                                    .text_color(text::DISABLED)
+                                                    .child(task.category.clone().unwrap_or_default()),
+                                            )
+                                        }),
+                                )
+                                .when(is_selected, |el| {
+                                    el.child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(status::SUCCESS)
+                                            .child("✓")
+                                    )
+                                })
+                        })),
+                )
+            })
     }
 }
 
@@ -388,7 +613,8 @@ impl Render for TaskPanel {
             .h_full()
             .w_full()
             .bg(bg::SURFACE)
-            .child(self.render_cwd()) // Show CWD prominently at top
+            .child(self.render_cwd()) // Show CWD/Docker environment at top
+            .child(self.render_task_selector(cx)) // Task selector dropdown
             .child(self.render_header())
             .child(self.render_backend_toggle(cx))
             .child(self.render_progress())

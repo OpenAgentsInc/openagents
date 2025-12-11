@@ -2,10 +2,16 @@
 //!
 //! A general-purpose screen for solving Terminal-Bench tasks using either
 //! FM (Apple Foundation Model) or CC (Claude Code SDK) backends.
+//!
+//! For TB2 tasks (tasks with docker_image set), execution happens inside
+//! Docker containers matching the Terminal-Bench 2 environment.
 
+pub mod docker_runner;
 pub mod log_panel;
 pub mod task_panel;
+pub mod tb2_loader;
 pub mod types;
+pub mod verifier;
 
 use std::sync::{Arc, Mutex};
 
@@ -20,9 +26,12 @@ use tracing::{debug, error, info, warn, trace};
 use atif::{Agent, Step, ToolCall, FinalMetrics};
 use atif_store::TrajectoryStore;
 
+use self::docker_runner::{DockerEvent, DockerRunConfig, DockerRunner};
 use self::log_panel::LogPanel;
-use self::task_panel::{SwitchBackend, TaskPanel};
+use self::task_panel::{SelectTask, SwitchBackend, TaskPanel};
+use self::tb2_loader::TB2Task;
 use self::types::{LogEntry, LogKind, MechaSession, MechaStatus, MechaTask};
+use self::verifier::TB2Verifier;
 
 /// Action emitted when user clicks Start
 #[derive(Clone, Debug)]
@@ -76,9 +85,14 @@ impl MechaCoderScreen {
         let task_panel = cx.new(|cx| TaskPanel::new(cx));
         let log_panel = cx.new(|cx| LogPanel::new(cx));
 
-        // Start with default task (regex-log)
+        // Start with default task (first TB2 task or fallback)
         let mut session = MechaSession::new(HillClimberBackend::CC);
-        session.task = types::tasks::regex_log();
+        session.task = types::tasks::default_task();
+
+        // For TB2 tasks, increase max turns to match TB2 default (300)
+        if session.task.is_tb2_task() {
+            session.max_turns = 300;
+        }
 
         info!(
             target: "mechacoder",
@@ -92,6 +106,13 @@ impl MechaCoderScreen {
         cx.subscribe(&task_panel, |this, _, event: &SwitchBackend, cx| {
             debug!(target: "mechacoder", backend = ?event.0, "Backend switch event received");
             this.switch_backend(event.0, cx);
+        })
+        .detach();
+
+        // Subscribe to task selection events
+        cx.subscribe(&task_panel, |this, _, event: &SelectTask, cx| {
+            info!(target: "mechacoder", task_id = %event.0.id, "Task selection event received");
+            this.set_task(event.0.clone(), cx);
         })
         .detach();
 
@@ -365,9 +386,11 @@ impl MechaCoderScreen {
 
         // Spawn the runner
         let backend = self.session.backend;
-        let task_name = self.session.task.name.clone();
+        let task = self.session.task.clone();
+        let task_name = task.name.clone();
         let store_clone = self.store.clone();
-        info!(target: "mechacoder", backend = ?backend, task = %task_name, "Spawning runner task");
+        let max_turns = self.session.max_turns;
+        info!(target: "mechacoder", backend = ?backend, task = %task_name, is_tb2 = task.is_tb2_task(), "Spawning runner task");
 
         // Spawn the runner in a separate thread with its own tokio runtime
         // (GPUI doesn't use tokio, but Claude Agent SDK requires it)
@@ -385,14 +408,21 @@ impl MechaCoderScreen {
             };
 
             rt.block_on(async {
-                match backend {
-                    HillClimberBackend::CC => {
-                        info!(target: "mechacoder", "Using Claude Code SDK backend");
-                        Self::run_cc_query(prompt, tx, store_clone, session_id, abort_rx).await;
-                    }
-                    HillClimberBackend::FM => {
-                        warn!(target: "mechacoder", "FM backend not yet implemented");
-                        let _ = tx.send(RunnerEvent::Error("FM backend not yet implemented".to_string()));
+                // Use Docker runner for TB2 tasks
+                if task.is_tb2_task() {
+                    info!(target: "mechacoder", "Using Docker runner for TB2 task");
+                    Self::run_docker_task(task, max_turns, tx, store_clone, session_id, abort_rx).await;
+                } else {
+                    // Fall back to SDK-based approach for non-TB2 tasks
+                    match backend {
+                        HillClimberBackend::CC => {
+                            info!(target: "mechacoder", "Using Claude Code SDK backend");
+                            Self::run_cc_query(prompt, tx, store_clone, session_id, abort_rx).await;
+                        }
+                        HillClimberBackend::FM => {
+                            warn!(target: "mechacoder", "FM backend not yet implemented");
+                            let _ = tx.send(RunnerEvent::Error("FM backend not yet implemented".to_string()));
+                        }
                     }
                 }
             });
@@ -755,6 +785,267 @@ impl MechaCoderScreen {
             turns: turn,
             cost,
         });
+    }
+
+    /// Run a TB2 task using Docker
+    async fn run_docker_task(
+        task: MechaTask,
+        max_turns: u32,
+        tx: mpsc::UnboundedSender<RunnerEvent>,
+        store: Option<Arc<Mutex<TrajectoryStore>>>,
+        session_id: Option<String>,
+        abort_rx: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        info!(
+            target: "mechacoder::docker",
+            task_id = %task.id,
+            docker_image = ?task.docker_image,
+            "Starting Docker-based TB2 task"
+        );
+
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing Docker runner...")));
+
+        // Create temporary directories for the run
+        let workspace_dir = match tempfile::tempdir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                error!(target: "mechacoder::docker", error = %e, "Failed to create workspace directory");
+                let _ = tx.send(RunnerEvent::Error(format!("Failed to create workspace: {}", e)));
+                return;
+            }
+        };
+
+        let logs_dir = workspace_dir.path().join("logs");
+        if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+            error!(target: "mechacoder::docker", error = %e, "Failed to create logs directory");
+            let _ = tx.send(RunnerEvent::Error(format!("Failed to create logs directory: {}", e)));
+            return;
+        }
+
+        info!(
+            target: "mechacoder::docker",
+            workspace = %workspace_dir.path().display(),
+            logs = %logs_dir.display(),
+            "Created run directories"
+        );
+
+        // Build TB2Task from MechaTask
+        let tb2_task = match Self::mechtask_to_tb2task(&task) {
+            Some(t) => t,
+            None => {
+                error!(target: "mechacoder::docker", "Task is missing TB2 fields");
+                let _ = tx.send(RunnerEvent::Error("Task is missing TB2 configuration".to_string()));
+                return;
+            }
+        };
+
+        // Create Docker run config
+        let config = DockerRunConfig::new(
+            tb2_task.clone(),
+            workspace_dir.path().to_path_buf(),
+            logs_dir.clone(),
+        ).max_turns(max_turns);
+
+        // Create event channel for Docker runner
+        let (docker_tx, mut docker_rx) = mpsc::unbounded_channel();
+
+        // Start Docker runner
+        let runner = DockerRunner::new();
+        let run_handle = tokio::spawn(async move {
+            runner.run_claude(&config, docker_tx, abort_rx).await
+        });
+
+        // Forward Docker events to UI
+        let mut turn = 0u32;
+        while let Some(event) = docker_rx.recv().await {
+            match event {
+                DockerEvent::ContainerStarting { image } => {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::info(format!("Starting container: {}", image))));
+                }
+                DockerEvent::ContainerStarted { container_id } => {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::info(format!("Container started: {}", &container_id[..12]))));
+                }
+                DockerEvent::ClaudeOutput { line } => {
+                    // Only log non-JSON output (errors, etc)
+                    if !line.starts_with('{') {
+                        let _ = tx.send(RunnerEvent::Log(LogEntry::progress(line)));
+                    }
+                }
+                DockerEvent::AssistantMessage { text, turn: t } => {
+                    turn = t;
+                    let _ = tx.send(RunnerEvent::TurnUpdate { turn: t, max_turns });
+                    let display = if text.len() > 200 {
+                        format!("{}...", &text[..200])
+                    } else {
+                        text.clone()
+                    };
+                    let _ = tx.send(RunnerEvent::Log(LogEntry {
+                        timestamp: chrono::Utc::now(),
+                        kind: LogKind::Thinking,
+                        message: display,
+                        details: if text.len() > 200 { Some(text) } else { None },
+                    }));
+                }
+                DockerEvent::ToolUse { tool_name, tool_id: _ } => {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::tool(format!("Tool: {}", tool_name), None)));
+                }
+                DockerEvent::ContainerStopped { exit_code } => {
+                    info!(target: "mechacoder::docker", exit_code, "Container stopped");
+                }
+                DockerEvent::TurnComplete { turn: t } => {
+                    turn = t;
+                    let _ = tx.send(RunnerEvent::TurnUpdate { turn: t, max_turns });
+                }
+                DockerEvent::Error { message } => {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::error(message)));
+                }
+            }
+        }
+
+        // Wait for run to complete
+        let result = match run_handle.await {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => {
+                error!(target: "mechacoder::docker", error = %e, "Docker run failed");
+                let _ = tx.send(RunnerEvent::Error(format!("Docker run failed: {}", e)));
+                // Fail trajectory
+                if let (Some(store), Some(sid)) = (&store, &session_id) {
+                    if let Ok(s) = store.lock() {
+                        let _ = s.fail_trajectory(sid);
+                    }
+                }
+                return;
+            }
+            Err(e) => {
+                error!(target: "mechacoder::docker", error = %e, "Docker task panicked");
+                let _ = tx.send(RunnerEvent::Error(format!("Docker task error: {}", e)));
+                // Fail trajectory
+                if let (Some(store), Some(sid)) = (&store, &session_id) {
+                    if let Ok(s) = store.lock() {
+                        let _ = s.fail_trajectory(sid);
+                    }
+                }
+                return;
+            }
+        };
+
+        info!(
+            target: "mechacoder::docker",
+            success = result.success,
+            exit_code = result.exit_code,
+            turns = result.turns,
+            cost = result.cost_usd,
+            "Docker run completed, running verification"
+        );
+
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Running verification tests...")));
+
+        // Run verification
+        let verifier = TB2Verifier::new();
+        let verification = verifier.run_tests(&tb2_task, workspace_dir.path(), &logs_dir).await;
+
+        let (passed, tests_passed, tests_total) = match verification {
+            Ok(v) => {
+                info!(
+                    target: "mechacoder::docker",
+                    passed = v.passed,
+                    reward = v.reward,
+                    tests_passed = v.tests_passed,
+                    tests_total = v.tests_total,
+                    "Verification complete"
+                );
+                if v.passed {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::success(format!(
+                        "Tests passed: {}/{} (reward: {})",
+                        v.tests_passed, v.tests_total, v.reward
+                    ))));
+                } else {
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!(
+                        "Tests failed: {}/{} (reward: {})",
+                        v.tests_passed, v.tests_total, v.reward
+                    ))));
+                }
+                (v.passed, v.tests_passed, v.tests_total)
+            }
+            Err(e) => {
+                warn!(target: "mechacoder::docker", error = %e, "Verification failed to run");
+                let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!("Verification error: {}", e))));
+                (false, 0, 0)
+            }
+        };
+
+        // Complete or fail trajectory
+        if let (Some(store), Some(sid)) = (&store, &session_id) {
+            if let Ok(s) = store.lock() {
+                if passed {
+                    let final_metrics = FinalMetrics {
+                        total_prompt_tokens: None,
+                        total_completion_tokens: None,
+                        total_cached_tokens: None,
+                        total_cost_usd: Some(result.cost_usd),
+                        total_steps: Some(result.turns as i64),
+                        extra: None,
+                    };
+                    if let Err(e) = s.complete_trajectory(sid, Some(&final_metrics)) {
+                        warn!(target: "mechacoder::docker", error = %e, "Failed to complete trajectory");
+                    } else {
+                        info!(target: "mechacoder::docker", session_id = %sid, "Trajectory completed");
+                    }
+                } else {
+                    if let Err(e) = s.fail_trajectory(sid) {
+                        warn!(target: "mechacoder::docker", error = %e, "Failed to fail trajectory");
+                    }
+                }
+            }
+        }
+
+        // Send final result
+        let _ = tx.send(RunnerEvent::Complete {
+            passed,
+            turns: result.turns,
+            cost: result.cost_usd,
+        });
+    }
+
+    /// Convert MechaTask to TB2Task (for Docker runner)
+    fn mechtask_to_tb2task(task: &MechaTask) -> Option<TB2Task> {
+        let docker_image = task.docker_image.clone()?;
+        let task_dir = task.task_dir.clone()?;
+        let tests_dir = task.tests_dir.clone()?;
+
+        Some(TB2Task {
+            id: task.id.clone(),
+            name: task.name.clone(),
+            instruction: task.description.clone(),
+            config: tb2_loader::TaskToml {
+                version: "1.0".to_string(),
+                metadata: tb2_loader::TaskMetadata {
+                    author_name: "unknown".to_string(),
+                    author_email: None,
+                    difficulty: task.difficulty.clone().unwrap_or_else(|| "medium".to_string()),
+                    category: task.category.clone().unwrap_or_else(|| "general".to_string()),
+                    tags: Vec::new(),
+                    expert_time_estimate_min: None,
+                    junior_time_estimate_min: None,
+                },
+                verifier: tb2_loader::VerifierConfig {
+                    timeout_sec: 900.0,
+                },
+                agent: tb2_loader::AgentConfig {
+                    timeout_sec: task.timeout_sec.unwrap_or(900) as f64,
+                },
+                environment: tb2_loader::EnvironmentConfig {
+                    build_timeout_sec: Some(600.0),
+                    docker_image,
+                    cpus: task.cpu_limit.unwrap_or(1),
+                    memory: task.memory_limit.clone().unwrap_or_else(|| "2G".to_string()),
+                    storage: "10G".to_string(),
+                },
+            },
+            task_dir,
+            dockerfile_path: task.task_dir.clone()?.join("environment").join("Dockerfile"),
+            tests_dir,
+        })
     }
 
     /// Handle stop button click
