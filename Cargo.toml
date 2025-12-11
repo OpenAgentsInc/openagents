@@ -43,6 +43,8 @@ members = [
     "crates/healer",
     "crates/oanix",
     "crates/vibe",
+    "crates/harbor",
+    "crates/telemetry",
 ]
 
 [workspace.lints.rust]
@@ -79,6 +81,15 @@ sandbox = { path = "crates/sandbox" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-bunyan-formatter = "0.3"
+tracing-log = "0.2"
+
+# OpenTelemetry (optional in telemetry crate via feature flag)
+opentelemetry = "0.21"
+opentelemetry-otlp = { version = "0.14", features = ["tonic"] }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.22"
 perf = { path = "crates/perf" }
 mach2 = "0.5"
 walkdir = "2.5"
