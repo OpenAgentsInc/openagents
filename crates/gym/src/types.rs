@@ -17,7 +17,7 @@ pub enum GymTab {
 
 impl Default for GymTab {
     fn default() -> Self {
-        Self::Trajectories
+        Self::RegexCrusade
     }
 }
 
@@ -34,11 +34,11 @@ impl GymTab {
 
     pub fn all() -> &'static [GymTab] {
         &[
+            GymTab::RegexCrusade,
             GymTab::Trajectories,
             GymTab::TBCC,
             GymTab::HillClimber,
             GymTab::TestGen,
-            GymTab::RegexCrusade,
         ]
     }
 }
