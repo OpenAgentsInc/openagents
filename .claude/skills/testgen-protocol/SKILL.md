@@ -7,6 +7,8 @@ description: "Use when solving coding tasks to ensure systematic test-driven dev
 
 When solving ANY coding task, you MUST follow this exact workflow. This ensures you UNDERSTAND the requirements before implementing, and your solution will be verified against tests YOU generate.
 
+**Workflow**: DESCRIBE → MAP ENTITIES & CONSTRAINTS → WRITE TESTS → ITERATE
+
 ## Phase 1: DESCRIBE (Required)
 
 Before writing ANY code, analyze the task and output a structured description:
@@ -36,9 +38,70 @@ Before writing ANY code, analyze the task and output a structured description:
 - [Continue listing edge cases]
 ```
 
+## Phase 1.5: MAP ENTITIES & CONSTRAINTS (Required)
+
+**This phase prevents a common failure mode**: When constraints apply to MULTIPLE entities, you may only test for ONE entity. The mapping forces you to be explicit.
+
+Before writing tests, create an explicit coverage map:
+
+### Step 1: Extract Entities
+List ALL nouns that have requirements applied to them:
+```markdown
+### ENTITIES IDENTIFIED
+1. [entity1] - what is being matched/validated/processed (e.g., "dates")
+2. [entity2] - another thing (e.g., "IPv4 addresses")
+...
+```
+
+### Step 2: Extract Constraints
+List ALL rules/requirements from the description:
+```markdown
+### CONSTRAINTS IDENTIFIED
+1. [constraint1] - a rule about format/value/boundary (e.g., "must be in YYYY-MM-DD format")
+2. [constraint2] - another rule (e.g., "must not be adjacent to alphanumerics")
+...
+```
+
+### Step 3: Build the Matrix
+For each constraint, determine which entities it applies to:
+```markdown
+### CONSTRAINT-ENTITY MATRIX
+| Constraint | Entity1 | Entity2 | ... |
+|------------|---------|---------|-----|
+| constraint1 | ✓ | - | ... |
+| constraint2 | ✓ | ✓ | ... |  ← Applies to BOTH!
+```
+
+### Step 4: Enumerate Required Tests
+For each ✓ in the matrix, you MUST write a test:
+```markdown
+### REQUIRED TESTS
+- test_entity1_constraint1
+- test_entity1_constraint2
+- test_entity2_constraint2  ← Don't miss this!
+...
+```
+
+### CRITICAL PATTERN: "A and B must..."
+
+When you see phrases like:
+- "X and Y must not be..."
+- "ensure that A and B are..."
+- "valid P and Q should..."
+
+This means the constraint applies to MULTIPLE entities. You MUST test the constraint for EACH entity separately.
+
+**Example failure mode (what we're preventing)**:
+> "ensure usernames and emails are properly validated"
+
+❌ WRONG: Only test username validation
+✓ RIGHT: Test username validation AND email validation
+
+If you only test one entity, your solution may handle the other entity incorrectly.
+
 ## Phase 2: WRITE TESTS (Required)
 
-Create `/app/testgen_tests.py` with pytest tests for EACH acceptance criterion:
+Create `/app/testgen_tests.py` with pytest tests for EACH ✓ cell in your constraint-entity matrix:
 
 ```python
 """
@@ -117,7 +180,10 @@ def test_solution_is_general():
 | Existence | File/output created | `test_solution_file_exists` |
 | Correctness | Meets each requirement | `test_criterion_N` |
 | Boundary | Edge cases | `test_empty_input`, `test_max_size` |
+| Entity Coverage | Each ✓ in matrix | `test_entity1_constraint1`, `test_entity2_constraint1` |
 | Anti-cheat | Not hardcoded | `test_solution_is_general` |
+
+**CRITICAL**: The Entity Coverage category ensures you don't miss testing a constraint for an entity. Every ✓ in your constraint-entity matrix MUST have at least one corresponding test.
 
 ## Phase 3: ITERATE (Required)
 
