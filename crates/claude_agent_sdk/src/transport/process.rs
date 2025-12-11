@@ -49,7 +49,7 @@ impl ProcessTransport {
     ) -> Result<Self> {
         let (command, command_args) = Self::build_command(&config)?;
 
-        debug!(
+        tracing::info!(
             command = %command,
             args = ?command_args,
             extra_args = ?args,
@@ -168,7 +168,7 @@ impl ProcessTransport {
                         continue;
                     }
 
-                    trace!(line = %line, "Received line from CLI");
+                    tracing::info!(line = %line, "Received line from CLI");
 
                     match serde_json::from_str::<StdoutMessage>(&line) {
                         Ok(msg) => {
@@ -178,18 +178,18 @@ impl ProcessTransport {
                             }
                         }
                         Err(e) => {
-                            warn!(error = %e, line = %line, "Failed to parse JSONL message");
+                            tracing::warn!(error = %e, line = %line, "Failed to parse JSONL message");
                             // Continue reading, don't fail on parse errors
                         }
                     }
                 }
                 Ok(None) => {
                     // EOF
-                    debug!("CLI stdout closed");
+                    tracing::info!("CLI stdout closed (EOF)");
                     break;
                 }
                 Err(e) => {
-                    error!(error = %e, "Error reading from CLI stdout");
+                    tracing::error!(error = %e, "Error reading from CLI stdout");
                     let _ = tx.send(Err(Error::StdoutRead(e))).await;
                     break;
                 }
@@ -200,7 +200,7 @@ impl ProcessTransport {
     /// Send a message to the CLI via stdin.
     pub async fn send(&mut self, message: &StdinMessage) -> Result<()> {
         let json = serde_json::to_string(message)?;
-        trace!(json = %json, "Sending message to CLI");
+        tracing::info!(json = %json, "Sending message to CLI");
 
         self.stdin
             .write_all(json.as_bytes())
