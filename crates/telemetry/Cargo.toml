@@ -1,0 +1,31 @@
+[package]
+name = "telemetry"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = []
+test-support = []
+otel = ["opentelemetry", "opentelemetry-otlp", "opentelemetry_sdk", "tracing-opentelemetry"]
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-bunyan-formatter = { workspace = true }
+tracing-log = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+
+# Optional OTEL
+opentelemetry = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util", "macros"] }
+serde_json = { workspace = true }
+regex = { workspace = true }
