@@ -251,13 +251,13 @@ impl<'a> ChunkSlice<'a> {
             }
         } else {
             if !self.assert_char_boundary::<false>(range.start) {
-                range.start = self.text.ceil_char_boundary(range.start);
+                range.start = <str as StrCharBoundary>::ceil_char_boundary(&self.text, range.start);
             }
             if !self.assert_char_boundary::<false>(range.end) {
                 range.end = if range.end < range.start {
                     range.start
                 } else {
-                    self.text.floor_char_boundary(range.end)
+                    <str as StrCharBoundary>::floor_char_boundary(&self.text, range.end)
                 };
             }
             let mask = (1 as Bitmap)
@@ -412,7 +412,7 @@ impl<'a> ChunkSlice<'a> {
     }
 
     pub fn floor_char_boundary(&self, index: usize) -> usize {
-        self.text.floor_char_boundary(index)
+        <str as StrCharBoundary>::floor_char_boundary(&self.text, index)
     }
 
     #[inline(always)]
@@ -704,7 +704,7 @@ fn panic_char_boundary(text: &str, offset: usize) -> ! {
         );
     }
     // find the character
-    let char_start = text.floor_char_boundary(offset);
+    let char_start = <str as StrCharBoundary>::floor_char_boundary(text, offset);
     // `char_start` must be less than len and a char boundary
     let ch = text.get(char_start..).unwrap().chars().next().unwrap();
     let char_range = char_start..char_start + ch.len_utf8();
@@ -727,7 +727,7 @@ fn log_err_char_boundary(text: &str, offset: usize) {
         );
     }
     // find the character
-    let char_start = text.floor_char_boundary(offset);
+    let char_start = <str as StrCharBoundary>::floor_char_boundary(text, offset);
     // `char_start` must be less than len and a char boundary
     let ch = text.get(char_start..).unwrap().chars().next().unwrap();
     let char_range = char_start..char_start + ch.len_utf8();

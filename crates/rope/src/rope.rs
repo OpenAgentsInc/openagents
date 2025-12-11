@@ -119,7 +119,7 @@ impl Rope {
         } else {
             let (start, _, item) = self.chunks.find::<usize, _>((), &index, Bias::Left);
             let chunk_offset = index - start;
-            let lower_idx = item.map(|chunk| chunk.text.floor_char_boundary(chunk_offset));
+            let lower_idx = item.map(|chunk| <str as StrCharBoundary>::floor_char_boundary(&chunk.text, chunk_offset));
             lower_idx.map_or_else(|| self.len(), |idx| start + idx)
         }
     }
@@ -130,7 +130,7 @@ impl Rope {
         } else {
             let (start, _, item) = self.chunks.find::<usize, _>((), &index, Bias::Left);
             let chunk_offset = index - start;
-            let upper_idx = item.map(|chunk| chunk.text.ceil_char_boundary(chunk_offset));
+            let upper_idx = item.map(|chunk| <str as StrCharBoundary>::ceil_char_boundary(&chunk.text, chunk_offset));
             upper_idx.map_or_else(|| self.len(), |idx| start + idx)
         }
     }
@@ -2222,19 +2222,19 @@ mod tests {
         let fixture = "地";
         let rope = Rope::from("地");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.floor_char_boundary(b), fixture.floor_char_boundary(b));
+            assert_eq!(rope.floor_char_boundary(b), <str as StrCharBoundary>::floor_char_boundary(fixture, b));
         }
 
         let fixture = "";
         let rope = Rope::from("");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.floor_char_boundary(b), fixture.floor_char_boundary(b));
+            assert_eq!(rope.floor_char_boundary(b), <str as StrCharBoundary>::floor_char_boundary(fixture, b));
         }
 
         let fixture = "🔴🟠🟡🟢🔵🟣⚫️⚪️🟤\n🏳️‍⚧️🏁🏳️‍🌈🏴‍☠️⛳️📬📭🏴🏳️🚩";
         let rope = Rope::from("🔴🟠🟡🟢🔵🟣⚫️⚪️🟤\n🏳️‍⚧️🏁🏳️‍🌈🏴‍☠️⛳️📬📭🏴🏳️🚩");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.floor_char_boundary(b), fixture.floor_char_boundary(b));
+            assert_eq!(rope.floor_char_boundary(b), <str as StrCharBoundary>::floor_char_boundary(fixture, b));
         }
     }
 
@@ -2243,19 +2243,19 @@ mod tests {
         let fixture = "地";
         let rope = Rope::from("地");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.ceil_char_boundary(b), fixture.ceil_char_boundary(b));
+            assert_eq!(rope.ceil_char_boundary(b), <str as StrCharBoundary>::ceil_char_boundary(fixture, b));
         }
 
         let fixture = "";
         let rope = Rope::from("");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.ceil_char_boundary(b), fixture.ceil_char_boundary(b));
+            assert_eq!(rope.ceil_char_boundary(b), <str as StrCharBoundary>::ceil_char_boundary(fixture, b));
         }
 
         let fixture = "🔴🟠🟡🟢🔵🟣⚫️⚪️🟤\n🏳️‍⚧️🏁🏳️‍🌈🏴‍☠️⛳️📬📭🏴🏳️🚩";
         let rope = Rope::from("🔴🟠🟡🟢🔵🟣⚫️⚪️🟤\n🏳️‍⚧️🏁🏳️‍🌈🏴‍☠️⛳️📬📭🏴🏳️🚩");
         for b in 0..=fixture.len() {
-            assert_eq!(rope.ceil_char_boundary(b), fixture.ceil_char_boundary(b));
+            assert_eq!(rope.ceil_char_boundary(b), <str as StrCharBoundary>::ceil_char_boundary(fixture, b));
         }
     }
 

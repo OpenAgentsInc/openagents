@@ -1,7 +1,5 @@
 //! Thread view component for displaying conversation.
 
-use std::collections::HashMap;
-
 use acp::{AcpThread, AcpThreadEvent, ThreadEntry, ThreadStatus};
 use gpui::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
@@ -11,7 +9,7 @@ use theme_oa::{bg, border, text};
 use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
-use super::message_view::{MessageView, SimpleMessageView};
+use super::message_view::MessageView;
 use super::tool_call_view::ToolCallView;
 
 /// Thread view for displaying the conversation.
@@ -24,10 +22,6 @@ pub struct ThreadView {
     focus_handle: FocusHandle,
     /// List state for entries.
     list_state: ListState,
-    /// Cached message views by entry index.
-    message_cache: HashMap<usize, Entity<MessageView>>,
-    /// Cached streaming message view.
-    streaming_message: Option<Entity<MessageView>>,
     /// Last streaming content (to detect changes).
     last_streaming_content: Option<String>,
     /// Subscription to thread events.
@@ -62,8 +56,6 @@ impl ThreadView {
             message_input,
             focus_handle,
             list_state,
-            message_cache: HashMap::new(),
-            streaming_message: None,
             last_streaming_content: None,
             _thread_subscription: thread_subscription,
             _input_subscription: input_subscription,
@@ -80,7 +72,6 @@ impl ThreadView {
         match event {
             AcpThreadEvent::EntryAdded(_) | AcpThreadEvent::EntryUpdated(_) => {
                 // Clear streaming state when entry is finalized
-                self.streaming_message = None;
                 self.last_streaming_content = None;
 
                 // Update list count
@@ -99,44 +90,6 @@ impl ThreadView {
                 cx.notify();
             }
         }
-    }
-
-    /// Get or create a message view for the given entry index.
-    fn get_or_create_message_view(
-        &mut self,
-        entry: &ThreadEntry,
-        ix: usize,
-        cx: &mut App,
-    ) -> Entity<MessageView> {
-        if let Some(view) = self.message_cache.get(&ix) {
-            return view.clone();
-        }
-
-        let view = match entry {
-            ThreadEntry::UserMessage(msg) => MessageView::user(&msg.content, cx),
-            ThreadEntry::AssistantMessage(msg) => {
-                let content = msg
-                    .chunks
-                    .iter()
-                    .map(|chunk| match chunk {
-                        acp::AssistantMessageChunk::Message { content } => content.clone(),
-                        acp::AssistantMessageChunk::Thought { content } => {
-                            format!("<thinking>{}</thinking>", content)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("");
-                MessageView::assistant(&content, cx)
-            }
-            ThreadEntry::ToolCall(_) => {
-                // Tool calls don't use MessageView, handled separately
-                // Return a placeholder that won't be used
-                MessageView::assistant("", cx)
-            }
-        };
-
-        self.message_cache.insert(ix, view.clone());
-        view
     }
 
     /// Send a message with the given content.
@@ -252,29 +205,6 @@ impl ThreadView {
                 ),
             )
     }
-
-    /// Get or update the streaming message view.
-    fn get_streaming_view(&mut self, content: &str, cx: &mut App) -> Entity<MessageView> {
-        // Check if content changed
-        let content_changed = self.last_streaming_content.as_ref() != Some(&content.to_string());
-
-        if let Some(view) = &self.streaming_message {
-            if content_changed {
-                // Update existing view
-                view.update(cx, |view, cx| {
-                    view.update_content(content, cx);
-                });
-                self.last_streaming_content = Some(content.to_string());
-            }
-            view.clone()
-        } else {
-            // Create new view
-            let view = MessageView::assistant(content, cx);
-            self.streaming_message = Some(view.clone());
-            self.last_streaming_content = Some(content.to_string());
-            view
-        }
-    }
 }
 
 impl Focusable for ThreadView {
@@ -289,46 +219,29 @@ impl Render for ThreadView {
         let has_permission = self.thread.read(cx).has_pending_permission();
         let streaming_content = self.thread.read(cx).streaming_content();
 
-        // Get streaming view if streaming
-        let streaming_view = streaming_content.as_ref().map(|content| {
-            self.get_streaming_view(content, cx)
-        });
-
         // Create render callback for list items
         let thread = self.thread.clone();
-        let message_cache = self.message_cache.clone();
         let render_item = move |ix: usize, _window: &mut Window, cx: &mut App| {
             let entries = thread.read(cx).entries();
             if ix < entries.len() {
                 let entry = &entries[ix];
                 match entry {
-                    ThreadEntry::UserMessage(_) | ThreadEntry::AssistantMessage(_) => {
-                        if let Some(view) = message_cache.get(&ix) {
-                            view.clone().into_any_element()
-                        } else {
-                            // Fallback to simple view if not cached
-                            // (this shouldn't happen in practice)
-                            match entry {
-                                ThreadEntry::UserMessage(msg) => {
-                                    SimpleMessageView::user(&msg.content).into_any_element()
+                    ThreadEntry::UserMessage(msg) => {
+                        MessageView::user(&msg.content).into_any_element()
+                    }
+                    ThreadEntry::AssistantMessage(msg) => {
+                        let content = msg
+                            .chunks
+                            .iter()
+                            .map(|chunk| match chunk {
+                                acp::AssistantMessageChunk::Message { content } => content.clone(),
+                                acp::AssistantMessageChunk::Thought { content } => {
+                                    format!("<thinking>{}</thinking>", content)
                                 }
-                                ThreadEntry::AssistantMessage(msg) => {
-                                    let content = msg
-                                        .chunks
-                                        .iter()
-                                        .map(|chunk| match chunk {
-                                            acp::AssistantMessageChunk::Message { content } => content.clone(),
-                                            acp::AssistantMessageChunk::Thought { content } => {
-                                                format!("<thinking>{}</thinking>", content)
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("");
-                                    SimpleMessageView::assistant(&content).into_any_element()
-                                }
-                                _ => div().into_any_element(),
-                            }
-                        }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("");
+                        MessageView::assistant(&content).into_any_element()
                     }
                     ThreadEntry::ToolCall(tc) => {
                         ToolCallView::new(tc).into_any_element()
@@ -338,30 +251,6 @@ impl Render for ThreadView {
                 div().into_any_element()
             }
         };
-
-        // Pre-populate cache for all entries
-        // Collect entries to avoid borrow conflict
-        let entries: Vec<_> = self.thread.read(cx).entries().to_vec();
-        let missing_indices: Vec<_> = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(ix, entry)| {
-                if !self.message_cache.contains_key(&ix) {
-                    match entry {
-                        ThreadEntry::UserMessage(_) | ThreadEntry::AssistantMessage(_) => {
-                            Some((ix, entry.clone()))
-                        }
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for (ix, entry) in missing_indices {
-            let _ = self.get_or_create_message_view(&entry, ix, cx);
-        }
 
         div()
             .size_full()
@@ -379,13 +268,13 @@ impl Render for ThreadView {
                     .child(list(self.list_state.clone(), render_item).size_full()),
             )
             // Streaming message (shown while receiving)
-            .when_some(streaming_view, |el, view| {
+            .when_some(streaming_content, |el, content| {
                 el.child(
                     div()
                         .w_full()
                         .max_w(px(768.0))
                         .px(px(16.0))
-                        .child(view)
+                        .child(MessageView::assistant(&content))
                 )
             })
             // Permission prompt

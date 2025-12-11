@@ -1,0 +1,135 @@
+{
+  // Zed settings
+  //
+  // For information on how to configure Zed, see the Zed
+  // documentation: https://zed.dev/docs/configuring-zed
+  //
+  // To see all of Zed's default settings without changing your
+  // custom settings, run `zed: open default settings` from the
+  // command palette (Cmd-Shift-P on macOS, Ctrl-Shift-P on Linux and Windows).
+  "base_keymap": "VSCode",
+  "theme": {
+    "mode": "dark",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "icon_theme": "Zed (Default)",
+  "unnecessary_code_fade": 0.3,
+  "buffer_font_family": "Berkeley Mono",
+  "buffer_font_size": 14,
+  "buffer_font_weight": 400,
+  "buffer_font_features": {},
+  "buffer_font_fallbacks": [],
+  "buffer_line_height": "comfortable",
+  "ui_font_family": "Berkeley Mono",
+  "ui_font_size": 14,
+  "ui_font_weight": 400,
+  "ui_font_features": {},
+  "ui_font_fallbacks": [],
+  "ui_density": "default",
+  "active_pane_magnification": 1.0,
+  "pane_split_direction_horizontal": "up",
+  "pane_split_direction_vertical": "left",
+  "always_treat_brackets_as_autoclosed": false,
+  "centered_layout": {
+    "left_padding": 0.2,
+    "right_padding": 0.2
+  },
+  "confirm_quit": false,
+  "show_call_status_icon": true,
+  "autosave": "off",
+  "auto_update": true,
+  "cursor_blink": true,
+  "hover_popover_enabled": true,
+  "show_completions_on_input": true,
+  "show_completion_documentation": true,
+  "completion_documentation_secondary_query_debounce": 300,
+  "auto_signature_help": true,
+  "show_signature_help_after_edits": true,
+  "show_inline_completions": true,
+  "inline_completions": {
+    "disabled_globs": []
+  },
+  "inlay_hints": {
+    "enabled": false,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true,
+    "show_background": false,
+    "edit_debounce_ms": 700,
+    "scroll_debounce_ms": 50
+  },
+  "project_panel": {
+    "button": true,
+    "dock": "left",
+    "git_status": true,
+    "auto_reveal_entries": true,
+    "auto_fold_dirs": true,
+    "scrollbar": {
+      "show": "always"
+    }
+  },
+  "collaboration_panel": {
+    "button": true,
+    "dock": "left"
+  },
+  "outline_panel": {
+    "button": true,
+    "dock": "left",
+    "auto_reveal_entries": true,
+    "auto_fold_dirs": true
+  },
+  "notification_panel": {
+    "button": true,
+    "dock": "right"
+  },
+  "chat_panel": {
+    "button": true,
+    "dock": "right"
+  },
+  "agent": {
+    "button": true,
+    "dock": "right",
+    "default_width": 480,
+    "default_height": 320
+  },
+  "message_editor": {
+    "auto_replace_emoji_shortcode": true
+  },
+  "terminal": {
+    "alternate_scroll": "off",
+    "blinking": "terminal_controlled",
+    "copy_on_select": false,
+    "dock": "bottom",
+    "detect_venv": {
+      "on": {
+        "directories": [".env", "env", ".venv", "venv"],
+        "activate_script": "default"
+      }
+    },
+    "env": {},
+    "font_family": null,
+    "font_features": null,
+    "font_size": null,
+    "line_height": "comfortable",
+    "button": true,
+    "option_as_meta": false,
+    "shell": "system",
+    "toolbar": {
+      "breadcrumbs": true
+    },
+    "working_directory": "current_project_directory"
+  },
+  "git": {
+    "git_gutter": "tracked_files",
+    "gutter_debounce": 150,
+    "inline_blame": {
+      "enabled": true,
+      "delay_ms": 600,
+      "min_column": 80
+    }
+  },
+  "editor": {},
+  "workspace": {},
+  "project": {}
+}
