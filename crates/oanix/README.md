@@ -4,7 +4,74 @@
 
 ---
 
-## Overview
+## What is OANIX? (Plain English)
+
+OANIX is like a **mini operating system for AI agents**. Instead of letting an agent loose on your real computer, you create a fake "world" for it to live in - and that world only contains exactly what you want the agent to see.
+
+### Everything is a File
+
+This is the Plan 9 philosophy. Instead of having different APIs for different things, everything looks like files and folders:
+
+- Want to give an agent access to your project? Mount it at `/workspace`
+- Want it to be able to send Nostr messages? Mount a Nostr service at `/cap/nostr`
+- Want logs? They appear at `/logs/stdout.log`
+
+The agent just reads and writes files. It doesn't know or care if `/workspace` is a real folder, an in-memory filesystem, or something synced from the cloud.
+
+### Why This is Cool
+
+**1. Security by Default**
+- Agent can't access your home folder unless you mount it
+- Agent can't hit the network unless you give it a network capability
+- No "oops it deleted my files" scenarios
+
+**2. Portable Sandboxes**
+- Same WASM binary runs on Mac, Linux, Windows, browser
+- Same namespace definition works everywhere
+- Test locally, deploy anywhere
+
+**3. Composable Capabilities**
+```
+Agent A: /workspace + /cap/nostr + /cap/payments
+Agent B: /workspace + /cap/http (read-only)
+Agent C: /task (read-only) - can only see its instructions
+```
+Each agent gets exactly what it needs. No more, no less.
+
+**4. Reproducible Runs**
+- Namespace is explicit and serializable
+- Can replay an agent's run with the same inputs
+- Perfect for benchmarking (Terminal-Bench!)
+
+### Quick Demo
+
+**Browser Namespace Explorer:**
+```bash
+cd crates/oanix
+wasm-pack build --target web --features browser
+python -m http.server 8080
+# Open http://localhost:8080/examples/browser/
+```
+
+**Run a WASI binary in a namespace:**
+```bash
+# Build the test binary
+cd examples/hello-wasi && cargo build --target wasm32-wasip1 --release && cd ../..
+
+# Run it with OANIX
+cargo run --features wasi --example run_wasi -- \
+    examples/hello-wasi/target/wasm32-wasip1/release/hello-wasi.wasm
+```
+
+The WASI program can read `/workspace`, write to `/tmp`, and list directories - all within the isolated namespace.
+
+### The One-Liner
+
+> OANIX lets you create isolated, portable worlds for AI agents where they can only see and do what you explicitly allow - and the same agent runs identically on any platform.
+
+---
+
+## Overview (Technical)
 
 OANIX is a **Rust-native agent operating environment** designed to execute WebAssembly (WASI) workloads in secure, composable, and portable sandboxes. Inspired by **Plan 9 from Bell Labs** and **WANIX** (Jeff Lindsay's WebAssembly runtime), OANIX adapts their core architectural insights for modern agent systems:
 
