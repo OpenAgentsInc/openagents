@@ -56,5 +56,8 @@ pub use services::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use services::WorkspaceFs;
 
+#[cfg(feature = "nostr")]
+pub use services::NostrFs;
+
 #[cfg(all(feature = "wasi", not(target_arch = "wasm32")))]
 pub use wasi::{RunConfig, RunResult, WasiRuntime};

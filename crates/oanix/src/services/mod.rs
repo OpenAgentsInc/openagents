@@ -14,6 +14,10 @@
 //! - [`TaskFs`] - Task specification, status, and results
 //! - [`LogsFs`] - Structured logging with stdout/stderr/events
 //! - [`WorkspaceFs`] - Real filesystem wrapper (native only)
+//!
+//! ## Capability Services
+//!
+//! - [`NostrFs`] - Nostr event signing and NIP-90 DVM (requires `nostr` feature)
 
 mod cow_fs;
 mod func_fs;
@@ -25,6 +29,9 @@ mod task_fs;
 #[cfg(not(target_arch = "wasm32"))]
 mod workspace_fs;
 
+#[cfg(feature = "nostr")]
+mod nostr_fs;
+
 pub use cow_fs::CowFs;
 pub use func_fs::{FuncFs, ReadFn, WriteFn};
 pub use logs_fs::{LogEvent, LogLevel, LogsFs};
@@ -34,6 +41,9 @@ pub use task_fs::{TaskFs, TaskMeta, TaskSpec, TaskStatus};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use workspace_fs::WorkspaceFs;
+
+#[cfg(feature = "nostr")]
+pub use nostr_fs::NostrFs;
 
 // Internal re-export for sibling modules
 pub(crate) use mem_fs::now as mem_fs_now;
