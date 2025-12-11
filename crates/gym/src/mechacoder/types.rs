@@ -148,6 +148,11 @@ pub struct MechaSession {
     pub cost_usd: f64,
     /// ATIF trajectory session ID
     pub session_id: Option<String>,
+    /// Use tbench binary for TB2 tasks (vs legacy DockerRunner)
+    /// Default: true - use Harbor's tbench for ATIF trajectory output
+    pub use_tbench: bool,
+    /// Model override (e.g., "claude-opus-4-5-20251101")
+    pub model_override: Option<String>,
 }
 
 impl MechaSession {
@@ -155,6 +160,7 @@ impl MechaSession {
         Self {
             backend,
             max_turns: 30,
+            use_tbench: true, // Default to tbench for ATIF output
             ..Default::default()
         }
     }

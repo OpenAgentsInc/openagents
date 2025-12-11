@@ -393,7 +393,17 @@ impl MechaCoderScreen {
         let task_name = task.name.clone();
         let store_clone = self.store.clone();
         let max_turns = self.session.max_turns;
-        info!(target: "mechacoder", backend = ?backend, task = %task_name, is_tb2 = task.is_tb2_task(), "Spawning runner task");
+        let use_tbench = self.session.use_tbench;
+        let model_override = self.session.model_override.clone();
+        info!(
+            target: "mechacoder",
+            backend = ?backend,
+            task = %task_name,
+            is_tb2 = task.is_tb2_task(),
+            use_tbench,
+            model = ?model_override,
+            "Spawning runner task"
+        );
 
         // Spawn the runner in a separate thread with its own tokio runtime
         // (GPUI doesn't use tokio, but Claude Agent SDK requires it)
@@ -411,10 +421,15 @@ impl MechaCoderScreen {
             };
 
             rt.block_on(async {
-                // Use Docker runner for TB2 tasks
+                // Use tbench or Docker runner for TB2 tasks
                 if task.is_tb2_task() {
-                    info!(target: "mechacoder", "Using Docker runner for TB2 task");
-                    Self::run_docker_task(task, max_turns, tx, store_clone, session_id, abort_rx).await;
+                    if use_tbench {
+                        info!(target: "mechacoder", "Using tbench (Harbor) for TB2 task");
+                        Self::run_tbench_task(task, max_turns, model_override, tx, store_clone, session_id, abort_rx).await;
+                    } else {
+                        info!(target: "mechacoder", "Using legacy Docker runner for TB2 task");
+                        Self::run_docker_task(task, max_turns, tx, store_clone, session_id, abort_rx).await;
+                    }
                 } else {
                     // Fall back to SDK-based approach for non-TB2 tasks
                     match backend {
@@ -1068,6 +1083,280 @@ impl MechaCoderScreen {
             passed,
             turns: result.turns,
             cost: result.cost_usd,
+        });
+    }
+
+    /// Run a TB2 task using tbench binary (Harbor)
+    ///
+    /// This spawns the `tbench` CLI which:
+    /// 1. Runs Claude Code with streaming output
+    /// 2. Writes ATIF trajectory to output directory
+    /// 3. Writes events.jsonl and metrics.json
+    async fn run_tbench_task(
+        task: MechaTask,
+        max_turns: u32,
+        model: Option<String>,
+        tx: mpsc::UnboundedSender<RunnerEvent>,
+        _store: Option<Arc<Mutex<TrajectoryStore>>>,
+        _session_id: Option<String>,
+        mut abort_rx: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        use std::process::Stdio;
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio::process::Command;
+
+        info!(
+            target: "mechacoder::tbench",
+            task_id = %task.id,
+            model = ?model,
+            "Starting tbench-based TB2 task"
+        );
+
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing tbench runner...")));
+
+        // Find tbench binary
+        let tbench_path = std::env::current_dir()
+            .map(|p| p.join("target/release/tbench"))
+            .ok()
+            .filter(|p| p.exists())
+            .or_else(|| {
+                // Try relative to cargo manifest
+                std::env::var("CARGO_MANIFEST_DIR")
+                    .map(|p| std::path::PathBuf::from(p).parent().unwrap().parent().unwrap().join("target/release/tbench"))
+                    .ok()
+                    .filter(|p| p.exists())
+            });
+
+        let tbench_bin = match tbench_path {
+            Some(p) => p,
+            None => {
+                // Fall back to PATH lookup
+                std::path::PathBuf::from("tbench")
+            }
+        };
+
+        // Create output directory
+        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
+        let session_suffix: String = uuid::Uuid::new_v4().to_string().chars().take(8).collect();
+        let output_dir = std::path::PathBuf::from(format!(
+            "results/trajectories/{}/{}-{}",
+            task.id, timestamp, session_suffix
+        ));
+
+        if let Err(e) = std::fs::create_dir_all(&output_dir) {
+            error!(target: "mechacoder::tbench", error = %e, "Failed to create output directory");
+            let _ = tx.send(RunnerEvent::Error(format!("Failed to create output dir: {}", e)));
+            return;
+        }
+
+        // Create workspace directory
+        let workspace_dir = match tempfile::tempdir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                error!(target: "mechacoder::tbench", error = %e, "Failed to create workspace");
+                let _ = tx.send(RunnerEvent::Error(format!("Failed to create workspace: {}", e)));
+                return;
+            }
+        };
+
+        info!(
+            target: "mechacoder::tbench",
+            output = %output_dir.display(),
+            workspace = %workspace_dir.path().display(),
+            "Created directories"
+        );
+
+        // Build tbench arguments
+        let timeout_sec = task.timeout_sec.unwrap_or(900);
+        let mut args = vec![
+            "--instruction".to_string(),
+            task.description.clone(),
+            "--output-dir".to_string(),
+            output_dir.display().to_string(),
+            "--cwd".to_string(),
+            workspace_dir.path().display().to_string(),
+            "--timeout".to_string(),
+            timeout_sec.to_string(),
+            "--max-turns".to_string(),
+            max_turns.to_string(),
+            "--stream".to_string(),
+        ];
+
+        if let Some(ref m) = model {
+            args.push("--model".to_string());
+            args.push(m.clone());
+        }
+
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info(format!(
+            "Starting tbench (timeout: {}s, max-turns: {})",
+            timeout_sec, max_turns
+        ))));
+
+        // Spawn tbench
+        let mut child = match Command::new(&tbench_bin)
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                error!(target: "mechacoder::tbench", error = %e, path = %tbench_bin.display(), "Failed to spawn tbench");
+                let _ = tx.send(RunnerEvent::Error(format!(
+                    "Failed to spawn tbench ({}): {}. Build with: cargo build -p harbor --release",
+                    tbench_bin.display(), e
+                )));
+                return;
+            }
+        };
+
+        let stdout = child.stdout.take().expect("stdout captured");
+        let mut reader = BufReader::new(stdout).lines();
+
+        let mut turn = 0u32;
+        let mut success = false;
+        let mut cost = 0.0f64;
+        let mut error_msg: Option<String> = None;
+
+        // Process streaming output
+        loop {
+            tokio::select! {
+                _ = &mut abort_rx => {
+                    info!(target: "mechacoder::tbench", "Abort signal received");
+                    let _ = child.kill().await;
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::info("Run aborted by user")));
+                    let _ = tx.send(RunnerEvent::Complete { passed: false, turns: turn, cost });
+                    return;
+                }
+                line_result = reader.next_line() => {
+                    match line_result {
+                        Ok(Some(line)) => {
+                            // Parse JSON event from tbench --stream
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                                let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                                match event_type {
+                                    "run_start" => {
+                                        let session = json.get("session_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                        let _ = tx.send(RunnerEvent::Log(LogEntry::info(format!("Session: {}", session))));
+                                    }
+                                    "assistant" => {
+                                        turn = json.get("turn").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                        let text = json.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                                        let _ = tx.send(RunnerEvent::TurnUpdate { turn, max_turns });
+                                        if !text.is_empty() {
+                                            let display = if text.len() > 200 {
+                                                format!("{}...", &text[..200])
+                                            } else {
+                                                text.to_string()
+                                            };
+                                            let _ = tx.send(RunnerEvent::Log(LogEntry {
+                                                timestamp: chrono::Utc::now(),
+                                                kind: LogKind::Thinking,
+                                                message: display,
+                                                details: if text.len() > 200 { Some(text.to_string()) } else { None },
+                                            }));
+                                        }
+                                    }
+                                    "tool_use" => {
+                                        let tool = json.get("tool").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                        let _ = tx.send(RunnerEvent::Log(LogEntry::tool(format!("Tool: {}", tool), None)));
+                                    }
+                                    "tool_result" => {
+                                        // Tool results are logged but we don't need to display all of them
+                                    }
+                                    "complete" => {
+                                        success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+                                        turn = json.get("turns").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                        cost = json.get("cost").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                        error_msg = json.get("error").and_then(|v| v.as_str()).map(String::from);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Ok(None) => break, // EOF
+                        Err(e) => {
+                            warn!(target: "mechacoder::tbench", error = %e, "Error reading stdout");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Wait for process
+        let status = child.wait().await;
+        let exit_code = status.map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+
+        info!(
+            target: "mechacoder::tbench",
+            exit_code,
+            success,
+            turns = turn,
+            cost,
+            "tbench completed"
+        );
+
+        // Log tbench result
+        if success {
+            let _ = tx.send(RunnerEvent::Log(LogEntry::success(format!(
+                "tbench completed: {} turns, ${:.4}",
+                turn, cost
+            ))));
+        } else {
+            let err = error_msg.clone().unwrap_or_else(|| format!("Exit code {}", exit_code));
+            let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!("tbench failed: {}", err))));
+        }
+
+        // Run TB2 verification if docker image is available
+        if let Some(ref _docker_image) = task.docker_image {
+            let _ = tx.send(RunnerEvent::Log(LogEntry::info("Running TB2 verification...")));
+
+            if let Some(tb2_task) = Self::mechtask_to_tb2task(&task) {
+                let verifier = TB2Verifier::new();
+                let verification = verifier.run_tests(&tb2_task, workspace_dir.path(), &output_dir).await;
+
+                match verification {
+                    Ok(v) => {
+                        info!(
+                            target: "mechacoder::tbench",
+                            passed = v.passed,
+                            reward = v.reward,
+                            "TB2 verification complete"
+                        );
+                        success = v.passed;
+                        if v.passed {
+                            let _ = tx.send(RunnerEvent::Log(LogEntry::success(format!(
+                                "TB2 PASS: {}/{} tests (reward: {})",
+                                v.tests_passed, v.tests_total, v.reward
+                            ))));
+                        } else {
+                            let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!(
+                                "TB2 FAIL: {}/{} tests (reward: {})",
+                                v.tests_passed, v.tests_total, v.reward
+                            ))));
+                        }
+                    }
+                    Err(e) => {
+                        warn!(target: "mechacoder::tbench", error = %e, "TB2 verification failed");
+                        let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!("Verification error: {}", e))));
+                    }
+                }
+            }
+        }
+
+        // Log trajectory location
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info(format!(
+            "ATIF trajectory: {}/trajectory.json",
+            output_dir.display()
+        ))));
+
+        // Send final result
+        let _ = tx.send(RunnerEvent::Complete {
+            passed: success,
+            turns: turn,
+            cost,
         });
     }
 
