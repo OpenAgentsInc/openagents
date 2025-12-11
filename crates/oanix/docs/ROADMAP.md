@@ -3,164 +3,29 @@
 ## Current Status
 
 **Sprint 1: Complete** ✅
-
 - [x] `MemFs` - In-memory filesystem with full read/write support
 - [x] `FileService` trait with `Serialize` support
 - [x] Browser WASM build with wasm-bindgen
 - [x] Namespace Explorer demo (Tokyo Night themed)
 - [x] 8 passing unit tests
 
----
+**Sprint 2: Complete** ✅
+- [x] Wasmtime integration with WASI preview1
+- [x] Namespace-to-WASI bridge (sync to temp directories)
+- [x] `WasiRuntime` with `RunConfig` and `RunResult`
+- [x] CLI example (`run_wasi`)
+- [x] Test WASI binary (`hello-wasi`)
 
-## Sprint 2: WASI Runtime
-
-**Goal:** Execute WebAssembly binaries with namespace access
-
-### 2.1 Wasmtime Integration
-
-**Files to create:**
-- `src/wasi/mod.rs`
-- `src/wasi/runtime.rs`
-
-```rust
-pub struct WasiRuntime {
-    engine: wasmtime::Engine,
-}
-
-pub struct RunConfig {
-    pub args: Vec<String>,
-    pub env: Vec<(String, String)>,
-    pub stdin: Option<Vec<u8>>,
-}
-
-pub struct RunResult {
-    pub exit_code: i32,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-}
-
-impl WasiRuntime {
-    pub fn new() -> Self;
-    pub fn run(
-        &self,
-        namespace: &Namespace,
-        wasm_bytes: &[u8],
-        config: RunConfig
-    ) -> Result<RunResult, OanixError>;
-}
-```
-
-### 2.2 Namespace-to-WASI Bridge
-
-Map OANIX mounts to WASI preopened directories:
-
-```rust
-// Namespace mount at /workspace
-// → WASI preopen at /workspace
-// Agent code: std::fs::read("/workspace/src/main.rs")
-// → Routed through WorkspaceFs
-```
-
-Key challenges:
-- WASI expects real file descriptors
-- Need to implement `wasi_snapshot_preview1` filesystem traits
-- Handle path translation between WASI and OANIX
-
-### 2.3 CLI Example
-
-```bash
-# Build a simple WASI binary
-cd examples/hello-wasi
-cargo build --target wasm32-wasi
-
-# Run with OANIX
-cargo run --features wasi --example run_wasi -- \
-    --mount /workspace=./project \
-    --mount /tmp=:memory: \
-    target/wasm32-wasi/debug/hello.wasm
-```
-
-### 2.4 Cargo.toml Updates
-
-```toml
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-wasmtime = { version = "27", optional = true }
-wasmtime-wasi = { version = "27", optional = true }
-
-[features]
-wasi = ["dep:wasmtime", "dep:wasmtime-wasi"]
-```
+**Sprint 3: Complete** ✅
+- [x] `MapFs` - Static/immutable filesystem (~270 lines)
+- [x] `FuncFs` - Computed/dynamic files via closures (~330 lines)
+- [x] `CowFs` - Copy-on-Write overlay filesystem (~340 lines)
+- [x] 20 new tests (29 total)
+- [x] `FsError::ReadOnly` error variant
 
 ---
 
-## Sprint 3: Expand Primitives
-
-### 3.1 FuncFs - Computed Files
-
-Files with dynamic content computed on read:
-
-```rust
-pub struct FuncFs {
-    files: HashMap<String, FuncFile>,
-}
-
-pub struct FuncFile {
-    read_fn: Box<dyn Fn() -> Vec<u8> + Send + Sync>,
-    write_fn: Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>,
-}
-```
-
-**Use cases:**
-- `/task/status` - Returns current task state as JSON
-- `/sys/time` - Returns current timestamp
-- `/cap/*/control` - Control files that trigger actions on write
-
-### 3.2 MapFs - Static Content
-
-Immutable filesystem from static data:
-
-```rust
-pub struct MapFs {
-    root: MapNode,
-}
-
-impl MapFs {
-    pub fn builder() -> MapFsBuilder;
-}
-
-// Usage
-let fs = MapFs::builder()
-    .file("/readme.txt", b"Hello")
-    .dir("/src")
-    .file("/src/main.rs", include_bytes!("main.rs"))
-    .build();
-```
-
-**Use cases:**
-- Bundled assets
-- Read-only task specifications
-- Embedded documentation
-
-### 3.3 CowFs - Copy-on-Write
-
-Overlay filesystem for efficient snapshots:
-
-```rust
-pub struct CowFs {
-    base: Arc<dyn FileService>,    // Read-only base
-    overlay: MemFs,                 // Writable overlay
-    tombstones: HashSet<String>,   // Deleted paths
-}
-```
-
-**Use cases:**
-- Workspace snapshots for benchmarking
-- Undo/redo support
-- Branching experiments
-
----
-
-## Sprint 4: Standard Services
+## Sprint 4: Standard Services (Next)
 
 ### 4.1 TaskFs
 
