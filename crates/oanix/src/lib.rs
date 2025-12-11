@@ -36,8 +36,13 @@
 pub mod error;
 pub mod namespace;
 pub mod service;
+pub mod services;
+
+#[cfg(feature = "browser")]
+pub mod web;
 
 // Re-exports
 pub use error::OanixError;
 pub use namespace::{Mount, Namespace, NamespaceBuilder};
 pub use service::{DirEntry, FileHandle, FileService, Metadata, OpenFlags};
+pub use services::MemFs;
