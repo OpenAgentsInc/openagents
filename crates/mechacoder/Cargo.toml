@@ -19,6 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 # Local crates
 acp = { path = "../acp" }
+claude_agent_sdk = { path = "../claude_agent_sdk" }
 gpui = { path = "../gpui" }
 ui_oa = { path = "../ui_oa" }
 theme_oa = { path = "../theme_oa" }
@@ -40,3 +41,5 @@ parking_lot.workspace = true
 chrono.workspace = true
 similar.workspace = true
 pulldown-cmark.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+uuid = { version = "1", features = ["v4"] }

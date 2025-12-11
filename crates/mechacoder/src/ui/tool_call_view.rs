@@ -1,18 +1,22 @@
 //! Tool call view component.
 
-use acp::{ToolCall, ToolCallContent, ToolCallStatus};
+use crate::sdk_thread::{ToolUse, ToolStatus};
 use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
 use theme_oa::{bg, status, text};
 
+/// Simple content for tool call display.
+#[derive(Clone)]
+pub enum ToolCallContent {
+    /// Plain text content.
+    Text(String),
+}
+
 /// Tool call view for displaying a tool call.
 pub struct ToolCallView {
-    /// Tool call ID.
-    #[allow(dead_code)]
-    id: String,
     /// Tool call title.
     title: String,
     /// Tool call status.
-    status: ToolCallStatus,
+    tool_status: ToolStatus,
     /// Tool call content.
     content: Vec<ToolCallContent>,
     /// Whether the view is expanded.
@@ -20,110 +24,58 @@ pub struct ToolCallView {
 }
 
 impl ToolCallView {
-    /// Create a new tool call view.
-    pub fn new(tool_call: &ToolCall) -> Self {
+    /// Create a new tool call view from SDK ToolUse.
+    pub fn from_tool_use(tool_use: &ToolUse) -> Self {
+        let mut content = Vec::new();
+
+        // Add input as content
+        if !tool_use.input.is_empty() {
+            content.push(ToolCallContent::Text(format!("Input: {}", tool_use.input)));
+        }
+
+        // Add output if available
+        if let Some(output) = &tool_use.output {
+            content.push(ToolCallContent::Text(format!("Output: {}", output)));
+        }
+
         Self {
-            id: tool_call.id.to_string(),
-            title: tool_call.title.clone(),
-            status: tool_call.status.clone(),
-            content: tool_call.content.clone(),
+            title: tool_use.tool_name.clone(),
+            tool_status: tool_use.status.clone(),
+            content,
             expanded: true,
         }
     }
 
     /// Get the status color.
     fn status_color(&self) -> gpui::Hsla {
-        match &self.status {
-            ToolCallStatus::Pending => status::PENDING,
-            ToolCallStatus::InProgress => status::RUNNING,
-            ToolCallStatus::Completed => status::SUCCESS,
-            ToolCallStatus::Failed { .. } => status::ERROR,
-            ToolCallStatus::Rejected => status::WARNING,
-            ToolCallStatus::Canceled => status::WARNING,
-            ToolCallStatus::WaitingForConfirmation { .. } => status::INFO,
+        match &self.tool_status {
+            ToolStatus::Pending => status::PENDING,
+            ToolStatus::Running => status::RUNNING,
+            ToolStatus::Completed => status::SUCCESS,
+            ToolStatus::Failed(_) => status::ERROR,
         }
     }
 
     /// Get the status text.
     fn status_text(&self) -> &str {
-        match &self.status {
-            ToolCallStatus::Pending => "Pending",
-            ToolCallStatus::InProgress => "Running",
-            ToolCallStatus::Completed => "Completed",
-            ToolCallStatus::Failed { .. } => "Failed",
-            ToolCallStatus::Rejected => "Rejected",
-            ToolCallStatus::Canceled => "Canceled",
-            ToolCallStatus::WaitingForConfirmation { .. } => "Waiting",
+        match &self.tool_status {
+            ToolStatus::Pending => "Pending",
+            ToolStatus::Running => "Running",
+            ToolStatus::Completed => "Completed",
+            ToolStatus::Failed(_) => "Failed",
         }
     }
 
     /// Render a single content item.
     fn render_content_item(item: &ToolCallContent) -> impl IntoElement {
         match item {
-            ToolCallContent::Text(text) => div()
+            ToolCallContent::Text(text_content) => div()
                 .p(px(8.0))
                 .bg(bg::CODE)
                 .rounded(px(4.0))
                 .text_sm()
                 .text_color(text::PRIMARY)
-                .child(text.clone())
-                .into_any_element(),
-
-            ToolCallContent::Diff {
-                path,
-                old_content,
-                new_content,
-            } => {
-                // Simple diff display
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.0))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(text::PRIMARY)
-                            .child(format!("File: {}", path.display())),
-                    )
-                    .child(
-                        div()
-                            .p(px(8.0))
-                            .bg(bg::CODE)
-                            .rounded(px(4.0))
-                            .text_sm()
-                            .text_color(text::SECONDARY)
-                            .child(format!(
-                                "-{} lines, +{} lines",
-                                old_content.lines().count(),
-                                new_content.lines().count()
-                            )),
-                    )
-                    .into_any_element()
-            }
-
-            ToolCallContent::Terminal { terminal_id, output } => div()
-                .flex()
-                .flex_col()
-                .gap(px(4.0))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(text::SECONDARY)
-                        .child(format!("Terminal: {}", terminal_id)),
-                )
-                .child(
-                    div()
-                        .p(px(8.0))
-                        .bg(bg::DARK)
-                        .rounded(px(4.0))
-                        .text_sm()
-                        .text_color(text::PRIMARY)
-                        .max_h(px(200.0))
-                        .overflow_hidden()
-                        .child(output.clone()),
-                )
-                .into_any_element(),
+                .child(text_content.clone()),
         }
     }
 }
