@@ -78,6 +78,7 @@ orchestrator = { path = "crates/orchestrator" }
 cli = { path = "crates/cli" }
 parallel = { path = "crates/parallel" }
 sandbox = { path = "crates/sandbox" }
+telemetry = { path = "crates/telemetry" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"

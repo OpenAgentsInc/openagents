@@ -188,8 +188,8 @@ fn truncate(s: &str, max_len: usize) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
+    // Initialize telemetry
+    telemetry::init_default("testgen");
 
     let cli = Cli::parse();
     let store = TestGenStore::open(&cli.database)?;
