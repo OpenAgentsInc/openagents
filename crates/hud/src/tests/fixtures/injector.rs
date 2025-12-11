@@ -4,10 +4,10 @@
 //! replacing the HTTP/WebSocket injection from TypeScript tests.
 
 use gpui::{Entity, TestAppContext};
-use hud::GraphView;
+use crate::GraphView;
 use std::time::Duration;
 
-use crate::protocol::HudMessage;
+use super::super::protocol::HudMessage;
 
 /// Injects HUD messages directly into GraphView - equivalent to TypeScript HudInjector
 pub struct HudInjector<'a> {

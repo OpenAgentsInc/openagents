@@ -4,7 +4,7 @@
 //! equivalent to TypeScript SVGFlowAssertions.
 
 use gpui::{Entity, TestAppContext};
-use hud::GraphView;
+use crate::GraphView;
 
 /// Assertion helpers for GraphView - equivalent to TypeScript SVGFlowAssertions
 pub struct GraphAssertions<'a> {

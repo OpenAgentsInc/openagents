@@ -3,10 +3,10 @@
 //! Provides chainable assertion methods for ergonomic test writing.
 
 use gpui::{Entity, TestAppContext};
-use gym::{GymScreen, GymTab, TrajectoryView};
-use gym::tbcc::{TBCCScreen, TBCCTab};
-use gym::hillclimber::monitor::{HillClimberMonitor, HCSessionStatus, HCMode};
-use gym::testgen::visualizer::{TestGenVisualizer, TestGenStatus, GenerationStatus};
+use crate::{GymScreen, GymTab, TrajectoryView};
+use crate::tbcc::{TBCCScreen, TBCCTab};
+use crate::hillclimber::monitor::{HillClimberMonitor, HCSessionStatus, HCMode};
+use crate::testgen::visualizer::{TestGenVisualizer, TestGenStatus, GenerationStatus};
 
 // ============================================================================
 // GymScreen Assertions

@@ -4,7 +4,7 @@
 //! Tests B1-B7: pan, zoom, and reset functionality.
 
 use gpui::TestAppContext;
-use hud_test::fixtures::{GraphViewFixture, GraphViewAssertExt};
+use crate::tests::fixtures::{GraphViewFixture, GraphViewAssertExt};
 
 /// B1: pan by drag updates SVG transform
 #[gpui::test]

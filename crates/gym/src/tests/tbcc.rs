@@ -3,8 +3,8 @@
 //! Tests for the TerminalBench Command Center components.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{TBCCFixture, TBCCAssertExt};
-use gym_test::types::TBCCTab;
+use crate::tests::fixtures::{TBCCFixture, TBCCAssertExt};
+use crate::tests::fixtures::types::TBCCTab;
 
 // ============================================================================
 // TBCCScreen Tests

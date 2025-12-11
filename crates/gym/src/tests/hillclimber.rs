@@ -3,8 +3,8 @@
 //! Tests for the HillClimber real-time visualization component.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{HillClimberFixture, HillClimberAssertExt};
-use gym_test::types::{HCSessionStatus, HCMode};
+use crate::tests::fixtures::{HillClimberFixture, HillClimberAssertExt};
+use crate::tests::fixtures::types::{HCSessionStatus, HCMode};
 
 // ============================================================================
 // HillClimberMonitor Smoke Tests

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/agent",
+    "crates/archivist",
     "crates/atif",
     "crates/atif-store",
     "crates/fm-bridge",
@@ -11,7 +12,6 @@ members = [
     "crates/collections",
     "crates/http_client", # Package name is reqwest_client
     "crates/hillclimber",
-    "crates/hud_test",
     "crates/util",
     "crates/util_macros",
     "crates/refineable",
@@ -28,15 +28,19 @@ members = [
     "crates/orchestrator",
     "crates/cli",
     "crates/parallel",
+    "crates/perf",
     "crates/theme",
     "crates/gym",
-    "crates/gym_test",
     "crates/sandbox",
     "crates/nostr",
     "crates/nostr-relay",
     "crates/nostr-chat",
     "crates/ui",
     "crates/marketplace",
+    "crates/reflexion",
+    "crates/guardrails",
+    "crates/oanix",
+    "crates/vibe",
 ]
 
 [workspace.lints.rust]

@@ -3,8 +3,8 @@
 //! Basic tests to verify GymScreen renders and initializes correctly.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{GymScreenFixture, GymScreenAssertExt};
-use gym_test::types::GymTab;
+use crate::tests::fixtures::{GymScreenFixture, GymScreenAssertExt};
+use crate::tests::fixtures::types::GymTab;
 
 #[gpui::test]
 fn test_gym_screen_renders(cx: &mut TestAppContext) {

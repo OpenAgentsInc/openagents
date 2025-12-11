@@ -138,6 +138,8 @@ Key crates:
 - `crates/testgen` — Test generation and evolution
 - `crates/hillclimber` — MAP-based overnight optimization
 
+**Testing:** All tests must be in their respective crates (e.g., `crates/gym/src/tests/`, `crates/hud/src/tests/`). Do NOT create separate test crates like `gym_test` or `hud_test`.
+
 ---
 
 ## Rules

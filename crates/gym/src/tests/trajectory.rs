@@ -3,7 +3,7 @@
 //! Tests trajectory list display, selection, and store integration.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{TrajectoryViewFixture, TrajectoryAssertExt};
+use crate::tests::fixtures::{TrajectoryViewFixture, TrajectoryAssertExt};
 use std::sync::{Arc, Mutex};
 use atif_store::TrajectoryStore;
 use atif::{Agent, Step};

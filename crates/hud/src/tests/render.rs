@@ -4,8 +4,8 @@
 //! Tests A1-A7: visual rendering and layout verification.
 
 use gpui::TestAppContext;
-use hud_test::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
-use hud_test::messages::factories;
+use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
+use crate::tests::messages::factories;
 
 /// A1: GraphView loads without errors
 #[gpui::test]

@@ -3,7 +3,7 @@
 //! Page Object Model fixture for testing the TBCC (TerminalBench Command Center) component.
 
 use gpui::{Entity, TestAppContext};
-use gym::tbcc::{TBCCScreen, TBCCTab};
+use crate::tbcc::{TBCCScreen, TBCCTab};
 
 /// Page Object Model fixture for TBCCScreen
 pub struct TBCCFixture;

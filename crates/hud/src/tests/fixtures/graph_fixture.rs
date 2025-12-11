@@ -7,9 +7,9 @@
 //! and tests should use the `#[gpui::test]` macro.
 
 use gpui::{Entity, Point, Pixels, px, point};
-use hud::{GraphView, GraphStyle};
+use crate::{GraphView, GraphStyle};
 
-use crate::protocol::HudMessage;
+use super::super::protocol::HudMessage;
 
 // Re-export for convenience
 pub use gpui::TestAppContext;

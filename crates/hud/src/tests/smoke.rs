@@ -5,7 +5,7 @@
 //! HUD-010 (canvas pan), HUD-012 (reset view).
 
 use gpui::TestAppContext;
-use hud_test::fixtures::{GraphViewFixture, GraphViewAssertExt};
+use crate::tests::fixtures::{GraphViewFixture, GraphViewAssertExt};
 
 /// Test that GraphView renders and initializes correctly
 #[gpui::test]

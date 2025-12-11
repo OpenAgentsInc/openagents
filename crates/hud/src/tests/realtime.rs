@@ -4,8 +4,8 @@
 //! Tests C1-C10 / HUD-030 to HUD-040: WebSocket-based real-time updates.
 
 use gpui::TestAppContext;
-use hud_test::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
-use hud_test::messages::{factories, sequences};
+use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
+use crate::tests::messages::{factories, sequences};
 
 /// C1/HUD-030: session_start triggers UI refresh
 #[gpui::test]

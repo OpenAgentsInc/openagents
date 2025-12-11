@@ -3,7 +3,7 @@
 //! These factories generate valid HudMessage instances with sensible defaults,
 //! making it easy to create test data without specifying every field.
 
-use crate::protocol::*;
+use super::super::protocol::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
