@@ -12,22 +12,28 @@ use std::iter;
 pub struct Locator(SmallVec<[u64; 4]>);
 
 impl Locator {
-    pub const fn min() -> Self {
-        // SAFETY: 1 is <= 4
-        Self(unsafe { SmallVec::from_const_with_len_unchecked([u64::MIN; 4], 1) })
+    pub fn min() -> Self {
+        let mut v = SmallVec::new();
+        v.push(u64::MIN);
+        Self(v)
     }
 
-    pub const fn max() -> Self {
-        // SAFETY: 1 is <= 4
-        Self(unsafe { SmallVec::from_const_with_len_unchecked([u64::MAX; 4], 1) })
+    pub fn max() -> Self {
+        let mut v = SmallVec::new();
+        v.push(u64::MAX);
+        Self(v)
     }
 
-    pub const fn min_ref() -> &'static Self {
-        const { &Self::min() }
+    pub fn min_ref() -> &'static Self {
+        use std::sync::LazyLock;
+        static MIN: LazyLock<Locator> = LazyLock::new(Locator::min);
+        &MIN
     }
 
-    pub const fn max_ref() -> &'static Self {
-        const { &Self::max() }
+    pub fn max_ref() -> &'static Self {
+        use std::sync::LazyLock;
+        static MAX: LazyLock<Locator> = LazyLock::new(Locator::max);
+        &MAX
     }
 
     pub fn assign(&mut self, other: &Self) {
