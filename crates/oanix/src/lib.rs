@@ -33,8 +33,10 @@
 //! let result = env.run_wasi(wasm_bytes, RunConfig::default()).await?;
 //! ```
 
+pub mod env;
 pub mod error;
 pub mod namespace;
+pub mod scheduler;
 pub mod service;
 pub mod services;
 
@@ -49,9 +51,16 @@ pub use error::OanixError;
 pub use namespace::{Mount, Namespace, NamespaceBuilder};
 pub use service::{DirEntry, FileHandle, FileService, Metadata, OpenFlags};
 pub use services::{
-    CowFs, FuncFs, LogEvent, LogLevel, LogsFs, MapFs, MapFsBuilder, MemFs, TaskFs, TaskMeta,
-    TaskSpec, TaskStatus,
+    ConnectionInfo, CowFs, FuncFs, HttpFs, HttpMethod, HttpRequest, HttpResponse, LogEvent,
+    LogLevel, LogsFs, MapFs, MapFsBuilder, MemFs, RequestState, TaskFs, TaskMeta, TaskSpec,
+    TaskStatus, WsConnection, WsFs, WsState,
 };
+
+// Environment exports
+pub use env::{EnvBuilder, EnvStatus, EnvStatusInfo, OanixEnv};
+
+// Scheduler exports
+pub use scheduler::{JobKind, JobResult, JobSpec, JobStatus, Scheduler, SchedulerStatus};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use services::WorkspaceFs;

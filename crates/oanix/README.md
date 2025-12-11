@@ -144,6 +144,8 @@ python -m http.server 8080
 | Service | Description |
 |---------|-------------|
 | **NostrFs** | Nostr event signing + NIP-90 DVM (requires `nostr` feature) |
+| **WsFs** | WebSocket connection management (outbox/inbox pattern) |
+| **HttpFs** | HTTP request/response client (queue-based) |
 
 ### Runtime
 
@@ -294,6 +296,78 @@ let pending = nostr.outbox_events();
 // /status             - Read service status
 ```
 
+### WsFs - WebSocket Capability
+
+```rust
+use oanix::WsFs;
+
+let ws = WsFs::new();
+
+// Open connection programmatically
+let conn_id = ws.open_connection("wss://relay.example.com")?;
+ws.set_connected(&conn_id)?;  // Called by transport when connected
+
+// Queue outgoing message
+ws.send_message(&conn_id, b"Hello WebSocket!".to_vec())?;
+
+// External transport drains outbox and sends
+let pending = ws.drain_outbox(&conn_id)?;
+
+// Transport adds received messages
+ws.receive_message(&conn_id, b"Response".to_vec())?;
+
+// Read from inbox (FIFO)
+let msg = ws.read_message(&conn_id)?;
+
+// File interface for agents:
+// /control              - Write {"url": "wss://..."} or {"id": "conn-0"}
+// /status               - Read overall service status
+// /conns/{id}/out       - Write messages to send
+// /conns/{id}/in        - Read received messages
+// /conns/{id}/status    - Read connection state
+// /conns/{id}/url       - Read connection URL
+```
+
+### HttpFs - HTTP Capability
+
+```rust
+use oanix::{HttpFs, HttpRequest, HttpResponse, HttpMethod};
+
+let http = HttpFs::new();
+
+// Submit request
+let request = HttpRequest {
+    method: HttpMethod::Get,
+    url: "https://api.example.com/data".to_string(),
+    headers: HashMap::from([("Authorization".into(), "Bearer token".into())]),
+    ..Default::default()
+};
+let req_id = http.submit_request(request);
+
+// External executor takes pending request
+let pending = http.take_pending(&req_id)?;
+
+// Executor completes request
+http.complete_request(HttpResponse {
+    request_id: req_id.clone(),
+    status: 200,
+    status_text: "OK".to_string(),
+    headers: HashMap::new(),
+    body: r#"{"result": "success"}"#.to_string(),
+    duration_ms: 150,
+    completed_at: now(),
+});
+
+// Read response
+let response = http.get_response(&req_id)?;
+
+// File interface for agents:
+// /request              - Write request JSON → queued for execution
+// /pending/{id}.json    - Read pending request details
+// /responses/{id}.json  - Read completed response (or failure)
+// /status               - Read service status
+```
+
 ### Namespace - Mount Points
 
 ```rust
@@ -302,6 +376,8 @@ let ns = Namespace::builder()
     .mount("/workspace", workspace_fs)
     .mount("/logs", logs_fs)
     .mount("/cap/nostr", nostr_fs)  // Nostr capability
+    .mount("/cap/ws", ws_fs)        // WebSocket capability
+    .mount("/cap/http", http_fs)    // HTTP capability
     .mount("/tmp", MemFs::new())
     .build();
 
@@ -309,14 +385,74 @@ let ns = Namespace::builder()
 let (service, relative_path) = ns.resolve("/workspace/src/main.rs").unwrap();
 ```
 
+### OanixEnv - Environment Abstraction
+
+```rust
+use oanix::{EnvBuilder, EnvStatus};
+
+// Create a complete agent environment
+let env = EnvBuilder::new()
+    .mount("/task", task_fs)
+    .mount("/logs", logs_fs)
+    .mount("/workspace", workspace_fs)
+    .mount("/cap/http", HttpFs::new())
+    .mount("/tmp", MemFs::new())
+    .build()?;
+
+// Check status
+println!("ID: {}", env.id());
+println!("Status: {:?}", env.status());
+
+// Lifecycle management
+env.set_running();
+// ... execution ...
+env.set_completed(0);  // or env.set_failed("error message");
+
+assert!(env.is_finished());
+```
+
+### Scheduler - Job Queue
+
+```rust
+use oanix::{Scheduler, JobSpec, JobKind, EnvBuilder};
+
+let mut scheduler = Scheduler::with_max_concurrent(4);
+
+// Register environments
+let env = EnvBuilder::new()
+    .mount("/workspace", MemFs::new())
+    .build()?;
+let env_id = scheduler.register_env(env);
+
+// Submit jobs with priority
+let job = JobSpec::new(env_id, JobKind::script("echo hello"))
+    .with_priority(10)
+    .env("DEBUG", "true")
+    .with_timeout(300)
+    .tag("urgent");
+scheduler.submit(job)?;
+
+// Process jobs
+while let Some(job) = scheduler.next() {
+    // Execute job...
+    scheduler.complete(&job.id, 0);
+}
+
+// Check status
+let status = scheduler.status();
+println!("Completed: {}", status.completed_count);
+```
+
 ---
 
 ## Current Status
 
-- **89 tests passing** (72 unit + 17 integration)
+- **150 tests passing** (117 unit + 33 integration)
 - Native Rust with optional WASM browser support
 - WASI execution via wasmtime
-- Nostr/NIP-90 capability (with `nostr` feature)
+- Full capability suite: NostrFs, WsFs, HttpFs
+- OanixEnv environment abstraction
+- Priority-based job scheduler
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation progress.
 

@@ -43,3 +43,7 @@ wasi = ["dep:wasmtime", "dep:wasmtime-wasi"]
 # Enable browser build target
 browser = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen", "dep:console_error_panic_hook"]
 nostr = ["dep:nostr"]
+
+[[example]]
+name = "run_wasi"
+required-features = ["wasi"]

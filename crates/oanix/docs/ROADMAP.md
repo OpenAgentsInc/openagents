@@ -31,83 +31,66 @@
 - [x] 4 new integration tests (12 total)
 - [x] Complete agent environment demo
 
-**Sprint 5: Capabilities (In Progress)**
+**Sprint 5: Complete** ✅
 - [x] `NostrFs` - Nostr event signing and NIP-90 DVM capability (~600 lines)
-- [x] 13 new unit tests (72 total)
-- [x] 5 new integration tests (17 total)
-- [ ] `WsFs` - WebSocket connections
-- [ ] `HttpFs` - HTTP client
+- [x] `WsFs` - WebSocket connection management (~700 lines)
+- [x] `HttpFs` - HTTP request/response client (~600 lines)
+- [x] 33 new unit tests (92 total)
+- [x] 11 new integration tests (23 total)
+- [x] Outbox/inbox pattern for all capability services
+- [x] Full agent environment with all capabilities
+
+**Sprint 6: Complete** ✅
+- [x] `OanixEnv` - Complete environment abstraction (~250 lines)
+- [x] `EnvStatus` - Environment lifecycle states (~100 lines)
+- [x] `Scheduler` - Priority-based job queue (~400 lines)
+- [x] `JobSpec` / `JobKind` - Job specification types (~250 lines)
+- [x] 25 new unit tests (117 total)
+- [x] 10 new integration tests (33 total)
+- [x] Environment lifecycle management
+- [x] Priority-based scheduling with concurrency limits
 
 ---
 
-## Sprint 5 (Remaining): Network Capabilities
+## Sprint 7: External Executors & Integration
 
-### WsFs - WebSocket Capability
+### 7.1 HTTP Executor
 
-```
-/cap/ws/
-├── control        # Write: {"open": "wss://..."} or {"close": "conn-id"}
-└── conns/
-    └── {id}/
-        ├── in     # Read incoming frames
-        ├── out    # Write outgoing frames
-        └── status # Connection state
-```
-
-### HttpFs - HTTP Client Capability
-
-```
-/cap/http/
-├── request        # Write request JSON → response in /response
-└── response       # Read response (blocks until complete)
-```
-
----
-
-## Sprint 6: OanixEnv & Scheduler
-
-### 6.1 OanixEnv
-
-Complete environment abstraction:
+Background task that executes pending HTTP requests:
 
 ```rust
-pub struct OanixEnv {
-    pub id: Uuid,
-    namespace: Namespace,
-    wasi_runtime: WasiRuntime,
-    status: Arc<RwLock<EnvStatus>>,
+pub struct HttpExecutor {
+    client: reqwest::Client,
 }
 
-impl OanixEnv {
-    pub async fn run_wasi(
-        &self,
-        wasm_bytes: &[u8],
-        config: RunConfig,
-    ) -> Result<RunResult, OanixError>;
-
-    pub fn namespace(&self) -> &Namespace;
-    pub fn status(&self) -> EnvStatus;
+impl HttpExecutor {
+    pub async fn process(&self, http_fs: &HttpFs) -> Result<usize, Error>;
 }
 ```
 
-### 6.2 Job Scheduler
+### 7.2 WebSocket Connector
+
+Background task that manages WebSocket connections:
 
 ```rust
-pub struct JobSpec {
-    pub id: Uuid,
-    pub env_id: Uuid,
-    pub kind: JobKind,
-    pub priority: i32,
+pub struct WsConnector {
+    // Manages actual WebSocket connections for WsFs
 }
 
-pub enum JobKind {
-    Wasi { wasm_path: String, args: Vec<String> },
-    Script { script: String },
+impl WsConnector {
+    pub async fn connect(&mut self, ws_fs: &WsFs) -> Result<(), Error>;
+    pub async fn poll(&mut self) -> Result<(), Error>;
 }
+```
 
-pub struct Scheduler {
-    jobs: VecDeque<JobSpec>,
-    running: HashMap<Uuid, JoinHandle<RunResult>>,
+### 7.3 Nostr Relay Connector
+
+Bridge between NostrFs and Nostr relays:
+
+```rust
+pub struct NostrRelayConnector {
+    // Sends outbox events to relays
+    // Receives events and adds to inbox
 }
 ```
 
@@ -149,8 +132,10 @@ Currently Sprint 2 targets native wasmtime. Browser needs different approach:
 | **M1** | Run "Hello World" WASI in namespace | ✅ Sprint 2 |
 | **M2** | Terminal-Bench task in OANIX env | ✅ Sprint 4 |
 | **M3** | Agent with Nostr capability | ✅ Sprint 5 |
-| **M4** | Multi-job scheduling | Sprint 6 |
-| **M5** | Browser WASI execution | Future |
+| **M4** | Full capability suite (WsFs, HttpFs) | ✅ Sprint 5 |
+| **M5** | OanixEnv & Scheduler | ✅ Sprint 6 |
+| **M6** | External executors (HTTP, WS, Nostr) | Sprint 7 |
+| **M7** | Browser WASI execution | Future |
 
 ---
 
