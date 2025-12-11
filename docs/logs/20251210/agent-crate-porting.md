@@ -7,7 +7,7 @@
 
 Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 
-## Modules Ported (27 total)
+## Modules Ported (28 total)
 
 | Rust Module | TypeScript Source | Tests | Description |
 |-------------|-------------------|-------|-------------|
@@ -23,6 +23,7 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `init_script.rs` | `init-script.ts` | 7 | Run `.openagents/init.sh` |
 | `install_deps.rs` | `install-deps.ts` | 6 | Dependency installation helper |
 | `orchestrator.rs` | `orchestrator.ts` | 3 | Main orchestrator state machine |
+| `parallel_runner.rs` | `parallel-runner.ts` | 13 | Parallel agent orchestration with worktrees |
 | `progress.rs` | `progress.ts` | 6 | Progress file markdown format |
 | `recovery.rs` | `recovery.ts` | 4 | Two-phase commit crash recovery |
 | `sandbox_runner.rs` | `sandbox-runner.ts` | 12 | Docker/podman sandbox execution |
@@ -37,14 +38,13 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `worktree_guards.rs` | `worktree-guards.ts` | 6 | File operation boundary enforcement |
 | `worktree_runner.rs` | `worktree-runner.ts` | 4 | Worktree + orchestrator integration |
 
-**Total Tests:** 153 passing
+**Total Tests:** 166 passing
 
 ## Remaining TypeScript Files
 
 | File | Complexity | Notes |
 |------|------------|-------|
 | `claude-code-subagent.ts` | High | Full Claude Code SDK integration |
-| `parallel-runner.ts` | High | Parallel orchestrator with worktrees |
 | `cli.ts` | Low | CLI entry point |
 
 ## Dependencies
@@ -64,8 +64,7 @@ TypeScript files cannot be deleted until all callers are migrated:
 
 ## Next Steps
 
-1. Port `parallel-runner.ts` - parallel orchestration with worktrees
-2. Port `claude-code-subagent.ts` - full Claude Code SDK integration
+1. Port `claude-code-subagent.ts` - full Claude Code SDK integration
 
 ## Architecture Notes
 
@@ -74,6 +73,7 @@ The Rust port follows the same architecture as TypeScript:
 - **Subagent**: Minimal coding agent for one subtask
 - **SubagentRouter**: Routes to Claude Code, FM, or Minimal based on task
 - **Worktree**: Isolation for parallel execution
+- **ParallelRunner**: N agents on N isolated worktrees
 - **Sandbox**: Container-based command execution
 - **Recovery**: Two-phase commit crash recovery
 
