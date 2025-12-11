@@ -3,7 +3,7 @@
 //! A focused GPUI application for interacting with Claude Code.
 
 use gpui::{AppContext, Application, KeyBinding, WindowOptions, px, size};
-use mechacoder::{MechaCoderScreen, Quit, app_menus, init_theme};
+use mechacoder::{MechaCoderScreen, Quit, app_menus};
 use ui_oa::text_input::bind_text_input_keys;
 
 fn main() {
@@ -11,8 +11,6 @@ fn main() {
     telemetry::init_default("mechacoder");
 
     Application::new().run(|cx| {
-        // Initialize theme system (required for markdown rendering)
-        init_theme(cx);
 
         // Bind text input keys (backspace, delete, arrows, etc.)
         bind_text_input_keys(cx);

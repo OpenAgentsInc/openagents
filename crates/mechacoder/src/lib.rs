@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use gpui::App;
-use settings::{Settings, SettingsStore};
+use settings::Settings;
 
 pub mod actions;
 pub mod app_menus;
@@ -19,12 +19,11 @@ pub use screen::MechaCoderScreen;
 
 /// Initialize the settings and theme systems for MechaCoder.
 ///
-/// This sets up the minimal Zed globals required for markdown rendering and UI components.
-/// Must be called early in app initialization before any UI is rendered.
+/// This sets up SettingsStore and GlobalTheme which are required for Zed's
+/// markdown rendering and UI components.
 pub fn init_theme(cx: &mut App) {
-    // Initialize settings store with test defaults (has all required fields)
-    let store = SettingsStore::test(cx);
-    cx.set_global(store);
+    // Initialize settings from assets/settings/default.json
+    settings::init(cx);
 
     // Register ThemeSettings so ThemeSettings::get_global works
     theme::ThemeSettings::register(cx);
