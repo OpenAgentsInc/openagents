@@ -91,12 +91,12 @@ impl MemNode {
 
 /// Get current timestamp in seconds since Unix epoch
 #[cfg(target_arch = "wasm32")]
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     (js_sys::Date::now() / 1000.0) as u64
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
