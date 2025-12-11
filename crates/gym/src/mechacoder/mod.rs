@@ -335,32 +335,9 @@ impl MechaCoderScreen {
             info!(target: "mechacoder", "Runner thread finished");
         });
 
-        // Set up polling timer using GPUI's spawn (no tokio needed)
-        debug!(target: "mechacoder", "Setting up polling timer (100ms interval)");
-        cx.spawn(async move |this, cx| {
-            let mut poll_count = 0u32;
-            loop {
-                // Use std::thread::sleep instead of tokio - we're in GPUI's executor
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                poll_count += 1;
-                let should_continue = cx.update(|cx| {
-                    if let Some(this) = this.upgrade() {
-                        this.update(cx, |view, cx| {
-                            view.poll_events(cx);
-                            view.session.status.is_busy()
-                        })
-                    } else {
-                        debug!(target: "mechacoder", "Entity no longer exists, stopping poll");
-                        false
-                    }
-                }).unwrap_or(false);
-
-                if !should_continue {
-                    debug!(target: "mechacoder", poll_count, "Polling stopped - run complete");
-                    break;
-                }
-            }
-        }).detach();
+        // Poll events on render - no separate timer needed
+        // Events come through the channel and we poll in render cycle
+        cx.notify();
 
         info!(target: "mechacoder", "Emitting StartRun event");
         cx.emit(StartRun);
@@ -679,6 +656,24 @@ impl Focusable for MechaCoderScreen {
 
 impl Render for MechaCoderScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Poll for events from the runner
+        self.poll_events(cx);
+
+        // If still busy, schedule another render to keep polling
+        if self.session.status.is_busy() {
+            cx.spawn(async move |this, cx| {
+                // Small delay before next poll
+                smol::Timer::after(std::time::Duration::from_millis(50)).await;
+                let _ = cx.update(|cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |_view, cx| {
+                            cx.notify();
+                        });
+                    }
+                });
+            }).detach();
+        }
+
         div()
             .flex()
             .flex_col()

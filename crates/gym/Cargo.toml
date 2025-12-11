@@ -22,6 +22,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 directories = "5.0"
 uuid = { version = "1.0", features = ["v4"] }
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread"] }
+smol = "2"
 parking_lot = "0.12"
 
 [dev-dependencies]
