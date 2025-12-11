@@ -1,7 +1,7 @@
 //! Tool call view component.
 
 use acp::{ToolCall, ToolCallContent, ToolCallStatus};
-use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
+use gpui::{div, prelude::*, px, InteractiveElement, IntoElement, ParentElement, Styled};
 use theme::{bg, border, status, text};
 
 /// Tool call view for displaying a tool call.
@@ -131,6 +131,13 @@ impl IntoElement for ToolCallView {
     type Element = gpui::Div;
 
     fn into_element(self) -> Self::Element {
+        // Extract values before consuming self
+        let status_color = self.status_color();
+        let status_text = self.status_text().to_string();
+        let title = self.title;
+        let expanded = self.expanded;
+        let content = self.content;
+
         div()
             .px(px(16.0))
             .py(px(8.0))
@@ -150,7 +157,7 @@ impl IntoElement for ToolCallView {
                             .w(px(8.0))
                             .h(px(8.0))
                             .rounded_full()
-                            .bg(self.status_color()),
+                            .bg(status_color),
                     )
                     // Title
                     .child(
@@ -159,25 +166,25 @@ impl IntoElement for ToolCallView {
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(text::PRIMARY)
-                            .child(self.title),
+                            .child(title),
                     )
                     // Status text
                     .child(
                         div()
                             .text_xs()
                             .text_color(text::SECONDARY)
-                            .child(self.status_text()),
+                            .child(status_text),
                     ),
             )
             // Content (if expanded)
-            .when(self.expanded && !self.content.is_empty(), |el| {
+            .when(expanded && !content.is_empty(), |el| {
                 el.child(
                     div()
                         .pl(px(16.0))
                         .flex()
                         .flex_col()
                         .gap(px(8.0))
-                        .children(self.content.iter().map(Self::render_content_item)),
+                        .children(content.iter().map(Self::render_content_item)),
                 )
             })
     }

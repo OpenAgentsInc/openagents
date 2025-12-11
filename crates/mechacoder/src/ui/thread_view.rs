@@ -40,17 +40,7 @@ impl ThreadView {
         });
 
         // Create list state
-        let list_state = ListState::new(0, gpui::ListAlignment::Bottom, px(100.0), {
-            let thread = thread.clone();
-            move |ix, _window, cx| {
-                let entries = thread.read(cx).entries();
-                if ix < entries.len() {
-                    Self::render_entry(&entries[ix], ix, cx).into_any_element()
-                } else {
-                    div().into_any_element()
-                }
-            }
-        });
+        let list_state = ListState::new(0, gpui::ListAlignment::Bottom, px(100.0));
 
         Self {
             thread,
