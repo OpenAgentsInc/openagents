@@ -364,33 +364,23 @@ impl MechaCoderScreen {
         // Spawn the runner in a separate thread with its own tokio runtime
         // (GPUI doesn't use tokio, but Claude Agent SDK requires it)
         std::thread::spawn(move || {
-            eprintln!("[MECHACODER] Runner thread started (backend={:?})", backend);
             info!(target: "mechacoder", backend = ?backend, "Runner thread started");
 
             // Create a tokio runtime for this thread
-            eprintln!("[MECHACODER] Creating tokio runtime...");
             let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => {
-                    eprintln!("[MECHACODER] Tokio runtime created successfully");
-                    rt
-                }
+                Ok(rt) => rt,
                 Err(e) => {
-                    eprintln!("[MECHACODER] ERROR: Failed to create tokio runtime: {}", e);
                     error!(target: "mechacoder", error = %e, "Failed to create tokio runtime");
                     let _ = tx.send(RunnerEvent::Error(format!("Failed to create runtime: {}", e)));
                     return;
                 }
             };
 
-            eprintln!("[MECHACODER] Calling rt.block_on()...");
             rt.block_on(async {
-                eprintln!("[MECHACODER] Inside block_on, backend={:?}", backend);
                 match backend {
                     HillClimberBackend::CC => {
-                        eprintln!("[MECHACODER] About to call run_cc_query()");
                         info!(target: "mechacoder", "Using Claude Code SDK backend");
                         Self::run_cc_query(prompt, tx, store_clone, session_id).await;
-                        eprintln!("[MECHACODER] run_cc_query() returned");
                     }
                     HillClimberBackend::FM => {
                         warn!(target: "mechacoder", "FM backend not yet implemented");
@@ -399,7 +389,6 @@ impl MechaCoderScreen {
                 }
             });
 
-            eprintln!("[MECHACODER] Runner thread finished");
             info!(target: "mechacoder", "Runner thread finished");
         });
 
@@ -418,7 +407,6 @@ impl MechaCoderScreen {
         store: Option<Arc<Mutex<TrajectoryStore>>>,
         session_id: Option<String>,
     ) {
-        eprintln!("[MECHACODER::CC] run_cc_query() entered, prompt_len={}", prompt.len());
         info!(target: "mechacoder::cc", prompt_len = prompt.len(), "Starting Claude Code query");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing Claude Code SDK...")));
 
@@ -438,21 +426,17 @@ impl MechaCoderScreen {
             .setting_sources(vec![SettingSource::Project, SettingSource::User])
             .dangerously_skip_permissions(true);
 
-        eprintln!("[MECHACODER::CC] Query options built");
         debug!(target: "mechacoder::cc", "Query options built - dangerously_skip_permissions=true");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Starting query...")));
 
         // Start the query
-        eprintln!("[MECHACODER::CC] About to call claude_agent_sdk::query()...");
-        info!(target: "mechacoder::cc", "Calling claude_agent_sdk::query() with explicit path");
+        info!(target: "mechacoder::cc", "Calling claude_agent_sdk::query()");
         let mut stream = match query(&prompt, query_options).await {
             Ok(s) => {
-                eprintln!("[MECHACODER::CC] Query started successfully!");
                 info!(target: "mechacoder::cc", "Query started successfully, got stream");
                 s
             }
             Err(e) => {
-                eprintln!("[MECHACODER::CC] ERROR: Failed to start query: {}", e);
                 error!(target: "mechacoder::cc", error = %e, "Failed to start query");
                 let _ = tx.send(RunnerEvent::Error(format!("Failed to start query: {}", e)));
                 // Fail trajectory if we have one
