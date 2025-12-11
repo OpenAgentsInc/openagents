@@ -175,67 +175,87 @@ fn parse_stream_line(
 
     match event_type {
         "assistant" => {
-            results.current_turn += 1;
-            results.turns = results.current_turn;
+            // Parse content blocks from message.content array
+            if let Some(message) = json.get("message") {
+                if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
+                    for block in content {
+                        let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        match block_type {
+                            "text" => {
+                                let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                                if !text.is_empty() {
+                                    results.current_turn += 1;
+                                    results.turns = results.current_turn;
 
-            // Extract text from message content
-            let text = extract_assistant_text(&json);
+                                    if stream_mode {
+                                        StreamEvent::Assistant {
+                                            turn: results.current_turn,
+                                            text: text.to_string(),
+                                        }.emit();
+                                    }
 
-            if stream_mode && !text.is_empty() {
-                StreamEvent::Assistant {
-                    turn: results.current_turn,
-                    text: text.clone(),
-                }.emit();
-            }
+                                    event_recorder.record("assistant", serde_json::json!({
+                                        "turn": results.current_turn,
+                                        "text": text,
+                                    }))?;
 
-            // Record to events.jsonl
-            event_recorder.record("assistant", serde_json::json!({
-                "turn": results.current_turn,
-                "text": text,
-            }))?;
+                                    results.add_agent_step(text);
+                                }
+                            }
+                            "tool_use" => {
+                                let tool_name = block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                let tool_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let args = block.get("input").cloned();
 
-            if !text.is_empty() {
-                results.add_agent_step(&text);
+                                if stream_mode {
+                                    StreamEvent::ToolUse {
+                                        tool: tool_name.to_string(),
+                                        id: tool_id.to_string(),
+                                    }.emit();
+                                }
+
+                                event_recorder.record("tool_use", serde_json::json!({
+                                    "tool": tool_name,
+                                    "id": tool_id,
+                                }))?;
+
+                                results.add_tool_call(tool_id, tool_name, args);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
         }
-        "tool_use" => {
-            let tool_name = json.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let tool_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let args = json.get("input").cloned();
+        "user" => {
+            // Parse tool_result from user message content
+            if let Some(message) = json.get("message") {
+                if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
+                    for block in content {
+                        let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        if block_type == "tool_result" {
+                            let tool_id = block.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("");
+                            let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let content_str = block.get("content").and_then(|v| v.as_str()).map(String::from);
 
-            if stream_mode {
-                StreamEvent::ToolUse {
-                    tool: tool_name.to_string(),
-                    id: tool_id.to_string(),
-                }.emit();
+                            if stream_mode {
+                                StreamEvent::ToolResult {
+                                    id: tool_id.to_string(),
+                                    output: if is_error { None } else { content_str.clone() },
+                                    error: if is_error { content_str.clone() } else { None },
+                                }.emit();
+                            }
+
+                            event_recorder.record("tool_result", serde_json::json!({
+                                "id": tool_id,
+                                "is_error": is_error,
+                            }))?;
+
+                            results.add_tool_result(tool_id, content_str, is_error);
+                        }
+                    }
+                }
             }
-
-            event_recorder.record("tool_use", serde_json::json!({
-                "tool": tool_name,
-                "id": tool_id,
-            }))?;
-
-            results.add_tool_call(tool_id, tool_name, args);
-        }
-        "tool_result" => {
-            let tool_id = json.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("");
-            let is_error = json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
-            let content = json.get("content").and_then(|v| v.as_str()).map(String::from);
-
-            if stream_mode {
-                StreamEvent::ToolResult {
-                    id: tool_id.to_string(),
-                    output: if is_error { None } else { content.clone() },
-                    error: if is_error { content.clone() } else { None },
-                }.emit();
-            }
-
-            event_recorder.record("tool_result", serde_json::json!({
-                "id": tool_id,
-                "is_error": is_error,
-            }))?;
-
-            results.add_tool_result(tool_id, content, is_error);
         }
         "result" => {
             let subtype = json.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
@@ -300,6 +320,7 @@ async fn run_claude_streaming(
         "--dangerously-skip-permissions".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
+        "--verbose".to_string(), // Required for stream-json with -p
         "--max-turns".to_string(),
         max_turns.to_string(),
         "-p".to_string(),
