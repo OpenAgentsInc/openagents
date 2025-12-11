@@ -338,6 +338,40 @@ impl TaskPanel {
                     .child(self.session.task.description.clone()),
             )
     }
+
+    fn render_cwd(&self) -> impl IntoElement {
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
+            .px(px(16.0))
+            .py(px(10.0))
+            .bg(bg::ELEVATED)
+            .border_b_1()
+            .border_color(border::DEFAULT)
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("Working Directory"),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(status::INFO)
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(cwd),
+            )
+    }
 }
 
 impl Focusable for TaskPanel {
@@ -354,6 +388,7 @@ impl Render for TaskPanel {
             .h_full()
             .w_full()
             .bg(bg::SURFACE)
+            .child(self.render_cwd()) // Show CWD prominently at top
             .child(self.render_header())
             .child(self.render_backend_toggle(cx))
             .child(self.render_progress())
