@@ -85,6 +85,8 @@ pub struct MechaSession {
     pub error: Option<String>,
     /// API cost so far (USD)
     pub cost_usd: f64,
+    /// ATIF trajectory session ID
+    pub session_id: Option<String>,
 }
 
 impl MechaSession {

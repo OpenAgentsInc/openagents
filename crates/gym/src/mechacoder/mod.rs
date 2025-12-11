@@ -7,6 +7,8 @@ pub mod log_panel;
 pub mod task_panel;
 pub mod types;
 
+use std::sync::{Arc, Mutex};
+
 use gpui::prelude::*;
 use gpui::*;
 use hillclimber::HillClimberBackend;
@@ -15,6 +17,8 @@ use claude_agent_sdk::{query, QueryOptions, SdkMessage, SdkResultMessage, Settin
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn, trace};
+use atif::{Agent, Step, ToolCall, FinalMetrics};
+use atif_store::TrajectoryStore;
 
 use self::log_panel::LogPanel;
 use self::task_panel::{SwitchBackend, TaskPanel};
@@ -49,6 +53,10 @@ pub struct MechaCoderScreen {
     focus_handle: FocusHandle,
     /// Channel receiver for runner events
     event_rx: Option<mpsc::UnboundedReceiver<RunnerEvent>>,
+    /// ATIF trajectory store for saving conversations
+    store: Option<Arc<Mutex<TrajectoryStore>>>,
+    /// Step counter for ATIF trajectory
+    next_step_id: i64,
 }
 
 impl EventEmitter<StartRun> for MechaCoderScreen {}
@@ -56,6 +64,11 @@ impl EventEmitter<StopRun> for MechaCoderScreen {}
 
 impl MechaCoderScreen {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        Self::with_store(cx, None)
+    }
+
+    /// Create a new MechaCoderScreen with a trajectory store
+    pub fn with_store(cx: &mut Context<Self>, store: Option<Arc<Mutex<TrajectoryStore>>>) -> Self {
         info!(target: "mechacoder", "Creating MechaCoderScreen");
 
         let task_panel = cx.new(|cx| TaskPanel::new(cx));
@@ -69,6 +82,7 @@ impl MechaCoderScreen {
             target: "mechacoder",
             backend = ?session.backend,
             task = %session.task.name,
+            has_store = store.is_some(),
             "MechaCoderScreen initialized with default session"
         );
 
@@ -90,6 +104,8 @@ impl MechaCoderScreen {
             session,
             focus_handle: cx.focus_handle(),
             event_rx: None,
+            store,
+            next_step_id: 1,
         }
     }
 
@@ -299,9 +315,50 @@ impl MechaCoderScreen {
         );
         debug!(target: "mechacoder", prompt_len = prompt.len(), "Built prompt for runner");
 
+        // Create ATIF trajectory if store is available
+        let session_id = if let Some(ref store) = self.store {
+            let agent = Agent {
+                name: "mechacoder".to_string(),
+                version: "0.1.0".to_string(),
+                model_name: Some("claude-sonnet-4-20250514".to_string()),
+                extra: None,
+            };
+
+            match store.lock() {
+                Ok(s) => {
+                    match s.create_trajectory(&agent) {
+                        Ok(id) => {
+                            info!(target: "mechacoder", session_id = %id, "Created ATIF trajectory");
+
+                            // Add initial system step with task prompt
+                            let system_step = Step::system(1, prompt.clone());
+                            if let Err(e) = s.add_step(&id, &system_step) {
+                                warn!(target: "mechacoder", error = %e, "Failed to add system step to trajectory");
+                            }
+
+                            self.session.session_id = Some(id.clone());
+                            self.next_step_id = 2; // Next step will be step 2
+                            Some(id)
+                        }
+                        Err(e) => {
+                            warn!(target: "mechacoder", error = %e, "Failed to create ATIF trajectory");
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(target: "mechacoder", error = %e, "Failed to lock trajectory store");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // Spawn the runner
         let backend = self.session.backend;
         let task_name = self.session.task.name.clone();
+        let store_clone = self.store.clone();
         info!(target: "mechacoder", backend = ?backend, task = %task_name, "Spawning runner task");
 
         // Spawn the runner in a separate thread with its own tokio runtime
@@ -323,7 +380,7 @@ impl MechaCoderScreen {
                 match backend {
                     HillClimberBackend::CC => {
                         info!(target: "mechacoder", "Using Claude Code SDK backend");
-                        Self::run_cc_query(prompt, tx).await;
+                        Self::run_cc_query(prompt, tx, store_clone, session_id).await;
                     }
                     HillClimberBackend::FM => {
                         warn!(target: "mechacoder", "FM backend not yet implemented");
@@ -344,7 +401,12 @@ impl MechaCoderScreen {
     }
 
     /// Run the Claude Code query
-    async fn run_cc_query(prompt: String, tx: mpsc::UnboundedSender<RunnerEvent>) {
+    async fn run_cc_query(
+        prompt: String,
+        tx: mpsc::UnboundedSender<RunnerEvent>,
+        store: Option<Arc<Mutex<TrajectoryStore>>>,
+        session_id: Option<String>,
+    ) {
         info!(target: "mechacoder::cc", prompt_len = prompt.len(), "Starting Claude Code query");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing Claude Code SDK...")));
 
@@ -377,6 +439,12 @@ impl MechaCoderScreen {
             Err(e) => {
                 error!(target: "mechacoder::cc", error = %e, "Failed to start query");
                 let _ = tx.send(RunnerEvent::Error(format!("Failed to start query: {}", e)));
+                // Fail trajectory if we have one
+                if let (Some(store), Some(sid)) = (&store, &session_id) {
+                    if let Ok(s) = store.lock() {
+                        let _ = s.fail_trajectory(sid);
+                    }
+                }
                 return;
             }
         };
@@ -386,6 +454,7 @@ impl MechaCoderScreen {
         let mut turn = 0u32;
         let mut cost = 0.0f64;
         let mut message_count = 0u32;
+        let mut step_id = 2i64; // Start at 2 since system step is 1
 
         info!(target: "mechacoder::cc", "Beginning stream processing loop");
 
@@ -407,6 +476,10 @@ impl MechaCoderScreen {
                             );
                             let _ = tx.send(RunnerEvent::TurnUpdate { turn, max_turns });
 
+                            // Collect text content and tool_calls for ATIF step
+                            let mut text_content = String::new();
+                            let mut tool_calls: Vec<ToolCall> = Vec::new();
+
                             // Try to extract content (text and tool_use)
                             if let Some(content) = assistant_msg.message.get("content") {
                                 if let Some(arr) = content.as_array() {
@@ -418,7 +491,7 @@ impl MechaCoderScreen {
                                                 text_len = text.len(),
                                                 "Assistant text content"
                                             );
-                                            // Truncate long messages
+                                            // Truncate long messages for display
                                             let display = if text.len() > 200 {
                                                 format!("{}...", &text[..200])
                                             } else {
@@ -430,6 +503,11 @@ impl MechaCoderScreen {
                                                 message: display,
                                                 details: if text.len() > 200 { Some(text.to_string()) } else { None },
                                             }));
+                                            // Collect full text for ATIF
+                                            if !text_content.is_empty() {
+                                                text_content.push('\n');
+                                            }
+                                            text_content.push_str(text);
                                         }
                                         // Handle tool_use content blocks
                                         if item.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
@@ -443,10 +521,37 @@ impl MechaCoderScreen {
                                                     format!("🔧 {}", tool_name),
                                                     None
                                                 )));
+
+                                                // Extract tool call for ATIF
+                                                let tool_id = item.get("id")
+                                                    .and_then(|i| i.as_str())
+                                                    .unwrap_or("unknown")
+                                                    .to_string();
+                                                let arguments = item.get("input")
+                                                    .cloned()
+                                                    .unwrap_or(serde_json::json!({}));
+                                                tool_calls.push(ToolCall::new(tool_id, tool_name, arguments));
                                             }
                                         }
                                     }
                                 }
+                            }
+
+                            // Save ATIF step for this assistant message
+                            if let (Some(store), Some(sid)) = (&store, &session_id) {
+                                let mut step = Step::agent(step_id, &text_content)
+                                    .with_model("claude-sonnet-4-20250514");
+                                if !tool_calls.is_empty() {
+                                    step = step.with_tool_calls(tool_calls);
+                                }
+                                if let Ok(s) = store.lock() {
+                                    if let Err(e) = s.add_step(sid, &step) {
+                                        warn!(target: "mechacoder::cc", error = %e, step_id, "Failed to save ATIF step");
+                                    } else {
+                                        debug!(target: "mechacoder::cc", step_id, "Saved ATIF agent step");
+                                    }
+                                }
+                                step_id += 1;
                             }
                         }
                         SdkMessage::ToolProgress(progress) => {
@@ -463,10 +568,15 @@ impl MechaCoderScreen {
                         }
                         SdkMessage::Result(result_msg) => {
                             info!(target: "mechacoder::cc", "Received result message");
+                            let mut is_success = false;
+                            let mut final_turns = turn;
+
                             match result_msg {
                                 SdkResultMessage::Success(success) => {
                                     cost = success.total_cost_usd;
                                     let passed = !success.is_error;
+                                    is_success = passed;
+                                    final_turns = success.num_turns;
                                     info!(
                                         target: "mechacoder::cc",
                                         passed,
@@ -483,6 +593,7 @@ impl MechaCoderScreen {
                                 }
                                 SdkResultMessage::ErrorDuringExecution(err) => {
                                     cost = err.total_cost_usd;
+                                    final_turns = err.num_turns;
                                     error!(
                                         target: "mechacoder::cc",
                                         turns = err.num_turns,
@@ -497,6 +608,7 @@ impl MechaCoderScreen {
                                 }
                                 SdkResultMessage::ErrorMaxTurns(err) => {
                                     cost = err.total_cost_usd;
+                                    final_turns = err.num_turns;
                                     warn!(
                                         target: "mechacoder::cc",
                                         turns = err.num_turns,
@@ -530,6 +642,34 @@ impl MechaCoderScreen {
                                     let _ = tx.send(RunnerEvent::Error("Structured output error".to_string()));
                                 }
                             }
+
+                            // Complete or fail the ATIF trajectory
+                            if let (Some(store), Some(sid)) = (&store, &session_id) {
+                                if let Ok(s) = store.lock() {
+                                    if is_success {
+                                        let final_metrics = FinalMetrics {
+                                            total_prompt_tokens: None,
+                                            total_completion_tokens: None,
+                                            total_cached_tokens: None,
+                                            total_cost_usd: Some(cost),
+                                            total_steps: Some(final_turns as i64),
+                                            extra: None,
+                                        };
+                                        if let Err(e) = s.complete_trajectory(sid, Some(&final_metrics)) {
+                                            warn!(target: "mechacoder::cc", error = %e, "Failed to complete ATIF trajectory");
+                                        } else {
+                                            info!(target: "mechacoder::cc", session_id = %sid, "ATIF trajectory completed successfully");
+                                        }
+                                    } else {
+                                        if let Err(e) = s.fail_trajectory(sid) {
+                                            warn!(target: "mechacoder::cc", error = %e, "Failed to fail ATIF trajectory");
+                                        } else {
+                                            info!(target: "mechacoder::cc", session_id = %sid, "ATIF trajectory marked as failed");
+                                        }
+                                    }
+                                }
+                            }
+
                             info!(target: "mechacoder::cc", message_count, turn, cost_usd = cost, "Stream processing complete");
                             return;
                         }
@@ -550,6 +690,12 @@ impl MechaCoderScreen {
                 Err(e) => {
                     error!(target: "mechacoder::cc", error = %e, message_count, "Stream error");
                     let _ = tx.send(RunnerEvent::Error(format!("Stream error: {}", e)));
+                    // Fail trajectory on stream error
+                    if let (Some(store), Some(sid)) = (&store, &session_id) {
+                        if let Ok(s) = store.lock() {
+                            let _ = s.fail_trajectory(sid);
+                        }
+                    }
                     return;
                 }
             }
@@ -563,6 +709,12 @@ impl MechaCoderScreen {
             cost_usd = cost,
             "Stream ended unexpectedly without Result message"
         );
+        // Fail trajectory on unexpected stream end
+        if let (Some(store), Some(sid)) = (&store, &session_id) {
+            if let Ok(s) = store.lock() {
+                let _ = s.fail_trajectory(sid);
+            }
+        }
         let _ = tx.send(RunnerEvent::Complete {
             passed: false,
             turns: turn,
