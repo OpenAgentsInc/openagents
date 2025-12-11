@@ -480,7 +480,7 @@ pub fn run_verification_with_sandbox(
     let mut any_sandboxed = false;
 
     for cmd in commands {
-        let result = run_command_string(cmd, config, None)?;
+        let result = sandbox_run_command_string(cmd, config, None)?;
         let output = if result.stderr.is_empty() {
             result.stdout.clone()
         } else {
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_command_string() {
+    fn test_sandbox_run_command_string() {
         let config = SandboxRunnerConfig {
             sandbox_config: SandboxConfig {
                 enabled: Some(false),
@@ -630,7 +630,7 @@ mod tests {
             context: None,
         };
 
-        let result = run_command_string("echo test", &config, None);
+        let result = sandbox_run_command_string("echo test", &config, None);
         assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.exit_code, 0);

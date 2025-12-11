@@ -217,9 +217,9 @@ pub enum RouterAgentType {
 impl std::fmt::Display for RouterAgentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RouterRouterAgentType::ClaudeCode => write!(f, "claude-code"),
-            RouterRouterAgentType::Fm => write!(f, "fm"),
-            RouterRouterAgentType::Minimal => write!(f, "minimal"),
+            RouterAgentType::ClaudeCode => write!(f, "claude-code"),
+            RouterAgentType::Fm => write!(f, "fm"),
+            RouterAgentType::Minimal => write!(f, "minimal"),
         }
     }
 }
