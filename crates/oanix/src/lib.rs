@@ -41,8 +41,14 @@ pub mod services;
 #[cfg(feature = "browser")]
 pub mod web;
 
+#[cfg(all(feature = "wasi", not(target_arch = "wasm32")))]
+pub mod wasi;
+
 // Re-exports
 pub use error::OanixError;
 pub use namespace::{Mount, Namespace, NamespaceBuilder};
 pub use service::{DirEntry, FileHandle, FileService, Metadata, OpenFlags};
 pub use services::MemFs;
+
+#[cfg(all(feature = "wasi", not(target_arch = "wasm32")))]
+pub use wasi::{RunConfig, RunResult, WasiRuntime};

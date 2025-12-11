@@ -18,7 +18,7 @@ thiserror = "1.0"
 async-trait = "0.1"
 tracing = "0.1"
 
-# WASM dependencies (optional)
+# Browser WASM dependencies (optional)
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -27,6 +27,8 @@ console_error_panic_hook = { version = "0.1", optional = true }
 # Native-only dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.0", features = ["full"] }
+wasmtime = { version = "27", optional = true }
+wasmtime-wasi = { version = "27", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -34,7 +36,7 @@ tempfile = "3.0"
 
 [features]
 default = []
-# Enable WASI runtime (requires wasmtime)
-wasi = []
+# Enable WASI runtime (requires wasmtime) - native only
+wasi = ["dep:wasmtime", "dep:wasmtime-wasi"]
 # Enable browser build target
 browser = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen", "dep:console_error_panic_hook"]
