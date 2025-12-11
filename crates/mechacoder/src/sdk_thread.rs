@@ -5,8 +5,10 @@ use claude_agent_sdk::{
     PermissionMode,
 };
 use futures::StreamExt;
-use gpui::{Context, EventEmitter, Task};
+use gpui::{App, AppContext, Context, EventEmitter, Task};
+use gpui_tokio::Tokio;
 use std::path::PathBuf;
+use tokio::sync::mpsc;
 
 /// Events emitted by SdkThread.
 #[derive(Clone, Debug)]
@@ -68,6 +70,17 @@ pub enum ToolStatus {
     Running,
     Completed,
     Failed(String),
+}
+
+/// Internal message from Tokio task to GPUI.
+#[derive(Clone, Debug)]
+enum SdkUpdate {
+    Init { session_id: String, model: String },
+    StreamingContent(String),
+    ToolProgress { tool_name: String },
+    FinalContent(String),
+    Completed,
+    Error(String),
 }
 
 /// A conversation thread using the Claude Agent SDK.
@@ -140,7 +153,11 @@ impl SdkThread {
 
         let project_root = self.project_root.clone();
 
-        cx.spawn(async move |this, cx| {
+        // Create channel for SDK updates
+        let (tx, mut rx) = mpsc::unbounded_channel::<SdkUpdate>();
+
+        // Spawn SDK work on Tokio runtime
+        let _tokio_task = Tokio::spawn(cx, async move {
             // Build options
             let options = QueryOptions::new()
                 .cwd(&project_root)
@@ -153,11 +170,7 @@ impl SdkThread {
             let mut stream = match query_result {
                 Ok(q) => q,
                 Err(e) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.status = ThreadStatus::Error(e.to_string());
-                        this.streaming_content = None;
-                        cx.emit(SdkThreadEvent::Error(e.to_string()));
-                    });
+                    let _ = tx.send(SdkUpdate::Error(e.to_string()));
                     return;
                 }
             };
@@ -169,11 +182,7 @@ impl SdkThread {
                 let msg = match msg_result {
                     Ok(m) => m,
                     Err(e) => {
-                        let _ = this.update(cx, |this, cx| {
-                            this.status = ThreadStatus::Error(e.to_string());
-                            this.streaming_content = None;
-                            cx.emit(SdkThreadEvent::Error(e.to_string()));
-                        });
+                        let _ = tx.send(SdkUpdate::Error(e.to_string()));
                         return;
                     }
                 };
@@ -181,9 +190,9 @@ impl SdkThread {
                 match msg {
                     SdkMessage::System(sys) => {
                         if let SdkSystemMessage::Init(init) = sys {
-                            let _ = this.update(cx, |this, _cx| {
-                                this.session_id = Some(init.session_id);
-                                this.model = Some(init.model);
+                            let _ = tx.send(SdkUpdate::Init {
+                                session_id: init.session_id,
+                                model: init.model,
                             });
                         }
                     }
@@ -198,28 +207,64 @@ impl SdkThread {
                                 }
                             }
                         }
-                        let _ = this.update(cx, |this, cx| {
-                            this.streaming_content = Some(assistant_content.clone());
-                            cx.notify();
-                        });
+                        let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
                     }
                     SdkMessage::StreamEvent(event) => {
                         // Handle streaming delta
                         if let Some(delta) = event.event.get("delta") {
                             if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
                                 assistant_content.push_str(text);
-                                let _ = this.update(cx, |this, cx| {
-                                    this.streaming_content = Some(assistant_content.clone());
-                                    cx.notify();
-                                });
+                                let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
                             }
                         }
                     }
                     SdkMessage::ToolProgress(progress) => {
-                        let _ = this.update(cx, |this, cx| {
-                            // Add or update tool entry
+                        let _ = tx.send(SdkUpdate::ToolProgress {
+                            tool_name: progress.tool_name,
+                        });
+                    }
+                    SdkMessage::Result(result) => {
+                        if !assistant_content.is_empty() {
+                            let _ = tx.send(SdkUpdate::FinalContent(assistant_content.clone()));
+                        }
+                        match result {
+                            SdkResultMessage::Success(_) => {
+                                let _ = tx.send(SdkUpdate::Completed);
+                            }
+                            _ => {
+                                let _ = tx.send(SdkUpdate::Error("Query failed".to_string()));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // If stream ends without explicit result, send what we have
+            if !assistant_content.is_empty() {
+                let _ = tx.send(SdkUpdate::FinalContent(assistant_content));
+            }
+            let _ = tx.send(SdkUpdate::Completed);
+        });
+
+        // Spawn GPUI task to receive updates
+        cx.spawn(async move |this, cx| {
+            while let Some(update) = rx.recv().await {
+                let should_break = matches!(update, SdkUpdate::Completed | SdkUpdate::Error(_));
+
+                let _ = this.update(cx, |this, cx| {
+                    match update {
+                        SdkUpdate::Init { session_id, model } => {
+                            this.session_id = Some(session_id);
+                            this.model = Some(model);
+                        }
+                        SdkUpdate::StreamingContent(content) => {
+                            this.streaming_content = Some(content);
+                            cx.notify();
+                        }
+                        SdkUpdate::ToolProgress { tool_name } => {
                             let tool_entry = ThreadEntry::ToolUse(ToolUse {
-                                tool_name: progress.tool_name,
+                                tool_name,
                                 input: String::new(),
                                 output: None,
                                 status: ToolStatus::Running,
@@ -227,46 +272,32 @@ impl SdkThread {
                             this.entries.push(tool_entry);
                             let idx = this.entries.len() - 1;
                             cx.emit(SdkThreadEvent::EntryAdded(idx));
-                        });
-                    }
-                    SdkMessage::Result(result) => {
-                        let _ = this.update(cx, |this, cx| {
-                            // Finalize assistant message
-                            if !assistant_content.is_empty() {
-                                this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {
-                                    content: assistant_content.clone(),
-                                }));
-                                let idx = this.entries.len() - 1;
-                                cx.emit(SdkThreadEvent::EntryAdded(idx));
-                            }
-
+                        }
+                        SdkUpdate::FinalContent(content) => {
+                            this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {
+                                content,
+                            }));
+                            let idx = this.entries.len() - 1;
+                            cx.emit(SdkThreadEvent::EntryAdded(idx));
+                        }
+                        SdkUpdate::Completed => {
                             this.streaming_content = None;
-                            this.status = match result {
-                                SdkResultMessage::Success(_) => ThreadStatus::Completed,
-                                _ => ThreadStatus::Error("Query failed".to_string()),
-                            };
+                            this.status = ThreadStatus::Completed;
                             cx.emit(SdkThreadEvent::StatusChanged(this.status.clone()));
-                        });
+                        }
+                        SdkUpdate::Error(e) => {
+                            this.streaming_content = None;
+                            this.status = ThreadStatus::Error(e.clone());
+                            cx.emit(SdkThreadEvent::Error(e));
+                            cx.emit(SdkThreadEvent::StatusChanged(this.status.clone()));
+                        }
                     }
-                    _ => {}
+                });
+
+                if should_break {
+                    break;
                 }
             }
-
-            // Ensure we finalize if stream ends without result
-            let _ = this.update(cx, |this, cx| {
-                if !matches!(this.status, ThreadStatus::Completed | ThreadStatus::Error(_)) {
-                    if !assistant_content.is_empty() && this.streaming_content.is_some() {
-                        this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {
-                            content: assistant_content,
-                        }));
-                        let idx = this.entries.len() - 1;
-                        cx.emit(SdkThreadEvent::EntryAdded(idx));
-                    }
-                    this.streaming_content = None;
-                    this.status = ThreadStatus::Idle;
-                    cx.emit(SdkThreadEvent::StatusChanged(this.status.clone()));
-                }
-            });
         })
     }
 

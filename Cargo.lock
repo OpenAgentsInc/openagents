@@ -9053,6 +9053,7 @@ dependencies = [
  "claude_agent_sdk",
  "futures 0.3.31",
  "gpui",
+ "gpui_tokio",
  "language",
  "log",
  "markdown",
