@@ -53,6 +53,8 @@ pub struct MechaCoderScreen {
     focus_handle: FocusHandle,
     /// Channel receiver for runner events
     event_rx: Option<mpsc::UnboundedReceiver<RunnerEvent>>,
+    /// Channel to signal abort to the runner thread
+    abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
     /// ATIF trajectory store for saving conversations
     store: Option<Arc<Mutex<TrajectoryStore>>>,
     /// Step counter for ATIF trajectory
@@ -104,6 +106,7 @@ impl MechaCoderScreen {
             session,
             focus_handle: cx.focus_handle(),
             event_rx: None,
+            abort_tx: None,
             store,
             next_step_id: 1,
         }
@@ -307,6 +310,11 @@ impl MechaCoderScreen {
         self.event_rx = Some(rx);
         debug!(target: "mechacoder", "Created event channel for runner communication");
 
+        // Create abort channel
+        let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+        self.abort_tx = Some(abort_tx);
+        debug!(target: "mechacoder", "Created abort channel for stopping runner");
+
         // Build the prompt
         let task_desc = self.session.task.description.clone();
         let prompt = format!(
@@ -380,7 +388,7 @@ impl MechaCoderScreen {
                 match backend {
                     HillClimberBackend::CC => {
                         info!(target: "mechacoder", "Using Claude Code SDK backend");
-                        Self::run_cc_query(prompt, tx, store_clone, session_id).await;
+                        Self::run_cc_query(prompt, tx, store_clone, session_id, abort_rx).await;
                     }
                     HillClimberBackend::FM => {
                         warn!(target: "mechacoder", "FM backend not yet implemented");
@@ -406,6 +414,7 @@ impl MechaCoderScreen {
         tx: mpsc::UnboundedSender<RunnerEvent>,
         store: Option<Arc<Mutex<TrajectoryStore>>>,
         session_id: Option<String>,
+        mut abort_rx: tokio::sync::oneshot::Receiver<()>,
     ) {
         info!(target: "mechacoder::cc", prompt_len = prompt.len(), "Starting Claude Code query");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing Claude Code SDK...")));
@@ -458,8 +467,34 @@ impl MechaCoderScreen {
 
         info!(target: "mechacoder::cc", "Beginning stream processing loop");
 
-        // Process stream
-        while let Some(message) = stream.next().await {
+        // Process stream with abort support
+        loop {
+            let message = tokio::select! {
+                biased;
+                // Check for abort signal first
+                _ = &mut abort_rx => {
+                    info!(target: "mechacoder::cc", "Abort signal received - killing Claude process");
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::info("Aborting...")));
+                    // Kill the Claude process
+                    if let Err(e) = stream.abort().await {
+                        warn!(target: "mechacoder::cc", error = %e, "Failed to abort query");
+                    }
+                    // Fail trajectory if we have one
+                    if let (Some(store), Some(sid)) = (&store, &session_id) {
+                        if let Ok(s) = store.lock() {
+                            let _ = s.fail_trajectory(sid);
+                        }
+                    }
+                    return;
+                }
+                // Otherwise wait for next message
+                msg = stream.next() => msg,
+            };
+
+            let Some(message) = message else {
+                break; // Stream ended
+            };
+
             message_count += 1;
             trace!(target: "mechacoder::cc", message_count, "Received stream message");
 
@@ -732,8 +767,14 @@ impl MechaCoderScreen {
             "STOP button clicked - user requested stop"
         );
 
+        // Send abort signal to kill the Claude process
+        if let Some(abort_tx) = self.abort_tx.take() {
+            info!(target: "mechacoder", "Sending abort signal to runner");
+            let _ = abort_tx.send(());
+        }
+
         self.session.status = MechaStatus::Idle;
-        self.event_rx = None; // Drop the receiver to signal runner to stop
+        self.event_rx = None; // Drop the receiver to stop polling
         self.update_panels(cx);
 
         self.add_log(LogEntry::info("Run stopped by user"), cx);

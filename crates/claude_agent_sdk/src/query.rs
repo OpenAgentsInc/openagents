@@ -295,6 +295,16 @@ impl Query {
         Ok(())
     }
 
+    /// Abort the query by killing the underlying process.
+    ///
+    /// This is a hard stop that immediately terminates the Claude CLI process.
+    /// Use `interrupt()` for a graceful stop.
+    pub async fn abort(&self) -> Result<()> {
+        let mut transport = self.transport.lock().await;
+        transport.kill().await?;
+        Ok(())
+    }
+
     /// Change the permission mode.
     pub async fn set_permission_mode(&self, mode: PermissionMode) -> Result<()> {
         self.send_control_request(ControlRequestData::SetPermissionMode(
