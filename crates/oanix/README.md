@@ -1,59 +1,104 @@
 # OANIX: OpenAgents Agent Operating Environment
 
-**A Rust-native agent OS inspired by Plan 9 from Bell Labs and WANIX**
+**A Rust-native agent OS inspired by Plan 9 from Bell Labs**
 
 ---
 
 ## What is OANIX? (Plain English)
 
-OANIX is like a **mini operating system for AI agents**. Instead of letting an agent loose on your real computer, you create a fake "world" for it to live in - and that world only contains exactly what you want the agent to see.
+OANIX is like a **mini operating system for AI agents**. Instead of letting an agent loose on your real computer, you create a controlled "world" for it to live in - and that world only contains exactly what you want the agent to see.
 
 ### Everything is a File
 
 This is the Plan 9 philosophy. Instead of having different APIs for different things, everything looks like files and folders:
 
-- Want to give an agent access to your project? Mount it at `/workspace`
-- Want it to be able to send Nostr messages? Mount a Nostr service at `/cap/nostr`
-- Want logs? They appear at `/logs/stdout.log`
+```
+/task/spec.json     → The agent reads its assignment here
+/task/status        → Shows "pending", "running", "completed", or "failed"
+/task/result.json   → Agent writes its final answer here
+/workspace/         → The code or data the agent works on
+/logs/stdout.log    → Everything the agent prints
+/logs/events.jsonl  → Structured log events (JSON)
+/tmp/               → Scratch space
+```
 
-The agent just reads and writes files. It doesn't know or care if `/workspace` is a real folder, an in-memory filesystem, or something synced from the cloud.
+The agent just reads and writes files. It doesn't know if `/workspace` is a real folder, an in-memory snapshot, or something synced from the cloud.
+
+### What Can You Build With This?
+
+**Run a coding agent safely:**
+```rust
+let ns = Namespace::builder()
+    .mount("/task", TaskFs::new(spec, meta))           // What to do
+    .mount("/workspace", WorkspaceFs::new("./project")?) // Real project files
+    .mount("/logs", LogsFs::new())                     // Capture everything
+    .mount("/tmp", MemFs::new())                       // Scratch space
+    .build();
+
+// Agent reads /task/spec.json, modifies /workspace, writes /task/result.json
+// You can review /logs/stdout.log to see what it did
+```
+
+**Benchmark agents reproducibly:**
+```rust
+// Snapshot the workspace so agent modifications don't affect the original
+let workspace = CowFs::new(MapFs::builder()
+    .file("/src/main.rs", include_bytes!("fixtures/main.rs"))
+    .build());
+
+// Run multiple agents against the same snapshot
+// Compare their /task/result.json outputs
+```
+
+**Give different agents different capabilities:**
+```rust
+// Agent A: Can modify files and access network
+Agent A: /workspace (read-write) + /cap/http
+
+// Agent B: Read-only access, no network
+Agent B: /workspace (read-only)
+
+// Agent C: Can only see its task, nothing else
+Agent C: /task (read-only)
+```
 
 ### Why This is Cool
 
 **1. Security by Default**
-- Agent can't access your home folder unless you mount it
+- Agent can't access your home folder unless you explicitly mount it
 - Agent can't hit the network unless you give it a network capability
-- No "oops it deleted my files" scenarios
+- WorkspaceFs prevents path traversal attacks (`../../../etc/passwd` → rejected)
 
-**2. Portable Sandboxes**
+**2. Complete Observability**
+- Every print statement captured in `/logs/stdout.log`
+- Structured events in `/logs/events.jsonl` for machine processing
+- Task lifecycle tracked: pending → running → completed/failed
+
+**3. Portable & Reproducible**
 - Same WASM binary runs on Mac, Linux, Windows, browser
-- Same namespace definition works everywhere
-- Test locally, deploy anywhere
-
-**3. Composable Capabilities**
-```
-Agent A: /workspace + /cap/nostr + /cap/payments
-Agent B: /workspace + /cap/http (read-only)
-Agent C: /task (read-only) - can only see its instructions
-```
-Each agent gets exactly what it needs. No more, no less.
-
-**4. Reproducible Runs**
-- Namespace is explicit and serializable
-- Can replay an agent's run with the same inputs
+- Namespace definition is explicit and serializable
 - Perfect for benchmarking (Terminal-Bench!)
 
-### Quick Demo
+**4. Composable Building Blocks**
+```rust
+// Primitives (low-level)
+MemFs      // In-memory read/write filesystem
+MapFs      // Static/immutable data (bundled assets)
+FuncFs     // Dynamic files computed on-the-fly
+CowFs      // Copy-on-write snapshots
 
-**Browser Namespace Explorer:**
-```bash
-cd crates/oanix
-wasm-pack build --target web --features browser
-python -m http.server 8080
-# Open http://localhost:8080/examples/browser/
+// Standard Services (high-level, built from primitives)
+TaskFs     // Task spec + status + results
+LogsFs     // Structured logging
+WorkspaceFs // Real filesystem with security
 ```
 
-**Run a WASI binary in a namespace:**
+---
+
+## Quick Start
+
+### Run a WASI Binary in a Namespace
+
 ```bash
 # Build the test binary
 cd examples/hello-wasi && cargo build --target wasm32-wasip1 --release && cd ../..
@@ -65,367 +110,173 @@ cargo run --features wasi --example run_wasi -- \
 
 The WASI program can read `/workspace`, write to `/tmp`, and list directories - all within the isolated namespace.
 
-### The One-Liner
+### Browser Namespace Explorer
 
-> OANIX lets you create isolated, portable worlds for AI agents where they can only see and do what you explicitly allow - and the same agent runs identically on any platform.
-
----
-
-## Overview (Technical)
-
-OANIX is a **Rust-native agent operating environment** designed to execute WebAssembly (WASI) workloads in secure, composable, and portable sandboxes. Inspired by **Plan 9 from Bell Labs** and **WANIX** (Jeff Lindsay's WebAssembly runtime), OANIX adapts their core architectural insights for modern agent systems:
-
-- **Everything is a file/service** - All capabilities exposed as mountable filesystems
-- **Per-process namespaces** - Each agent has its own isolated view of the world
-- **Capability-based security** - Access is granted by what you mount, not by global permissions
-- **WASI-first execution** - Portable, deterministic, sandboxed workloads
-
-OANIX is not a general-purpose Unix clone. It is an **agent OS** whose primary job is to define precise execution environments by assembling services into namespaces, then running WASI binaries inside those namespaces.
-
----
-
-## Goals
-
-1. **Isolated, composable environments for agents**
-   - Each agent/task runs in a private OANIX namespace
-   - All state and capabilities exposed as mountable services
-
-2. **Plan 9-style namespace model**
-   - Capabilities granted by mounting services (`/workspace`, `/cap/nostr`)
-   - The "API surface" is entirely defined by the namespace
-
-3. **WASM/WASI-first execution**
-   - Same binaries run across browser, server, and edge
-   - Deterministic, reproducible workloads
-
-4. **High observability**
-   - Structured logs and ATIF trajectories under `/logs`
-   - Easy to capture and replay agent runs
-
-5. **Host-controlled capabilities**
-   - No default network access
-   - External capabilities exposed via higher-level mounted services
-
----
-
-## Plan 9 Inspirations
-
-### Everything is a File (or Service)
-
-In Plan 9, devices, system services, and remote resources are all accessed as files. OANIX exposes core constructs - tasks, workspaces, logs, capabilities - as **virtual filesystems** behind a uniform `FileService` trait.
-
-### Per-Process Namespaces
-
-Plan 9 allows each process to build its own view of the system by mounting services at arbitrary locations. OANIX gives each environment a dedicated **namespace** composed of mounts:
-
-```
-/task           - Task specification & metadata
-/workspace      - Code or data snapshot
-/logs           - Structured logs, ATIF trajectories
-/cap/nostr      - Nostr/NIP-90 capability
-/cap/ws         - WebSocket capability
-/cap/payments   - Lightning payment capability
+```bash
+wasm-pack build --target web --features browser
+python -m http.server 8080
+# Open http://localhost:8080/examples/browser/
 ```
 
-### Service-Oriented Design
+---
 
-System functionality is decomposed into services implementing `FileService`. The environment definition is simply: *which services are mounted, and where*.
+## What's Implemented
 
-### Uniformity Across Contexts
+### Primitive Filesystems
 
-Plan 9 used 9P to unify local/remote resources. OANIX uses WASI + host capabilities to unify execution across browser, edge, and servers. From the agent's perspective, the world is defined solely by the namespace.
+| Service | Description |
+|---------|-------------|
+| **MemFs** | In-memory read/write filesystem |
+| **MapFs** | Static/immutable from embedded data |
+| **FuncFs** | Dynamic files via closures |
+| **CowFs** | Copy-on-write overlay for snapshots |
+
+### Standard Services
+
+| Service | Description |
+|---------|-------------|
+| **TaskFs** | Task spec, status lifecycle, results |
+| **LogsFs** | stdout/stderr + structured events |
+| **WorkspaceFs** | Real filesystem wrapper with path security |
+
+### Runtime
+
+| Feature | Description |
+|---------|-------------|
+| **WasiRuntime** | Execute WASM binaries via wasmtime |
+| **Namespace** | Mount services at paths, resolve routes |
+| **Browser support** | wasm-bindgen API for browser usage |
 
 ---
 
-## Architecture
-
-```
-              +-------------------------+
-              |  Rust Web App / API     |
-              +------------+------------+
-                           |
-                      [OANIX Manager]
-                           |
-      +--------------------+---------------------+
-      |                                          |
-+-----v------------------+            +----------v--------------+
-| OANIX Environment #1   |            | OANIX Environment #N    |
-|  - Namespace           |            |  - Namespace            |
-|  - WASI runtime        |            |  - WASI runtime         |
-+-----+------------------+            +----------+--------------+
-      |                                          |
-  [WASI modules]                            [WASI modules]
-```
-
-### Key Components
-
-- **oanix-core** - Namespace, Mount, FileService, basic filesystems
-- **oanix-wasi** - Integration with Wasmtime/Wasmer
-- **oanix-scheduler** - Job abstraction and lifecycle
-- **oanix-web** - HTTP/WebSocket APIs for environments and jobs
-
----
-
-## Core Abstractions
-
-### FileService Trait
+## Example: Complete Agent Environment
 
 ```rust
-pub trait FileService: Send + Sync {
-    fn open(&self, path: &str, flags: OpenFlags) -> Result<Box<dyn FileHandle>, FsError>;
-    fn readdir(&self, path: &str) -> Result<Vec<DirEntry>, FsError>;
-    fn stat(&self, path: &str) -> Result<Metadata, FsError>;
-}
+use oanix::*;
+
+// 1. Define the task
+let task = TaskFs::new(
+    TaskSpec {
+        id: "review-001".into(),
+        task_type: "code-review".into(),
+        description: "Review the authentication module".into(),
+        input: serde_json::json!({"files": ["src/auth.rs"]}),
+    },
+    TaskMeta::default(),
+);
+
+// 2. Set up logging
+let logs = LogsFs::new();
+
+// 3. Wrap real workspace with copy-on-write (agent changes don't affect original)
+let workspace = CowFs::new(WorkspaceFs::readonly("./my-project")?);
+
+// 4. Build the namespace
+let ns = Namespace::builder()
+    .mount("/task", task)
+    .mount("/logs", logs)
+    .mount("/workspace", workspace)
+    .mount("/tmp", MemFs::new())
+    .build();
+
+// 5. Agent executes...
+// - Reads /task/spec.json to understand the job
+// - Reads files from /workspace/src/auth.rs
+// - Writes analysis to /logs/stdout.log
+// - Writes structured events via logs.info("Found issue: ...")
+// - Writes final result to /task/result.json
+
+// 6. Check results
+let (task_svc, _) = ns.resolve("/task/result.json").unwrap();
+let result = read_file(task_svc, "/result.json");
 ```
 
-### Namespace & Mount
+---
+
+## API Overview
+
+### TaskFs - Task Lifecycle
 
 ```rust
-pub struct Mount {
-    pub path: String,                  // e.g., "/task"
-    pub service: Arc<dyn FileService>, // e.g., TaskFs
-}
+let task = TaskFs::new(spec, meta);
 
-#[derive(Clone)]
-pub struct Namespace {
-    mounts: Arc<Vec<Mount>>,
-}
+// Status management
+task.set_running();              // Pending → Running
+task.set_completed();            // Running → Completed
+task.set_failed("Error msg");    // Running → Failed
+task.is_finished();              // true if Completed or Failed
 
-impl Namespace {
-    pub fn builder() -> NamespaceBuilder { /* ... */ }
-
-    pub fn resolve(&self, full_path: &str) -> Option<(&dyn FileService, &str)> {
-        // longest-prefix match over mounts
-    }
-}
+// File interface
+read_file(&task, "/spec.json");   // Task specification
+read_file(&task, "/meta.json");   // Metadata (tags, timeout, etc.)
+read_file(&task, "/status");      // Current status as JSON
+write_file(&task, "/result.json", result); // Final output
 ```
 
-### OANIX Environment
+### LogsFs - Structured Logging
 
 ```rust
-pub struct OanixEnv {
-    pub id: Uuid,
-    namespace: Namespace,
-    wasi_runtime: WasiRuntime,
-}
+let logs = LogsFs::new();
 
-impl OanixEnv {
-    pub fn new(namespace: Namespace, wasi_runtime: WasiRuntime) -> Self { /* ... */ }
+// Programmatic API
+logs.write_stdout(b"Output text\n");
+logs.write_stderr(b"Error text\n");
+logs.info("Task started");
+logs.warn("Rate limit approaching");
+logs.error("Connection failed");
+logs.log_event(LogEvent::with_data(
+    LogLevel::Debug,
+    "Config loaded",
+    serde_json::json!({"timeout": 300}),
+));
 
-    pub async fn run_wasi(
-        &self,
-        wasm_bytes: &[u8],
-        cfg: RunConfig,
-    ) -> anyhow::Result<RunResult> {
-        let instance = self.wasi_runtime
-            .instantiate_with_namespace(wasm_bytes, &self.namespace, &cfg)
-            .await?;
-        instance.run().await
-    }
-}
+// File interface (for agents)
+// Write to /logs/stdout.log, /logs/stderr.log
+// Read /logs/events.jsonl for structured events
 ```
 
-### Job Abstraction
+### WorkspaceFs - Secure Real Filesystem
 
 ```rust
-pub enum JobKind {
-    TerminalBench { task_id: String },
-    Script { script_path: String },
-    AgentTool { name: String, args: Vec<String> },
-}
+// Wrap a directory (read-write)
+let workspace = WorkspaceFs::new("/path/to/project")?;
 
-pub struct JobSpec {
-    pub id: Uuid,
-    pub env_id: Uuid,
-    pub kind: JobKind,
-    pub created_at: DateTime<Utc>,
-}
+// Read-only mode
+let workspace = WorkspaceFs::readonly("/path/to/project")?;
 
-pub enum JobStatus {
-    Pending,
-    Running,
-    Succeeded(RunResult),
-    Failed { error: String },
-}
+// Security: these are all rejected
+workspace.open("/../../../etc/passwd", flags);  // Path escape
+workspace.open("/src/../../etc/passwd", flags); // Sneaky escape
 ```
 
----
-
-## Standard Services
-
-### TaskFs (`/task`)
-
-Exposes task specification and metadata:
-- `/task/spec.json` - Full task definition
-- `/task/meta.json` - Metadata, tags, creation time
-
-### WorkspaceFs (`/workspace`)
-
-POSIX-like directory tree for project files. Can be:
-- Read-only for benchmarking tasks
-- Read-write for development sessions
-
-### LogsFs (`/logs`)
-
-Structured logging:
-- `/logs/stdout.log`, `/logs/stderr.log`
-- `/logs/atif/` - ATIF trajectory JSON files
-- `/logs/metrics.json` - Aggregated metrics
-
-### Capability Services (`/cap/*`)
-
-External capabilities as file services:
-
-**NostrFs** (`/cap/nostr`):
-- `/cap/nostr/submit` - Write request JSON to schedule jobs
-- `/cap/nostr/events` - Stream of response events
-
-**WsFs** (`/cap/ws`):
-- `/cap/ws/control` - Open/close connections
-- `/cap/ws/conns/{id}/in` - Incoming frames
-- `/cap/ws/conns/{id}/out` - Outgoing frames
-
-**PaymentsFs** (`/cap/payments`):
-- `/cap/payments/invoices/new` - Create invoice
-- `/cap/payments/invoices/{id}` - Status inspection
-
----
-
-## Security Model
-
-1. **No global APIs** - WASI modules have no inherent right to host OS or network
-2. **Capabilities via namespaces** - All access mediated by mounted services
-3. **Per-environment policies** - Which services mount, read-only vs read-write, limits
-4. **Controlled networking** - External access via `/cap/*` services, not raw sockets
-
----
-
-## Implementation: `crates/oanix/`
-
-Proposed crate structure:
-
-```
-crates/oanix/
-  Cargo.toml
-  src/
-    lib.rs
-    namespace.rs       # Namespace, Mount, NamespaceBuilder
-    service.rs         # FileService trait, FileHandle, FsError
-    env.rs             # OanixEnv, RunConfig, RunResult
-    scheduler.rs       # JobSpec, JobStatus, Scheduler trait
-    services/
-      mod.rs
-      mem_fs.rs        # In-memory filesystem
-      task_fs.rs       # Task specification service
-      workspace_fs.rs  # Workspace/project files
-      logs_fs.rs       # Logging and ATIF
-      pty_fs.rs        # Pseudo-terminal support
-    cap/
-      mod.rs
-      nostr_fs.rs      # Nostr/NIP-90 capability
-      ws_fs.rs         # WebSocket capability
-      payments_fs.rs   # Lightning payments
-    wasi/
-      mod.rs
-      runtime.rs       # Wasmtime/Wasmer integration
-      bridge.rs        # WASI syscalls -> FileService
-    web/
-      mod.rs
-      api.rs           # HTTP endpoints
-      stream.rs        # WebSocket log streaming
-```
-
-### Build Targets
-
-- **Native** (`cargo build`) - Server/CLI usage with Wasmtime
-- **WASM** (`cargo build --target wasm32-unknown-unknown`) - Browser kernel
-
----
-
-## Native First, Browser Later
-
-OANIX is designed to work in Commander (native Rust) first, then extract to browser later. The architecture supports this because **the core abstractions are platform-agnostic**.
-
-The `FileService` trait doesn't know or care if it's running on macOS or in a browser:
+### Namespace - Mount Points
 
 ```rust
-pub trait FileService: Send + Sync {
-    fn open(&self, path: &str, flags: OpenFlags) -> Result<Box<dyn FileHandle>, FsError>;
-    fn readdir(&self, path: &str) -> Result<Vec<DirEntry>, FsError>;
-    fn stat(&self, path: &str) -> Result<Metadata, FsError>;
-}
+let ns = Namespace::builder()
+    .mount("/task", task_fs)
+    .mount("/workspace", workspace_fs)
+    .mount("/logs", logs_fs)
+    .mount("/tmp", MemFs::new())
+    .build();
+
+// Resolve paths to services
+let (service, relative_path) = ns.resolve("/workspace/src/main.rs").unwrap();
 ```
 
-### Same Code, Different Implementations
-
-| Service | Native (Commander) | Browser |
-|---------|-------------------|---------|
-| WorkspaceFs | Real filesystem via `std::fs` | IndexedDB or in-memory |
-| WsFs | `tokio-tungstenite` | Browser `WebSocket` API |
-| LogsFs | Write to disk | In-memory + sync to server |
-| WASI runtime | Wasmtime | Browser's WASM runtime |
-
-### Development Flow
-
-1. **Now in Commander**: OANIX runs as a Rust library. Mount `/workspace` pointing at real directories. Run WASI modules via Wasmtime. Vibe renders in GPUI.
-
-2. **Later in browser**: Same `Namespace`, `Mount`, `FileService` code compiles to WASM. Swap in browser-compatible service implementations. Vibe renders to DOM.
-
-### Why This Works
-
-The Plan 9 philosophy is the key - by making everything a mountable file service, you're forced into abstractions that don't leak platform details. The "what can this agent see" question is answered by the namespace, not by what OS you're on.
-
-Build it in Commander first, prove the model works, then extract to browser. The architecture explicitly supports this.
-
 ---
 
-## Implementation Phases
+## Current Status
 
-### Phase 1: Core Kernel
-- `Namespace`, `Mount`, `FileService` traits
-- `MemFs` and `LogsFs` implementations
-- Basic Wasmtime integration, run simple WASI binary
+- **71 tests passing** (59 unit + 12 integration)
+- Native Rust with optional WASM browser support
+- WASI execution via wasmtime
 
-### Phase 2: Environment & Scheduler
-- `OanixEnv` abstraction with `run_wasi`
-- In-memory scheduler with `JobSpec`/`JobStatus`
-- API for create environments, submit jobs, query status
-
-### Phase 3: Plan 9-Style Services
-- `TaskFs` and `WorkspaceFs`
-- Standard namespace profiles (`terminalbench`, `sandbox-dev`)
-- Integration with OpenAgents task storage
-
-### Phase 4: Capabilities
-- `NostrFs`, `WsFs`, `PaymentsFs`
-- Policy layer for capability access control
-
-### Phase 5: Web Integration
-- HTTP/WebSocket endpoints for environment lifecycle
-- Streaming logs from `/logs/*`
-- UI components for namespace visualization
-
----
-
-## Why WASM?
-
-Benefits beyond "runs in browser":
-
-| Benefit | Impact |
-|---------|--------|
-| Universal sandbox format | Same agent tools everywhere |
-| Strong isolation | Safe execution of untrusted code |
-| Sub-ms startup | Perfect for agent micro-tasks |
-| Deterministic | Reliable ATIF + benchmarking |
-| Language-agnostic | Universal plugin system |
-| Low overhead | Replace containers for agent tasks |
-| Capability-based | Direct match for OANIX namespaces |
-| Near-native speed | Heavy workloads without native code |
+See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation progress.
 
 ---
 
 ## References
 
-- [Plan 9 from Bell Labs](https://9p.io/plan9/)
+- [Plan 9 from Bell Labs](https://9p.io/plan9/) - The original "everything is a file" OS
 - [WANIX](https://github.com/tractordev/wanix) - WebAssembly runtime inspired by Plan 9
 - [WASI](https://wasi.dev/) - WebAssembly System Interface
