@@ -245,6 +245,12 @@ impl QueryOptions {
         self
     }
 
+    /// Enable dangerous permission bypass (skips all permission checks).
+    pub fn dangerously_skip_permissions(mut self, skip: bool) -> Self {
+        self.allow_dangerously_skip_permissions = skip;
+        self
+    }
+
     /// Set maximum turns.
     pub fn max_turns(mut self, turns: u32) -> Self {
         self.max_turns = Some(turns);

@@ -9,6 +9,7 @@ use gpui::{App, AppContext, Context, EventEmitter, Task};
 use gpui_tokio::Tokio;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
+use tracing::{debug, info};
 
 /// Events emitted by SdkThread.
 #[derive(Clone, Debug)]
@@ -157,15 +158,20 @@ impl SdkThread {
         let (tx, mut rx) = mpsc::unbounded_channel::<SdkUpdate>();
 
         // Spawn SDK work on Tokio runtime
+        info!("Spawning SDK query for: {}", content);
         let _tokio_task = Tokio::spawn(cx, async move {
-            // Build options
+            info!("Tokio task started");
+            // Build options - use dangerously_skip_permissions for bypass mode
             let options = QueryOptions::new()
                 .cwd(&project_root)
                 .permission_mode(PermissionMode::BypassPermissions)
+                .dangerously_skip_permissions(true)
                 .include_partial_messages(true);
 
             // Create query
+            info!("Creating query...");
             let query_result = query(&content, options).await;
+            info!("Query created: {:?}", query_result.is_ok());
 
             let mut stream = match query_result {
                 Ok(q) => q,
@@ -178,14 +184,19 @@ impl SdkThread {
             let mut assistant_content = String::new();
 
             // Process stream
+            info!("Starting to process stream...");
             while let Some(msg_result) = stream.next().await {
+                info!("Got message from stream");
                 let msg = match msg_result {
                     Ok(m) => m,
                     Err(e) => {
+                        info!("SDK error: {}", e);
                         let _ = tx.send(SdkUpdate::Error(e.to_string()));
                         return;
                     }
                 };
+
+                debug!("SDK message: {:?}", msg);
 
                 match msg {
                     SdkMessage::System(sys) => {
@@ -198,6 +209,7 @@ impl SdkThread {
                     }
                     SdkMessage::Assistant(assistant) => {
                         // Extract text from message
+                        info!("Assistant message: {}", assistant.message);
                         if let Some(content) = assistant.message.get("content") {
                             if let Some(blocks) = content.as_array() {
                                 for block in blocks {
@@ -207,13 +219,16 @@ impl SdkThread {
                                 }
                             }
                         }
+                        info!("Extracted content: {}", assistant_content);
                         let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
                     }
                     SdkMessage::StreamEvent(event) => {
                         // Handle streaming delta
+                        debug!("Stream event: {:?}", event.event);
                         if let Some(delta) = event.event.get("delta") {
                             if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
                                 assistant_content.push_str(text);
+                                debug!("Streaming content now: {}", assistant_content);
                                 let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
                             }
                         }
