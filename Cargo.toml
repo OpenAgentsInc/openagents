@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # OpenAgents crates
     "crates/acp",
+    "crates/claude_agent_sdk",
     "crates/agent",
     "crates/archivist",
     "crates/atif",
