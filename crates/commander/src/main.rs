@@ -1055,6 +1055,9 @@ impl Focusable for CommanderView {
 }
 
 fn main() {
+    // Initialize telemetry/logging - reads RUST_LOG env var
+    telemetry::init_default("commander");
+
     if let Err(e) = ensure_bridge_running() {
         eprintln!("Warning: {}", e);
     }
