@@ -304,36 +304,44 @@ impl MechaCoderScreen {
         let task_name = self.session.task.name.clone();
         info!(target: "mechacoder", backend = ?backend, task = %task_name, "Spawning runner task");
 
-        cx.spawn(async move |this, cx| {
-            info!(target: "mechacoder", backend = ?backend, "Runner spawned, starting execution");
-            match backend {
-                HillClimberBackend::CC => {
-                    info!(target: "mechacoder", "Using Claude Code SDK backend");
-                    Self::run_cc_query(prompt, tx).await;
-                }
-                HillClimberBackend::FM => {
-                    warn!(target: "mechacoder", "FM backend not yet implemented");
-                    let _ = tx.send(RunnerEvent::Error("FM backend not yet implemented".to_string()));
-                }
-            }
+        // Spawn the runner in a separate thread with its own tokio runtime
+        // (GPUI doesn't use tokio, but Claude Agent SDK requires it)
+        std::thread::spawn(move || {
+            info!(target: "mechacoder", backend = ?backend, "Runner thread started");
 
-            // Notify UI to poll
-            debug!(target: "mechacoder", "Runner finished, notifying UI for final poll");
-            let _ = cx.update(|cx| {
-                if let Some(this) = this.upgrade() {
-                    this.update(cx, |view, cx| {
-                        view.poll_events(cx);
-                    });
+            // Create a tokio runtime for this thread
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    error!(target: "mechacoder", error = %e, "Failed to create tokio runtime");
+                    let _ = tx.send(RunnerEvent::Error(format!("Failed to create runtime: {}", e)));
+                    return;
+                }
+            };
+
+            rt.block_on(async {
+                match backend {
+                    HillClimberBackend::CC => {
+                        info!(target: "mechacoder", "Using Claude Code SDK backend");
+                        Self::run_cc_query(prompt, tx).await;
+                    }
+                    HillClimberBackend::FM => {
+                        warn!(target: "mechacoder", "FM backend not yet implemented");
+                        let _ = tx.send(RunnerEvent::Error("FM backend not yet implemented".to_string()));
+                    }
                 }
             });
-        }).detach();
 
-        // Set up polling timer
+            info!(target: "mechacoder", "Runner thread finished");
+        });
+
+        // Set up polling timer using GPUI's spawn (no tokio needed)
         debug!(target: "mechacoder", "Setting up polling timer (100ms interval)");
         cx.spawn(async move |this, cx| {
             let mut poll_count = 0u32;
             loop {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                // Use std::thread::sleep instead of tokio - we're in GPUI's executor
+                std::thread::sleep(std::time::Duration::from_millis(100));
                 poll_count += 1;
                 let should_continue = cx.update(|cx| {
                     if let Some(this) = this.upgrade() {
