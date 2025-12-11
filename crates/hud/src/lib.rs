@@ -15,6 +15,7 @@
 
 mod actions;
 mod apm_widget;
+mod category_tree;
 mod connection;
 mod graph_view;
 mod history;
@@ -24,6 +25,7 @@ mod unit_view;
 
 pub use actions::*;
 pub use apm_widget::*;
+pub use category_tree::*;
 pub use connection::*;
 pub use graph_view::*;
 pub use history::*;

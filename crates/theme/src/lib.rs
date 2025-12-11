@@ -335,6 +335,60 @@ pub mod hud {
     pub const APM_HIGH: Hsla = c(0.40, 0.70, 0.45, 1.0);
     /// APM elite performance (30+ APM) - amber/gold #f59e0b
     pub const APM_ELITE: Hsla = c(0.11, 0.91, 0.50, 1.0);
+
+    // Task status colors
+    /// Pending status - zinc #71717a
+    pub const STATUS_PENDING: Hsla = c(0.67, 0.04, 0.47, 1.0);
+    /// Running status - blue #3b82f6
+    pub const STATUS_RUNNING: Hsla = c(0.61, 0.91, 0.60, 1.0);
+    /// Passed status - emerald #34d399
+    pub const STATUS_PASSED: Hsla = c(0.44, 0.62, 0.52, 1.0);
+    /// Failed status - red #f87171
+    pub const STATUS_FAILED: Hsla = c(0.0, 0.90, 0.71, 1.0);
+    /// Timeout status - amber #fbbf24
+    pub const STATUS_TIMEOUT: Hsla = c(0.11, 0.95, 0.56, 1.0);
+    /// Error status - orange #fb923c
+    pub const STATUS_ERROR: Hsla = c(0.07, 0.96, 0.61, 1.0);
+
+    // Difficulty badges
+    /// Easy difficulty background - emerald-900/40
+    pub const DIFFICULTY_EASY_BG: Hsla = c(0.44, 0.50, 0.15, 0.4);
+    /// Easy difficulty text - emerald-300
+    pub const DIFFICULTY_EASY_TEXT: Hsla = c(0.44, 0.62, 0.58, 1.0);
+    /// Medium difficulty background - amber-900/40
+    pub const DIFFICULTY_MEDIUM_BG: Hsla = c(0.11, 0.50, 0.15, 0.4);
+    /// Medium difficulty text - amber-300
+    pub const DIFFICULTY_MEDIUM_TEXT: Hsla = c(0.11, 0.80, 0.65, 1.0);
+    /// Hard difficulty background - red-900/40
+    pub const DIFFICULTY_HARD_BG: Hsla = c(0.0, 0.50, 0.15, 0.4);
+    /// Hard difficulty text - red-300
+    pub const DIFFICULTY_HARD_TEXT: Hsla = c(0.0, 0.80, 0.69, 1.0);
+    /// Unknown difficulty background - zinc-800/40
+    pub const DIFFICULTY_UNKNOWN_BG: Hsla = c(0.0, 0.0, 0.20, 0.4);
+    /// Unknown difficulty text - zinc-300
+    pub const DIFFICULTY_UNKNOWN_TEXT: Hsla = c(0.0, 0.0, 0.80, 1.0);
+
+    // Panel/container colors
+    /// Panel background - zinc-950/95
+    pub const PANEL_BG: Hsla = c(0.0, 0.0, 0.04, 0.95);
+    /// Panel border - zinc-800/60
+    pub const PANEL_BORDER: Hsla = c(0.0, 0.0, 0.20, 0.6);
+    /// Header background - zinc-900/80
+    pub const HEADER_BG: Hsla = c(0.0, 0.0, 0.08, 0.8);
+    /// Divider line - zinc-800/40
+    pub const DIVIDER: Hsla = c(0.0, 0.0, 0.20, 0.4);
+
+    // Button colors
+    /// Button border - zinc-700/50
+    pub const BUTTON_BORDER: Hsla = c(0.0, 0.0, 0.30, 0.5);
+    /// Button border on hover - zinc-600/60
+    pub const BUTTON_BORDER_HOVER: Hsla = c(0.0, 0.0, 0.40, 0.6);
+
+    // Row colors
+    /// Row hover background - zinc-900/40
+    pub const ROW_HOVER: Hsla = c(0.0, 0.0, 0.08, 0.4);
+    /// Row selected background - zinc-800/60
+    pub const ROW_SELECTED: Hsla = c(0.0, 0.0, 0.20, 0.6);
 }
 
 /// Syntax highlighting colors
