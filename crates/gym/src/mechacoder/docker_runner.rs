@@ -4,6 +4,7 @@
 //! that match the Terminal-Bench 2 evaluation environment.
 
 use crate::mechacoder::tb2_loader::TB2Task;
+use crate::mechacoder::testgen_wrapper::TestGenWrapper;
 use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -263,15 +264,27 @@ impl DockerRunner {
     }
 
     /// Build the Claude command
+    ///
+    /// Wraps the instruction with TestGen protocol, requiring Claude to
+    /// DESCRIBE → WRITE TESTS → ITERATE before submitting a solution.
     fn build_claude_command(&self, instruction: &str, max_turns: u32) -> Vec<String> {
         let allowed_tools = ALLOWED_TOOLS.join(",");
-        let escaped_instruction = instruction.replace("'", "'\\''");
+
+        // Wrap instruction with TestGen protocol
+        let wrapped_instruction = TestGenWrapper::wrap_instruction(instruction);
+        let escaped_instruction = wrapped_instruction.replace("'", "'\\''");
+
+        tracing::debug!(
+            target: "mechacoder::docker",
+            "Instruction wrapped with TestGen protocol"
+        );
 
         vec![
             "bash".to_string(),
             "-c".to_string(),
             format!(
                 "claude --verbose --output-format stream-json \
+                 --dangerously-skip-permissions \
                  -p '{}' \
                  --allowedTools {} \
                  --max-turns {} \

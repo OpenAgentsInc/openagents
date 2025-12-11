@@ -10,6 +10,8 @@ pub mod docker_runner;
 pub mod log_panel;
 pub mod task_panel;
 pub mod tb2_loader;
+pub mod testgen_validator;
+pub mod testgen_wrapper;
 pub mod types;
 pub mod verifier;
 
@@ -30,6 +32,7 @@ use self::docker_runner::{DockerEvent, DockerRunConfig, DockerRunner};
 use self::log_panel::LogPanel;
 use self::task_panel::{SelectTask, SwitchBackend, TaskPanel};
 use self::tb2_loader::TB2Task;
+use self::testgen_validator::TestGenValidator;
 use self::types::{LogEntry, LogKind, MechaSession, MechaStatus, MechaTask};
 use self::verifier::TB2Verifier;
 
@@ -935,12 +938,73 @@ impl MechaCoderScreen {
             exit_code = result.exit_code,
             turns = result.turns,
             cost = result.cost_usd,
-            "Docker run completed, running verification"
+            "Docker run completed, running TestGen validation"
         );
 
-        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Running verification tests...")));
+        // Run TestGen validation first
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Validating TestGen protocol...")));
 
-        // Run verification
+        let testgen_validator = TestGenValidator::new();
+        let testgen_tests_exist = TestGenValidator::tests_exist(workspace_dir.path());
+
+        if testgen_tests_exist {
+            let _ = tx.send(RunnerEvent::Log(LogEntry::progress("TestGen tests found, running...")));
+
+            // Run testgen tests
+            match testgen_validator
+                .run_testgen_tests(
+                    tb2_task.docker_image(),
+                    workspace_dir.path(),
+                    120, // 2 minute timeout for testgen tests
+                )
+                .await
+            {
+                Ok(validation) => {
+                    if validation.tests_passed {
+                        let _ = tx.send(RunnerEvent::Log(LogEntry::success(format!(
+                            "TestGen tests passed: {}/{}",
+                            validation.tests_passed_count, validation.tests_total_count
+                        ))));
+                    } else {
+                        let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!(
+                            "TestGen tests FAILED: {}/{} - Claude should have iterated more",
+                            validation.tests_passed_count, validation.tests_total_count
+                        ))));
+                        // Log the test output for debugging
+                        if !validation.test_output.is_empty() {
+                            debug!(
+                                target: "mechacoder::testgen",
+                                output = %validation.test_output,
+                                "TestGen test output"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        target: "mechacoder::testgen",
+                        error = %e,
+                        "Failed to run TestGen validation"
+                    );
+                    let _ = tx.send(RunnerEvent::Log(LogEntry::error(format!(
+                        "TestGen validation error: {}",
+                        e
+                    ))));
+                }
+            }
+        } else {
+            let _ = tx.send(RunnerEvent::Log(LogEntry::error(
+                "TestGen tests NOT created - Claude skipped test generation step!"
+            )));
+            warn!(
+                target: "mechacoder::testgen",
+                "Claude did not create testgen_tests.py - TestGen protocol not followed"
+            );
+        }
+
+        let _ = tx.send(RunnerEvent::Log(LogEntry::info("Running TB2 verification tests...")));
+
+        // Run TB2 verification
         let verifier = TB2Verifier::new();
         let verification = verifier.run_tests(&tb2_task, workspace_dir.path(), &logs_dir).await;
 
