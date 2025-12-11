@@ -12,6 +12,7 @@ use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
 use super::message_view::{MessageView, SimpleMessageView};
+use super::todo_panel_view::render_todo_panel;
 use super::tool_call_view::ToolCallView;
 
 /// Thread view for displaying the conversation.
@@ -89,6 +90,10 @@ impl ThreadView {
                 cx.notify();
             }
             SdkThreadEvent::StatusChanged(_) => {
+                cx.notify();
+            }
+            SdkThreadEvent::TodosUpdated => {
+                // Re-render to show updated todo list
                 cx.notify();
             }
             SdkThreadEvent::Error(error) => {
@@ -303,12 +308,22 @@ impl Render for ThreadView {
             let _ = self.get_or_create_message_view(&entry, ix, cx);
         }
 
+        // Get todo state for panel
+        let todo_state = self.thread.read(cx).todo_state().clone();
+
         div()
             .size_full()
             .flex()
             .flex_col()
             .items_center()
             .track_focus(&self.focus_handle)
+            // Todo panel (plan mode progress)
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(768.0))
+                    .child(render_todo_panel(&todo_state)),
+            )
             // Message list
             .child(
                 div()

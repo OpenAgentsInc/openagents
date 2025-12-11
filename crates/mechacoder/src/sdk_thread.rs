@@ -20,6 +20,8 @@ pub enum SdkThreadEvent {
     EntryUpdated(usize),
     /// Thread status changed.
     StatusChanged(ThreadStatus),
+    /// Todo list was updated (plan mode).
+    TodosUpdated,
     /// Error occurred.
     Error(String),
 }
@@ -79,6 +81,57 @@ pub enum ToolStatus {
     Failed(String),
 }
 
+/// Todo item status for plan mode.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum TodoStatus {
+    #[default]
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// Single todo item from TodoWrite tool.
+#[derive(Clone, Debug)]
+pub struct TodoItem {
+    /// The task description (imperative form).
+    pub content: String,
+    /// The active form shown during execution.
+    pub active_form: String,
+    /// Current status.
+    pub status: TodoStatus,
+}
+
+impl TodoItem {
+    /// Parse todo items from TodoWrite tool input JSON.
+    pub fn parse_from_json(input: &str) -> Option<Vec<Self>> {
+        let parsed: serde_json::Value = serde_json::from_str(input).ok()?;
+        let todos = parsed.get("todos")?.as_array()?;
+        Some(
+            todos
+                .iter()
+                .filter_map(|item| {
+                    Some(TodoItem {
+                        content: item.get("content")?.as_str()?.to_string(),
+                        active_form: item.get("activeForm")?.as_str()?.to_string(),
+                        status: match item.get("status")?.as_str()? {
+                            "in_progress" => TodoStatus::InProgress,
+                            "completed" => TodoStatus::Completed,
+                            _ => TodoStatus::Pending,
+                        },
+                    })
+                })
+                .collect(),
+        )
+    }
+}
+
+/// Current todo list state.
+#[derive(Clone, Debug, Default)]
+pub struct TodoState {
+    /// All todo items (complete replacement on each update).
+    pub items: Vec<TodoItem>,
+}
+
 /// Internal message from Tokio task to GPUI.
 #[derive(Clone, Debug)]
 enum SdkUpdate {
@@ -127,6 +180,8 @@ pub struct SdkThread {
     model: Option<String>,
     /// Map from tool_use_id to entry index for quick lookups.
     tool_use_index: HashMap<String, usize>,
+    /// Current todo list state (plan mode).
+    todo_state: TodoState,
 }
 
 impl SdkThread {
@@ -140,6 +195,7 @@ impl SdkThread {
             session_id: None,
             model: None,
             tool_use_index: HashMap::new(),
+            todo_state: TodoState::default(),
         }
     }
 
@@ -166,6 +222,16 @@ impl SdkThread {
     /// Get the session ID.
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
+    }
+
+    /// Get the current todo state.
+    pub fn todo_state(&self) -> &TodoState {
+        &self.todo_state
+    }
+
+    /// Check if there are active todos.
+    pub fn has_todos(&self) -> bool {
+        !self.todo_state.items.is_empty()
     }
 
     /// Send a user message.
@@ -237,23 +303,41 @@ impl SdkThread {
                         }
                     }
                     SdkMessage::Assistant(assistant) => {
-                        // Extract text from message - but only if we haven't already
-                        // accumulated from stream events (to avoid duplication)
+                        // Extract text and tool_use inputs from message
                         info!("Assistant message: {}", assistant.message);
-                        if assistant_content.is_empty() {
-                            if let Some(content) = assistant.message.get("content") {
-                                if let Some(blocks) = content.as_array() {
-                                    for block in blocks {
-                                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                            assistant_content.push_str(text);
+                        if let Some(content) = assistant.message.get("content") {
+                            if let Some(blocks) = content.as_array() {
+                                for block in blocks {
+                                    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    match block_type {
+                                        "text" => {
+                                            // Only extract text if we haven't accumulated from streaming
+                                            if assistant_content.is_empty() {
+                                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                                    assistant_content.push_str(text);
+                                                }
+                                            }
                                         }
+                                        "tool_use" => {
+                                            // Extract tool input for later use (e.g., TodoWrite parsing)
+                                            let tool_use_id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                                            if let Some(input) = block.get("input") {
+                                                let input_str = serde_json::to_string(input).unwrap_or_default();
+                                                info!("Tool input for {}: {}", tool_use_id, input_str);
+                                                let _ = tx.send(SdkUpdate::ToolInputDelta {
+                                                    tool_use_id: tool_use_id.to_string(),
+                                                    partial_json: input_str,
+                                                });
+                                            }
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
+                        }
+                        if !assistant_content.is_empty() {
                             info!("Extracted content from assistant: {}", assistant_content);
                             let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
-                        } else {
-                            info!("Skipping assistant extraction, already have streaming content");
                         }
                     }
                     SdkMessage::StreamEvent(event) => {
@@ -425,6 +509,15 @@ impl SdkThread {
                             // Update tool with result
                             if let Some(&idx) = this.tool_use_index.get(&tool_use_id) {
                                 if let ThreadEntry::ToolUse(tool_use) = &mut this.entries[idx] {
+                                    // Check if this is a TodoWrite tool - parse and update todo state
+                                    if tool_use.tool_name == "TodoWrite" {
+                                        if let Some(items) = TodoItem::parse_from_json(&tool_use.input) {
+                                            info!("Parsed {} todos from TodoWrite", items.len());
+                                            this.todo_state = TodoState { items };
+                                            cx.emit(SdkThreadEvent::TodosUpdated);
+                                        }
+                                    }
+
                                     tool_use.output = Some(output);
                                     tool_use.status = if is_error {
                                         ToolStatus::Failed("Tool execution failed".to_string())
