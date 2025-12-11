@@ -238,6 +238,63 @@ pub struct CrusadeSession {
     pub iterations: Vec<Iteration>,
 }
 
+/// Type of log entry for streaming display
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogEntryKind {
+    /// Info message
+    Info,
+    /// Progress update
+    Progress,
+    /// Prompt sent to FM
+    Prompt,
+    /// Response from FM
+    Response,
+    /// Test generated
+    TestGenerated,
+    /// Reflection entry
+    Reflection,
+    /// Generation complete
+    Complete,
+    /// Error
+    Error,
+}
+
+impl LogEntryKind {
+    pub fn icon(&self) -> &'static str {
+        match self {
+            Self::Info => "i",
+            Self::Progress => ">",
+            Self::Prompt => "→",
+            Self::Response => "←",
+            Self::TestGenerated => "+",
+            Self::Reflection => "?",
+            Self::Complete => "✓",
+            Self::Error => "!",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Info => "INFO",
+            Self::Progress => "PROG",
+            Self::Prompt => "SEND",
+            Self::Response => "RECV",
+            Self::TestGenerated => "TEST",
+            Self::Reflection => "REFL",
+            Self::Complete => "DONE",
+            Self::Error => "ERR",
+        }
+    }
+}
+
+/// A log entry for the streaming display
+#[derive(Debug, Clone)]
+pub struct LogEntry {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub kind: LogEntryKind,
+    pub message: String,
+}
+
 /// Generate sample test data for MVP
 pub fn sample_tests() -> Vec<CrusadeTest> {
     vec![

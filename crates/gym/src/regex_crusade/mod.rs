@@ -17,8 +17,8 @@ use self::iteration_log::IterationLog;
 use self::task_panel::TaskPanel;
 use self::test_panel::TestPanel;
 use self::types::{
-    detect_stub, CrusadeCategory, CrusadeSession, CrusadeStatus, CrusadeTest, TestQuality,
-    TestRunStatus, REGEX_LOG_DESCRIPTION, REGEX_LOG_TASK_ID,
+    CrusadeCategory, CrusadeSession, CrusadeStatus, CrusadeTest, LogEntry, LogEntryKind,
+    TestQuality, TestRunStatus, REGEX_LOG_DESCRIPTION, REGEX_LOG_TASK_ID,
 };
 use crate::testgen::service::{GenerationRequest, TestGenEvent, TestGenService};
 use testgen::TestGenContext;
@@ -29,7 +29,7 @@ pub struct RegexCrusadeScreen {
     task_panel: Entity<TaskPanel>,
     /// Test list panel (center)
     test_panel: Entity<TestPanel>,
-    /// Iteration log (right)
+    /// Iteration log (right) - shows streaming FM activity
     iteration_log: Entity<IterationLog>,
     /// Current session state
     session: CrusadeSession,
@@ -37,6 +37,10 @@ pub struct RegexCrusadeScreen {
     testgen_service: Arc<TestGenService>,
     /// Event receiver from TestGen
     event_receiver: Option<mpsc::UnboundedReceiver<TestGenEvent>>,
+    /// Accumulated tests (we keep master list here to avoid losing tests)
+    accumulated_tests: Vec<CrusadeTest>,
+    /// Log entries for streaming display
+    log_entries: Vec<LogEntry>,
     /// Focus handle
     focus_handle: FocusHandle,
 }
@@ -62,8 +66,25 @@ impl RegexCrusadeScreen {
             session,
             testgen_service: Arc::new(TestGenService::new()),
             event_receiver: None,
+            accumulated_tests: Vec::new(),
+            log_entries: Vec::new(),
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Add a log entry and update the iteration log panel
+    fn add_log(&mut self, kind: LogEntryKind, message: String, cx: &mut Context<Self>) {
+        let entry = LogEntry {
+            timestamp: chrono::Utc::now(),
+            kind,
+            message,
+        };
+        self.log_entries.push(entry.clone());
+
+        // Update iteration log panel
+        self.iteration_log.update(cx, |log, cx| {
+            log.add_log_entry(entry, cx);
+        });
     }
 
     /// Start test generation
@@ -72,7 +93,9 @@ impl RegexCrusadeScreen {
             return;
         }
 
-        // Clear current tests
+        // Clear current state
+        self.accumulated_tests.clear();
+        self.log_entries.clear();
         self.session = CrusadeSession {
             status: CrusadeStatus::GeneratingTests,
             ..Default::default()
@@ -84,6 +107,21 @@ impl RegexCrusadeScreen {
         self.task_panel.update(cx, |panel, cx| {
             panel.set_session(self.session.clone(), cx);
         });
+        self.iteration_log.update(cx, |log, cx| {
+            log.clear_logs(cx);
+        });
+
+        // Log start
+        self.add_log(
+            LogEntryKind::Info,
+            format!("Starting test generation for task: {}", REGEX_LOG_TASK_ID),
+            cx,
+        );
+        self.add_log(
+            LogEntryKind::Prompt,
+            format!("Task description:\n{}", REGEX_LOG_DESCRIPTION),
+            cx,
+        );
 
         // Start generation
         let request = GenerationRequest {
@@ -117,7 +155,6 @@ impl RegexCrusadeScreen {
         }
 
         let mut tests_updated = false;
-        let mut new_tests: Vec<CrusadeTest> = vec![];
         let mut should_clear_receiver = false;
 
         // Process collected events
@@ -129,35 +166,63 @@ impl RegexCrusadeScreen {
                     round,
                     status: status_msg,
                 } => {
-                    // Update status message if needed
-                    eprintln!(
-                        "[TestGen] {} {:?} round {} - {}",
-                        phase, category, round, status_msg
-                    );
+                    let cat_str = category
+                        .map(|c| format!("{:?}", c))
+                        .unwrap_or_else(|| "all".to_string());
+                    let msg = format!("[{}] {} round {} - {}", phase, cat_str, round, status_msg);
+                    self.add_log(LogEntryKind::Progress, msg, cx);
                 }
                 TestGenEvent::TestGenerated(test) => {
-                    // Convert testgen::GeneratedTest to CrusadeTest
+                    // Log the test
+                    self.add_log(
+                        LogEntryKind::TestGenerated,
+                        format!(
+                            "Test {}: {:?}\n  Input: \"{}\"\n  Expected: {:?}\n  Reasoning: {}",
+                            test.id,
+                            test.category,
+                            truncate(&test.input, 60),
+                            test.expected_output,
+                            truncate(&test.reasoning, 80)
+                        ),
+                        cx,
+                    );
+
+                    // Convert and accumulate
                     let crusade_test = convert_test(&test);
-                    new_tests.push(crusade_test);
+                    self.accumulated_tests.push(crusade_test);
                     tests_updated = true;
                 }
                 TestGenEvent::Reflection(entry) => {
-                    eprintln!("[TestGen] Reflection: {:?}", entry.action);
+                    self.add_log(
+                        LogEntryKind::Reflection,
+                        format!(
+                            "Reflection ({:?}): {}",
+                            entry.action,
+                            truncate(&entry.reflection_text, 100)
+                        ),
+                        cx,
+                    );
                 }
                 TestGenEvent::Complete {
                     total_tests,
                     total_rounds,
                     duration_ms,
                 } => {
-                    eprintln!(
-                        "[TestGen] Complete: {} tests, {} rounds, {}ms",
-                        total_tests, total_rounds, duration_ms
+                    self.add_log(
+                        LogEntryKind::Complete,
+                        format!(
+                            "Generation complete: {} tests, {} rounds, {:.1}s",
+                            total_tests,
+                            total_rounds,
+                            duration_ms as f64 / 1000.0
+                        ),
+                        cx,
                     );
                     self.session.status = CrusadeStatus::Idle;
                     should_clear_receiver = true;
                 }
                 TestGenEvent::Error(err) => {
-                    eprintln!("[TestGen] Error: {}", err);
+                    self.add_log(LogEntryKind::Error, format!("Error: {}", err), cx);
                     self.session.status = CrusadeStatus::Failed;
                     should_clear_receiver = true;
                 }
@@ -168,29 +233,26 @@ impl RegexCrusadeScreen {
             self.event_receiver = None;
         }
 
-        // Update tests if we got new ones
+        // Update UI with ALL accumulated tests
         if tests_updated {
-            // Get existing tests and append new ones
-            let mut all_tests = vec![];
-            self.test_panel.update(cx, |_panel, _cx| {
-                // Panel stores tests internally, but we'll just use new_tests for now
-            });
-            all_tests.extend(new_tests);
-
-            // Update counts
-            let stub_count = all_tests
+            // Update counts from accumulated tests
+            let stub_count = self
+                .accumulated_tests
                 .iter()
                 .filter(|t| t.quality == TestQuality::Stub)
                 .count() as u32;
-            let real_count = all_tests
+            let real_count = self
+                .accumulated_tests
                 .iter()
                 .filter(|t| t.quality == TestQuality::Real)
                 .count() as u32;
 
             self.session.stub_count = stub_count;
             self.session.real_count = real_count;
-            self.session.tests_total = all_tests.len() as u32;
+            self.session.tests_total = self.accumulated_tests.len() as u32;
 
+            // Clone the full list for the panel
+            let all_tests = self.accumulated_tests.clone();
             self.test_panel.update(cx, |panel, cx| {
                 panel.set_tests(all_tests, cx);
             });
@@ -376,14 +438,23 @@ impl Render for RegexCrusadeScreen {
                             .border_color(border::DEFAULT)
                             .child(self.test_panel.clone()),
                     )
-                    // Right: Iteration Log
+                    // Right: Streaming Log
                     .child(
                         div()
-                            .w(px(320.0))
+                            .w(px(380.0))
                             .h_full()
                             .child(self.iteration_log.clone()),
                     ),
             )
+    }
+}
+
+/// Truncate a string for display
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
     }
 }
 
@@ -395,18 +466,27 @@ fn convert_test(test: &testgen::GeneratedTest) -> CrusadeTest {
         testgen::TestCategory::Correctness => CrusadeCategory::Correctness,
         testgen::TestCategory::Boundary => CrusadeCategory::Boundary,
         testgen::TestCategory::Integration => CrusadeCategory::Integration,
-        _ => CrusadeCategory::Correctness, // Map legacy categories to Correctness
+        _ => CrusadeCategory::Correctness,
     };
 
-    // For now we don't have the actual test code, so we'll synthesize it
+    // Tests with actual input and expected output are REAL tests
+    // They're only stubs if input or expected is empty/placeholder
+    let quality = if test.input.is_empty() || test.expected_output.is_none() {
+        TestQuality::Stub
+    } else if test.input.contains("TODO") || test.input.contains("placeholder") {
+        TestQuality::Suspicious
+    } else {
+        TestQuality::Real
+    };
+
+    // Build actual test code showing the assertion
     let code = format!(
-        "# {}\n# Input: {}\n# Expected: {:?}\npass  # TODO: implement",
+        "# Test: {}\n# Reasoning: {}\n\ninput = \"{}\"\nexpected = {:?}\nresult = regex.findall(pattern, input)\nassert result == expected",
+        test.id,
         test.reasoning,
-        test.input,
+        test.input.replace("\"", "\\\""),
         test.expected_output
     );
-
-    let quality = detect_stub(&code);
 
     CrusadeTest {
         id: test.id.clone(),
