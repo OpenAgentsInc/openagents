@@ -52,6 +52,7 @@ mod types;
 mod verification;
 mod worktree;
 mod worktree_guards;
+mod sandbox_runner;
 mod worktree_runner;
 
 pub use agent_lock::*;
@@ -77,4 +78,5 @@ pub use types::*;
 pub use verification::*;
 pub use worktree::*;
 pub use worktree_guards::*;
+pub use sandbox_runner::*;
 pub use worktree_runner::*;
