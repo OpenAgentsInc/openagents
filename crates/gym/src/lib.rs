@@ -4,6 +4,8 @@
 //! real-time HillClimber visualization, TestGen monitoring, and TBCC integration.
 
 pub mod actions;
+pub mod baseline;
+pub mod reporter;
 pub mod types;
 pub mod gym_screen;
 pub mod trajectory_view;
