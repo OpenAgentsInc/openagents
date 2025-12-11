@@ -377,6 +377,19 @@ impl QueryOptions {
         self
     }
 
+    /// Set setting sources to load (user, project, local).
+    /// Required to load skills from `.claude/skills/`.
+    pub fn setting_sources(mut self, sources: Vec<SettingSource>) -> Self {
+        self.setting_sources = sources;
+        self
+    }
+
+    /// Add a single setting source.
+    pub fn setting_source(mut self, source: SettingSource) -> Self {
+        self.setting_sources.push(source);
+        self
+    }
+
     /// Build CLI arguments from options.
     pub fn build_args(&self) -> Vec<String> {
         let mut args = vec![
