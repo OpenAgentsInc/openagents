@@ -23,66 +23,17 @@
 - [x] 20 new tests (29 total)
 - [x] `FsError::ReadOnly` error variant
 
----
-
-## Sprint 4: Standard Services (Next)
-
-### 4.1 TaskFs
-
-Task specification filesystem:
-
-```
-/task/
-├── spec.json      # Full task definition (MapFs)
-├── meta.json      # Metadata (MapFs)
-├── status         # Live status (FuncFs)
-└── result.json    # Final result (MemFs)
-```
-
-```rust
-pub struct TaskFs {
-    spec: TaskSpec,
-    status: Arc<RwLock<TaskStatus>>,
-}
-```
-
-### 4.2 LogsFs
-
-Structured logging filesystem:
-
-```
-/logs/
-├── stdout.log     # Append-only
-├── stderr.log     # Append-only
-├── events/        # Structured events (JSONL)
-│   ├── 001.jsonl
-│   └── ...
-└── atif/          # ATIF trajectory files
-    └── trajectory.json
-```
-
-```rust
-pub struct LogsFs {
-    stdout: AppendOnlyFile,
-    stderr: AppendOnlyFile,
-    events: EventLog,
-}
-```
-
-### 4.3 WorkspaceFs
-
-Real filesystem wrapper with path restrictions:
-
-```rust
-pub struct WorkspaceFs {
-    root: PathBuf,
-    readonly: bool,
-}
-```
+**Sprint 4: Complete** ✅
+- [x] `TaskFs` - Task specification, status, and results (~320 lines)
+- [x] `LogsFs` - Structured logging with stdout/stderr/events (~400 lines)
+- [x] `WorkspaceFs` - Real filesystem wrapper with path security (~380 lines)
+- [x] 30 new unit tests (59 total)
+- [x] 4 new integration tests (12 total)
+- [x] Complete agent environment demo
 
 ---
 
-## Sprint 5: Capabilities
+## Sprint 5: Capabilities (Next)
 
 ### 5.1 NostrFs
 

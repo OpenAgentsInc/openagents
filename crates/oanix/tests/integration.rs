@@ -6,7 +6,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use oanix::{CowFs, FileService, FuncFs, MapFs, MemFs, Namespace, OpenFlags};
+use oanix::{
+    CowFs, FileService, FuncFs, LogEvent, LogLevel, LogsFs, MapFs, MemFs, Namespace, OpenFlags,
+    TaskFs, TaskMeta, TaskSpec, TaskStatus,
+};
 
 // ============================================================================
 // Helper functions
@@ -476,4 +479,287 @@ fn test_namespace_routing() {
 
     // Non-existent paths return None
     assert!(ns.resolve("/nonexistent/file.txt").is_none());
+}
+
+// ============================================================================
+// Pattern 9: TaskFs standard service
+// ============================================================================
+
+/// Tests the TaskFs standard service for task execution environments
+#[test]
+fn test_taskfs_service() {
+    let spec = TaskSpec {
+        id: "bench-001".to_string(),
+        task_type: "regex".to_string(),
+        description: "Extract IP addresses from log files".to_string(),
+        input: serde_json::json!({
+            "log_format": "nginx",
+            "target_field": "remote_addr"
+        }),
+    };
+
+    let mut meta = TaskMeta::default();
+    meta.tags = vec!["benchmark".to_string(), "regex".to_string()];
+    meta.timeout_secs = Some(300);
+
+    let task = TaskFs::new(spec, meta);
+
+    // 1. Read task specification
+    let spec_content = read_file(&task, "/spec.json");
+    assert!(spec_content.contains("bench-001"));
+    assert!(spec_content.contains("Extract IP addresses"));
+    assert!(spec_content.contains("nginx"));
+
+    // 2. Read metadata
+    let meta_content = read_file(&task, "/meta.json");
+    assert!(meta_content.contains("benchmark"));
+    assert!(meta_content.contains("300"));
+
+    // 3. Check initial status
+    assert_eq!(task.get_status(), TaskStatus::Pending);
+    let status_content = read_file(&task, "/status");
+    assert!(status_content.contains("pending"));
+
+    // 4. Simulate task lifecycle
+    task.set_running();
+    let status_content = read_file(&task, "/status");
+    assert!(status_content.contains("running"));
+    assert!(status_content.contains("started_at"));
+
+    // 5. Write result
+    write_file(&task, "/result.json", r#"{"matches": 1234, "accuracy": 0.99}"#);
+
+    // 6. Complete task
+    task.set_completed();
+    assert!(task.is_finished());
+
+    // 7. Verify final state
+    let result_content = read_file(&task, "/result.json");
+    assert!(result_content.contains("1234"));
+
+    // 8. Verify directory listing
+    let entries = list_dir(&task, "/");
+    assert!(entries.contains(&"spec.json".to_string()));
+    assert!(entries.contains(&"meta.json".to_string()));
+    assert!(entries.contains(&"status".to_string()));
+    assert!(entries.contains(&"result.json".to_string()));
+}
+
+// ============================================================================
+// Pattern 10: LogsFs standard service
+// ============================================================================
+
+/// Tests the LogsFs standard service for structured logging
+#[test]
+fn test_logsfs_service() {
+    let logs = LogsFs::new();
+
+    // 1. Programmatic stdout/stderr
+    logs.write_stdout(b"[INFO] Starting task execution\n");
+    logs.write_stdout(b"[INFO] Processing file 1 of 100\n");
+    logs.write_stderr(b"[WARN] Deprecated API usage detected\n");
+
+    // 2. Structured events
+    logs.info("Task started");
+    logs.log_event(LogEvent::with_data(
+        LogLevel::Debug,
+        "Configuration loaded",
+        serde_json::json!({
+            "timeout": 300,
+            "workers": 4
+        }),
+    ));
+    logs.warn("Rate limit approaching");
+    logs.error("Connection timeout");
+
+    // 3. Read stdout via file interface
+    let stdout_content = read_file(&logs, "/stdout.log");
+    assert!(stdout_content.contains("[INFO] Starting task"));
+    assert!(stdout_content.contains("Processing file 1"));
+
+    // 4. Read stderr via file interface
+    let stderr_content = read_file(&logs, "/stderr.log");
+    assert!(stderr_content.contains("[WARN] Deprecated"));
+
+    // 5. Read structured events
+    let events_content = read_file(&logs, "/events.jsonl");
+    assert!(events_content.contains("Task started"));
+    assert!(events_content.contains("Configuration loaded"));
+    assert!(events_content.contains("Rate limit"));
+    assert!(events_content.contains("Connection timeout"));
+
+    // Each event should be valid JSON on its own line
+    for line in events_content.trim().lines() {
+        let event: LogEvent = serde_json::from_str(line).unwrap();
+        assert!(!event.message.is_empty());
+    }
+
+    // 6. Verify event count
+    let events = logs.events();
+    assert_eq!(events.len(), 4);
+
+    // 7. Clear and verify
+    logs.clear();
+    assert!(logs.stdout().is_empty());
+    assert!(logs.stderr().is_empty());
+    assert!(logs.events().is_empty());
+}
+
+// ============================================================================
+// Pattern 11: Complete agent environment with standard services
+// ============================================================================
+
+/// Tests a complete agent execution environment with all standard services
+#[test]
+fn test_complete_agent_environment() {
+    // Create task
+    let task = TaskFs::new(
+        TaskSpec {
+            id: "agent-task-001".to_string(),
+            task_type: "code-review".to_string(),
+            description: "Review pull request #42".to_string(),
+            input: serde_json::json!({"pr_number": 42}),
+        },
+        TaskMeta::default(),
+    );
+
+    // Create logs
+    let logs = LogsFs::new();
+
+    // Create workspace (using CowFs over MapFs as mock)
+    let project_base = MapFs::builder()
+        .file("/src/main.rs", b"fn main() { old_code(); }")
+        .file("/src/lib.rs", b"pub fn old_code() {}")
+        .file("/Cargo.toml", b"[package]\nname = \"myproject\"")
+        .build();
+    let workspace = CowFs::new(project_base);
+
+    // Create tmp
+    let tmp = MemFs::new();
+
+    // Build complete namespace
+    let ns = Namespace::builder()
+        .mount("/task", task)
+        .mount("/logs", logs)
+        .mount("/workspace", workspace)
+        .mount("/tmp", tmp)
+        .build();
+
+    // === Agent execution simulation ===
+
+    // 1. Read task spec
+    let (task_svc, _) = ns.resolve("/task/spec.json").unwrap();
+    let spec_content = read_file(task_svc, "/spec.json");
+    assert!(spec_content.contains("code-review"));
+    assert!(spec_content.contains("42"));
+
+    // 2. Log start
+    let (logs_svc, _) = ns.resolve("/logs").unwrap();
+    // Cast to LogsFs to use programmatic API (in real code, would write via file)
+    {
+        let mut handle = logs_svc
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        handle.write(b"Starting code review...\n").unwrap();
+    }
+
+    // 3. Read and modify workspace
+    let (ws_svc, _) = ns.resolve("/workspace").unwrap();
+    let main_content = read_file(ws_svc, "/src/main.rs");
+    assert!(main_content.contains("old_code"));
+
+    // Agent modifies the file
+    write_file(ws_svc, "/src/main.rs", "fn main() { new_code(); }");
+
+    // 4. Write intermediate results to tmp
+    let (tmp_svc, _) = ns.resolve("/tmp").unwrap();
+    write_file(tmp_svc, "/analysis.json", r#"{"issues": ["unused import"]}"#);
+
+    // 5. Log completion
+    {
+        let mut handle = logs_svc
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    append: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        handle.write(b"Review complete.\n").unwrap();
+    }
+
+    // 6. Write final result
+    write_file(
+        task_svc,
+        "/result.json",
+        r#"{"approved": true, "comments": 3}"#,
+    );
+
+    // === Verify final state ===
+
+    // Workspace was modified
+    let modified_main = read_file(ws_svc, "/src/main.rs");
+    assert!(modified_main.contains("new_code"));
+
+    // Logs captured everything
+    let stdout = read_file(logs_svc, "/stdout.log");
+    assert!(stdout.contains("Starting"));
+    assert!(stdout.contains("complete"));
+
+    // Result was written
+    let result = read_file(task_svc, "/result.json");
+    assert!(result.contains("approved"));
+
+    // Tmp has intermediate data
+    let analysis = read_file(tmp_svc, "/analysis.json");
+    assert!(analysis.contains("unused import"));
+}
+
+// ============================================================================
+// Pattern 12: Task failure handling
+// ============================================================================
+
+/// Tests proper handling of task failures
+#[test]
+fn test_task_failure_handling() {
+    let task = TaskFs::new(
+        TaskSpec {
+            id: "failing-task".to_string(),
+            task_type: "compile".to_string(),
+            description: "Compile the project".to_string(),
+            input: serde_json::json!({}),
+        },
+        TaskMeta::default(),
+    );
+
+    // Start task
+    task.set_running();
+    assert!(!task.is_finished());
+
+    // Task fails
+    task.set_failed("Compilation error: undefined reference to `main`");
+
+    // Verify failure state
+    assert!(task.is_finished());
+
+    let status = task.get_status();
+    match status {
+        TaskStatus::Failed { error, .. } => {
+            assert!(error.contains("undefined reference"));
+        }
+        _ => panic!("Expected Failed status"),
+    }
+
+    // Status file reflects failure
+    let status_content = read_file(&task, "/status");
+    assert!(status_content.contains("failed"));
+    assert!(status_content.contains("undefined reference"));
 }
