@@ -1,0 +1,37 @@
+[package]
+name = "mechacoder"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "MechaCoder - Claude Code harness with GPUI interface"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "MechaCoder"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Local crates
+acp = { path = "../acp" }
+gpui = { path = "../gpui" }
+ui = { path = "../ui" }
+theme = { path = "../theme" }
+
+# Core dependencies
+anyhow.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+tracing.workspace = true
+telemetry.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+similar.workspace = true
+pulldown-cmark.workspace = true
