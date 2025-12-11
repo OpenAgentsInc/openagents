@@ -24,7 +24,12 @@ pub mod types;
 // Re-export key types
 pub use agent_client_protocol as acp;
 pub use claude_code::ClaudeCode;
-pub use connection::AcpConnection;
+pub use connection::{AcpConnection, AgentServerCommand};
 pub use error::{AcpError, Result};
-pub use session::{AcpSession, AcpThread};
-pub use types::{AgentConnection, AgentSettings, Project};
+pub use session::{AcpThread, AcpThreadEvent, TerminalState};
+pub use terminal::TerminalOutput;
+pub use types::{
+    AgentConnection, AgentModelInfo, AgentModelList, AgentModelSelector, AgentSessionModes,
+    AgentSettings, AssistantMessage, AssistantMessageChunk, ContentBlock, Project, ThreadEntry,
+    ThreadStatus, ToolCall, ToolCallContent, ToolCallStatus, UserMessage, UserMessageId,
+};
