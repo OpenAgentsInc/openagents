@@ -9,6 +9,7 @@ mod unit_runtime;
 mod value_types;
 mod unit_chains;
 mod atif_components;
+mod apm_widget;
 pub mod ui;
 
 pub use pin_states::*;
@@ -20,4 +21,5 @@ pub use unit_runtime::*;
 pub use value_types::*;
 pub use unit_chains::*;
 pub use atif_components::*;
+pub use apm_widget::*;
 pub use ui::*;
