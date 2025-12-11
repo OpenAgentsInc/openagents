@@ -22,6 +22,10 @@ acp = { path = "../acp" }
 gpui = { path = "../gpui" }
 ui_oa = { path = "../ui_oa" }
 theme_oa = { path = "../theme_oa" }
+markdown = { path = "../markdown" }
+language = { path = "../language" }
+theme = { path = "../theme" }
+ui = { path = "../ui" }
 
 # Core dependencies
 anyhow.workspace = true
