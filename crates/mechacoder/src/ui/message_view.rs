@@ -58,8 +58,9 @@ impl MessageView {
     }
 
     /// Get the markdown style.
-    fn markdown_style(&self, _window: &Window, cx: &App) -> MarkdownStyle {
-        let colors = theme::ActiveTheme::theme(cx).colors();
+    fn markdown_style(&self, _window: &Window, _cx: &App) -> MarkdownStyle {
+        // Use theme_oa colors directly instead of Zed's global theme
+        let link_color = gpui::hsla(210.0 / 360.0, 0.8, 0.6, 1.0); // Blue link color
 
         let mut text_style = TextStyle::default();
         text_style.refine(&TextStyleRefinement {
@@ -83,18 +84,18 @@ impl MessageView {
                 ..Default::default()
             },
             link: TextStyleRefinement {
-                color: Some(colors.link_text_hover),
+                color: Some(link_color),
                 underline: Some(UnderlineStyle {
                     thickness: px(1.),
-                    color: Some(colors.link_text_hover),
+                    color: Some(link_color),
                     wavy: false,
                 }),
                 ..Default::default()
             },
             rule_color: border::DEFAULT,
             block_quote_border_color: border::DEFAULT,
-            syntax: theme::ActiveTheme::theme(cx).syntax().clone(),
-            selection_background_color: colors.text_accent.opacity(0.3),
+            syntax: std::sync::Arc::new(theme::SyntaxTheme::default()),
+            selection_background_color: gpui::hsla(210.0 / 360.0, 0.8, 0.6, 0.3),
             ..Default::default()
         }
     }
