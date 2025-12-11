@@ -46,8 +46,8 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Tracing
-tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing = { workspace = true }
+telemetry = { workspace = true }
 
 # Regex for output parsing
 regex = "1"

@@ -120,16 +120,9 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing
-    if cli.verbose {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .init();
-    } else {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .init();
-    }
+    // Initialize telemetry
+    let filter = if cli.verbose { "debug" } else { "info" };
+    telemetry::init_with_filter("hillclimber", filter);
 
     // Ensure database directory exists
     if let Some(parent) = cli.database.parent() {

@@ -165,11 +165,11 @@ async fn run_claude_cli(
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Initialize tracing
+    // Initialize telemetry
     if args.verbose {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .init();
+        telemetry::init_with_filter("tbench", "debug");
+    } else {
+        telemetry::init_default("tbench");
     }
 
     let start_time = Instant::now();
