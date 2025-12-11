@@ -6,8 +6,8 @@
 //! the complete user flow from task selection through test generation.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{TestGenAssertExt, TestGenFixture};
-use gym_test::types::{GenerationStatus, TestCategory, TestGenStatus};
+use crate::tests::fixtures::{TestGenAssertExt, TestGenFixture};
+use crate::tests::fixtures::types::{GenerationStatus, TestCategory, TestGenStatus};
 
 // ============================================================================
 // TestGenVisualizer Initial State Tests

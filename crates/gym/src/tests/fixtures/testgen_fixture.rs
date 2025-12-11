@@ -3,9 +3,9 @@
 //! Page Object Model fixture for testing the TestGen Visualizer component.
 
 use gpui::{Entity, TestAppContext};
-use gym::testgen::category_progress::TestCategory;
-use gym::testgen::test_list::{TestCase, TestStatus};
-use gym::testgen::visualizer::{GenerationStatus, TestGenSession, TestGenStatus, TestGenVisualizer};
+use crate::testgen::category_progress::TestCategory;
+use crate::testgen::test_list::{TestCase, TestStatus};
+use crate::testgen::visualizer::{GenerationStatus, TestGenSession, TestGenStatus, TestGenVisualizer};
 
 /// Page Object Model fixture for TestGenVisualizer
 pub struct TestGenFixture;

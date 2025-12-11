@@ -20,4 +20,6 @@ parking_lot = "0.12"
 
 [dev-dependencies]
 gpui = { path = "../gpui", features = ["test-support"] }
-gym_test = { path = "../gym_test" }
+atif-store = { path = "../atif-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

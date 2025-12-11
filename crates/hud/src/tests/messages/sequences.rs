@@ -3,8 +3,8 @@
 //! These sequences mirror the message patterns from the TypeScript E2E tests,
 //! providing complete workflows that can be injected into components.
 
-use crate::messages::factories::*;
-use crate::protocol::*;
+use super::factories::*;
+use super::super::protocol::*;
 
 /// Create a complete Golden Loop message sequence
 ///

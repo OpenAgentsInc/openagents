@@ -18,3 +18,12 @@ pub use hillclimber_fixture::*;
 pub use testgen_fixture::*;
 pub use trajectory_fixture::*;
 pub use assertions::*;
+
+// Re-export types from gym for convenient test imports
+pub mod types {
+    pub use crate::GymTab;
+    pub use crate::tbcc::TBCCTab;
+    pub use crate::hillclimber::monitor::{HCMode, HCSession, HCSessionStatus};
+    pub use crate::testgen::visualizer::{TestGenStatus, TestGenSession, GenerationStatus};
+    pub use crate::testgen::category_progress::TestCategory;
+}

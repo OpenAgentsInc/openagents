@@ -1,6 +1,7 @@
 //! E2E tests for Gym components
-//!
-//! These tests use the gym_test crate for fixtures and assertions.
+
+#[cfg(test)]
+mod fixtures;
 
 mod smoke;
 mod tbcc;

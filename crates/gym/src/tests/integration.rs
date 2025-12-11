@@ -3,8 +3,8 @@
 //! Tests for cross-component interactions and navigation flows.
 
 use gpui::TestAppContext;
-use gym_test::fixtures::{GymScreenFixture, GymScreenAssertExt};
-use gym_test::types::GymTab;
+use crate::tests::fixtures::{GymScreenFixture, GymScreenAssertExt};
+use crate::tests::fixtures::types::GymTab;
 
 // ============================================================================
 // Tab Navigation Integration Tests

@@ -4,8 +4,8 @@
 //! Tests HUD-060 to HUD-063: graceful degradation and error handling.
 
 use gpui::TestAppContext;
-use hud_test::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
-use hud_test::messages::factories;
+use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
+use crate::tests::messages::factories;
 
 /// HUD-060: no crash on WebSocket disconnect, preserves last state
 #[gpui::test]

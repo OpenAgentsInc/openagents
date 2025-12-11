@@ -2802,6 +2802,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12101ecc8225ea6d675bc70263074eab6169079621c2186fe0c66590b2df9681"
 
 [[package]]
+name = "guardrails"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gym"
 version = "0.1.0"
 dependencies = [
@@ -2811,7 +2820,6 @@ dependencies = [
  "directories",
  "fm-bridge",
  "gpui",
- "gym_test",
  "parking_lot",
  "serde",
  "serde_json",
@@ -2819,18 +2827,6 @@ dependencies = [
  "theme",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "gym_test"
-version = "0.1.0"
-dependencies = [
- "atif-store",
- "gpui",
- "gym",
- "serde",
- "serde_json",
- "theme",
 ]
 
 [[package]]
@@ -3111,23 +3107,11 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 name = "hud"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gpui",
- "hud_test",
  "serde",
  "serde_json",
  "theme",
- "unit",
-]
-
-[[package]]
-name = "hud_test"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "gpui",
- "hud",
- "serde",
- "serde_json",
  "unit",
  "uuid",
 ]
@@ -4394,6 +4378,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "oanix"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5330,6 +5330,15 @@ name = "refineable"
 version = "0.1.0"
 dependencies = [
  "derive_refineable",
+]
+
+[[package]]
+name = "reflexion"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -7533,6 +7542,23 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vibe"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "oanix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "vswhom"
