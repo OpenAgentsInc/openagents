@@ -6,9 +6,19 @@ echo "=== Installing MechaCoder ==="
 
 # Update package lists
 apt-get update
-apt-get install -y curl git unzip npm
+apt-get install -y curl git unzip npm build-essential pkg-config libssl-dev
 
-# Install Bun runtime
+# Install Rust
+echo "Installing Rust..."
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Verify Rust installation
+rustc --version
+cargo --version
+
+# Install Bun runtime (for any TypeScript dependencies)
 echo "Installing Bun..."
 curl -fsSL https://bun.sh/install | bash
 export BUN_INSTALL="$HOME/.bun"
@@ -23,7 +33,7 @@ npm install -g @anthropic-ai/claude-code
 # Add npm global bin to PATH
 export PATH="$(npm bin -g):$PATH"
 echo "PATH=$PATH" >> /etc/environment
-echo 'export PATH="$(npm bin -g):$PATH"' >> /root/.bashrc
+echo 'export PATH="$(npm bin -g):$HOME/.cargo/bin:$PATH"' >> /root/.bashrc
 claude --version || echo "Claude Code installed"
 
 # Configure API key helper for non-interactive mode
@@ -46,13 +56,13 @@ git clone --branch {{ version }} --depth 1 https://github.com/OpenAgentsInc/open
 git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git /opt/mechacoder
 {% endif %}
 
-# Install dependencies
-echo "Installing dependencies..."
+# Build Rust binaries
+echo "Building MechaCoder..."
 cd /opt/mechacoder
-bun install
+cargo build --release -p harbor
 
-# Verify installation
+# Verify tbench installation
 echo "Verifying installation..."
-bun src/cli/tbench.ts --help
+/opt/mechacoder/target/release/tbench --help
 
 echo "=== MechaCoder installation complete ==="

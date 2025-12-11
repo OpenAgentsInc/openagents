@@ -27,7 +27,7 @@ class MechaCoderAgent(BaseInstalledAgent):
     """
     Harbor agent adapter for MechaCoder (OpenAgents).
 
-    MechaCoder is installed via bun and uses Claude Code as its subagent.
+    MechaCoder is installed via cargo and uses Claude Code as its subagent.
     It outputs structured JSON files (metrics.json, trajectory.json) that
     are parsed to populate the agent context.
     """
@@ -44,7 +44,7 @@ class MechaCoderAgent(BaseInstalledAgent):
         """
         Create commands to run MechaCoder on the given instruction.
 
-        Uses the tbench CLI wrapper which:
+        Uses the tbench Rust binary which:
         - Accepts the task instruction
         - Runs Claude Code subagent
         - Outputs events.jsonl, trajectory.json, metrics.json
@@ -75,10 +75,8 @@ class MechaCoderAgent(BaseInstalledAgent):
 
         output_dir = EnvironmentPaths.agent_dir
 
-        # MechaCoder uses bun as its runtime
-        # The tbench CLI is the entry point for Terminal-Bench runs
-        mechacoder_dir = "/opt/mechacoder"
-        tbench_cli = f"{mechacoder_dir}/src/cli/tbench.ts"
+        # MechaCoder tbench binary location (installed via cargo)
+        tbench_bin = "/opt/mechacoder/target/release/tbench"
 
         return [
             # Ensure output directory exists
@@ -86,13 +84,11 @@ class MechaCoderAgent(BaseInstalledAgent):
                 command=f"mkdir -p {output_dir}",
                 env=env,
             ),
-            # Run MechaCoder tbench CLI
-            # Set PATH to include npm global bin and bun for claude CLI
+            # Run MechaCoder tbench binary
             ExecInput(
                 command=(
-                    f"export PATH=\"$(npm bin -g):$HOME/.bun/bin:$PATH\" && "
-                    f"cd {mechacoder_dir} && "
-                    f"bun {tbench_cli} "
+                    f"export PATH=\"$(npm bin -g):$HOME/.bun/bin:$HOME/.cargo/bin:$PATH\" && "
+                    f"{tbench_bin} "
                     f"--instruction {escaped_instruction} "
                     f"--output-dir {output_dir} "
                     f"--timeout 3600 "
@@ -137,7 +133,7 @@ class MechaCoderAgent(BaseInstalledAgent):
             context.metadata = {
                 "success": metrics.get("success", False),
                 "turns": metrics.get("turns", 0),
-                "duration_ms": metrics.get("durationMs", 0),
+                "duration_ms": metrics.get("duration_ms", 0),
                 "files_modified": metrics.get("filesModified", []),
                 "tools_used": metrics.get("toolsUsed", {}),
             }
@@ -150,7 +146,7 @@ class MechaCoderAgent(BaseInstalledAgent):
     async def run(
         self,
         instruction: str,
-        environment: BaseEnvironment,
+        environment,
         context: AgentContext,
     ) -> None:
         """
@@ -202,7 +198,7 @@ class MechaCoderAgent(BaseInstalledAgent):
 
         return json_str
 
-    async def _maybe_inject_credentials(self, environment: BaseEnvironment) -> None:
+    async def _maybe_inject_credentials(self, environment) -> None:
         """
         If env vars are missing, try to inject credentials file into container.
         """

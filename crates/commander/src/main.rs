@@ -20,6 +20,7 @@ use theme::{bg, border, status, text, FONT_FAMILY};
 use ui::{TextInput, SubmitEvent, bind_text_input_keys};
 use marketplace::MarketplaceScreen;
 use gym::GymScreen;
+use vibe::VibeScreen;
 use tokio_stream::StreamExt;
 
 /// Manages the foundation-bridge process lifecycle
@@ -116,6 +117,7 @@ enum Screen {
     Wallet,
     Marketplace,
     Chat,
+    Vibe,
 }
 
 #[derive(Clone)]
@@ -159,6 +161,8 @@ struct CommanderView {
     gym_screen: Entity<GymScreen>,
     // Chat screen (Bloomberg Terminal-style Nostr chat)
     chat_screen: Entity<ChatScreen>,
+    // Vibe screen (AI-native development platform)
+    vibe_screen: Entity<VibeScreen>,
 }
 
 impl CommanderView {
@@ -344,6 +348,9 @@ impl CommanderView {
         // Create chat screen (Bloomberg Terminal-style Nostr chat)
         let chat_screen = cx.new(|cx| ChatScreen::new(cx));
 
+        // Create vibe screen (AI-native development platform)
+        let vibe_screen = cx.new(|cx| VibeScreen::new(cx));
+
         Self {
             current_screen: Screen::Gym,
             focus_handle: cx.focus_handle(),
@@ -367,6 +374,7 @@ impl CommanderView {
             marketplace_screen,
             gym_screen,
             chat_screen,
+            vibe_screen,
         }
     }
 
@@ -379,6 +387,7 @@ impl CommanderView {
             Screen::Wallet => "OpenAgents Wallet",
             Screen::Marketplace => "OpenAgents Marketplace",
             Screen::Chat => "OpenAgents Chat",
+            Screen::Vibe => "OpenAgents Vibe",
         }
     }
 
@@ -421,6 +430,13 @@ impl CommanderView {
     fn go_to_chat(&mut self, _: &actions::GoToChat, window: &mut Window, cx: &mut Context<Self>) {
         self.current_screen = Screen::Chat;
         window.set_window_title(Self::get_window_title(Screen::Chat));
+        window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn go_to_vibe(&mut self, _: &actions::GoToVibe, window: &mut Window, cx: &mut Context<Self>) {
+        self.current_screen = Screen::Vibe;
+        window.set_window_title(Self::get_window_title(Screen::Vibe));
         window.focus(&self.focus_handle);
         cx.notify();
     }
@@ -625,6 +641,11 @@ impl CommanderView {
     /// Render the Chat screen (Bloomberg Terminal-style Nostr chat)
     fn render_chat_screen(&self) -> impl IntoElement {
         self.chat_screen.clone()
+    }
+
+    /// Render the Vibe screen (AI-native development platform)
+    fn render_vibe_screen(&self) -> impl IntoElement {
+        self.vibe_screen.clone()
     }
 
     /// Toggle step expansion
@@ -1003,6 +1024,7 @@ impl Render for CommanderView {
             Screen::Wallet => self.render_wallet_screen().into_any_element(),
             Screen::Marketplace => self.render_marketplace_screen().into_any_element(),
             Screen::Chat => self.render_chat_screen().into_any_element(),
+            Screen::Vibe => self.render_vibe_screen().into_any_element(),
         };
 
         div()
@@ -1020,6 +1042,7 @@ impl Render for CommanderView {
             .on_action(cx.listener(Self::go_to_wallet))
             .on_action(cx.listener(Self::go_to_marketplace))
             .on_action(cx.listener(Self::go_to_chat))
+            .on_action(cx.listener(Self::go_to_vibe))
             // Main content area (no sidebar - Gym manages its own layout)
             .child(main_content)
     }
@@ -1072,6 +1095,7 @@ fn main() {
             KeyBinding::new("cmd-4", actions::GoToWallet, None),
             KeyBinding::new("cmd-5", actions::GoToMarketplace, None),
             KeyBinding::new("cmd-6", actions::GoToChat, None),
+            KeyBinding::new("cmd-7", actions::GoToVibe, None),
         ]);
 
         // Register app-level action handlers

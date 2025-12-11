@@ -1,0 +1,34 @@
+[package]
+name = "acp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Agent Client Protocol (ACP) connection layer for Claude Code"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# ACP protocol (from crates.io)
+agent-client-protocol = { version = "0.9.0", features = ["unstable"] }
+
+# Local crates
+gpui = { path = "../gpui" }
+collections = { path = "../collections" }
+
+# Core dependencies
+anyhow.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+smol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
