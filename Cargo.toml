@@ -474,7 +474,7 @@ ztracing = { path = "crates/ztracing" }
 ztracing_macro = { path = "crates/ztracing_macro" }
 rich_text = { path = "crates/rich_text" }
 eval_utils = { path = "crates/eval_utils" }
-denoise = { path = "crates/denoise" }
+# denoise = { path = "crates/denoise" }  # Disabled - needs ONNX model files
 collab = { path = "crates/collab" }
 auto_update_helper = { path = "crates/auto_update_helper" }
 extension_api = { path = "crates/extension_api" }
@@ -805,7 +805,6 @@ features = [
 [patch.crates-io]
 notify = { git = "https://github.com/zed-industries/notify.git", rev = "b4588b2e5aee68f4c0e100f140e808cbce7b1419" }
 notify-types = { git = "https://github.com/zed-industries/notify.git", rev = "b4588b2e5aee68f4c0e100f140e808cbce7b1419" }
-windows-capture = { git = "https://github.com/zed-industries/windows-capture.git", rev = "f0d6c1b6691db75461b732f6d5ff56eed002eeb9" }
 calloop = { git = "https://github.com/zed-industries/calloop" }
 
 [profile.dev]

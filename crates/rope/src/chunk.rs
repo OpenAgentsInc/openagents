@@ -5,6 +5,40 @@ use sum_tree::Bias;
 use unicode_segmentation::GraphemeCursor;
 use util::debug_panic;
 
+/// Polyfill for str::floor_char_boundary (stabilized in Rust 1.82, but we need it for edition 2024)
+trait StrCharBoundary {
+    fn floor_char_boundary(&self, index: usize) -> usize;
+    fn ceil_char_boundary(&self, index: usize) -> usize;
+}
+
+impl StrCharBoundary for str {
+    #[inline]
+    fn floor_char_boundary(&self, index: usize) -> usize {
+        if index >= self.len() {
+            self.len()
+        } else {
+            let lower_bound = index.saturating_sub(3);
+            let new_index = self.as_bytes()[lower_bound..=index]
+                .iter()
+                .rposition(|b| (*b as i8) >= -0x40);
+            lower_bound + new_index.unwrap_or(0)
+        }
+    }
+
+    #[inline]
+    fn ceil_char_boundary(&self, index: usize) -> usize {
+        if index > self.len() {
+            self.len()
+        } else {
+            let upper_bound = Ord::min(index + 4, self.len());
+            self.as_bytes()[index..upper_bound]
+                .iter()
+                .position(|b| (*b as i8) >= -0x40)
+                .map_or(upper_bound, |pos| pos + index)
+        }
+    }
+}
+
 #[cfg(not(all(test, not(rust_analyzer))))]
 pub(crate) type Bitmap = u128;
 #[cfg(all(test, not(rust_analyzer)))]

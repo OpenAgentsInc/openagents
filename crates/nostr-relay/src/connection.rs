@@ -4,8 +4,8 @@
 
 use crate::message::{ClientMessage, Filter, MessageError, RelayMessage};
 use async_tungstenite::tungstenite::Message as WsMessage;
-use futures::stream::{SplitSink, SplitStream};
-use futures::{SinkExt, StreamExt};
+use async_tungstenite::{WebSocketReceiver, WebSocketSender};
+use futures::StreamExt;
 use nostr::Event;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -110,14 +110,10 @@ impl ConnectionConfig {
 }
 
 /// Type alias for the WebSocket sender.
-type WsSender = SplitSink<
-    async_tungstenite::WebSocketStream<async_tungstenite::tokio::ConnectStream>,
-    WsMessage,
->;
+type WsSender = WebSocketSender<async_tungstenite::tokio::ConnectStream>;
 
 /// Type alias for the WebSocket receiver.
-type WsReceiver =
-    SplitStream<async_tungstenite::WebSocketStream<async_tungstenite::tokio::ConnectStream>>;
+type WsReceiver = WebSocketReceiver<async_tungstenite::tokio::ConnectStream>;
 
 /// A connection to a single Nostr relay.
 pub struct RelayConnection {
@@ -289,7 +285,7 @@ impl RelayConnection {
 
                 let mut sender_guard = ws_sender.lock().await;
                 if let Some(sender) = sender_guard.as_mut() {
-                    if let Err(e) = sender.send(WsMessage::Text(json)).await {
+                    if let Err(e) = sender.send(WsMessage::Text(json.into())).await {
                         error!("Failed to send to {}: {}", url, e);
                         break;
                     }
@@ -384,7 +380,7 @@ impl RelayConnection {
 
         // Close WebSocket
         if let Some(sender) = self.ws_sender.lock().await.as_mut() {
-            let _ = sender.close().await;
+            let _ = sender.close(None).await;
         }
         *self.ws_sender.lock().await = None;
 
