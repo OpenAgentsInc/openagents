@@ -30,20 +30,6 @@ impl<'a> GymScreenAssertions<'a> {
         self
     }
 
-    /// Assert sidebar is collapsed
-    pub fn sidebar_is_collapsed(self) -> Self {
-        let collapsed = self.cx.read(|cx| self.view.read(cx).sidebar_collapsed);
-        assert!(collapsed, "Expected sidebar to be collapsed");
-        self
-    }
-
-    /// Assert sidebar is expanded
-    pub fn sidebar_is_expanded(self) -> Self {
-        let collapsed = self.cx.read(|cx| self.view.read(cx).sidebar_collapsed);
-        assert!(!collapsed, "Expected sidebar to be expanded");
-        self
-    }
-
     /// Assert on Trajectories tab
     pub fn is_on_trajectories(self) -> Self {
         self.has_tab(GymTab::Trajectories)

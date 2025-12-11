@@ -20,27 +20,10 @@ impl GymScreenFixture {
         cx.read(|cx| view.read(cx).current_tab)
     }
 
-    /// Check if sidebar is collapsed
-    pub fn sidebar_collapsed(view: &Entity<GymScreen>, cx: &TestAppContext) -> bool {
-        cx.read(|cx| view.read(cx).sidebar_collapsed)
-    }
-
-    /// Get sidebar width in pixels
-    pub fn sidebar_width(view: &Entity<GymScreen>, cx: &TestAppContext) -> gpui::Pixels {
-        cx.read(|cx| view.read(cx).sidebar_width)
-    }
-
     /// Switch to a specific tab
     pub fn switch_tab(view: &Entity<GymScreen>, tab: GymTab, cx: &mut TestAppContext) {
         view.update(cx, |screen, cx| {
             screen.switch_tab(tab, cx);
-        });
-    }
-
-    /// Toggle sidebar
-    pub fn toggle_sidebar(view: &Entity<GymScreen>, cx: &mut TestAppContext) {
-        view.update(cx, |screen, cx| {
-            screen.toggle_sidebar(cx);
         });
     }
 
