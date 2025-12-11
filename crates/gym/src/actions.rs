@@ -21,13 +21,13 @@ actions!(
 
 /// Register Gym actions and keybindings
 pub fn register_actions(cx: &mut App) {
-    // Tab navigation shortcuts
+    // Tab navigation shortcuts (within Gym only)
+    // Note: Cmd+1-6 conflict with global nav, so Crusade has no shortcut - click tab
     cx.bind_keys([
-        // Cmd+1/2/3/4/5 for tab switching
         KeyBinding::new("cmd-1", SwitchToTrajectories, None),
         KeyBinding::new("cmd-2", SwitchToTBCC, None),
         KeyBinding::new("cmd-3", SwitchToHillClimber, None),
         KeyBinding::new("cmd-4", SwitchToTestGen, None),
-        KeyBinding::new("cmd-5", SwitchToRegexCrusade, None),
+        // SwitchToRegexCrusade - no shortcut, conflicts with global cmd-5
     ]);
 }

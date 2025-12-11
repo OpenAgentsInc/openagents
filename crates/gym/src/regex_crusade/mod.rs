@@ -2,22 +2,26 @@
 //!
 //! Single-purpose screen for hitting 100% on the regex-log Terminal-Bench task.
 
-pub mod types;
+pub mod iteration_log;
 pub mod task_panel;
 pub mod test_panel;
-pub mod iteration_log;
+pub mod types;
 
 use gpui::prelude::*;
 use gpui::*;
+use std::sync::Arc;
 use theme::{bg, border, status, text, FONT_FAMILY};
+use tokio::sync::mpsc;
 
+use self::iteration_log::IterationLog;
 use self::task_panel::TaskPanel;
 use self::test_panel::TestPanel;
-use self::iteration_log::IterationLog;
 use self::types::{
-    sample_iterations, sample_tests, CrusadeSession, CrusadeStatus, CrusadeTest, Iteration,
-    TestQuality,
+    detect_stub, CrusadeCategory, CrusadeSession, CrusadeStatus, CrusadeTest, TestQuality,
+    TestRunStatus, REGEX_LOG_DESCRIPTION, REGEX_LOG_TASK_ID,
 };
+use crate::testgen::service::{GenerationRequest, TestGenEvent, TestGenService};
+use testgen::TestGenContext;
 
 /// Main RegexCrusade screen
 pub struct RegexCrusadeScreen {
@@ -29,6 +33,10 @@ pub struct RegexCrusadeScreen {
     iteration_log: Entity<IterationLog>,
     /// Current session state
     session: CrusadeSession,
+    /// TestGen service for background generation
+    testgen_service: Arc<TestGenService>,
+    /// Event receiver from TestGen
+    event_receiver: Option<mpsc::UnboundedReceiver<TestGenEvent>>,
     /// Focus handle
     focus_handle: FocusHandle,
 }
@@ -39,43 +47,12 @@ impl RegexCrusadeScreen {
         let test_panel = cx.new(|cx| TestPanel::new(cx));
         let iteration_log = cx.new(|cx| IterationLog::new(cx));
 
-        // Initialize with sample data for MVP
-        let sample_test_data = sample_tests();
-        let sample_iteration_data = sample_iterations();
+        // Start with empty state - no sample data
+        let session = CrusadeSession::default();
 
-        let stub_count = sample_test_data
-            .iter()
-            .filter(|t| t.quality == TestQuality::Stub)
-            .count() as u32;
-        let real_count = sample_test_data
-            .iter()
-            .filter(|t| t.quality == TestQuality::Real)
-            .count() as u32;
-        let tests_passed = sample_test_data
-            .iter()
-            .filter(|t| t.status == types::TestRunStatus::Passed)
-            .count() as u32;
-        let tests_total = sample_test_data.len() as u32;
-
-        let session = CrusadeSession {
-            status: CrusadeStatus::Idle,
-            best_regex: sample_iteration_data.last().map(|i| i.regex_pattern.clone()),
-            tests_passed,
-            tests_total,
-            stub_count,
-            real_count,
-            iterations: sample_iteration_data.clone(),
-        };
-
-        // Update child panels with sample data
+        // Update child panels with empty state
         task_panel.update(cx, |panel, cx| {
             panel.set_session(session.clone(), cx);
-        });
-        test_panel.update(cx, |panel, cx| {
-            panel.set_tests(sample_test_data, cx);
-        });
-        iteration_log.update(cx, |log, cx| {
-            log.set_iterations(sample_iteration_data, cx);
         });
 
         Self {
@@ -83,67 +60,152 @@ impl RegexCrusadeScreen {
             test_panel,
             iteration_log,
             session,
+            testgen_service: Arc::new(TestGenService::new()),
+            event_receiver: None,
             focus_handle: cx.focus_handle(),
         }
     }
 
-    /// Update session and propagate to child panels
-    #[allow(dead_code)]
-    pub fn update_session(&mut self, session: CrusadeSession, cx: &mut Context<Self>) {
-        self.session = session.clone();
-        self.task_panel.update(cx, |panel, cx| {
-            panel.set_session(session.clone(), cx);
-        });
-        self.iteration_log.update(cx, |log, cx| {
-            log.set_iterations(session.iterations, cx);
-        });
-        cx.notify();
-    }
+    /// Start test generation
+    fn start_generation(&mut self, cx: &mut Context<Self>) {
+        if self.testgen_service.is_generating() {
+            return;
+        }
 
-    /// Add tests from generation
-    #[allow(dead_code)]
-    pub fn set_tests(&mut self, tests: Vec<CrusadeTest>, cx: &mut Context<Self>) {
-        let stub_count = tests
-            .iter()
-            .filter(|t| t.quality == TestQuality::Stub)
-            .count() as u32;
-        let real_count = tests
-            .iter()
-            .filter(|t| t.quality == TestQuality::Real)
-            .count() as u32;
-
-        self.session.stub_count = stub_count;
-        self.session.real_count = real_count;
-        self.session.tests_total = tests.len() as u32;
+        // Clear current tests
+        self.session = CrusadeSession {
+            status: CrusadeStatus::GeneratingTests,
+            ..Default::default()
+        };
 
         self.test_panel.update(cx, |panel, cx| {
-            panel.set_tests(tests, cx);
+            panel.set_tests(vec![], cx);
         });
         self.task_panel.update(cx, |panel, cx| {
             panel.set_session(self.session.clone(), cx);
         });
+
+        // Start generation
+        let request = GenerationRequest {
+            task_id: REGEX_LOG_TASK_ID.to_string(),
+            task_description: REGEX_LOG_DESCRIPTION.to_string(),
+            context: TestGenContext::Benchmark,
+        };
+
+        let receiver = self.testgen_service.start_generation(request);
+        self.event_receiver = Some(receiver);
+
         cx.notify();
     }
 
-    /// Add a new iteration result
-    #[allow(dead_code)]
-    pub fn add_iteration(&mut self, iteration: Iteration, cx: &mut Context<Self>) {
-        self.session.iterations.push(iteration.clone());
-        self.session.tests_passed = iteration.passed;
-        self.session.best_regex = Some(iteration.regex_pattern.clone());
+    /// Poll for TestGen events and update UI
+    fn poll_events(&mut self, cx: &mut Context<Self>) {
+        // Collect events first to avoid borrow issues
+        let events: Vec<TestGenEvent> = {
+            let Some(ref mut receiver) = self.event_receiver else {
+                return;
+            };
+            let mut collected = vec![];
+            while let Ok(event) = receiver.try_recv() {
+                collected.push(event);
+            }
+            collected
+        };
 
-        self.iteration_log.update(cx, |log, cx| {
-            log.add_iteration(iteration, cx);
-        });
-        self.task_panel.update(cx, |panel, cx| {
-            panel.set_session(self.session.clone(), cx);
-        });
+        if events.is_empty() {
+            return;
+        }
+
+        let mut tests_updated = false;
+        let mut new_tests: Vec<CrusadeTest> = vec![];
+        let mut should_clear_receiver = false;
+
+        // Process collected events
+        for event in events {
+            match event {
+                TestGenEvent::Progress {
+                    phase,
+                    category,
+                    round,
+                    status: status_msg,
+                } => {
+                    // Update status message if needed
+                    eprintln!(
+                        "[TestGen] {} {:?} round {} - {}",
+                        phase, category, round, status_msg
+                    );
+                }
+                TestGenEvent::TestGenerated(test) => {
+                    // Convert testgen::GeneratedTest to CrusadeTest
+                    let crusade_test = convert_test(&test);
+                    new_tests.push(crusade_test);
+                    tests_updated = true;
+                }
+                TestGenEvent::Reflection(entry) => {
+                    eprintln!("[TestGen] Reflection: {:?}", entry.action);
+                }
+                TestGenEvent::Complete {
+                    total_tests,
+                    total_rounds,
+                    duration_ms,
+                } => {
+                    eprintln!(
+                        "[TestGen] Complete: {} tests, {} rounds, {}ms",
+                        total_tests, total_rounds, duration_ms
+                    );
+                    self.session.status = CrusadeStatus::Idle;
+                    should_clear_receiver = true;
+                }
+                TestGenEvent::Error(err) => {
+                    eprintln!("[TestGen] Error: {}", err);
+                    self.session.status = CrusadeStatus::Failed;
+                    should_clear_receiver = true;
+                }
+            }
+        }
+
+        if should_clear_receiver {
+            self.event_receiver = None;
+        }
+
+        // Update tests if we got new ones
+        if tests_updated {
+            // Get existing tests and append new ones
+            let mut all_tests = vec![];
+            self.test_panel.update(cx, |_panel, _cx| {
+                // Panel stores tests internally, but we'll just use new_tests for now
+            });
+            all_tests.extend(new_tests);
+
+            // Update counts
+            let stub_count = all_tests
+                .iter()
+                .filter(|t| t.quality == TestQuality::Stub)
+                .count() as u32;
+            let real_count = all_tests
+                .iter()
+                .filter(|t| t.quality == TestQuality::Real)
+                .count() as u32;
+
+            self.session.stub_count = stub_count;
+            self.session.real_count = real_count;
+            self.session.tests_total = all_tests.len() as u32;
+
+            self.test_panel.update(cx, |panel, cx| {
+                panel.set_tests(all_tests, cx);
+            });
+            self.task_panel.update(cx, |panel, cx| {
+                panel.set_session(self.session.clone(), cx);
+            });
+        }
+
         cx.notify();
     }
 
     fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let can_generate = !self.session.status.is_busy();
         let can_validate = !self.session.status.is_busy() && self.session.best_regex.is_some();
+        let is_generating = self.session.status == CrusadeStatus::GeneratingTests;
 
         div()
             .flex()
@@ -199,12 +261,16 @@ impl RegexCrusadeScreen {
                             } else {
                                 CursorStyle::default()
                             })
-                            .bg(if can_generate {
+                            .bg(if is_generating {
+                                status::WARNING_BG
+                            } else if can_generate {
                                 status::INFO
                             } else {
                                 bg::ELEVATED
                             })
-                            .text_color(if can_generate {
+                            .text_color(if is_generating {
+                                status::WARNING
+                            } else if can_generate {
                                 text::BRIGHT
                             } else {
                                 text::DISABLED
@@ -215,12 +281,16 @@ impl RegexCrusadeScreen {
                             .when(can_generate, |el| {
                                 el.on_mouse_down(
                                     MouseButton::Left,
-                                    cx.listener(|_this, _evt, _window, _cx| {
-                                        // TODO: Start test generation
+                                    cx.listener(|this, _evt, _window, cx| {
+                                        this.start_generation(cx);
                                     }),
                                 )
                             })
-                            .child("Generate Tests"),
+                            .child(if is_generating {
+                                "Generating..."
+                            } else {
+                                "Generate Tests"
+                            }),
                     )
                     // Validate button
                     .child(
@@ -269,6 +339,11 @@ impl Focusable for RegexCrusadeScreen {
 
 impl Render for RegexCrusadeScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Poll for events if generation is in progress
+        if self.event_receiver.is_some() {
+            self.poll_events(cx);
+        }
+
         div()
             .flex()
             .flex_col()
@@ -309,5 +384,40 @@ impl Render for RegexCrusadeScreen {
                             .child(self.iteration_log.clone()),
                     ),
             )
+    }
+}
+
+/// Convert testgen::GeneratedTest to CrusadeTest
+fn convert_test(test: &testgen::GeneratedTest) -> CrusadeTest {
+    let category = match test.category {
+        testgen::TestCategory::AntiCheat => CrusadeCategory::AntiCheat,
+        testgen::TestCategory::Existence => CrusadeCategory::Existence,
+        testgen::TestCategory::Correctness => CrusadeCategory::Correctness,
+        testgen::TestCategory::Boundary => CrusadeCategory::Boundary,
+        testgen::TestCategory::Integration => CrusadeCategory::Integration,
+        _ => CrusadeCategory::Correctness, // Map legacy categories to Correctness
+    };
+
+    // For now we don't have the actual test code, so we'll synthesize it
+    let code = format!(
+        "# {}\n# Input: {}\n# Expected: {:?}\npass  # TODO: implement",
+        test.reasoning,
+        test.input,
+        test.expected_output
+    );
+
+    let quality = detect_stub(&code);
+
+    CrusadeTest {
+        id: test.id.clone(),
+        category,
+        quality,
+        status: TestRunStatus::NotRun,
+        input: test.input.clone(),
+        expected: test.expected_output.clone(),
+        actual: None,
+        code,
+        reasoning: test.reasoning.clone(),
+        confidence: test.confidence as f32,
     }
 }
