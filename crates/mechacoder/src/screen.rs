@@ -73,7 +73,7 @@ impl MechaCoderScreen {
         let project_root = self.project_root.clone();
         let claude_code = self.claude_code.clone();
 
-        cx.spawn(|this, mut cx| async move {
+        cx.spawn::<_, ()>(|this, mut cx| async move {
             // Connect to Claude Code
             let connection = match claude_code.connect(&project_root, &mut cx).await {
                 Ok(conn) => conn,
