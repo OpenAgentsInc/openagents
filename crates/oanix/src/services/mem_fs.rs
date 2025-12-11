@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(target_arch = "wasm32")]
+use js_sys;
 
 use crate::error::FsError;
 use crate::service::{DirEntry, FileHandle, FileService, Metadata, OpenFlags};
@@ -87,7 +89,15 @@ impl MemNode {
     }
 }
 
+/// Get current timestamp in seconds since Unix epoch
+#[cfg(target_arch = "wasm32")]
 fn now() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
