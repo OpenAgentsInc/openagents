@@ -11,6 +11,9 @@ fn main() {
     telemetry::init_default("mechacoder");
 
     Application::new().run(|cx| {
+        // Initialize tokio runtime (required for Claude Agent SDK)
+        gpui_tokio::init(cx);
+
         // Initialize theme and settings (required for markdown rendering)
         init_theme(cx);
 

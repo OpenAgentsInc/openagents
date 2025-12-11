@@ -21,6 +21,7 @@ path = "src/lib.rs"
 acp = { path = "../acp" }
 claude_agent_sdk = { path = "../claude_agent_sdk" }
 gpui = { path = "../gpui" }
+gpui_tokio = { path = "../gpui_tokio" }
 ui_oa = { path = "../ui_oa" }
 theme_oa = { path = "../theme_oa" }
 markdown = { path = "../markdown" }
