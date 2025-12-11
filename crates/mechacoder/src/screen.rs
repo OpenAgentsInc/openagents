@@ -71,11 +71,13 @@ impl MechaCoderScreen {
         cx.notify();
 
         let project_root = self.project_root.clone();
-        let claude_code = self.claude_code.clone();
 
-        cx.spawn::<_, ()>(|this: gpui::WeakEntity<Self>, mut cx: gpui::AsyncApp| async move {
+        // Get the connect task before spawning (requires &mut App context)
+        let connect_task = self.claude_code.connect(&project_root, cx);
+
+        cx.spawn::<_, ()>(|this: gpui::WeakEntity<MechaCoderScreen>, mut cx| async move {
             // Connect to Claude Code
-            let connection = match claude_code.connect(&project_root, &mut cx).await {
+            let connection = match connect_task.await {
                 Ok(conn) => conn,
                 Err(e) => {
                     this.update(&mut cx, |this, cx| {
@@ -88,19 +90,28 @@ impl MechaCoderScreen {
                 }
             };
 
-            // Create a new thread
+            // Create a new thread - need to do this inside update() to get &mut App context
             let project = Project::local(&project_root);
-            let thread = match ClaudeCode::new_thread(connection, project, &mut cx).await {
-                Ok(thread) => thread,
-                Err(e) => {
-                    this.update(&mut cx, |this, cx| {
-                        this.connection_status = ConnectionStatus::Error(e.to_string());
-                        this.error_message = Some(e.to_string());
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
+            let thread_result = this
+                .update(&mut cx, |_this, cx| {
+                    ClaudeCode::new_thread(connection, project, cx)
+                })
+                .ok();
+
+            let thread = match thread_result {
+                Some(task) => match task.await {
+                    Ok(thread) => thread,
+                    Err(e) => {
+                        this.update(&mut cx, |this, cx| {
+                            this.connection_status = ConnectionStatus::Error(e.to_string());
+                            this.error_message = Some(e.to_string());
+                            cx.notify();
+                        })
+                        .ok();
+                        return;
+                    }
+                },
+                None => return,
             };
 
             // Create thread view
