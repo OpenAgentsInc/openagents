@@ -1,6 +1,6 @@
 //! Medium components story showing Phase 3 UI components
 
-use gpui_oa::*;
+use gpui::*;
 use ui_oa::{
     Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
     Tabs, TabItem,

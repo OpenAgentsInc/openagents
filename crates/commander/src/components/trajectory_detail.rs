@@ -7,8 +7,8 @@
 use crate::components::step_view::{render_source_badge, render_step_details};
 use atif::{Step, Trajectory};
 use chrono::{DateTime, Utc};
-use gpui_oa::prelude::FluentBuilder;
-use gpui_oa::*;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use std::collections::HashSet;
 use theme_oa::{accent, bg, border, status, text, FONT_FAMILY};
 

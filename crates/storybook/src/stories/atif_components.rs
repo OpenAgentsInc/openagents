@@ -17,7 +17,7 @@ use commander::components::{
     render_trajectory_item, render_trajectory_list, CompleteData, ErrorData, ProgressData,
     ReflectionAction, ReflectionData, TestCategory, TestData,
 };
-use gpui_oa::*;
+use gpui::*;
 use std::collections::HashSet;
 
 pub struct AtifComponentsStory;

@@ -1,6 +1,6 @@
 //! Button component story showing all variants and sizes
 
-use gpui_oa::*;
+use gpui::*;
 use ui_oa::{Button, ButtonVariant, ButtonSize};
 use crate::story::Story;
 

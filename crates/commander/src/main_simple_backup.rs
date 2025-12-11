@@ -1,4 +1,4 @@
-use gpui_oa::*;
+use gpui::*;
 use std::borrow::Cow;
 
 struct CommanderView {

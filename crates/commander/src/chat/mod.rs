@@ -7,8 +7,8 @@
 //! - Info panel (right): Context-sensitive info
 //! - Status bar (bottom): Connection status, identity
 
-use gpui_oa::prelude::FluentBuilder;
-use gpui_oa::*;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use nostr_chat::ChatState;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -78,7 +78,7 @@ pub fn parse_command(input: &str) -> ParsedCommand {
 
 /// Bloomberg-style color constants
 mod colors {
-    use gpui_oa::Hsla;
+    use gpui::Hsla;
 
     /// Yellow for outgoing messages (Bloomberg style)
     pub const OUTGOING: Hsla = Hsla {

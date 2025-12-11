@@ -3,7 +3,7 @@
 //! Tests all system units (arithmetic, logic, comparison, control) by
 //! running them with real inputs and displaying outputs.
 
-use gpui_oa::{Context, Render, Window, div, prelude::*, px};
+use gpui::{Context, Render, Window, div, prelude::*, px};
 use unit::{Unit, system};
 use theme_oa::{accent, status, text, FONT_FAMILY};
 
@@ -183,7 +183,7 @@ impl Render for UnitRuntimeStory {
                             .child(
                                 div().flex().flex_row().gap(px(8.0))
                                     .child(div().text_sm().text_color(text::SECONDARY).child("Registered unit types:"))
-                                    .child(div().text_sm().font_weight(gpui_oa::FontWeight::BOLD)
+                                    .child(div().text_sm().font_weight(gpui::FontWeight::BOLD)
                                         .text_color(accent::PRIMARY)
                                         .child(format!("{}", registry_count)))
                             )
@@ -193,7 +193,7 @@ impl Render for UnitRuntimeStory {
 }
 
 /// Helper to render a result row with expression, actual result, and expected
-fn result_row(expr: &str, actual: &str, expected: &str) -> gpui_oa::Div {
+fn result_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
     let passed = actual == expected;
     let status_color = if passed {
         status::SUCCESS
@@ -224,7 +224,7 @@ fn result_row(expr: &str, actual: &str, expected: &str) -> gpui_oa::Div {
             div()
                 .w(px(80.0))
                 .text_sm()
-                .font_weight(gpui_oa::FontWeight::BOLD)
+                .font_weight(gpui::FontWeight::BOLD)
                 .text_color(status_color)
                 .child(actual.to_string())
         )

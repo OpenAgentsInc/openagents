@@ -1,6 +1,6 @@
 //! UI Kitchen Sink - All shadcn-style UI components in one comprehensive view
 
-use gpui_oa::*;
+use gpui::*;
 use ui_oa::{
     // Phase 1: Primitives
     Button, ButtonVariant, ButtonSize,

@@ -4,8 +4,8 @@
 //! Displays step-by-step details including tool calls, observations, and metrics.
 
 use atif::{Metrics, Observation, Step, StepSource, ToolCall};
-use gpui_oa::prelude::FluentBuilder;
-use gpui_oa::*;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use theme_oa::{accent, bg, border, source, status, text, FONT_FAMILY};
 
 // ============================================================================

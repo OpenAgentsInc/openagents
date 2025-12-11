@@ -1,6 +1,6 @@
 //! Connections Story: Demonstrates bezier curve connections between pins
 
-use gpui_oa::{Context, Render, Window, canvas, div, point, prelude::*, px};
+use gpui::{Context, Render, Window, canvas, div, point, prelude::*, px};
 use hud::{Connection, ConnectionState, ConnectionStyle};
 use theme_oa::bg;
 

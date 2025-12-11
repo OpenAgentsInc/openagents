@@ -1,6 +1,6 @@
 //! Pin States Story: Demonstrates all pin visual states
 
-use gpui_oa::{Context, Render, Window, div, prelude::*, px};
+use gpui::{Context, Render, Window, div, prelude::*, px};
 use unit::PinState;
 use hud::{PinSnapshot, PinView, PinDirection};
 

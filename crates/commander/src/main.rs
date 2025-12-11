@@ -8,8 +8,8 @@ use atif_store::{TrajectoryMetadata, TrajectoryStore};
 use commander::chat::ChatScreen;
 use components::{render_source_badge, render_step_details};
 use fm_bridge::FMClient;
-use gpui_oa::prelude::FluentBuilder;
-use gpui_oa::*;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -1013,7 +1013,7 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 }
 
 impl Render for CommanderView {
-    fn render(&mut self, _window: &mut gpui_oa::Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current_screen = self.current_screen;
 
         // Render main content based on current screen
