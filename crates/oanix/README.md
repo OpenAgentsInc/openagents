@@ -139,6 +139,12 @@ python -m http.server 8080
 | **LogsFs** | stdout/stderr + structured events |
 | **WorkspaceFs** | Real filesystem wrapper with path security |
 
+### Capability Services
+
+| Service | Description |
+|---------|-------------|
+| **NostrFs** | Nostr event signing + NIP-90 DVM (requires `nostr` feature) |
+
 ### Runtime
 
 | Feature | Description |
@@ -249,6 +255,45 @@ workspace.open("/../../../etc/passwd", flags);  // Path escape
 workspace.open("/src/../../etc/passwd", flags); // Sneaky escape
 ```
 
+### NostrFs - Nostr Capability (requires `nostr` feature)
+
+```rust
+use oanix::NostrFs;
+
+// Create with a secret key
+let secret_key = [0u8; 32]; // Use a real key!
+let nostr = NostrFs::new(secret_key)?;
+
+// Or generate a new key
+let nostr = NostrFs::generate()?;
+
+// Get identity
+println!("pubkey: {}", nostr.pubkey());
+println!("npub: {}", nostr.npub());
+
+// Add relays
+nostr.add_relay("wss://relay.damus.io");
+
+// Create NIP-90 job request
+let event = nostr.create_job_request(
+    5050, // Text generation
+    "What is the capital of France?",
+    HashMap::new(),
+)?;
+
+// Events are queued in outbox
+let pending = nostr.outbox_events();
+
+// File interface for agents:
+// /identity/pubkey    - Read public key hex
+// /identity/npub      - Read bech32 npub
+// /submit             - Write event template JSON → signed event in outbox
+// /request            - Write NIP-90 request JSON → signed event in outbox
+// /outbox/{id}.json   - Read pending events
+// /inbox/{id}.json    - Read received events
+// /status             - Read service status
+```
+
 ### Namespace - Mount Points
 
 ```rust
@@ -256,6 +301,7 @@ let ns = Namespace::builder()
     .mount("/task", task_fs)
     .mount("/workspace", workspace_fs)
     .mount("/logs", logs_fs)
+    .mount("/cap/nostr", nostr_fs)  // Nostr capability
     .mount("/tmp", MemFs::new())
     .build();
 
@@ -267,9 +313,10 @@ let (service, relative_path) = ns.resolve("/workspace/src/main.rs").unwrap();
 
 ## Current Status
 
-- **71 tests passing** (59 unit + 12 integration)
+- **89 tests passing** (72 unit + 17 integration)
 - Native Rust with optional WASM browser support
 - WASI execution via wasmtime
+- Nostr/NIP-90 capability (with `nostr` feature)
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation progress.
 

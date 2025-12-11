@@ -763,3 +763,215 @@ fn test_task_failure_handling() {
     assert!(status_content.contains("failed"));
     assert!(status_content.contains("undefined reference"));
 }
+
+// ============================================================================
+// Pattern 13: NostrFs capability service (requires nostr feature)
+// ============================================================================
+
+#[cfg(feature = "nostr")]
+mod nostr_tests {
+    use super::*;
+    use oanix::NostrFs;
+    use std::collections::HashMap;
+
+    fn test_secret_key() -> [u8; 32] {
+        let hex = "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf";
+        let bytes = hex::decode(hex).unwrap();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        key
+    }
+
+    /// Tests NostrFs as a capability in an agent namespace
+    #[test]
+    fn test_nostr_capability_in_namespace() {
+        let nostr = NostrFs::new(test_secret_key()).unwrap();
+        nostr.add_relay("wss://relay.damus.io");
+
+        let task = MapFs::builder()
+            .file("/spec.json", r#"{"task": "post to nostr"}"#)
+            .build();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/cap/nostr", nostr)
+            .build();
+
+        // Agent reads task
+        let (task_svc, path) = ns.resolve("/task/spec.json").unwrap();
+        let spec = read_file(task_svc, path);
+        assert!(spec.contains("post to nostr"));
+
+        // Agent reads its Nostr identity
+        let (nostr_svc, _) = ns.resolve("/cap/nostr").unwrap();
+        let pubkey = read_file(nostr_svc, "/identity/pubkey");
+        assert_eq!(pubkey.len(), 64); // hex pubkey
+
+        let npub = read_file(nostr_svc, "/identity/npub");
+        assert!(npub.starts_with("npub1"));
+
+        // Agent checks status
+        let status = read_file(nostr_svc, "/status");
+        assert!(status.contains("ready"));
+        assert!(status.contains("relay.damus.io"));
+    }
+
+    /// Tests submitting events via file interface
+    #[test]
+    fn test_nostr_event_submission() {
+        let nostr = NostrFs::new(test_secret_key()).unwrap();
+
+        // Submit a simple event via /submit
+        let event_json = r#"{"kind": 1, "content": "Hello from OANIX agent!"}"#;
+        let mut handle = nostr.open("/submit", OpenFlags::write_only()).unwrap();
+        handle.write(event_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // Event should be in outbox
+        let entries = nostr.readdir("/outbox").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].name.ends_with(".json"));
+
+        // Read the event from outbox
+        let event_id = entries[0].name.trim_end_matches(".json");
+        let event_content = read_file(&nostr, &format!("/outbox/{}", event_id));
+        assert!(event_content.contains("Hello from OANIX agent!"));
+        assert!(event_content.contains("\"kind\": 1"));
+        assert!(event_content.contains("\"sig\":")); // Event is signed
+    }
+
+    /// Tests submitting NIP-90 job requests
+    #[test]
+    fn test_nostr_job_request_submission() {
+        let nostr = NostrFs::new(test_secret_key()).unwrap();
+        nostr.add_relay("wss://relay.damus.io");
+
+        // Submit a NIP-90 job request
+        let request_json = r#"{
+            "kind": 5050,
+            "input": "What is the capital of France?",
+            "params": {"model": "gpt-4", "temperature": "0.7"},
+            "bid": 1000
+        }"#;
+
+        let mut handle = nostr.open("/request", OpenFlags::write_only()).unwrap();
+        handle.write(request_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // Event should be in outbox
+        let events = nostr.outbox_events();
+        assert_eq!(events.len(), 1);
+
+        let event = &events[0];
+        assert_eq!(event.kind, 5050); // Text generation
+        assert!(event.tags.iter().any(|t| t[0] == "i" && t[1] == "What is the capital of France?"));
+        assert!(event.tags.iter().any(|t| t[0] == "param" && t[1] == "model"));
+        assert!(event.tags.iter().any(|t| t[0] == "bid" && t[1] == "1000"));
+    }
+
+    /// Tests complete agent workflow with NostrFs
+    #[test]
+    fn test_nostr_agent_workflow() {
+        // Setup: Agent environment with Nostr capability
+        let task = TaskFs::new(
+            TaskSpec {
+                id: "nostr-task-001".to_string(),
+                task_type: "llm-query".to_string(),
+                description: "Ask LLM a question via NIP-90".to_string(),
+                input: serde_json::json!({"question": "What is 2+2?"}),
+            },
+            TaskMeta::default(),
+        );
+        let logs = LogsFs::new();
+        let nostr = NostrFs::new(test_secret_key()).unwrap();
+        nostr.add_relay("wss://relay.damus.io");
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/logs", logs)
+            .mount("/cap/nostr", nostr)
+            .build();
+
+        // === Agent Workflow ===
+
+        // 1. Read task
+        let (task_svc, _) = ns.resolve("/task").unwrap();
+        let spec = read_file(task_svc, "/spec.json");
+        let task_input: serde_json::Value = serde_json::from_str(&spec).unwrap();
+        let question = task_input["input"]["question"].as_str().unwrap();
+        assert_eq!(question, "What is 2+2?");
+
+        // 2. Get Nostr identity
+        let (nostr_svc, _) = ns.resolve("/cap/nostr").unwrap();
+        let pubkey = read_file(nostr_svc, "/identity/pubkey");
+
+        // 3. Submit NIP-90 job request
+        let request = format!(
+            r#"{{"kind": 5050, "input": "{}", "params": {{}}}}"#,
+            question
+        );
+        let mut handle = nostr_svc.open("/request", OpenFlags::write_only()).unwrap();
+        handle.write(request.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 4. Verify event in outbox
+        let entries = nostr_svc.readdir("/outbox").unwrap();
+        assert_eq!(entries.len(), 1);
+
+        // 5. Log the action
+        let (logs_svc, _) = ns.resolve("/logs").unwrap();
+        let log_msg = format!("Published NIP-90 request from {}\n", &pubkey[..16]);
+        let mut handle = logs_svc
+            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .unwrap();
+        handle.write(log_msg.as_bytes()).unwrap();
+
+        // 6. In a real system, a relay connector would:
+        //    - Send the outbox event to relays
+        //    - Receive response events and add them to inbox
+        //    For this test, we verify the outbox flow worked
+
+        // 7. Write final result
+        write_file(task_svc, "/result.json", r#"{"answer": "4", "source": "nip90"}"#);
+
+        // === Verify ===
+        let result = read_file(task_svc, "/result.json");
+        assert!(result.contains("\"answer\": \"4\""));
+
+        let log = read_file(logs_svc, "/stdout.log");
+        assert!(log.contains("Published NIP-90 request"));
+    }
+
+    /// Tests programmatic API for creating job requests
+    #[test]
+    fn test_nostr_programmatic_api() {
+        let nostr = NostrFs::new(test_secret_key()).unwrap();
+        nostr.add_relay("wss://relay1.com");
+        nostr.add_relay("wss://relay2.com");
+
+        let mut params = HashMap::new();
+        params.insert("model".to_string(), "claude".to_string());
+        params.insert("max_tokens".to_string(), "1000".to_string());
+
+        let event = nostr
+            .create_job_request(5050, "Summarize this article", params)
+            .unwrap();
+
+        // Verify event structure
+        assert_eq!(event.kind, 5050);
+        assert_eq!(event.pubkey, nostr.pubkey());
+        assert!(!event.sig.is_empty());
+
+        // Verify tags
+        assert!(event.tags.iter().any(|t| t[0] == "i" && t[1] == "Summarize this article"));
+        assert!(event.tags.iter().any(|t| t[0] == "param" && t[1] == "model" && t[2] == "claude"));
+        assert!(event.tags.iter().any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string())));
+
+        // Verify in outbox
+        assert_eq!(nostr.outbox_events().len(), 1);
+
+        // Clear outbox
+        nostr.clear_outbox();
+        assert!(nostr.outbox_events().is_empty());
+    }
+}

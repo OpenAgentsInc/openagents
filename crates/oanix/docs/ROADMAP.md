@@ -31,25 +31,18 @@
 - [x] 4 new integration tests (12 total)
 - [x] Complete agent environment demo
 
+**Sprint 5: Capabilities (In Progress)**
+- [x] `NostrFs` - Nostr event signing and NIP-90 DVM capability (~600 lines)
+- [x] 13 new unit tests (72 total)
+- [x] 5 new integration tests (17 total)
+- [ ] `WsFs` - WebSocket connections
+- [ ] `HttpFs` - HTTP client
+
 ---
 
-## Sprint 5: Capabilities (Next)
+## Sprint 5 (Remaining): Network Capabilities
 
-### 5.1 NostrFs
-
-Nostr/NIP-90 capability:
-
-```
-/cap/nostr/
-├── config.json    # Relay configuration
-├── submit         # Write request JSON → publishes event
-├── events/        # Read response events
-└── status         # Connection status
-```
-
-### 5.2 WsFs
-
-WebSocket capability:
+### WsFs - WebSocket Capability
 
 ```
 /cap/ws/
@@ -61,9 +54,7 @@ WebSocket capability:
         └── status # Connection state
 ```
 
-### 5.3 HttpFs
-
-HTTP client capability:
+### HttpFs - HTTP Client Capability
 
 ```
 /cap/http/
@@ -153,11 +144,11 @@ Currently Sprint 2 targets native wasmtime. Browser needs different approach:
 
 ## Milestones
 
-| Milestone | Description | Target |
+| Milestone | Description | Status |
 |-----------|-------------|--------|
-| **M1** | Run "Hello World" WASI in namespace | Sprint 2 |
-| **M2** | Terminal-Bench task in OANIX env | Sprint 4 |
-| **M3** | Agent with Nostr capability | Sprint 5 |
+| **M1** | Run "Hello World" WASI in namespace | ✅ Sprint 2 |
+| **M2** | Terminal-Bench task in OANIX env | ✅ Sprint 4 |
+| **M3** | Agent with Nostr capability | ✅ Sprint 5 |
 | **M4** | Multi-job scheduling | Sprint 6 |
 | **M5** | Browser WASI execution | Future |
 

@@ -23,6 +23,8 @@ wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
+nostr = { version = "0.1.0", path = "../nostr", optional = true }
+hex.workspace = true
 
 # Native-only dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -40,3 +42,4 @@ default = []
 wasi = ["dep:wasmtime", "dep:wasmtime-wasi"]
 # Enable browser build target
 browser = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen", "dep:console_error_panic_hook"]
+nostr = ["dep:nostr"]
