@@ -159,7 +159,7 @@ impl ThreadView {
                     div()
                         .text_color(text::PRIMARY)
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(format!("Permission Required: {}", tool_call.title)),
+                        .child(format!("Permission Required: {}", tool_call.fields.title.as_deref().unwrap_or("Unknown"))),
                 )
                 .child(
                     div()
@@ -167,8 +167,8 @@ impl ThreadView {
                         .flex_row()
                         .gap(px(8.0))
                         .children(options.iter().map(|opt| {
-                            let id = opt.id.to_string();
-                            let label = opt.label.clone();
+                            let _id = opt.option_id.to_string();
+                            let label = opt.name.clone();
                             Button::new(label)
                                 .variant(if opt.kind == acp::acp::PermissionOptionKind::AllowOnce
                                     || opt.kind == acp::acp::PermissionOptionKind::AllowAlways

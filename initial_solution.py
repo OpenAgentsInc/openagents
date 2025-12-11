@@ -1,9 +1,0 @@
-import re
-
-def main()
-    pattern = r'(?P<name>[a-zA-Z]{3,})';
-    matches = re.findall(pattern, input_data);
-    print(matches)
-
-if __name__ == '__main__':
-    main()
