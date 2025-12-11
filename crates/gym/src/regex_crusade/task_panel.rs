@@ -1,8 +1,8 @@
 //! Task Info Panel - Shows regex-log task and current best solution
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{CrusadeSession, CrusadeStatus, REGEX_LOG_DESCRIPTION, REGEX_LOG_TASK_NAME};
 

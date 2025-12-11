@@ -1,7 +1,7 @@
 //! Tab bar component - Navigation between Agents, Compute, Services
 
-use gpui::*;
-use theme::{bg, border, text, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::MarketplaceTab;
 

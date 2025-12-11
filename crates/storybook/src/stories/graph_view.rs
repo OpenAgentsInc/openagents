@@ -1,6 +1,6 @@
 //! Graph View Story: Demonstrates the full graph canvas with physics
 
-use gpui::{Context, Entity, Render, Window, div, prelude::*, px};
+use gpui_oa::{Context, Entity, Render, Window, div, prelude::*, px};
 use hud::GraphView;
 
 use crate::story::Story;

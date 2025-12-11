@@ -196,12 +196,14 @@ members = [
     "crates/terminal_view",
     "crates/text",
     "crates/theme",
+    "crates/theme_oa",
     "crates/theme_extension",
     "crates/theme_selector",
     "crates/time_format",
     "crates/title_bar",
     "crates/toolchain_selector",
     "crates/ui",
+    "crates/ui_oa",
     "crates/ui_input",
     "crates/ui_macros",
     "crates/ui_prompt",
@@ -445,12 +447,14 @@ terminal = { path = "crates/terminal" }
 terminal_view = { path = "crates/terminal_view" }
 text = { path = "crates/text" }
 theme = { path = "crates/theme" }
+theme_oa = { path = "crates/theme_oa" }
 theme_extension = { path = "crates/theme_extension" }
 theme_selector = { path = "crates/theme_selector" }
 time_format = { path = "crates/time_format" }
 title_bar = { path = "crates/title_bar" }
 toolchain_selector = { path = "crates/toolchain_selector" }
 ui = { path = "crates/ui" }
+ui_oa = { path = "crates/ui_oa" }
 ui_input = { path = "crates/ui_input" }
 ui_macros = { path = "crates/ui_macros" }
 ui_prompt = { path = "crates/ui_prompt" }

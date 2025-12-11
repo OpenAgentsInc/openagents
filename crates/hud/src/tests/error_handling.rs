@@ -3,12 +3,12 @@
 //! Ported from e2e/tests/errors/error-handling.spec.ts
 //! Tests HUD-060 to HUD-063: graceful degradation and error handling.
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
 use crate::tests::messages::factories;
 
 /// HUD-060: no crash on WebSocket disconnect, preserves last state
-#[gpui::test]
+#[gpui_oa::test]
 fn test_no_crash_on_disconnect_preserves_state(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -40,7 +40,7 @@ fn test_no_crash_on_disconnect_preserves_state(cx: &mut TestAppContext) {
 }
 
 /// HUD-061: malformed messages are safely ignored
-#[gpui::test]
+#[gpui_oa::test]
 fn test_malformed_messages_safely_ignored(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -81,7 +81,7 @@ fn test_malformed_messages_safely_ignored(cx: &mut TestAppContext) {
 }
 
 /// D3: empty state displays placeholder content
-#[gpui::test]
+#[gpui_oa::test]
 fn test_empty_state_displays_placeholder(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -96,7 +96,7 @@ fn test_empty_state_displays_placeholder(cx: &mut TestAppContext) {
 }
 
 /// D4: invalid APM values are handled gracefully
-#[gpui::test]
+#[gpui_oa::test]
 fn test_invalid_apm_values_handled(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -117,7 +117,7 @@ fn test_invalid_apm_values_handled(cx: &mut TestAppContext) {
 }
 
 /// HUD-062: error indicators become visible when errors occur
-#[gpui::test]
+#[gpui_oa::test]
 fn test_error_indicators_visible_on_error(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -144,7 +144,7 @@ fn test_error_indicators_visible_on_error(cx: &mut TestAppContext) {
 }
 
 /// HUD-063: recovers from multiple errors without crash
-#[gpui::test]
+#[gpui_oa::test]
 fn test_recovers_from_multiple_errors(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -189,7 +189,7 @@ fn test_recovers_from_multiple_errors(cx: &mut TestAppContext) {
 }
 
 /// Test recovers from disconnect and reconnect
-#[gpui::test]
+#[gpui_oa::test]
 fn test_recovers_from_disconnect_and_reconnect(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -220,7 +220,7 @@ fn test_recovers_from_disconnect_and_reconnect(cx: &mut TestAppContext) {
 }
 
 /// Test error count tracking
-#[gpui::test]
+#[gpui_oa::test]
 fn test_error_count_tracking(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 

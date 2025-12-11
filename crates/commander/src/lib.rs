@@ -9,4 +9,4 @@ pub mod chat;
 pub mod components;
 
 // Re-export TextInput from ui crate for backwards compatibility
-pub use ui::{TextInput, SubmitEvent, bind_text_input_keys};
+pub use ui_oa::{TextInput, SubmitEvent, bind_text_input_keys};

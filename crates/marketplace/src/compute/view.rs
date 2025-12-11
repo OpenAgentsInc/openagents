@@ -1,7 +1,7 @@
 //! Compute Market view - Main view for the Compute tab
 
-use gpui::*;
-use theme::bg;
+use gpui_oa::*;
+use theme_oa::bg;
 
 use crate::types::{ActiveModel, TimeRange, EarningsDataPoint};
 use super::go_online::render_go_online_panel;
@@ -77,7 +77,7 @@ pub fn render_compute_market(state: &ComputeMarketState) -> impl IntoElement {
 fn render_section_header(title: &str) -> impl IntoElement {
     div()
         .text_size(px(12.0))
-        .font_family(theme::FONT_FAMILY)
-        .text_color(theme::text::MUTED)
+        .font_family(theme_oa::FONT_FAMILY)
+        .text_color(theme_oa::text::MUTED)
         .child(title.to_string())
 }

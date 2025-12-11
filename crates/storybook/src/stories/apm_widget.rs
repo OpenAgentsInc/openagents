@@ -3,10 +3,10 @@
 //! Showcases the Actions Per Minute widget with different states and levels.
 
 use crate::story::Story;
-use gpui::*;
-use gpui::prelude::FluentBuilder;
+use gpui_oa::*;
+use gpui_oa::prelude::FluentBuilder;
 use ::hud::{ApmComparison, ApmLevel, ApmSnapshot, ApmState};
-use theme::hud;
+use theme_oa::hud;
 
 pub struct ApmWidgetStory;
 
@@ -45,10 +45,10 @@ fn render_apm_levels_section() -> impl IntoElement {
             Story::column()
                 .mt(px(16.0))
                 .gap(px(4.0))
-                .child(div().text_xs().text_color(theme::text::MUTED).child("Baseline: 0-5 APM (Idle)"))
-                .child(div().text_xs().text_color(theme::text::MUTED).child("Active: 5-15 APM (Working)"))
-                .child(div().text_xs().text_color(theme::text::MUTED).child("High: 15-30 APM (Fast)"))
-                .child(div().text_xs().text_color(theme::text::MUTED).child("Elite: 30+ APM (Pro-level)")),
+                .child(div().text_xs().text_color(theme_oa::text::MUTED).child("Baseline: 0-5 APM (Idle)"))
+                .child(div().text_xs().text_color(theme_oa::text::MUTED).child("Active: 5-15 APM (Working)"))
+                .child(div().text_xs().text_color(theme_oa::text::MUTED).child("High: 15-30 APM (Fast)"))
+                .child(div().text_xs().text_color(theme_oa::text::MUTED).child("Elite: 30+ APM (Pro-level)")),
         )
 }
 
@@ -60,9 +60,9 @@ fn render_level_badge(level: ApmLevel, apm: f64) -> impl IntoElement {
         .gap(px(4.0))
         .p(px(12.0))
         .rounded(px(8.0))
-        .bg(theme::bg::SURFACE)
+        .bg(theme_oa::bg::SURFACE)
         .border_1()
-        .border_color(theme::border::DEFAULT)
+        .border_color(theme_oa::border::DEFAULT)
         .child(
             div()
                 .text_size(px(20.0))
@@ -178,7 +178,7 @@ fn render_state_card(state: &ApmState) -> impl IntoElement {
                 .flex()
                 .gap(px(12.0))
                 .mt(px(8.0))
-                .text_color(theme::text::SECONDARY)
+                .text_color(theme_oa::text::SECONDARY)
                 .text_size(px(12.0))
                 .child(div().child(format!("{} actions", state.total_actions)))
                 .child(div().child(format!("{:.1}m", state.duration_minutes))),
@@ -189,8 +189,8 @@ fn render_state_card(state: &ApmState) -> impl IntoElement {
                     .mt(px(8.0))
                     .pt(px(8.0))
                     .border_t_1()
-                    .border_color(theme::border::SUBTLE)
-                    .text_color(theme::text::MUTED)
+                    .border_color(theme_oa::border::SUBTLE)
+                    .text_color(theme_oa::text::MUTED)
                     .text_size(px(11.0))
                     .child(format!(
                         "1h: {:.1} | 6h: {:.1} | 24h: {:.1}",
@@ -207,7 +207,7 @@ fn render_state_card(state: &ApmState) -> impl IntoElement {
             el.child(
                 div()
                     .mt(px(4.0))
-                    .text_color(theme::status::SUCCESS)
+                    .text_color(theme_oa::status::SUCCESS)
                     .text_size(px(11.0))
                     .child(format!("vs Claude Code: {}", efficiency_text)),
             )
@@ -240,7 +240,7 @@ fn render_widget_at_level(level: ApmLevel, apm: f64, actions: usize, minutes: f6
         .child(
             div()
                 .text_xs()
-                .text_color(theme::text::MUTED)
+                .text_color(theme_oa::text::MUTED)
                 .child(level.label()),
         )
         .child(
@@ -275,7 +275,7 @@ fn render_widget_at_level(level: ApmLevel, apm: f64, actions: usize, minutes: f6
                         .flex()
                         .gap(px(8.0))
                         .mt(px(4.0))
-                        .text_color(theme::text::MUTED)
+                        .text_color(theme_oa::text::MUTED)
                         .text_size(px(10.0))
                         .child(div().child(format!("{} acts", actions)))
                         .child(div().child(format!("{:.0}m", minutes))),

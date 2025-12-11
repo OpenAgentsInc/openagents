@@ -1,8 +1,8 @@
 //! Workflow graph visualization (TestGen -> Decomposer -> FM -> Verifier -> Results)
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 /// Node types in the workflow
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,16 +7,16 @@
 //! - Info panel (right): Context-sensitive info
 //! - Status bar (bottom): Connection status, identity
 
-use gpui::prelude::FluentBuilder;
-use gpui::*;
+use gpui_oa::prelude::FluentBuilder;
+use gpui_oa::*;
 use nostr_chat::ChatState;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
 };
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 use tokio::sync::mpsc;
-use ui::{SubmitEvent, TextInput};
+use ui_oa::{SubmitEvent, TextInput};
 
 /// Parsed command result for testing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +78,7 @@ pub fn parse_command(input: &str) -> ParsedCommand {
 
 /// Bloomberg-style color constants
 mod colors {
-    use gpui::Hsla;
+    use gpui_oa::Hsla;
 
     /// Yellow for outgoing messages (Bloomberg style)
     pub const OUTGOING: Hsla = Hsla {

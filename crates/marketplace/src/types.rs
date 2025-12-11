@@ -1,7 +1,7 @@
 //! Core types for the Marketplace screen
 
-use gpui::Hsla;
-use theme::trust;
+use gpui_oa::Hsla;
+use theme_oa::trust;
 
 /// The three sub-marketplaces
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

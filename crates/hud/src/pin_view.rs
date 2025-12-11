@@ -3,12 +3,12 @@
 //! Renders a pin as a small circle indicator with state-based coloring.
 //! Can be used standalone or as part of a UnitView.
 
-use gpui::{
+use gpui_oa::{
     App, Context, Entity, EventEmitter, Hsla, Pixels, Point, Render, Window,
     div, point, prelude::*, px,
 };
 use unit::{AnyPin, PinState, IO};
-use theme::{hud, text};
+use theme_oa::{hud, text};
 
 /// Pin visual style configuration
 #[derive(Debug, Clone)]
@@ -183,7 +183,7 @@ impl Render for PinView {
             .border_1()
             .border_color(border_color)
             .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_this, _, _, cx| {
+            .on_mouse_down(gpui_oa::MouseButton::Left, cx.listener(|_this, _, _, cx| {
                 cx.emit(PinEvent::Clicked);
                 cx.emit(PinEvent::DragStarted);
             }))

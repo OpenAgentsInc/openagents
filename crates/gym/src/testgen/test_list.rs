@@ -1,9 +1,9 @@
 //! Scrollable test case list
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::Arc;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::category_progress::TestCategory;
 

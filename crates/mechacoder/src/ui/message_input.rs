@@ -1,10 +1,10 @@
 //! Message input component.
 
-use gpui::{
+use gpui_oa::{
     div, prelude::*, App, Context, Entity, EventEmitter, FocusHandle, Focusable,
     IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
-use ui::text_input::{SubmitEvent, TextInput};
+use ui_oa::text_input::{SubmitEvent, TextInput};
 
 /// Event emitted when a message should be sent.
 #[derive(Clone)]
@@ -54,7 +54,7 @@ impl MessageInput {
     }
 
     /// Set the content.
-    pub fn set_content(&mut self, content: impl Into<gpui::SharedString>, cx: &mut Context<Self>) {
+    pub fn set_content(&mut self, content: impl Into<gpui_oa::SharedString>, cx: &mut Context<Self>) {
         let content = content.into();
         self.input.update(cx, |input, cx| {
             input.set_content(content, cx);

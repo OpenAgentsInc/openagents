@@ -1,9 +1,9 @@
 //! Category progress bars per test category
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::Arc;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 /// Callback type for category selection
 pub type OnCategorySelectCallback = Arc<dyn Fn(Option<TestCategory>, &mut Window, &mut App) + Send + Sync>;

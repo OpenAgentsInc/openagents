@@ -3,12 +3,12 @@
 //! Renders connections as cubic bezier curves with configurable styling.
 //! Supports different states (active, inactive, selected) with visual feedback.
 
-use gpui::{
+use gpui_oa::{
     Background, Hsla, Path, PathBuilder, Pixels, Point, Window,
     point, px,
 };
 use unit::Point as UnitPoint;
-use theme::hud;
+use theme_oa::hud;
 
 /// Connection visual style
 #[derive(Debug, Clone)]

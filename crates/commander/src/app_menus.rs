@@ -2,10 +2,10 @@
 //!
 //! Defines the native menu bar structure for macOS and other platforms.
 
-use gpui::{Menu, MenuItem, OsAction, SystemMenuType};
+use gpui_oa::{Menu, MenuItem, OsAction, SystemMenuType};
 
 use crate::actions::*;
-use ui::text_input;
+use ui_oa::text_input;
 
 /// Build the application menus
 pub fn app_menus() -> Vec<Menu> {

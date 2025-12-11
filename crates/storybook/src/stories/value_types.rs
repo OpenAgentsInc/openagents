@@ -2,9 +2,9 @@
 //!
 //! Tests type coercion, deep access, and JSON interoperability.
 
-use gpui::{Context, Render, Window, div, prelude::*, px};
+use gpui_oa::{Context, Render, Window, div, prelude::*, px};
 use unit::Value;
-use theme::{accent, status, text, FONT_FAMILY};
+use theme_oa::{accent, status, text, FONT_FAMILY};
 
 use crate::story::Story;
 
@@ -130,7 +130,7 @@ impl Render for ValueTypesStory {
     }
 }
 
-fn value_row(label: &str, actual: &str, _expected: &str) -> gpui::Div {
+fn value_row(label: &str, actual: &str, _expected: &str) -> gpui_oa::Div {
     div()
         .flex()
         .flex_row()
@@ -152,7 +152,7 @@ fn value_row(label: &str, actual: &str, _expected: &str) -> gpui::Div {
         )
 }
 
-fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui::Div {
+fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui_oa::Div {
     let passed = actual == expected;
     let status_color = if passed {
         status::SUCCESS
@@ -182,13 +182,13 @@ fn coerce_row(expr: &str, actual: bool, expected: bool) -> gpui::Div {
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::BOLD)
+                .font_weight(gpui_oa::FontWeight::BOLD)
                 .text_color(status_color)
                 .child(format!("{}", actual))
         )
 }
 
-fn number_row(expr: &str, actual: f64, expected: f64) -> gpui::Div {
+fn number_row(expr: &str, actual: f64, expected: f64) -> gpui_oa::Div {
     let passed = (actual - expected).abs() < f64::EPSILON;
     let status_color = if passed {
         status::SUCCESS
@@ -218,13 +218,13 @@ fn number_row(expr: &str, actual: f64, expected: f64) -> gpui::Div {
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::BOLD)
+                .font_weight(gpui_oa::FontWeight::BOLD)
                 .text_color(status_color)
                 .child(format!("{}", actual))
         )
 }
 
-fn string_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
+fn string_row(expr: &str, actual: &str, expected: &str) -> gpui_oa::Div {
     let passed = actual == expected;
     let status_color = if passed {
         status::SUCCESS
@@ -254,7 +254,7 @@ fn string_row(expr: &str, actual: &str, expected: &str) -> gpui::Div {
         .child(
             div()
                 .text_sm()
-                .font_weight(gpui::FontWeight::BOLD)
+                .font_weight(gpui_oa::FontWeight::BOLD)
                 .text_color(status_color)
                 .child(format!("\"{}\"", actual))
         )

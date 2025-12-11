@@ -1,8 +1,8 @@
 //! Test results display (X/Y passed, failed test names)
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 /// Test outcome
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

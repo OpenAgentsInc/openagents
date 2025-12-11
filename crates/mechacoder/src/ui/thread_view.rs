@@ -1,12 +1,12 @@
 //! Thread view component for displaying conversation.
 
 use acp::{AcpThread, AcpThreadEvent, ThreadEntry, ThreadStatus};
-use gpui::{
+use gpui_oa::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
 };
-use theme::{bg, border, text};
-use ui::{Button, ButtonVariant};
+use theme_oa::{bg, border, text};
+use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
 use super::message_view::MessageView;
@@ -47,7 +47,7 @@ impl ThreadView {
         });
 
         // Create list state
-        let list_state = ListState::new(0, gpui::ListAlignment::Bottom, px(100.0));
+        let list_state = ListState::new(0, gpui_oa::ListAlignment::Bottom, px(100.0));
 
         Self {
             thread,
@@ -176,7 +176,7 @@ impl ThreadView {
                 .child(
                     div()
                         .text_color(text::PRIMARY)
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(gpui_oa::FontWeight::SEMIBOLD)
                         .child(format!("Permission Required: {}", tool_call.fields.title.as_deref().unwrap_or("Unknown"))),
                 )
                 .child(

@@ -1,8 +1,8 @@
 //! TBCC Settings Tab - Configuration for TB execution and logging
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBModelOption, ExecutionSettings, ContainerSettings};
 use crate::services::{SettingsStore, TBCCSettings};

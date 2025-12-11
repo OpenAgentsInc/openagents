@@ -1,6 +1,6 @@
 //! Reusable trajectory step renderer
 
-use gpui::*;
+use gpui_oa::*;
 
 pub struct TrajectoryDetail {
     /// Focus handle

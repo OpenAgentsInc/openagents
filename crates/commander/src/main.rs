@@ -8,16 +8,16 @@ use atif_store::{TrajectoryMetadata, TrajectoryStore};
 use commander::chat::ChatScreen;
 use components::{render_source_badge, render_step_details};
 use fm_bridge::FMClient;
-use gpui::prelude::FluentBuilder;
-use gpui::*;
+use gpui_oa::prelude::FluentBuilder;
+use gpui_oa::*;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use theme::{bg, border, status, text, FONT_FAMILY};
-use ui::{TextInput, SubmitEvent, bind_text_input_keys};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
+use ui_oa::{TextInput, SubmitEvent, bind_text_input_keys};
 use marketplace::MarketplaceScreen;
 use gym::GymScreen;
 use vibe::VibeScreen;
@@ -1013,7 +1013,7 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 }
 
 impl Render for CommanderView {
-    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui_oa::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current_screen = self.current_screen;
 
         // Render main content based on current screen

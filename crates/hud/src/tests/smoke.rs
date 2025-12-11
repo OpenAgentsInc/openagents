@@ -4,11 +4,11 @@
 //! Tests HUD-001 (app launch), HUD-002 (flow renders),
 //! HUD-010 (canvas pan), HUD-012 (reset view).
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{GraphViewFixture, GraphViewAssertExt};
 
 /// Test that GraphView renders and initializes correctly
-#[gpui::test]
+#[gpui_oa::test]
 fn test_graph_view_renders(cx: &mut TestAppContext) {
     // Create GraphView - equivalent to app launch
     let view = GraphViewFixture::create(cx);
@@ -31,7 +31,7 @@ fn test_graph_view_renders(cx: &mut TestAppContext) {
 }
 
 /// Test that canvas pan updates the transform
-#[gpui::test]
+#[gpui_oa::test]
 fn test_canvas_pan_updates_transform(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -53,7 +53,7 @@ fn test_canvas_pan_updates_transform(cx: &mut TestAppContext) {
 }
 
 /// Test that zoom via scroll wheel works
-#[gpui::test]
+#[gpui_oa::test]
 fn test_zoom_via_scroll(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -76,7 +76,7 @@ fn test_zoom_via_scroll(cx: &mut TestAppContext) {
 }
 
 /// Test that reset returns view to initial state
-#[gpui::test]
+#[gpui_oa::test]
 fn test_reset_returns_to_initial_state(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 

@@ -3,7 +3,7 @@
 //! Provides fluent assertions for GraphView state verification,
 //! equivalent to TypeScript SVGFlowAssertions.
 
-use gpui::{Entity, TestAppContext};
+use gpui_oa::{Entity, TestAppContext};
 use crate::GraphView;
 
 /// Assertion helpers for GraphView - equivalent to TypeScript SVGFlowAssertions

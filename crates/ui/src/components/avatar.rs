@@ -1,105 +1,303 @@
-//! Avatar component for user/entity display
+use crate::prelude::*;
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, text, border};
+use documented::Documented;
+use gpui::{AnyElement, Hsla, ImageSource, Img, IntoElement, Styled, img};
 
-/// Avatar size variants
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-pub enum AvatarSize {
-    Sm,
-    #[default]
-    Default,
-    Lg,
-}
-
-impl AvatarSize {
-    fn px_size(&self) -> f32 {
-        match self {
-            AvatarSize::Sm => 24.0,
-            AvatarSize::Default => 40.0,
-            AvatarSize::Lg => 56.0,
-        }
-    }
-
-    fn text_size(&self) -> f32 {
-        match self {
-            AvatarSize::Sm => 10.0,
-            AvatarSize::Default => 14.0,
-            AvatarSize::Lg => 20.0,
-        }
-    }
-}
-
-/// An avatar component showing an image or fallback initials
+/// An element that renders a user avatar with customizable appearance options.
 ///
-/// # Example
+/// # Examples
+///
 /// ```
-/// Avatar::new().fallback("JD")
-/// Avatar::new().fallback("AB").size(AvatarSize::Lg)
+/// use ui::Avatar;
+///
+/// Avatar::new("path/to/image.png")
+///     .grayscale(true)
+///     .border_color(gpui::red());
 /// ```
-#[derive(IntoElement)]
+#[derive(IntoElement, Documented, RegisterComponent)]
 pub struct Avatar {
-    fallback: Option<SharedString>,
-    size: AvatarSize,
+    image: Img,
+    size: Option<AbsoluteLength>,
+    border_color: Option<Hsla>,
+    indicator: Option<AnyElement>,
 }
 
 impl Avatar {
-    /// Create a new avatar
-    pub fn new() -> Self {
-        Self {
-            fallback: None,
-            size: AvatarSize::Default,
+    /// Creates a new avatar element with the specified image source.
+    pub fn new(src: impl Into<ImageSource>) -> Self {
+        Avatar {
+            image: img(src),
+            size: None,
+            border_color: None,
+            indicator: None,
         }
     }
 
-    /// Set the fallback text (usually initials)
-    pub fn fallback(mut self, text: impl Into<SharedString>) -> Self {
-        self.fallback = Some(text.into());
+    /// Applies a grayscale filter to the avatar image.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ui::Avatar;
+    ///
+    /// let avatar = Avatar::new("path/to/image.png").grayscale(true);
+    /// ```
+    pub fn grayscale(mut self, grayscale: bool) -> Self {
+        self.image = self.image.grayscale(grayscale);
         self
     }
 
-    /// Set the avatar size
-    pub fn size(mut self, size: AvatarSize) -> Self {
-        self.size = size;
+    /// Sets the border color of the avatar.
+    ///
+    /// This might be used to match the border to the background color of
+    /// the parent element to create the illusion of cropping another
+    /// shape underneath (for example in face piles.)
+    pub fn border_color(mut self, color: impl Into<Hsla>) -> Self {
+        self.border_color = Some(color.into());
         self
     }
-}
 
-impl Default for Avatar {
-    fn default() -> Self {
-        Self::new()
+    /// Size overrides the avatar size. By default they are 1rem.
+    pub fn size<L: Into<AbsoluteLength>>(mut self, size: impl Into<Option<L>>) -> Self {
+        self.size = size.into().map(Into::into);
+        self
+    }
+
+    /// Sets the current indicator to be displayed on the avatar, if any.
+    pub fn indicator<E: IntoElement>(mut self, indicator: impl Into<Option<E>>) -> Self {
+        self.indicator = indicator.into().map(IntoElement::into_any_element);
+        self
     }
 }
 
 impl RenderOnce for Avatar {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let size = self.size.px_size();
-        let text_size = self.size.text_size();
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let border_width = if self.border_color.is_some() {
+            px(2.)
+        } else {
+            px(0.)
+        };
 
-        let mut el = div()
-            .w(px(size))
-            .h(px(size))
+        let image_size = self.size.unwrap_or_else(|| rems(1.).into());
+        let container_size = image_size.to_pixels(window.rem_size()) + border_width * 2.;
+
+        div()
+            .size(container_size)
             .rounded_full()
-            .bg(bg::ELEVATED)
-            .border_1()
-            .border_color(border::DEFAULT)
-            .flex()
-            .items_center()
-            .justify_center()
-            .overflow_hidden();
+            .when_some(self.border_color, |this, color| {
+                this.border(border_width).border_color(color)
+            })
+            .child(
+                self.image
+                    .size(image_size)
+                    .rounded_full()
+                    .bg(cx.theme().colors().element_disabled)
+                    .with_fallback(|| {
+                        h_flex()
+                            .size_full()
+                            .justify_center()
+                            .child(
+                                Icon::new(IconName::Person)
+                                    .color(Color::Muted)
+                                    .size(IconSize::Small),
+                            )
+                            .into_any_element()
+                    }),
+            )
+            .children(self.indicator.map(|indicator| div().child(indicator)))
+    }
+}
 
-        // Show fallback initials
-        if let Some(fallback) = self.fallback {
-            el = el.child(
-                div()
-                    .text_color(text::PRIMARY)
-                    .text_size(px(text_size))
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(fallback)
-            );
+use gpui::AnyView;
+
+/// The audio status of an player, for use in representing
+/// their status visually on their avatar.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum AudioStatus {
+    /// The player's microphone is muted.
+    Muted,
+    /// The player's microphone is muted, and collaboration audio is disabled.
+    Deafened,
+}
+
+/// An indicator that shows the audio status of a player.
+#[derive(IntoElement)]
+pub struct AvatarAudioStatusIndicator {
+    audio_status: AudioStatus,
+    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView>>,
+}
+
+impl AvatarAudioStatusIndicator {
+    /// Creates a new `AvatarAudioStatusIndicator`
+    pub fn new(audio_status: AudioStatus) -> Self {
+        Self {
+            audio_status,
+            tooltip: None,
         }
+    }
 
-        el
+    /// Sets the tooltip for the indicator.
+    pub fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
+        self.tooltip = Some(Box::new(tooltip));
+        self
+    }
+}
+
+impl RenderOnce for AvatarAudioStatusIndicator {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let icon_size = IconSize::Indicator;
+
+        let width_in_px = icon_size.rems() * window.rem_size();
+        let padding_x = px(4.);
+
+        div()
+            .absolute()
+            .bottom(rems_from_px(-3.))
+            .right(rems_from_px(-6.))
+            .w(width_in_px + padding_x)
+            .h(icon_size.rems())
+            .child(
+                h_flex()
+                    .id("muted-indicator")
+                    .justify_center()
+                    .px(padding_x)
+                    .py(px(2.))
+                    .bg(cx.theme().status().error_background)
+                    .rounded_sm()
+                    .child(
+                        Icon::new(match self.audio_status {
+                            AudioStatus::Muted => IconName::MicMute,
+                            AudioStatus::Deafened => IconName::AudioOff,
+                        })
+                        .size(icon_size)
+                        .color(Color::Error),
+                    )
+                    .when_some(self.tooltip, |this, tooltip| {
+                        this.tooltip(move |window, cx| tooltip(window, cx))
+                    }),
+            )
+    }
+}
+
+/// Represents the availability status of a collaborator.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum CollaboratorAvailability {
+    Free,
+    Busy,
+}
+
+/// Represents the availability and presence status of a collaborator.
+#[derive(IntoElement)]
+pub struct AvatarAvailabilityIndicator {
+    availability: CollaboratorAvailability,
+    avatar_size: Option<Pixels>,
+}
+
+impl AvatarAvailabilityIndicator {
+    /// Creates a new indicator
+    pub fn new(availability: CollaboratorAvailability) -> Self {
+        Self {
+            availability,
+            avatar_size: None,
+        }
+    }
+
+    /// Sets the size of the [`Avatar`](crate::Avatar) this indicator appears on.
+    pub fn avatar_size(mut self, size: impl Into<Option<Pixels>>) -> Self {
+        self.avatar_size = size.into();
+        self
+    }
+}
+
+impl RenderOnce for AvatarAvailabilityIndicator {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let avatar_size = self.avatar_size.unwrap_or_else(|| window.rem_size());
+
+        // HACK: non-integer sizes result in oval indicators.
+        let indicator_size = (avatar_size * 0.4).round();
+
+        div()
+            .absolute()
+            .bottom_0()
+            .right_0()
+            .size(indicator_size)
+            .rounded(indicator_size)
+            .bg(match self.availability {
+                CollaboratorAvailability::Free => cx.theme().status().created,
+                CollaboratorAvailability::Busy => cx.theme().status().deleted,
+            })
+    }
+}
+
+// View this component preview using `workspace: open component-preview`
+impl Component for Avatar {
+    fn scope() -> ComponentScope {
+        ComponentScope::Collaboration
+    }
+
+    fn description() -> Option<&'static str> {
+        Some(Avatar::DOCS)
+    }
+
+    fn preview(_window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        let example_avatar = "https://avatars.githubusercontent.com/u/1714999?v=4";
+
+        Some(
+            v_flex()
+                .gap_6()
+                .children(vec![
+                    example_group(vec![
+                        single_example("Default", Avatar::new(example_avatar).into_any_element()),
+                        single_example(
+                            "Grayscale",
+                            Avatar::new(example_avatar)
+                                .grayscale(true)
+                                .into_any_element(),
+                        ),
+                        single_example(
+                            "Border",
+                            Avatar::new(example_avatar)
+                                .border_color(cx.theme().colors().border)
+                                .into_any_element(),
+                        ).description("Can be used to create visual space by setting the border color to match the background, which creates the appearance of a gap around the avatar."),
+                    ]),
+                    example_group_with_title(
+                        "Indicator Styles",
+                        vec![
+                            single_example(
+                                "Muted",
+                                Avatar::new(example_avatar)
+                                    .indicator(AvatarAudioStatusIndicator::new(AudioStatus::Muted))
+                                    .into_any_element(),
+                            ).description("Indicates the collaborator's mic is muted."),
+                            single_example(
+                                "Deafened",
+                                Avatar::new(example_avatar)
+                                    .indicator(AvatarAudioStatusIndicator::new(
+                                        AudioStatus::Deafened,
+                                    ))
+                                    .into_any_element(),
+                            ).description("Indicates that both the collaborator's mic and audio are muted."),
+                            single_example(
+                                "Availability: Free",
+                                Avatar::new(example_avatar)
+                                    .indicator(AvatarAvailabilityIndicator::new(
+                                        CollaboratorAvailability::Free,
+                                    ))
+                                    .into_any_element(),
+                            ).description("Indicates that the person is free, usually meaning they are not in a call."),
+                            single_example(
+                                "Availability: Busy",
+                                Avatar::new(example_avatar)
+                                    .indicator(AvatarAvailabilityIndicator::new(
+                                        CollaboratorAvailability::Busy,
+                                    ))
+                                    .into_any_element(),
+                            ).description("Indicates that the person is busy, usually meaning they are in a channel or direct call."),
+                        ],
+                    ),
+                ])
+                .into_any_element(),
+        )
     }
 }

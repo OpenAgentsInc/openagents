@@ -1,8 +1,8 @@
 //! Message view component for displaying messages.
 
 use acp::ContentBlock;
-use gpui::{div, px, IntoElement, ParentElement, Styled};
-use theme::{bg, border, text};
+use gpui_oa::{div, px, IntoElement, ParentElement, Styled};
+use theme_oa::{bg, border, text};
 
 /// Message view for displaying a single message.
 pub struct MessageView {
@@ -42,7 +42,7 @@ impl MessageView {
 }
 
 impl IntoElement for MessageView {
-    type Element = gpui::Div;
+    type Element = gpui_oa::Div;
 
     fn into_element(self) -> Self::Element {
         let is_user = self.role == MessageRole::User;
@@ -57,7 +57,7 @@ impl IntoElement for MessageView {
             .child(
                 div()
                     .text_sm()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .font_weight(gpui_oa::FontWeight::SEMIBOLD)
                     .text_color(if is_user {
                         text::PRIMARY
                     } else {

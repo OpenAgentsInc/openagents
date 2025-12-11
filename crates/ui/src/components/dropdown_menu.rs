@@ -1,216 +1,304 @@
-//! Dropdown menu component
+use gpui::{AnyView, Corner, Entity, Pixels, Point};
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, text, border};
+use crate::{ButtonLike, ContextMenu, PopoverMenu, prelude::*};
 
-/// Menu item type
-pub enum DropdownMenuItem {
-    Item {
-        label: SharedString,
-        shortcut: Option<SharedString>,
-        disabled: bool,
-        on_select: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
-    },
-    Separator,
-    Label(SharedString),
+use super::PopoverMenuHandle;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DropdownStyle {
+    #[default]
+    Solid,
+    Outlined,
+    Subtle,
+    Ghost,
 }
 
-impl DropdownMenuItem {
-    pub fn item(label: impl Into<SharedString>) -> Self {
-        Self::Item {
-            label: label.into(),
-            shortcut: None,
-            disabled: false,
-            on_select: None,
-        }
-    }
-
-    pub fn shortcut(self, shortcut: impl Into<SharedString>) -> Self {
-        match self {
-            Self::Item { label, disabled, on_select, .. } => Self::Item {
-                label,
-                shortcut: Some(shortcut.into()),
-                disabled,
-                on_select,
-            },
-            other => other,
-        }
-    }
-
-    pub fn disabled(self, disabled: bool) -> Self {
-        match self {
-            Self::Item { label, shortcut, on_select, .. } => Self::Item {
-                label,
-                shortcut,
-                disabled,
-                on_select,
-            },
-            other => other,
-        }
-    }
-
-    pub fn on_select(self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        match self {
-            Self::Item { label, shortcut, disabled, .. } => Self::Item {
-                label,
-                shortcut,
-                disabled,
-                on_select: Some(Box::new(handler)),
-            },
-            other => other,
-        }
-    }
-
-    pub fn separator() -> Self {
-        Self::Separator
-    }
-
-    pub fn label(text: impl Into<SharedString>) -> Self {
-        Self::Label(text.into())
-    }
+enum LabelKind {
+    Text(SharedString),
+    Element(AnyElement),
 }
 
-/// Dropdown menu component
-///
-/// # Example
-/// ```
-/// DropdownMenu::new()
-///     .trigger(Button::new("Open Menu"))
-///     .open(is_open)
-///     .item(DropdownMenuItem::item("Profile").shortcut("⌘P"))
-///     .item(DropdownMenuItem::item("Settings").shortcut("⌘,"))
-///     .item(DropdownMenuItem::separator())
-///     .item(DropdownMenuItem::item("Log out"))
-/// ```
-#[derive(IntoElement)]
+#[derive(IntoElement, RegisterComponent)]
 pub struct DropdownMenu {
-    trigger: Option<AnyElement>,
-    items: Vec<DropdownMenuItem>,
-    open: bool,
+    id: ElementId,
+    label: LabelKind,
+    trigger_size: ButtonSize,
+    trigger_tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
+    trigger_icon: Option<IconName>,
+    style: DropdownStyle,
+    menu: Entity<ContextMenu>,
+    full_width: bool,
+    disabled: bool,
+    handle: Option<PopoverMenuHandle<ContextMenu>>,
+    attach: Option<Corner>,
+    offset: Option<Point<Pixels>>,
+    tab_index: Option<isize>,
+    chevron: bool,
 }
 
 impl DropdownMenu {
-    pub fn new() -> Self {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        menu: Entity<ContextMenu>,
+    ) -> Self {
         Self {
-            trigger: None,
-            items: Vec::new(),
-            open: false,
+            id: id.into(),
+            label: LabelKind::Text(label.into()),
+            trigger_size: ButtonSize::Default,
+            trigger_tooltip: None,
+            trigger_icon: Some(IconName::ChevronUpDown),
+            style: DropdownStyle::default(),
+            menu,
+            full_width: false,
+            disabled: false,
+            handle: None,
+            attach: None,
+            offset: None,
+            tab_index: None,
+            chevron: true,
         }
     }
 
-    pub fn trigger(mut self, trigger: impl IntoElement) -> Self {
-        self.trigger = Some(trigger.into_any_element());
+    pub fn new_with_element(
+        id: impl Into<ElementId>,
+        label: AnyElement,
+        menu: Entity<ContextMenu>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: LabelKind::Element(label),
+            trigger_size: ButtonSize::Default,
+            trigger_tooltip: None,
+            trigger_icon: Some(IconName::ChevronUpDown),
+            style: DropdownStyle::default(),
+            menu,
+            full_width: false,
+            disabled: false,
+            handle: None,
+            attach: None,
+            offset: None,
+            tab_index: None,
+            chevron: true,
+        }
+    }
+
+    pub fn style(mut self, style: DropdownStyle) -> Self {
+        self.style = style;
         self
     }
 
-    pub fn item(mut self, item: DropdownMenuItem) -> Self {
-        self.items.push(item);
+    pub fn trigger_size(mut self, size: ButtonSize) -> Self {
+        self.trigger_size = size;
         self
     }
 
-    pub fn open(mut self, open: bool) -> Self {
-        self.open = open;
+    pub fn trigger_tooltip(
+        mut self,
+        tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
+    ) -> Self {
+        self.trigger_tooltip = Some(Box::new(tooltip));
+        self
+    }
+
+    pub fn trigger_icon(mut self, icon: IconName) -> Self {
+        self.trigger_icon = Some(icon);
+        self
+    }
+
+    pub fn full_width(mut self, full_width: bool) -> Self {
+        self.full_width = full_width;
+        self
+    }
+
+    pub fn handle(mut self, handle: PopoverMenuHandle<ContextMenu>) -> Self {
+        self.handle = Some(handle);
+        self
+    }
+
+    /// Defines which corner of the handle to attach the menu's anchor to.
+    pub fn attach(mut self, attach: Corner) -> Self {
+        self.attach = Some(attach);
+        self
+    }
+
+    /// Offsets the position of the menu by that many pixels.
+    pub fn offset(mut self, offset: Point<Pixels>) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    pub fn tab_index(mut self, arg: isize) -> Self {
+        self.tab_index = Some(arg);
+        self
+    }
+
+    pub fn no_chevron(mut self) -> Self {
+        self.chevron = false;
         self
     }
 }
 
-impl Default for DropdownMenu {
-    fn default() -> Self {
-        Self::new()
+impl Disableable for DropdownMenu {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
 impl RenderOnce for DropdownMenu {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let mut container = div().relative();
+        let button_style = match self.style {
+            DropdownStyle::Solid => ButtonStyle::Filled,
+            DropdownStyle::Subtle => ButtonStyle::Subtle,
+            DropdownStyle::Outlined => ButtonStyle::Outlined,
+            DropdownStyle::Ghost => ButtonStyle::Transparent,
+        };
 
-        // Trigger
-        if let Some(trigger) = self.trigger {
-            container = container.child(trigger);
-        }
+        let full_width = self.full_width;
+        let trigger_size = self.trigger_size;
 
-        // Menu dropdown
-        if self.open {
-            let mut menu = div()
-                .absolute()
-                .top(px(40.0))
-                .left_0()
-                .min_w(px(180.0))
-                .py(px(4.0))
-                .rounded(px(6.0))
-                .border_1()
-                .border_color(border::DEFAULT)
-                .bg(bg::ELEVATED);
+        let (text_button, element_button) = match self.label {
+            LabelKind::Text(text) => (
+                Some(
+                    Button::new(self.id.clone(), text)
+                        .style(button_style)
+                        .when(self.chevron, |this| {
+                            this.icon(self.trigger_icon)
+                                .icon_position(IconPosition::End)
+                                .icon_size(IconSize::XSmall)
+                                .icon_color(Color::Muted)
+                        })
+                        .when(full_width, |this| this.full_width())
+                        .size(trigger_size)
+                        .disabled(self.disabled)
+                        .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index)),
+                ),
+                None,
+            ),
+            LabelKind::Element(element) => (
+                None,
+                Some(
+                    ButtonLike::new(self.id.clone())
+                        .child(element)
+                        .style(button_style)
+                        .when(self.chevron, |this| {
+                            this.child(
+                                Icon::new(IconName::ChevronUpDown)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Muted),
+                            )
+                        })
+                        .when(full_width, |this| this.full_width())
+                        .size(trigger_size)
+                        .disabled(self.disabled)
+                        .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index)),
+                ),
+            ),
+        };
 
-            for (i, item) in self.items.into_iter().enumerate() {
-                match item {
-                    DropdownMenuItem::Item { label, shortcut, disabled, on_select } => {
-                        let mut item_el = div()
-                            .id(ElementId::Name(format!("menu-item-{}", i).into()))
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .px(px(12.0))
-                            .py(px(6.0))
-                            .text_sm();
+        let mut popover = PopoverMenu::new((self.id.clone(), "popover"))
+            .full_width(self.full_width)
+            .menu(move |_window, _cx| Some(self.menu.clone()));
 
-                        if disabled {
-                            item_el = item_el
-                                .opacity(0.5)
-                                .cursor_not_allowed()
-                                .text_color(text::DISABLED);
-                        } else {
-                            item_el = item_el
-                                .cursor_pointer()
-                                .text_color(text::PRIMARY)
-                                .hover(|s| s.bg(bg::HOVER));
-
-                            if let Some(handler) = on_select {
-                                item_el = item_el.on_click(move |_, window, cx| {
-                                    handler(window, cx);
-                                });
-                            }
-                        }
-
-                        item_el = item_el.child(div().child(label));
-
-                        if let Some(sc) = shortcut {
-                            item_el = item_el.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(text::MUTED)
-                                    .child(sc)
-                            );
-                        }
-
-                        menu = menu.child(item_el);
-                    }
-                    DropdownMenuItem::Separator => {
-                        menu = menu.child(
-                            div()
-                                .my(px(4.0))
-                                .h(px(1.0))
-                                .bg(border::DEFAULT)
-                        );
-                    }
-                    DropdownMenuItem::Label(text) => {
-                        menu = menu.child(
-                            div()
-                                .px(px(12.0))
-                                .py(px(6.0))
-                                .text_xs()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(text::MUTED)
-                                .child(text)
-                        );
-                    }
-                }
+        popover = match (text_button, element_button, self.trigger_tooltip) {
+            (Some(text_button), None, Some(tooltip)) => {
+                popover.trigger_with_tooltip(text_button, tooltip)
             }
+            (Some(text_button), None, None) => popover.trigger(text_button),
+            (None, Some(element_button), Some(tooltip)) => {
+                popover.trigger_with_tooltip(element_button, tooltip)
+            }
+            (None, Some(element_button), None) => popover.trigger(element_button),
+            _ => popover,
+        };
 
-            container = container.child(menu);
-        }
+        popover
+            .attach(match self.attach {
+                Some(attach) => attach,
+                None => Corner::BottomRight,
+            })
+            .when_some(self.offset, |this, offset| this.offset(offset))
+            .when_some(self.handle, |this, handle| this.with_handle(handle))
+    }
+}
 
-        container
+impl Component for DropdownMenu {
+    fn scope() -> ComponentScope {
+        ComponentScope::Input
+    }
+
+    fn name() -> &'static str {
+        "DropdownMenu"
+    }
+
+    fn description() -> Option<&'static str> {
+        Some(
+            "A dropdown menu displays a list of actions or options. A dropdown menu is always activated by clicking a trigger (or via a keybinding).",
+        )
+    }
+
+    fn preview(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        let menu = ContextMenu::build(window, cx, |this, _, _| {
+            this.entry("Option 1", None, |_, _| {})
+                .entry("Option 2", None, |_, _| {})
+                .entry("Option 3", None, |_, _| {})
+                .separator()
+                .entry("Option 4", None, |_, _| {})
+        });
+
+        Some(
+            v_flex()
+                .gap_6()
+                .children(vec![
+                    example_group_with_title(
+                        "Basic Usage",
+                        vec![
+                            single_example(
+                                "Default",
+                                DropdownMenu::new("default", "Select an option", menu.clone())
+                                    .into_any_element(),
+                            ),
+                            single_example(
+                                "Full Width",
+                                DropdownMenu::new(
+                                    "full-width",
+                                    "Full Width Dropdown",
+                                    menu.clone(),
+                                )
+                                .full_width(true)
+                                .into_any_element(),
+                            ),
+                        ],
+                    ),
+                    example_group_with_title(
+                        "Styles",
+                        vec![
+                            single_example(
+                                "Outlined",
+                                DropdownMenu::new("outlined", "Outlined Dropdown", menu.clone())
+                                    .style(DropdownStyle::Outlined)
+                                    .into_any_element(),
+                            ),
+                            single_example(
+                                "Ghost",
+                                DropdownMenu::new("ghost", "Ghost Dropdown", menu.clone())
+                                    .style(DropdownStyle::Ghost)
+                                    .into_any_element(),
+                            ),
+                        ],
+                    ),
+                    example_group_with_title(
+                        "States",
+                        vec![single_example(
+                            "Disabled",
+                            DropdownMenu::new("disabled", "Disabled Dropdown", menu)
+                                .disabled(true)
+                                .into_any_element(),
+                        )],
+                    ),
+                ])
+                .into_any_element(),
+        )
     }
 }

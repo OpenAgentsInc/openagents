@@ -3,11 +3,11 @@
 //! Ported from e2e/tests/interactions/canvas.spec.ts
 //! Tests B1-B7: pan, zoom, and reset functionality.
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{GraphViewFixture, GraphViewAssertExt};
 
 /// B1: pan by drag updates SVG transform
-#[gpui::test]
+#[gpui_oa::test]
 fn test_pan_by_drag_updates_transform(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -26,7 +26,7 @@ fn test_pan_by_drag_updates_transform(cx: &mut TestAppContext) {
 }
 
 /// B3: zoom by scroll wheel updates scale
-#[gpui::test]
+#[gpui_oa::test]
 fn test_zoom_by_scroll_updates_scale(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -49,7 +49,7 @@ fn test_zoom_by_scroll_updates_scale(cx: &mut TestAppContext) {
 }
 
 /// Test zoom has minimum and maximum limits
-#[gpui::test]
+#[gpui_oa::test]
 fn test_zoom_has_min_max_limits(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -75,7 +75,7 @@ fn test_zoom_has_min_max_limits(cx: &mut TestAppContext) {
 }
 
 /// B5: reset button returns to initial state
-#[gpui::test]
+#[gpui_oa::test]
 fn test_reset_button_returns_to_initial_state(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -100,7 +100,7 @@ fn test_reset_button_returns_to_initial_state(cx: &mut TestAppContext) {
 }
 
 /// B7: window resize preserves zoom level
-#[gpui::test]
+#[gpui_oa::test]
 fn test_window_resize_preserves_zoom(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -121,7 +121,7 @@ fn test_window_resize_preserves_zoom(cx: &mut TestAppContext) {
 }
 
 /// Test multiple sequential pan operations
-#[gpui::test]
+#[gpui_oa::test]
 fn test_multiple_pan_operations(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -153,7 +153,7 @@ fn test_multiple_pan_operations(cx: &mut TestAppContext) {
 }
 
 /// Test zoom and pan combination
-#[gpui::test]
+#[gpui_oa::test]
 fn test_zoom_and_pan_combination(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 

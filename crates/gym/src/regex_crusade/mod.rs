@@ -7,10 +7,10 @@ pub mod task_panel;
 pub mod test_panel;
 pub mod types;
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::Arc;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 use tokio::sync::mpsc;
 
 use self::iteration_log::IterationLog;

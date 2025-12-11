@@ -1,7 +1,7 @@
 //! Earnings chart component - Bar chart visualization of earnings
 
-use gpui::*;
-use theme::{bg, border, text, accent, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 
 use crate::types::{TimeRange, EarningsDataPoint};
 
@@ -145,7 +145,7 @@ fn render_chart_footer(total_sats: u64) -> impl IntoElement {
             div()
                 .text_size(px(14.0))
                 .font_family(FONT_FAMILY)
-                .text_color(theme::status::SUCCESS)
+                .text_color(theme_oa::status::SUCCESS)
                 .child(format!("{} sats", format_sats(total_sats))),
         )
 }
