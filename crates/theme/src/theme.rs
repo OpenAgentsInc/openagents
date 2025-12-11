@@ -38,6 +38,7 @@ use uuid::Uuid;
 
 pub use crate::default_colors::*;
 use crate::fallback_themes::apply_theme_color_defaults;
+pub use crate::fallback_themes::zed_default_themes;
 pub use crate::font_family_cache::*;
 pub use crate::icon_theme::*;
 pub use crate::icon_theme_schema::*;
@@ -455,6 +456,14 @@ pub struct GlobalTheme {
 impl Global for GlobalTheme {}
 
 impl GlobalTheme {
+    /// Create a new GlobalTheme with the given theme and icon theme.
+    ///
+    /// This is useful for applications that don't use the full Zed settings system
+    /// but still need theme globals for components like markdown rendering.
+    pub fn new(theme: Arc<Theme>, icon_theme: Arc<IconTheme>) -> Self {
+        Self { theme, icon_theme }
+    }
+
     fn configured_theme(cx: &mut App) -> Arc<Theme> {
         let themes = ThemeRegistry::default_global(cx);
         let theme_settings = ThemeSettings::get_global(cx);
