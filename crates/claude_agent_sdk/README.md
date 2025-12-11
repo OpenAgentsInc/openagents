@@ -4,6 +4,32 @@ A Rust SDK for programmatically building AI agents with Claude Code's capabiliti
 
 This SDK is a Rust implementation of Anthropic's official [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview), providing the same functionality with native Rust ergonomics.
 
+## Parity with TypeScript SDK
+
+This crate has **~100% parity** with the official TypeScript SDK. All features from the TypeScript version are implemented:
+
+- Query streaming and message types
+- Permission handling (rules-based and callback)
+- Query options (model, max_turns, budget, MCP servers, etc.)
+- Session management (continue, resume)
+- Control methods (interrupt, set_permission_mode, set_model, etc.)
+
+### Rust-Only Extensions
+
+We've added the following methods that are **not in the TypeScript SDK**:
+
+| Method | Description |
+|--------|-------------|
+| `query.abort()` | Hard-kill the Claude CLI process. Unlike `interrupt()` which sends a graceful stop signal via the protocol, `abort()` immediately terminates the underlying process. Use this when you need to forcefully stop execution (e.g., user clicks "Stop" in a UI). |
+
+```rust
+// Graceful stop - sends interrupt signal via protocol
+query.interrupt().await?;
+
+// Hard stop - kills the process immediately
+query.abort().await?;
+```
+
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -345,8 +371,11 @@ The `Query` struct provides methods to control execution:
 ```rust
 let query = query("Do something", QueryOptions::new()).await?;
 
-// Interrupt execution
+// Interrupt execution (graceful - sends protocol message)
 query.interrupt().await?;
+
+// Abort execution (hard - kills the process immediately)
+query.abort().await?;
 
 // Change permission mode mid-query
 query.set_permission_mode(PermissionMode::AcceptEdits).await?;
@@ -454,6 +483,7 @@ This SDK spawns the Claude Code CLI as a child process and communicates via JSON
 │   │                                                      │  │
 │   │  Query (implements Stream<SdkMessage>)              │  │
 │   │  ├── interrupt()                                     │  │
+│   │  ├── abort()        ← Rust-only extension           │  │
 │   │  ├── set_permission_mode()                          │  │
 │   │  └── set_model()                                     │  │
 │   └─────────────────────────────────────────────────────┘  │
