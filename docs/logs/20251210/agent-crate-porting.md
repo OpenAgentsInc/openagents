@@ -7,7 +7,7 @@
 
 Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 
-## Modules Ported (24 total)
+## Modules Ported (25 total)
 
 | Rust Module | TypeScript Source | Tests | Description |
 |-------------|-------------------|-------|-------------|
