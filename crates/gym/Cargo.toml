@@ -13,7 +13,7 @@ fm-bridge = { path = "../fm-bridge" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 directories = "5.0"
 uuid = { version = "1.0", features = ["v4"] }
 tokio = { version = "1", features = ["sync"] }

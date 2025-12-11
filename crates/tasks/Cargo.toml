@@ -12,7 +12,7 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
-rusqlite = { version = "0.31", features = ["bundled", "serde_json"] }
+rusqlite = { version = "0.32", features = ["bundled", "serde_json"] }
 sha2 = { workspace = true }
 hex = { workspace = true }
 
