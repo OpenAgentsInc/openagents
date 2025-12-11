@@ -52,47 +52,19 @@
 
 ---
 
-## Sprint 7: External Executors & Integration
-
-### 7.1 HTTP Executor
-
-Background task that executes pending HTTP requests:
-
-```rust
-pub struct HttpExecutor {
-    client: reqwest::Client,
-}
-
-impl HttpExecutor {
-    pub async fn process(&self, http_fs: &HttpFs) -> Result<usize, Error>;
-}
-```
-
-### 7.2 WebSocket Connector
-
-Background task that manages WebSocket connections:
-
-```rust
-pub struct WsConnector {
-    // Manages actual WebSocket connections for WsFs
-}
-
-impl WsConnector {
-    pub async fn connect(&mut self, ws_fs: &WsFs) -> Result<(), Error>;
-    pub async fn poll(&mut self) -> Result<(), Error>;
-}
-```
-
-### 7.3 Nostr Relay Connector
-
-Bridge between NostrFs and Nostr relays:
-
-```rust
-pub struct NostrRelayConnector {
-    // Sends outbox events to relays
-    // Receives events and adds to inbox
-}
-```
+**Sprint 7: Complete** ✅
+- [x] `ExecutorManager` - Unified async executor manager (~200 lines)
+- [x] `ExecutorConfig` - Configuration with timeouts, retry policies (~150 lines)
+- [x] `ExecutorError` - Comprehensive error types (~80 lines)
+- [x] `HttpExecutor` - Polls HttpFs, executes via reqwest (~230 lines)
+- [x] `WsConnector` - Manages WebSocket connections via tokio-tungstenite (~360 lines)
+- [x] `NostrRelayConnector` - Bridges NostrFs to relays via NIP-01 (~350 lines)
+- [x] `Filter` type - NIP-01 subscription filters for NostrFs (~50 lines)
+- [x] Helper methods for HttpFs, WsFs, NostrFs
+- [x] 5 new unit tests (122 total)
+- [x] `net-executor` feature flag for optional network capabilities
+- [x] Exponential backoff retry with configurable policies
+- [x] Graceful shutdown via broadcast channels
 
 ---
 
@@ -134,7 +106,7 @@ Currently Sprint 2 targets native wasmtime. Browser needs different approach:
 | **M3** | Agent with Nostr capability | ✅ Sprint 5 |
 | **M4** | Full capability suite (WsFs, HttpFs) | ✅ Sprint 5 |
 | **M5** | OanixEnv & Scheduler | ✅ Sprint 6 |
-| **M6** | External executors (HTTP, WS, Nostr) | Sprint 7 |
+| **M6** | External executors (HTTP, WS, Nostr) | ✅ Sprint 7 |
 | **M7** | Browser WASI execution | Future |
 
 ---

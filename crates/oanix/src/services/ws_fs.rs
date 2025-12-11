@@ -310,6 +310,39 @@ impl WsFs {
         let conns = self.connections.read().unwrap();
         conns.len()
     }
+
+    /// List connections in Connecting state (need to be opened by executor)
+    ///
+    /// Returns (connection_id, url) pairs for connections waiting to be opened.
+    pub fn connecting_connections(&self) -> Vec<(String, String)> {
+        let conns = self.connections.read().unwrap();
+        conns
+            .values()
+            .filter(|c| c.state == WsState::Connecting)
+            .map(|c| (c.id.clone(), c.url.clone()))
+            .collect()
+    }
+
+    /// List connections in Closing state (need to be closed by executor)
+    ///
+    /// Returns connection IDs for connections waiting to be closed.
+    pub fn closing_connections(&self) -> Vec<String> {
+        let conns = self.connections.read().unwrap();
+        conns
+            .values()
+            .filter(|c| c.state == WsState::Closing)
+            .map(|c| c.id.clone())
+            .collect()
+    }
+
+    /// Peek at outbox without draining (for inspection)
+    pub fn peek_outbox(&self, id: &str) -> Result<Vec<Vec<u8>>, FsError> {
+        let conns = self.connections.read().unwrap();
+        let conn = conns
+            .get(id)
+            .ok_or_else(|| FsError::NotFound(format!("connection {}", id)))?;
+        Ok(conn.outbox.iter().cloned().collect())
+    }
 }
 
 impl Default for WsFs {
