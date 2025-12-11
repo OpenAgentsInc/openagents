@@ -75,12 +75,12 @@ impl MechaCoderScreen {
         // Get the connect task before spawning (requires &mut App context)
         let connect_task = self.claude_code.connect(&project_root, cx);
 
-        cx.spawn::<_, ()>(|this: gpui::WeakEntity<MechaCoderScreen>, mut cx| async move {
+        cx.spawn::<_, ()>(|this: gpui::WeakEntity<Self>, cx| async move {
             // Connect to Claude Code
             let connection = match connect_task.await {
                 Ok(conn) => conn,
                 Err(e) => {
-                    this.update(&mut cx, |this, cx| {
+                    this.update(cx, |this, cx| {
                         this.connection_status = ConnectionStatus::Error(e.to_string());
                         this.error_message = Some(e.to_string());
                         cx.notify();
@@ -93,7 +93,7 @@ impl MechaCoderScreen {
             // Create a new thread - need to do this inside update() to get &mut App context
             let project = Project::local(&project_root);
             let thread_result = this
-                .update(&mut cx, |_this, cx| {
+                .update(cx, |_this, cx| {
                     ClaudeCode::new_thread(connection, project, cx)
                 })
                 .ok();
@@ -102,7 +102,7 @@ impl MechaCoderScreen {
                 Some(task) => match task.await {
                     Ok(thread) => thread,
                     Err(e) => {
-                        this.update(&mut cx, |this, cx| {
+                        this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Error(e.to_string());
                             this.error_message = Some(e.to_string());
                             cx.notify();
@@ -115,7 +115,7 @@ impl MechaCoderScreen {
             };
 
             // Create thread view
-            this.update(&mut cx, |this, cx| {
+            this.update(cx, |this, cx| {
                 let thread_view = cx.new(|cx| ThreadView::new(thread.clone(), cx));
                 this.thread_view = Some(thread_view);
                 this.connection_status = ConnectionStatus::Connected;
