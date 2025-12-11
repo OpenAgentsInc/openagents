@@ -210,6 +210,17 @@ impl Render for ThreadView {
         let is_streaming = matches!(self.thread.read(cx).status(), ThreadStatus::Streaming);
         let has_permission = self.thread.read(cx).has_pending_permission();
 
+        // Create render callback for list items
+        let thread = self.thread.clone();
+        let render_item = move |ix: usize, _window: &mut Window, cx: &mut App| {
+            let entries = thread.read(cx).entries();
+            if ix < entries.len() {
+                Self::render_entry(&entries[ix], ix, cx).into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        };
+
         div()
             .size_full()
             .flex()
@@ -220,7 +231,7 @@ impl Render for ThreadView {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(list(self.list_state.clone()).size_full()),
+                    .child(list(self.list_state.clone(), render_item).size_full()),
             )
             // Permission prompt
             .when(has_permission, |el| {

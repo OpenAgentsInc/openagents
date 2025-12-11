@@ -1,7 +1,7 @@
 //! Tool call view component.
 
 use acp::{ToolCall, ToolCallContent, ToolCallStatus};
-use gpui::{div, prelude::*, px, InteractiveElement, IntoElement, ParentElement, Styled};
+use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
 use theme::{bg, border, status, text};
 
 /// Tool call view for displaying a tool call.
@@ -119,7 +119,7 @@ impl ToolCallView {
                         .text_sm()
                         .text_color(text::PRIMARY)
                         .max_h(px(200.0))
-                        .overflow_y_scroll()
+                        .overflow_hidden()
                         .child(output.clone()),
                 )
                 .into_any_element(),
