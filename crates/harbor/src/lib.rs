@@ -187,6 +187,57 @@ impl TBenchEvent {
     }
 }
 
+// ============================================================================
+// Streaming Event Types (for --stream mode)
+// ============================================================================
+
+/// Streaming events emitted to stdout when --stream is enabled
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamEvent {
+    /// Run is starting
+    RunStart {
+        session_id: String,
+        instruction: String,
+    },
+    /// Assistant message with content
+    Assistant {
+        turn: u32,
+        text: String,
+    },
+    /// Tool is being invoked
+    ToolUse {
+        tool: String,
+        id: String,
+    },
+    /// Tool result received
+    ToolResult {
+        id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Run completed
+    Complete {
+        success: bool,
+        turns: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cost: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
+impl StreamEvent {
+    /// Emit this event to stdout as JSON
+    pub fn emit(&self) {
+        if let Ok(json) = serde_json::to_string(self) {
+            println!("{}", json);
+        }
+    }
+}
+
 /// Event recorder that writes to events.jsonl
 pub struct EventRecorder {
     writer: BufWriter<File>,
