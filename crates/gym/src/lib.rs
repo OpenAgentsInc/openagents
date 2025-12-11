@@ -23,6 +23,9 @@ pub mod testgen;
 // RegexCrusade - laser-focused regex-log solver
 pub mod regex_crusade;
 
+// MechaCoder - flexible Terminal-Bench solver with FM/CC backend toggle
+pub mod mechacoder;
+
 // Data layer
 pub mod websocket_client;
 pub mod data_loader;

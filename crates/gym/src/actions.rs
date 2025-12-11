@@ -13,6 +13,7 @@ actions!(
         SwitchToHillClimber,
         SwitchToTestGen,
         SwitchToRegexCrusade,
+        SwitchToMechaCoder,
 
         // General
         FocusGym,

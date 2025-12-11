@@ -36,6 +36,7 @@
 //! }
 //! ```
 
+pub mod cc_runner;
 pub mod decomposer;
 pub mod error;
 pub mod evaluator;
@@ -64,6 +65,7 @@ pub use orchestrator::{
     FMClient, HillClimberEmitter, MAPOrchestrator, NoopEmitter, ToolExecutor, WorkspaceExecutor,
 };
 pub use prompt::{build_fm_context, build_user_prompt, parse_fm_response, sanitize_for_fm, SYSTEM_PROMPT};
+pub use cc_runner::{CCHillClimberRunner, CCIterationResult, CCRunnerOptions};
 pub use runner::{create_task, load_task, FMBridgeAdapter, HillClimberRunner, LlmClientAdapter, ModelProvider, RunOptions, SandboxToolExecutor};
 pub use sampler::{
     quick_sample, ParallelSampler, DEFAULT_CANDIDATE_COUNT, DEFAULT_TEMPERATURES,
@@ -75,6 +77,8 @@ pub use scoring::{
 pub use store::{hash_config, HillClimberStore};
 pub use testgen_writer::format_as_pytest;
 pub use types::{
+    // Backend selection
+    HillClimberBackend,
     // Config types
     BestConfig,
     HillClimberConfig,

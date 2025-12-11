@@ -5,7 +5,32 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
+
+// ============================================================================
+// Backend Selection
+// ============================================================================
+
+/// HillClimber backend selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HillClimberBackend {
+    /// Apple Foundation Model (local inference).
+    #[default]
+    FM,
+    /// Claude Code SDK (cloud API).
+    CC,
+}
+
+impl fmt::Display for HillClimberBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HillClimberBackend::FM => write!(f, "FM"),
+            HillClimberBackend::CC => write!(f, "CC"),
+        }
+    }
+}
 
 // ============================================================================
 // Configuration Types
