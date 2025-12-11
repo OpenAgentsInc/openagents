@@ -1,6 +1,6 @@
 //! Simple components story showing Phase 2 UI components
 
-use gpui_oa::*;
+use gpui::*;
 use ui_oa::{
     Badge, BadgeVariant,
     Avatar, AvatarSize,
@@ -75,15 +75,15 @@ impl Render for SimpleComponentsStory {
                     .child(Story::item("16:9").child(
                         AspectRatio::new(AspectRatioPreset::Widescreen)
                             .width(160.0)
-                            .child(div().w_full().h_full().bg(gpui_oa::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))
+                            .child(div().w_full().h_full().bg(gpui::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))
                     .child(Story::item("4:3").child(
                         AspectRatio::new(AspectRatioPreset::Standard)
                             .width(120.0)
-                            .child(div().w_full().h_full().bg(gpui_oa::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))
+                            .child(div().w_full().h_full().bg(gpui::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))
                     .child(Story::item("1:1").child(
                         AspectRatio::new(AspectRatioPreset::Square)
                             .width(80.0)
-                            .child(div().w_full().h_full().bg(gpui_oa::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))))
+                            .child(div().w_full().h_full().bg(gpui::hsla(0.0, 0.0, 0.2, 1.0)).rounded(px(4.0)))))))
 
             // RadioGroup
             .child(Story::section()

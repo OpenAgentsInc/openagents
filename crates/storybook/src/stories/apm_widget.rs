@@ -3,8 +3,8 @@
 //! Showcases the Actions Per Minute widget with different states and levels.
 
 use crate::story::Story;
-use gpui_oa::*;
-use gpui_oa::prelude::FluentBuilder;
+use gpui::*;
+use gpui::prelude::FluentBuilder;
 use ::hud::{ApmComparison, ApmLevel, ApmSnapshot, ApmState};
 use theme_oa::hud;
 

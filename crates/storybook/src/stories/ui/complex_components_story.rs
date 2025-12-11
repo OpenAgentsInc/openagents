@@ -1,7 +1,7 @@
 //! Interactive complex components story showing Phase 4 UI components
 
-use gpui_oa::*;
-use gpui_oa::prelude::FluentBuilder;
+use gpui::*;
+use gpui::prelude::FluentBuilder;
 use ui_oa::{
     Select, SelectOption,
     Popover,

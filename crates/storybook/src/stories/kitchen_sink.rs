@@ -1,6 +1,6 @@
 //! Kitchen Sink Story: All components in one view
 
-use gpui_oa::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px};
+use gpui::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px};
 use unit::{Lifecycle, PinState};
 use hud::{Connection, ConnectionState, ConnectionStyle, GraphView, PinSnapshot, PinDirection, UnitSnapshot, UnitView, PinView};
 use theme_oa::bg;

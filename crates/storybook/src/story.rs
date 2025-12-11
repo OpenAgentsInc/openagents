@@ -1,6 +1,6 @@
 //! Story helper utilities for consistent storybook styling
 
-use gpui_oa::{Div, SharedString, div, prelude::*, px};
+use gpui::{Div, SharedString, div, prelude::*, px};
 use theme_oa::{bg, border, text};
 
 /// Helper struct for building story UI
@@ -8,7 +8,7 @@ pub struct Story;
 
 impl Story {
     /// Main container for a story
-    pub fn container() -> gpui_oa::Stateful<Div> {
+    pub fn container() -> gpui::Stateful<Div> {
         div()
             .id("story_container")
             .overflow_y_scroll()
@@ -24,7 +24,7 @@ impl Story {
     pub fn title(title: impl Into<SharedString>) -> Div {
         div()
             .text_xl()
-            .font_weight(gpui_oa::FontWeight::BOLD)
+            .font_weight(gpui::FontWeight::BOLD)
             .text_color(text::BRIGHT)
             .pb(px(8.0))
             .border_b_1()
@@ -36,7 +36,7 @@ impl Story {
     pub fn section_title(title: impl Into<SharedString>) -> Div {
         div()
             .text_lg()
-            .font_weight(gpui_oa::FontWeight::MEDIUM)
+            .font_weight(gpui::FontWeight::MEDIUM)
             .text_color(text::PRIMARY)
             .pt(px(12.0))
             .pb(px(4.0))
