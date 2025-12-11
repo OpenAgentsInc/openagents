@@ -80,7 +80,11 @@ fi
 
 # Setup directories
 mkdir -p "${OUTPUT_DIR}"
-mkdir -p "${WORKSPACE}"
+mkdir -p "${WORKSPACE}/app"  # Create /app for TB2 tasks that expect it
+
+# Get absolute paths for Docker volumes
+OUTPUT_DIR_ABS="$(cd "$(dirname "${OUTPUT_DIR}")" 2>/dev/null && pwd)/$(basename "${OUTPUT_DIR}")"
+mkdir -p "${OUTPUT_DIR_ABS}"
 
 echo "========================================"
 echo "TB2 Run: ${TASK_ID}"
@@ -95,10 +99,11 @@ echo "========================================"
 echo ""
 
 # Build tbench args
+# Use the /app subdirectory as CWD since TB2 tasks expect to write to /app/
 TBENCH_ARGS=(
     --instruction "${INSTRUCTION}"
-    --output-dir "${OUTPUT_DIR}"
-    --cwd "${WORKSPACE}"
+    --output-dir "${OUTPUT_DIR_ABS}"
+    --cwd "${WORKSPACE}/app"
     --timeout "${TIMEOUT}"
     --max-turns 300
 )
@@ -126,13 +131,13 @@ echo ""
 if [[ -n "${DOCKER_IMAGE}" ]]; then
     echo "Running TB2 verification..."
 
-    # Create verifier output dir
-    VERIFIER_DIR="${OUTPUT_DIR}/verifier"
+    # Create verifier output dir with absolute path
+    VERIFIER_DIR="${OUTPUT_DIR_ABS}/verifier"
     mkdir -p "${VERIFIER_DIR}"
 
-    # Run verification
+    # Run verification - mount workspace/app as /app
     docker run --rm \
-        -v "${WORKSPACE}:/app" \
+        -v "${WORKSPACE}/app:/app" \
         -v "${VERIFIER_DIR}:/logs/verifier" \
         -v "${TASK_DIR}/tests:/tests:ro" \
         -w /app \
@@ -153,8 +158,9 @@ if [[ -n "${DOCKER_IMAGE}" ]]; then
 fi
 
 echo ""
-echo "ATIF trajectory saved to: ${OUTPUT_DIR}/trajectory.json"
-echo "Metrics saved to: ${OUTPUT_DIR}/metrics.json"
+echo "ATIF trajectory saved to: ${OUTPUT_DIR_ABS}/trajectory.json"
+echo "Metrics saved to: ${OUTPUT_DIR_ABS}/metrics.json"
+echo "Workspace: ${WORKSPACE}/app"
 echo ""
 
 # Cleanup workspace
