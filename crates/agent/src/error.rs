@@ -48,6 +48,9 @@ pub enum AgentError {
 
     #[error("Git error: {0}")]
     Git(String),
+
+    #[error("Container error: {0}")]
+    ContainerError(String),
 }
 
 pub type AgentResult<T> = Result<T, AgentError>;

@@ -7,7 +7,7 @@
 
 Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 
-## Modules Ported (25 total)
+## Modules Ported (27 total)
 
 | Rust Module | TypeScript Source | Tests | Description |
 |-------------|-------------------|-------|-------------|
@@ -25,9 +25,11 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `orchestrator.rs` | `orchestrator.ts` | 3 | Main orchestrator state machine |
 | `progress.rs` | `progress.ts` | 6 | Progress file markdown format |
 | `recovery.rs` | `recovery.ts` | 4 | Two-phase commit crash recovery |
+| `sandbox_runner.rs` | `sandbox-runner.ts` | 12 | Docker/podman sandbox execution |
 | `session.rs` | N/A | 3 | Session management, JSONL logging |
 | `step_results.rs` | `step-results.ts` | 6 | Step memoization for replay |
 | `subagent.rs` | `subagent.ts` | 3 | Subagent completion detection |
+| `subagent_router.rs` | `subagent-router.ts` | 14 | Route between Claude Code, FM, Minimal |
 | `tool_log_buffer.rs` | `tool-log-buffer.ts` | 7 | Tool output chunk accumulation |
 | `types.rs` | `types.ts` | 5 | Core types (Task, Subtask, Events) |
 | `verification.rs` | `verification-*.ts` | 8 | Verification pipeline (typecheck, tests) |
@@ -35,7 +37,7 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `worktree_guards.rs` | `worktree-guards.ts` | 6 | File operation boundary enforcement |
 | `worktree_runner.rs` | `worktree-runner.ts` | 4 | Worktree + orchestrator integration |
 
-**Total Tests:** 128 passing
+**Total Tests:** 153 passing
 
 ## Remaining TypeScript Files
 
@@ -43,8 +45,6 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 |------|------------|-------|
 | `claude-code-subagent.ts` | High | Full Claude Code SDK integration |
 | `parallel-runner.ts` | High | Parallel orchestrator with worktrees |
-| `sandbox-runner.ts` | Medium | Docker sandbox execution |
-| `subagent-router.ts` | Medium | Route between FM/Claude Code |
 | `cli.ts` | Low | CLI entry point |
 
 ## Dependencies
@@ -64,17 +64,17 @@ TypeScript files cannot be deleted until all callers are migrated:
 
 ## Next Steps
 
-1. Port `subagent-router.ts` - routing logic between FM and Claude Code
-2. Port `sandbox-runner.ts` - sandbox execution
-3. Port `parallel-runner.ts` - parallel orchestration
-4. Port `claude-code-subagent.ts` - full Claude Code integration
+1. Port `parallel-runner.ts` - parallel orchestration with worktrees
+2. Port `claude-code-subagent.ts` - full Claude Code SDK integration
 
 ## Architecture Notes
 
 The Rust port follows the same architecture as TypeScript:
 - **Orchestrator**: Task selection, decomposition, verification
 - **Subagent**: Minimal coding agent for one subtask
+- **SubagentRouter**: Routes to Claude Code, FM, or Minimal based on task
 - **Worktree**: Isolation for parallel execution
+- **Sandbox**: Container-based command execution
 - **Recovery**: Two-phase commit crash recovery
 
 Key differences from TypeScript:
