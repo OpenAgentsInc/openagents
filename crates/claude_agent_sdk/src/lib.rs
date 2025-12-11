@@ -79,26 +79,30 @@ pub mod options;
 pub mod permissions;
 pub mod protocol;
 pub mod query;
+pub mod session;
 pub mod transport;
 
 // Re-export main types at crate root
 pub use error::{Error, Result};
 pub use options::{
     AgentDefinition, AgentModel, McpServerConfig, OutputFormat, PluginConfig, QueryOptions,
-    SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig,
+    RipgrepConfig, SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig,
 };
 pub use permissions::{
     permission_handler, AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions,
     PermissionHandler, PermissionRequest, PermissionRules, RulesPermissionHandler,
 };
 pub use protocol::{
-    AssistantMessageError, KeepAliveMessage, ModelUsage, PermissionBehavior, PermissionDenial,
-    PermissionMode, PermissionResult, PermissionRule, PermissionUpdate, ResultError, ResultSuccess,
-    SdkAssistantMessage, SdkAuthStatusMessage, SdkControlRequest, SdkControlResponse, SdkMessage,
-    SdkResultMessage, SdkStreamEvent, SdkSystemMessage, SdkToolProgressMessage, SdkUserMessage,
-    StdinMessage, StdoutMessage, Usage,
+    AccountInfo, AssistantMessageError, KeepAliveMessage, ModelInfo, ModelUsage, PermissionBehavior,
+    PermissionDenial, PermissionMode, PermissionResult, PermissionRule, PermissionUpdate,
+    ResultError, ResultSuccess, SdkAssistantMessage, SdkAuthStatusMessage, SdkControlRequest,
+    SdkControlResponse, SdkMessage, SdkResultMessage, SdkStreamEvent, SdkSystemMessage,
+    SdkToolProgressMessage, SdkUserMessage, SlashCommand, StdinMessage, StdoutMessage, Usage,
 };
 pub use query::Query;
+pub use session::{
+    unstable_v2_create_session, unstable_v2_prompt, unstable_v2_resume_session, Session,
+};
 pub use transport::{ExecutableConfig, ProcessTransport};
 
 use std::sync::Arc;

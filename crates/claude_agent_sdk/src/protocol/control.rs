@@ -61,6 +61,18 @@ pub enum ControlRequestData {
     /// Rewind files to a specific message
     #[serde(rename = "rewind_files")]
     RewindFiles(RewindFilesRequest),
+
+    /// Get supported slash commands
+    #[serde(rename = "supported_commands")]
+    SupportedCommands,
+
+    /// Get supported models
+    #[serde(rename = "supported_models")]
+    SupportedModels,
+
+    /// Get account information
+    #[serde(rename = "account_info")]
+    AccountInfo,
 }
 
 /// Initialize request data.
@@ -290,4 +302,52 @@ impl PermissionResult {
             tool_use_id: None,
         }
     }
+}
+
+// ============================================================================
+// Supporting types for control responses
+// ============================================================================
+
+/// Slash command information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlashCommand {
+    /// Command name (without leading slash).
+    pub name: String,
+    /// Description of what the command does.
+    pub description: String,
+    /// Hint for expected argument format (e.g., "<file>").
+    #[serde(rename = "argumentHint", default)]
+    pub argument_hint: String,
+}
+
+/// Model information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    /// API model identifier.
+    pub value: String,
+    /// Human-readable display name.
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    /// Description of the model's capabilities.
+    pub description: String,
+}
+
+/// Account information for the authenticated user.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AccountInfo {
+    /// Email address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Organization name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization: Option<String>,
+    /// Subscription type (e.g., "pro", "enterprise").
+    #[serde(rename = "subscriptionType", skip_serializing_if = "Option::is_none")]
+    pub subscription_type: Option<String>,
+    /// Token source (e.g., "api_key", "oauth").
+    #[serde(rename = "tokenSource", skip_serializing_if = "Option::is_none")]
+    pub token_source: Option<String>,
+    /// API key source (e.g., "environment", "config").
+    #[serde(rename = "apiKeySource", skip_serializing_if = "Option::is_none")]
+    pub api_key_source: Option<String>,
 }
