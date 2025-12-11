@@ -40,3 +40,6 @@ nostr-chat = { path = "../nostr-chat" }
 
 # Vibe - AI-native development platform
 vibe = { path = "../vibe" }
+
+# Telemetry/logging
+telemetry = { path = "../telemetry" }
