@@ -52,4 +52,8 @@ pub enum FsError {
     /// IO error
     #[error("io error: {0}")]
     Io(String),
+
+    /// Filesystem is read-only
+    #[error("filesystem is read-only")]
+    ReadOnly,
 }
