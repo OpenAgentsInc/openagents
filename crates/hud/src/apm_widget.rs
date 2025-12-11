@@ -11,7 +11,7 @@
 //! - HUD-053: Display comparison with historical averages
 //! - HUD-054: Update APM in real-time as work happens
 
-use gpui_oa::{div, prelude::*, px, Hsla, Render, Window, Context, Entity, SharedString};
+use gpui::{div, prelude::*, px, Hsla, Render, Window, Context, Entity, SharedString};
 use theme_oa::hud;
 
 /// APM velocity level based on actions per minute
@@ -268,7 +268,7 @@ impl Render for ApmWidget {
                         div()
                             .text_color(apm_color)
                             .text_size(px(24.0))
-                            .font_weight(gpui_oa::FontWeight::BOLD)
+                            .font_weight(gpui::FontWeight::BOLD)
                             .child(format!("APM: {}", apm_display))
                     )
                     .child(
@@ -319,7 +319,7 @@ impl Render for ApmWidget {
 }
 
 /// Create an ApmWidget entity
-pub fn apm_widget(cx: &mut gpui_oa::App) -> Entity<ApmWidget> {
+pub fn apm_widget(cx: &mut gpui::App) -> Entity<ApmWidget> {
     cx.new(|cx| ApmWidget::new(cx))
 }
 

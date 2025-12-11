@@ -5,7 +5,7 @@
 //! These tests simulate user interactions with the TestGen UI to validate
 //! the complete user flow from task selection through test generation.
 
-use gpui_oa::TestAppContext;
+use gpui::TestAppContext;
 use crate::tests::fixtures::{TestGenAssertExt, TestGenFixture};
 use crate::tests::fixtures::types::{GenerationStatus, TestCategory, TestGenStatus};
 
@@ -13,7 +13,7 @@ use crate::tests::fixtures::types::{GenerationStatus, TestCategory, TestGenStatu
 // TestGenVisualizer Initial State Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_visualizer_renders(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -21,7 +21,7 @@ fn test_testgen_visualizer_renders(cx: &mut TestAppContext) {
     view.assert_that(cx).has_no_task_selected();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_starts_idle(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -29,7 +29,7 @@ fn test_testgen_starts_idle(cx: &mut TestAppContext) {
     view.assert_that(cx).generation_is_idle();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_task_count_query(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -39,7 +39,7 @@ fn test_testgen_task_count_query(cx: &mut TestAppContext) {
     // count is usize so always >= 0
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_no_tests_initially(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -50,7 +50,7 @@ fn test_testgen_no_tests_initially(cx: &mut TestAppContext) {
     assert_eq!(count, 0, "Should have no generated tests");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_cannot_generate_without_task(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -65,7 +65,7 @@ fn test_testgen_cannot_generate_without_task(cx: &mut TestAppContext) {
 // Task Selection Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_task(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -83,7 +83,7 @@ fn test_testgen_select_task(cx: &mut TestAppContext) {
         .has_selected_task_idx(0);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_task_enables_generate(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -102,7 +102,7 @@ fn test_testgen_select_task_enables_generate(cx: &mut TestAppContext) {
     view.assert_that(cx).can_generate();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_next_task(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -120,7 +120,7 @@ fn test_testgen_select_next_task(cx: &mut TestAppContext) {
     view.assert_that(cx).has_selected_task_idx(1);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_prev_task(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -138,7 +138,7 @@ fn test_testgen_select_prev_task(cx: &mut TestAppContext) {
     view.assert_that(cx).has_selected_task_idx(0);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_task_wraps_around(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -156,7 +156,7 @@ fn test_testgen_select_task_wraps_around(cx: &mut TestAppContext) {
     view.assert_that(cx).has_selected_task_idx(0);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_select_prev_task_wraps_around(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -178,7 +178,7 @@ fn test_testgen_select_prev_task_wraps_around(cx: &mut TestAppContext) {
 // Generation Status Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_generation_status_labels(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -197,7 +197,7 @@ fn test_testgen_generation_status_labels(cx: &mut TestAppContext) {
 // Category Tests (Static - no view needed)
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_category_labels() {
     assert_eq!(TestCategory::AntiCheat.label(), "Anti-Cheat");
     assert_eq!(TestCategory::Existence.label(), "Existence");
@@ -206,7 +206,7 @@ fn test_testgen_category_labels() {
     assert_eq!(TestCategory::Integration.label(), "Integration");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_category_descriptions() {
     assert_eq!(
         TestCategory::AntiCheat.description(),
@@ -224,7 +224,7 @@ fn test_testgen_category_descriptions() {
     );
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_category_icons() {
     assert_eq!(TestCategory::AntiCheat.icon(), "AC");
     assert_eq!(TestCategory::Existence.icon(), "EX");
@@ -237,7 +237,7 @@ fn test_testgen_category_icons() {
 // Status Label Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_status_labels() {
     assert_eq!(TestGenStatus::Idle.label(), "Idle");
     assert_eq!(TestGenStatus::Generating.label(), "Generating");
@@ -249,7 +249,7 @@ fn test_testgen_status_labels() {
 // Selected Test Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_testgen_no_test_selected_initially(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -261,7 +261,7 @@ fn test_testgen_no_test_selected_initially(cx: &mut TestAppContext) {
 // User Flow: Complete Generation Simulation
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_simulate_generation(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -285,7 +285,7 @@ fn test_user_flow_simulate_generation(cx: &mut TestAppContext) {
     assert_eq!(TestGenFixture::total_tests(&view, cx), Some(15));
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_generation_failure(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -303,7 +303,7 @@ fn test_user_flow_generation_failure(cx: &mut TestAppContext) {
 // User Flow: Test List Interaction
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_add_and_view_tests(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -320,7 +320,7 @@ fn test_user_flow_add_and_view_tests(cx: &mut TestAppContext) {
     assert_eq!(test.unwrap().name, "anti_cheat_no_hardcode");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_select_test(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -337,7 +337,7 @@ fn test_user_flow_select_test(cx: &mut TestAppContext) {
     assert_eq!(test.unwrap().category, TestCategory::Correctness);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_clear_tests(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -361,7 +361,7 @@ fn test_user_flow_clear_tests(cx: &mut TestAppContext) {
 // User Flow: Category Filtering
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_filter_by_category(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -382,7 +382,7 @@ fn test_user_flow_filter_by_category(cx: &mut TestAppContext) {
     assert!(co_test.is_some());
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_clear_category_filter(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -407,7 +407,7 @@ fn test_user_flow_clear_category_filter(cx: &mut TestAppContext) {
 // User Flow: Complete End-to-End Scenario
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_user_flow_complete_e2e_scenario(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -474,7 +474,7 @@ fn test_user_flow_complete_e2e_scenario(cx: &mut TestAppContext) {
 // Edge Cases
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_edge_case_select_nonexistent_test(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -487,7 +487,7 @@ fn test_edge_case_select_nonexistent_test(cx: &mut TestAppContext) {
     assert!(test.is_none());
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_edge_case_empty_test_list_filter(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -498,7 +498,7 @@ fn test_edge_case_empty_test_list_filter(cx: &mut TestAppContext) {
     TestGenFixture::filter_by_category(&view, None, cx);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_edge_case_rapid_status_changes(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 
@@ -513,7 +513,7 @@ fn test_edge_case_rapid_status_changes(cx: &mut TestAppContext) {
     view.assert_that(cx).generation_is_complete();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_edge_case_add_tests_incrementally(cx: &mut TestAppContext) {
     let view = TestGenFixture::create(cx);
 

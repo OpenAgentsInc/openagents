@@ -1,7 +1,7 @@
 //! Agent panel component - AI agent task feed and controls
 
-use gpui_oa::*;
-use gpui_oa::prelude::*;
+use gpui::*;
+use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use crate::types::{AgentMode, AgentTask, AgentTaskStatus};

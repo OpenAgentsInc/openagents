@@ -3,7 +3,7 @@
 //! Injects HUD messages directly into GraphView entities,
 //! replacing the HTTP/WebSocket injection from TypeScript tests.
 
-use gpui_oa::{Entity, TestAppContext};
+use gpui::{Entity, TestAppContext};
 use crate::GraphView;
 use std::time::Duration;
 

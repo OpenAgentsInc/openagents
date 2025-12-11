@@ -1,7 +1,7 @@
 //! TestGen Visualizer - Main TestGen view
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use std::sync::Arc;
 use testgen::TestGenContext;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};

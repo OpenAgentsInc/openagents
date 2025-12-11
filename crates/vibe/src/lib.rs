@@ -34,7 +34,7 @@
 //!
 //! ```rust,ignore
 //! use vibe::{VibeConfig, VibeScreen};
-//! use gpui_oa::*;
+//! use gpui::*;
 //!
 //! // Create a new Vibe screen in your GPUI app
 //! let screen = cx.new(|cx| VibeScreen::new(cx));

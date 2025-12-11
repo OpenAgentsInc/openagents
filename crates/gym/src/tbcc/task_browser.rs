@@ -1,7 +1,7 @@
 //! TBCC Task Browser Tab - Browse and run benchmark tasks
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBTask, TBDifficulty};

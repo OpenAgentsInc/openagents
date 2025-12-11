@@ -2,8 +2,8 @@
 //!
 //! Multi-view container with tab navigation. Each tab manages its own layout.
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use std::sync::{Arc, Mutex};
 use atif_store::TrajectoryStore;
 use theme_oa::{bg, border, text, FONT_FAMILY};

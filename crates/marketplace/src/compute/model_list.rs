@@ -1,6 +1,6 @@
 //! Model list component - Table of active models
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 use crate::types::{ActiveModel, ModelStatus};

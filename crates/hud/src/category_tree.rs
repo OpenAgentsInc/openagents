@@ -11,7 +11,7 @@
 //! - HUD-063: Support expand/collapse categories
 //! - HUD-064: Support task selection
 
-use gpui_oa::{
+use gpui::{
     div, prelude::*, px, Hsla, Render, Window, Context, Entity,
     IntoElement, InteractiveElement, StatefulInteractiveElement, SharedString,
 };
@@ -482,7 +482,7 @@ impl CategoryTree {
             .child(
                 div()
                     .text_size(px(14.0))
-                    .font_weight(gpui_oa::FontWeight::MEDIUM)
+                    .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(theme_oa::text::PRIMARY)
                     .child("Categories")
             )
@@ -573,7 +573,7 @@ impl CategoryTree {
                         div()
                             .flex_1()
                             .text_size(px(14.0))
-                            .font_weight(gpui_oa::FontWeight::MEDIUM)
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme_oa::text::PRIMARY)
                             .child(cat_name.to_string())
                     )
@@ -661,7 +661,7 @@ impl CategoryTree {
 }
 
 /// Create a CategoryTree entity
-pub fn category_tree(cx: &mut gpui_oa::App) -> Entity<CategoryTree> {
+pub fn category_tree(cx: &mut gpui::App) -> Entity<CategoryTree> {
     cx.new(|cx| CategoryTree::new(cx))
 }
 

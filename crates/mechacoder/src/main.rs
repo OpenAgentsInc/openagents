@@ -2,7 +2,7 @@
 //!
 //! A focused GPUI application for interacting with Claude Code.
 
-use gpui_oa::{AppContext, Application, KeyBinding, WindowOptions, px, size};
+use gpui::{AppContext, Application, KeyBinding, WindowOptions, px, size};
 use mechacoder::{MechaCoderScreen, Quit, app_menus};
 use ui_oa::text_input::bind_text_input_keys;
 
@@ -50,11 +50,11 @@ fn main() {
 
         // Open main window
         let window_options = WindowOptions {
-            window_bounds: Some(gpui_oa::WindowBounds::Windowed(gpui_oa::Bounds {
-                origin: gpui_oa::Point::default(),
+            window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds {
+                origin: gpui::Point::default(),
                 size: size(px(1200.0), px(800.0)),
             })),
-            titlebar: Some(gpui_oa::TitlebarOptions {
+            titlebar: Some(gpui::TitlebarOptions {
                 title: Some("MechaCoder".into()),
                 appears_transparent: true,
                 ..Default::default()

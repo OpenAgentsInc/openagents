@@ -1,6 +1,6 @@
 //! Compute Market view - Main view for the Compute tab
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::bg;
 
 use crate::types::{ActiveModel, TimeRange, EarningsDataPoint};

@@ -1,7 +1,7 @@
 //! SQL editor component - Execute SQL queries
 
-use gpui_oa::*;
-use gpui_oa::prelude::*;
+use gpui::*;
+use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use crate::types::DatabaseRow;

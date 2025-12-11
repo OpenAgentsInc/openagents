@@ -2,7 +2,7 @@
 //!
 //! Tests for the TerminalBench Command Center components.
 
-use gpui_oa::TestAppContext;
+use gpui::TestAppContext;
 use crate::tests::fixtures::{TBCCFixture, TBCCAssertExt};
 use crate::tests::fixtures::types::TBCCTab;
 
@@ -10,7 +10,7 @@ use crate::tests::fixtures::types::TBCCTab;
 // TBCCScreen Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_screen_renders(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -18,7 +18,7 @@ fn test_tbcc_screen_renders(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_dashboard();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_screen_default_tab_is_dashboard(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -26,7 +26,7 @@ fn test_tbcc_screen_default_tab_is_dashboard(cx: &mut TestAppContext) {
     assert_eq!(tab, TBCCTab::Dashboard, "Default tab should be Dashboard");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_screen_tab_switching(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -50,7 +50,7 @@ fn test_tbcc_screen_tab_switching(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_dashboard();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_screen_switch_to_all_tabs(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -65,7 +65,7 @@ fn test_tbcc_screen_switch_to_all_tabs(cx: &mut TestAppContext) {
 // Dashboard Tab Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_dashboard_tab(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -77,7 +77,7 @@ fn test_tbcc_dashboard_tab(cx: &mut TestAppContext) {
 // Tasks Tab Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_tasks_tab(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -89,7 +89,7 @@ fn test_tbcc_tasks_tab(cx: &mut TestAppContext) {
 // Runs Tab Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_runs_tab(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -101,7 +101,7 @@ fn test_tbcc_runs_tab(cx: &mut TestAppContext) {
 // Settings Tab Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_settings_tab(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 
@@ -113,7 +113,7 @@ fn test_tbcc_settings_tab(cx: &mut TestAppContext) {
 // Tab Persistence Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_tbcc_tab_state_persists(cx: &mut TestAppContext) {
     let view = TBCCFixture::create(cx);
 

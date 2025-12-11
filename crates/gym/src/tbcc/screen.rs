@@ -1,7 +1,7 @@
 //! TBCC Screen - Main container with 4 sub-tabs and data service integration
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::TBCCTab;

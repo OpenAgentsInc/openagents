@@ -1,7 +1,7 @@
 //! Agent card component - Individual agent listing in the grid
 //! Bloomberg-style: dense, tabular, no emojis, sharp edges
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, accent, status, FONT_FAMILY};
 
 use crate::types::{AgentListing, TrustTier};

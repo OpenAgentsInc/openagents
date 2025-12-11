@@ -2,7 +2,7 @@
 //!
 //! Tests for the HillClimber real-time visualization component.
 
-use gpui_oa::TestAppContext;
+use gpui::TestAppContext;
 use crate::tests::fixtures::{HillClimberFixture, HillClimberAssertExt};
 use crate::tests::fixtures::types::{HCSessionStatus, HCMode};
 
@@ -10,7 +10,7 @@ use crate::tests::fixtures::types::{HCSessionStatus, HCMode};
 // HillClimberMonitor Smoke Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_monitor_renders(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -18,14 +18,14 @@ fn test_hillclimber_monitor_renders(cx: &mut TestAppContext) {
     view.assert_that(cx).has_session();
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_has_sample_session(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
     assert!(HillClimberFixture::has_session(&view, cx), "Should have sample session");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_sample_session_status(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -39,7 +39,7 @@ fn test_hillclimber_sample_session_status(cx: &mut TestAppContext) {
 // Session State Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_session_mode(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -48,7 +48,7 @@ fn test_hillclimber_session_mode(cx: &mut TestAppContext) {
         .has_mode(HCMode::Standard);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_session_turn_progress(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -59,7 +59,7 @@ fn test_hillclimber_session_turn_progress(cx: &mut TestAppContext) {
     assert_eq!(max_turns, Some(10), "Max turns should be 10 for Standard mode");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_session_test_results(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -69,7 +69,7 @@ fn test_hillclimber_session_test_results(cx: &mut TestAppContext) {
         .has_tests_total(12);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_session_pass_rate(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -81,7 +81,7 @@ fn test_hillclimber_session_pass_rate(cx: &mut TestAppContext) {
     assert!(rate > 58.0 && rate < 59.0, "Pass rate should be ~58.33%, got {}", rate);
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_session_task_info(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -96,7 +96,7 @@ fn test_hillclimber_session_task_info(cx: &mut TestAppContext) {
 // Panel State Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_left_panel_starts_expanded(cx: &mut TestAppContext) {
     let view = HillClimberFixture::create(cx);
 
@@ -108,14 +108,14 @@ fn test_hillclimber_left_panel_starts_expanded(cx: &mut TestAppContext) {
 // Mode Label Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_mode_labels() {
     assert_eq!(HCMode::Quick.label(), "Quick (3)");
     assert_eq!(HCMode::Standard.label(), "Standard (10)");
     assert_eq!(HCMode::Full.label(), "Full (25)");
 }
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_mode_max_turns() {
     assert_eq!(HCMode::Quick.max_turns(), 3);
     assert_eq!(HCMode::Standard.max_turns(), 10);
@@ -126,7 +126,7 @@ fn test_hillclimber_mode_max_turns() {
 // Status Label Tests
 // ============================================================================
 
-#[gpui_oa::test]
+#[gpui::test]
 fn test_hillclimber_status_labels() {
     assert_eq!(HCSessionStatus::Idle.label(), "Idle");
     assert_eq!(HCSessionStatus::Running.label(), "Running");

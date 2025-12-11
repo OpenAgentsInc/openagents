@@ -2,7 +2,7 @@
 //!
 //! Page Object Model fixture for testing the HillClimber Monitor component.
 
-use gpui_oa::{Entity, TestAppContext};
+use gpui::{Entity, TestAppContext};
 use crate::hillclimber::monitor::{HillClimberMonitor, HCSession, HCSessionStatus, HCMode};
 
 /// Page Object Model fixture for HillClimberMonitor

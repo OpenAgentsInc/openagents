@@ -1,6 +1,6 @@
 //! GPUI actions for MechaCoder.
 
-use gpui_oa::actions;
+use gpui::actions;
 
 actions!(
     mechacoder,

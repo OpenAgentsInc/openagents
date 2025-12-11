@@ -1,6 +1,6 @@
 //! Main Marketplace screen - Orchestrates all components
 
-use gpui_oa::*;
+use gpui::*;
 use std::sync::Arc;
 use theme_oa::{bg, border, text, FONT_FAMILY};
 

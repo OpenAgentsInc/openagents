@@ -7,7 +7,7 @@
 //! - Connection rendering with bezier curves
 //! - Animation loop for smooth physics updates
 
-use gpui_oa::{
+use gpui::{
     App, Context, Entity, EventEmitter, Focusable, FocusHandle, Hsla,
     MouseButton, MouseMoveEvent, MouseUpEvent, PathBuilder, Render, ScrollWheelEvent, Window,
     canvas, div, point, prelude::*, px,
@@ -915,7 +915,7 @@ impl GraphView {
 impl EventEmitter<GraphEvent> for GraphView {}
 
 impl Focusable for GraphView {
-    fn focus_handle(&self, _cx: &gpui_oa::App) -> FocusHandle {
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
@@ -1178,7 +1178,7 @@ impl Render for GraphView {
                 }
                 cx.notify();
             }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui_oa::MouseDownEvent, _, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 let pos_x: f32 = event.position.x.into();
                 let pos_y: f32 = event.position.y.into();
                 let shift_held = event.modifiers.shift;
