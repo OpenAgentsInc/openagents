@@ -263,6 +263,22 @@ cargo check -p gym    # Compiles with warnings only
 cargo check -p hud    # Full build succeeds
 ```
 
+Integration tests (4 passing):
+```bash
+cargo test -p gym --test tb2_integration -- --include-ignored --nocapture
+
+test test_tb2_task_discovery ... ok     # Discovered 89 TB2 tasks
+test test_load_regex_log_task ... ok    # Loaded task config
+test test_docker_available ... ok       # Docker is available
+test test_pull_regex_log_image ... ok   # Image exists locally
+```
+
+**Note:** TB2 images are not published to Docker Hub. Build locally before running:
+```bash
+cd ~/code/terminal-bench-2/regex-log/environment
+docker build -t alexgshaw/regex-log:20251031 .
+```
+
 ## Usage
 
 1. Start Gym: `cargo run -p hud`
