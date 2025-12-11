@@ -1,14 +1,12 @@
 //! TestGen Wrapper - Wraps task instructions with TestGen protocol
 //!
-//! This module wraps task instructions with the TestGen protocol, requiring
-//! Claude to DESCRIBE → MAP → WRITE TESTS → ITERATE before submitting solutions.
+//! This module wraps task instructions with the TestGen protocol v2:
+//! ANALYZE → EXPAND → REVIEW (loop) → IMPLEMENT → ITERATE
 //!
-//! The TestGen protocol ensures Claude:
-//! 1. Understands requirements before implementing
-//! 2. Maps all entities to all constraints (prevents coverage gaps)
-//! 3. Generates comprehensive tests from the description alone
-//! 4. Iterates until self-generated tests pass
-//! 5. Never reads the official benchmark tests (anti-cheating)
+//! Key improvements in v2:
+//! - Deterministic test scaffold generation via Python script
+//! - Fresh-context subagent review loops until thorough
+//! - Lean protocol (~70 lines vs ~300 lines before)
 
 /// TestGen instruction wrapper
 pub struct TestGenWrapper;
@@ -17,8 +15,8 @@ impl TestGenWrapper {
     /// Wrap a task instruction with the TestGen protocol
     ///
     /// This prepends and appends TestGen workflow requirements to the original
-    /// task instruction, ensuring Claude follows the DESCRIBE → MAP → TESTS → ITERATE
-    /// workflow before submitting a solution.
+    /// task instruction, ensuring Claude follows the ANALYZE → EXPAND → REVIEW
+    /// → IMPLEMENT → ITERATE workflow before submitting a solution.
     pub fn wrap_instruction(original: &str) -> String {
         format!(
             r#"{preamble}
@@ -27,108 +25,91 @@ impl TestGenWrapper {
 
 {original}
 
-## REQUIRED WORKFLOW: TestGen Protocol
+## REQUIRED WORKFLOW: TestGen Protocol v2
 
-You MUST follow this EXACT workflow before submitting your solution:
+Follow this EXACT workflow before submitting your solution:
 
-### Step 1: DESCRIBE (Output this section first)
+### Step 1: ANALYZE (Output this section first)
 
-Analyze the task and output a structured description:
-
-```markdown
-### TASK ANALYSIS
-**Goal**: [One sentence summary]
-**Output**: [What file/format to produce]
-**Constraints**: [List ALL constraints from the description]
-
-### ACCEPTANCE CRITERIA
-1. [Testable criterion 1]
-2. [Testable criterion 2]
-...
-```
-
-### Step 2: MAP ENTITIES & CONSTRAINTS (Required before writing tests)
-
-Create a coverage matrix to ensure NO constraint is missed for ANY entity:
+Output a structured analysis in THIS EXACT FORMAT:
 
 ```markdown
-### ENTITIES IDENTIFIED
-List every distinct thing being validated/matched/processed:
-1. [Entity 1] - e.g., "dates", "IPv4 addresses", "usernames"
-2. [Entity 2]
-...
+### ENTITIES
+- entity_name: description, format, validation_rules
 
-### CONSTRAINTS IDENTIFIED
-List every rule from the description (look for "must", "should", "ensure", "valid", "not"):
-1. [Constraint 1] - e.g., "must be in format X", "not preceded by Y"
-2. [Constraint 2]
-...
+### CONSTRAINTS
+- constraint_id: description, applies_to: [entity1, entity2]
 
-### CONSTRAINT-ENTITY MATRIX
-| Constraint | Entity 1 | Entity 2 | ... |
-|------------|----------|----------|-----|
-| Constraint 1 | ✓ or - | ✓ or - | ... |
-| Constraint 2 | ✓ or - | ✓ or - | ... |
-
-### REQUIRED TESTS (one per ✓ cell)
-- test_entity1_constraint1
-- test_entity2_constraint1 (if ✓)
-- test_entity1_constraint2
-...
+### MATRIX
+| Constraint | Entity1 | Entity2 |
+|------------|---------|---------|
+| c1         | ✓       | ✓       |
 ```
 
-**CRITICAL PATTERN**: When the description says "A and B must [constraint]", this means the constraint applies to BOTH A and B. You MUST write tests for BOTH.
+### Step 2: EXPAND (Run deterministic script)
 
-Example: "ensure usernames and emails are properly validated"
-- ✓ usernames → need test for username validation
-- ✓ emails → need test for email validation
-If you only test one entity, your solution may handle the other incorrectly!
+Run the scaffold generator:
 
-### Step 3: WRITE TESTS (Create /app/testgen_tests.py)
-
-Create pytest tests for EACH ✓ cell in your matrix:
-
-```python
-"""TestGen-generated tests - derived from task description ONLY."""
-import pytest
-import os
-
-def test_solution_exists():
-    """Required output file was created."""
-    assert os.path.exists("/app/YOUR_OUTPUT_FILE")
-
-# One test per ✓ cell in the CONSTRAINT-ENTITY MATRIX
-def test_entity1_constraint1():
-    """[What this tests - from matrix]"""
-    pass
-
-def test_entity2_constraint1():
-    """[What this tests - from matrix]"""
-    pass
-
-# ... continue for ALL ✓ cells ...
+```bash
+python3 .claude/skills/testgen-protocol/expand_tests.py << 'EOF'
+[paste your MATRIX table from Step 1]
+EOF
 ```
 
-### Step 4: ITERATE (Loop until tests pass)
+Save output to `/app/testgen_tests.py`. Update `SOLUTION_PATH` for your task.
+
+### Step 3: REVIEW with Fresh Subagent (Loop until approved)
+
+Use the **Task tool** to spawn a fresh-context reviewer:
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  You are a TEST COVERAGE REVIEWER with completely fresh context.
+
+  TASK DESCRIPTION:
+  [paste original task]
+
+  ASSUMPTIONS:
+  [paste ENTITIES/CONSTRAINTS/MATRIX]
+
+  GENERATED TESTS:
+  [paste test scaffold]
+
+  Review for:
+  1. Missing entity-constraint combinations
+  2. Missing edge cases implied by the task
+  3. Overly weak assertions
+
+  Output ONLY this JSON:
+  {{"thorough_enough": true/false, "gaps": [...], "suggestions": [...]}}
+```
+
+**If `thorough_enough=false`:** Address gaps, update tests, spawn fresh reviewer. Max 5 iterations.
+
+### Step 4: IMPLEMENT
+
+Fill in all `# TODO: Implement test logic` placeholders with actual assertions.
+
+### Step 5: ITERATE
 
 ```
 1. Write initial solution
 2. Run: pytest /app/testgen_tests.py -v
-3. If FAIL: fix solution, go to step 2
-4. If PASS: you're done
+3. If FAIL: fix solution (not tests!), go to 2
+4. If PASS: done
 ```
 
 ## CRITICAL RULES
 
 - **NEVER read /tests/*** - Those are for final verification only
 - **NEVER read test_outputs.py** - That's benchmark test data (cheating!)
-- **Derive tests from description ONLY** - Ask: "Could I write this test knowing ONLY the description?"
-- **Fix the solution, not the tests** - If tests fail, the solution is wrong
-- **Every ✓ in the matrix MUST have a test** - This prevents coverage gaps
+- **Derive tests from description ONLY**
+- **Fix the solution, not the tests**
 
 ## START NOW
 
-Begin with Step 1: DESCRIBE. Then Step 2: MAP. Output both before writing any code.
+Begin with Step 1: ANALYZE. Output ENTITIES, CONSTRAINTS, and MATRIX before anything else.
 "#,
             preamble = TESTGEN_PREAMBLE,
             original = original
@@ -143,20 +124,16 @@ Begin with Step 1: DESCRIBE. Then Step 2: MAP. Output both before writing any co
 }
 
 /// Preamble added to the beginning of every TestGen-wrapped instruction
-const TESTGEN_PREAMBLE: &str = r#"# TestGen Protocol Active
+const TESTGEN_PREAMBLE: &str = r#"# TestGen Protocol Active (v2)
 
-This task requires Test-Driven Development. You MUST generate your own tests
-from the task description before writing the solution.
+This task requires Test-Driven Development with subagent review loops.
 
-This ensures you UNDERSTAND the requirements before implementing. If your
-self-generated tests are comprehensive, they will cover what the benchmark
-tests check - WITHOUT you needing to see the benchmark tests.
+The workflow is: ANALYZE → EXPAND → REVIEW (loop) → IMPLEMENT → ITERATE
 
-The workflow is: DESCRIBE → MAP ENTITIES & CONSTRAINTS → WRITE TESTS → ITERATE → SOLUTION
-
-CRITICAL: The MAP step prevents a common failure mode where constraints that
-apply to MULTIPLE entities only get tested for ONE entity. Always build the
-constraint-entity matrix before writing tests.
+Key features of v2:
+1. Deterministic test scaffold generation (Python script)
+2. Fresh-context subagent reviews (Task tool)
+3. Loop until reviewer says "thorough_enough"
 "#;
 
 #[cfg(test)]
@@ -165,16 +142,16 @@ mod tests {
 
     #[test]
     fn test_wrap_instruction() {
-        let original = "Write a regex to match dates.";
+        let original = "Write a program to validate input.";
         let wrapped = TestGenWrapper::wrap_instruction(original);
 
         assert!(wrapped.contains("TestGen Protocol Active"));
-        assert!(wrapped.contains("Write a regex to match dates."));
-        assert!(wrapped.contains("DESCRIBE"));
-        assert!(wrapped.contains("MAP ENTITIES & CONSTRAINTS"));
-        assert!(wrapped.contains("CONSTRAINT-ENTITY MATRIX"));
-        assert!(wrapped.contains("WRITE TESTS"));
-        assert!(wrapped.contains("ITERATE"));
+        assert!(wrapped.contains("Write a program to validate input."));
+        assert!(wrapped.contains("ANALYZE"));
+        assert!(wrapped.contains("EXPAND"));
+        assert!(wrapped.contains("REVIEW with Fresh Subagent"));
+        assert!(wrapped.contains("Task tool"));
+        assert!(wrapped.contains("thorough_enough"));
         assert!(wrapped.contains("NEVER read /tests/*"));
     }
 
