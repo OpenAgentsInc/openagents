@@ -39,6 +39,8 @@ members = [
     "crates/marketplace",
     "crates/reflexion",
     "crates/guardrails",
+    "crates/sessions",
+    "crates/healer",
     "crates/oanix",
     "crates/vibe",
 ]
