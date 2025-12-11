@@ -3,7 +3,7 @@
 //! A focused GPUI application for interacting with Claude Code.
 
 use gpui::{AppContext, Application, KeyBinding, WindowOptions, px, size};
-use mechacoder::{app_menus, MechaCoderScreen, Quit};
+use mechacoder::{MechaCoderScreen, Quit, app_menus};
 use ui::text_input::bind_text_input_keys;
 
 fn main() {

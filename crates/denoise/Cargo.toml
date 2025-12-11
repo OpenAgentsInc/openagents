@@ -9,12 +9,7 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
-candle-core = { version = "0.9.1", git ="https://github.com/zed-industries/candle", branch = "9.1-patched" }
-candle-onnx = { version = "0.9.1", git ="https://github.com/zed-industries/candle", branch = "9.1-patched" }
+# Stub implementation - no heavy dependencies needed
 log.workspace = true
-
 rodio = { workspace = true, features = ["wav_output"] }
-
-rustfft = { version = "6.2.0", features = ["avx"] }
-realfft = "3.4.0"
 thiserror.workspace = true
