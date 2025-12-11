@@ -765,7 +765,570 @@ fn test_task_failure_handling() {
 }
 
 // ============================================================================
-// Pattern 13: NostrFs capability service (requires nostr feature)
+// Pattern 13: WsFs capability service
+// ============================================================================
+
+mod ws_tests {
+    use super::*;
+    use oanix::WsFs;
+
+    /// Tests WsFs as a capability in an agent namespace
+    #[test]
+    fn test_ws_capability_in_namespace() {
+        let ws = WsFs::new();
+        let task = MapFs::builder()
+            .file("/spec.json", r#"{"task": "connect to relay"}"#)
+            .build();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/cap/ws", ws)
+            .build();
+
+        // Agent reads task
+        let (task_svc, path) = ns.resolve("/task/spec.json").unwrap();
+        let spec = read_file(task_svc, path);
+        assert!(spec.contains("connect to relay"));
+
+        // Agent checks WebSocket service status
+        let (ws_svc, _) = ns.resolve("/cap/ws").unwrap();
+        let status = read_file(ws_svc, "/status");
+        assert!(status.contains("connection_count"));
+        assert!(status.contains("max_connections"));
+    }
+
+    /// Tests WebSocket connection lifecycle via file interface
+    #[test]
+    fn test_ws_connection_lifecycle() {
+        let ws = WsFs::new();
+
+        // 1. Open a connection via control file
+        let connect_json = r#"{"action": "connect", "url": "wss://relay.example.com"}"#;
+        let mut handle = ws.open("/control", OpenFlags::write_only()).unwrap();
+        handle.write(connect_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 2. Verify connection exists
+        let entries = ws.readdir("/conns").unwrap();
+        assert_eq!(entries.len(), 1);
+        let conn_id = &entries[0].name;
+
+        // 3. Read connection status
+        let conn_status = read_file(&ws, &format!("/conns/{}/status", conn_id));
+        assert!(conn_status.contains("connecting") || conn_status.contains("open"));
+
+        // 4. Read connection URL
+        let conn_url = read_file(&ws, &format!("/conns/{}/url", conn_id));
+        assert!(conn_url.contains("relay.example.com"));
+
+        // 5. Simulate connection becoming open
+        ws.set_connected(conn_id).unwrap();
+        let conn_status = read_file(&ws, &format!("/conns/{}/status", conn_id));
+        assert!(conn_status.contains("open"));
+
+        // 6. Close connection via control file
+        let close_json = format!(r#"{{"action": "close", "id": "{}"}}"#, conn_id);
+        let mut handle = ws.open("/control", OpenFlags::write_only()).unwrap();
+        handle.write(close_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 7. Connection should be in closing/closed state
+        let conn_status = read_file(&ws, &format!("/conns/{}/status", conn_id));
+        assert!(conn_status.contains("closing") || conn_status.contains("closed"));
+    }
+
+    /// Tests sending and receiving messages via file interface
+    #[test]
+    fn test_ws_message_exchange() {
+        let ws = WsFs::new();
+
+        // Open connection programmatically
+        let conn_id = ws.open_connection("wss://relay.example.com").unwrap();
+        ws.set_connected(&conn_id).unwrap();
+
+        // Send message via /out file
+        let out_path = format!("/conns/{}/out", conn_id);
+        write_file(&ws, &out_path, r#"["EVENT", {"content": "hello"}]"#);
+
+        // Check pending outgoing messages
+        let pending = ws.drain_outbox(&conn_id).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert!(String::from_utf8_lossy(&pending[0]).contains("hello"));
+
+        // Simulate receiving a message (external connector would do this)
+        ws.receive_message(&conn_id, r#"["OK", "event-id-123", true]"#.as_bytes().to_vec())
+            .unwrap();
+
+        // Read incoming messages via /in file
+        let in_path = format!("/conns/{}/in", conn_id);
+        let messages = read_file(&ws, &in_path);
+        assert!(messages.contains("OK"));
+        assert!(messages.contains("event-id-123"));
+    }
+
+    /// Tests agent workflow with WebSocket capability
+    #[test]
+    fn test_ws_agent_workflow() {
+        // Setup agent environment with WebSocket capability
+        let task = TaskFs::new(
+            TaskSpec {
+                id: "ws-task-001".to_string(),
+                task_type: "nostr-relay".to_string(),
+                description: "Connect to relay and publish event".to_string(),
+                input: serde_json::json!({"relay": "wss://relay.damus.io"}),
+            },
+            TaskMeta::default(),
+        );
+        let logs = LogsFs::new();
+        let ws = WsFs::new();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/logs", logs)
+            .mount("/cap/ws", ws)
+            .build();
+
+        // === Agent Workflow ===
+
+        // 1. Read task
+        let (task_svc, _) = ns.resolve("/task").unwrap();
+        let spec = read_file(task_svc, "/spec.json");
+        let task_input: serde_json::Value = serde_json::from_str(&spec).unwrap();
+        let relay = task_input["input"]["relay"].as_str().unwrap();
+        assert_eq!(relay, "wss://relay.damus.io");
+
+        // 2. Open WebSocket connection
+        let (ws_svc, _) = ns.resolve("/cap/ws").unwrap();
+        let connect_json = format!(r#"{{"action": "connect", "url": "{}"}}"#, relay);
+        let mut handle = ws_svc.open("/control", OpenFlags::write_only()).unwrap();
+        handle.write(connect_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 3. Verify connection opened
+        let entries = ws_svc.readdir("/conns").unwrap();
+        assert_eq!(entries.len(), 1);
+        let conn_id = &entries[0].name;
+
+        // 4. Log the action
+        let (logs_svc, _) = ns.resolve("/logs").unwrap();
+        let log_msg = format!("Connected to {} with id {}\n", relay, conn_id);
+        let mut handle = logs_svc
+            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .unwrap();
+        handle.write(log_msg.as_bytes()).unwrap();
+
+        // 5. Send a message (would be a Nostr event in real use)
+        let out_path = format!("/conns/{}/out", conn_id);
+        let mut handle = ws_svc.open(&out_path, OpenFlags::write_only()).unwrap();
+        handle.write(r#"["REQ", "sub-1", {}]"#.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 6. Write result
+        write_file(task_svc, "/result.json", r#"{"connected": true}"#);
+
+        // === Verify ===
+        let result = read_file(task_svc, "/result.json");
+        assert!(result.contains("\"connected\": true"));
+
+        let log = read_file(logs_svc, "/stdout.log");
+        assert!(log.contains("Connected to"));
+    }
+}
+
+// ============================================================================
+// Pattern 14: HttpFs capability service
+// ============================================================================
+
+mod http_tests {
+    use super::*;
+    use oanix::{HttpFs, HttpMethod, HttpRequest, HttpResponse, RequestState};
+    use std::collections::HashMap;
+
+    /// Tests HttpFs as a capability in an agent namespace
+    #[test]
+    fn test_http_capability_in_namespace() {
+        let http = HttpFs::new();
+        let task = MapFs::builder()
+            .file("/spec.json", r#"{"task": "fetch API data"}"#)
+            .build();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/cap/http", http)
+            .build();
+
+        // Agent reads task
+        let (task_svc, path) = ns.resolve("/task/spec.json").unwrap();
+        let spec = read_file(task_svc, path);
+        assert!(spec.contains("fetch API data"));
+
+        // Agent checks HTTP service status
+        let (http_svc, _) = ns.resolve("/cap/http").unwrap();
+        let status = read_file(http_svc, "/status");
+        assert!(status.contains("pending_count"));
+        assert!(status.contains("completed_count"));
+    }
+
+    /// Tests HTTP request/response lifecycle
+    #[test]
+    fn test_http_request_response_lifecycle() {
+        let http = HttpFs::new();
+
+        // 1. Submit request via file interface
+        let request_json = r#"{
+            "method": "GET",
+            "url": "https://api.example.com/data",
+            "headers": {"Authorization": "Bearer token123"}
+        }"#;
+        write_file(&http, "/request", request_json);
+
+        // 2. Verify request is pending
+        let entries = http.readdir("/pending").unwrap();
+        assert_eq!(entries.len(), 1);
+        let req_id = entries[0].name.trim_end_matches(".json");
+
+        // 3. Read pending request details
+        let pending_content = read_file(&http, &format!("/pending/{}.json", req_id));
+        assert!(pending_content.contains("api.example.com"));
+        assert!(pending_content.contains("Bearer token123"));
+
+        // 4. Simulate executor completing the request
+        http.complete_request(HttpResponse {
+            request_id: req_id.to_string(),
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: HashMap::new(),
+            body: r#"{"users": [{"name": "Alice"}]}"#.to_string(),
+            duration_ms: 150,
+            completed_at: 1702300000,
+        });
+
+        // 5. Request no longer pending
+        let entries = http.readdir("/pending").unwrap();
+        assert!(entries.is_empty());
+
+        // 6. Response available
+        let response = read_file(&http, &format!("/responses/{}.json", req_id));
+        assert!(response.contains("\"status\": 200"));
+        assert!(response.contains("Alice"));
+    }
+
+    /// Tests HTTP error handling
+    #[test]
+    fn test_http_error_handling() {
+        let http = HttpFs::new();
+
+        // Submit request
+        let request = HttpRequest {
+            id: String::new(),
+            method: HttpMethod::Get,
+            url: "https://invalid.example.com".to_string(),
+            headers: HashMap::new(),
+            body: None,
+            timeout_secs: None,
+            created_at: 0,
+        };
+        let req_id = http.submit_request(request);
+
+        // Simulate failure
+        http.fail_request(&req_id, "DNS resolution failed");
+
+        // Check state
+        assert_eq!(http.get_state(&req_id), Some(RequestState::Failed));
+
+        // Read failure via file interface
+        let response = read_file(&http, &format!("/responses/{}.json", req_id));
+        assert!(response.contains("DNS resolution failed"));
+        assert!(response.contains("\"status\": \"failed\""));
+    }
+
+    /// Tests complete agent workflow with HTTP capability
+    #[test]
+    fn test_http_agent_workflow() {
+        // Setup agent environment with HTTP capability
+        let task = TaskFs::new(
+            TaskSpec {
+                id: "http-task-001".to_string(),
+                task_type: "api-fetch".to_string(),
+                description: "Fetch user data from API".to_string(),
+                input: serde_json::json!({
+                    "endpoint": "https://api.example.com/users",
+                    "auth_token": "secret123"
+                }),
+            },
+            TaskMeta::default(),
+        );
+        let logs = LogsFs::new();
+        let http = HttpFs::new();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/logs", logs)
+            .mount("/cap/http", http)
+            .build();
+
+        // === Agent Workflow ===
+
+        // 1. Read task
+        let (task_svc, _) = ns.resolve("/task").unwrap();
+        let spec = read_file(task_svc, "/spec.json");
+        let task_input: serde_json::Value = serde_json::from_str(&spec).unwrap();
+        let endpoint = task_input["input"]["endpoint"].as_str().unwrap();
+        let auth_token = task_input["input"]["auth_token"].as_str().unwrap();
+
+        // 2. Submit HTTP request
+        let (http_svc, _) = ns.resolve("/cap/http").unwrap();
+        let request_json = format!(
+            r#"{{"method": "GET", "url": "{}", "headers": {{"Authorization": "Bearer {}"}}}}"#,
+            endpoint, auth_token
+        );
+        write_file(http_svc, "/request", &request_json);
+
+        // 3. Get request ID from pending
+        let entries = http_svc.readdir("/pending").unwrap();
+        assert_eq!(entries.len(), 1);
+        let req_id = entries[0].name.trim_end_matches(".json").to_string();
+
+        // 4. Log the request
+        let (logs_svc, _) = ns.resolve("/logs").unwrap();
+        let log_msg = format!("Submitted HTTP request {} to {}\n", req_id, endpoint);
+        let mut handle = logs_svc
+            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .unwrap();
+        handle.write(log_msg.as_bytes()).unwrap();
+
+        // 5. Simulate external executor completing request
+        // (In real use, this would be done by an HTTP executor task)
+        {
+            let (http_svc, _) = ns.resolve("/cap/http").unwrap();
+            // Downcast to HttpFs to call complete_request
+            // In real code, the executor would have direct access
+            let http: &HttpFs = unsafe { &*(http_svc as *const dyn FileService as *const HttpFs) };
+            http.complete_request(HttpResponse {
+                request_id: req_id.clone(),
+                status: 200,
+                status_text: "OK".to_string(),
+                headers: HashMap::new(),
+                body: r#"{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]}"#
+                    .to_string(),
+                duration_ms: 250,
+                completed_at: 1702300000,
+            });
+        }
+
+        // 6. Read response
+        let response = read_file(http_svc, &format!("/responses/{}.json", req_id));
+        assert!(response.contains("Alice"));
+        assert!(response.contains("Bob"));
+
+        // 7. Write result
+        write_file(task_svc, "/result.json", r#"{"user_count": 2}"#);
+
+        // === Verify ===
+        let result = read_file(task_svc, "/result.json");
+        assert!(result.contains("\"user_count\": 2"));
+
+        let log = read_file(logs_svc, "/stdout.log");
+        assert!(log.contains("Submitted HTTP request"));
+    }
+
+    /// Tests multiple concurrent requests
+    #[test]
+    fn test_http_multiple_requests() {
+        let http = HttpFs::new();
+
+        // Submit multiple requests
+        write_file(&http, "/request", r#"{"method": "GET", "url": "https://api.example.com/a"}"#);
+        write_file(&http, "/request", r#"{"method": "GET", "url": "https://api.example.com/b"}"#);
+        write_file(&http, "/request", r#"{"method": "POST", "url": "https://api.example.com/c", "body": "{\"data\": 42}"}"#);
+
+        // All should be pending
+        let entries = http.readdir("/pending").unwrap();
+        assert_eq!(entries.len(), 3);
+
+        // Status should reflect counts
+        let status = read_file(&http, "/status");
+        assert!(status.contains("\"pending_count\": 3"));
+
+        // Complete one
+        let req_id = entries[0].name.trim_end_matches(".json");
+        http.complete_request(HttpResponse {
+            request_id: req_id.to_string(),
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: HashMap::new(),
+            body: "response a".to_string(),
+            duration_ms: 100,
+            completed_at: 1702300000,
+        });
+
+        // Now 2 pending, 1 completed
+        let status = read_file(&http, "/status");
+        assert!(status.contains("\"pending_count\": 2"));
+        assert!(status.contains("\"completed_count\": 1"));
+    }
+}
+
+// ============================================================================
+// Pattern 15: Complete namespace with all capabilities
+// ============================================================================
+
+mod combined_capabilities_tests {
+    use super::*;
+    use oanix::{HttpFs, WsFs};
+    use std::collections::HashMap;
+
+    /// Tests an agent environment with all capability services
+    #[test]
+    fn test_full_capability_namespace() {
+        // Task
+        let task = TaskFs::new(
+            TaskSpec {
+                id: "full-cap-task".to_string(),
+                task_type: "integration".to_string(),
+                description: "Test all capabilities".to_string(),
+                input: serde_json::json!({}),
+            },
+            TaskMeta::default(),
+        );
+
+        // Logs
+        let logs = LogsFs::new();
+
+        // Workspace
+        let workspace = MemFs::new();
+
+        // Capabilities
+        let ws = WsFs::new();
+        let http = HttpFs::new();
+
+        // Build namespace
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/logs", logs)
+            .mount("/workspace", workspace)
+            .mount("/cap/ws", ws)
+            .mount("/cap/http", http)
+            .mount("/tmp", MemFs::new())
+            .build();
+
+        // Verify all mounts exist
+        let mounts: Vec<&str> = ns.mounts().iter().map(|m| m.path.as_str()).collect();
+        assert!(mounts.contains(&"/task"));
+        assert!(mounts.contains(&"/logs"));
+        assert!(mounts.contains(&"/workspace"));
+        assert!(mounts.contains(&"/cap/ws"));
+        assert!(mounts.contains(&"/cap/http"));
+        assert!(mounts.contains(&"/tmp"));
+
+        // Access each capability
+        let (task_svc, _) = ns.resolve("/task/spec.json").unwrap();
+        assert!(read_file(task_svc, "/spec.json").contains("integration"));
+
+        let (ws_svc, _) = ns.resolve("/cap/ws/status").unwrap();
+        assert!(read_file(ws_svc, "/status").contains("connection_count"));
+
+        let (http_svc, _) = ns.resolve("/cap/http/status").unwrap();
+        assert!(read_file(http_svc, "/status").contains("pending_count"));
+    }
+
+    /// Tests a multi-step workflow using multiple capabilities
+    #[test]
+    fn test_multi_capability_workflow() {
+        let task = TaskFs::new(
+            TaskSpec {
+                id: "multi-cap-001".to_string(),
+                task_type: "data-aggregation".to_string(),
+                description: "Fetch data from API and stream to relay".to_string(),
+                input: serde_json::json!({
+                    "api_url": "https://api.example.com/data",
+                    "relay_url": "wss://relay.example.com"
+                }),
+            },
+            TaskMeta::default(),
+        );
+        let logs = LogsFs::new();
+        let ws = WsFs::new();
+        let http = HttpFs::new();
+        let tmp = MemFs::new();
+
+        let ns = Namespace::builder()
+            .mount("/task", task)
+            .mount("/logs", logs)
+            .mount("/cap/ws", ws)
+            .mount("/cap/http", http)
+            .mount("/tmp", tmp)
+            .build();
+
+        // === Multi-step Workflow ===
+
+        // 1. Read task spec
+        let (task_svc, _) = ns.resolve("/task").unwrap();
+        task_svc.open("/status", OpenFlags::read_only()).unwrap(); // Task starts
+
+        // 2. Submit HTTP request
+        let (http_svc, _) = ns.resolve("/cap/http").unwrap();
+        write_file(http_svc, "/request", r#"{"method": "GET", "url": "https://api.example.com/data"}"#);
+
+        // 3. Open WebSocket connection
+        let (ws_svc, _) = ns.resolve("/cap/ws").unwrap();
+        let connect_json = r#"{"action": "connect", "url": "wss://relay.example.com"}"#;
+        let mut handle = ws_svc.open("/control", OpenFlags::write_only()).unwrap();
+        handle.write(connect_json.as_bytes()).unwrap();
+        handle.flush().unwrap();
+
+        // 4. Log progress
+        let (logs_svc, _) = ns.resolve("/logs").unwrap();
+        write_file(logs_svc, "/stdout.log", "HTTP request submitted, WS connection opened\n");
+
+        // 5. Store intermediate data in tmp
+        let (tmp_svc, _) = ns.resolve("/tmp").unwrap();
+        write_file(tmp_svc, "/state.json", r#"{"http_pending": true, "ws_connected": true}"#);
+
+        // 6. Simulate HTTP response arriving
+        {
+            let http: &HttpFs = unsafe { &*(http_svc as *const dyn FileService as *const HttpFs) };
+            let req_id = http.list_pending()[0].clone();
+            http.complete_request(oanix::HttpResponse {
+                request_id: req_id,
+                status: 200,
+                status_text: "OK".to_string(),
+                headers: HashMap::new(),
+                body: r#"{"items": [1, 2, 3]}"#.to_string(),
+                duration_ms: 100,
+                completed_at: 1702300000,
+            });
+        }
+
+        // 7. Get connection ID and send data over WebSocket
+        let conn_entries = ws_svc.readdir("/conns").unwrap();
+        let conn_id = &conn_entries[0].name;
+
+        {
+            let ws: &WsFs = unsafe { &*(ws_svc as *const dyn FileService as *const WsFs) };
+            ws.set_connected(conn_id).unwrap();
+        }
+
+        let out_path = format!("/conns/{}/out", conn_id);
+        write_file(ws_svc, &out_path, r#"["EVENT", {"items": [1, 2, 3]}]"#);
+
+        // 8. Write final result
+        write_file(task_svc, "/result.json", r#"{"items_sent": 3, "success": true}"#);
+
+        // === Verify ===
+        let result = read_file(task_svc, "/result.json");
+        assert!(result.contains("\"success\": true"));
+
+        let status = read_file(http_svc, "/status");
+        assert!(status.contains("\"completed_count\": 1"));
+
+        let ws_status = read_file(ws_svc, "/status");
+        assert!(ws_status.contains("\"connection_count\": 1"));
+    }
+}
+
+// ============================================================================
+// Pattern 16: NostrFs capability service (requires nostr feature)
 // ============================================================================
 
 #[cfg(feature = "nostr")]
@@ -973,5 +1536,385 @@ mod nostr_tests {
         // Clear outbox
         nostr.clear_outbox();
         assert!(nostr.outbox_events().is_empty());
+    }
+}
+
+// ============================================================================
+// Pattern 17: OanixEnv - Complete environment abstraction
+// ============================================================================
+
+mod env_tests {
+    use super::*;
+    use oanix::{EnvBuilder, EnvStatus, OanixEnv};
+
+    /// Tests basic OanixEnv creation and lifecycle
+    #[test]
+    fn test_env_creation_and_lifecycle() {
+        // Create environment with standard mounts
+        let env = EnvBuilder::new()
+            .mount("/task", TaskFs::new(
+                TaskSpec {
+                    id: "env-test-001".into(),
+                    task_type: "test".into(),
+                    description: "Test task".into(),
+                    input: serde_json::json!({}),
+                },
+                TaskMeta::default(),
+            ))
+            .mount("/logs", LogsFs::new())
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+
+        // Initial state
+        assert_eq!(env.status(), EnvStatus::Created);
+        assert!(!env.is_finished());
+
+        // Status info
+        let info = env.status_info();
+        assert_eq!(info.mount_count, 3);
+        assert!(info.created_at > 0);
+
+        // Can resolve paths
+        assert!(env.resolve("/task/spec.json").is_some());
+        assert!(env.resolve("/logs").is_some());
+        assert!(env.resolve("/tmp").is_some());
+
+        // Set running
+        env.set_running();
+        match env.status() {
+            EnvStatus::Running { started_at } => assert!(started_at > 0),
+            _ => panic!("Expected Running status"),
+        }
+
+        // Set completed
+        env.set_completed(0);
+        assert!(env.is_finished());
+    }
+
+    /// Tests environment with all capability services
+    #[test]
+    fn test_env_with_capabilities() {
+        use oanix::{HttpFs, WsFs};
+
+        let env = EnvBuilder::new()
+            .mount("/task", TaskFs::new(
+                TaskSpec {
+                    id: "cap-test".into(),
+                    task_type: "full-stack".into(),
+                    description: "Test with all capabilities".into(),
+                    input: serde_json::json!({}),
+                },
+                TaskMeta::default(),
+            ))
+            .mount("/logs", LogsFs::new())
+            .mount("/workspace", MemFs::new())
+            .mount("/cap/ws", WsFs::new())
+            .mount("/cap/http", HttpFs::new())
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+
+        // All mounts accessible
+        assert!(env.resolve("/task").is_some());
+        assert!(env.resolve("/logs").is_some());
+        assert!(env.resolve("/workspace").is_some());
+        assert!(env.resolve("/cap/ws").is_some());
+        assert!(env.resolve("/cap/http").is_some());
+        assert!(env.resolve("/tmp").is_some());
+
+        // Can interact with capabilities
+        let (ws_svc, _) = env.resolve("/cap/ws").unwrap();
+        let status = read_file(ws_svc, "/status");
+        assert!(status.contains("connection_count"));
+
+        let (http_svc, _) = env.resolve("/cap/http").unwrap();
+        let status = read_file(http_svc, "/status");
+        assert!(status.contains("pending_count"));
+    }
+
+    /// Tests environment failure handling
+    #[test]
+    fn test_env_failure_handling() {
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+
+        env.set_running();
+        env.set_failed("Task execution failed: timeout");
+
+        match env.status() {
+            EnvStatus::Failed { error, .. } => {
+                assert!(error.contains("timeout"));
+            }
+            _ => panic!("Expected Failed status"),
+        }
+        assert!(env.is_finished());
+    }
+
+    /// Tests agent workflow within OanixEnv
+    #[test]
+    fn test_env_agent_workflow() {
+        let env = EnvBuilder::new()
+            .mount("/task", TaskFs::new(
+                TaskSpec {
+                    id: "workflow-001".into(),
+                    task_type: "analysis".into(),
+                    description: "Analyze data".into(),
+                    input: serde_json::json!({"data": [1, 2, 3, 4, 5]}),
+                },
+                TaskMeta::default(),
+            ))
+            .mount("/logs", LogsFs::new())
+            .mount("/workspace", MemFs::new())
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+
+        // Start
+        env.set_running();
+
+        // Read task
+        let (task_svc, _) = env.resolve("/task").unwrap();
+        let spec = read_file(task_svc, "/spec.json");
+        assert!(spec.contains("analysis"));
+
+        // Write to workspace
+        let (ws_svc, _) = env.resolve("/workspace").unwrap();
+        write_file(ws_svc, "/analysis.txt", "Sum: 15, Mean: 3.0");
+
+        // Log progress
+        let (logs_svc, _) = env.resolve("/logs").unwrap();
+        let mut handle = logs_svc.open("/stdout.log", OpenFlags { write: true, ..Default::default() }).unwrap();
+        handle.write(b"Analysis complete\n").unwrap();
+
+        // Write result
+        write_file(task_svc, "/result.json", r#"{"sum": 15, "mean": 3.0}"#);
+
+        // Complete
+        env.set_completed(0);
+        assert!(env.is_finished());
+
+        // Verify outputs
+        let result = read_file(task_svc, "/result.json");
+        assert!(result.contains("\"sum\": 15"));
+
+        let analysis = read_file(ws_svc, "/analysis.txt");
+        assert!(analysis.contains("Mean: 3.0"));
+    }
+}
+
+// ============================================================================
+// Pattern 18: Scheduler - Job queue and execution
+// ============================================================================
+
+mod scheduler_tests {
+    use super::*;
+    use oanix::{EnvBuilder, JobKind, JobSpec, JobStatus, Scheduler};
+
+    /// Tests basic scheduler operations
+    #[test]
+    fn test_scheduler_basic() {
+        let mut scheduler = Scheduler::new();
+
+        // Create and register an environment
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+        let env_id = scheduler.register_env(env);
+
+        // Submit a job
+        let job = JobSpec::new(env_id, JobKind::script("echo hello"));
+        let job_id = scheduler.submit(job).unwrap();
+
+        // Verify queue state
+        assert_eq!(scheduler.pending_count(), 1);
+        assert_eq!(scheduler.running_count(), 0);
+
+        // Get next job
+        let running_job = scheduler.next().unwrap();
+        assert_eq!(running_job.id, job_id);
+        assert!(matches!(running_job.status, JobStatus::Running { .. }));
+
+        // Verify state changed
+        assert_eq!(scheduler.pending_count(), 0);
+        assert_eq!(scheduler.running_count(), 1);
+
+        // Complete the job
+        scheduler.complete(&job_id, 0);
+        assert_eq!(scheduler.running_count(), 0);
+        assert_eq!(scheduler.completed_count(), 1);
+
+        // Check result
+        let result = scheduler.get_result(&job_id).unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert!(result.error.is_none());
+    }
+
+    /// Tests priority-based job scheduling
+    #[test]
+    fn test_scheduler_priority() {
+        let mut scheduler = Scheduler::new();
+
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+        let env_id = scheduler.register_env(env);
+
+        // Submit jobs with different priorities
+        let low = JobSpec::new(env_id, JobKind::script("low priority"))
+            .with_priority(-5);
+        let high = JobSpec::new(env_id, JobKind::script("high priority"))
+            .with_priority(10);
+        let medium = JobSpec::new(env_id, JobKind::script("medium priority"))
+            .with_priority(0);
+
+        scheduler.submit(low).unwrap();
+        scheduler.submit(high).unwrap();
+        scheduler.submit(medium).unwrap();
+
+        // Jobs should come out in priority order
+        let first = scheduler.next().unwrap();
+        assert_eq!(first.priority, 10);
+        scheduler.complete(&first.id, 0);
+
+        let second = scheduler.next().unwrap();
+        assert_eq!(second.priority, 0);
+        scheduler.complete(&second.id, 0);
+
+        let third = scheduler.next().unwrap();
+        assert_eq!(third.priority, -5);
+        scheduler.complete(&third.id, 0);
+    }
+
+    /// Tests concurrency limits
+    #[test]
+    fn test_scheduler_concurrency() {
+        let mut scheduler = Scheduler::with_max_concurrent(2);
+
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+        let env_id = scheduler.register_env(env);
+
+        // Submit 5 jobs
+        for i in 0..5 {
+            let job = JobSpec::new(env_id, JobKind::script(format!("job {}", i)));
+            scheduler.submit(job).unwrap();
+        }
+
+        // Can only run 2 at a time
+        let j1 = scheduler.next().unwrap();
+        let j2 = scheduler.next().unwrap();
+        assert!(scheduler.next().is_none()); // Blocked
+
+        assert_eq!(scheduler.running_count(), 2);
+        assert_eq!(scheduler.pending_count(), 3);
+
+        // Complete one, can start another
+        scheduler.complete(&j1.id, 0);
+        assert_eq!(scheduler.running_count(), 1);
+
+        let j3 = scheduler.next().unwrap();
+        assert_eq!(scheduler.running_count(), 2);
+
+        // Complete remaining
+        scheduler.complete(&j2.id, 0);
+        scheduler.complete(&j3.id, 0);
+
+        let j4 = scheduler.next().unwrap();
+        let j5 = scheduler.next().unwrap();
+        scheduler.complete(&j4.id, 0);
+        scheduler.complete(&j5.id, 0);
+
+        assert_eq!(scheduler.completed_count(), 5);
+        assert_eq!(scheduler.pending_count(), 0);
+    }
+
+    /// Tests job failure handling
+    #[test]
+    fn test_scheduler_job_failure() {
+        let mut scheduler = Scheduler::new();
+
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+        let env_id = scheduler.register_env(env);
+
+        let job = JobSpec::new(env_id, JobKind::script("will fail"));
+        let job_id = scheduler.submit(job).unwrap();
+
+        let running = scheduler.next().unwrap();
+        scheduler.fail(&running.id, "Script execution failed");
+
+        let result = scheduler.get_result(&job_id).unwrap();
+        assert_eq!(result.exit_code, 1);
+        assert!(result.error.as_ref().unwrap().contains("failed"));
+    }
+
+    /// Tests scheduler with multiple environments
+    #[test]
+    fn test_scheduler_multi_env() {
+        let mut scheduler = Scheduler::new();
+
+        // Create two environments
+        let env1 = EnvBuilder::new()
+            .mount("/workspace", MemFs::new())
+            .build()
+            .unwrap();
+        let env1_id = scheduler.register_env(env1);
+
+        let env2 = EnvBuilder::new()
+            .mount("/workspace", MemFs::new())
+            .build()
+            .unwrap();
+        let env2_id = scheduler.register_env(env2);
+
+        // Submit jobs to different environments
+        let job1 = JobSpec::new(env1_id, JobKind::script("env1 job"));
+        let job2 = JobSpec::new(env2_id, JobKind::script("env2 job"));
+
+        scheduler.submit(job1).unwrap();
+        scheduler.submit(job2).unwrap();
+
+        let status = scheduler.status();
+        assert_eq!(status.env_count, 2);
+        assert_eq!(status.pending_count, 2);
+    }
+
+    /// Tests job with environment variables and tags
+    #[test]
+    fn test_scheduler_job_config() {
+        let mut scheduler = Scheduler::new();
+
+        let env = EnvBuilder::new()
+            .mount("/tmp", MemFs::new())
+            .build()
+            .unwrap();
+        let env_id = scheduler.register_env(env);
+
+        let job = JobSpec::new(env_id, JobKind::script("configured job"))
+            .with_priority(5)
+            .env("API_KEY", "secret123")
+            .env("DEBUG", "true")
+            .with_working_dir("/workspace")
+            .with_timeout(300)
+            .tag("urgent")
+            .tag("production");
+
+        let job_id = scheduler.submit(job).unwrap();
+
+        let running = scheduler.next().unwrap();
+        assert_eq!(running.id, job_id);
+        assert_eq!(running.priority, 5);
+        assert_eq!(running.env_vars.len(), 2);
+        assert_eq!(running.working_dir, Some("/workspace".to_string()));
+        assert_eq!(running.timeout_secs, Some(300));
+        assert_eq!(running.tags, vec!["urgent", "production"]);
     }
 }
