@@ -31,3 +31,7 @@ which = "7"
 
 [dev-dependencies]
 tokio-test = "0.4"
+tracing-subscriber = "0.3"
+
+[[example]]
+name = "test_query"

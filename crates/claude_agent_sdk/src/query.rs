@@ -45,14 +45,18 @@ impl Query {
         options: QueryOptions,
         permission_handler: Option<Arc<dyn PermissionHandler>>,
     ) -> Result<Self> {
+        eprintln!("[SDK::Query] new() called");
         let prompt = prompt.into();
         let args = options.build_args();
+        eprintln!("[SDK::Query] args built: {:?}", args);
 
         let env = options.env.clone().map(|e| e.into_iter().collect());
 
+        eprintln!("[SDK::Query] calling ProcessTransport::spawn()...");
         let transport =
             ProcessTransport::spawn(options.executable.clone(), args, options.cwd.clone(), env)
                 .await?;
+        eprintln!("[SDK::Query] ProcessTransport::spawn() returned");
 
         let transport = Arc::new(Mutex::new(transport));
         let pending_requests = Arc::new(Mutex::new(HashMap::new()));
@@ -65,6 +69,7 @@ impl Query {
         let pending_clone = pending_requests.clone();
         let handler_clone = permission_handler.clone();
 
+        eprintln!("[SDK::Query] spawning message processing task");
         tokio::spawn(async move {
             Self::process_messages(transport_clone, pending_clone, handler_clone, message_tx).await;
         });
@@ -80,7 +85,9 @@ impl Query {
         };
 
         // Send initial prompt
+        eprintln!("[SDK::Query] sending initial prompt...");
         query.send_prompt(&prompt).await?;
+        eprintln!("[SDK::Query] initial prompt sent, returning Query");
 
         Ok(query)
     }

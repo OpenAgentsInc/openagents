@@ -320,7 +320,7 @@ impl MechaCoderScreen {
             let agent = Agent {
                 name: "mechacoder".to_string(),
                 version: "0.1.0".to_string(),
-                model_name: Some("claude-sonnet-4-20250514".to_string()),
+                model_name: None, // Let claude pick default model
                 extra: None,
             };
 
@@ -364,23 +364,33 @@ impl MechaCoderScreen {
         // Spawn the runner in a separate thread with its own tokio runtime
         // (GPUI doesn't use tokio, but Claude Agent SDK requires it)
         std::thread::spawn(move || {
+            eprintln!("[MECHACODER] Runner thread started (backend={:?})", backend);
             info!(target: "mechacoder", backend = ?backend, "Runner thread started");
 
             // Create a tokio runtime for this thread
+            eprintln!("[MECHACODER] Creating tokio runtime...");
             let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
+                Ok(rt) => {
+                    eprintln!("[MECHACODER] Tokio runtime created successfully");
+                    rt
+                }
                 Err(e) => {
+                    eprintln!("[MECHACODER] ERROR: Failed to create tokio runtime: {}", e);
                     error!(target: "mechacoder", error = %e, "Failed to create tokio runtime");
                     let _ = tx.send(RunnerEvent::Error(format!("Failed to create runtime: {}", e)));
                     return;
                 }
             };
 
+            eprintln!("[MECHACODER] Calling rt.block_on()...");
             rt.block_on(async {
+                eprintln!("[MECHACODER] Inside block_on, backend={:?}", backend);
                 match backend {
                     HillClimberBackend::CC => {
+                        eprintln!("[MECHACODER] About to call run_cc_query()");
                         info!(target: "mechacoder", "Using Claude Code SDK backend");
                         Self::run_cc_query(prompt, tx, store_clone, session_id).await;
+                        eprintln!("[MECHACODER] run_cc_query() returned");
                     }
                     HillClimberBackend::FM => {
                         warn!(target: "mechacoder", "FM backend not yet implemented");
@@ -389,6 +399,7 @@ impl MechaCoderScreen {
                 }
             });
 
+            eprintln!("[MECHACODER] Runner thread finished");
             info!(target: "mechacoder", "Runner thread finished");
         });
 
@@ -407,36 +418,52 @@ impl MechaCoderScreen {
         store: Option<Arc<Mutex<TrajectoryStore>>>,
         session_id: Option<String>,
     ) {
+        eprintln!("[MECHACODER::CC] run_cc_query() entered, prompt_len={}", prompt.len());
         info!(target: "mechacoder::cc", prompt_len = prompt.len(), "Starting Claude Code query");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Initializing Claude Code SDK...")));
 
-        // Build query options
-        let model = "claude-sonnet-4-20250514";
+        // Build query options - let claude pick the default model
         let max_turns = 30u32;
         info!(
             target: "mechacoder::cc",
-            model,
             max_turns,
-            "Building query options"
+            "Building query options (default model)"
         );
 
+        // Set explicit path to claude since we're running from a different context
+        let home = std::env::var("HOME").unwrap_or_default();
+        let claude_path = format!("{}/.claude/local/claude", home);
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        info!(target: "mechacoder::cc", claude_path = %claude_path, cwd = ?cwd, "Using explicit claude path and cwd");
+
+        let mut exec_config = claude_agent_sdk::transport::ExecutableConfig::default();
+        exec_config.path = Some(std::path::PathBuf::from(&claude_path));
+
         let query_options = QueryOptions::new()
-            .model(model)
             .max_turns(max_turns)
+            .cwd(cwd)
             .setting_sources(vec![SettingSource::Project, SettingSource::User])
             .dangerously_skip_permissions(true);
 
+        // We need to set the executable config on the options
+        let mut query_options = query_options;
+        query_options.executable = exec_config;
+
+        eprintln!("[MECHACODER::CC] Query options built");
         debug!(target: "mechacoder::cc", "Query options built - dangerously_skip_permissions=true");
         let _ = tx.send(RunnerEvent::Log(LogEntry::info("Starting query...")));
 
         // Start the query
-        info!(target: "mechacoder::cc", "Calling claude_agent_sdk::query()");
+        eprintln!("[MECHACODER::CC] About to call claude_agent_sdk::query()...");
+        info!(target: "mechacoder::cc", "Calling claude_agent_sdk::query() with explicit path");
         let mut stream = match query(&prompt, query_options).await {
             Ok(s) => {
+                eprintln!("[MECHACODER::CC] Query started successfully!");
                 info!(target: "mechacoder::cc", "Query started successfully, got stream");
                 s
             }
             Err(e) => {
+                eprintln!("[MECHACODER::CC] ERROR: Failed to start query: {}", e);
                 error!(target: "mechacoder::cc", error = %e, "Failed to start query");
                 let _ = tx.send(RunnerEvent::Error(format!("Failed to start query: {}", e)));
                 // Fail trajectory if we have one
@@ -540,7 +567,7 @@ impl MechaCoderScreen {
                             // Save ATIF step for this assistant message
                             if let (Some(store), Some(sid)) = (&store, &session_id) {
                                 let mut step = Step::agent(step_id, &text_content)
-                                    .with_model("claude-sonnet-4-20250514");
+                                    .with_model("default"); // Model picked by claude CLI
                                 if !tool_calls.is_empty() {
                                     step = step.with_tool_calls(tool_calls);
                                 }
