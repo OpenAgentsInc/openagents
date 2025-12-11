@@ -163,7 +163,7 @@ impl AcpConnection {
                 log::info!("Agent process exited with status: {:?}", status);
                 // Notify all sessions about the exit
                 for session in sessions.borrow().values() {
-                    if let Some(thread) = session.thread.upgrade() {
+                    if let Some(_thread) = session.thread.upgrade() {
                         // TODO: Emit error to thread
                         log::warn!("Session thread still alive after agent exit");
                     }

@@ -75,6 +75,7 @@ pub struct AcpThread {
     /// Current streaming assistant message chunks.
     streaming_chunks: Vec<AssistantMessageChunk>,
     /// Current streaming tool call.
+    #[allow(dead_code)]
     streaming_tool_call: Option<ToolCall>,
 }
 
@@ -136,6 +137,24 @@ impl AcpThread {
     /// Get the current status.
     pub fn status(&self) -> &ThreadStatus {
         &self.status
+    }
+
+    /// Get the current streaming content (if any).
+    pub fn streaming_content(&self) -> Option<String> {
+        if self.streaming_chunks.is_empty() {
+            return None;
+        }
+        let content = self.streaming_chunks
+            .iter()
+            .map(|chunk| match chunk {
+                AssistantMessageChunk::Message { content } => content.clone(),
+                AssistantMessageChunk::Thought { content } => {
+                    format!("<thinking>{}</thinking>", content)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        Some(content)
     }
 
     /// Check if there's a pending permission request.

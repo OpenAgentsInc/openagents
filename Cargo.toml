@@ -47,6 +47,27 @@ members = [
     "crates/telemetry",
     "crates/acp",
     "crates/mechacoder",
+    # Zed crates for markdown rendering
+    "crates/clock",
+    "crates/fs",
+    "crates/fuzzy",
+    "crates/language",
+    "crates/lsp",
+    "crates/markdown",
+    "crates/proto",
+    "crates/rope",
+    "crates/rpc",
+    "crates/settings",
+    "crates/task",
+    "crates/text",
+    "crates/watch",
+    "crates/zlog",
+    "crates/paths",
+    "crates/release_channel",
+    "crates/settings_json",
+    "crates/settings_macros",
+    "crates/zed_actions",
+    "crates/git",
 ]
 
 [workspace.lints.rust]
@@ -58,6 +79,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["OpenAgents"]
 license = "CC-0"
+publish = false
 
 [workspace.dependencies]
 # Workspace member crates
@@ -85,6 +107,39 @@ telemetry = { path = "crates/telemetry" }
 # ACP protocol for Claude Code integration
 agent-client-protocol = { version = "0.9.0", features = ["unstable"] }
 acp = { path = "crates/acp" }
+
+# Zed crates for markdown rendering
+clock = { path = "crates/clock" }
+fs = { path = "crates/fs" }
+fuzzy = { path = "crates/fuzzy" }
+language = { path = "crates/language" }
+lsp = { path = "crates/lsp" }
+markdown = { path = "crates/markdown" }
+proto = { path = "crates/proto" }
+rope = { path = "crates/rope" }
+rpc = { path = "crates/rpc" }
+settings = { path = "crates/settings" }
+task = { path = "crates/task" }
+text = { path = "crates/text" }
+watch = { path = "crates/watch" }
+zlog = { path = "crates/zlog" }
+theme = { path = "crates/theme" }
+ui = { path = "crates/ui" }
+
+# Additional deps for Zed crates
+lsp-types = "=0.97.0"
+streaming-iterator = "0.1"
+fsevent = "2.1"
+imara-diff = "0.1"
+diffy = "0.4.2"
+paths = { path = "crates/paths" }
+release_channel = { path = "crates/release_channel" }
+settings_json = { path = "crates/settings_json" }
+settings_macros = { path = "crates/settings_macros" }
+zed_actions = { path = "crates/zed_actions" }
+ztracing = "0.1"
+criterion = { version = "0.5", default-features = false }
+git = { path = "crates/git" }
 
 # External dependencies (from Zed workspace)
 tracing = "0.1.40"

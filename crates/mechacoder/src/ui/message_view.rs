@@ -1,7 +1,7 @@
 //! Message view component for displaying messages.
 
 use acp::ContentBlock;
-use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
+use gpui::{div, px, IntoElement, ParentElement, Styled};
 use theme::{bg, border, text};
 
 /// Message view for displaying a single message.
