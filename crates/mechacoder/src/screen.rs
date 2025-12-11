@@ -1,6 +1,5 @@
 //! Main MechaCoder screen component.
 
-use acp::{ClaudeCode, Project};
 use gpui::{
     div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
@@ -10,6 +9,7 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
+use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
@@ -18,8 +18,6 @@ pub struct MechaCoderScreen {
     focus_handle: FocusHandle,
     /// Current project root.
     project_root: PathBuf,
-    /// Claude Code connection.
-    claude_code: ClaudeCode,
     /// Current thread view.
     thread_view: Option<Entity<ThreadView>>,
     /// Connection status.
@@ -50,7 +48,6 @@ impl MechaCoderScreen {
         let mut screen = Self {
             focus_handle,
             project_root,
-            claude_code: ClaudeCode::new(),
             thread_view: None,
             connection_status: ConnectionStatus::Connecting,
             error_message: None,
@@ -69,7 +66,7 @@ impl MechaCoderScreen {
         self.project_root = path.into();
     }
 
-    /// Connect to Claude Code and start a new thread.
+    /// Connect to Claude Code via SDK and start a new thread.
     fn connect(&mut self, cx: &mut Context<Self>) {
         self.connection_status = ConnectionStatus::Connecting;
         self.error_message = None;
@@ -77,60 +74,15 @@ impl MechaCoderScreen {
 
         let project_root = self.project_root.clone();
 
-        // Get the connect task before spawning (requires &mut App context)
-        let connect_task = self.claude_code.connect(&project_root, cx);
+        // Create SDK thread directly - no async connection needed
+        let thread = cx.new(|cx| SdkThread::new(project_root, cx));
 
-        cx.spawn::<_, anyhow::Result<()>>(async move |this, cx| {
-            // Connect to Claude Code
-            let connection = match connect_task.await {
-                Ok(conn) => conn,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.connection_status = ConnectionStatus::Error(e.to_string());
-                        this.error_message = Some(e.to_string());
-                        cx.notify();
-                    })
-                    .ok();
-                    return Ok(());
-                }
-            };
-
-            // Create a new thread - need to do this inside update() to get &mut App context
-            let project = Project::local(&project_root);
-            let thread_result = this
-                .update(cx, |_this, cx| {
-                    ClaudeCode::new_thread(connection, project, cx)
-                })
-                .ok();
-
-            let thread = match thread_result {
-                Some(task) => match task.await {
-                    Ok(thread) => thread,
-                    Err(e) => {
-                        this.update(cx, |this, cx| {
-                            this.connection_status = ConnectionStatus::Error(e.to_string());
-                            this.error_message = Some(e.to_string());
-                            cx.notify();
-                        })
-                        .ok();
-                        return Ok(());
-                    }
-                },
-                None => return Ok(()),
-            };
-
-            // Create thread view and set flag to focus the input
-            this.update(cx, |this, cx| {
-                let thread_view = cx.new(|cx| ThreadView::new(thread.clone(), cx));
-                this.thread_view = Some(thread_view);
-                this.connection_status = ConnectionStatus::Connected;
-                this.needs_focus = true;
-                cx.notify();
-            })
-            .ok();
-            Ok(())
-        })
-        .detach();
+        // Create thread view
+        let thread_view = cx.new(|cx| ThreadView::new(thread, cx));
+        self.thread_view = Some(thread_view);
+        self.connection_status = ConnectionStatus::Connected;
+        self.needs_focus = true;
+        cx.notify();
     }
 
     /// Handle the Quit action.

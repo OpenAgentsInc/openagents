@@ -11,11 +11,13 @@ use settings::Settings;
 pub mod actions;
 pub mod app_menus;
 pub mod screen;
+pub mod sdk_thread;
 pub mod ui;
 
 // Re-export key types
 pub use actions::*;
 pub use screen::MechaCoderScreen;
+pub use sdk_thread::{SdkThread, SdkThreadEvent, ThreadEntry, ThreadStatus};
 
 /// Initialize the settings and theme systems for MechaCoder.
 ///

@@ -1,27 +1,33 @@
 //! Thread view component for displaying conversation.
 
-use acp::{AcpThread, AcpThreadEvent, ThreadEntry, ThreadStatus};
+use std::collections::HashMap;
+
+use crate::sdk_thread::{SdkThread, SdkThreadEvent, ThreadEntry, ThreadStatus};
 use gpui::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
 };
-use theme_oa::{bg, border, text};
+use theme_oa::{border, text};
 use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
-use super::message_view::MessageView;
+use super::message_view::{MessageView, SimpleMessageView};
 use super::tool_call_view::ToolCallView;
 
 /// Thread view for displaying the conversation.
 pub struct ThreadView {
-    /// The ACP thread.
-    thread: Entity<AcpThread>,
+    /// The SDK thread.
+    thread: Entity<SdkThread>,
     /// Message input component.
     message_input: Entity<MessageInput>,
     /// Focus handle.
     focus_handle: FocusHandle,
     /// List state for entries.
     list_state: ListState,
+    /// Cached message views by entry index.
+    message_cache: HashMap<usize, Entity<MessageView>>,
+    /// Cached streaming message view.
+    streaming_message: Option<Entity<MessageView>>,
     /// Last streaming content (to detect changes).
     last_streaming_content: Option<String>,
     /// Subscription to thread events.
@@ -32,7 +38,7 @@ pub struct ThreadView {
 
 impl ThreadView {
     /// Create a new thread view.
-    pub fn new(thread: Entity<AcpThread>, cx: &mut Context<Self>) -> Self {
+    pub fn new(thread: Entity<SdkThread>, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
 
         // Create message input
@@ -56,6 +62,8 @@ impl ThreadView {
             message_input,
             focus_handle,
             list_state,
+            message_cache: HashMap::new(),
+            streaming_message: None,
             last_streaming_content: None,
             _thread_subscription: thread_subscription,
             _input_subscription: input_subscription,
@@ -68,10 +76,11 @@ impl ThreadView {
     }
 
     /// Handle a thread event.
-    fn handle_thread_event(&mut self, event: &AcpThreadEvent, cx: &mut Context<Self>) {
+    fn handle_thread_event(&mut self, event: &SdkThreadEvent, cx: &mut Context<Self>) {
         match event {
-            AcpThreadEvent::EntryAdded(_) | AcpThreadEvent::EntryUpdated(_) => {
+            SdkThreadEvent::EntryAdded(_) | SdkThreadEvent::EntryUpdated(_) => {
                 // Clear streaming state when entry is finalized
+                self.streaming_message = None;
                 self.last_streaming_content = None;
 
                 // Update list count
@@ -79,17 +88,41 @@ impl ThreadView {
                 self.list_state.reset(entry_count);
                 cx.notify();
             }
-            AcpThreadEvent::StatusChanged(_) => {
+            SdkThreadEvent::StatusChanged(_) => {
                 cx.notify();
             }
-            AcpThreadEvent::PermissionRequested { .. } => {
-                cx.notify();
-            }
-            AcpThreadEvent::Error(error) => {
+            SdkThreadEvent::Error(error) => {
                 log::error!("Thread error: {}", error);
                 cx.notify();
             }
         }
+    }
+
+    /// Get or create a message view for the given entry index.
+    fn get_or_create_message_view(
+        &mut self,
+        entry: &ThreadEntry,
+        ix: usize,
+        cx: &mut App,
+    ) -> Entity<MessageView> {
+        if let Some(view) = self.message_cache.get(&ix) {
+            return view.clone();
+        }
+
+        let view = match entry {
+            ThreadEntry::UserMessage(msg) => MessageView::user(&msg.content, cx),
+            ThreadEntry::AssistantMessage(msg) => {
+                MessageView::assistant(&msg.content, cx)
+            }
+            ThreadEntry::ToolUse(_) => {
+                // Tool uses don't use MessageView, handled separately
+                // Return a placeholder that won't be used
+                MessageView::assistant("", cx)
+            }
+        };
+
+        self.message_cache.insert(ix, view.clone());
+        view
     }
 
     /// Send a message with the given content.
@@ -132,52 +165,17 @@ impl ThreadView {
     }
 
     /// Respond to a permission request.
+    /// Note: SDK uses BypassPermissions mode, so this is a no-op for now.
     #[allow(dead_code)]
-    fn respond_permission(&mut self, option_id: &str, cx: &mut Context<Self>) {
-        self.thread.update(cx, |thread, cx| {
-            thread.respond_permission(acp::acp::PermissionOptionId::new(option_id), cx);
-        });
+    fn respond_permission(&mut self, _option_id: &str, _cx: &mut Context<Self>) {
+        // SDK currently uses BypassPermissions mode
     }
 
     /// Render the permission prompt.
-    fn render_permission_prompt(&self, cx: &App) -> Option<impl IntoElement> {
-        let (tool_call, options) = self.thread.read(cx).pending_permission_info()?;
-
-        Some(
-            div()
-                .p(px(16.0))
-                .bg(bg::CARD)
-                .border_1()
-                .border_color(border::DEFAULT)
-                .rounded(px(8.0))
-                .flex()
-                .flex_col()
-                .gap(px(12.0))
-                .child(
-                    div()
-                        .text_color(text::PRIMARY)
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(format!("Permission Required: {}", tool_call.fields.title.as_deref().unwrap_or("Unknown"))),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .gap(px(8.0))
-                        .children(options.iter().map(|opt| {
-                            let _id = opt.option_id.to_string();
-                            let label = opt.name.clone();
-                            Button::new(label)
-                                .variant(if opt.kind == acp::acp::PermissionOptionKind::AllowOnce
-                                    || opt.kind == acp::acp::PermissionOptionKind::AllowAlways
-                                {
-                                    ButtonVariant::Default
-                                } else {
-                                    ButtonVariant::Secondary
-                                })
-                        })),
-                ),
-        )
+    /// Note: SDK uses BypassPermissions mode, so this always returns None.
+    fn render_permission_prompt(&self, _cx: &App) -> Option<impl IntoElement> {
+        // SDK currently uses BypassPermissions mode, no permission prompts
+        None::<gpui::Empty>
     }
 
     /// Render the status bar.
@@ -198,12 +196,35 @@ impl ThreadView {
                     match status {
                         ThreadStatus::Idle => "Ready",
                         ThreadStatus::Streaming => "Claude is typing...",
-                        ThreadStatus::WaitingForConfirmation => "Waiting for permission",
+                        ThreadStatus::Completed => "Done",
                         ThreadStatus::Error(_) => "Error",
                     }
                     .to_string(),
                 ),
             )
+    }
+
+    /// Get or update the streaming message view.
+    fn get_streaming_view(&mut self, content: &str, cx: &mut App) -> Entity<MessageView> {
+        // Check if content changed
+        let content_changed = self.last_streaming_content.as_ref() != Some(&content.to_string());
+
+        if let Some(view) = &self.streaming_message {
+            if content_changed {
+                // Update existing view
+                view.update(cx, |view, cx| {
+                    view.update_content(content, cx);
+                });
+                self.last_streaming_content = Some(content.to_string());
+            }
+            view.clone()
+        } else {
+            // Create new view
+            let view = MessageView::assistant(content, cx);
+            self.streaming_message = Some(view.clone());
+            self.last_streaming_content = Some(content.to_string());
+            view
+        }
     }
 }
 
@@ -216,41 +237,71 @@ impl Focusable for ThreadView {
 impl Render for ThreadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_streaming = matches!(*self.thread.read(cx).status(), ThreadStatus::Streaming);
-        let has_permission = self.thread.read(cx).has_pending_permission();
-        let streaming_content = self.thread.read(cx).streaming_content();
+        // Clone streaming content to release the borrow on cx
+        let streaming_content = self.thread.read(cx).streaming_content().map(|s| s.to_string());
+
+        // Get streaming view if streaming
+        let streaming_view = streaming_content.as_ref().map(|content| {
+            self.get_streaming_view(content, cx)
+        });
 
         // Create render callback for list items
         let thread = self.thread.clone();
+        let message_cache = self.message_cache.clone();
         let render_item = move |ix: usize, _window: &mut Window, cx: &mut App| {
             let entries = thread.read(cx).entries();
             if ix < entries.len() {
                 let entry = &entries[ix];
                 match entry {
-                    ThreadEntry::UserMessage(msg) => {
-                        MessageView::user(&msg.content).into_any_element()
-                    }
-                    ThreadEntry::AssistantMessage(msg) => {
-                        let content = msg
-                            .chunks
-                            .iter()
-                            .map(|chunk| match chunk {
-                                acp::AssistantMessageChunk::Message { content } => content.clone(),
-                                acp::AssistantMessageChunk::Thought { content } => {
-                                    format!("<thinking>{}</thinking>", content)
+                    ThreadEntry::UserMessage(_) | ThreadEntry::AssistantMessage(_) => {
+                        if let Some(view) = message_cache.get(&ix) {
+                            view.clone().into_any_element()
+                        } else {
+                            // Fallback to simple view if not cached
+                            // (this shouldn't happen in practice)
+                            match entry {
+                                ThreadEntry::UserMessage(msg) => {
+                                    SimpleMessageView::user(&msg.content).into_any_element()
                                 }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("");
-                        MessageView::assistant(&content).into_any_element()
+                                ThreadEntry::AssistantMessage(msg) => {
+                                    SimpleMessageView::assistant(&msg.content).into_any_element()
+                                }
+                                _ => div().into_any_element(),
+                            }
+                        }
                     }
-                    ThreadEntry::ToolCall(tc) => {
-                        ToolCallView::new(tc).into_any_element()
+                    ThreadEntry::ToolUse(tu) => {
+                        ToolCallView::from_tool_use(tu).into_any_element()
                     }
                 }
             } else {
                 div().into_any_element()
             }
         };
+
+        // Pre-populate cache for all entries
+        // Collect entries to avoid borrow conflict
+        let entries: Vec<_> = self.thread.read(cx).entries().to_vec();
+        let missing_indices: Vec<_> = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, entry)| {
+                if !self.message_cache.contains_key(&ix) {
+                    match entry {
+                        ThreadEntry::UserMessage(_) | ThreadEntry::AssistantMessage(_) => {
+                            Some((ix, entry.clone()))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for (ix, entry) in missing_indices {
+            let _ = self.get_or_create_message_view(&entry, ix, cx);
+        }
 
         div()
             .size_full()
@@ -268,28 +319,14 @@ impl Render for ThreadView {
                     .child(list(self.list_state.clone(), render_item).size_full()),
             )
             // Streaming message (shown while receiving)
-            .when_some(streaming_content, |el, content| {
+            .when_some(streaming_view, |el, view| {
                 el.child(
                     div()
                         .w_full()
                         .max_w(px(768.0))
                         .px(px(16.0))
-                        .child(MessageView::assistant(&content))
+                        .child(view)
                 )
-            })
-            // Permission prompt
-            .when(has_permission, |el| {
-                if let Some(prompt) = self.render_permission_prompt(cx) {
-                    el.child(
-                        div()
-                            .w_full()
-                            .max_w(px(768.0))
-                            .p(px(16.0))
-                            .child(prompt)
-                    )
-                } else {
-                    el
-                }
             })
             // Message input
             .child(

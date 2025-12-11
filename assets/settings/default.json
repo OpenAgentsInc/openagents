@@ -1,13 +1,12 @@
 {
-  // Zed settings
-  //
-  // For information on how to configure Zed, see the Zed
-  // documentation: https://zed.dev/docs/configuring-zed
-  //
-  // To see all of Zed's default settings without changing your
-  // custom settings, run `zed: open default settings` from the
-  // command palette (Cmd-Shift-P on macOS, Ctrl-Shift-P on Linux and Windows).
+  // Zed settings for MechaCoder
+  // NOTE: This file must contain ALL required settings fields for Zed's settings system.
+  // Missing fields will cause crashes due to unwrap() calls in AllLanguageSettings::from_settings()
+
+  // === KEYMAP ===
   "base_keymap": "VSCode",
+
+  // === THEME SETTINGS ===
   "theme": {
     "mode": "dark",
     "light": "One Light",
@@ -15,22 +14,123 @@
   },
   "icon_theme": "Zed (Default)",
   "unnecessary_code_fade": 0.3,
+  "ui_density": "default",
+
+  // === BUFFER FONTS ===
   "buffer_font_family": "Berkeley Mono",
   "buffer_font_size": 14,
   "buffer_font_weight": 400,
   "buffer_font_features": {},
   "buffer_font_fallbacks": [],
   "buffer_line_height": "comfortable",
+
+  // === UI FONTS ===
   "ui_font_family": "Berkeley Mono",
   "ui_font_size": 14,
   "ui_font_weight": 400,
   "ui_font_features": {},
   "ui_font_fallbacks": [],
-  "ui_density": "default",
+
+  // === LANGUAGE SETTINGS (REQUIRED - these get unwrapped) ===
+  "features": {
+    "edit_prediction_provider": "none"
+  },
+  "edit_predictions": {
+    "disabled_globs": [],
+    "mode": "eager",
+    "copilot": {
+      "proxy": null,
+      "proxy_no_verify": false,
+      "enterprise_uri": null
+    },
+    "codestral": {
+      "model": "codestral-latest",
+      "max_tokens": 150,
+      "api_url": "https://codestral.mistral.ai"
+    },
+    "enabled_in_text_threads": false
+  },
+
+  // === DEFAULT LANGUAGE SETTINGS (all required) ===
+  "tab_size": 4,
+  "hard_tabs": false,
+  "soft_wrap": "none",
+  "preferred_line_length": 80,
+  "show_wrap_guides": true,
+  "wrap_guides": [],
+  "indent_guides": {
+    "enabled": true,
+    "line_width": 1,
+    "active_line_width": 1,
+    "coloring": "fixed",
+    "background_coloring": "disabled"
+  },
+  "format_on_save": "on",
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "formatter": "auto",
+  "prettier": {
+    "allowed": false
+  },
+  "jsx_tag_auto_close": {
+    "enabled": true
+  },
+  "enable_language_server": true,
+  "language_servers": ["..."],
+  "allow_rewrap": "in_comments",
+  "show_edit_predictions": true,
+  "edit_predictions_disabled_in": [],
+  "show_whitespaces": "none",
+  "whitespace_map": {
+    "space": "·",
+    "tab": "→"
+  },
+  "extend_comment_on_newline": true,
+  "inlay_hints": {
+    "enabled": false,
+    "show_value_hints": true,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true,
+    "show_background": false,
+    "edit_debounce_ms": 700,
+    "scroll_debounce_ms": 50,
+    "toggle_on_modifiers_press": null
+  },
+  "use_autoclose": true,
+  "use_auto_surround": true,
+  "always_treat_brackets_as_autoclosed": false,
+  "use_on_type_format": true,
+  "code_actions_on_format": {},
+  "linked_edits": true,
+  "auto_indent": true,
+  "auto_indent_on_paste": true,
+  "tasks": {
+    "variables": {},
+    "enabled": true,
+    "prefer_lsp": false
+  },
+  "show_completions_on_input": true,
+  "show_completion_documentation": true,
+  "completions": {
+    "words": "fallback",
+    "words_min_length": 3,
+    "lsp": true,
+    "lsp_fetch_timeout_ms": 0,
+    "lsp_insert_mode": "replace_suffix"
+  },
+  "debuggers": [],
+  "word_diff_enabled": true,
+  "colorize_brackets": false,
+
+  // Per-language overrides (empty for now)
+  "languages": {},
+  "file_types": {},
+
+  // === OTHER SETTINGS ===
   "active_pane_magnification": 1.0,
   "pane_split_direction_horizontal": "up",
   "pane_split_direction_vertical": "left",
-  "always_treat_brackets_as_autoclosed": false,
   "centered_layout": {
     "left_padding": 0.2,
     "right_padding": 0.2
@@ -41,8 +141,6 @@
   "auto_update": true,
   "cursor_blink": true,
   "hover_popover_enabled": true,
-  "show_completions_on_input": true,
-  "show_completion_documentation": true,
   "completion_documentation_secondary_query_debounce": 300,
   "auto_signature_help": true,
   "show_signature_help_after_edits": true,
@@ -50,15 +148,8 @@
   "inline_completions": {
     "disabled_globs": []
   },
-  "inlay_hints": {
-    "enabled": false,
-    "show_type_hints": true,
-    "show_parameter_hints": true,
-    "show_other_hints": true,
-    "show_background": false,
-    "edit_debounce_ms": 700,
-    "scroll_debounce_ms": 50
-  },
+
+  // === PANELS ===
   "project_panel": {
     "button": true,
     "dock": "left",
@@ -96,6 +187,8 @@
   "message_editor": {
     "auto_replace_emoji_shortcode": true
   },
+
+  // === TERMINAL ===
   "terminal": {
     "alternate_scroll": "off",
     "blinking": "terminal_controlled",
@@ -120,6 +213,8 @@
     },
     "working_directory": "current_project_directory"
   },
+
+  // === GIT ===
   "git": {
     "git_gutter": "tracked_files",
     "gutter_debounce": 150,
@@ -129,6 +224,8 @@
       "min_column": 80
     }
   },
+
+  // === EDITOR/WORKSPACE/PROJECT (empty objects) ===
   "editor": {},
   "workspace": {},
   "project": {}

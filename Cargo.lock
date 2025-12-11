@@ -9050,6 +9050,7 @@ dependencies = [
  "acp",
  "anyhow",
  "chrono",
+ "claude_agent_sdk",
  "futures 0.3.31",
  "gpui",
  "language",
@@ -9064,9 +9065,11 @@ dependencies = [
  "telemetry",
  "theme",
  "theme_oa",
+ "tokio",
  "tracing",
  "ui",
  "ui_oa",
+ "uuid",
 ]
 
 [[package]]
