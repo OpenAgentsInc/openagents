@@ -5,7 +5,7 @@
 //! # Usage
 //!
 //! ```rust
-//! use theme::{bg, text, border, FONT_FAMILY};
+//! use theme_oa::{bg, text, border, FONT_FAMILY};
 //!
 //! div()
 //!     .bg(bg::SURFACE)
@@ -13,6 +13,34 @@
 //!     .border_color(border::DEFAULT)
 //!     .font_family(FONT_FAMILY)
 //! ```
+//!
+//! # ⚠️ WARNING: Do NOT use Zed's global theme in OpenAgents crates!
+//!
+//! OpenAgents crates (mechacoder, hud, vibe, gym, etc.) do NOT initialize Zed's
+//! theme system. Using Zed's global theme accessors will cause a **runtime panic**.
+//!
+//! ## DO NOT USE (will crash):
+//! ```rust,ignore
+//! // These all panic with "no state of type GlobalTheme exists"
+//! theme::ActiveTheme::theme(cx)
+//! cx.theme()
+//! ThemeSettings::get_global(cx)
+//! ```
+//!
+//! ## USE INSTEAD:
+//! ```rust,ignore
+//! // Use theme_oa colors directly
+//! use theme_oa::{bg, text, border};
+//!
+//! // For syntax themes, create a default
+//! let syntax = std::sync::Arc::new(theme::SyntaxTheme::default());
+//!
+//! // For link colors, define inline
+//! let link_color = gpui::hsla(210.0 / 360.0, 0.8, 0.6, 1.0);
+//! ```
+//!
+//! This separation exists because we imported ~200 Zed crates for markdown rendering,
+//! but we don't run Zed's initialization code. Zed crates use `theme`, we use `theme_oa`.
 
 use gpui::Hsla;
 
