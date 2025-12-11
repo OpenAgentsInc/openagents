@@ -64,10 +64,36 @@ pub enum AssistantMessageError {
     Unknown,
 }
 
-/// User message to send to Claude.
+/// User message from Claude Code CLI (echoed/replayed user messages).
+/// Note: When used as part of SdkMessage enum with tag="type", the type field
+/// is consumed for enum dispatch, so we don't include it here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkUserMessage {
-    /// Message type marker
+    /// The message content (APIUserMessage format)
+    pub message: Value,
+    /// Parent tool use ID if responding to a tool call
+    pub parent_tool_use_id: Option<String>,
+    /// Whether this is a synthetic (system-generated) message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_synthetic: Option<bool>,
+    /// Tool use result if responding to a tool call
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_use_result: Option<Value>,
+    /// Unique message ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    /// Session ID
+    pub session_id: String,
+    /// True if this is a replay/acknowledgment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_replay: Option<bool>,
+}
+
+/// Outgoing user message to send to Claude Code CLI.
+/// This struct includes the `type` field needed for sending via StdinMessage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkUserMessageOutgoing {
+    /// Message type marker (always "user")
     #[serde(rename = "type")]
     pub msg_type: UserMessageType,
     /// The message content (APIUserMessage format)

@@ -6,7 +6,7 @@ use crate::permissions::PermissionHandler;
 use crate::protocol::{
     ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
     PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse, SdkMessage,
-    SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest, SetPermissionModeRequest,
+    SdkUserMessageOutgoing, SetMaxThinkingTokensRequest, SetModelRequest, SetPermissionModeRequest,
     StdinMessage, StdoutMessage, UserMessageType,
 };
 use crate::transport::ProcessTransport;
@@ -89,7 +89,7 @@ impl Query {
     async fn send_prompt(&mut self, prompt: &str) -> Result<()> {
         let session_id = self.session_id.clone().unwrap_or_default();
 
-        let message = SdkUserMessage {
+        let message = SdkUserMessageOutgoing {
             msg_type: UserMessageType::User,
             message: serde_json::json!({
                 "role": "user",

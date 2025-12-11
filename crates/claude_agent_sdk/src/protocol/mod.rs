@@ -31,8 +31,8 @@ pub enum StdoutMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StdinMessage {
-    /// User message to send
-    UserMessage(SdkUserMessage),
+    /// User message to send (uses outgoing type with explicit type field)
+    UserMessage(SdkUserMessageOutgoing),
     /// Control request (e.g., interrupt, set_permission_mode)
     ControlRequest(SdkControlRequest),
     /// Control response (e.g., responding to permission request)
