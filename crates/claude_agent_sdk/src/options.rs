@@ -52,6 +52,12 @@ pub struct QueryOptions {
     /// MCP server configurations.
     pub mcp_servers: HashMap<String, McpServerConfig>,
 
+    /// Strict validation for MCP server configurations.
+    pub strict_mcp_config: bool,
+
+    /// Route permission prompts to an MCP tool.
+    pub permission_prompt_tool_name: Option<String>,
+
     /// Custom agents.
     pub agents: HashMap<String, AgentDefinition>,
 
@@ -145,6 +151,17 @@ pub enum McpServerConfig {
         #[serde(skip_serializing_if = "Option::is_none")]
         headers: Option<HashMap<String, String>>,
     },
+    /// In-process SDK MCP server.
+    ///
+    /// **Note:** Full in-process MCP server support requires implementing
+    /// the MCP protocol. For now, use Stdio with a local process instead.
+    ///
+    /// This variant exists for API compatibility with the Node.js SDK.
+    #[serde(rename = "sdk")]
+    Sdk {
+        /// Server name identifier.
+        name: String,
+    },
 }
 
 /// Agent definition for custom subagents.
@@ -190,12 +207,44 @@ pub struct SandboxSettings {
     /// Enable sandboxing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
     /// Auto-allow bash if sandboxed.
     #[serde(rename = "autoAllowBashIfSandboxed", skip_serializing_if = "Option::is_none")]
     pub auto_allow_bash_if_sandboxed: Option<bool>,
+
+    /// Allow unsandboxed commands.
+    #[serde(rename = "allowUnsandboxedCommands", skip_serializing_if = "Option::is_none")]
+    pub allow_unsandboxed_commands: Option<bool>,
+
     /// Network configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<SandboxNetworkConfig>,
+
+    /// Ignore violations by command name and pattern.
+    #[serde(rename = "ignoreViolations", skip_serializing_if = "Option::is_none")]
+    pub ignore_violations: Option<HashMap<String, Vec<String>>>,
+
+    /// Enable weaker nested sandbox.
+    #[serde(rename = "enableWeakerNestedSandbox", skip_serializing_if = "Option::is_none")]
+    pub enable_weaker_nested_sandbox: Option<bool>,
+
+    /// Commands excluded from sandboxing.
+    #[serde(rename = "excludedCommands", skip_serializing_if = "Option::is_none")]
+    pub excluded_commands: Option<Vec<String>>,
+
+    /// Custom ripgrep configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ripgrep: Option<RipgrepConfig>,
+}
+
+/// Ripgrep configuration for sandbox.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RipgrepConfig {
+    /// Command to use for ripgrep.
+    pub command: String,
+    /// Additional arguments for ripgrep.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
 }
 
 /// Sandbox network configuration.
@@ -204,9 +253,26 @@ pub struct SandboxNetworkConfig {
     /// Allow local binding.
     #[serde(rename = "allowLocalBinding", skip_serializing_if = "Option::is_none")]
     pub allow_local_binding: Option<bool>,
+
     /// Allowed Unix sockets.
     #[serde(rename = "allowUnixSockets", skip_serializing_if = "Option::is_none")]
     pub allow_unix_sockets: Option<Vec<String>>,
+
+    /// Allow all Unix sockets.
+    #[serde(rename = "allowAllUnixSockets", skip_serializing_if = "Option::is_none")]
+    pub allow_all_unix_sockets: Option<bool>,
+
+    /// Allowed network domains.
+    #[serde(rename = "allowedDomains", skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+
+    /// HTTP proxy port.
+    #[serde(rename = "httpProxyPort", skip_serializing_if = "Option::is_none")]
+    pub http_proxy_port: Option<u16>,
+
+    /// SOCKS proxy port.
+    #[serde(rename = "socksProxyPort", skip_serializing_if = "Option::is_none")]
+    pub socks_proxy_port: Option<u16>,
 }
 
 /// Plugin configuration.
@@ -266,6 +332,18 @@ impl QueryOptions {
     /// Add an MCP server.
     pub fn mcp_server(mut self, name: impl Into<String>, config: McpServerConfig) -> Self {
         self.mcp_servers.insert(name.into(), config);
+        self
+    }
+
+    /// Enable strict validation for MCP server configurations.
+    pub fn strict_mcp_config(mut self, strict: bool) -> Self {
+        self.strict_mcp_config = strict;
+        self
+    }
+
+    /// Route permission prompts to an MCP tool.
+    pub fn permission_prompt_tool_name(mut self, tool_name: impl Into<String>) -> Self {
+        self.permission_prompt_tool_name = Some(tool_name.into());
         self
     }
 

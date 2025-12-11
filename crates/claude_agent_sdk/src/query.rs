@@ -4,10 +4,10 @@ use crate::error::{Error, Result};
 use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
-    ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
-    PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse, SdkMessage,
+    AccountInfo, ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
+    ModelInfo, PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse, SdkMessage,
     SdkUserMessageOutgoing, SetMaxThinkingTokensRequest, SetModelRequest, SetPermissionModeRequest,
-    StdinMessage, StdoutMessage, UserMessageType,
+    SlashCommand, StdinMessage, StdoutMessage, UserMessageType,
 };
 use crate::transport::ProcessTransport;
 use futures::Stream;
@@ -336,6 +336,183 @@ impl Query {
             },
         ))
         .await?;
+        Ok(())
+    }
+
+    /// Get available slash commands.
+    ///
+    /// Returns a list of slash commands that can be used in prompts.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # use claude_agent_sdk::{query, QueryOptions};
+    /// # async fn example() -> Result<(), claude_agent_sdk::Error> {
+    /// let stream = query("hello", QueryOptions::new()).await?;
+    /// let commands = stream.supported_commands().await?;
+    /// for cmd in commands {
+    ///     println!("/{} - {} ({})", cmd.name, cmd.description, cmd.argument_hint);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn supported_commands(&self) -> Result<Vec<SlashCommand>> {
+        let response = self
+            .send_control_request(ControlRequestData::SupportedCommands)
+            .await?;
+
+        // Parse the response - should be an array of SlashCommand
+        let commands: Vec<SlashCommand> = serde_json::from_value(response).map_err(|e| {
+            Error::InvalidMessage(format!("Failed to parse supported commands: {}", e))
+        })?;
+
+        Ok(commands)
+    }
+
+    /// Get available models.
+    ///
+    /// Returns a list of models that can be used for queries.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # use claude_agent_sdk::{query, QueryOptions};
+    /// # async fn example() -> Result<(), claude_agent_sdk::Error> {
+    /// let stream = query("hello", QueryOptions::new()).await?;
+    /// let models = stream.supported_models().await?;
+    /// for model in models {
+    ///     println!("{}: {} - {}", model.value, model.display_name, model.description);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn supported_models(&self) -> Result<Vec<ModelInfo>> {
+        let response = self
+            .send_control_request(ControlRequestData::SupportedModels)
+            .await?;
+
+        // Parse the response - should be an array of ModelInfo
+        let models: Vec<ModelInfo> = serde_json::from_value(response).map_err(|e| {
+            Error::InvalidMessage(format!("Failed to parse supported models: {}", e))
+        })?;
+
+        Ok(models)
+    }
+
+    /// Get account information for the authenticated user.
+    ///
+    /// Returns details about the current authentication, including email,
+    /// organization, and subscription type.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # use claude_agent_sdk::{query, QueryOptions};
+    /// # async fn example() -> Result<(), claude_agent_sdk::Error> {
+    /// let stream = query("hello", QueryOptions::new()).await?;
+    /// let account = stream.account_info().await?;
+    /// if let Some(email) = account.email {
+    ///     println!("Logged in as: {}", email);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn account_info(&self) -> Result<AccountInfo> {
+        let response = self
+            .send_control_request(ControlRequestData::AccountInfo)
+            .await?;
+
+        // Parse the response - should be an AccountInfo object
+        let account: AccountInfo = serde_json::from_value(response).map_err(|e| {
+            Error::InvalidMessage(format!("Failed to parse account info: {}", e))
+        })?;
+
+        Ok(account)
+    }
+
+    /// Stream additional user messages into the query.
+    ///
+    /// This allows sending multiple messages as a stream during an ongoing conversation.
+    /// Messages will be forwarded to the CLI as they arrive from the stream.
+    ///
+    /// # Arguments
+    /// * `stream` - A stream of user messages to send
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # use claude_agent_sdk::{query, QueryOptions};
+    /// # use futures::stream;
+    /// # async fn example() -> Result<(), claude_agent_sdk::Error> {
+    /// let mut query_stream = query("Start a task", QueryOptions::new()).await?;
+    ///
+    /// // Stream additional messages
+    /// let messages = stream::iter(vec![
+    ///     "Continue with step 2",
+    ///     "And then step 3",
+    /// ].into_iter().map(|s| s.to_string()));
+    ///
+    /// query_stream.stream_input(messages).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn stream_input<S>(&self, mut stream: S) -> Result<()>
+    where
+        S: futures::Stream<Item = String> + Send + Unpin + 'static,
+    {
+        use futures::StreamExt;
+
+        let transport = self.transport.clone();
+        let session_id = self.session_id.clone().unwrap_or_default();
+
+        // Spawn task to forward messages from the stream
+        tokio::spawn(async move {
+            while let Some(content) = stream.next().await {
+                let message = SdkUserMessageOutgoing {
+                    msg_type: UserMessageType::User,
+                    message: serde_json::json!({
+                        "role": "user",
+                        "content": content
+                    }),
+                    parent_tool_use_id: None,
+                    is_synthetic: None,
+                    tool_use_result: None,
+                    uuid: None,
+                    session_id: session_id.clone(),
+                    is_replay: None,
+                };
+
+                let mut transport = transport.lock().await;
+                if transport.send(&StdinMessage::UserMessage(message)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Send a single user message to the query.
+    ///
+    /// This is used internally by the Session API.
+    pub(crate) async fn send_message(&self, content: impl Into<String>) -> Result<()> {
+        let content = content.into();
+        let session_id = self.session_id.clone().unwrap_or_default();
+
+        let message = SdkUserMessageOutgoing {
+            msg_type: UserMessageType::User,
+            message: serde_json::json!({
+                "role": "user",
+                "content": content
+            }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: None,
+            session_id,
+            is_replay: None,
+        };
+
+        let mut transport = self.transport.lock().await;
+        transport
+            .send(&StdinMessage::UserMessage(message))
+            .await?;
         Ok(())
     }
 
