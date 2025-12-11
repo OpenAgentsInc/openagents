@@ -50,7 +50,7 @@ impl GymScreen {
         let hillclimber_view = cx.new(|cx| HillClimberMonitor::new(cx));
         let testgen_view = cx.new(|cx| TestGenVisualizer::new(cx));
         let regex_crusade_view = cx.new(|cx| RegexCrusadeScreen::new(cx));
-        let mechacoder_view = cx.new(|cx| MechaCoderScreen::new(cx));
+        let mechacoder_view = cx.new(|cx| MechaCoderScreen::with_store(cx, store.clone()));
 
         Self {
             current_tab: GymTab::default(),
