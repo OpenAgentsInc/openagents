@@ -15,3 +15,10 @@ theme = { path = "../theme" }
 
 # Shared UI components
 ui = { path = "../ui" }
+
+# Nostr integration for NIP-90 DVM jobs
+nostr = { path = "../nostr" }
+nostr-chat = { path = "../nostr-chat" }
+
+# Async runtime for bridge
+tokio = { workspace = true, features = ["sync"] }

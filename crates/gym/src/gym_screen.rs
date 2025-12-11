@@ -1,6 +1,6 @@
 //! Main Gym Screen component
 //!
-//! Multi-view container with tab navigation and sidebar.
+//! Multi-view container with tab navigation. Each tab manages its own layout.
 
 use gpui::prelude::*;
 use gpui::*;
@@ -9,7 +9,6 @@ use atif_store::TrajectoryStore;
 use theme::{bg, border, text, FONT_FAMILY};
 
 use super::types::GymTab;
-use super::sidebar::Sidebar;
 use super::trajectory_view::TrajectoryView;
 use super::tbcc::TBCCScreen;
 use super::hillclimber::monitor::HillClimberMonitor;
@@ -22,11 +21,6 @@ pub struct GymScreen {
 
     /// Focus handle
     focus_handle: FocusHandle,
-
-    /// Sidebar
-    sidebar: Entity<Sidebar>,
-    pub sidebar_width: Pixels,
-    pub sidebar_collapsed: bool,
 
     /// View entities
     trajectory_view: Entity<TrajectoryView>,
@@ -41,7 +35,6 @@ impl GymScreen {
     }
 
     pub fn with_store(cx: &mut Context<Self>, store: Option<Arc<Mutex<TrajectoryStore>>>) -> Self {
-        let sidebar = cx.new(|cx| Sidebar::new(cx));
         let trajectory_view = cx.new(|cx| {
             let mut view = TrajectoryView::new(cx);
             if let Some(ref s) = store {
@@ -56,9 +49,6 @@ impl GymScreen {
         Self {
             current_tab: GymTab::default(),
             focus_handle: cx.focus_handle(),
-            sidebar,
-            sidebar_width: px(260.0),
-            sidebar_collapsed: false,
             trajectory_view,
             tbcc_screen,
             hillclimber_view,
@@ -68,11 +58,6 @@ impl GymScreen {
 
     pub fn switch_tab(&mut self, tab: GymTab, cx: &mut Context<Self>) {
         self.current_tab = tab;
-        cx.notify();
-    }
-
-    pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
     }
 
@@ -92,10 +77,6 @@ impl GymScreen {
 
     fn switch_to_testgen(&mut self, _: &SwitchToTestGen, _window: &mut Window, cx: &mut Context<Self>) {
         self.switch_tab(GymTab::TestGen, cx);
-    }
-
-    fn toggle_sidebar_action(&mut self, _: &ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
-        self.toggle_sidebar(cx);
     }
 
     fn render_tab_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -144,47 +125,6 @@ impl GymScreen {
             GymTab::TestGen => self.testgen_view.clone().into_any_element(),
         }
     }
-
-    fn render_sidebar(&self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .when(!self.sidebar_collapsed, |el| el.w(self.sidebar_width))
-            .when(self.sidebar_collapsed, |el| el.w(px(0.0)))
-            .h_full()
-            .bg(bg::SIDEBAR)
-            .border_r_1()
-            .border_color(border::DEFAULT)
-            .when(!self.sidebar_collapsed, |el| {
-                el.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .h_full()
-                        .child(
-                            // Sidebar header
-                            div()
-                                .h(px(48.0))
-                                .flex()
-                                .items_center()
-                                .px(px(16.0))
-                                .border_b_1()
-                                .border_color(border::DEFAULT)
-                                .font_family(FONT_FAMILY)
-                                .text_size(px(12.0))
-                                .text_color(text::MUTED)
-                                .child("WORKSPACE")
-                        )
-                        .child(
-                            // Sidebar content - actual tree
-                            div()
-                                .id("gym-sidebar-scroll")
-                                .flex_1()
-                                .overflow_y_scroll()
-                                .p(px(8.0))
-                                .child(self.sidebar.clone())
-                        )
-                )
-            })
-    }
 }
 
 impl Focusable for GymScreen {
@@ -197,6 +137,7 @@ impl Render for GymScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
+            .flex_col()
             .h_full()
             .w_full()
             .bg(bg::APP)
@@ -205,26 +146,15 @@ impl Render for GymScreen {
             .on_action(cx.listener(Self::switch_to_tbcc))
             .on_action(cx.listener(Self::switch_to_hillclimber))
             .on_action(cx.listener(Self::switch_to_testgen))
-            .on_action(cx.listener(Self::toggle_sidebar_action))
-            // Sidebar
-            .child(self.render_sidebar(window, cx))
-            // Main content area
+            // Tab bar
+            .child(self.render_tab_bar(window, cx))
+            // Tab content - each tab manages its own layout
             .child(
                 div()
+                    .id("gym-tab-content")
                     .flex_1()
-                    .flex()
-                    .flex_col()
-                    .h_full()
-                    // Tab bar
-                    .child(self.render_tab_bar(window, cx))
-                    // Tab content
-                    .child(
-                        div()
-                            .id("gym-tab-content-scroll")
-                            .flex_1()
-                            .overflow_y_scroll()
-                            .child(self.render_active_tab_content(window, cx))
-                    )
+                    .overflow_hidden()
+                    .child(self.render_active_tab_content(window, cx))
             )
     }
 }

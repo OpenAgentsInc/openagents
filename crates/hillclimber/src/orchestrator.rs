@@ -111,6 +111,14 @@ pub trait FMClient: Send + Sync {
     async fn generate(&self, system: &str, user: &str) -> Result<String>;
 }
 
+/// Blanket implementation for boxed trait objects
+#[async_trait::async_trait]
+impl FMClient for Box<dyn FMClient> {
+    async fn generate(&self, system: &str, user: &str) -> Result<String> {
+        (**self).generate(system, user).await
+    }
+}
+
 // ============================================================================
 // Tool Executor Trait
 // ============================================================================

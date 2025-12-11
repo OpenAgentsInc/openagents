@@ -64,7 +64,7 @@ pub use orchestrator::{
     FMClient, HillClimberEmitter, MAPOrchestrator, NoopEmitter, ToolExecutor, WorkspaceExecutor,
 };
 pub use prompt::{build_fm_context, build_user_prompt, parse_fm_response, sanitize_for_fm, SYSTEM_PROMPT};
-pub use runner::{create_task, load_task, FMBridgeAdapter, HillClimberRunner, RunOptions};
+pub use runner::{create_task, load_task, FMBridgeAdapter, HillClimberRunner, LlmClientAdapter, ModelProvider, RunOptions, SandboxToolExecutor};
 pub use sampler::{
     quick_sample, ParallelSampler, DEFAULT_CANDIDATE_COUNT, DEFAULT_TEMPERATURES,
 };

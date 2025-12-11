@@ -392,7 +392,7 @@ pub fn run_in_container(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Run a shell command, using sandbox if available and enabled
-pub fn run_command(
+pub fn sandbox_run_command(
     command: &[String],
     config: &SandboxRunnerConfig,
     env: Option<&HashMap<String, String>>,
@@ -442,7 +442,7 @@ pub fn run_command(
 }
 
 /// Run a shell command string, using sandbox if available
-pub fn run_command_string(
+pub fn sandbox_run_command_string(
     command_string: &str,
     config: &SandboxRunnerConfig,
     env: Option<&HashMap<String, String>>,
@@ -452,7 +452,7 @@ pub fn run_command_string(
         .split_whitespace()
         .map(|s| s.to_string())
         .collect();
-    run_command(&command, config, env)
+    sandbox_run_command(&command, config, env)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

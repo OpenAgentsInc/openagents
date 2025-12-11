@@ -32,6 +32,9 @@ mod tool;
 mod client;
 mod anthropic;
 mod openai;
+mod gemini;
+mod ollama;
+mod openrouter;
 mod retry;
 mod models;
 
@@ -42,5 +45,8 @@ pub use tool::*;
 pub use client::*;
 pub use anthropic::*;
 pub use openai::*;
+pub use gemini::*;
+pub use ollama::*;
+pub use openrouter::*;
 pub use retry::*;
 pub use models::*;

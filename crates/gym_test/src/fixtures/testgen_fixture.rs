@@ -3,6 +3,8 @@
 //! Page Object Model fixture for testing the TestGen Visualizer component.
 
 use gpui::{Entity, TestAppContext};
+use gym::testgen::category_progress::TestCategory;
+use gym::testgen::test_list::{TestCase, TestStatus};
 use gym::testgen::visualizer::{GenerationStatus, TestGenSession, TestGenStatus, TestGenVisualizer};
 
 /// Page Object Model fixture for TestGenVisualizer
@@ -171,5 +173,201 @@ impl TestGenFixture {
             v.select_prev_task(cx);
         });
         cx.run_until_parked();
+    }
+
+    // ========================================================================
+    // Test List Actions (for simulating user interactions)
+    // ========================================================================
+
+    /// Add a mock test to the test list
+    pub fn add_mock_test(
+        view: &Entity<TestGenVisualizer>,
+        test: TestCase,
+        cx: &mut TestAppContext,
+    ) {
+        view.update(cx, |v, cx| {
+            v.test_list.update(cx, |list, _cx| {
+                list.add_test(test);
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// Set multiple mock tests in the test list
+    pub fn set_mock_tests(
+        view: &Entity<TestGenVisualizer>,
+        tests: Vec<TestCase>,
+        cx: &mut TestAppContext,
+    ) {
+        view.update(cx, |v, cx| {
+            v.test_list.update(cx, |list, _cx| {
+                list.set_tests(tests);
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// Clear all tests from the test list
+    pub fn clear_tests(view: &Entity<TestGenVisualizer>, cx: &mut TestAppContext) {
+        view.update(cx, |v, cx| {
+            v.test_list.update(cx, |list, _cx| {
+                list.clear_tests();
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// Select a test by ID in the test list
+    pub fn select_test(
+        view: &Entity<TestGenVisualizer>,
+        test_id: &str,
+        cx: &mut TestAppContext,
+    ) {
+        let id = test_id.to_string();
+        view.update(cx, |v, cx| {
+            v.test_list.update(cx, |list, _cx| {
+                list.select(id);
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// Filter tests by category
+    pub fn filter_by_category(
+        view: &Entity<TestGenVisualizer>,
+        category: Option<TestCategory>,
+        cx: &mut TestAppContext,
+    ) {
+        view.update(cx, |v, cx| {
+            v.test_list.update(cx, |list, _cx| {
+                list.filter_by_category(category);
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    /// Get a test from the list by ID
+    pub fn get_test(
+        view: &Entity<TestGenVisualizer>,
+        test_id: &str,
+        cx: &TestAppContext,
+    ) -> Option<TestCase> {
+        cx.read(|cx| {
+            let visualizer = view.read(cx);
+            visualizer.test_list.read(cx).get_test(test_id).cloned()
+        })
+    }
+
+    // ========================================================================
+    // Generation Status Actions (for simulating generation)
+    // ========================================================================
+
+    /// Set the generation status (for testing)
+    pub fn set_generation_status(
+        view: &Entity<TestGenVisualizer>,
+        status: GenerationStatus,
+        cx: &mut TestAppContext,
+    ) {
+        view.update(cx, |v, _cx| {
+            v.generation_status = status;
+        });
+        cx.run_until_parked();
+    }
+
+    /// Simulate generation starting
+    pub fn simulate_generation_start(
+        view: &Entity<TestGenVisualizer>,
+        cx: &mut TestAppContext,
+    ) {
+        Self::set_generation_status(
+            view,
+            GenerationStatus::Generating {
+                iteration: 1,
+                max_iterations: 8,
+                tests_so_far: 0,
+            },
+            cx,
+        );
+    }
+
+    /// Simulate generation progress
+    pub fn simulate_generation_progress(
+        view: &Entity<TestGenVisualizer>,
+        iteration: u32,
+        tests_so_far: u32,
+        cx: &mut TestAppContext,
+    ) {
+        Self::set_generation_status(
+            view,
+            GenerationStatus::Generating {
+                iteration,
+                max_iterations: 8,
+                tests_so_far,
+            },
+            cx,
+        );
+    }
+
+    /// Simulate generation complete
+    pub fn simulate_generation_complete(
+        view: &Entity<TestGenVisualizer>,
+        total_tests: u32,
+        cx: &mut TestAppContext,
+    ) {
+        Self::set_generation_status(
+            view,
+            GenerationStatus::Complete {
+                total_tests,
+                duration_ms: 5000,
+            },
+            cx,
+        );
+    }
+
+    /// Simulate generation failed
+    pub fn simulate_generation_failed(
+        view: &Entity<TestGenVisualizer>,
+        error: &str,
+        cx: &mut TestAppContext,
+    ) {
+        Self::set_generation_status(
+            view,
+            GenerationStatus::Failed {
+                error: error.to_string(),
+            },
+            cx,
+        );
+    }
+
+    // ========================================================================
+    // Test Creation Helpers
+    // ========================================================================
+
+    /// Create a mock test case for testing
+    pub fn create_mock_test(id: &str, name: &str, category: TestCategory) -> TestCase {
+        TestCase {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: TestStatus::Generated,
+            description: format!("Test description for {}", name),
+            code: format!("def {}():\n    assert True", name),
+            confidence: 0.85,
+        }
+    }
+
+    /// Create a set of mock tests covering all categories
+    pub fn create_mock_test_suite() -> Vec<TestCase> {
+        vec![
+            Self::create_mock_test("ac-1", "anti_cheat_no_hardcode", TestCategory::AntiCheat),
+            Self::create_mock_test("ac-2", "anti_cheat_random_input", TestCategory::AntiCheat),
+            Self::create_mock_test("ex-1", "existence_basic", TestCategory::Existence),
+            Self::create_mock_test("ex-2", "existence_output_format", TestCategory::Existence),
+            Self::create_mock_test("co-1", "correctness_simple", TestCategory::Correctness),
+            Self::create_mock_test("co-2", "correctness_complex", TestCategory::Correctness),
+            Self::create_mock_test("bo-1", "boundary_empty_input", TestCategory::Boundary),
+            Self::create_mock_test("bo-2", "boundary_large_input", TestCategory::Boundary),
+            Self::create_mock_test("in-1", "integration_full_flow", TestCategory::Integration),
+        ]
     }
 }

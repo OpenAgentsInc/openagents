@@ -1,14 +1,17 @@
 //! Main Marketplace screen - Orchestrates all components
 
 use gpui::*;
+use std::sync::Arc;
 use theme::{bg, border, text, FONT_FAMILY};
 
-use crate::types::{MarketplaceTab, TrustTier, Transaction, Notification};
+use crate::nostr_bridge::NostrBridge;
+use crate::types::{DVMListing, MarketplaceTab, TrustTier, Transaction, Notification, NotificationKind};
 use crate::resource_bar::{self, ResourceBarProps};
 use crate::activity_feed::{self, mock_transactions, mock_notifications};
 use crate::agents::{AgentStoreState, render_agent_store_with_input};
 use crate::compute::{ComputeMarketState, render_compute_market};
-use crate::services::{ServicesMarketState, render_services_market};
+use crate::services::{DVMList, ServicesMarketState, render_mcp_grid, mock_mcp_servers};
+use nostr_chat::{ChatEvent, ChatState};
 use ui::TextInput;
 
 /// The main Marketplace screen component
@@ -37,12 +40,22 @@ pub struct MarketplaceScreen {
     agent_store_state: AgentStoreState,
     compute_market_state: ComputeMarketState,
     services_market_state: ServicesMarketState,
+
+    // DVM list entity with USE button click handling
+    dvm_list: Entity<DVMList>,
+
+    // Nostr integration (optional, for NIP-90 DVM support)
+    nostr_bridge: Option<NostrBridge>,
+
+    // Selected DVM for job submission dialog
+    selected_dvm: Option<DVMListing>,
 }
 
 impl MarketplaceScreen {
-    /// Create a new MarketplaceScreen
+    /// Create a new MarketplaceScreen (without Nostr integration)
     pub fn new(cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| TextInput::new("Search agents...", cx));
+        let dvm_list = cx.new(|cx| DVMList::new(cx));
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -59,6 +72,108 @@ impl MarketplaceScreen {
             agent_store_state: AgentStoreState::default(),
             compute_market_state: ComputeMarketState::default(),
             services_market_state: ServicesMarketState::default(),
+            dvm_list,
+            nostr_bridge: None,
+            selected_dvm: None,
+        }
+    }
+
+    /// Create a new MarketplaceScreen with Nostr integration for NIP-90 DVM support
+    pub fn with_nostr(cx: &mut Context<Self>, chat_state: Arc<ChatState>) -> Self {
+        let search_input = cx.new(|cx| TextInput::new("Search agents...", cx));
+        let dvm_list = cx.new(|cx| DVMList::new(cx));
+        let bridge = NostrBridge::new(chat_state);
+
+        Self {
+            focus_handle: cx.focus_handle(),
+            current_tab: MarketplaceTab::Agents,
+            wallet_balance_sats: 142_847,
+            trust_tier: TrustTier::Gold,
+            earnings_today_sats: 1_247,
+            is_online: true,
+            connected_relays: 3,
+            activity_feed_collapsed: false,
+            transactions: mock_transactions(),
+            notifications: mock_notifications(),
+            search_input,
+            agent_store_state: AgentStoreState::default(),
+            compute_market_state: ComputeMarketState::default(),
+            services_market_state: ServicesMarketState::default(),
+            dvm_list,
+            nostr_bridge: Some(bridge),
+            selected_dvm: None,
+        }
+    }
+
+    /// Handle USE button click on a DVM
+    pub fn on_dvm_use(&mut self, dvm: &DVMListing, cx: &mut Context<Self>) {
+        // Store the selected DVM for potential dialog
+        self.selected_dvm = Some(dvm.clone());
+
+        // Add a notification
+        self.notifications.insert(0, Notification {
+            id: format!("dvm-selected-{}", dvm.id),
+            kind: NotificationKind::SystemAlert,
+            title: format!("Selected: {}", dvm.name),
+            message: format!("Kind {} - {} sats{}", dvm.kind, dvm.sats_per_unit, dvm.pricing_unit.label()),
+            read: false,
+            timestamp: "now".to_string(),
+        });
+
+        cx.notify();
+    }
+
+    /// Check if Nostr integration is available
+    pub fn has_nostr(&self) -> bool {
+        self.nostr_bridge.is_some()
+    }
+
+    /// Process pending Nostr events (call from timer/frame callback)
+    pub fn process_nostr_events(&mut self, cx: &mut Context<Self>) {
+        if let Some(bridge) = &mut self.nostr_bridge {
+            for event in bridge.poll_events() {
+                match event {
+                    ChatEvent::JobSubmitted { job_id, kind } => {
+                        // Add notification for job submission
+                        self.notifications.insert(0, Notification {
+                            id: format!("job-submitted-{}", &job_id[..8]),
+                            kind: NotificationKind::JobCompleted,
+                            title: "Job Submitted".to_string(),
+                            message: format!("Kind {} job sent to DVM", kind),
+                            read: false,
+                            timestamp: "now".to_string(),
+                        });
+                    }
+                    ChatEvent::JobResult { job_id, content } => {
+                        // Add notification for job result
+                        let preview: String = content.chars().take(50).collect();
+                        self.notifications.insert(0, Notification {
+                            id: format!("job-result-{}", &job_id[..8]),
+                            kind: NotificationKind::JobCompleted,
+                            title: "Job Completed".to_string(),
+                            message: preview,
+                            read: false,
+                            timestamp: "now".to_string(),
+                        });
+                    }
+                    ChatEvent::JobStatusUpdate { job_id, status } => {
+                        // Update notification for job status
+                        self.notifications.insert(0, Notification {
+                            id: format!("job-status-{}", &job_id[..8]),
+                            kind: NotificationKind::JobCompleted,
+                            title: format!("Job {}", status),
+                            message: format!("Job {} status: {}", &job_id[..8], status),
+                            read: false,
+                            timestamp: "now".to_string(),
+                        });
+                    }
+                    ChatEvent::Connected { relay_count } => {
+                        self.connected_relays = relay_count as u32;
+                    }
+                    _ => {}
+                }
+            }
+            cx.notify();
         }
     }
 
@@ -126,7 +241,7 @@ impl MarketplaceScreen {
     }
 
     /// Render the current tab content
-    fn render_tab_content(&self) -> AnyElement {
+    fn render_tab_content(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.current_tab {
             MarketplaceTab::Agents => {
                 div()
@@ -141,12 +256,109 @@ impl MarketplaceScreen {
                     .into_any_element()
             }
             MarketplaceTab::Services => {
-                div()
-                    .flex_1()
-                    .child(render_services_market(&self.services_market_state))
-                    .into_any_element()
+                // Render services market with interactive DVM list
+                self.render_services_tab(cx)
             }
         }
+    }
+
+    /// Render the services tab with interactive DVM list
+    fn render_services_tab(&self, _cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id("services-market")
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .p(px(16.0))
+            .bg(bg::APP)
+            .overflow_y_scroll()
+            // Search bar
+            .child(self.render_search_bar())
+            // Category filters
+            .child(self.render_category_filters())
+            // Interactive DVM list (with USE button callbacks)
+            .child(self.dvm_list.clone())
+            // MCP Servers
+            .child(render_mcp_grid(&mock_mcp_servers()))
+            .into_any_element()
+    }
+
+    /// Render search bar for services
+    fn render_search_bar(&self) -> impl IntoElement {
+        let query = &self.services_market_state.search_query;
+        div()
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .px(px(12.0))
+            .py(px(10.0))
+            .bg(bg::ELEVATED)
+            .border_1()
+            .border_color(border::DEFAULT)
+            .rounded(px(6.0))
+            .child(
+                div()
+                    .text_size(px(14.0))
+                    .child("🔍"),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(14.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(if query.is_empty() {
+                        text::PLACEHOLDER
+                    } else {
+                        text::PRIMARY
+                    })
+                    .child(if query.is_empty() {
+                        "Search DVMs and MCP servers...".to_string()
+                    } else {
+                        query.to_string()
+                    }),
+            )
+    }
+
+    /// Render category filter chips
+    fn render_category_filters(&self) -> impl IntoElement {
+        use crate::types::ServiceCategory;
+        let selected = self.services_market_state.selected_category;
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(6.0))
+            .children(ServiceCategory::all().iter().map(|&cat| {
+                self.render_category_chip(cat, cat == selected)
+            }))
+    }
+
+    /// Render a category chip
+    fn render_category_chip(&self, category: crate::types::ServiceCategory, is_selected: bool) -> impl IntoElement {
+        let (bg_color, text_color, border_color) = if is_selected {
+            (bg::SELECTED, text::BRIGHT, border::SELECTED)
+        } else {
+            (Hsla::transparent_black(), text::MUTED, border::DEFAULT)
+        };
+
+        div()
+            .px(px(12.0))
+            .py(px(6.0))
+            .bg(bg_color)
+            .border_1()
+            .border_color(border_color)
+            .rounded(px(16.0))
+            .cursor_pointer()
+            .hover(|s| s.bg(bg::HOVER).text_color(text::PRIMARY))
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text_color)
+                    .child(category.label().to_string()),
+            )
     }
 
     /// Render the activity feed
@@ -198,7 +410,7 @@ impl Render for MarketplaceScreen {
                     .flex_1()
                     .overflow_hidden()
                     // Tab content
-                    .child(self.render_tab_content())
+                    .child(self.render_tab_content(cx))
                     // Activity feed (right panel)
                     .child(self.render_activity_feed()),
             )
