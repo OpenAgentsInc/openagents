@@ -407,10 +407,11 @@ impl MechaCoderScreen {
                             );
                             let _ = tx.send(RunnerEvent::TurnUpdate { turn, max_turns });
 
-                            // Try to extract text content
+                            // Try to extract content (text and tool_use)
                             if let Some(content) = assistant_msg.message.get("content") {
                                 if let Some(arr) = content.as_array() {
                                     for item in arr {
+                                        // Handle text content
                                         if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
                                             trace!(
                                                 target: "mechacoder::cc",
@@ -429,6 +430,20 @@ impl MechaCoderScreen {
                                                 message: display,
                                                 details: if text.len() > 200 { Some(text.to_string()) } else { None },
                                             }));
+                                        }
+                                        // Handle tool_use content blocks
+                                        if item.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                                            if let Some(tool_name) = item.get("name").and_then(|n| n.as_str()) {
+                                                info!(
+                                                    target: "mechacoder::cc",
+                                                    tool = %tool_name,
+                                                    "Tool use in assistant message"
+                                                );
+                                                let _ = tx.send(RunnerEvent::Log(LogEntry::tool(
+                                                    format!("🔧 {}", tool_name),
+                                                    None
+                                                )));
+                                            }
                                         }
                                     }
                                 }
