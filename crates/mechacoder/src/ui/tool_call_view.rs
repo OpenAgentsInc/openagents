@@ -2,11 +2,12 @@
 
 use acp::{ToolCall, ToolCallContent, ToolCallStatus};
 use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
-use theme::{bg, border, status, text};
+use theme::{bg, status, text};
 
 /// Tool call view for displaying a tool call.
 pub struct ToolCallView {
     /// Tool call ID.
+    #[allow(dead_code)]
     id: String,
     /// Tool call title.
     title: String,

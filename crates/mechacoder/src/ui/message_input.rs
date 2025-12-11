@@ -1,11 +1,14 @@
 //! Message input component.
 
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Window,
+    div, prelude::*, App, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
-use theme::{bg, border, text};
-use ui::TextInput;
+use ui::text_input::{SubmitEvent, TextInput};
+
+/// Event emitted when a message should be sent.
+#[derive(Clone)]
+pub struct SendMessageEvent(pub String);
 
 /// Message input component.
 pub struct MessageInput {
@@ -13,6 +16,8 @@ pub struct MessageInput {
     input: Entity<TextInput>,
     /// Focus handle.
     focus_handle: FocusHandle,
+    /// Subscription to input events.
+    _subscription: Subscription,
 }
 
 impl MessageInput {
@@ -21,31 +26,45 @@ impl MessageInput {
         let focus_handle = cx.focus_handle();
         let input = cx.new(|cx| TextInput::new("Type a message...", cx));
 
+        // Subscribe to submit events from the text input
+        let subscription = cx.subscribe(&input, |this, _input, event: &SubmitEvent, cx| {
+            // Forward the submit event
+            cx.emit(SendMessageEvent(event.0.clone()));
+            // Clear the input
+            this.clear(cx);
+        });
+
         Self {
             input,
             focus_handle,
+            _subscription: subscription,
         }
     }
 
     /// Get the current content.
-    pub fn content(&self) -> String {
-        // Note: TextInput may not have a content() method
-        // This is a placeholder - would need to adapt based on actual API
-        String::new()
+    pub fn content(&self, cx: &App) -> String {
+        self.input.read(cx).content().to_string()
     }
 
     /// Clear the input.
     pub fn clear(&mut self, cx: &mut Context<Self>) {
-        // Note: TextInput may not have a clear() method
-        // This is a placeholder - would need to adapt based on actual API
-        cx.notify();
+        self.input.update(cx, |input, cx| {
+            input.clear(cx);
+        });
     }
 
     /// Set the content.
-    pub fn set_content(&mut self, content: &str, cx: &mut Context<Self>) {
-        // Note: TextInput may not have this method
-        // This is a placeholder
-        cx.notify();
+    pub fn set_content(&mut self, content: impl Into<gpui::SharedString>, cx: &mut Context<Self>) {
+        let content = content.into();
+        self.input.update(cx, |input, cx| {
+            input.set_content(content, cx);
+        });
+    }
+
+    /// Focus the input.
+    pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let handle = self.input.read(cx).focus_handle(cx);
+        window.focus(&handle);
     }
 }
 
@@ -54,6 +73,8 @@ impl Focusable for MessageInput {
         self.focus_handle.clone()
     }
 }
+
+impl EventEmitter<SendMessageEvent> for MessageInput {}
 
 impl Render for MessageInput {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {

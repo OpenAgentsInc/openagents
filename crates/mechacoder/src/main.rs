@@ -2,16 +2,18 @@
 //!
 //! A focused GPUI application for interacting with Claude Code.
 
-use anyhow::Result;
-use gpui::{actions, Application, KeyBinding, Menu, MenuItem, WindowOptions, px, size};
+use gpui::{AppContext, Application, KeyBinding, WindowOptions, px, size};
 use mechacoder::{app_menus, MechaCoderScreen, Quit};
-use theme::FONT_FAMILY;
+use ui::text_input::bind_text_input_keys;
 
 fn main() {
     // Initialize telemetry
     telemetry::init_default("mechacoder");
 
     Application::new().run(|cx| {
+        // Bind text input keys (backspace, delete, arrows, etc.)
+        bind_text_input_keys(cx);
+
         // Load fonts
         let font_paths = vec![
             // Berkeley Mono fonts
@@ -60,7 +62,7 @@ fn main() {
             ..Default::default()
         };
 
-        cx.open_window(window_options, |window, cx| {
+        cx.open_window(window_options, |_window, cx| {
             cx.new(|cx| MechaCoderScreen::new(cx))
         })
         .expect("Failed to open window");

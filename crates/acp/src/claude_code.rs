@@ -4,7 +4,7 @@
 //! to the Claude Code CLI via the ACP protocol.
 
 use agent_client_protocol as acp;
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use gpui::{App, SharedString, Task};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -29,9 +29,10 @@ impl Default for ClaudeCode {
 
 impl ClaudeCode {
     /// Create a new ClaudeCode instance.
+    /// Defaults to bypassPermissions mode.
     pub fn new() -> Self {
         Self {
-            default_mode: None,
+            default_mode: Some("bypassPermissions".to_string()),
             default_model: None,
         }
     }
@@ -172,7 +173,8 @@ mod tests {
         let claude = ClaudeCode::new();
         assert_eq!(claude.telemetry_id(), "claude-code");
         assert_eq!(claude.name().as_ref(), "Claude Code");
-        assert!(claude.default_mode.is_none());
+        // bypassPermissions is the default mode to skip permission prompts
+        assert_eq!(claude.default_mode, Some("bypassPermissions".to_string()));
         assert!(claude.default_model.is_none());
     }
 

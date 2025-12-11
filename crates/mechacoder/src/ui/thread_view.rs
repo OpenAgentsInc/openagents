@@ -6,9 +6,9 @@ use gpui::{
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
 };
 use theme::{bg, border, text};
-use ui::{Button, ButtonVariant, TextInput};
+use ui::{Button, ButtonVariant};
 
-use super::message_input::MessageInput;
+use super::message_input::{MessageInput, SendMessageEvent};
 use super::message_view::MessageView;
 use super::tool_call_view::ToolCallView;
 
@@ -23,7 +23,9 @@ pub struct ThreadView {
     /// List state for entries.
     list_state: ListState,
     /// Subscription to thread events.
-    _subscription: Subscription,
+    _thread_subscription: Subscription,
+    /// Subscription to message input events.
+    _input_subscription: Subscription,
 }
 
 impl ThreadView {
@@ -35,8 +37,13 @@ impl ThreadView {
         let message_input = cx.new(|cx| MessageInput::new(cx));
 
         // Subscribe to thread events
-        let subscription = cx.subscribe(&thread, |this, _thread, event, cx| {
+        let thread_subscription = cx.subscribe(&thread, |this, _thread, event, cx| {
             this.handle_thread_event(event, cx);
+        });
+
+        // Subscribe to message input submit events
+        let input_subscription = cx.subscribe(&message_input, |this, _input, event: &SendMessageEvent, cx| {
+            this.send_message_content(&event.0, cx);
         });
 
         // Create list state
@@ -47,8 +54,14 @@ impl ThreadView {
             message_input,
             focus_handle,
             list_state,
-            _subscription: subscription,
+            _thread_subscription: thread_subscription,
+            _input_subscription: input_subscription,
         }
+    }
+
+    /// Get the focus handle for the message input.
+    pub fn message_input_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.message_input.read(cx).focus_handle(cx)
     }
 
     /// Handle a thread event.
@@ -90,7 +103,7 @@ impl ThreadView {
                         }
                     })
                     .collect::<Vec<_>>()
-                    .join("\n");
+                    .join("");  // No newlines between streaming tokens
                 MessageView::assistant(&content).into_any_element()
             }
             ThreadEntry::ToolCall(tc) => {
@@ -99,9 +112,23 @@ impl ThreadView {
         }
     }
 
-    /// Send the current message.
+    /// Send a message with the given content.
+    fn send_message_content(&mut self, content: &str, cx: &mut Context<Self>) {
+        if content.trim().is_empty() {
+            return;
+        }
+
+        let content = content.to_string();
+
+        // Send to thread
+        self.thread.update(cx, |thread, cx| {
+            thread.send_message(content, cx).detach();
+        });
+    }
+
+    /// Send the current message from the input field.
     fn send_message(&mut self, cx: &mut Context<Self>) {
-        let content = self.message_input.read(cx).content();
+        let content = self.message_input.read(cx).content(cx);
         if content.trim().is_empty() {
             return;
         }
@@ -125,6 +152,7 @@ impl ThreadView {
     }
 
     /// Respond to a permission request.
+    #[allow(dead_code)]
     fn respond_permission(&mut self, option_id: &str, cx: &mut Context<Self>) {
         self.thread.update(cx, |thread, cx| {
             thread.respond_permission(acp::acp::PermissionOptionId::new(option_id), cx);
@@ -207,8 +235,9 @@ impl Focusable for ThreadView {
 
 impl Render for ThreadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_streaming = matches!(self.thread.read(cx).status(), ThreadStatus::Streaming);
+        let is_streaming = matches!(*self.thread.read(cx).status(), ThreadStatus::Streaming);
         let has_permission = self.thread.read(cx).has_pending_permission();
+        let streaming_content = self.thread.read(cx).streaming_content();
 
         // Create render callback for list items
         let thread = self.thread.clone();
@@ -225,18 +254,37 @@ impl Render for ThreadView {
             .size_full()
             .flex()
             .flex_col()
+            .items_center()
             .track_focus(&self.focus_handle)
             // Message list
             .child(
                 div()
                     .flex_1()
+                    .w_full()
+                    .max_w(px(768.0))
                     .overflow_hidden()
                     .child(list(self.list_state.clone(), render_item).size_full()),
             )
+            // Streaming message (shown while receiving)
+            .when_some(streaming_content, |el, content| {
+                el.child(
+                    div()
+                        .w_full()
+                        .max_w(px(768.0))
+                        .px(px(16.0))
+                        .child(MessageView::assistant(&content))
+                )
+            })
             // Permission prompt
             .when(has_permission, |el| {
                 if let Some(prompt) = self.render_permission_prompt(cx) {
-                    el.child(div().p(px(16.0)).child(prompt))
+                    el.child(
+                        div()
+                            .w_full()
+                            .max_w(px(768.0))
+                            .p(px(16.0))
+                            .child(prompt)
+                    )
                 } else {
                     el
                 }
@@ -244,6 +292,8 @@ impl Render for ThreadView {
             // Message input
             .child(
                 div()
+                    .w_full()
+                    .max_w(px(768.0))
                     .p(px(16.0))
                     .border_t_1()
                     .border_color(border::DEFAULT)
@@ -268,6 +318,11 @@ impl Render for ThreadView {
                     }),
             )
             // Status bar
-            .child(self.render_status(cx))
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(768.0))
+                    .child(self.render_status(cx))
+            )
     }
 }
