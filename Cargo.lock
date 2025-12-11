@@ -2830,6 +2830,7 @@ dependencies = [
  "fm-bridge",
  "gpui",
  "parking_lot",
+ "rusqlite",
  "serde",
  "serde_json",
  "testgen",
