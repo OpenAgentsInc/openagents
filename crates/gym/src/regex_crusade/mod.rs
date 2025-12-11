@@ -173,13 +173,25 @@ impl RegexCrusadeScreen {
                     self.add_log(LogEntryKind::Progress, msg, cx);
                 }
                 TestGenEvent::TestGenerated(test) => {
+                    // Debug: check why tests might be stubs
+                    let input_trimmed = test.input.trim();
+                    let reasoning_trimmed = test.reasoning.trim();
+                    let debug_info = format!(
+                        "[in_len={}, in_trim={}, reason_len={}, reason_trim={}]",
+                        test.input.len(),
+                        input_trimmed.len(),
+                        test.reasoning.len(),
+                        reasoning_trimmed.len()
+                    );
+
                     // Log the test
                     self.add_log(
                         LogEntryKind::TestGenerated,
                         format!(
-                            "Test {}: {:?}\n  Input: \"{}\"\n  Expected: {:?}\n  Reasoning: {}",
+                            "Test {}: {:?} {}\n  Input: \"{}\"\n  Expected: {:?}\n  Reasoning: {}",
                             test.id,
                             test.category,
+                            debug_info,
                             truncate(&test.input, 60),
                             test.expected_output,
                             truncate(&test.reasoning, 80)
@@ -469,13 +481,19 @@ fn convert_test(test: &testgen::GeneratedTest) -> CrusadeTest {
         _ => CrusadeCategory::Correctness,
     };
 
-    // Tests with actual input and expected output are REAL tests
-    // They're only stubs if input or expected is empty/placeholder
-    let quality = if test.input.is_empty() || test.expected_output.is_none() {
+    // Tests with actual input and reasoning are REAL tests
+    // Trim whitespace to handle edge cases
+    let input_trimmed = test.input.trim();
+    let reasoning_trimmed = test.reasoning.trim();
+
+    let quality = if input_trimmed.is_empty() {
         TestQuality::Stub
-    } else if test.input.contains("TODO") || test.input.contains("placeholder") {
+    } else if input_trimmed.contains("TODO") || input_trimmed.contains("placeholder") {
+        TestQuality::Suspicious
+    } else if reasoning_trimmed.is_empty() {
         TestQuality::Suspicious
     } else {
+        // Has real input and reasoning = REAL test
         TestQuality::Real
     };
 

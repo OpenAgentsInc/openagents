@@ -160,15 +160,17 @@ impl TestPanel {
             CrusadeCategory::Integration => (category::INTEGRATION_BG, category::INTEGRATION_TEXT),
         };
 
-        let input_preview: String = test.input.chars().take(40).collect();
+        // Show reasoning (what the test checks) as primary, input as secondary
+        let reasoning_preview: String = test.reasoning.chars().take(80).collect();
+        let input_preview: String = test.input.chars().take(50).collect();
 
         div()
             .id(ElementId::Name(format!("test-row-{}", idx).into()))
             .flex()
-            .items_center()
-            .gap(px(8.0))
+            .flex_col()
+            .gap(px(4.0))
             .px(px(12.0))
-            .py(px(8.0))
+            .py(px(10.0))
             .bg(if is_selected { bg::SELECTED } else { bg::ROW })
             .border_b_1()
             .border_color(border::SUBTLE)
@@ -184,89 +186,105 @@ impl TestPanel {
                     cx.notify();
                 }),
             )
-            // Status icon
+            // Top row: badges + test ID
             .child(
                 div()
-                    .w(px(16.0))
-                    .text_size(px(12.0))
-                    .font_family(FONT_FAMILY)
-                    .text_color(status_color)
-                    .child(test.status.icon()),
-            )
-            // Quality badge
-            .child(
-                div()
-                    .w(px(20.0))
-                    .h(px(16.0))
-                    .rounded(px(2.0))
-                    .bg(quality_bg)
                     .flex()
                     .items_center()
-                    .justify_center()
+                    .gap(px(6.0))
+                    // Status icon
                     .child(
                         div()
-                            .text_size(px(8.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(quality_text)
-                            .font_weight(FontWeight::BOLD)
-                            .child(test.quality.icon()),
-                    ),
-            )
-            // Category badge
-            .child(
-                div()
-                    .w(px(24.0))
-                    .h(px(16.0))
-                    .rounded(px(2.0))
-                    .bg(cat_bg)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_size(px(7.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(cat_text)
-                            .font_weight(FontWeight::BOLD)
-                            .child(test.category.icon()),
-                    ),
-            )
-            // Test ID + input preview
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .overflow_hidden()
-                    .child(
-                        div()
+                            .w(px(14.0))
                             .text_size(px(11.0))
                             .font_family(FONT_FAMILY)
-                            .text_color(if is_selected {
-                                text::BRIGHT
-                            } else {
-                                text::PRIMARY
-                            })
-                            .text_ellipsis()
-                            .child(test.id.clone()),
+                            .text_color(status_color)
+                            .child(test.status.icon()),
                     )
+                    // Quality badge
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .py(px(1.0))
+                            .rounded(px(2.0))
+                            .bg(quality_bg)
+                            .child(
+                                div()
+                                    .text_size(px(8.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(quality_text)
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(test.quality.icon()),
+                            ),
+                    )
+                    // Category badge
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .py(px(1.0))
+                            .rounded(px(2.0))
+                            .bg(cat_bg)
+                            .child(
+                                div()
+                                    .text_size(px(7.0))
+                                    .font_family(FONT_FAMILY)
+                                    .text_color(cat_text)
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(test.category.icon()),
+                            ),
+                    )
+                    // Test ID
                     .child(
                         div()
                             .text_size(px(10.0))
                             .font_family(FONT_FAMILY)
+                            .text_color(text::MUTED)
+                            .child(test.id.clone()),
+                    )
+                    // Confidence (right side)
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .text_size(px(9.0))
+                            .font_family(FONT_FAMILY)
                             .text_color(text::DISABLED)
+                            .child(format!("{:.0}%", test.confidence * 100.0)),
+                    ),
+            )
+            // Main content: What this test checks (reasoning)
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(if is_selected {
+                        text::BRIGHT
+                    } else {
+                        text::PRIMARY
+                    })
+                    .line_height(px(15.0))
+                    .child(reasoning_preview),
+            )
+            // Input preview
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(9.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::DISABLED)
+                            .child("Input:"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(9.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::MUTED)
                             .text_ellipsis()
                             .child(format!("\"{}\"", input_preview)),
                     ),
-            )
-            // Confidence
-            .child(
-                div()
-                    .text_size(px(10.0))
-                    .font_family(FONT_FAMILY)
-                    .text_color(text::DISABLED)
-                    .child(format!("{:.0}%", test.confidence * 100.0)),
             )
     }
 }
