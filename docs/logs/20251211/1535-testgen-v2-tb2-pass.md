@@ -1,8 +1,8 @@
 # TestGen v2 E2E Test - TB2 PASS
 
-**Date:** 2024-12-11 15:35
-**Status:** SUCCESS - TestGen v2 passed TB2 benchmark
-**Model:** `claude-haiku-4-5-20251001`
+- **Date:** 2024-12-11 15:35
+- **Status:** SUCCESS - TestGen v2 passed TB2 benchmark
+- **Model:** `claude-haiku-4-5-20251001`
 
 ## Summary
 
