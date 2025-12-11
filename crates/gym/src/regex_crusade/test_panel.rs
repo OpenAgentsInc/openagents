@@ -130,7 +130,7 @@ impl TestPanel {
             )
     }
 
-    fn render_test_row(&self, test: &CrusadeTest, idx: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_test_row(&self, test: &CrusadeTest, idx: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let is_selected = self.selected_id.as_deref() == Some(&test.id);
         let test_id = test.id.clone();
 
@@ -279,7 +279,11 @@ impl Focusable for TestPanel {
 
 impl Render for TestPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let tests_clone = self.tests.clone();
+        // Pre-render all rows using a for loop (closures can't capture cx)
+        let mut rows = Vec::with_capacity(self.tests.len());
+        for (idx, test) in self.tests.iter().enumerate() {
+            rows.push(self.render_test_row(test, idx, cx));
+        }
 
         div()
             .flex()
@@ -293,7 +297,7 @@ impl Render for TestPanel {
                     .id("test-list-scroll")
                     .flex_1()
                     .overflow_y_scroll()
-                    .when(tests_clone.is_empty(), |el| {
+                    .when(rows.is_empty(), |el| {
                         el.flex()
                             .items_center()
                             .justify_center()
@@ -305,14 +309,7 @@ impl Render for TestPanel {
                                     .child("No tests generated yet"),
                             )
                     })
-                    .when(!tests_clone.is_empty(), |el| {
-                        el.children(
-                            tests_clone
-                                .iter()
-                                .enumerate()
-                                .map(|(idx, test)| self.render_test_row(test, idx, cx)),
-                        )
-                    }),
+                    .when(!rows.is_empty(), |el| el.children(rows)),
             )
     }
 }

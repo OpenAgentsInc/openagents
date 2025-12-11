@@ -11,6 +11,8 @@ pub enum GymTab {
     HillClimber,
     /// TestGen test generation progress + test list
     TestGen,
+    /// Laser-focused regex-log solver
+    RegexCrusade,
 }
 
 impl Default for GymTab {
@@ -26,6 +28,7 @@ impl GymTab {
             Self::TBCC => "TBCC",
             Self::HillClimber => "HillClimber",
             Self::TestGen => "TestGen",
+            Self::RegexCrusade => "Crusade",
         }
     }
 
@@ -35,6 +38,7 @@ impl GymTab {
             GymTab::TBCC,
             GymTab::HillClimber,
             GymTab::TestGen,
+            GymTab::RegexCrusade,
         ]
     }
 }
