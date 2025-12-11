@@ -2,11 +2,11 @@
 
 use claude_agent_sdk::{
     query, QueryOptions, SdkMessage, SdkResultMessage, SdkSystemMessage,
-    PermissionMode,
 };
 use futures::StreamExt;
-use gpui::{App, AppContext, Context, EventEmitter, Task};
+use gpui::{Context, EventEmitter, Task};
 use gpui_tokio::Tokio;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
@@ -57,9 +57,15 @@ pub struct AssistantMessage {
 /// Tool use entry.
 #[derive(Clone, Debug)]
 pub struct ToolUse {
+    /// Unique tool use ID from Claude.
+    pub tool_use_id: String,
+    /// Name of the tool being used.
     pub tool_name: String,
+    /// JSON input for the tool.
     pub input: String,
+    /// Output from tool execution.
     pub output: Option<String>,
+    /// Current status of the tool.
     pub status: ToolStatus,
 }
 
@@ -78,7 +84,28 @@ pub enum ToolStatus {
 enum SdkUpdate {
     Init { session_id: String, model: String },
     StreamingContent(String),
-    ToolProgress { tool_name: String },
+    /// Tool use started from stream event content_block_start
+    ToolUseStarted {
+        tool_use_id: String,
+        tool_name: String,
+    },
+    /// Tool input streaming from stream event input_json_delta
+    ToolInputDelta {
+        tool_use_id: String,
+        partial_json: String,
+    },
+    /// Tool progress from tool_progress message
+    ToolProgress {
+        tool_use_id: String,
+        tool_name: String,
+        elapsed_seconds: f64,
+    },
+    /// Tool result from user message (tool_result)
+    ToolResult {
+        tool_use_id: String,
+        output: String,
+        is_error: bool,
+    },
     FinalContent(String),
     Completed,
     Error(String),
@@ -98,6 +125,8 @@ pub struct SdkThread {
     session_id: Option<String>,
     /// Model being used.
     model: Option<String>,
+    /// Map from tool_use_id to entry index for quick lookups.
+    tool_use_index: HashMap<String, usize>,
 }
 
 impl SdkThread {
@@ -110,6 +139,7 @@ impl SdkThread {
             streaming_content: None,
             session_id: None,
             model: None,
+            tool_use_index: HashMap::new(),
         }
     }
 
@@ -157,14 +187,13 @@ impl SdkThread {
         // Create channel for SDK updates
         let (tx, mut rx) = mpsc::unbounded_channel::<SdkUpdate>();
 
-        // Spawn SDK work on Tokio runtime
+        // Spawn SDK work on Tokio runtime - must detach to prevent abort on drop
         info!("Spawning SDK query for: {}", content);
-        let _tokio_task = Tokio::spawn(cx, async move {
+        Tokio::spawn(cx, async move {
             info!("Tokio task started");
-            // Build options - use dangerously_skip_permissions for bypass mode
+            // Build options - only use dangerously_skip_permissions (don't also set permission_mode)
             let options = QueryOptions::new()
                 .cwd(&project_root)
-                .permission_mode(PermissionMode::BypassPermissions)
                 .dangerously_skip_permissions(true)
                 .include_partial_messages(true);
 
@@ -208,34 +237,102 @@ impl SdkThread {
                         }
                     }
                     SdkMessage::Assistant(assistant) => {
-                        // Extract text from message
+                        // Extract text from message - but only if we haven't already
+                        // accumulated from stream events (to avoid duplication)
                         info!("Assistant message: {}", assistant.message);
-                        if let Some(content) = assistant.message.get("content") {
+                        if assistant_content.is_empty() {
+                            if let Some(content) = assistant.message.get("content") {
+                                if let Some(blocks) = content.as_array() {
+                                    for block in blocks {
+                                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                            assistant_content.push_str(text);
+                                        }
+                                    }
+                                }
+                            }
+                            info!("Extracted content from assistant: {}", assistant_content);
+                            let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
+                        } else {
+                            info!("Skipping assistant extraction, already have streaming content");
+                        }
+                    }
+                    SdkMessage::StreamEvent(event) => {
+                        // Handle streaming events
+                        let event_type = event.event.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        debug!("Stream event type: {}", event_type);
+
+                        match event_type {
+                            "content_block_start" => {
+                                // Check if this is a tool_use block starting
+                                if let Some(content_block) = event.event.get("content_block") {
+                                    let block_type = content_block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    if block_type == "tool_use" {
+                                        let tool_use_id = content_block.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                                        let tool_name = content_block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                                        info!("Tool use started: {} ({})", tool_name, tool_use_id);
+                                        let _ = tx.send(SdkUpdate::ToolUseStarted {
+                                            tool_use_id: tool_use_id.to_string(),
+                                            tool_name: tool_name.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                            "content_block_delta" => {
+                                if let Some(delta) = event.event.get("delta") {
+                                    let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    match delta_type {
+                                        "text_delta" => {
+                                            // Regular text streaming
+                                            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                                                assistant_content.push_str(text);
+                                                debug!("Streaming content now: {}", assistant_content);
+                                                let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
+                                            }
+                                        }
+                                        "input_json_delta" => {
+                                            // Tool input streaming - could track partial JSON here
+                                            if let Some(partial_json) = delta.get("partial_json").and_then(|p| p.as_str()) {
+                                                debug!("Tool input delta: {}", partial_json);
+                                                // We don't track partial tool input for now
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Log other stream event types
+                                debug!("Other stream event: {:?}", event.event);
+                            }
+                        }
+                    }
+                    SdkMessage::User(user_msg) => {
+                        // Handle user message echos (including tool results)
+                        if let Some(content) = user_msg.message.get("content") {
                             if let Some(blocks) = content.as_array() {
                                 for block in blocks {
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        assistant_content.push_str(text);
+                                    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    if block_type == "tool_result" {
+                                        let tool_use_id = block.get("tool_use_id").and_then(|i| i.as_str()).unwrap_or("");
+                                        let is_error = block.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                                        let output = block.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                                        info!("Tool result for {}: {} (error: {})", tool_use_id, output.len(), is_error);
+                                        let _ = tx.send(SdkUpdate::ToolResult {
+                                            tool_use_id: tool_use_id.to_string(),
+                                            output: output.to_string(),
+                                            is_error,
+                                        });
                                     }
                                 }
                             }
                         }
-                        info!("Extracted content: {}", assistant_content);
-                        let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
-                    }
-                    SdkMessage::StreamEvent(event) => {
-                        // Handle streaming delta
-                        debug!("Stream event: {:?}", event.event);
-                        if let Some(delta) = event.event.get("delta") {
-                            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
-                                assistant_content.push_str(text);
-                                debug!("Streaming content now: {}", assistant_content);
-                                let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
-                            }
-                        }
                     }
                     SdkMessage::ToolProgress(progress) => {
+                        info!("Tool progress: {} ({})", progress.tool_name, progress.tool_use_id);
                         let _ = tx.send(SdkUpdate::ToolProgress {
+                            tool_use_id: progress.tool_use_id,
                             tool_name: progress.tool_name,
+                            elapsed_seconds: progress.elapsed_time_seconds,
                         });
                     }
                     SdkMessage::Result(result) => {
@@ -260,7 +357,8 @@ impl SdkThread {
                 let _ = tx.send(SdkUpdate::FinalContent(assistant_content));
             }
             let _ = tx.send(SdkUpdate::Completed);
-        });
+        })
+        .detach();
 
         // Spawn GPUI task to receive updates
         cx.spawn(async move |this, cx| {
@@ -277,8 +375,10 @@ impl SdkThread {
                             this.streaming_content = Some(content);
                             cx.notify();
                         }
-                        SdkUpdate::ToolProgress { tool_name } => {
+                        SdkUpdate::ToolUseStarted { tool_use_id, tool_name } => {
+                            // Create a new tool use entry
                             let tool_entry = ThreadEntry::ToolUse(ToolUse {
+                                tool_use_id: tool_use_id.clone(),
                                 tool_name,
                                 input: String::new(),
                                 output: None,
@@ -286,7 +386,54 @@ impl SdkThread {
                             });
                             this.entries.push(tool_entry);
                             let idx = this.entries.len() - 1;
+                            this.tool_use_index.insert(tool_use_id, idx);
                             cx.emit(SdkThreadEvent::EntryAdded(idx));
+                        }
+                        SdkUpdate::ToolInputDelta { tool_use_id, partial_json } => {
+                            // Update tool input (if we want to show partial input)
+                            if let Some(&idx) = this.tool_use_index.get(&tool_use_id) {
+                                if let ThreadEntry::ToolUse(tool_use) = &mut this.entries[idx] {
+                                    tool_use.input.push_str(&partial_json);
+                                    cx.emit(SdkThreadEvent::EntryUpdated(idx));
+                                }
+                            }
+                        }
+                        SdkUpdate::ToolProgress { tool_use_id, tool_name, elapsed_seconds: _ } => {
+                            // Update or create tool entry based on tool_progress
+                            if let Some(&idx) = this.tool_use_index.get(&tool_use_id) {
+                                // Already have this tool use, just update status
+                                if let ThreadEntry::ToolUse(tool_use) = &mut this.entries[idx] {
+                                    tool_use.status = ToolStatus::Running;
+                                    cx.emit(SdkThreadEvent::EntryUpdated(idx));
+                                }
+                            } else {
+                                // Create new tool entry from progress
+                                let tool_entry = ThreadEntry::ToolUse(ToolUse {
+                                    tool_use_id: tool_use_id.clone(),
+                                    tool_name,
+                                    input: String::new(),
+                                    output: None,
+                                    status: ToolStatus::Running,
+                                });
+                                this.entries.push(tool_entry);
+                                let idx = this.entries.len() - 1;
+                                this.tool_use_index.insert(tool_use_id, idx);
+                                cx.emit(SdkThreadEvent::EntryAdded(idx));
+                            }
+                        }
+                        SdkUpdate::ToolResult { tool_use_id, output, is_error } => {
+                            // Update tool with result
+                            if let Some(&idx) = this.tool_use_index.get(&tool_use_id) {
+                                if let ThreadEntry::ToolUse(tool_use) = &mut this.entries[idx] {
+                                    tool_use.output = Some(output);
+                                    tool_use.status = if is_error {
+                                        ToolStatus::Failed("Tool execution failed".to_string())
+                                    } else {
+                                        ToolStatus::Completed
+                                    };
+                                    cx.emit(SdkThreadEvent::EntryUpdated(idx));
+                                }
+                            }
                         }
                         SdkUpdate::FinalContent(content) => {
                             this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {

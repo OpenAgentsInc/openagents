@@ -157,8 +157,8 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_user_message() {
-        let msg = SdkUserMessage {
+    fn test_serialize_user_message_outgoing() {
+        let msg = SdkUserMessageOutgoing {
             msg_type: UserMessageType::User,
             message: json!({
                 "role": "user",
@@ -271,5 +271,182 @@ mod tests {
             "type": "keep_alive"
         });
         let _: StdoutMessage = serde_json::from_value(keepalive_json).unwrap();
+    }
+
+    #[test]
+    fn test_parse_user_message_with_tool_result() {
+        // This is a critical test for the bug fix: user messages containing tool results
+        // must parse correctly. Previously, the "type" field was consumed by the enum tag
+        // but also expected by SdkUserMessage, causing parse failures.
+        let json = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "tool_use_id": "toolu_013t7RgaiZRk2TL5uMVXuvAC",
+                    "type": "tool_result",
+                    "content": ".\n├── assets\n├── crates\n├── docs\n└── target\n\n4 directories",
+                    "is_error": false
+                }]
+            },
+            "parent_tool_use_id": null,
+            "session_id": "5a7cf025-e061-47ee-be41-fed629978594",
+            "uuid": "fe309e99-d8cd-48cb-bd65-1da67e36ff25",
+            "tool_use_result": {
+                "stdout": ".\n├── assets\n├── crates\n├── docs\n└── target\n\n4 directories",
+                "stderr": "",
+                "interrupted": false,
+                "isImage": false
+            }
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).expect("Failed to parse user message with tool result");
+        match msg {
+            SdkMessage::User(user_msg) => {
+                assert_eq!(user_msg.session_id, "5a7cf025-e061-47ee-be41-fed629978594");
+                // Check the content contains tool_result
+                let content = user_msg.message.get("content").unwrap().as_array().unwrap();
+                assert_eq!(content.len(), 1);
+                assert_eq!(content[0]["type"], "tool_result");
+                assert_eq!(content[0]["tool_use_id"], "toolu_013t7RgaiZRk2TL5uMVXuvAC");
+            }
+            _ => panic!("Expected user message, got {:?}", msg),
+        }
+    }
+
+    #[test]
+    fn test_parse_user_message_via_stdout_message() {
+        // Test that StdoutMessage can also parse user messages correctly
+        let json = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "tool_use_id": "tool-123",
+                    "type": "tool_result",
+                    "content": "Success",
+                    "is_error": false
+                }]
+            },
+            "parent_tool_use_id": null,
+            "session_id": "session-123",
+            "uuid": "uuid-123"
+        });
+
+        let stdout_msg: StdoutMessage = serde_json::from_value(json).expect("Failed to parse user message via StdoutMessage");
+        match stdout_msg {
+            StdoutMessage::Message(SdkMessage::User(_)) => {
+                // Success!
+            }
+            _ => panic!("Expected StdoutMessage::Message(SdkMessage::User), got {:?}", stdout_msg),
+        }
+    }
+
+    #[test]
+    fn test_parse_stream_event_tool_use_start() {
+        // Test parsing stream event for tool_use content_block_start
+        let json = json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 1,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_01ABC123",
+                    "name": "Bash",
+                    "input": {}
+                }
+            },
+            "parent_tool_use_id": null,
+            "uuid": "uuid-123",
+            "session_id": "session-123"
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).unwrap();
+        match msg {
+            SdkMessage::StreamEvent(event) => {
+                let content_block = event.event.get("content_block").unwrap();
+                assert_eq!(content_block["type"], "tool_use");
+                assert_eq!(content_block["id"], "toolu_01ABC123");
+                assert_eq!(content_block["name"], "Bash");
+            }
+            _ => panic!("Expected stream event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_stream_event_input_json_delta() {
+        // Test parsing stream event for tool input streaming
+        let json = json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 1,
+                "delta": {
+                    "type": "input_json_delta",
+                    "partial_json": "{\"command\": \"ls"
+                }
+            },
+            "parent_tool_use_id": null,
+            "uuid": "uuid-123",
+            "session_id": "session-123"
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).unwrap();
+        match msg {
+            SdkMessage::StreamEvent(event) => {
+                let delta = event.event.get("delta").unwrap();
+                assert_eq!(delta["type"], "input_json_delta");
+                assert_eq!(delta["partial_json"], "{\"command\": \"ls");
+            }
+            _ => panic!("Expected stream event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_auth_status_message() {
+        let json = json!({
+            "type": "auth_status",
+            "isAuthenticating": true,
+            "output": ["Authenticating...", "Please wait"],
+            "error": null,
+            "uuid": "uuid-123",
+            "session_id": "session-123"
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).unwrap();
+        match msg {
+            SdkMessage::AuthStatus(auth) => {
+                assert!(auth.is_authenticating);
+                assert_eq!(auth.output.len(), 2);
+                assert!(auth.error.is_none());
+            }
+            _ => panic!("Expected auth status message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_hook_response() {
+        let json = json!({
+            "type": "system",
+            "subtype": "hook_response",
+            "hook_name": "session-start",
+            "hook_event": "start",
+            "stdout": "Hook output",
+            "stderr": "",
+            "exit_code": 0,
+            "uuid": "uuid-123",
+            "session_id": "session-123"
+        });
+
+        let msg: SdkMessage = serde_json::from_value(json).unwrap();
+        match msg {
+            SdkMessage::System(SdkSystemMessage::HookResponse(hook)) => {
+                assert_eq!(hook.hook_name, "session-start");
+                assert_eq!(hook.stdout, "Hook output");
+                assert_eq!(hook.exit_code, Some(0));
+            }
+            _ => panic!("Expected hook response message"),
+        }
     }
 }
