@@ -1,13 +1,13 @@
 # Agent Crate Porting Progress
 
 **Date:** 2025-12-10
-**Status:** In Progress (Phase 3)
+**Status:** In Progress (Phase 3 - Core Complete)
 
 ## Overview
 
 Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 
-## Modules Ported (28 total)
+## Modules Ported (29 total)
 
 | Rust Module | TypeScript Source | Tests | Description |
 |-------------|-------------------|-------|-------------|
@@ -16,6 +16,7 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `checkpoint.rs` | `checkpoint.ts` | 6 | Orchestrator checkpoint/crash recovery |
 | `claude_code_detector.rs` | `claude-code-detector.ts` | 5 | Detect Claude Code CLI availability |
 | `claude_code_mcp.rs` | `claude-code-mcp.ts` | 8 | MCP tools for Claude Code integration |
+| `claude_code_subagent.rs` | `claude-code-subagent.ts` | 14 | Claude Code SDK integration (stub) |
 | `decompose.rs` | `decompose.ts` | 2 | Task decomposition heuristics |
 | `error.rs` | N/A | 0 | AgentError types |
 | `git.rs` | `git-helpers.ts` | 2 | Git operations (merge, commits, etc.) |
@@ -38,14 +39,13 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 | `worktree_guards.rs` | `worktree-guards.ts` | 6 | File operation boundary enforcement |
 | `worktree_runner.rs` | `worktree-runner.ts` | 4 | Worktree + orchestrator integration |
 
-**Total Tests:** 166 passing
+**Total Tests:** 180 passing
 
 ## Remaining TypeScript Files
 
 | File | Complexity | Notes |
 |------|------------|-------|
-| `claude-code-subagent.ts` | High | Full Claude Code SDK integration |
-| `cli.ts` | Low | CLI entry point |
+| `cli.ts` | Low | CLI entry point (not ported, out of scope) |
 
 ## Dependencies
 
@@ -62,16 +62,13 @@ TypeScript files cannot be deleted until all callers are migrated:
 - `src/agent/overnight.ts` imports orchestrator
 - `src/atif/` imports types
 
-## Next Steps
-
-1. Port `claude-code-subagent.ts` - full Claude Code SDK integration
-
 ## Architecture Notes
 
 The Rust port follows the same architecture as TypeScript:
 - **Orchestrator**: Task selection, decomposition, verification
 - **Subagent**: Minimal coding agent for one subtask
 - **SubagentRouter**: Routes to Claude Code, FM, or Minimal based on task
+- **ClaudeCodeSubagent**: Claude Code Agent SDK integration (stub - needs FFI)
 - **Worktree**: Isolation for parallel execution
 - **ParallelRunner**: N agents on N isolated worktrees
 - **Sandbox**: Container-based command execution
@@ -81,3 +78,12 @@ Key differences from TypeScript:
 - No Effect library - using Result/Option
 - Sync APIs where possible (git operations)
 - Traits for LLM providers instead of Effect services
+- Claude Code SDK integration is a stub (needs FFI or native SDK)
+
+## Commits Today
+
+1. `Add agent crate: port orchestrator module to Rust (24 modules, 128 tests)`
+2. `Add subagent_router.rs: route between Claude Code, FM, and minimal`
+3. `Add sandbox_runner.rs: container-based command execution`
+4. `Add parallel_runner.rs: N agents on N isolated worktrees`
+5. `Add claude_code_subagent.rs: Claude Code SDK integration types`
