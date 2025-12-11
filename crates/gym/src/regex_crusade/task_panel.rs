@@ -283,7 +283,7 @@ impl TaskPanel {
                     .rounded(px(6.0))
                     .border_1()
                     .border_color(border::SUBTLE)
-                    .overflow_x_scroll()
+                    .overflow_hidden()
                     .child(
                         div()
                             .text_size(px(11.0))
@@ -301,6 +301,7 @@ impl TaskPanel {
 
     fn render_task_description(&self) -> impl IntoElement {
         div()
+            .id("task-description-scroll")
             .flex()
             .flex_col()
             .gap(px(6.0))

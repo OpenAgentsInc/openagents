@@ -18,6 +18,9 @@ pub mod hillclimber;
 // TestGen visualization sub-modules
 pub mod testgen;
 
+// RegexCrusade - laser-focused regex-log solver
+pub mod regex_crusade;
+
 // Data layer
 pub mod websocket_client;
 pub mod data_loader;
