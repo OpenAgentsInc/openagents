@@ -8851,6 +8851,7 @@ dependencies = [
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "settings",
  "similar",
  "telemetry",
  "theme",
