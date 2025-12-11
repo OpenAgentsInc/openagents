@@ -47,13 +47,8 @@ impl ProcessTransport {
         cwd: Option<PathBuf>,
         env: Option<Vec<(String, String)>>,
     ) -> Result<Self> {
-        eprintln!("[SDK] ProcessTransport::spawn called");
-        tracing::info!("ProcessTransport::spawn called");
         let (command, command_args) = Self::build_command(&config)?;
-        eprintln!("[SDK] build_command completed: cmd={}", command);
-        tracing::info!("build_command completed");
 
-        eprintln!("[SDK] Spawning CLI: {} {:?} {:?}", command, command_args, args);
         tracing::info!(
             command = %command,
             args = ?command_args,
@@ -78,11 +73,7 @@ impl ProcessTransport {
             }
         }
 
-        eprintln!("[SDK] About to call cmd.spawn()");
-        tracing::info!("About to call cmd.spawn()");
         let mut child = cmd.spawn()?;
-        eprintln!("[SDK] cmd.spawn() returned successfully, pid={:?}", child.id());
-        tracing::info!("cmd.spawn() returned successfully");
 
         let stdin = child.stdin.take().ok_or_else(|| {
             Error::SpawnFailed(std::io::Error::new(
