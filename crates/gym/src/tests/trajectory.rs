@@ -2,7 +2,7 @@
 //!
 //! Tests trajectory list display, selection, and store integration.
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{TrajectoryViewFixture, TrajectoryAssertExt};
 use std::sync::{Arc, Mutex};
 use atif_store::TrajectoryStore;
@@ -12,7 +12,7 @@ use atif::{Agent, Step};
 // Initialization Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_trajectory_view_starts_empty(cx: &mut TestAppContext) {
     let view = TrajectoryViewFixture::create(cx);
 
@@ -22,7 +22,7 @@ fn test_trajectory_view_starts_empty(cx: &mut TestAppContext) {
         .has_no_selection();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_trajectory_view_with_store_starts_empty(cx: &mut TestAppContext) {
     let (view, _store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -36,7 +36,7 @@ fn test_trajectory_view_with_store_starts_empty(cx: &mut TestAppContext) {
 // Store Integration Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_set_store_enables_store(cx: &mut TestAppContext) {
     let view = TrajectoryViewFixture::create(cx);
     view.assert_that(cx).has_no_store();
@@ -49,7 +49,7 @@ fn test_set_store_enables_store(cx: &mut TestAppContext) {
     view.assert_that(cx).has_store();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_refresh_loads_trajectories_from_store(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -65,7 +65,7 @@ fn test_refresh_loads_trajectories_from_store(cx: &mut TestAppContext) {
         .has_trajectory_count(1);
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_loads_multiple_trajectories(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -83,7 +83,7 @@ fn test_loads_multiple_trajectories(cx: &mut TestAppContext) {
 // Selection Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_select_trajectory_updates_selection(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -101,7 +101,7 @@ fn test_select_trajectory_updates_selection(cx: &mut TestAppContext) {
         .has_selected_id(&session_id);
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_select_trajectory_loads_steps(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -119,7 +119,7 @@ fn test_select_trajectory_loads_steps(cx: &mut TestAppContext) {
         .has_selected_step_count(5);
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_select_different_trajectory_changes_selection(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -142,7 +142,7 @@ fn test_select_different_trajectory_changes_selection(cx: &mut TestAppContext) {
         .has_selected_step_count(7);
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_select_nonexistent_trajectory_clears_steps(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -168,7 +168,7 @@ fn test_select_nonexistent_trajectory_clears_steps(cx: &mut TestAppContext) {
 // Edge Case Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_empty_store_returns_no_trajectories(cx: &mut TestAppContext) {
     let (view, _store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -177,7 +177,7 @@ fn test_empty_store_returns_no_trajectories(cx: &mut TestAppContext) {
     view.assert_that(cx).has_no_trajectories();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_trajectory_with_zero_steps(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 
@@ -192,7 +192,7 @@ fn test_trajectory_with_zero_steps(cx: &mut TestAppContext) {
         .has_no_selected_steps();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_multiple_refreshes_are_idempotent(cx: &mut TestAppContext) {
     let (view, store) = TrajectoryViewFixture::create_with_store(cx);
 

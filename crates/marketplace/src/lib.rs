@@ -30,7 +30,7 @@ pub use screen::MarketplaceScreen;
 pub use nostr_bridge::NostrBridge;
 
 // Re-export TextInput from ui crate for convenience
-pub use ui::TextInput;
+pub use ui_oa::TextInput;
 
 // Re-export nostr-chat types for convenience
 pub use nostr_chat::{ChatEvent, ChatState, DvmJob, DvmJobStatus};

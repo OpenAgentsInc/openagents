@@ -1,11 +1,11 @@
 //! Agent grid component - Grid layout of agent cards
 //! Bloomberg-style: dense, text-first, no emojis
 
-use gpui::*;
-use theme::{bg, border, text, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption, TrustTier};
-use ui::TextInput;
+use ui_oa::TextInput;
 use super::agent_card::render_agent_card;
 
 /// Render the search bar with a real TextInput - Bloomberg style

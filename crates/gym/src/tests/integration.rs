@@ -2,7 +2,7 @@
 //!
 //! Tests for cross-component interactions and navigation flows.
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{GymScreenFixture, GymScreenAssertExt};
 use crate::tests::fixtures::types::GymTab;
 
@@ -10,7 +10,7 @@ use crate::tests::fixtures::types::GymTab;
 // Tab Navigation Integration Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_navigate_through_all_tabs_sequentially(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -28,7 +28,7 @@ fn test_navigate_through_all_tabs_sequentially(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_testgen();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_navigate_tabs_reverse_order(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -47,7 +47,7 @@ fn test_navigate_tabs_reverse_order(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_trajectories();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_rapid_tab_switching(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -63,7 +63,7 @@ fn test_rapid_tab_switching(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_trajectories();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_switch_to_same_tab_is_idempotent(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -85,7 +85,7 @@ fn test_switch_to_same_tab_is_idempotent(cx: &mut TestAppContext) {
 // Tab All Iterator Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_gym_tab_all_contains_five_tabs() {
     let tabs = GymTab::all();
     assert_eq!(tabs.len(), 5, "Should have 5 tabs");
@@ -96,7 +96,7 @@ fn test_gym_tab_all_contains_five_tabs() {
     assert!(tabs.contains(&GymTab::RegexCrusade));
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_gym_tab_labels() {
     assert_eq!(GymTab::Trajectories.label(), "Trajectories");
     assert_eq!(GymTab::TBCC.label(), "TBCC");
@@ -105,7 +105,7 @@ fn test_gym_tab_labels() {
     assert_eq!(GymTab::RegexCrusade.label(), "Crusade");
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_default_gym_tab_is_regex_crusade() {
     let default_tab = GymTab::default();
     assert_eq!(default_tab, GymTab::RegexCrusade);
@@ -115,7 +115,7 @@ fn test_default_gym_tab_is_regex_crusade() {
 // State Isolation Tests
 // ============================================================================
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_multiple_gym_screens_are_independent(cx: &mut TestAppContext) {
     let view1 = GymScreenFixture::create(cx);
     let view2 = GymScreenFixture::create(cx);

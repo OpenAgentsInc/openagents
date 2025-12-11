@@ -1,11 +1,11 @@
 //! Agent Store view - Main view for the Agents tab
 
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use theme::bg;
+use gpui_oa::prelude::FluentBuilder;
+use gpui_oa::*;
+use theme_oa::bg;
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption};
-use ui::TextInput;
+use ui_oa::TextInput;
 use super::agent_grid::{render_search_bar_with_input, render_trending_strip, render_agent_grid, mock_agents};
 use super::agent_detail::render_agent_detail;
 

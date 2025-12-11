@@ -1,8 +1,8 @@
 //! TBCC Task Browser Tab - Browse and run benchmark tasks
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{TBTask, TBDifficulty};
 use crate::services::TaskLoader;

@@ -2,9 +2,9 @@
 //!
 //! Shows everything happening as it happens: prompts, responses, tests generated.
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{LogEntry, LogEntryKind};
 

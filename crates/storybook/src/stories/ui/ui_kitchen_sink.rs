@@ -1,7 +1,7 @@
 //! UI Kitchen Sink - All shadcn-style UI components in one comprehensive view
 
-use gpui::*;
-use ui::{
+use gpui_oa::*;
+use ui_oa::{
     // Phase 1: Primitives
     Button, ButtonVariant, ButtonSize,
     Label, Separator, Kbd, Skeleton, Spinner,
@@ -43,7 +43,7 @@ impl Render for UiKitchenSinkStory {
                 .mt(px(24.0))
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
-                .text_color(theme::text::PRIMARY)
+                .text_color(theme_oa::text::PRIMARY)
                 .child("Phase 1: Primitives"))
 
             // Buttons
@@ -125,7 +125,7 @@ impl Render for UiKitchenSinkStory {
                 .mt(px(24.0))
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
-                .text_color(theme::text::PRIMARY)
+                .text_color(theme_oa::text::PRIMARY)
                 .child("Phase 2: Simple Components"))
 
             // Badge
@@ -174,8 +174,8 @@ impl Render for UiKitchenSinkStory {
             .child(Story::section()
                 .child(Story::section_title("AspectRatio"))
                 .child(Story::row()
-                    .child(AspectRatio::new(AspectRatioPreset::Square).width(60.0).child(div().w_full().h_full().bg(theme::bg::HOVER).rounded(px(4.0))))
-                    .child(AspectRatio::new(AspectRatioPreset::Widescreen).width(120.0).child(div().w_full().h_full().bg(theme::bg::HOVER).rounded(px(4.0))))))
+                    .child(AspectRatio::new(AspectRatioPreset::Square).width(60.0).child(div().w_full().h_full().bg(theme_oa::bg::HOVER).rounded(px(4.0))))
+                    .child(AspectRatio::new(AspectRatioPreset::Widescreen).width(120.0).child(div().w_full().h_full().bg(theme_oa::bg::HOVER).rounded(px(4.0))))))
 
             // RadioGroup
             .child(Story::section()
@@ -197,7 +197,7 @@ impl Render for UiKitchenSinkStory {
                 .mt(px(24.0))
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
-                .text_color(theme::text::PRIMARY)
+                .text_color(theme_oa::text::PRIMARY)
                 .child("Phase 3: Medium Components"))
 
             // Card
@@ -278,7 +278,7 @@ impl Render for UiKitchenSinkStory {
                 .mt(px(24.0))
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
-                .text_color(theme::text::PRIMARY)
+                .text_color(theme_oa::text::PRIMARY)
                 .child("Phase 4: Complex Components"))
 
             .child(Story::section()

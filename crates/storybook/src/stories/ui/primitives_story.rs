@@ -1,7 +1,7 @@
 //! Primitives story showing all primitive UI components
 
-use gpui::*;
-use ui::{
+use gpui_oa::*;
+use ui_oa::{
     Button, ButtonVariant,
     Label, Separator, Kbd, Skeleton, Spinner,
     Progress, Checkbox, Switch,

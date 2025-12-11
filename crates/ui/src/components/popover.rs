@@ -1,67 +1,66 @@
-//! Popover component for click-triggered overlays
+use crate::prelude::*;
+use crate::v_flex;
+use gpui::{
+    AnyElement, App, Element, IntoElement, ParentElement, Pixels, RenderOnce, Styled, Window, div,
+};
+use smallvec::SmallVec;
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border};
+/// Y height added beyond the size of the contents.
+pub const POPOVER_Y_PADDING: Pixels = px(8.);
 
-/// Popover side/position
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-pub enum PopoverSide {
-    #[default]
-    Bottom,
-    Top,
-    Left,
-    Right,
-}
-
-/// Popover component
+/// A popover is used to display a menu or show some options.
 ///
-/// Note: This is a simplified popover. Full positioning would require
-/// overlay/portal support from GPUI.
+/// Clicking the element that launches the popover should not change the current view,
+/// and the popover should be statically positioned relative to that element (not the
+/// user's mouse.)
 ///
-/// # Example
-/// ```
-/// Popover::new()
-///     .trigger(Button::new("Open"))
-///     .content(div().child("Popover content"))
-///     .open(is_open)
-/// ```
+/// Example: A "new" menu with options like "new file", "new folder", etc,
+/// Linear's "Display" menu, a profile menu that appears when you click your avatar.
+///
+/// Related elements:
+///
+/// [`ContextMenu`](crate::ContextMenu):
+///
+/// Used to display a popover menu that only contains a list of items. Context menus are always
+/// launched by secondary clicking on an element. The menu is positioned relative to the user's cursor.
+///
+/// Example: Right clicking a file in the file tree to get a list of actions, right clicking
+/// a tab to in the tab bar to get a list of actions.
+///
+/// `Dropdown`:
+///
+/// Used to display a list of options when the user clicks an element. The menu is
+/// positioned relative the element that was clicked, and clicking an item in the
+/// dropdown should change the value of the element that was clicked.
+///
+/// Example: A theme select control. Displays "One Dark", clicking it opens a list of themes.
+/// When one is selected, the theme select control displays the selected theme.
 #[derive(IntoElement)]
 pub struct Popover {
-    trigger: Option<AnyElement>,
-    content: Option<AnyElement>,
-    open: bool,
-    side: PopoverSide,
+    children: SmallVec<[AnyElement; 2]>,
+    aside: Option<AnyElement>,
 }
 
-impl Popover {
-    pub fn new() -> Self {
-        Self {
-            trigger: None,
-            content: None,
-            open: false,
-            side: PopoverSide::Bottom,
-        }
-    }
-
-    pub fn trigger(mut self, trigger: impl IntoElement) -> Self {
-        self.trigger = Some(trigger.into_any_element());
-        self
-    }
-
-    pub fn content(mut self, content: impl IntoElement) -> Self {
-        self.content = Some(content.into_any_element());
-        self
-    }
-
-    pub fn open(mut self, open: bool) -> Self {
-        self.open = open;
-        self
-    }
-
-    pub fn side(mut self, side: PopoverSide) -> Self {
-        self.side = side;
-        self
+impl RenderOnce for Popover {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .flex()
+            .gap_1()
+            .child(
+                v_flex()
+                    .elevation_2(cx)
+                    .py(POPOVER_Y_PADDING / 2.)
+                    .child(div().children(self.children)),
+            )
+            .when_some(self.aside, |this, aside| {
+                this.child(
+                    v_flex()
+                        .elevation_2(cx)
+                        .bg(cx.theme().colors().surface_background)
+                        .px_1()
+                        .child(aside),
+                )
+            })
     }
 }
 
@@ -71,40 +70,25 @@ impl Default for Popover {
     }
 }
 
-impl RenderOnce for Popover {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let mut container = div().relative();
-
-        // Trigger
-        if let Some(trigger) = self.trigger {
-            container = container.child(trigger);
+impl Popover {
+    pub fn new() -> Self {
+        Self {
+            children: SmallVec::new(),
+            aside: None,
         }
+    }
 
-        // Content (shown when open)
-        if self.open {
-            let mut content_wrapper = div()
-                .absolute()
-                .p(px(16.0))
-                .rounded(px(8.0))
-                .border_1()
-                .border_color(border::DEFAULT)
-                .bg(bg::ELEVATED);
+    pub fn aside(mut self, aside: impl IntoElement) -> Self
+    where
+        Self: Sized,
+    {
+        self.aside = Some(aside.into_element().into_any());
+        self
+    }
+}
 
-            // Position based on side
-            content_wrapper = match self.side {
-                PopoverSide::Bottom => content_wrapper.top(px(40.0)).left_0(),
-                PopoverSide::Top => content_wrapper.bottom(px(40.0)).left_0(),
-                PopoverSide::Left => content_wrapper.right(px(100.0)).top_0(),
-                PopoverSide::Right => content_wrapper.left(px(100.0)).top_0(),
-            };
-
-            if let Some(content) = self.content {
-                content_wrapper = content_wrapper.child(content);
-            }
-
-            container = container.child(content_wrapper);
-        }
-
-        container
+impl ParentElement for Popover {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements)
     }
 }

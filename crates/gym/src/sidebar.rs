@@ -1,8 +1,8 @@
 //! Expandable tree sidebar for the Gym
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, text, status, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 use super::types::{TreeNode, TreeItemKind, ItemStatus, SidebarState};
 

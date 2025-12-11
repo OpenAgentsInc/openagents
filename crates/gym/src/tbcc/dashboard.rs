@@ -1,9 +1,9 @@
 //! TBCC Dashboard Tab - KPIs, recent runs, quick actions
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::{Arc, RwLock};
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::types::{DashboardStats, TBRunSummary, TBRunStatus, TBRunOutcome};
 use crate::services::RunStore;

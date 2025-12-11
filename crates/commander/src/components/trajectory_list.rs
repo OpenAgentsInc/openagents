@@ -5,9 +5,9 @@
 
 use atif_store::TrajectoryMetadata;
 use chrono::{DateTime, Utc};
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::FluentBuilder;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 // ============================================================================
 // Helper Functions

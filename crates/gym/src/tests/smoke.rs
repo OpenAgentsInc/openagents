@@ -2,11 +2,11 @@
 //!
 //! Basic tests to verify GymScreen renders and initializes correctly.
 
-use gpui::TestAppContext;
+use gpui_oa::TestAppContext;
 use crate::tests::fixtures::{GymScreenFixture, GymScreenAssertExt};
 use crate::tests::fixtures::types::GymTab;
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_gym_screen_renders(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -15,7 +15,7 @@ fn test_gym_screen_renders(cx: &mut TestAppContext) {
         .has_tab(GymTab::RegexCrusade);
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_gym_screen_tab_switching(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 
@@ -36,7 +36,7 @@ fn test_gym_screen_tab_switching(cx: &mut TestAppContext) {
     view.assert_that(cx).is_on_trajectories();
 }
 
-#[gpui::test]
+#[gpui_oa::test]
 fn test_gym_screen_switch_to_all_tabs(cx: &mut TestAppContext) {
     let view = GymScreenFixture::create(cx);
 

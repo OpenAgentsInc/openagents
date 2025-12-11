@@ -7,13 +7,13 @@ mod stories;
 mod story;
 
 use clap::Parser;
-use gpui::{
+use gpui_oa::{
     App, AnyView, Bounds, Context, Render, Window, WindowBounds, WindowOptions,
     div, prelude::*, px, size,
 };
 use std::borrow::Cow;
 use strum::IntoEnumIterator;
-use theme::{bg, text, FONT_FAMILY};
+use theme_oa::{bg, text, FONT_FAMILY};
 
 use crate::stories::*;
 
@@ -135,7 +135,7 @@ fn main() {
         None => ComponentStory::KitchenSink,
     };
 
-    gpui::Application::new().run(move |cx: &mut App| {
+    gpui_oa::Application::new().run(move |cx: &mut App| {
         // Load Berkeley Mono fonts if available
         let _ = cx.text_system().add_fonts(vec![
             Cow::Borrowed(include_bytes!("../../commander/assets/fonts/BerkeleyMono-Regular.ttf").as_slice()),
@@ -148,7 +148,7 @@ fn main() {
         let _window = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
+                titlebar: Some(gpui_oa::TitlebarOptions {
                     title: Some(format!("Storybook - {}", story).into()),
                     ..Default::default()
                 }),

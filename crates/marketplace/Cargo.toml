@@ -11,10 +11,10 @@ license = "CC-0"
 gpui = { path = "../gpui" }
 
 # Centralized theme colors
-theme = { path = "../theme" }
+theme_oa = { path = "../theme_oa" }
 
 # Shared UI components
-ui = { path = "../ui" }
+ui_oa = { path = "../ui_oa" }
 
 # Nostr integration for NIP-90 DVM jobs
 nostr = { path = "../nostr" }

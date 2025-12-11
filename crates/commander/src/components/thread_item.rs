@@ -3,8 +3,8 @@
 //! Ported from Effuse's atif-thread.ts
 
 use chrono::{DateTime, Utc};
-use gpui::*;
-use theme::{accent, bg, border, category, status, text, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{accent, bg, border, category, status, text, FONT_FAMILY};
 
 // ============================================================================
 // Types (from atif-thread.ts)

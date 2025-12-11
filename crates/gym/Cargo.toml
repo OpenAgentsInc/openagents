@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 gpui = { path = "../gpui" }
-theme = { path = "../theme" }
+theme_oa = { path = "../theme_oa" }
 atif = { path = "../atif" }
 atif-store = { path = "../atif-store" }
 testgen = { path = "../testgen" }

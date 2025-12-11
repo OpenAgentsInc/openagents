@@ -1,9 +1,9 @@
 //! Kitchen Sink Story: All components in one view
 
-use gpui::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px};
+use gpui_oa::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px};
 use unit::{Lifecycle, PinState};
 use hud::{Connection, ConnectionState, ConnectionStyle, GraphView, PinSnapshot, PinDirection, UnitSnapshot, UnitView, PinView};
-use theme::bg;
+use theme_oa::bg;
 
 use crate::story::Story;
 

@@ -1,8 +1,8 @@
 //! HillClimber Monitor - Real-time MAP orchestrator visualization
 
-use gpui::prelude::*;
-use gpui::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::prelude::*;
+use gpui_oa::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use super::workflow_graph::{WorkflowGraph, GraphNode, NodeStatus, NodeKind};
 use super::turn_log::{TurnLog, TurnEntry, TurnAction};

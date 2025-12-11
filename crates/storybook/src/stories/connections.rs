@@ -1,8 +1,8 @@
 //! Connections Story: Demonstrates bezier curve connections between pins
 
-use gpui::{Context, Render, Window, canvas, div, point, prelude::*, px};
+use gpui_oa::{Context, Render, Window, canvas, div, point, prelude::*, px};
 use hud::{Connection, ConnectionState, ConnectionStyle};
-use theme::bg;
+use theme_oa::bg;
 
 use crate::story::Story;
 

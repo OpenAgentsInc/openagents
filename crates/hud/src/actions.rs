@@ -3,7 +3,7 @@
 //! Defines actions that can be triggered via keyboard shortcuts or menus.
 //! Uses GPUI's action system for consistent handling.
 
-use gpui::actions;
+use gpui_oa::actions;
 
 // Define graph editor actions
 actions!(

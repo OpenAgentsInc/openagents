@@ -2,10 +2,10 @@
 //!
 //! A GPUI Entity that displays NIP-90 DVMs with clickable USE buttons.
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::Arc;
-use theme::{bg, border, text, accent, FONT_FAMILY};
+use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 
 use crate::types::{DVMListing, PricingUnit};
 
@@ -187,7 +187,7 @@ impl DVMList {
                                         div()
                                             .text_size(px(11.0))
                                             .font_family(FONT_FAMILY)
-                                            .text_color(theme::status::WARNING)
+                                            .text_color(theme_oa::status::WARNING)
                                             .child(format!("{:.1}", dvm.rating)),
                                     ),
                             )
@@ -446,7 +446,7 @@ fn render_static_dvm_row(dvm: &DVMListing) -> impl IntoElement {
                                     div()
                                         .text_size(px(11.0))
                                         .font_family(FONT_FAMILY)
-                                        .text_color(theme::status::WARNING)
+                                        .text_color(theme_oa::status::WARNING)
                                         .child(format!("{:.1}", dvm.rating)),
                                 ),
                         )

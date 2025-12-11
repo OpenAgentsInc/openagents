@@ -2,7 +2,7 @@
 //!
 //! Keyboard shortcuts and actions for the Gym workbench.
 
-use gpui::*;
+use gpui_oa::*;
 
 actions!(
     gym,

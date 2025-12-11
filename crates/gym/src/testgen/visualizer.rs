@@ -1,10 +1,10 @@
 //! TestGen Visualizer - Main TestGen view
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::Arc;
 use testgen::TestGenContext;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 use tokio::sync::mpsc;
 
 use super::category_progress::{CategoryProgress, OnCategorySelectCallback, TestCategory};

@@ -2,9 +2,9 @@
 //!
 //! Orchestrates all Vibe components: projects, editor, database, deploy.
 
-use gpui::*;
-use gpui::prelude::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::*;
+use gpui_oa::prelude::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use crate::types::*;
 use crate::projects::{render_project_grid, render_template_picker};

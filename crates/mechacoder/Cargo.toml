@@ -20,8 +20,8 @@ path = "src/lib.rs"
 # Local crates
 acp = { path = "../acp" }
 gpui = { path = "../gpui" }
-ui = { path = "../ui" }
-theme = { path = "../theme" }
+ui_oa = { path = "../ui_oa" }
+theme_oa = { path = "../theme_oa" }
 
 # Core dependencies
 anyhow.workspace = true

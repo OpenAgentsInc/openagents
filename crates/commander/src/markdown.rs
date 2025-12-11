@@ -1,7 +1,7 @@
-use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla, StyledText};
+use gpui_oa::{FontStyle, FontWeight, HighlightStyle, Hsla, StyledText};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::ops::Range;
-use theme::accent;
+use theme_oa::accent;
 
 /// Style configuration for markdown rendering
 #[allow(dead_code)]
@@ -275,7 +275,7 @@ mod tests {
         let style = MarkdownStyle::default();
         // Code color should be cyan-ish
         assert!(style.code_color.s > 0.5); // saturation > 0.5
-        assert_eq!(style.heading_weight, gpui::FontWeight::BOLD);
+        assert_eq!(style.heading_weight, gpui_oa::FontWeight::BOLD);
     }
 
     // Tests that render_markdown doesn't panic (validates highlight boundaries)

@@ -1,8 +1,8 @@
 //! Interactive complex components story showing Phase 4 UI components
 
-use gpui::*;
-use gpui::prelude::FluentBuilder;
-use ui::{
+use gpui_oa::*;
+use gpui_oa::prelude::FluentBuilder;
+use ui_oa::{
     Select, SelectOption,
     Popover,
     Dialog, DialogHeader, DialogTitle, DialogDescription, DialogContent, DialogFooter,
@@ -86,9 +86,9 @@ impl Render for ComplexComponentsStory {
                             .px(px(12.0))
                             .py(px(8.0))
                             .rounded(px(6.0))
-                            .bg(theme::bg::SURFACE)
+                            .bg(theme_oa::bg::SURFACE)
                             .border_1()
-                            .border_color(theme::border::DEFAULT)
+                            .border_color(theme_oa::border::DEFAULT)
                             .text_sm()
                             .child(format!("Last action: {}", last_action))
                     )
@@ -161,7 +161,7 @@ impl Render for ComplexComponentsStory {
                                             .flex_col()
                                             .gap(px(8.0))
                                             .child(div().text_sm().font_weight(FontWeight::MEDIUM).child("Popover Content"))
-                                            .child(div().text_xs().text_color(theme::text::MUTED).child("This is the popover body. Click the button again to close."))
+                                            .child(div().text_xs().text_color(theme_oa::text::MUTED).child("This is the popover body. Click the button again to close."))
                                     )
                                     .open(popover_open)
                             })
@@ -346,8 +346,8 @@ impl Render for ComplexComponentsStory {
                                     .flex_col()
                                     .gap(px(12.0))
                                     .child(div().text_sm().font_weight(FontWeight::MEDIUM).child("General"))
-                                    .child(div().text_sm().text_color(theme::text::MUTED).child("Theme: Dark"))
-                                    .child(div().text_sm().text_color(theme::text::MUTED).child("Language: English"))
+                                    .child(div().text_sm().text_color(theme_oa::text::MUTED).child("Theme: Dark"))
+                                    .child(div().text_sm().text_color(theme_oa::text::MUTED).child("Language: English"))
                             ))
                         .child(SheetFooter::new()
                             .child(

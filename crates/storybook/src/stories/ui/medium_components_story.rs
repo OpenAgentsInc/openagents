@@ -1,7 +1,7 @@
 //! Medium components story showing Phase 3 UI components
 
-use gpui::*;
-use ui::{
+use gpui_oa::*;
+use ui_oa::{
     Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
     Tabs, TabItem,
     Accordion, AccordionItem,
@@ -33,7 +33,7 @@ impl Render for MediumComponentsStory {
                             .child(CardContent::new()
                                 .child(div().child("This is the card content area.")))
                             .child(CardFooter::new()
-                                .child(Button::new("Cancel").variant(ui::ButtonVariant::Outline))
+                                .child(Button::new("Cancel").variant(ui_oa::ButtonVariant::Outline))
                                 .child(Button::new("Save")))
                     )
                 ))

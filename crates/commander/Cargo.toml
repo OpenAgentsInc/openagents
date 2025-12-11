@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 # NEVER CHANGE THIS TO GIT DEPENDENCY - USE LOCAL GPUI CRATE
 gpui = { path = "../gpui" }
-ui = { path = "../ui" }
+ui_oa = { path = "../ui_oa" }
 fm-bridge = { path = "../fm-bridge" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 tokio-stream = "0.1"
@@ -27,7 +27,7 @@ atif-store = { path = "../atif-store" }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Centralized theme colors
-theme = { path = "../theme" }
+theme_oa = { path = "../theme_oa" }
 
 # Marketplace UI
 marketplace = { path = "../marketplace" }

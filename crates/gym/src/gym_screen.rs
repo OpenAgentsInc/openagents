@@ -2,11 +2,11 @@
 //!
 //! Multi-view container with tab navigation. Each tab manages its own layout.
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::{Arc, Mutex};
 use atif_store::TrajectoryStore;
-use theme::{bg, border, text, FONT_FAMILY};
+use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use super::types::GymTab;
 use super::trajectory_view::TrajectoryView;

@@ -2,12 +2,12 @@
 //!
 //! Displays trajectory list and detail viewer for browsing ATIF trajectories.
 
-use gpui::prelude::*;
-use gpui::*;
+use gpui_oa::prelude::*;
+use gpui_oa::*;
 use std::sync::{Arc, Mutex};
 use atif_store::{TrajectoryStore, TrajectoryMetadata, TrajectoryStatus};
 use atif::{Step, StepSource};
-use theme::{bg, border, status, text, FONT_FAMILY};
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 pub struct TrajectoryView {
     /// Trajectory store

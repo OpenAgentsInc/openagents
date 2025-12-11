@@ -2,7 +2,7 @@
 //!
 //! Defines actions for menu items and keyboard shortcuts.
 
-use gpui::actions;
+use gpui_oa::actions;
 
 actions!(
     commander,

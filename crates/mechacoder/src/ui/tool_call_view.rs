@@ -1,8 +1,8 @@
 //! Tool call view component.
 
 use acp::{ToolCall, ToolCallContent, ToolCallStatus};
-use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
-use theme::{bg, status, text};
+use gpui_oa::{div, prelude::*, px, IntoElement, ParentElement, Styled};
+use theme_oa::{bg, status, text};
 
 /// Tool call view for displaying a tool call.
 pub struct ToolCallView {
@@ -32,7 +32,7 @@ impl ToolCallView {
     }
 
     /// Get the status color.
-    fn status_color(&self) -> gpui::Hsla {
+    fn status_color(&self) -> gpui_oa::Hsla {
         match &self.status {
             ToolCallStatus::Pending => status::PENDING,
             ToolCallStatus::InProgress => status::RUNNING,
@@ -82,7 +82,7 @@ impl ToolCallView {
                     .child(
                         div()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_weight(gpui_oa::FontWeight::SEMIBOLD)
                             .text_color(text::PRIMARY)
                             .child(format!("File: {}", path.display())),
                     )
@@ -129,7 +129,7 @@ impl ToolCallView {
 }
 
 impl IntoElement for ToolCallView {
-    type Element = gpui::Div;
+    type Element = gpui_oa::Div;
 
     fn into_element(self) -> Self::Element {
         // Extract values before consuming self
@@ -165,7 +165,7 @@ impl IntoElement for ToolCallView {
                         div()
                             .flex_1()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .font_weight(gpui_oa::FontWeight::MEDIUM)
                             .text_color(text::PRIMARY)
                             .child(title),
                     )

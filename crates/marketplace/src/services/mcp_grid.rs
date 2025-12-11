@@ -1,7 +1,7 @@
 //! MCP grid component - Model Context Protocol server cards
 
-use gpui::*;
-use theme::{bg, border, text, accent, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 
 use crate::types::MCPServerListing;
 
@@ -82,7 +82,7 @@ fn render_mcp_card(server: &MCPServerListing) -> impl IntoElement {
                 .text_size(px(12.0))
                 .font_family(FONT_FAMILY)
                 .text_color(if server.sats_per_unit == 0 {
-                    theme::status::SUCCESS
+                    theme_oa::status::SUCCESS
                 } else {
                     accent::PRIMARY
                 })

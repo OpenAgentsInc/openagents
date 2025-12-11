@@ -3,12 +3,12 @@
 //! Renders a unit as a box with input pins on the left and output pins on the right.
 //! Shows the unit's name, lifecycle state, and any errors.
 
-use gpui::{
+use gpui_oa::{
     App, Context, Entity, EventEmitter, Hsla, Pixels, Point, Render, Window,
     div, point, prelude::*, px,
 };
 use unit::{Lifecycle, Unit};
-use theme::{border, hud, text};
+use theme_oa::{border, hud, text};
 
 use crate::pin_view::{PinDirection, PinSnapshot, PinView};
 
@@ -127,7 +127,7 @@ impl UnitSnapshot {
     }
 
     /// Calculate the unit's size based on pins
-    pub fn calculate_size(&self, style: &UnitStyle) -> gpui::Size<Pixels> {
+    pub fn calculate_size(&self, style: &UnitStyle) -> gpui_oa::Size<Pixels> {
         let max_pins = self.inputs.len().max(self.outputs.len());
         let pin_spacing_f: f32 = style.pin_spacing.into();
         let header_f: f32 = style.header_height.into();
@@ -137,7 +137,7 @@ impl UnitSnapshot {
         let pin_height = (max_pins as f32) * pin_spacing_f;
         let height = (header_f + pin_height + padding_f * 2.0).max(min_height_f);
 
-        gpui::Size {
+        gpui_oa::Size {
             width: style.min_width,
             height: px(height),
         }
@@ -225,7 +225,7 @@ impl UnitView {
     }
 
     /// Get the size of this unit
-    pub fn size(&self) -> gpui::Size<Pixels> {
+    pub fn size(&self) -> gpui_oa::Size<Pixels> {
         self.snapshot.calculate_size(&self.style)
     }
 
@@ -314,7 +314,7 @@ impl Render for UnitView {
                     .items_center()
                     .text_color(self.style.text_color)
                     .text_sm()
-                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .font_weight(gpui_oa::FontWeight::MEDIUM)
                     .child(self.snapshot.id.clone())
             )
             .child(
@@ -341,7 +341,7 @@ impl Render for UnitView {
                             .children(self.output_views.iter().cloned())
                     )
             )
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+            .on_mouse_down(gpui_oa::MouseButton::Left, cx.listener(|this, event: &gpui_oa::MouseDownEvent, _, cx| {
                 let event_x: f32 = event.position.x.into();
                 let event_y: f32 = event.position.y.into();
                 let pos_x: f32 = this.snapshot.position.x.into();

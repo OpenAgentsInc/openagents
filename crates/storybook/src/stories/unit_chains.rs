@@ -3,9 +3,9 @@
 //! Shows data flowing through multiple connected units to perform
 //! complex computations.
 
-use gpui::{Context, Render, Window, div, prelude::*, px};
+use gpui_oa::{Context, Render, Window, div, prelude::*, px};
 use unit::{Unit, system};
-use theme::{accent, bg, status, text, FONT_FAMILY};
+use theme_oa::{accent, bg, status, text, FONT_FAMILY};
 
 use crate::story::Story;
 
@@ -201,7 +201,7 @@ impl Render for UnitChainsStory {
     }
 }
 
-fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -> gpui::Div {
+fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -> gpui_oa::Div {
     let passed = actual == expected;
     let status_color = if passed {
         status::SUCCESS
@@ -224,14 +224,14 @@ fn chain_row(chain_name: &str, expression: &str, actual: &str, expected: &str) -
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .font_weight(gpui_oa::FontWeight::MEDIUM)
                         .text_color(accent::PRIMARY)
                         .child(chain_name.to_string())
                 )
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::BOLD)
+                        .font_weight(gpui_oa::FontWeight::BOLD)
                         .text_color(status_color)
                         .child(format!("= {}", actual))
                 )

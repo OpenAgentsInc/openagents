@@ -1,8 +1,8 @@
 //! Main Marketplace screen - Orchestrates all components
 
-use gpui::*;
+use gpui_oa::*;
 use std::sync::Arc;
-use theme::{bg, border, text, FONT_FAMILY};
+use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::nostr_bridge::NostrBridge;
 use crate::types::{DVMListing, MarketplaceTab, TrustTier, Transaction, Notification, NotificationKind};
@@ -12,7 +12,7 @@ use crate::agents::{AgentStoreState, render_agent_store_with_input};
 use crate::compute::{ComputeMarketState, render_compute_market};
 use crate::services::{DVMList, ServicesMarketState, render_mcp_grid, mock_mcp_servers};
 use nostr_chat::{ChatEvent, ChatState};
-use ui::TextInput;
+use ui_oa::TextInput;
 
 /// The main Marketplace screen component
 pub struct MarketplaceScreen {

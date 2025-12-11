@@ -1,6 +1,6 @@
 //! Application menu definitions for MechaCoder.
 
-use gpui::{Menu, MenuItem};
+use gpui_oa::{Menu, MenuItem};
 
 use crate::actions::*;
 

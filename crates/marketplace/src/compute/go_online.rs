@@ -1,7 +1,7 @@
 //! Go Online toggle component - Big button to start selling compute
 
-use gpui::*;
-use theme::{bg, border, text, status, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 /// Render the Go Online panel
 pub fn render_go_online_panel(is_online: bool, models_configured: u32) -> impl IntoElement {

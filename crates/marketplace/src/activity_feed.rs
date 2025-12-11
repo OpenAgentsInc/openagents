@@ -1,8 +1,8 @@
 //! Activity feed component - Collapsible panel showing transactions and notifications
 //! Bloomberg-style: dense, text-first, no emojis
 
-use gpui::*;
-use theme::{bg, border, text, status, FONT_FAMILY};
+use gpui_oa::*;
+use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 use crate::types::{Transaction, TransactionDirection, Notification, NotificationKind};
 

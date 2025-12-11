@@ -11,8 +11,8 @@
 //! - HUD-053: Display comparison with historical averages
 //! - HUD-054: Update APM in real-time as work happens
 
-use gpui::{div, prelude::*, px, Hsla, Render, Window, Context, Entity, SharedString};
-use theme::hud;
+use gpui_oa::{div, prelude::*, px, Hsla, Render, Window, Context, Entity, SharedString};
+use theme_oa::hud;
 
 /// APM velocity level based on actions per minute
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -268,7 +268,7 @@ impl Render for ApmWidget {
                         div()
                             .text_color(apm_color)
                             .text_size(px(24.0))
-                            .font_weight(gpui::FontWeight::BOLD)
+                            .font_weight(gpui_oa::FontWeight::BOLD)
                             .child(format!("APM: {}", apm_display))
                     )
                     .child(
@@ -284,7 +284,7 @@ impl Render for ApmWidget {
                     .flex()
                     .gap(px(12.0))
                     .mt(px(8.0))
-                    .text_color(theme::text::SECONDARY)
+                    .text_color(theme_oa::text::SECONDARY)
                     .text_size(px(12.0))
                     .child(
                         div().child(format!("{} actions", actions_display))
@@ -299,8 +299,8 @@ impl Render for ApmWidget {
                         .mt(px(8.0))
                         .pt(px(8.0))
                         .border_t_1()
-                        .border_color(theme::border::SUBTLE)
-                        .text_color(theme::text::MUTED)
+                        .border_color(theme_oa::border::SUBTLE)
+                        .text_color(theme_oa::text::MUTED)
                         .text_size(px(11.0))
                         .child(display)
                 )
@@ -309,7 +309,7 @@ impl Render for ApmWidget {
                 this.child(
                     div()
                         .mt(px(4.0))
-                        .text_color(theme::status::SUCCESS)
+                        .text_color(theme_oa::status::SUCCESS)
                         .text_size(px(11.0))
                         .child(display)
                 )
@@ -319,7 +319,7 @@ impl Render for ApmWidget {
 }
 
 /// Create an ApmWidget entity
-pub fn apm_widget(cx: &mut gpui::App) -> Entity<ApmWidget> {
+pub fn apm_widget(cx: &mut gpui_oa::App) -> Entity<ApmWidget> {
     cx.new(|cx| ApmWidget::new(cx))
 }
 

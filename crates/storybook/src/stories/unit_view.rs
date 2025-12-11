@@ -1,6 +1,6 @@
 //! Unit View Story: Demonstrates unit boxes with different states
 
-use gpui::{Context, Render, Window, div, point, prelude::*, px};
+use gpui_oa::{Context, Render, Window, div, point, prelude::*, px};
 use unit::{Lifecycle, PinState};
 use hud::{PinSnapshot, PinDirection, UnitSnapshot, UnitView};
 

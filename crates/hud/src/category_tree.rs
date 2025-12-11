@@ -11,12 +11,12 @@
 //! - HUD-063: Support expand/collapse categories
 //! - HUD-064: Support task selection
 
-use gpui::{
+use gpui_oa::{
     div, prelude::*, px, Hsla, Render, Window, Context, Entity,
     IntoElement, InteractiveElement, StatefulInteractiveElement, SharedString,
 };
 use std::collections::{HashMap, HashSet};
-use theme::hud;
+use theme_oa::hud;
 
 /// Task status in Terminal-Bench
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -423,7 +423,7 @@ impl Render for CategoryTree {
                         .justify_center()
                         .child(
                             div()
-                                .text_color(theme::text::MUTED)
+                                .text_color(theme_oa::text::MUTED)
                                 .text_size(px(14.0))
                                 .child("No tasks loaded")
                         )
@@ -482,8 +482,8 @@ impl CategoryTree {
             .child(
                 div()
                     .text_size(px(14.0))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(theme::text::PRIMARY)
+                    .font_weight(gpui_oa::FontWeight::MEDIUM)
+                    .text_color(theme_oa::text::PRIMARY)
                     .child("Categories")
             )
             .child(
@@ -494,7 +494,7 @@ impl CategoryTree {
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme::text::SECONDARY)
+                            .text_color(theme_oa::text::SECONDARY)
                             .px(px(8.0))
                             .py(px(4.0))
                             .rounded(px(4.0))
@@ -507,7 +507,7 @@ impl CategoryTree {
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme::text::SECONDARY)
+                            .text_color(theme_oa::text::SECONDARY)
                             .px(px(8.0))
                             .py(px(4.0))
                             .rounded(px(4.0))
@@ -520,9 +520,9 @@ impl CategoryTree {
                     .child(
                         div()
                             .text_size(px(14.0))
-                            .text_color(theme::text::MUTED)
+                            .text_color(theme_oa::text::MUTED)
                             .cursor_pointer()
-                            .hover(|s| s.text_color(theme::text::PRIMARY))
+                            .hover(|s| s.text_color(theme_oa::text::PRIMARY))
                             .child("×")
                     )
             )
@@ -566,15 +566,15 @@ impl CategoryTree {
                     .child(
                         div()
                             .text_size(px(10.0))
-                            .text_color(theme::text::MUTED)
+                            .text_color(theme_oa::text::MUTED)
                             .child(chevron)
                     )
                     .child(
                         div()
                             .flex_1()
                             .text_size(px(14.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme::text::PRIMARY)
+                            .font_weight(gpui_oa::FontWeight::MEDIUM)
+                            .text_color(theme_oa::text::PRIMARY)
                             .child(cat_name.to_string())
                     )
                     .when_some(stats, |this, (passed, failed)| {
@@ -600,7 +600,7 @@ impl CategoryTree {
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme::text::MUTED)
+                            .text_color(theme_oa::text::MUTED)
                             .child(format!("{}", cat_data.total))
                     )
             )
@@ -639,7 +639,7 @@ impl CategoryTree {
                 div()
                     .flex_1()
                     .text_size(px(12.0))
-                    .text_color(theme::text::PRIMARY)
+                    .text_color(theme_oa::text::PRIMARY)
                     .overflow_hidden()
                     .text_ellipsis()
                     .when(is_running, |s| s.text_color(hud::STATUS_RUNNING))
@@ -661,7 +661,7 @@ impl CategoryTree {
 }
 
 /// Create a CategoryTree entity
-pub fn category_tree(cx: &mut gpui::App) -> Entity<CategoryTree> {
+pub fn category_tree(cx: &mut gpui_oa::App) -> Entity<CategoryTree> {
     cx.new(|cx| CategoryTree::new(cx))
 }
 

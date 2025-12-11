@@ -1,8 +1,8 @@
 //! Code editor component - Syntax-highlighted code editing area
 
-use gpui::*;
-use gpui::prelude::*;
-use theme::{bg, border, status, text, FONT_FAMILY};
+use gpui_oa::*;
+use gpui_oa::prelude::*;
+use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use crate::types::{EditorTab, FileType};
 
