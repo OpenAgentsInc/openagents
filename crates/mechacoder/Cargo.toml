@@ -26,6 +26,7 @@ markdown = { path = "../markdown" }
 language = { path = "../language" }
 theme = { path = "../theme" }
 ui = { path = "../ui" }
+settings = { path = "../settings" }
 
 # Core dependencies
 anyhow.workspace = true

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use gpui::App;
+use settings::{Settings, SettingsStore};
 
 pub mod actions;
 pub mod app_menus;
@@ -16,11 +17,28 @@ pub mod ui;
 pub use actions::*;
 pub use screen::MechaCoderScreen;
 
-/// Initialize the theme system for MechaCoder.
+/// Minimal default settings JSON for MechaCoder.
+/// This provides enough structure for ThemeSettings to work.
+const MINIMAL_SETTINGS: &str = r#"{
+    "ui_font_size": 14,
+    "buffer_font_size": 14,
+    "theme": "One Dark",
+    "buffer_font_family": "Berkeley Mono",
+    "ui_font_family": "Berkeley Mono"
+}"#;
+
+/// Initialize the settings and theme systems for MechaCoder.
 ///
-/// This sets up the minimal Zed theme globals required for markdown rendering.
+/// This sets up the minimal Zed globals required for markdown rendering and UI components.
 /// Must be called early in app initialization before any UI is rendered.
 pub fn init_theme(cx: &mut App) {
+    // Initialize settings store with minimal settings
+    let store = SettingsStore::new(cx, MINIMAL_SETTINGS);
+    cx.set_global(store);
+
+    // Register ThemeSettings so ThemeSettings::get_global works
+    theme::ThemeSettings::register(cx);
+
     // Get default theme from Zed's theme family
     let theme_family = theme::zed_default_themes();
     let theme = theme_family
