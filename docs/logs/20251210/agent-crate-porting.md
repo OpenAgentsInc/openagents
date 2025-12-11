@@ -1,11 +1,13 @@
 # Agent Crate Porting Progress
 
 **Date:** 2025-12-10
-**Status:** In Progress (Phase 3 - Core Complete)
+**Status:** Complete (Phase 3 - Core Orchestrator Module)
 
 ## Overview
 
-Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
+Ported the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
+
+The core orchestrator module is **complete**. CLI entry points (`overnight.ts`, `do-one-task.ts`, `overnight-parallel.ts`) are wrappers around these modules and are lower priority per the plan.
 
 ## Modules Ported (29 total)
 
@@ -41,11 +43,17 @@ Porting the TypeScript `src/agent/orchestrator/` module to Rust `crates/agent/`.
 
 **Total Tests:** 180 passing
 
-## Remaining TypeScript Files
+## Remaining TypeScript Files (Out of Scope)
 
-| File | Complexity | Notes |
-|------|------------|-------|
-| `cli.ts` | Low | CLI entry point (not ported, out of scope) |
+| File | Type | Notes |
+|------|------|-------|
+| `overnight.ts` | CLI wrapper | Uses ported modules (orchestrator, parallel_runner) |
+| `overnight-parallel.ts` | CLI wrapper | Uses ported modules (parallel_runner) |
+| `do-one-task.ts` | CLI wrapper | Uses ported modules (orchestrator) |
+| `loop.ts` | Business logic | Already implemented in `agent_loop.rs` |
+| `prompts.ts` | Constants | Git conventions, system prompts (minimal) |
+
+These files are either CLI entry points (lower priority) or already have Rust equivalents.
 
 ## Dependencies
 
