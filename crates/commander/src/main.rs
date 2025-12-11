@@ -993,18 +993,7 @@ fn format_error(e: &fm_bridge::FMError) -> String {
 
 impl Render for CommanderView {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let total_trajectories = self.trajectories.len();
         let current_screen = self.current_screen;
-
-        // Build trajectory items with click handlers (only for Gym screen)
-        let trajectory_items: Vec<AnyElement> = if current_screen == Screen::Gym {
-            self.trajectories
-                .iter()
-                .map(|traj| self.render_trajectory_item(traj, cx).into_any_element())
-                .collect()
-        } else {
-            Vec::new()
-        };
 
         // Render main content based on current screen
         let main_content: AnyElement = match current_screen {
@@ -1031,89 +1020,7 @@ impl Render for CommanderView {
             .on_action(cx.listener(Self::go_to_wallet))
             .on_action(cx.listener(Self::go_to_marketplace))
             .on_action(cx.listener(Self::go_to_chat))
-            .on_action(cx.listener(Self::toggle_sidebar))
-            // Sidebar with trajectory list (only show on Gym screen)
-            .when(!self.sidebar_collapsed && current_screen == Screen::Gym, |el| {
-                el.child(
-                    div()
-                        .w(px(320.0))
-                        .h_full()
-                        .border_r_1()
-                        .border_color(border::DEFAULT)
-                        .bg(bg::SIDEBAR)
-                        .flex()
-                        .flex_col()
-                        // Header
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .px(px(16.0))
-                                .py(px(12.0))
-                                .border_b_1()
-                                .border_color(border::DEFAULT)
-                                .bg(bg::SIDEBAR_HEADER)
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(8.0))
-                                        .child(
-                                            div()
-                                                .text_size(px(14.0))
-                                                .font_family(FONT_FAMILY)
-                                                .text_color(text::PRIMARY)
-                                                .child("Trajectories"),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(px(12.0))
-                                                .font_family(FONT_FAMILY)
-                                                .text_color(text::MUTED)
-                                                .child(format!("({})", total_trajectories)),
-                                        ),
-                                ),
-                        )
-                        // Trajectory list
-                        .child(
-                            div()
-                                .id("trajectory-list-scroll")
-                                .flex_1()
-                                .overflow_y_scroll()
-                                .p(px(12.0))
-                                .children(trajectory_items),
-                        ),
-                )
-            })
-            // Collapsed sidebar toggle (only show on Gym screen)
-            .when(self.sidebar_collapsed && current_screen == Screen::Gym, |el| {
-                el.child(
-                    div()
-                        .id("sidebar-toggle")
-                        .w(px(40.0))
-                        .h_full()
-                        .border_r_1()
-                        .border_color(border::DEFAULT)
-                        .bg(bg::SIDEBAR)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(|s| s.bg(bg::SURFACE))
-                        .on_click(cx.listener(|this, _event, _window, cx| {
-                            this.sidebar_collapsed = false;
-                            cx.notify();
-                        }))
-                        .child(
-                            div()
-                                .text_color(text::MUTED)
-                                .text_size(px(14.0))
-                                .child("▶"),
-                        ),
-                )
-            })
-            // Main content area
+            // Main content area (no sidebar - Gym manages its own layout)
             .child(main_content)
     }
 }
