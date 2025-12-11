@@ -91,6 +91,23 @@ impl Subtask {
     }
 }
 
+impl Default for Subtask {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            description: String::new(),
+            status: SubtaskStatus::Pending,
+            started_at: None,
+            completed_at: None,
+            verified_at: None,
+            error: None,
+            failure_count: None,
+            last_failure_reason: None,
+            claude_code: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubtaskList {
