@@ -2,7 +2,7 @@
 //!
 //! Page Object Model fixture for testing the TrajectoryView component.
 
-use gpui_oa::{Entity, TestAppContext};
+use gpui::{Entity, TestAppContext};
 use crate::TrajectoryView;
 use std::sync::{Arc, Mutex};
 use atif_store::TrajectoryStore;

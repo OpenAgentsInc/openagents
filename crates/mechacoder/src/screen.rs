@@ -1,7 +1,7 @@
 //! Main MechaCoder screen component.
 
 use acp::{ClaudeCode, Project};
-use gpui_oa::{
+use gpui::{
     div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
@@ -10,7 +10,7 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::ui_oa::thread_view::ThreadView;
+use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
 pub struct MechaCoderScreen {

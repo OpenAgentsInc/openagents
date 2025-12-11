@@ -1,6 +1,6 @@
 //! Services Market view - Main view for the Services tab
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{DVMListing, MCPServerListing, ServiceCategory};

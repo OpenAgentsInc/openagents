@@ -1,6 +1,6 @@
 //! MCP grid component - Model Context Protocol server cards
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 
 use crate::types::MCPServerListing;

@@ -1,7 +1,7 @@
 //! Scrollable test case list
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use std::sync::Arc;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 

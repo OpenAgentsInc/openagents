@@ -1,7 +1,7 @@
 //! Agent Store view - Main view for the Agents tab
 
-use gpui_oa::prelude::FluentBuilder;
-use gpui_oa::*;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use theme_oa::bg;
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption};

@@ -1,6 +1,6 @@
 //! Core types for the Marketplace screen
 
-use gpui_oa::Hsla;
+use gpui::Hsla;
 use theme_oa::trust;
 
 /// The three sub-marketplaces

@@ -1,7 +1,7 @@
 //! Agent grid component - Grid layout of agent cards
 //! Bloomberg-style: dense, text-first, no emojis
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{AgentListing, AgentCategory, AgentSortOption, TrustTier};

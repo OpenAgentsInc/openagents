@@ -1,6 +1,6 @@
 //! Go Online toggle component - Big button to start selling compute
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 /// Render the Go Online panel

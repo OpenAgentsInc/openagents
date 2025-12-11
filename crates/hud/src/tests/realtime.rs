@@ -3,12 +3,12 @@
 //! Ported from e2e/tests/realtime/realtime-updates.spec.ts
 //! Tests C1-C10 / HUD-030 to HUD-040: WebSocket-based real-time updates.
 
-use gpui_oa::TestAppContext;
+use gpui::TestAppContext;
 use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
 use crate::tests::messages::{factories, sequences};
 
 /// C1/HUD-030: session_start triggers UI refresh
-#[gpui_oa::test]
+#[gpui::test]
 fn test_session_start_triggers_ui_refresh(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -29,7 +29,7 @@ fn test_session_start_triggers_ui_refresh(cx: &mut TestAppContext) {
 }
 
 /// C2/HUD-031: task_selected adds node
-#[gpui_oa::test]
+#[gpui::test]
 fn test_task_selected_adds_node(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -50,7 +50,7 @@ fn test_task_selected_adds_node(cx: &mut TestAppContext) {
 }
 
 /// C3/HUD-032: task_decomposed creates child nodes
-#[gpui_oa::test]
+#[gpui::test]
 fn test_task_decomposed_creates_child_nodes(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -72,7 +72,7 @@ fn test_task_decomposed_creates_child_nodes(cx: &mut TestAppContext) {
 }
 
 /// C4/HUD-033: subtask_start/complete changes node status
-#[gpui_oa::test]
+#[gpui::test]
 fn test_subtask_start_complete_changes_status(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -97,7 +97,7 @@ fn test_subtask_start_complete_changes_status(cx: &mut TestAppContext) {
 }
 
 /// C5/HUD-034: verification_start/complete updates display
-#[gpui_oa::test]
+#[gpui::test]
 fn test_verification_start_complete_updates(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -116,7 +116,7 @@ fn test_verification_start_complete_updates(cx: &mut TestAppContext) {
 }
 
 /// C6/HUD-035: commit_created/push_complete reflected in UI
-#[gpui_oa::test]
+#[gpui::test]
 fn test_commit_and_push_reflected(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -135,7 +135,7 @@ fn test_commit_and_push_reflected(cx: &mut TestAppContext) {
 }
 
 /// C8/HUD-037: error message shows in UI with context
-#[gpui_oa::test]
+#[gpui::test]
 fn test_error_message_shows_with_context(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -157,7 +157,7 @@ fn test_error_message_shows_with_context(cx: &mut TestAppContext) {
 }
 
 /// C10/HUD-040: updates work after reconnect
-#[gpui_oa::test]
+#[gpui::test]
 fn test_updates_work_after_reconnect(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -191,7 +191,7 @@ fn test_updates_work_after_reconnect(cx: &mut TestAppContext) {
 }
 
 /// Test golden loop sequence processes complete task lifecycle
-#[gpui_oa::test]
+#[gpui::test]
 fn test_golden_loop_sequence(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -211,7 +211,7 @@ fn test_golden_loop_sequence(cx: &mut TestAppContext) {
 }
 
 /// Test handles rapid message sequence without dropping
-#[gpui_oa::test]
+#[gpui::test]
 fn test_rapid_message_sequence_no_drops(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -240,7 +240,7 @@ fn test_rapid_message_sequence_no_drops(cx: &mut TestAppContext) {
 }
 
 /// Test handles message burst during user interaction
-#[gpui_oa::test]
+#[gpui::test]
 fn test_message_burst_during_interaction(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -267,7 +267,7 @@ fn test_message_burst_during_interaction(cx: &mut TestAppContext) {
 }
 
 /// Test session lifecycle messages in order
-#[gpui_oa::test]
+#[gpui::test]
 fn test_session_lifecycle_messages_in_order(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 

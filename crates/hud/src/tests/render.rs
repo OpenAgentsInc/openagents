@@ -3,12 +3,12 @@
 //! Ported from e2e/tests/visual/render.spec.ts
 //! Tests A1-A7: visual rendering and layout verification.
 
-use gpui_oa::TestAppContext;
+use gpui::TestAppContext;
 use crate::tests::fixtures::{GraphViewFixture, HudInjector, GraphViewAssertExt};
 use crate::tests::messages::factories;
 
 /// A1: GraphView loads without errors
-#[gpui_oa::test]
+#[gpui::test]
 fn test_graph_view_loads_without_errors(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -25,7 +25,7 @@ fn test_graph_view_loads_without_errors(cx: &mut TestAppContext) {
 }
 
 /// A2: Graph structure renders correctly
-#[gpui_oa::test]
+#[gpui::test]
 fn test_graph_structure_renders(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -45,7 +45,7 @@ fn test_graph_structure_renders(cx: &mut TestAppContext) {
 }
 
 /// A3: APM widget displays after receiving apm_update
-#[gpui_oa::test]
+#[gpui::test]
 fn test_apm_widget_displays_after_update(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -66,7 +66,7 @@ fn test_apm_widget_displays_after_update(cx: &mut TestAppContext) {
 }
 
 /// A4: node types display correctly after task_selected
-#[gpui_oa::test]
+#[gpui::test]
 fn test_node_types_display_correctly(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -83,7 +83,7 @@ fn test_node_types_display_correctly(cx: &mut TestAppContext) {
 }
 
 /// A6: flow controls are accessible
-#[gpui_oa::test]
+#[gpui::test]
 fn test_flow_controls_accessible(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -107,7 +107,7 @@ fn test_flow_controls_accessible(cx: &mut TestAppContext) {
 }
 
 /// Test connection status indicator
-#[gpui_oa::test]
+#[gpui::test]
 fn test_connection_status_indicator(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -127,7 +127,7 @@ fn test_connection_status_indicator(cx: &mut TestAppContext) {
 }
 
 /// Test empty state displays correctly
-#[gpui_oa::test]
+#[gpui::test]
 fn test_empty_state_displays(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -148,7 +148,7 @@ fn test_empty_state_displays(cx: &mut TestAppContext) {
 }
 
 /// Test multiple nodes render correctly
-#[gpui_oa::test]
+#[gpui::test]
 fn test_multiple_nodes_render(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -169,7 +169,7 @@ fn test_multiple_nodes_render(cx: &mut TestAppContext) {
 }
 
 /// Test APM values render with different values
-#[gpui_oa::test]
+#[gpui::test]
 fn test_apm_renders_different_values(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -194,7 +194,7 @@ fn test_apm_renders_different_values(cx: &mut TestAppContext) {
 }
 
 /// Test zoom levels render correctly
-#[gpui_oa::test]
+#[gpui::test]
 fn test_zoom_levels_render(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 
@@ -218,7 +218,7 @@ fn test_zoom_levels_render(cx: &mut TestAppContext) {
 }
 
 /// Test error state renders correctly
-#[gpui_oa::test]
+#[gpui::test]
 fn test_error_state_renders(cx: &mut TestAppContext) {
     let view = GraphViewFixture::create(cx);
 

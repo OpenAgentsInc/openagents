@@ -2,8 +2,8 @@
 //!
 //! A GPUI Entity that displays NIP-90 DVMs with clickable USE buttons.
 
-use gpui_oa::prelude::*;
-use gpui_oa::*;
+use gpui::prelude::*;
+use gpui::*;
 use std::sync::Arc;
 use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 

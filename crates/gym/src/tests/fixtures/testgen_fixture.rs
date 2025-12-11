@@ -2,7 +2,7 @@
 //!
 //! Page Object Model fixture for testing the TestGen Visualizer component.
 
-use gpui_oa::{Entity, TestAppContext};
+use gpui::{Entity, TestAppContext};
 use crate::testgen::category_progress::TestCategory;
 use crate::testgen::test_list::{TestCase, TestStatus};
 use crate::testgen::visualizer::{GenerationStatus, TestGenSession, TestGenStatus, TestGenVisualizer};

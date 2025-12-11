@@ -1,7 +1,7 @@
 //! Resource bar component - Top HUD showing sats, tier, earnings, status
 //! Bloomberg-style: dense, text-first, no emojis, yellow highlights
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, status, FONT_FAMILY};
 
 use crate::types::TrustTier;

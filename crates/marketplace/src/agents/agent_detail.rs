@@ -1,6 +1,6 @@
 //! Agent detail panel - Slide-out panel with full agent info
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, accent, status, FONT_FAMILY};
 
 use crate::types::AgentListing;

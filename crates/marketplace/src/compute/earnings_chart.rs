@@ -1,6 +1,6 @@
 //! Earnings chart component - Bar chart visualization of earnings
 
-use gpui_oa::*;
+use gpui::*;
 use theme_oa::{bg, border, text, accent, FONT_FAMILY};
 
 use crate::types::{TimeRange, EarningsDataPoint};

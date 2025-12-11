@@ -1,7 +1,7 @@
 //! Template picker component - Browse and select starter templates
 
-use gpui_oa::*;
-use gpui_oa::prelude::*;
+use gpui::*;
+use gpui::prelude::*;
 use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::{ProjectsTabState, ProjectTemplate, TemplateCategory};

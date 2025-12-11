@@ -2,7 +2,7 @@
 //!
 //! Page Object Model fixture for testing the main GymScreen component.
 
-use gpui_oa::{Entity, TestAppContext};
+use gpui::{Entity, TestAppContext};
 use crate::{GymScreen, GymTab};
 
 /// Page Object Model fixture for GymScreen
