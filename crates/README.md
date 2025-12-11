@@ -479,3 +479,4 @@ cargo test -p agent
 ## Edition
 
 **All crates use Rust edition 2024.** This is specified in the workspace `Cargo.toml` and should not be changed without discussion.
+

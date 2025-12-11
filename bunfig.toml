@@ -1,3 +1,0 @@
-[test]
-# Limit Bun's test runner to src/ so Playwright E2E specs run only via bun run e2e:test
-root = "./src"

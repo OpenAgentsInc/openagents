@@ -1,1 +1,0 @@
-Initialize regex logging system and add logging configuration
