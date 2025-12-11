@@ -1,6 +1,4 @@
 //! Core types for the task system
-//!
-//! Mirrors the TypeScript schema from src/tasks/schema.ts
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

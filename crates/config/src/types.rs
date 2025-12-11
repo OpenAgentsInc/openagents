@@ -1,6 +1,4 @@
 //! Configuration types for OpenAgents
-//!
-//! Mirrors the TypeScript schema from src/tasks/schema.ts
 
 use serde::{Deserialize, Serialize};
 
@@ -373,7 +371,7 @@ impl Default for TBenchConfig {
     fn default() -> Self {
         Self {
             default_model: "fm".into(),
-            default_suite: "tasks/fm-mini-suite.json".into(),
+            default_suite: "docs/tb-tasks/fm-mini-suite.json".into(),
             default_timeout: 3600,
             default_max_turns: 300,
             default_learning: LearningConfig::default(),
@@ -691,7 +689,7 @@ fn default_tbench_model() -> String {
 }
 
 fn default_tbench_suite() -> String {
-    "tasks/fm-mini-suite.json".into()
+    "docs/tb-tasks/fm-mini-suite.json".into()
 }
 
 fn default_tbench_timeout() -> u32 {
