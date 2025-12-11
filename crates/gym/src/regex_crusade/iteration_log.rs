@@ -1,257 +1,183 @@
-//! Iteration Log - Turn-by-turn history with pass rate sparkline
+//! Streaming Log - Real-time FM activity display
+//!
+//! Shows everything happening as it happens: prompts, responses, tests generated.
 
 use gpui::prelude::*;
 use gpui::*;
 use theme::{bg, border, status, text, FONT_FAMILY};
 
-use super::types::Iteration;
+use super::types::{LogEntry, LogEntryKind};
 
-/// Iteration log panel component
+/// Streaming log panel component
 pub struct IterationLog {
-    iterations: Vec<Iteration>,
+    log_entries: Vec<LogEntry>,
     focus_handle: FocusHandle,
 }
 
 impl IterationLog {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
-            iterations: Vec::new(),
+            log_entries: Vec::new(),
             focus_handle: cx.focus_handle(),
         }
     }
 
-    pub fn set_iterations(&mut self, iterations: Vec<Iteration>, cx: &mut Context<Self>) {
-        self.iterations = iterations;
+    /// Add a log entry
+    pub fn add_log_entry(&mut self, entry: LogEntry, cx: &mut Context<Self>) {
+        self.log_entries.push(entry);
         cx.notify();
     }
 
-    pub fn add_iteration(&mut self, iteration: Iteration, cx: &mut Context<Self>) {
-        self.iterations.push(iteration);
+    /// Clear all logs
+    pub fn clear_logs(&mut self, cx: &mut Context<Self>) {
+        self.log_entries.clear();
         cx.notify();
     }
 
-    fn render_sparkline(&self) -> impl IntoElement {
-        // Sparkline showing pass rate over iterations
-        let points: Vec<f32> = self.iterations.iter().map(|i| i.pass_rate()).collect();
-        let max_points = 20;
-        let recent_points: Vec<f32> = if points.len() > max_points {
-            points[points.len() - max_points..].to_vec()
-        } else {
-            points.clone()
-        };
+    /// Legacy method for compatibility
+    pub fn set_iterations(&mut self, _iterations: Vec<super::types::Iteration>, cx: &mut Context<Self>) {
+        // Not used in streaming mode
+        cx.notify();
+    }
 
-        let width = 280.0;
-        let height = 50.0;
-        let point_width = if recent_points.is_empty() {
-            0.0
-        } else {
-            width / recent_points.len() as f32
+    /// Legacy method for compatibility
+    pub fn add_iteration(&mut self, _iteration: super::types::Iteration, cx: &mut Context<Self>) {
+        // Not used in streaming mode
+        cx.notify();
+    }
+
+    fn render_log_entry(&self, entry: &LogEntry, idx: usize) -> impl IntoElement {
+        let is_last = idx == self.log_entries.len() - 1;
+        let time_str = entry.timestamp.format("%H:%M:%S").to_string();
+
+        // Color coding by entry kind
+        let (badge_bg, badge_text, msg_color) = match entry.kind {
+            LogEntryKind::Info => (bg::ELEVATED, text::MUTED, text::SECONDARY),
+            LogEntryKind::Progress => (status::INFO_BG, status::INFO, text::SECONDARY),
+            LogEntryKind::Prompt => (status::WARNING_BG, status::WARNING, text::PRIMARY),
+            LogEntryKind::Response => (status::SUCCESS_BG, status::SUCCESS, text::PRIMARY),
+            LogEntryKind::TestGenerated => (status::SUCCESS_BG, status::SUCCESS, text::BRIGHT),
+            LogEntryKind::Reflection => (bg::ELEVATED, text::MUTED, text::SECONDARY),
+            LogEntryKind::Complete => (status::SUCCESS_BG, status::SUCCESS, text::BRIGHT),
+            LogEntryKind::Error => (status::ERROR_BG, status::ERROR, status::ERROR),
         };
 
         div()
             .flex()
             .flex_col()
-            .gap(px(6.0))
-            .px(px(16.0))
-            .py(px(12.0))
-            .border_b_1()
-            .border_color(border::DEFAULT)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(text::MUTED)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Pass Rate Trend"),
-                    )
-                    .when(!recent_points.is_empty(), |el| {
-                        let latest = recent_points.last().copied().unwrap_or(0.0);
-                        el.child(
-                            div()
-                                .text_size(px(12.0))
-                                .font_family(FONT_FAMILY)
-                                .text_color(if latest >= 1.0 {
-                                    status::SUCCESS
-                                } else {
-                                    text::PRIMARY
-                                })
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(format!("{:.0}%", latest * 100.0)),
-                        )
-                    }),
-            )
-            // Sparkline container
-            .child(
-                div()
-                    .w(px(width))
-                    .h(px(height))
-                    .bg(bg::ELEVATED)
-                    .rounded(px(4.0))
-                    .flex()
-                    .items_end()
-                    .gap(px(1.0))
-                    .overflow_hidden()
-                    .when(recent_points.is_empty(), |el| {
-                        el.items_center().justify_center().child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_family(FONT_FAMILY)
-                                .text_color(text::DISABLED)
-                                .child("No iterations yet"),
-                        )
-                    })
-                    .when(!recent_points.is_empty(), |el| {
-                        el.children(recent_points.iter().map(|rate| {
-                            let bar_height = (rate * height).max(2.0);
-                            let color = if *rate >= 1.0 {
-                                status::SUCCESS
-                            } else if *rate >= 0.8 {
-                                status::WARNING
-                            } else {
-                                status::INFO
-                            };
-
-                            div()
-                                .w(px(point_width - 1.0))
-                                .h(px(bar_height))
-                                .bg(color)
-                                .rounded_t(px(1.0))
-                        }))
-                    }),
-            )
-    }
-
-    fn render_iteration_entry(&self, iteration: &Iteration, idx: usize) -> impl IntoElement {
-        let is_improvement = if idx > 0 {
-            let prev_idx = idx - 1;
-            if prev_idx < self.iterations.len() {
-                iteration.pass_rate() > self.iterations[prev_idx].pass_rate()
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        let is_complete = iteration.passed == iteration.total && iteration.total > 0;
-        let is_last = idx == self.iterations.len() - 1;
-
-        div()
-            .flex()
-            .gap(px(10.0))
+            .gap(px(4.0))
             .px(px(12.0))
-            .py(px(10.0))
-            .bg(bg::ROW)
+            .py(px(8.0))
+            .bg(if is_last { bg::SELECTED } else { bg::ROW })
             .when(!is_last, |el| {
                 el.border_b_1().border_color(border::SUBTLE)
             })
-            // Turn number
+            // Header row: timestamp + badge
             .child(
                 div()
-                    .w(px(32.0))
-                    .h(px(32.0))
-                    .rounded(px(6.0))
-                    .bg(if is_complete {
-                        status::SUCCESS_BG
-                    } else {
-                        bg::ELEVATED
-                    })
                     .flex()
                     .items_center()
-                    .justify_center()
+                    .gap(px(8.0))
+                    // Timestamp
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(px(9.0))
                             .font_family(FONT_FAMILY)
-                            .text_color(if is_complete {
-                                status::SUCCESS
-                            } else {
-                                text::MUTED
-                            })
-                            .font_weight(FontWeight::BOLD)
-                            .child(format!("#{}", iteration.turn)),
-                    ),
-            )
-            // Content
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.0))
-                    .overflow_hidden()
-                    // Pass rate + change indicator
+                            .text_color(text::DISABLED)
+                            .child(time_str),
+                    )
+                    // Kind badge
                     .child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.0))
+                            .px(px(6.0))
+                            .py(px(2.0))
+                            .bg(badge_bg)
+                            .rounded(px(3.0))
                             .child(
                                 div()
-                                    .text_size(px(14.0))
-                                    .font_family(FONT_FAMILY)
-                                    .text_color(if is_complete {
-                                        status::SUCCESS
-                                    } else {
-                                        text::PRIMARY
-                                    })
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(format!(
-                                        "{}/{} ({:.0}%)",
-                                        iteration.passed,
-                                        iteration.total,
-                                        iteration.pass_rate() * 100.0
-                                    )),
-                            )
-                            .when(is_improvement, |el| {
-                                el.child(
-                                    div()
-                                        .text_size(px(10.0))
-                                        .text_color(status::SUCCESS)
-                                        .child("+"),
-                                )
-                            }),
-                    )
-                    // Change description
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(text::SECONDARY)
-                            .line_height(px(15.0))
-                            .text_ellipsis()
-                            .child(iteration.change_description.clone()),
-                    )
-                    // Regex preview
-                    .child(
-                        div()
-                            .mt(px(4.0))
-                            .p(px(6.0))
-                            .bg(bg::CODE)
-                            .rounded(px(4.0))
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .font_family(FONT_FAMILY)
-                                    .text_color(text::MUTED)
-                                    .text_ellipsis()
-                                    .child(iteration.regex_pattern.clone()),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(4.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(9.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(badge_text)
+                                            .child(entry.kind.icon()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(8.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(badge_text)
+                                            .font_weight(FontWeight::BOLD)
+                                            .child(entry.kind.label()),
+                                    ),
                             ),
                     ),
             )
-            // Duration
+            // Message content
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(px(11.0))
                     .font_family(FONT_FAMILY)
-                    .text_color(text::DISABLED)
-                    .child(format!("{}ms", iteration.duration_ms)),
+                    .text_color(msg_color)
+                    .line_height(px(16.0))
+                    .child(entry.message.clone()),
+            )
+    }
+
+    fn render_header(&self) -> impl IntoElement {
+        let count = self.log_entries.len();
+        let test_count = self
+            .log_entries
+            .iter()
+            .filter(|e| e.kind == LogEntryKind::TestGenerated)
+            .count();
+
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .px(px(16.0))
+            .py(px(10.0))
+            .border_b_1()
+            .border_color(border::DEFAULT)
+            .bg(bg::ELEVATED)
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_family(FONT_FAMILY)
+                    .text_color(text::MUTED)
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("Streaming Log"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family(FONT_FAMILY)
+                            .text_color(text::DISABLED)
+                            .child(format!("{} events", count)),
+                    )
+                    .when(test_count > 0, |el| {
+                        el.child(
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .bg(status::SUCCESS_BG)
+                                .rounded(px(3.0))
+                                .text_size(px(10.0))
+                                .font_family(FONT_FAMILY)
+                                .text_color(status::SUCCESS)
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(format!("{} tests", test_count)),
+                        )
+                    }),
             )
     }
 }
@@ -264,8 +190,7 @@ impl Focusable for IterationLog {
 
 impl Render for IterationLog {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let iteration_count = self.iterations.len();
-        let iterations_clone = self.iterations.clone();
+        let entries_clone = self.log_entries.clone();
 
         div()
             .flex()
@@ -273,60 +198,46 @@ impl Render for IterationLog {
             .h_full()
             .w_full()
             .bg(bg::SURFACE)
-            // Sparkline
-            .child(self.render_sparkline())
             // Header
+            .child(self.render_header())
+            // Log entries (scrollable, most recent at bottom, auto-scroll)
             .child(
                 div()
-                    .px(px(16.0))
-                    .py(px(10.0))
-                    .border_b_1()
-                    .border_color(border::SUBTLE)
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(text::MUTED)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Iteration History"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(FONT_FAMILY)
-                            .text_color(text::DISABLED)
-                            .child(format!("{} turns", iteration_count)),
-                    ),
-            )
-            // Iteration list (scrollable, most recent first)
-            .child(
-                div()
-                    .id("iteration-log-scroll")
+                    .id("streaming-log-scroll")
                     .flex_1()
                     .overflow_y_scroll()
-                    .when(iterations_clone.is_empty(), |el| {
+                    .when(entries_clone.is_empty(), |el| {
                         el.flex()
                             .items_center()
                             .justify_center()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
-                                    .font_family(FONT_FAMILY)
-                                    .text_color(text::MUTED)
-                                    .child("No iterations yet"),
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::MUTED)
+                                            .child("No activity yet"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .font_family(FONT_FAMILY)
+                                            .text_color(text::DISABLED)
+                                            .child("Click 'Generate Tests' to start"),
+                                    ),
                             )
                     })
-                    .when(!iterations_clone.is_empty(), |el| {
-                        // Show most recent first
+                    .when(!entries_clone.is_empty(), |el| {
                         el.children(
-                            iterations_clone
+                            entries_clone
                                 .iter()
                                 .enumerate()
-                                .rev()
-                                .map(|(idx, iteration)| self.render_iteration_entry(iteration, idx)),
+                                .map(|(idx, entry)| self.render_log_entry(entry, idx)),
                         )
                     }),
             )
