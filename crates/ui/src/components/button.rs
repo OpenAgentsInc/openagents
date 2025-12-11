@@ -51,7 +51,7 @@ pub struct Button {
     variant: ButtonVariant,
     size: ButtonSize,
     disabled: bool,
-    on_click: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
+    on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
 impl Button {
@@ -95,8 +95,8 @@ impl Button {
         self
     }
 
-    /// Set the click handler
-    pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+    /// Set the click handler (receives click event, window, app)
+    pub fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
         self
     }
@@ -190,7 +190,7 @@ impl RenderOnce for Button {
         // Apply click handler
         if let Some(handler) = self.on_click {
             if !self.disabled {
-                el = el.on_click(move |_, window, cx| handler(window, cx));
+                el = el.on_click(move |event, window, cx| handler(event, window, cx));
             }
         }
 
