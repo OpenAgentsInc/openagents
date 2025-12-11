@@ -14,6 +14,7 @@ use super::tbcc::TBCCScreen;
 use super::hillclimber::monitor::HillClimberMonitor;
 use super::testgen::visualizer::TestGenVisualizer;
 use super::regex_crusade::RegexCrusadeScreen;
+use super::mechacoder::MechaCoderScreen;
 use super::actions::*;
 
 pub struct GymScreen {
@@ -29,6 +30,7 @@ pub struct GymScreen {
     hillclimber_view: Entity<HillClimberMonitor>,
     testgen_view: Entity<TestGenVisualizer>,
     regex_crusade_view: Entity<RegexCrusadeScreen>,
+    mechacoder_view: Entity<MechaCoderScreen>,
 }
 
 impl GymScreen {
@@ -48,6 +50,7 @@ impl GymScreen {
         let hillclimber_view = cx.new(|cx| HillClimberMonitor::new(cx));
         let testgen_view = cx.new(|cx| TestGenVisualizer::new(cx));
         let regex_crusade_view = cx.new(|cx| RegexCrusadeScreen::new(cx));
+        let mechacoder_view = cx.new(|cx| MechaCoderScreen::new(cx));
 
         Self {
             current_tab: GymTab::default(),
@@ -57,6 +60,7 @@ impl GymScreen {
             hillclimber_view,
             testgen_view,
             regex_crusade_view,
+            mechacoder_view,
         }
     }
 
@@ -85,6 +89,10 @@ impl GymScreen {
 
     fn switch_to_regex_crusade(&mut self, _: &SwitchToRegexCrusade, _window: &mut Window, cx: &mut Context<Self>) {
         self.switch_tab(GymTab::RegexCrusade, cx);
+    }
+
+    fn switch_to_mechacoder(&mut self, _: &SwitchToMechaCoder, _window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_tab(GymTab::MechaCoder, cx);
     }
 
     fn render_tab_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -132,6 +140,7 @@ impl GymScreen {
             GymTab::HillClimber => self.hillclimber_view.clone().into_any_element(),
             GymTab::TestGen => self.testgen_view.clone().into_any_element(),
             GymTab::RegexCrusade => self.regex_crusade_view.clone().into_any_element(),
+            GymTab::MechaCoder => self.mechacoder_view.clone().into_any_element(),
         }
     }
 }
@@ -156,6 +165,7 @@ impl Render for GymScreen {
             .on_action(cx.listener(Self::switch_to_hillclimber))
             .on_action(cx.listener(Self::switch_to_testgen))
             .on_action(cx.listener(Self::switch_to_regex_crusade))
+            .on_action(cx.listener(Self::switch_to_mechacoder))
             // Tab bar
             .child(self.render_tab_bar(window, cx))
             // Tab content - each tab manages its own layout

@@ -13,11 +13,13 @@ pub enum GymTab {
     TestGen,
     /// Laser-focused regex-log solver
     RegexCrusade,
+    /// Flexible solver with FM/CC backend toggle
+    MechaCoder,
 }
 
 impl Default for GymTab {
     fn default() -> Self {
-        Self::RegexCrusade
+        Self::MechaCoder
     }
 }
 
@@ -29,11 +31,13 @@ impl GymTab {
             Self::HillClimber => "HillClimber",
             Self::TestGen => "TestGen",
             Self::RegexCrusade => "Crusade",
+            Self::MechaCoder => "MechaCoder",
         }
     }
 
     pub fn all() -> &'static [GymTab] {
         &[
+            GymTab::MechaCoder,
             GymTab::RegexCrusade,
             GymTab::Trajectories,
             GymTab::TBCC,

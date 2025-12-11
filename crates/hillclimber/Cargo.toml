@@ -16,6 +16,7 @@ fm-bridge = { path = "../fm-bridge" }
 testgen = { path = "../testgen" }
 llm = { path = "../llm" }
 sandbox = { path = "../sandbox" }
+claude_agent_sdk = { path = "../claude_agent_sdk" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
