@@ -23,11 +23,11 @@ The AI-assisted development market is exploding. Platforms in this space have ac
 - 500,000+ users building applications
 
 **Vibe's opportunity:** No platform has combined:
-1. Native-first performance with browser accessibility
-2. Decentralized identity (Nostr) with mainstream UX
-3. Bitcoin-native payments with traditional pricing
-4. Multi-agent orchestration with single-user simplicity
-5. Full code ownership with zero-config deployment
+1. **Desktop speed + browser reach** — Native performance when building, zero-install sharing
+2. **Instant start** — No signup forms, no OAuth dance, building within 5 seconds
+3. **Full-stack in one click** — Database, auth, payments, hosting—all included
+4. **Agent transparency** — See exactly what the AI did, every file, every line
+5. **True code ownership** — GitHub sync, export anytime, standard React stack
 
 We're building the platform that captures the next wave.
 
@@ -392,23 +392,23 @@ Team publishes together
 
 ## OpenAgents Integration
 
-### Nostr Identity
+### Instant Start (No Signup)
 
-Unlike traditional platforms requiring OAuth with tech giants, Vibe uses Nostr:
+Unlike traditional platforms requiring OAuth with tech giants:
 
-- **No account creation** — Keypair generated on first run
-- **Self-sovereign** — You own your identity
-- **Portable** — Same identity across OpenAgents ecosystem
-- **Optional GitHub** — Link later for cross-device access
+- **No account creation** — Open the app and start building
+- **Identity generated automatically** — Works immediately
+- **Same identity across OpenAgents** — Commander, Marketplace, Gym
+- **Optional account linking** — Connect GitHub later for cross-device sync
 
-### Bitcoin Payments
+### Developer Revenue Share
 
-Vibe accepts Bitcoin/Lightning alongside traditional payment:
+Vibe rewards developers who create value:
 
-- **Pay with Bitcoin** — Lightning for instant settlement
-- **Earn with Bitcoin** — Sell compute to swarm network
-- **Micropayments** — Pay per credit, no minimums
-- **Self-custodial** — Your keys, your bitcoin
+- **Publish templates** — Earn when others clone your work
+- **Create agents** — Get paid when your agents are used
+- **Build in public** — Showcase your work, attract clients
+- **Flexible payouts** — Traditional or crypto, your choice
 
 ### Commander Integration
 
@@ -466,26 +466,24 @@ This enables:
 
 ## Technical Differentiation
 
-### Native-First, Browser-Later
+### Desktop Speed + Browser Reach
 
-Most platforms are browser-only or cloud-only. Vibe is native-first:
+Most platforms force a choice: fast local tools or accessible web apps. Vibe gives you both.
 
 **Phase 1 (Now): Native Desktop**
-- GPUI rendering (GPU-accelerated)
-- Local filesystem access
-- Wasmtime for WASI modules
-- Full IDE performance
+- GPU-accelerated UI (smooth as native apps)
+- Real filesystem access (instant file operations)
+- Full IDE performance (no lag, no waiting)
 
 **Phase 2 (Later): Browser**
 - Same code, compiled to WASM
-- IndexedDB for storage
-- Browser WASM runtime
-- Zero-install experience
+- Zero-install sharing (send a link, they're building)
+- Works everywhere (laptop, tablet, locked-down corporate machines)
 
 **Why this matters:**
-- Native performance during development
-- Browser reach for distribution
-- Same codebase, two deployment targets
+- Build fast locally where performance matters
+- Share instantly via URL where accessibility matters
+- One codebase, two deployment targets
 
 ### OANIX Architecture
 
@@ -601,37 +599,37 @@ The ultimate measure: how many working applications do users publish?
 
 ## Competitive Advantages
 
-### 1. Native + Browser
+### 1. Desktop Speed + Browser Reach
 
-No other platform offers native desktop performance with browser extraction. Users get the best of both worlds.
+No other platform offers native desktop performance with browser extraction. Build with GPU-accelerated UI locally, share via URL instantly.
 
-### 2. Decentralized Identity
+### 2. Zero Friction Start
 
-Nostr identity is unique in this space. Appeals to sovereignty-focused users and aligns with Web3 trends without the crypto complexity.
+No signup forms. No "Sign in with Google." Open the app and start building. Account comes later, if you want it.
 
-### 3. Bitcoin-Native
+### 3. True Agent Transparency
 
-First vibe-coding platform with real Bitcoin/Lightning integration. Micropayments, swarm compute payments, self-custody.
+Every AI action is logged and viewable. You see exactly which files changed, which lines were modified. Trust through transparency, not black-box magic.
 
-### 4. Multi-Agent Future
+### 4. Multi-Agent Capability
 
-Through Commander integration, Vibe can orchestrate multiple agents—a capability no competitor has explored.
+Through Commander integration, Vibe can orchestrate multiple agents working in parallel—a capability no competitor has explored. Complex projects, faster.
 
 ### 5. Open Source Core
 
 OANIX and core Vibe components will be open source. Builds trust, enables contributions, creates moat through ecosystem.
 
-### 6. Plan 9 Architecture
+### 6. Superior Architecture
 
-OANIX's Plan 9-inspired design is technically superior—clean abstractions that competitors' ad-hoc architectures can't match.
+OANIX's Plan 9-inspired design provides clean abstractions that competitors' ad-hoc architectures can't match. Same code runs native and browser.
 
-### 7. Local-First Data
+### 7. Local-First Privacy
 
-User data stays on their computer by default. Growing concern about cloud data makes this increasingly attractive.
+Your projects stay on your computer by default. No cloud sync required. Growing privacy concerns make this increasingly attractive.
 
-### 8. OpenAgents Ecosystem
+### 8. Developer Revenue Share
 
-Vibe isn't standalone—it's part of Commander, Gym, Marketplace, Wallet. Network effects across products.
+When developers build and publish templates or agents, they earn from usage. This isn't a user feature—it's why the best builders will choose Vibe.
 
 ---
 
