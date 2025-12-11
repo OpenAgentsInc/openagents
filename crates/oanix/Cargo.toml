@@ -1,0 +1,32 @@
+[package]
+name = "oanix"
+version = "0.1.0"
+edition = "2024"
+description = "OANIX: Plan 9-inspired agent operating environment for WebAssembly"
+license = "MIT"
+
+[dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+async-trait = "0.1"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Tracing
+tracing = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.0"
+
+[features]
+default = []
+# Enable WASI runtime (requires wasmtime)
+wasi = []
+# Enable browser build target
+browser = []
