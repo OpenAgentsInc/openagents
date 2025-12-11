@@ -32,6 +32,7 @@ actions!(
         GoToWallet,
         GoToMarketplace,
         GoToChat,
+        GoToVibe,
         // Help
         OpenDocs,
         OpenDiscord,

@@ -1,11 +1,14 @@
-//! OpenAgents Vibe: In-browser agentic development environment
+//! OpenAgents Vibe: AI-native development platform
 //!
-//! Vibe is a browser-based IDE for "vibe coding" full-stack applications.
-//! Built on OANIX namespaces with:
-//! - React/JS/TS frontends with HMR
-//! - Rust backends compiled to WASM
-//! - Zed-inspired editor compiled to WASM
-//! - Agent-native workflows (scaffolding, refactoring, testing)
+//! Vibe is an AI-powered IDE for "vibe coding" full-stack applications.
+//! Describe what you want, watch the agent build it, deploy with one click.
+//!
+//! # Features
+//!
+//! - **Projects**: Browse, create, and manage projects with templates
+//! - **Editor**: Full IDE with file tree, code editor, preview, terminal
+//! - **Database**: Visual database browser, SQL editor, schema management
+//! - **Deploy**: One-click deployment, custom domains, analytics
 //!
 //! # Architecture
 //!
@@ -30,21 +33,33 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use vibe::{VibeConfig, VibeSession};
-//! use oanix::Namespace;
+//! use vibe::{VibeConfig, VibeScreen};
+//! use gpui::*;
 //!
-//! let config = VibeConfig::fullstack_template();
-//! let session = VibeSession::create(config).await?;
-//!
-//! // User edits files, dev runtime rebuilds, preview updates
-//! session.run().await?;
+//! // Create a new Vibe screen in your GPUI app
+//! let screen = cx.new(|cx| VibeScreen::new(cx));
 //! ```
 
+// Core configuration and traits
 pub mod config;
 pub mod error;
 pub mod traits;
+
+// UI types and mock data
+pub mod types;
+
+// Main screen component
+pub mod screen;
+
+// UI modules
+pub mod projects;
+pub mod editor;
+pub mod database;
+pub mod deploy;
 
 // Re-exports
 pub use config::VibeConfig;
 pub use error::VibeError;
 pub use traits::{IdeFs, JobBackend, TerminalBackend};
+pub use screen::VibeScreen;
+pub use types::*;

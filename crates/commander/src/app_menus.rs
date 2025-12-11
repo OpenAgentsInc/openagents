@@ -71,6 +71,7 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action("Compute", GoToCompute),
                 MenuItem::action("Wallet", GoToWallet),
                 MenuItem::action("Marketplace", GoToMarketplace),
+                MenuItem::action("Vibe", GoToVibe),
             ],
         },
         // Help menu

@@ -37,3 +37,6 @@ gym = { path = "../gym" }
 
 # Chat - Bloomberg Terminal-style Nostr chat
 nostr-chat = { path = "../nostr-chat" }
+
+# Vibe - AI-native development platform
+vibe = { path = "../vibe" }

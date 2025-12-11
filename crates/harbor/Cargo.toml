@@ -1,0 +1,24 @@
+[package]
+name = "harbor"
+version = "0.1.0"
+edition = "2024"
+description = "Harbor Terminal-Bench CLI for running agents in evaluation mode"
+license = "MIT"
+
+[[bin]]
+name = "tbench"
+path = "src/bin/tbench.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.41", features = ["full", "process"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.10"

@@ -11,7 +11,7 @@ uv pip install openagents-harbor
 Or install from source:
 
 ```bash
-cd src/harbor
+cd crates/harbor/python
 uv pip install -e .
 ```
 
@@ -34,7 +34,7 @@ internally via your Anthropic subscription. The `--model` flag from Harbor is ig
 
 1. Harbor calls `MechaCoderAgent.setup()` to install MechaCoder in the container
 2. For each task, Harbor calls `create_run_agent_commands()` with the instruction
-3. MechaCoder runs via `bun src/cli/tbench.ts` using Claude Code as its subagent
+3. MechaCoder runs via the `tbench` Rust binary using Claude Code as its subagent
 4. After completion, `populate_context_post_run()` extracts metrics from the output
 
 ## Output Files
@@ -50,3 +50,11 @@ MechaCoder produces these files in the output directory:
 - Python 3.12+
 - Harbor framework
 - Anthropic API key (for Claude Code)
+
+## Development
+
+The Rust `tbench` binary is in `crates/harbor/`. Build it with:
+
+```bash
+cargo build --release -p harbor
+```

@@ -1134,7 +1134,7 @@ pub struct AnalyticsDataPoint {
 }
 
 /// Analytics summary
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct AnalyticsSummary {
     pub page_views: u64,
     pub unique_visitors: u64,
