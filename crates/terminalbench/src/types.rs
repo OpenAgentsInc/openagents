@@ -19,11 +19,13 @@ pub struct TBTask {
 /// Task difficulty levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TBDifficulty {
     Easy,
     Medium,
     Hard,
     Expert,
+    #[default]
     Unknown,
 }
 
@@ -39,9 +41,18 @@ impl TBDifficulty {
     }
 }
 
-impl Default for TBDifficulty {
+
+impl Default for TBTask {
     fn default() -> Self {
-        Self::Unknown
+        Self {
+            id: String::new(),
+            name: String::new(),
+            description: String::new(),
+            difficulty: TBDifficulty::default(),
+            timeout_ms: 120_000,
+            max_turns: 300,
+            tags: Vec::new(),
+        }
     }
 }
 
@@ -63,7 +74,9 @@ pub struct TBRunSummary {
 /// Run execution status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TBRunStatus {
+    #[default]
     Queued,
     Running,
     Completed,
@@ -81,11 +94,6 @@ impl TBRunStatus {
     }
 }
 
-impl Default for TBRunStatus {
-    fn default() -> Self {
-        Self::Queued
-    }
-}
 
 /// Run outcome
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,12 +123,14 @@ impl TBRunOutcome {
 }
 
 /// Model options for running benchmarks
+/// Note: Model IDs should match the central definitions in crates/ai/src/model.rs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TBModelOption {
     #[default]
-    ClaudeSonnet,
-    ClaudeHaiku,
+    ClaudeSonnet45,
+    ClaudeHaiku45,
+    ClaudeOpus45,
     Gpt4o,
     Gpt4oMini,
     AppleFM,
@@ -129,8 +139,9 @@ pub enum TBModelOption {
 impl TBModelOption {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::ClaudeSonnet => "Claude Sonnet 4",
-            Self::ClaudeHaiku => "Claude Haiku",
+            Self::ClaudeSonnet45 => "Claude Sonnet 4.5",
+            Self::ClaudeHaiku45 => "Claude Haiku 4.5",
+            Self::ClaudeOpus45 => "Claude Opus 4.5",
             Self::Gpt4o => "GPT-4o",
             Self::Gpt4oMini => "GPT-4o Mini",
             Self::AppleFM => "Apple FM (Local)",
@@ -139,8 +150,9 @@ impl TBModelOption {
 
     pub fn id(&self) -> &'static str {
         match self {
-            Self::ClaudeSonnet => "claude-sonnet-4-20250514",
-            Self::ClaudeHaiku => "claude-3-5-haiku-20241022",
+            Self::ClaudeSonnet45 => "claude-sonnet-4-5-20250929",
+            Self::ClaudeHaiku45 => "claude-haiku-4-5-20251001",
+            Self::ClaudeOpus45 => "claude-opus-4-5-20251101",
             Self::Gpt4o => "gpt-4o",
             Self::Gpt4oMini => "gpt-4o-mini",
             Self::AppleFM => "apple-fm",
@@ -149,8 +161,9 @@ impl TBModelOption {
 
     pub fn all() -> &'static [TBModelOption] {
         &[
-            TBModelOption::ClaudeSonnet,
-            TBModelOption::ClaudeHaiku,
+            TBModelOption::ClaudeSonnet45,
+            TBModelOption::ClaudeHaiku45,
+            TBModelOption::ClaudeOpus45,
             TBModelOption::Gpt4o,
             TBModelOption::Gpt4oMini,
             TBModelOption::AppleFM,

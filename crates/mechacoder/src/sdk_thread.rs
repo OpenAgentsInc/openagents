@@ -6,10 +6,12 @@ use claude_agent_sdk::{
 use futures::StreamExt;
 use gpui::{Context, EventEmitter, Task};
 use gpui_tokio::Tokio;
+use harbor::StreamEvent;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use terminalbench::TBRunStatus;
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::debug;
 
 /// Events emitted by SdkThread.
 #[derive(Clone, Debug)]
@@ -42,6 +44,40 @@ pub enum ThreadEntry {
     UserMessage(UserMessage),
     AssistantMessage(AssistantMessage),
     ToolUse(ToolUse),
+    /// TB2 run header entry
+    TBenchRun(TBenchRunEntry),
+    /// TB2 stream event entry
+    TBenchEvent(TBenchStreamEntry),
+}
+
+/// TB2 run header entry - shown when a TB2 run starts
+#[derive(Clone, Debug)]
+pub struct TBenchRunEntry {
+    /// Unique run ID
+    pub run_id: String,
+    /// Task ID
+    pub task_id: String,
+    /// Human-readable task name
+    pub task_name: String,
+    /// Current run status
+    pub status: TBRunStatus,
+    /// Number of turns completed
+    pub turns: u32,
+    /// Maximum turns allowed
+    pub max_turns: u32,
+    /// Cost in USD (if known)
+    pub cost: Option<f64>,
+    /// Error message (if any)
+    pub error: Option<String>,
+}
+
+/// TB2 stream event entry - individual events from the run
+#[derive(Clone, Debug)]
+pub struct TBenchStreamEntry {
+    /// Run ID this event belongs to
+    pub run_id: String,
+    /// The stream event from harbor
+    pub event: StreamEvent,
 }
 
 /// User message.
@@ -134,6 +170,7 @@ pub struct TodoState {
 
 /// Internal message from Tokio task to GPUI.
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // Some fields are captured for future use
 enum SdkUpdate {
     Init { session_id: String, model: String },
     StreamingContent(String),
@@ -234,6 +271,20 @@ impl SdkThread {
         !self.todo_state.items.is_empty()
     }
 
+    /// Add a TB2 run entry to the thread
+    pub fn add_tbench_run_entry(&mut self, entry: TBenchRunEntry, cx: &mut Context<Self>) {
+        self.entries.push(ThreadEntry::TBenchRun(entry));
+        let entry_idx = self.entries.len() - 1;
+        cx.emit(SdkThreadEvent::EntryAdded(entry_idx));
+    }
+
+    /// Add a TB2 stream event entry to the thread
+    pub fn add_tbench_stream_entry(&mut self, entry: TBenchStreamEntry, cx: &mut Context<Self>) {
+        self.entries.push(ThreadEntry::TBenchEvent(entry));
+        let entry_idx = self.entries.len() - 1;
+        cx.emit(SdkThreadEvent::EntryAdded(entry_idx));
+    }
+
     /// Send a user message.
     pub fn send_message(&mut self, content: String, cx: &mut Context<Self>) -> Task<()> {
         // Add user message to entries
@@ -254,9 +305,9 @@ impl SdkThread {
         let (tx, mut rx) = mpsc::unbounded_channel::<SdkUpdate>();
 
         // Spawn SDK work on Tokio runtime - must detach to prevent abort on drop
-        info!("Spawning SDK query for: {}", content);
+        debug!("Spawning SDK query for: {}", content);
         Tokio::spawn(cx, async move {
-            info!("Tokio task started");
+            debug!("Tokio task started");
             // Build options - only use dangerously_skip_permissions (don't also set permission_mode)
             let options = QueryOptions::new()
                 .cwd(&project_root)
@@ -264,9 +315,9 @@ impl SdkThread {
                 .include_partial_messages(true);
 
             // Create query
-            info!("Creating query...");
+            debug!("Creating query...");
             let query_result = query(&content, options).await;
-            info!("Query created: {:?}", query_result.is_ok());
+            debug!("Query created: {:?}", query_result.is_ok());
 
             let mut stream = match query_result {
                 Ok(q) => q,
@@ -279,13 +330,13 @@ impl SdkThread {
             let mut assistant_content = String::new();
 
             // Process stream
-            info!("Starting to process stream...");
+            debug!("Starting to process stream...");
             while let Some(msg_result) = stream.next().await {
-                info!("Got message from stream");
+                debug!("Got message from stream");
                 let msg = match msg_result {
                     Ok(m) => m,
                     Err(e) => {
-                        info!("SDK error: {}", e);
+                        debug!("SDK error: {}", e);
                         let _ = tx.send(SdkUpdate::Error(e.to_string()));
                         return;
                     }
@@ -304,7 +355,7 @@ impl SdkThread {
                     }
                     SdkMessage::Assistant(assistant) => {
                         // Extract text and tool_use inputs from message
-                        info!("Assistant message: {}", assistant.message);
+                        debug!("Assistant message: {}", assistant.message);
                         if let Some(content) = assistant.message.get("content") {
                             if let Some(blocks) = content.as_array() {
                                 for block in blocks {
@@ -323,7 +374,7 @@ impl SdkThread {
                                             let tool_use_id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
                                             if let Some(input) = block.get("input") {
                                                 let input_str = serde_json::to_string(input).unwrap_or_default();
-                                                info!("Tool input for {}: {}", tool_use_id, input_str);
+                                                debug!("Tool input for {}: {}", tool_use_id, input_str);
                                                 let _ = tx.send(SdkUpdate::ToolInputDelta {
                                                     tool_use_id: tool_use_id.to_string(),
                                                     partial_json: input_str,
@@ -336,7 +387,7 @@ impl SdkThread {
                             }
                         }
                         if !assistant_content.is_empty() {
-                            info!("Extracted content from assistant: {}", assistant_content);
+                            debug!("Extracted content from assistant: {}", assistant_content);
                             let _ = tx.send(SdkUpdate::StreamingContent(assistant_content.clone()));
                         }
                     }
@@ -353,7 +404,7 @@ impl SdkThread {
                                     if block_type == "tool_use" {
                                         let tool_use_id = content_block.get("id").and_then(|i| i.as_str()).unwrap_or("");
                                         let tool_name = content_block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                                        info!("Tool use started: {} ({})", tool_name, tool_use_id);
+                                        debug!("Tool use started: {} ({})", tool_name, tool_use_id);
                                         let _ = tx.send(SdkUpdate::ToolUseStarted {
                                             tool_use_id: tool_use_id.to_string(),
                                             tool_name: tool_name.to_string(),
@@ -400,7 +451,7 @@ impl SdkThread {
                                         let tool_use_id = block.get("tool_use_id").and_then(|i| i.as_str()).unwrap_or("");
                                         let is_error = block.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
                                         let output = block.get("content").and_then(|c| c.as_str()).unwrap_or("");
-                                        info!("Tool result for {}: {} (error: {})", tool_use_id, output.len(), is_error);
+                                        debug!("Tool result for {}: {} (error: {})", tool_use_id, output.len(), is_error);
                                         let _ = tx.send(SdkUpdate::ToolResult {
                                             tool_use_id: tool_use_id.to_string(),
                                             output: output.to_string(),
@@ -412,7 +463,7 @@ impl SdkThread {
                         }
                     }
                     SdkMessage::ToolProgress(progress) => {
-                        info!("Tool progress: {} ({})", progress.tool_name, progress.tool_use_id);
+                        debug!("Tool progress: {} ({})", progress.tool_name, progress.tool_use_id);
                         let _ = tx.send(SdkUpdate::ToolProgress {
                             tool_use_id: progress.tool_use_id,
                             tool_name: progress.tool_name,
@@ -512,7 +563,7 @@ impl SdkThread {
                                     // Check if this is a TodoWrite tool - parse and update todo state
                                     if tool_use.tool_name == "TodoWrite" {
                                         if let Some(items) = TodoItem::parse_from_json(&tool_use.input) {
-                                            info!("Parsed {} todos from TodoWrite", items.len());
+                                            debug!("Parsed {} todos from TodoWrite", items.len());
                                             this.todo_state = TodoState { items };
                                             cx.emit(SdkThreadEvent::TodosUpdated);
                                         }

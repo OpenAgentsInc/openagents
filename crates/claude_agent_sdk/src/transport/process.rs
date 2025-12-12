@@ -167,7 +167,7 @@ impl ProcessTransport {
                         continue;
                     }
 
-                    tracing::info!(line = %line, "Received line from CLI");
+                    tracing::debug!(line = %line, "Received line from CLI");
 
                     match serde_json::from_str::<StdoutMessage>(&line) {
                         Ok(msg) => {
@@ -184,7 +184,7 @@ impl ProcessTransport {
                 }
                 Ok(None) => {
                     // EOF
-                    tracing::info!("CLI stdout closed (EOF)");
+                    tracing::debug!("CLI stdout closed (EOF)");
                     break;
                 }
                 Err(e) => {
@@ -199,7 +199,7 @@ impl ProcessTransport {
     /// Send a message to the CLI via stdin.
     pub async fn send(&mut self, message: &StdinMessage) -> Result<()> {
         let json = serde_json::to_string(message)?;
-        tracing::info!(json = %json, "Sending message to CLI");
+        tracing::debug!(json = %json, "Sending message to CLI");
 
         self.stdin
             .write_all(json.as_bytes())
