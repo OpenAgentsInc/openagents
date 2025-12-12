@@ -7,7 +7,7 @@ use crate::panels::testgen_wrapper::TestGenWrapper;
 use crate::panels::verifier::VerificationResult;
 use claude_agent_sdk::{query, QueryOptions, SdkMessage};
 use futures::StreamExt;
-use sandbox::{cleanup_credential_mount, create_credential_mount, ContainerBackend, ContainerConfig, DockerBackend};
+use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -265,45 +265,12 @@ impl DockerRunner {
 
         self.ensure_image(image).await?;
 
-        // Try to create credential mount for Claude CLI OAuth credentials (optional)
-        tracing::debug!(
-            target: "mechacoder::docker",
-            "Attempting to create Claude CLI credential mount"
-        );
-        let credential_mount = match create_credential_mount().await {
-            Ok(mount) => {
-                tracing::info!(
-                    target: "mechacoder::docker",
-                    mount = %mount.volume_mount,
-                    "Created Claude CLI credential mount"
-                );
-                Some(mount)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    target: "mechacoder::docker",
-                    error = %e,
-                    "Failed to create credential mount - will use ANTHROPIC_API_KEY instead"
-                );
-                None
-            }
-        };
-
         // Run Claude via SDK on host
+        // Note: Claude CLI will use credentials from ~/.claude/.credentials.json
+        // or ANTHROPIC_API_KEY environment variable (inherited via build_env_vars)
         let result = self
             .run_claude_with_sdk(config, event_tx.clone())
             .await;
-
-        // Clean up credential mount if it was created
-        if let Some(ref mount) = credential_mount {
-            if let Err(e) = cleanup_credential_mount(mount).await {
-                tracing::warn!(
-                    target: "mechacoder::docker",
-                    error = %e,
-                    "Failed to cleanup credential mount"
-                );
-            }
-        }
 
         match result {
             Ok(run_result) => {
@@ -462,10 +429,16 @@ impl DockerRunner {
     }
 
     /// Build environment variables for Claude SDK
+    ///
+    /// Inherits all current environment variables and adds/overrides specific ones.
+    /// This ensures Claude CLI can find credentials at ~/.claude/.credentials.json.
     fn build_env_vars(&self, config: &DockerRunConfig) -> HashMap<String, String> {
-        let mut env = HashMap::new();
+        // Start with current environment (inherited)
+        let mut env: HashMap<String, String> = std::env::vars().collect();
 
-        // API key
+        // Override/add specific variables
+
+        // API key (if set, will override)
         if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
             env.insert("ANTHROPIC_API_KEY".to_string(), key);
         }
