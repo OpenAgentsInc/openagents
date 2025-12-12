@@ -209,59 +209,9 @@ impl MechaCoderScreen {
         self.connection_status = ConnectionStatus::Connected;
         self.needs_focus = true;
 
-        // Fetch available models in background
-        let thread_clone = thread.clone();
-        cx.spawn(async move |_this, cx| {
-            use claude_agent_sdk::query;
-
-            // Create a query to get available models
-            match query("", Default::default()).await {
-                Ok(stream) => {
-                    // Call supported_models on the stream
-                    match stream.supported_models().await {
-                        Ok(models) => {
-                            log::info!("Fetched {} available models", models.len());
-                            let _ = thread_clone.update(cx, |thread, cx| {
-                                thread.set_available_models(models, cx);
-                            });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to fetch models: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to create query for model fetching: {}", e);
-                }
-            }
-        }).detach();
-
-        // Fetch account info in background
-        let thread_clone = thread.clone();
-        cx.spawn(async move |_this, cx| {
-            use claude_agent_sdk::query;
-
-            // Create a query to get account info
-            match query("", Default::default()).await {
-                Ok(stream) => {
-                    // Call account_info on the stream
-                    match stream.account_info().await {
-                        Ok(account_info) => {
-                            log::info!("Fetched account info: email={:?}", account_info.email);
-                            let _ = thread_clone.update(cx, |thread, cx| {
-                                thread.set_account_info(Some(account_info), cx);
-                            });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to fetch account info: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to create query for account info fetching: {}", e);
-                }
-            }
-        }).detach();
+        // Note: Models and account info are fetched from SystemInit message
+        // during the first query, not separately. This avoids spawning queries
+        // outside of an active user session.
 
         cx.notify();
     }
