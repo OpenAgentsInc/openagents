@@ -874,7 +874,7 @@ impl MechaCoderScreen {
         });
 
         // Forward Docker events to UI
-        let mut turn = 0u32;
+        let mut _turn = 0u32;
         while let Some(event) = docker_rx.recv().await {
             match event {
                 DockerEvent::ContainerStarting { image } => {
@@ -890,7 +890,7 @@ impl MechaCoderScreen {
                     }
                 }
                 DockerEvent::AssistantMessage { text, turn: t } => {
-                    turn = t;
+                    _turn = t;
                     let _ = tx.send(RunnerEvent::TurnUpdate { turn: t, max_turns });
                     let display = if text.len() > 200 {
                         format!("{}...", &text[..200])
@@ -911,7 +911,7 @@ impl MechaCoderScreen {
                     info!(target: "mechacoder::docker", exit_code, "Container stopped");
                 }
                 DockerEvent::TurnComplete { turn: t } => {
-                    turn = t;
+                    _turn = t;
                     let _ = tx.send(RunnerEvent::TurnUpdate { turn: t, max_turns });
                 }
                 DockerEvent::Error { message } => {
@@ -1023,7 +1023,7 @@ impl MechaCoderScreen {
         let verifier = TB2Verifier::new();
         let verification = verifier.run_tests(&tb2_task, workspace_dir.path(), &logs_dir).await;
 
-        let (passed, tests_passed, tests_total) = match verification {
+        let (passed, _tests_passed, _tests_total) = match verification {
             Ok(v) => {
                 info!(
                     target: "mechacoder::docker",
@@ -1446,7 +1446,7 @@ impl MechaCoderScreen {
                     .px(px(16.0))
                     .py(px(8.0))
                     .bg(if is_busy { status::ERROR_BG } else { status::SUCCESS_BG })
-                    .rounded(px(4.0))
+                    
                     .text_size(px(12.0))
                     .font_family(FONT_FAMILY)
                     .text_color(if is_busy { status::ERROR } else { status::SUCCESS })
@@ -1469,12 +1469,12 @@ impl MechaCoderScreen {
                     .px(px(8.0))
                     .py(px(4.0))
                     .bg(bg::SURFACE)
-                    .rounded(px(4.0))
+                    
                     .child(
                         div()
                             .w(px(8.0))
                             .h(px(8.0))
-                            .rounded_full()
+                            
                             .bg(match self.session.backend {
                                 HillClimberBackend::FM => status::INFO,
                                 HillClimberBackend::CC => status::WARNING,

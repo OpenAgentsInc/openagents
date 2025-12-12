@@ -111,7 +111,7 @@ impl SettingsView {
         div()
             .flex_1()
             .p(px(16.0))
-            .rounded(px(8.0))
+            
             .bg(bg_color)
             .border_1()
             .border_color(border_color)
@@ -163,7 +163,7 @@ impl SettingsView {
                     .bg(bg::ELEVATED)
                     .border_1()
                     .border_color(border::DEFAULT)
-                    .rounded(px(6.0))
+                    
                     .text_size(px(13.0))
                     .font_family(FONT_FAMILY)
                     .text_color(text::PRIMARY)
@@ -192,7 +192,7 @@ impl SettingsView {
                 div()
                     .w(px(18.0))
                     .h(px(18.0))
-                    .rounded(px(4.0))
+                    
                     .border_1()
                     .border_color(if checked { status::SUCCESS.opacity(0.5) } else { border::DEFAULT })
                     .bg(if checked { status::SUCCESS_BG } else { bg::ELEVATED })
@@ -267,7 +267,7 @@ impl Render for SettingsView {
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(border::DEFAULT)
-                            .rounded(px(12.0))
+                            
                             .p(px(24.0))
                             .mb(px(24.0))
                             .child(self.render_section_header("🤖", "Model"))
@@ -295,7 +295,7 @@ impl Render for SettingsView {
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(border::DEFAULT)
-                            .rounded(px(12.0))
+                            
                             .p(px(24.0))
                             .mb(px(24.0))
                             .child(self.render_section_header("⚡", "Execution"))
@@ -359,7 +359,7 @@ impl Render for SettingsView {
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(border::DEFAULT)
-                            .rounded(px(12.0))
+                            
                             .p(px(24.0))
                             .mb(px(24.0))
                             .child(self.render_section_header("📦", "Container"))
@@ -414,7 +414,7 @@ impl Render for SettingsView {
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(border::DEFAULT)
-                            .rounded(px(12.0))
+                            
                             .p(px(24.0))
                             .mb(px(32.0))
                             .child(self.render_section_header("📝", "Logging & Storage"))
@@ -455,7 +455,7 @@ impl Render for SettingsView {
                                     .font_family(FONT_FAMILY)
                                     .text_color(text::BRIGHT)
                                     .font_weight(FontWeight::MEDIUM)
-                                    .rounded(px(6.0))
+                                    
                                     .cursor_pointer()
                                     .hover(|el| el.bg(status::SUCCESS.opacity(0.8)))
                                     .shadow_lg()

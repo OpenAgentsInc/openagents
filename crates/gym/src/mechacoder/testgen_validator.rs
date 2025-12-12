@@ -4,7 +4,6 @@
 //! workflow by checking for the presence of testgen_tests.py and running the tests.
 
 use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
-use std::fs;
 use std::path::Path;
 use std::time::Duration;
 use thiserror::Error;

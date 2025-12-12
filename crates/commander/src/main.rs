@@ -137,6 +137,7 @@ struct CommanderView {
     #[allow(dead_code)]
     fm_client: Arc<FMClient>,
     store: Arc<Mutex<TrajectoryStore>>,
+    #[allow(dead_code)]
     current_session_id: Option<String>,
     steps: Vec<Step>,
     expanded_step_ids: HashSet<i64>,
@@ -147,7 +148,9 @@ struct CommanderView {
     _subscription: Subscription,
     // Sidebar state
     trajectories: Vec<TrajectoryMetadata>,
+    #[allow(dead_code)]
     selected_trajectory_id: Option<String>,
+    #[allow(dead_code)]
     sidebar_collapsed: bool,
     #[allow(dead_code)]
     sidebar_search_query: String,
@@ -441,6 +444,7 @@ impl CommanderView {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn toggle_sidebar(&mut self, _: &actions::ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
@@ -460,6 +464,7 @@ impl CommanderView {
     }
 
     /// Load a trajectory by session ID
+    #[allow(dead_code)]
     fn load_trajectory(&mut self, session_id: &str) {
         if let Ok(trajectory) = self.store.lock().unwrap().get_trajectory(session_id) {
             self.steps = trajectory.steps;
@@ -472,6 +477,7 @@ impl CommanderView {
     }
 
     /// Render a single trajectory item with click handler
+    #[allow(dead_code)]
     fn render_trajectory_item(&self, metadata: &TrajectoryMetadata, cx: &mut Context<Self>) -> impl IntoElement {
         let session_id = metadata.session_id.clone();
         let agent_name = metadata.agent_name.clone();
@@ -567,6 +573,7 @@ impl CommanderView {
     }
 
     /// Render status badge
+    #[allow(dead_code)]
     fn render_status_badge(&self, badge_status: &str) -> impl IntoElement {
         let (badge_bg, badge_text) = match badge_status.to_lowercase().as_str() {
             "completed" => (status::SUCCESS_BG, status::SUCCESS),

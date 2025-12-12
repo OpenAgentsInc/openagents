@@ -534,6 +534,7 @@ struct OllamaChoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OllamaUsage {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,

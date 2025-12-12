@@ -13,7 +13,7 @@
 
 use gpui::{
     div, prelude::*, px, Hsla, Render, Window, Context, Entity,
-    IntoElement, InteractiveElement, StatefulInteractiveElement, SharedString,
+    IntoElement, InteractiveElement, StatefulInteractiveElement,
 };
 use std::collections::{HashMap, HashSet};
 use theme_oa::hud;
@@ -413,7 +413,7 @@ impl Render for CategoryTree {
                 .bg(hud::PANEL_BG)
                 .border_1()
                 .border_color(hud::PANEL_BORDER)
-                .rounded_lg()
+                
                 .overflow_hidden()
                 .child(self.render_header())
                 .child(
@@ -453,7 +453,7 @@ impl Render for CategoryTree {
             .bg(hud::PANEL_BG)
             .border_1()
             .border_color(hud::PANEL_BORDER)
-            .rounded_lg()
+            
             .overflow_hidden()
             .child(self.render_header())
             .child(
@@ -497,7 +497,7 @@ impl CategoryTree {
                             .text_color(theme_oa::text::SECONDARY)
                             .px(px(8.0))
                             .py(px(4.0))
-                            .rounded(px(4.0))
+                            
                             .border_1()
                             .border_color(hud::BUTTON_BORDER)
                             .cursor_pointer()
@@ -510,7 +510,7 @@ impl CategoryTree {
                             .text_color(theme_oa::text::SECONDARY)
                             .px(px(8.0))
                             .py(px(4.0))
-                            .rounded(px(4.0))
+                            
                             .border_1()
                             .border_color(hud::BUTTON_BORDER)
                             .cursor_pointer()
@@ -651,7 +651,7 @@ impl CategoryTree {
                         .text_size(px(9.0))
                         .px(px(4.0))
                         .py(px(2.0))
-                        .rounded(px(2.0))
+                        
                         .bg(task.difficulty.bg_color())
                         .text_color(task.difficulty.text_color())
                         .child(task.difficulty.badge())

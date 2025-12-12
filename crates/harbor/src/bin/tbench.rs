@@ -282,6 +282,7 @@ fn parse_stream_line(
 }
 
 /// Extract text content from assistant message
+#[allow(dead_code)]
 fn extract_assistant_text(json: &serde_json::Value) -> String {
     if let Some(message) = json.get("message") {
         if let Some(content) = message.get("content") {

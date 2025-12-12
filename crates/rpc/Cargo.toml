@@ -19,7 +19,7 @@ test-support = ["collections/test-support", "gpui/test-support", "proto/test-sup
 
 [dependencies]
 anyhow.workspace = true
-async-tungstenite.workspace = true
+async-tungstenite = { workspace = true, features = ["tokio-runtime", "futures-03-sink", "handshake"] }
 base64.workspace = true
 chrono.workspace = true
 collections.workspace = true

@@ -433,7 +433,6 @@ pub struct ClaudeCodeConfig {
 }
 
 fn default_true() -> bool { true }
-fn default_false() -> bool { false }
 fn default_300() -> u32 { 300 }
 fn default_permission_mode() -> String { "bypassPermissions".to_string() }
 

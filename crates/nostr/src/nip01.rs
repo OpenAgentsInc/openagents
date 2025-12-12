@@ -110,7 +110,7 @@ pub const KIND_CONTACTS: u16 = 3;
 /// Generate a random 32-byte secret key.
 pub fn generate_secret_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     key
 }
 

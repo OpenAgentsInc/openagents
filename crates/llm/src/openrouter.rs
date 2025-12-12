@@ -660,6 +660,7 @@ struct OpenRouterResponseMessage {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenRouterUsage {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,

@@ -191,6 +191,7 @@ impl FMClient for LlmClientAdapter {
 pub struct SandboxToolExecutor {
     backend: Arc<dyn ContainerBackend>,
     config: ContainerConfig,
+    #[allow(dead_code)]
     verification: VerificationConfig,
 }
 

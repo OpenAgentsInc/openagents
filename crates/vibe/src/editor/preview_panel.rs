@@ -1,7 +1,6 @@
 //! Preview panel component - Live app preview
 
 use gpui::*;
-use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 /// Render the preview panel showing the live app
@@ -42,7 +41,7 @@ pub fn render_preview_panel() -> impl IntoElement {
                             div()
                                 .w(px(6.0))
                                 .h(px(6.0))
-                                .rounded_full()
+                                
                                 .bg(status::SUCCESS),
                         ),
                 )
@@ -226,7 +225,7 @@ fn render_mock_app_preview() -> impl IntoElement {
                             div()
                                 .w(px(24.0))
                                 .h(px(24.0))
-                                .rounded(px(4.0))
+                                
                                 .bg(Hsla { h: 0.6, s: 0.7, l: 0.5, a: 1.0 }),
                         )
                         .child(
@@ -252,7 +251,7 @@ fn render_mock_app_preview() -> impl IntoElement {
                     div()
                         .w(px(32.0))
                         .h(px(32.0))
-                        .rounded_full()
+                        
                         .bg(Hsla { h: 0.3, s: 0.5, l: 0.6, a: 1.0 }),
                 ),
         )
@@ -298,7 +297,7 @@ fn render_mock_app_preview() -> impl IntoElement {
                             div()
                                 .w_full()
                                 .h(px(120.0))
-                                .rounded(px(8.0))
+                                
                                 .bg(Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 })
                                 .border_1()
                                 .border_color(Hsla { h: 0.0, s: 0.0, l: 0.9, a: 1.0 })
@@ -340,7 +339,7 @@ fn render_mock_sidebar_item(active: bool) -> impl IntoElement {
     div()
         .w(px(40.0))
         .h(px(40.0))
-        .rounded(px(8.0))
+        
         .bg(bg_color)
         .border_1()
         .border_color(if active {
@@ -357,7 +356,7 @@ fn render_mock_stat_card(label: &str, value: &str, change: &str) -> impl IntoEle
     div()
         .flex_1()
         .p(px(12.0))
-        .rounded(px(8.0))
+        
         .bg(Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 })
         .border_1()
         .border_color(Hsla { h: 0.0, s: 0.0, l: 0.9, a: 1.0 })

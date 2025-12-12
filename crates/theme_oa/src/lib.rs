@@ -107,6 +107,12 @@ pub mod bg {
     /// Header background (#101010)
     pub const HEADER: Hsla = c(0.0, 0.0, 0.06, 1.0);
 
+    /// Header hover background (#1A1A1A)
+    pub const HEADER_HOVER: Hsla = c(0.0, 0.0, 0.10, 1.0);
+
+    /// Subtle row background (#080808)
+    pub const ROW_SUBTLE: Hsla = c(0.0, 0.0, 0.03, 1.0);
+
     /// Sidebar background (#0A0A0A)
     pub const SIDEBAR: Hsla = c(0.0, 0.0, 0.04, 1.0);
 
@@ -221,11 +227,23 @@ pub mod accent {
     /// Bloomberg yellow (#FFB400) - primary highlight
     pub const PRIMARY: Hsla = c(0.117, 1.0, 0.50, 1.0);
 
+    /// Muted yellow - subtle primary backgrounds
+    pub const PRIMARY_MUTED: Hsla = c(0.117, 0.50, 0.25, 0.4);
+
+    /// Secondary violet (#7E57C2) - tools, actions
+    pub const SECONDARY: Hsla = c(0.72, 0.46, 0.55, 1.0);
+
+    /// Muted violet - subtle secondary backgrounds
+    pub const SECONDARY_MUTED: Hsla = c(0.72, 0.30, 0.25, 0.4);
+
     /// Blue (#2979FF) - links, navigation
     pub const BLUE: Hsla = c(0.606, 1.0, 0.58, 1.0);
 
     /// Green (#00C853) - positive
     pub const GREEN: Hsla = c(0.403, 1.0, 0.39, 1.0);
+
+    /// Tertiary emerald (#10B981) - observation, status
+    pub const TERTIARY: Hsla = c(0.437, 0.84, 0.40, 1.0);
 
     /// Red (#D32F2F) - negative
     pub const RED: Hsla = c(0.0, 0.64, 0.51, 1.0);

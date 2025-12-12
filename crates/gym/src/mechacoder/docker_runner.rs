@@ -7,7 +7,7 @@ use crate::mechacoder::tb2_loader::TB2Task;
 use crate::mechacoder::testgen_wrapper::TestGenWrapper;
 use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 use thiserror::Error;

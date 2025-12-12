@@ -110,6 +110,7 @@ type PendingMessages = Arc<Mutex<Vec<MockMessage>>>;
 
 /// Commands sent to the background tokio task
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ChatCommand {
     Connect,
     JoinChannel(String),
@@ -129,9 +130,11 @@ pub struct ChatScreen {
     chat_state: Arc<Mutex<Option<ChatState>>>,
 
     /// Pending messages from commands
+    #[allow(dead_code)]
     pending_messages: PendingMessages,
 
     /// Command sender to background tokio task
+    #[allow(dead_code)]
     command_tx: mpsc::UnboundedSender<ChatCommand>,
 
     /// Selected channel ID
@@ -154,6 +157,7 @@ pub struct ChatScreen {
     connection_status: ConnectionStatus,
 
     /// Connected relay count
+    #[allow(dead_code)]
     connected_relay_count: Arc<AtomicUsize>,
 
     /// User's npub (for display)
@@ -641,7 +645,6 @@ impl ChatScreen {
                                 div()
                                     .w(px(6.0))
                                     .h(px(6.0))
-                                    .rounded_full()
                                     .bg(status_color),
                             )
                             .child(

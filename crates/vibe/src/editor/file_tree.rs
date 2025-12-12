@@ -4,7 +4,7 @@ use gpui::*;
 use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
-use crate::types::{ProjectFile, FileType, GitStatus};
+use crate::types::{ProjectFile, GitStatus};
 
 /// Render the file tree sidebar
 pub fn render_file_tree(files: &[ProjectFile], active_path: &Option<String>) -> impl IntoElement {

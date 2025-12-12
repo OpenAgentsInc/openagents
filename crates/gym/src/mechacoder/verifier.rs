@@ -7,7 +7,7 @@ use crate::mechacoder::tb2_loader::TB2Task;
 use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 use thiserror::Error;
 
