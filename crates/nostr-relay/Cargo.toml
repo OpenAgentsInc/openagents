@@ -13,8 +13,8 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-# Nostr core types (Event, signing)
-nostr = { path = "../nostr" }
+# Nostr core types (Event, minimal - no crypto)
+nostr = { path = "../nostr", default-features = false, features = ["minimal"] }
 
 # Serialization
 serde.workspace = true

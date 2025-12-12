@@ -2,26 +2,41 @@
 //!
 //! This crate provides:
 //! - NIP-01: Basic protocol (events, signing, verification)
-//! - NIP-06: Key derivation from BIP39 mnemonic seed phrases
+//! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
 //! - NIP-28: Public Chat (channels, messages, moderation)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
+//!
+//! # Features
+//!
+//! - `full` (default): Full crypto support including key generation and signing
+//! - `minimal`: Just Event type and serialization (for WASM/relay use)
 
 mod nip01;
+#[cfg(feature = "full")]
 mod nip06;
 mod nip28;
 mod nip90;
 
-// NIP-01: Basic protocol
+// NIP-01: Basic protocol (Event type always available)
 pub use nip01::{
     Event, EventTemplate, KindClassification, Nip01Error, UnsignedEvent,
     KIND_CONTACTS, KIND_METADATA, KIND_RECOMMEND_RELAY, KIND_SHORT_TEXT_NOTE,
-    classify_kind, finalize_event, generate_secret_key, get_event_hash, get_public_key,
-    get_public_key_hex, is_addressable_kind, is_ephemeral_kind, is_regular_kind,
-    is_replaceable_kind, serialize_event, sort_events, validate_event, validate_unsigned_event,
-    verify_event,
+    classify_kind, is_addressable_kind, is_ephemeral_kind, is_regular_kind,
+    is_replaceable_kind, serialize_event, sort_events,
 };
 
-// NIP-06: Key derivation from mnemonic
+// NIP-01: Validation functions (no crypto needed)
+pub use nip01::validate_unsigned_event;
+
+// NIP-01: Crypto functions (require full feature)
+#[cfg(feature = "full")]
+pub use nip01::{
+    finalize_event, generate_secret_key, get_event_hash, get_public_key,
+    get_public_key_hex, validate_event, verify_event,
+};
+
+// NIP-06: Key derivation from mnemonic (requires full feature)
+#[cfg(feature = "full")]
 pub use nip06::{
     Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
     mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,

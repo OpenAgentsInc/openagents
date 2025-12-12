@@ -3,13 +3,17 @@
 //! This module implements the core Nostr event structure and operations:
 //! - Event structure (id, pubkey, created_at, kind, tags, content, sig)
 //! - Event serialization for hashing
-//! - Event signing with Schnorr signatures
-//! - Event verification
+//! - Event signing with Schnorr signatures (requires `full` feature)
+//! - Event verification (requires `full` feature)
 //! - Kind classification (regular, replaceable, ephemeral, addressable)
 
+#[cfg(feature = "full")]
 use bitcoin::hashes::{sha256, Hash};
+#[cfg(feature = "full")]
 use bitcoin::key::Secp256k1;
+#[cfg(feature = "full")]
 use bitcoin::secp256k1::{schnorr, Message, SecretKey, XOnlyPublicKey};
+#[cfg(feature = "full")]
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -108,6 +112,7 @@ pub const KIND_RECOMMEND_RELAY: u16 = 2;
 pub const KIND_CONTACTS: u16 = 3;
 
 /// Generate a random 32-byte secret key.
+#[cfg(feature = "full")]
 pub fn generate_secret_key() -> [u8; 32] {
     let mut key = [0u8; 32];
     rand::rng().fill_bytes(&mut key);
@@ -115,6 +120,7 @@ pub fn generate_secret_key() -> [u8; 32] {
 }
 
 /// Get the public key (x-only, 32 bytes) from a secret key.
+#[cfg(feature = "full")]
 pub fn get_public_key(secret_key: &[u8; 32]) -> Result<[u8; 32], Nip01Error> {
     let secp = Secp256k1::new();
     let sk = SecretKey::from_slice(secret_key)
@@ -124,6 +130,7 @@ pub fn get_public_key(secret_key: &[u8; 32]) -> Result<[u8; 32], Nip01Error> {
 }
 
 /// Get the public key as a hex string from a secret key.
+#[cfg(feature = "full")]
 pub fn get_public_key_hex(secret_key: &[u8; 32]) -> Result<String, Nip01Error> {
     Ok(hex::encode(get_public_key(secret_key)?))
 }
@@ -153,6 +160,7 @@ pub fn serialize_event(event: &UnsignedEvent) -> Result<String, Nip01Error> {
 }
 
 /// Get the event hash (id) from an unsigned event.
+#[cfg(feature = "full")]
 pub fn get_event_hash(event: &UnsignedEvent) -> Result<String, Nip01Error> {
     let serialized = serialize_event(event)?;
     let hash = sha256::Hash::hash(serialized.as_bytes());
@@ -185,6 +193,7 @@ pub fn validate_unsigned_event(event: &UnsignedEvent) -> bool {
 }
 
 /// Validate a signed event structure (not including signature verification).
+#[cfg(feature = "full")]
 pub fn validate_event(event: &Event) -> bool {
     // Check id is 64 hex characters
     if event.id.len() != 64 || !event.id.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -208,6 +217,7 @@ pub fn validate_event(event: &Event) -> bool {
 }
 
 /// Sign an event template with a secret key, producing a complete signed event.
+#[cfg(feature = "full")]
 pub fn finalize_event(
     template: &EventTemplate,
     secret_key: &[u8; 32],
@@ -254,6 +264,7 @@ pub fn finalize_event(
 }
 
 /// Verify an event's signature and id.
+#[cfg(feature = "full")]
 pub fn verify_event(event: &Event) -> Result<bool, Nip01Error> {
     // First validate structure
     if !validate_event(event) {
@@ -356,7 +367,7 @@ pub fn sort_events(events: &mut [Event]) {
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "full"))]
 mod tests {
     use super::*;
 
