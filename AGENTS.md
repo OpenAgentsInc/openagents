@@ -102,6 +102,7 @@ Before making code changes:
 - NEVER commit unless explicitly asked (exception: MechaCoder autonomous loop)
 - NEVER use `-i` flag (interactive not supported)
 - NEVER `git stash` or `git checkout` to revert/discard changes you don't understand
+- NEVER use `git reset --hard`, `git checkout -- .`, `git restore .`, or any destructive git command that wipes uncommitted changes WITHOUT ASKING THE USER FIRST. These commands destroy work. Always ask before running them.
 - If you see modified files causing build errors, another agent may be working on them - work around it or ask the user
 - A pre-push hook (AGGRESSIVE MODE) blocks all border radius - checks ENTIRE files, not just diffs (`.rounded*()`, `corner_radii`, `Corners<T>`, `CornerSolver`, `inner_corner_radius`, border radius imports)
 
