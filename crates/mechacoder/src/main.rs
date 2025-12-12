@@ -52,6 +52,8 @@ fn main() {
             KeyBinding::new("cmd-g", mechacoder::ToggleGymPanel, None),
             KeyBinding::new("ctrl-g", mechacoder::ToggleGymPanel, None), // Linux
             KeyBinding::new("f2", mechacoder::ToggleGymPanel, None),
+            KeyBinding::new("cmd-c", mechacoder::ToggleClaudePanel, None),
+            KeyBinding::new("ctrl-c", mechacoder::ToggleClaudePanel, None), // Linux
         ]);
 
         // Set application menus

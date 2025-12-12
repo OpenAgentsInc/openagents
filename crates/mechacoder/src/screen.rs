@@ -11,9 +11,16 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::panels::{GymPanel, GymPanelEvent, TB2RunnerEvent};
+use crate::panels::{ClaudePanel, ClaudePanelEvent, GymPanel, GymPanelEvent, TB2RunnerEvent};
 use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
+
+/// Which panel is currently active
+#[derive(Clone, Debug, PartialEq)]
+pub enum ActivePanel {
+    Gym,
+    Claude,
+}
 
 /// Main screen for MechaCoder.
 pub struct MechaCoderScreen {
@@ -33,12 +40,16 @@ pub struct MechaCoderScreen {
     needs_focus: bool,
     /// Gym panel entity.
     gym_panel: Entity<GymPanel>,
-    /// Whether gym panel is visible.
-    gym_panel_visible: bool,
+    /// Claude panel entity.
+    claude_panel: Entity<ClaudePanel>,
+    /// Currently active panel (if any).
+    active_panel: Option<ActivePanel>,
     /// TB2 task loader for loading task definitions.
     tb2_task_loader: TB2TaskLoader,
     /// Subscription to gym panel events.
     _gym_panel_subscription: Subscription,
+    /// Subscription to claude panel events.
+    _claude_panel_subscription: Subscription,
 }
 
 /// Connection status.
@@ -66,6 +77,14 @@ impl MechaCoderScreen {
             this.handle_gym_panel_event(event, cx);
         });
 
+        // Create Claude panel
+        let claude_panel = cx.new(|cx| ClaudePanel::new(cx));
+
+        // Subscribe to claude panel events
+        let claude_panel_subscription = cx.subscribe(&claude_panel, |this, _panel, event, cx| {
+            this.handle_claude_panel_event(event, cx);
+        });
+
         // Create TB2 task loader
         let tb2_task_loader = TB2TaskLoader::new_default();
 
@@ -78,12 +97,14 @@ impl MechaCoderScreen {
             error_message: None,
             needs_focus: false,
             gym_panel,
-            gym_panel_visible: false,
+            claude_panel,
+            active_panel: None,
             tb2_task_loader,
             _gym_panel_subscription: gym_panel_subscription,
+            _claude_panel_subscription: claude_panel_subscription,
         };
 
-        // Auto-connect immediately
+        // Auto-connect immediately - this will create the SDK thread and set up its subscription
         screen.connect(cx);
 
         screen
@@ -105,13 +126,143 @@ impl MechaCoderScreen {
 
         // Create SDK thread directly - no async connection needed
         let thread = cx.new(|cx| SdkThread::new(project_root, cx));
+
+        // Subscribe to SDK thread updates (cost, models, and session)
+        let claude_panel = self.claude_panel.clone();
+        cx.subscribe(&thread, move |_this, _thread, event, cx| {
+            use crate::sdk_thread::SdkThreadEvent;
+            match event {
+                SdkThreadEvent::CostUpdated => {
+                    // Update the claude panel with latest cost data
+                    let (total_cost, model_usage, input_tokens, output_tokens) = {
+                        let thread_ref = _thread.read(cx);
+                        let cost = thread_ref.cost_tracker();
+                        (
+                            cost.total_cost_usd,
+                            cost.model_usage.clone(),
+                            cost.total_input_tokens,
+                            cost.total_output_tokens,
+                        )
+                    };
+                    let _ = claude_panel.update(cx, |panel, cx| {
+                        panel.update_cost(
+                            total_cost,
+                            model_usage,
+                            input_tokens,
+                            output_tokens,
+                            cx,
+                        );
+                    });
+                }
+                SdkThreadEvent::ModelsUpdated => {
+                    // Update the claude panel with available models
+                    let models = {
+                        let thread_ref = _thread.read(cx);
+                        thread_ref.available_models().to_vec()
+                    };
+                    let _ = claude_panel.update(cx, |panel, cx| {
+                        panel.set_available_models(models, cx);
+                    });
+                }
+                SdkThreadEvent::SessionUpdated => {
+                    // Update the claude panel with current session ID
+                    let session_id = {
+                        let thread_ref = _thread.read(cx);
+                        thread_ref.session_id().map(|s| s.to_string())
+                    };
+                    let _ = claude_panel.update(cx, |panel, cx| {
+                        panel.set_session_id(session_id, cx);
+                    });
+                }
+                SdkThreadEvent::AccountInfoUpdated => {
+                    // Update the claude panel with account information
+                    let account_info = {
+                        let thread_ref = _thread.read(cx);
+                        thread_ref.account_info().cloned()
+                    };
+                    let _ = claude_panel.update(cx, |panel, cx| {
+                        panel.set_account_info(account_info, cx);
+                    });
+                }
+                SdkThreadEvent::ToolsUpdated => {
+                    // Update the claude panel with tools and MCP servers
+                    let (tools, mcp_servers) = {
+                        let thread_ref = _thread.read(cx);
+                        (
+                            thread_ref.tools().to_vec(),
+                            thread_ref.mcp_servers().to_vec(),
+                        )
+                    };
+                    let _ = claude_panel.update(cx, |panel, cx| {
+                        panel.set_tools_and_mcp(tools, mcp_servers, cx);
+                    });
+                }
+                _ => {}
+            }
+        }).detach();
+
         self.sdk_thread = Some(thread.clone());
 
         // Create thread view
-        let thread_view = cx.new(|cx| ThreadView::new(thread, cx));
+        let thread_view = cx.new(|cx| ThreadView::new(thread.clone(), cx));
         self.thread_view = Some(thread_view);
         self.connection_status = ConnectionStatus::Connected;
         self.needs_focus = true;
+
+        // Fetch available models in background
+        let thread_clone = thread.clone();
+        cx.spawn(async move |_this, cx| {
+            use claude_agent_sdk::query;
+
+            // Create a query to get available models
+            match query("", Default::default()).await {
+                Ok(mut stream) => {
+                    // Call supported_models on the stream
+                    match stream.supported_models().await {
+                        Ok(models) => {
+                            log::info!("Fetched {} available models", models.len());
+                            let _ = thread_clone.update(cx, |thread, cx| {
+                                thread.set_available_models(models, cx);
+                            });
+                        }
+                        Err(e) => {
+                            log::error!("Failed to fetch models: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to create query for model fetching: {}", e);
+                }
+            }
+        }).detach();
+
+        // Fetch account info in background
+        let thread_clone = thread.clone();
+        cx.spawn(async move |_this, cx| {
+            use claude_agent_sdk::query;
+
+            // Create a query to get account info
+            match query("", Default::default()).await {
+                Ok(mut stream) => {
+                    // Call account_info on the stream
+                    match stream.account_info().await {
+                        Ok(account_info) => {
+                            log::info!("Fetched account info: email={:?}", account_info.email);
+                            let _ = thread_clone.update(cx, |thread, cx| {
+                                thread.set_account_info(Some(account_info), cx);
+                            });
+                        }
+                        Err(e) => {
+                            log::error!("Failed to fetch account info: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to create query for account info fetching: {}", e);
+                }
+            }
+        }).detach();
+
         cx.notify();
     }
 
@@ -122,14 +273,35 @@ impl MechaCoderScreen {
 
     /// Toggle the gym panel visibility.
     fn toggle_gym_panel(&mut self, _: &ToggleGymPanel, window: &mut Window, cx: &mut Context<Self>) {
-        self.gym_panel_visible = !self.gym_panel_visible;
-
-        // When closing the panel, refocus the message input so keybindings keep working
-        if !self.gym_panel_visible {
+        if self.active_panel == Some(ActivePanel::Gym) {
+            // Close Gym panel
+            self.active_panel = None;
+            // Refocus the message input so keybindings keep working
             if let Some(thread_view) = &self.thread_view {
                 let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
                 focus_handle.focus(window);
             }
+        } else {
+            // Open Gym panel (closes Claude if open)
+            self.active_panel = Some(ActivePanel::Gym);
+        }
+
+        cx.notify();
+    }
+
+    /// Toggle the Claude panel visibility.
+    fn toggle_claude_panel(&mut self, _: &ToggleClaudePanel, window: &mut Window, cx: &mut Context<Self>) {
+        if self.active_panel == Some(ActivePanel::Claude) {
+            // Close Claude panel
+            self.active_panel = None;
+            // Refocus the message input so keybindings keep working
+            if let Some(thread_view) = &self.thread_view {
+                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+                focus_handle.focus(window);
+            }
+        } else {
+            // Open Claude panel (closes Gym if open)
+            self.active_panel = Some(ActivePanel::Claude);
         }
 
         cx.notify();
@@ -146,9 +318,9 @@ impl MechaCoderScreen {
 
     /// Handle Esc key - close open panels or cancel generation.
     fn cancel_generation(&mut self, _: &CancelGeneration, window: &mut Window, cx: &mut Context<Self>) {
-        // If gym panel is open, close it
-        if self.gym_panel_visible {
-            self.gym_panel_visible = false;
+        // If any panel is open, close it
+        if self.active_panel.is_some() {
+            self.active_panel = None;
 
             // Refocus the message input so keybindings keep working
             if let Some(thread_view) = &self.thread_view {
@@ -748,6 +920,27 @@ impl MechaCoderScreen {
         }
     }
 
+    /// Handle claude panel events
+    fn handle_claude_panel_event(&mut self, event: &ClaudePanelEvent, _cx: &mut Context<Self>) {
+        match event {
+            ClaudePanelEvent::ModelChanged { model } => {
+                log::info!("Model changed to: {}", model);
+                // Send SetModel control request to the current query
+                // NOTE: This would need to be implemented in the SDK thread to actually
+                // send the control request to an active query. For now, just log it.
+                // In a future enhancement, we'd track the current query and send SetModel to it.
+            }
+            ClaudePanelEvent::SessionFork => {
+                log::info!("Session fork requested");
+                // TODO: Phase 3 - fork current session
+            }
+            ClaudePanelEvent::SessionResume { session_id } => {
+                log::info!("Session resume requested: {}", session_id);
+                // TODO: Phase 3 - resume session
+            }
+        }
+    }
+
     /// Render the connecting state with disabled input.
     fn render_connecting(&self) -> impl IntoElement {
         div()
@@ -894,8 +1087,9 @@ impl Render for MechaCoderScreen {
             }
         }
 
-        let gym_panel_visible = self.gym_panel_visible;
+        let active_panel = self.active_panel.clone();
         let gym_panel = self.gym_panel.clone();
+        let claude_panel = self.claude_panel.clone();
 
         div()
             .id("mechacoder-root")
@@ -907,6 +1101,7 @@ impl Render for MechaCoderScreen {
             .text_color(text::PRIMARY)
             .on_action(cx.listener(Self::quit))
             .on_action(cx.listener(Self::toggle_gym_panel))
+            .on_action(cx.listener(Self::toggle_claude_panel))
             .on_action(cx.listener(Self::focus_message_input))
             .on_action(cx.listener(Self::cancel_generation))
             .flex()
@@ -923,18 +1118,35 @@ impl Render for MechaCoderScreen {
                         ConnectionStatus::Error(_) => self.render_error(cx).into_any_element(),
                     })
             )
-            // Right panel (Gym) - 320px wide when visible
-            .when(gym_panel_visible, |el| {
-                el.child(
-                    div()
-                        .w(px(320.0))
-                        .h_full()
-                        .border_l_1()
-                        .border_color(border::DEFAULT)
-                        .bg(bg::SURFACE)
-                        .overflow_hidden()
-                        .child(gym_panel)
-                )
+            // Right panel - 320px wide when visible
+            // Shows either Gym or Claude panel (exclusive)
+            .when_some(active_panel, |el, panel| {
+                match panel {
+                    ActivePanel::Gym => {
+                        el.child(
+                            div()
+                                .w(px(320.0))
+                                .h_full()
+                                .border_l_1()
+                                .border_color(border::DEFAULT)
+                                .bg(bg::SURFACE)
+                                .overflow_hidden()
+                                .child(gym_panel)
+                        )
+                    }
+                    ActivePanel::Claude => {
+                        el.child(
+                            div()
+                                .w(px(320.0))
+                                .h_full()
+                                .border_l_1()
+                                .border_color(border::DEFAULT)
+                                .bg(bg::SURFACE)
+                                .overflow_hidden()
+                                .child(claude_panel)
+                        )
+                    }
+                }
             })
     }
 }

@@ -104,6 +104,26 @@ impl ThreadView {
                 // Re-render to show updated todo list
                 cx.notify();
             }
+            SdkThreadEvent::CostUpdated => {
+                // Cost updates are handled by Claude panel directly
+                // No action needed in thread view
+            }
+            SdkThreadEvent::ModelsUpdated => {
+                // Models updates are handled by Claude panel directly
+                // No action needed in thread view
+            }
+            SdkThreadEvent::SessionUpdated => {
+                // Session updates are handled by Claude panel directly
+                // No action needed in thread view
+            }
+            SdkThreadEvent::AccountInfoUpdated => {
+                // Account info updates are handled by Claude panel directly
+                // No action needed in thread view
+            }
+            SdkThreadEvent::ToolsUpdated => {
+                // Tools updates are handled by Claude panel directly
+                // No action needed in thread view
+            }
             SdkThreadEvent::Error(error) => {
                 log::error!("Thread error: {}", error);
                 cx.notify();
