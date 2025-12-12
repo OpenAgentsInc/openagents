@@ -77,6 +77,11 @@ impl GymPanel {
 
         // Try to load tasks
         let tasks = task_loader.load_all_tasks();
+        log::info!("GymPanel: Loaded {} tasks", tasks.len());
+        if tasks.is_empty() {
+            log::warn!("GymPanel: No tasks loaded! Available suites: {:?}",
+                task_loader.list_available_suites());
+        }
         let selected_idx = if tasks.is_empty() { None } else { Some(0) };
 
         Self {
