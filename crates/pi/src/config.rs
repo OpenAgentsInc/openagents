@@ -170,12 +170,15 @@ impl RetryConfig {
 }
 
 /// Strategy for handling context overflow
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "strategy", rename_all = "snake_case")]
 pub enum OverflowStrategy {
     /// Truncate oldest messages, keeping system prompt and last N messages
-    #[default]
-    Truncate,
+    Truncate {
+        /// Number of recent messages to keep (default: 10)
+        #[serde(default = "default_keep_last_n")]
+        keep_last_n: usize,
+    },
 
     /// Summarize old messages using an LLM
     Summarize {
@@ -185,6 +188,16 @@ pub enum OverflowStrategy {
 
     /// Return error on overflow
     Error,
+}
+
+impl Default for OverflowStrategy {
+    fn default() -> Self {
+        Self::Truncate { keep_last_n: 10 }
+    }
+}
+
+fn default_keep_last_n() -> usize {
+    10
 }
 
 /// Default tools available in Pi agent

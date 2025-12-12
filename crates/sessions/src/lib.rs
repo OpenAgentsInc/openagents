@@ -8,6 +8,10 @@
 //! Usage metrics with token counts and cache info.
 //! Parent UUIDs for threading/conversation structure.
 
+pub mod file_store;
+
+pub use file_store::{CompactionEntry, FileSessionStore, FileStoreError, FileStoreResult};
+
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

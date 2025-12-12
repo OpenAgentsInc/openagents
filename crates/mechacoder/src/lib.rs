@@ -11,12 +11,14 @@ use settings::Settings;
 pub mod actions;
 pub mod app_menus;
 pub mod panels;
+pub mod pi_thread;
 pub mod screen;
 pub mod sdk_thread;
 pub mod ui;
 
 // Re-export key types
 pub use actions::*;
+pub use pi_thread::{PiThread, PiThreadEvent};
 pub use screen::MechaCoderScreen;
 pub use sdk_thread::{SdkThread, SdkThreadEvent, ThreadEntry, ThreadStatus};
 

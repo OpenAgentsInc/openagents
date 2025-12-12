@@ -57,7 +57,15 @@ impl PiError {
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         match self {
-            PiError::Llm(e) => e.is_retryable(),
+            PiError::Llm(e) => {
+                // Check common retryable LLM error patterns
+                matches!(
+                    e,
+                    llm::LlmError::RateLimitError(_)
+                        | llm::LlmError::TimeoutError(_)
+                        | llm::LlmError::NetworkError(_)
+                )
+            }
             PiError::Cancelled => false,
             PiError::MaxTurnsExceeded(_) => false,
             PiError::ContextOverflow { .. } => false,

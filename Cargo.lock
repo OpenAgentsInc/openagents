@@ -9118,6 +9118,7 @@ dependencies = [
  "log",
  "markdown",
  "parking_lot",
+ "pi",
  "pulldown-cmark",
  "sandbox",
  "serde",
@@ -11421,6 +11422,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06005508882fb681fd97892ecff4b7fd0fee13ef1aa569f8695dae7ab9099981"
 dependencies = [
  "siphasher",
+]
+
+[[package]]
+name = "pi"
+version = "0.1.0"
+dependencies = [
+ "ai",
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "futures 0.3.31",
+ "llm",
+ "serde",
+ "serde_json",
+ "sessions",
+ "shellexpand 2.1.2",
+ "similar",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -13881,9 +13908,12 @@ dependencies = [
 name = "sessions"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "serde",
  "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
  "uuid",
 ]
 
@@ -15914,6 +15944,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
