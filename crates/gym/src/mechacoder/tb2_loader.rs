@@ -8,8 +8,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Default TB2 root directory
-pub const DEFAULT_TB2_ROOT: &str = "/home/christopherdavid/code/terminal-bench-2";
+/// Default TB2 root directory (uses ~ for cross-platform home directory)
+pub const DEFAULT_TB2_ROOT: &str = "~/code/terminal-bench-2";
 
 /// TB2 task configuration from task.toml
 #[derive(Debug, Clone, Deserialize)]
