@@ -144,6 +144,23 @@ impl MechaCoderScreen {
         }
     }
 
+    /// Handle Esc key - close open panels or cancel generation.
+    fn cancel_generation(&mut self, _: &CancelGeneration, window: &mut Window, cx: &mut Context<Self>) {
+        // If gym panel is open, close it
+        if self.gym_panel_visible {
+            self.gym_panel_visible = false;
+
+            // Refocus the message input so keybindings keep working
+            if let Some(thread_view) = &self.thread_view {
+                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+                focus_handle.focus(window);
+            }
+
+            cx.notify();
+        }
+        // Otherwise, Esc does nothing (cancel generation is handled by Cancel button in UI)
+    }
+
     /// Handle gym panel events
     fn handle_gym_panel_event(&mut self, event: &GymPanelEvent, cx: &mut Context<Self>) {
         match event {
@@ -900,6 +917,7 @@ impl Render for MechaCoderScreen {
             .on_action(cx.listener(Self::quit))
             .on_action(cx.listener(Self::toggle_gym_panel))
             .on_action(cx.listener(Self::focus_message_input))
+            .on_action(cx.listener(Self::cancel_generation))
             .flex()
             .flex_row()
             // Main content area
