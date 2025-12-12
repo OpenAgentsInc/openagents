@@ -2,15 +2,19 @@
 
 use gpui::{
     div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
+    InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
+use gpui_tokio::Tokio;
+use harbor::StreamEvent;
 use std::path::PathBuf;
+use terminalbench::TBRunStatus;
 use theme_oa::{bg, border, text, FONT_FAMILY};
+use tokio::sync::mpsc;
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::panels::GymPanel;
-use crate::sdk_thread::SdkThread;
+use crate::panels::{GymPanel, GymPanelEvent, TBenchRunner, TBenchRunnerEvent, TBRunOptions};
+use crate::sdk_thread::{SdkThread, TBenchRunEntry, TBenchStreamEntry, ThreadEntry};
 use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
@@ -19,6 +23,8 @@ pub struct MechaCoderScreen {
     focus_handle: FocusHandle,
     /// Current project root.
     project_root: PathBuf,
+    /// SDK thread for conversation.
+    sdk_thread: Option<Entity<SdkThread>>,
     /// Current thread view.
     thread_view: Option<Entity<ThreadView>>,
     /// Connection status.
@@ -31,6 +37,10 @@ pub struct MechaCoderScreen {
     gym_panel: Entity<GymPanel>,
     /// Whether gym panel is visible.
     gym_panel_visible: bool,
+    /// TBench runner for TB2 execution.
+    tbench_runner: TBenchRunner,
+    /// Subscription to gym panel events.
+    _gym_panel_subscription: Subscription,
 }
 
 /// Connection status.
@@ -53,15 +63,26 @@ impl MechaCoderScreen {
         // Create gym panel
         let gym_panel = cx.new(|cx| GymPanel::new(cx));
 
+        // Subscribe to gym panel events
+        let gym_panel_subscription = cx.subscribe(&gym_panel, |this, _panel, event, cx| {
+            this.handle_gym_panel_event(event, cx);
+        });
+
+        // Create TBench runner
+        let tbench_runner = TBenchRunner::new(project_root.clone());
+
         let mut screen = Self {
             focus_handle,
             project_root,
+            sdk_thread: None,
             thread_view: None,
             connection_status: ConnectionStatus::Connecting,
             error_message: None,
             needs_focus: false,
             gym_panel,
             gym_panel_visible: false,
+            tbench_runner,
+            _gym_panel_subscription: gym_panel_subscription,
         };
 
         // Auto-connect immediately
@@ -86,6 +107,7 @@ impl MechaCoderScreen {
 
         // Create SDK thread directly - no async connection needed
         let thread = cx.new(|cx| SdkThread::new(project_root, cx));
+        self.sdk_thread = Some(thread.clone());
 
         // Create thread view
         let thread_view = cx.new(|cx| ThreadView::new(thread, cx));
@@ -104,6 +126,98 @@ impl MechaCoderScreen {
     fn toggle_gym_panel(&mut self, _: &ToggleGymPanel, _window: &mut Window, cx: &mut Context<Self>) {
         self.gym_panel_visible = !self.gym_panel_visible;
         cx.notify();
+    }
+
+    /// Focus the message input.
+    fn focus_message_input(&mut self, _: &FocusMessageInput, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(thread_view) = &self.thread_view {
+            let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+            focus_handle.focus(window);
+        }
+    }
+
+    /// Handle gym panel events
+    fn handle_gym_panel_event(&mut self, event: &GymPanelEvent, cx: &mut Context<Self>) {
+        match event {
+            GymPanelEvent::StartTB2Run { run_id, task, model } => {
+                log::info!("Starting TB2 run: {} for task {}", run_id, task.id);
+
+                // Add TB2 run entry to thread
+                if let Some(sdk_thread) = &self.sdk_thread {
+                    sdk_thread.update(cx, |thread, cx| {
+                        thread.add_tbench_run_entry(TBenchRunEntry {
+                            run_id: run_id.clone(),
+                            task_id: task.id.clone(),
+                            task_name: task.name.clone(),
+                            status: TBRunStatus::Running,
+                            turns: 0,
+                            max_turns: task.max_turns,
+                            cost: None,
+                            error: None,
+                        }, cx);
+                    });
+                }
+
+                // Start the TBench runner
+                let options = TBRunOptions {
+                    task: task.clone(),
+                    model: Some(model.id().to_string()),
+                    timeout_secs: (task.timeout_ms / 1000) as u64,
+                    max_turns: task.max_turns,
+                };
+
+                let (_runner_run_id, mut rx) = self.tbench_runner.start_run(options, cx);
+                let run_id = run_id.clone();
+                let gym_panel = self.gym_panel.clone();
+                let sdk_thread = self.sdk_thread.clone();
+
+                // Spawn task to process runner events
+                cx.spawn(async move |_this, cx| {
+                    while let Some(event) = rx.recv().await {
+                        match &event {
+                            TBenchRunnerEvent::StreamEvent(stream_event) => {
+                                // Add to thread
+                                if let Some(sdk_thread) = &sdk_thread {
+                                    let _ = sdk_thread.update(&cx, |thread, cx| {
+                                        thread.add_tbench_stream_entry(TBenchStreamEntry {
+                                            run_id: run_id.clone(),
+                                            event: stream_event.clone(),
+                                        }, cx);
+                                    });
+                                }
+
+                                // Update gym panel
+                                let _ = gym_panel.update(&cx, |panel, cx| {
+                                    panel.handle_tb2_event(&run_id, stream_event, cx);
+                                });
+                            }
+                            TBenchRunnerEvent::RunComplete { run_id, success, turns, cost, error } => {
+                                // Update gym panel
+                                let _ = gym_panel.update(&cx, |panel, cx| {
+                                    panel.handle_tb2_complete(
+                                        run_id,
+                                        *success,
+                                        *turns,
+                                        *cost,
+                                        error.clone(),
+                                        cx,
+                                    );
+                                });
+                            }
+                            TBenchRunnerEvent::Error(err) => {
+                                log::error!("TBench runner error: {}", err);
+                            }
+                            TBenchRunnerEvent::RunStart { .. } => {
+                                // Already handled above
+                            }
+                        }
+                    }
+                }).detach();
+            }
+            GymPanelEvent::TB2StreamEvent { .. } | GymPanelEvent::TB2RunComplete { .. } => {
+                // These are forwarded events, ignore in screen handler
+            }
+        }
     }
 
     /// Render the connecting state with disabled input.
@@ -260,6 +374,7 @@ impl Render for MechaCoderScreen {
             .text_color(text::PRIMARY)
             .on_action(cx.listener(Self::quit))
             .on_action(cx.listener(Self::toggle_gym_panel))
+            .on_action(cx.listener(Self::focus_message_input))
             .flex()
             .flex_row()
             // Main content area
