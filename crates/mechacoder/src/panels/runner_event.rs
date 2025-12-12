@@ -53,6 +53,8 @@ pub enum TB2RunnerEvent {
         success: bool,
         turns: u32,
         cost_usd: f64,
+        verification_passed: bool,
+        verification_reward: f64,
         error: Option<String>,
     },
     /// Error occurred
@@ -111,6 +113,17 @@ impl TB2RunnerEvent {
                 vec![Self::Error {
                     run_id,
                     message,
+                }]
+            }
+            DockerEvent::RunComplete { run_result, run_error, verification } => {
+                vec![Self::RunComplete {
+                    run_id,
+                    success: run_result.as_ref().map(|r| r.success).unwrap_or(false),
+                    turns: run_result.as_ref().map(|r| r.turns).unwrap_or(0),
+                    cost_usd: run_result.as_ref().map(|r| r.cost_usd).unwrap_or(0.0),
+                    verification_passed: verification.as_ref().map(|v| v.passed).unwrap_or(false),
+                    verification_reward: verification.as_ref().map(|v| v.reward).unwrap_or(0.0),
+                    error: run_error.clone(),
                 }]
             }
             // ClaudeOutput is raw output, not needed for UI events

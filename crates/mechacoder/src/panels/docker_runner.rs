@@ -4,6 +4,7 @@
 //! that match the Terminal-Bench 2 evaluation environment.
 
 use crate::panels::testgen_wrapper::TestGenWrapper;
+use crate::panels::verifier::VerificationResult;
 use sandbox::{cleanup_credential_mount, create_credential_mount, ContainerBackend, ContainerConfig, DockerBackend};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -94,6 +95,12 @@ pub enum DockerEvent {
     ContainerStopped { exit_code: i32 },
     /// Error occurred
     Error { message: String },
+    /// Run completed with verification results
+    RunComplete {
+        run_result: Option<DockerRunResult>,
+        run_error: Option<String>,
+        verification: Option<VerificationResult>,
+    },
 }
 
 /// Result from a Docker run
