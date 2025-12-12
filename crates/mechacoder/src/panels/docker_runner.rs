@@ -370,15 +370,41 @@ impl DockerRunner {
 
                     let _ = event_tx.send(DockerEvent::TurnComplete { turn: turns });
 
-                    // Send assistant message content if available
+                    // Extract and send all text content (including from tool_use blocks)
                     if let Some(content_arr) = msg.message.get("content").and_then(|v| v.as_array()) {
+                        let mut full_text = String::new();
+
                         for block in content_arr {
+                            // Handle text blocks
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                let _ = event_tx.send(DockerEvent::AssistantMessage {
-                                    text: text.to_string(),
-                                    turn: turns,
-                                });
+                                if !full_text.is_empty() {
+                                    full_text.push('\n');
+                                }
+                                full_text.push_str(text);
                             }
+                            // Handle tool_use blocks - show what tool is being called
+                            else if block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+                                if let Some(tool_name) = block.get("name").and_then(|v| v.as_str()) {
+                                    if !full_text.is_empty() {
+                                        full_text.push('\n');
+                                    }
+                                    full_text.push_str(&format!("[Using tool: {}]", tool_name));
+                                }
+                            }
+                        }
+
+                        if !full_text.is_empty() {
+                            tracing::info!(
+                                target: "mechacoder::docker",
+                                turn = turns,
+                                text_len = full_text.len(),
+                                "Sending assistant message to UI"
+                            );
+
+                            let _ = event_tx.send(DockerEvent::AssistantMessage {
+                                text: full_text,
+                                turn: turns,
+                            });
                         }
                     }
                 }
@@ -421,6 +447,34 @@ impl DockerRunner {
                         "Claude completed via SDK"
                     );
                 }
+                SdkMessage::User(user_msg) => {
+                    // User messages contain tool results - show them in UI
+                    if let Some(content_arr) = user_msg.message.get("content").and_then(|v| v.as_array()) {
+                        for block in content_arr {
+                            if block.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
+                                if let Some(content) = block.get("content").and_then(|v| v.as_str()) {
+                                    // Send tool output to UI (truncate if very long)
+                                    let display_content = if content.len() > 500 {
+                                        format!("{}... (truncated)", &content[..500])
+                                    } else {
+                                        content.to_string()
+                                    };
+
+                                    tracing::info!(
+                                        target: "mechacoder::docker",
+                                        content_len = content.len(),
+                                        "Sending tool result to UI"
+                                    );
+
+                                    let _ = event_tx.send(DockerEvent::AssistantMessage {
+                                        text: format!("[Tool output]\n{}", display_content),
+                                        turn: turns,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 SdkMessage::StreamEvent(_event) => {
                     // Partial content streaming - can log if needed
                     tracing::trace!(
@@ -429,7 +483,7 @@ impl DockerRunner {
                     );
                 }
                 _ => {
-                    // Other message types (User, System, etc.)
+                    // Other message types (System, etc.)
                     tracing::trace!(
                         target: "mechacoder::docker",
                         "Other SDK message"
