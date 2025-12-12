@@ -201,7 +201,8 @@ impl MechaCoderScreen {
                     workspace_dir.clone(),
                     logs_dir.clone(),
                 )
-                .max_turns(task.max_turns)
+                // Use default max_turns (300) instead of task.max_turns
+                // Tasks need as many iterations as necessary to solve the problem
                 .model(model.id());
                 log::info!("TB2: Config created");
 
