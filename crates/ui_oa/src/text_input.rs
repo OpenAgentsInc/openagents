@@ -337,6 +337,7 @@ impl TextInput {
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.marked_range.take();
         self.reset_cursor_blink(cx);
+        cx.notify(); // CRITICAL: trigger re-render after text change
     }
 }
 
