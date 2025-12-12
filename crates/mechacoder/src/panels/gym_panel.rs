@@ -7,7 +7,7 @@
 //! - Recent runs history
 
 use gpui::{
-    div, prelude::*, px, App, Context, ElementId, EventEmitter, FocusHandle, Focusable,
+    deferred, div, prelude::*, px, App, Context, ElementId, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
 use harbor::StreamEvent;
@@ -418,42 +418,45 @@ impl GymPanel {
                                     )
                             )
                     )
-                    // Dropdown options (when open)
+                    // Dropdown options (when open) - use deferred for proper z-order
                     .when(is_open, |el| {
                         el.child(
-                            div()
-                                .absolute()
-                                .top(px(36.0))
-                                .left_0()
-                                .right_0()
-                                .py(px(4.0))
-                                .rounded(px(4.0))
-                                .border_1()
-                                .border_color(border::DEFAULT)
-                                .bg(bg::ELEVATED)
-                                .children(all_models.iter().map(|model| {
-                                    let model = *model;
-                                    let is_selected = self.selected_model == model;
-                                    div()
-                                        .id(ElementId::Name(model.id().into()))
-                                        .px(px(8.0))
-                                        .py(px(6.0))
-                                        .text_sm()
-                                        .cursor_pointer()
-                                        .when(is_selected, |el| {
-                                            el.bg(bg::HOVER)
-                                                .text_color(text::PRIMARY)
-                                                .font_weight(gpui::FontWeight::MEDIUM)
-                                        })
-                                        .when(!is_selected, |el| {
-                                            el.text_color(text::SECONDARY)
-                                                .hover(|s| s.bg(bg::HOVER))
-                                        })
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.select_model(model, cx);
-                                        }))
-                                        .child(model.label())
-                                }))
+                            deferred(
+                                div()
+                                    .absolute()
+                                    .top(px(36.0))
+                                    .left_0()
+                                    .right_0()
+                                    .py(px(4.0))
+                                    .rounded(px(4.0))
+                                    .border_1()
+                                    .border_color(border::DEFAULT)
+                                    .bg(bg::ELEVATED)
+                                    .occlude()
+                                    .children(all_models.iter().map(|model| {
+                                        let model = *model;
+                                        let is_selected = self.selected_model == model;
+                                        div()
+                                            .id(ElementId::Name(model.id().into()))
+                                            .px(px(8.0))
+                                            .py(px(6.0))
+                                            .text_sm()
+                                            .cursor_pointer()
+                                            .when(is_selected, |el| {
+                                                el.bg(bg::HOVER)
+                                                    .text_color(text::PRIMARY)
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                            })
+                                            .when(!is_selected, |el| {
+                                                el.text_color(text::SECONDARY)
+                                                    .hover(|s| s.bg(bg::HOVER))
+                                            })
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.select_model(model, cx);
+                                            }))
+                                            .child(model.label())
+                                    }))
+                            ).with_priority(1)
                         )
                     })
             )
