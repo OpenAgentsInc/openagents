@@ -210,11 +210,10 @@ impl MechaCoderScreen {
                 }
                 log::info!("TB2: Run entry added");
 
-                // Create event channel
-                log::info!("TB2: Creating event channels");
+                // Create event channel (unbounded_channel doesn't need reactor)
+                log::info!("TB2: Creating event channel");
                 let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-                let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
-                log::info!("TB2: Channels created");
+                log::info!("TB2: Event channel created");
 
                 let run_id_clone = run_id.clone();
                 let gym_panel_clone = self.gym_panel.clone();
@@ -223,6 +222,9 @@ impl MechaCoderScreen {
                 log::info!("TB2: About to spawn Tokio task");
                 let _ = Tokio::spawn(cx, async move {
                     log::info!("TB2: Inside Tokio::spawn");
+
+                    // Create oneshot channel for abort (needs Tokio reactor)
+                    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
                     // Create a fresh Docker runner for this async task
                     let docker_runner = DockerRunner::new();
