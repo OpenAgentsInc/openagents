@@ -3,8 +3,14 @@
 //! Provides collapsible panels for auxiliary functionality:
 //! - Gym panel (Cmd+G): Terminal-Bench runs, TestGen, etc.
 
+pub mod docker_runner;
 pub mod gym_panel;
-pub mod tbench_runner;
+pub mod runner_event;
+pub mod testgen_wrapper;
+pub mod verifier;
 
+pub use docker_runner::{DockerEvent, DockerRunConfig, DockerRunResult, DockerRunner};
 pub use gym_panel::{GymPanel, GymPanelEvent};
-pub use tbench_runner::{TBenchRunner, TBenchRunnerEvent, TBRunOptions};
+pub use runner_event::TB2RunnerEvent;
+pub use testgen_wrapper::TestGenWrapper;
+pub use verifier::{TB2Verifier, VerificationResult};

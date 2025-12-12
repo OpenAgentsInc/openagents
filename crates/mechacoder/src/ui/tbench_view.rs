@@ -103,6 +103,30 @@ impl IntoElement for TBenchRunView {
                         )
                     }),
             )
+            // Container metadata row
+            .when(
+                self.entry.image_name.is_some() || self.entry.container_id.is_some(),
+                |el| {
+                    el.child(
+                        div()
+                            .mt(px(4.0))
+                            .flex()
+                            .flex_row()
+                            .gap(px(12.0))
+                            .text_xs()
+                            .text_color(text::MUTED)
+                            .when_some(self.entry.image_name.clone(), |el, image| {
+                                el.child(format!("Image: {}", image))
+                            })
+                            .when_some(self.entry.container_id.clone(), |el, container| {
+                                el.child(format!(
+                                    "Container: {}",
+                                    &container[..12.min(container.len())]
+                                ))
+                            }),
+                    )
+                },
+            )
             // Cost (if known)
             .when_some(self.entry.cost, |el, cost| {
                 el.child(

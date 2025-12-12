@@ -10,3 +10,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 harbor = { path = "../harbor" }
 directories = "5"
+toml = "0.8"
+thiserror = "2"
+tracing = "0.1"
+dirs = "5"

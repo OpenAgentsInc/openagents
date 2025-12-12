@@ -14,6 +14,7 @@
 //!
 //! - [`TaskLoader`] - Load tasks from JSON suite files
 //! - [`RunStore`] - Persist run history to disk
+//! - [`TB2TaskLoader`] - Load Terminal-Bench 2 tasks from filesystem
 //!
 //! # Re-exports from Harbor
 //!
@@ -22,6 +23,7 @@
 pub mod types;
 pub mod task_loader;
 pub mod run_store;
+pub mod tb2_loader;
 
 // Re-export core types
 pub use types::{
@@ -43,6 +45,20 @@ pub use types::{
 // Re-export services
 pub use task_loader::{TaskLoader, LoadedSuite, TaskLoadError, RawTask, TaskSuite};
 pub use run_store::{RunStore, RunRecord};
+
+// Re-export TB2 types
+pub use tb2_loader::{
+    TB2Task,
+    TB2TaskSummary,
+    TB2TaskLoader,
+    TaskToml,
+    TaskMetadata,
+    VerifierConfig,
+    AgentConfig,
+    EnvironmentConfig,
+    TB2Error,
+    DEFAULT_TB2_ROOT,
+};
 
 // Re-export streaming types from harbor
 pub use harbor::{StreamEvent, Trajectory, Agent, Step, StepSource, TBenchMetrics};

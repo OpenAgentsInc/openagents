@@ -5,13 +5,13 @@ use gpui::{
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
 use std::path::PathBuf;
-use terminalbench::TBRunStatus;
+use terminalbench::{TB2TaskLoader, TBRunStatus};
 use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::panels::{GymPanel, GymPanelEvent, TBenchRunner, TBenchRunnerEvent, TBRunOptions};
-use crate::sdk_thread::{SdkThread, TBenchRunEntry, TBenchStreamEntry};
+use crate::panels::{DockerRunner, GymPanel, GymPanelEvent, TB2RunnerEvent};
+use crate::sdk_thread::{SdkThread, TBenchRunEntry};
 use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
@@ -34,8 +34,8 @@ pub struct MechaCoderScreen {
     gym_panel: Entity<GymPanel>,
     /// Whether gym panel is visible.
     gym_panel_visible: bool,
-    /// TBench runner for TB2 execution.
-    tbench_runner: TBenchRunner,
+    /// TB2 task loader for loading task definitions.
+    tb2_task_loader: TB2TaskLoader,
     /// Subscription to gym panel events.
     _gym_panel_subscription: Subscription,
 }
@@ -65,8 +65,8 @@ impl MechaCoderScreen {
             this.handle_gym_panel_event(event, cx);
         });
 
-        // Create TBench runner
-        let tbench_runner = TBenchRunner::new(project_root.clone());
+        // Create TB2 task loader
+        let tb2_task_loader = TB2TaskLoader::new_default();
 
         let mut screen = Self {
             focus_handle,
@@ -78,7 +78,7 @@ impl MechaCoderScreen {
             needs_focus: false,
             gym_panel,
             gym_panel_visible: false,
-            tbench_runner,
+            tb2_task_loader,
             _gym_panel_subscription: gym_panel_subscription,
         };
 
@@ -148,6 +148,40 @@ impl MechaCoderScreen {
             GymPanelEvent::StartTB2Run { run_id, task, model } => {
                 log::info!("Starting TB2 run: {} for task {}", run_id, task.id);
 
+                // Load full TB2Task with Docker image info
+                let tb2_task = match self.tb2_task_loader.load_task(&task.id) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::error!("Failed to load TB2 task {}: {}", task.id, e);
+                        return;
+                    }
+                };
+
+                // Create workspace and logs directories
+                let workspace_dir = match tempfile::tempdir() {
+                    Ok(dir) => dir.keep(),
+                    Err(e) => {
+                        log::error!("Failed to create workspace dir: {}", e);
+                        return;
+                    }
+                };
+                let logs_dir = workspace_dir.join("logs");
+                if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+                    log::error!("Failed to create logs dir: {}", e);
+                    return;
+                }
+
+                // Build Docker run config
+                let config = crate::panels::DockerRunConfig::new(
+                    tb2_task.clone(),
+                    workspace_dir.clone(),
+                    logs_dir.clone(),
+                )
+                .max_turns(task.max_turns)
+                .model(model.id());
+
+                let image_name = tb2_task.docker_image().to_string();
+
                 // Add TB2 run entry to thread
                 if let Some(sdk_thread) = &self.sdk_thread {
                     sdk_thread.update(cx, |thread, cx| {
@@ -160,64 +194,118 @@ impl MechaCoderScreen {
                             max_turns: task.max_turns,
                             cost: None,
                             error: None,
+                            container_id: None,
+                            image_name: Some(image_name.clone()),
                         }, cx);
                     });
                 }
 
-                // Start the TBench runner
-                let options = TBRunOptions {
-                    task: task.clone(),
-                    model: Some(model.id().to_string()),
-                    timeout_secs: (task.timeout_ms / 1000) as u64,
-                    max_turns: task.max_turns,
-                };
+                // Create event channel
+                let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+                let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
-                let (_runner_run_id, mut rx) = self.tbench_runner.start_run(options, cx);
-                let run_id = run_id.clone();
+                let run_id_clone = run_id.clone();
                 let gym_panel = self.gym_panel.clone();
                 let sdk_thread = self.sdk_thread.clone();
 
-                // Spawn task to process runner events
+                // Spawn DockerRunner task
                 cx.spawn(async move |_this, cx| {
-                    while let Some(event) = rx.recv().await {
-                        match &event {
-                            TBenchRunnerEvent::StreamEvent(stream_event) => {
-                                // Add to thread
+                    // Create a fresh Docker runner for this async task
+                    let docker_runner = DockerRunner::new();
+
+                    // Run Docker container
+                    let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+
+                    // Process events from Docker
+                    while let Some(docker_event) = event_rx.recv().await {
+                        let tb2_events = TB2RunnerEvent::from_docker_event(run_id_clone.clone(), docker_event);
+
+                        for tb2_event in tb2_events {
+                            // Update container info when container starts
+                            if let TB2RunnerEvent::ContainerStarted { ref run_id, ref container_id } = tb2_event {
                                 if let Some(sdk_thread) = &sdk_thread {
                                     let _ = sdk_thread.update(cx, |thread, cx| {
-                                        thread.add_tbench_stream_entry(TBenchStreamEntry {
-                                            run_id: run_id.clone(),
-                                            event: stream_event.clone(),
-                                        }, cx);
+                                        thread.update_tb2_container_info(run_id, container_id.clone(), cx);
                                     });
                                 }
+                            }
 
-                                // Update gym panel
-                                let _ = gym_panel.update(cx, |panel, cx| {
-                                    panel.handle_tb2_event(&run_id, stream_event, cx);
-                                });
-                            }
-                            TBenchRunnerEvent::RunComplete { run_id, success, turns, cost, error } => {
-                                // Update gym panel
-                                let _ = gym_panel.update(cx, |panel, cx| {
-                                    panel.handle_tb2_complete(
-                                        run_id,
-                                        *success,
-                                        *turns,
-                                        *cost,
-                                        error.clone(),
-                                        cx,
-                                    );
-                                });
-                            }
-                            TBenchRunnerEvent::Error(err) => {
-                                log::error!("TBench runner error: {}", err);
-                            }
-                            TBenchRunnerEvent::RunStart { .. } => {
-                                // Already handled above
-                            }
+                            // Update gym panel
+                            let _ = gym_panel.update(cx, |panel, cx| {
+                                panel.handle_tb2_runner_event(&tb2_event, cx);
+                            });
                         }
                     }
+
+                    // Handle completion
+                    match run_result {
+                        Ok(docker_result) => {
+                            // Run TB2 verification
+                            use crate::panels::TB2Verifier;
+                            let verifier = TB2Verifier::new();
+                            let verification = verifier.run_tests(
+                                &tb2_task,
+                                &workspace_dir,
+                                &logs_dir,
+                            ).await;
+
+                            let final_success = match &verification {
+                                Ok(result) => docker_result.success && result.passed,
+                                Err(e) => {
+                                    log::error!("Verification error: {}", e);
+                                    false
+                                }
+                            };
+
+                            let verification_error = match &verification {
+                                Ok(result) if !result.passed => {
+                                    Some(format!("Tests failed: {}/{} passed. Reward: {}",
+                                        result.tests_passed,
+                                        result.tests_total,
+                                        result.reward))
+                                }
+                                Err(e) => Some(format!("Verification failed: {}", e)),
+                                _ => docker_result.error.clone()
+                            };
+
+                            let _ = gym_panel.update(cx, |panel, cx| {
+                                panel.handle_tb2_complete(
+                                    &run_id_clone,
+                                    final_success,
+                                    docker_result.turns,
+                                    Some(docker_result.cost_usd),
+                                    verification_error,
+                                    cx,
+                                );
+                            });
+
+                            if let Ok(ref verification) = verification {
+                                log::info!(
+                                    "TB2 verification: {} - {}/{} tests passed, reward: {}",
+                                    if verification.passed { "PASS" } else { "FAIL" },
+                                    verification.tests_passed,
+                                    verification.tests_total,
+                                    verification.reward
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Docker runner error: {}", e);
+                            let _ = gym_panel.update(cx, |panel, cx| {
+                                panel.handle_tb2_complete(
+                                    &run_id_clone,
+                                    false,
+                                    0,
+                                    None,
+                                    Some(format!("Docker error: {}", e)),
+                                    cx,
+                                );
+                            });
+                        }
+                    }
+
+                    // Clean up abort channel
+                    drop(abort_tx);
                 }).detach();
             }
             GymPanelEvent::TB2StreamEvent { .. } | GymPanelEvent::TB2RunComplete { .. } => {

@@ -57,6 +57,8 @@ pub struct GymPanel {
     selected_model: TBModelOption,
     /// Whether model dropdown is open
     model_dropdown_open: bool,
+    /// Whether task dropdown is open
+    task_dropdown_open: bool,
 }
 
 /// Active run state
@@ -67,6 +69,10 @@ pub struct ActiveRunState {
     pub task_name: String,
     pub turns: u32,
     pub max_turns: u32,
+    /// Docker container ID (if running in container)
+    pub container_id: Option<String>,
+    /// Docker image name
+    pub image_name: Option<String>,
 }
 
 impl GymPanel {
@@ -93,6 +99,7 @@ impl GymPanel {
             active_run: None,
             selected_model: TBModelOption::ClaudeSonnet45,
             model_dropdown_open: false,
+            task_dropdown_open: false,
         }
     }
 
@@ -105,6 +112,7 @@ impl GymPanel {
     pub fn select_task(&mut self, idx: usize, cx: &mut Context<Self>) {
         if idx < self.tasks.len() {
             self.selected_task_idx = Some(idx);
+            self.task_dropdown_open = false;
             cx.notify();
         }
     }
@@ -123,6 +131,12 @@ impl GymPanel {
             let prev = if idx == 0 { self.tasks.len() - 1 } else { idx - 1 };
             self.select_task(prev, cx);
         }
+    }
+
+    /// Toggle the task dropdown
+    pub fn toggle_task_dropdown(&mut self, cx: &mut Context<Self>) {
+        self.task_dropdown_open = !self.task_dropdown_open;
+        cx.notify();
     }
 
     /// Toggle the model dropdown
@@ -168,6 +182,8 @@ impl GymPanel {
             task_name: task.name.clone(),
             turns: 0,
             max_turns: task.max_turns,
+            container_id: None,
+            image_name: None,
         });
 
         log::info!("Starting TB2 run: {} ({})", task.id, run_id);
@@ -203,6 +219,57 @@ impl GymPanel {
         });
 
         cx.notify();
+    }
+
+    /// Handle a TB2RunnerEvent from DockerRunner
+    pub fn handle_tb2_runner_event(&mut self, event: &crate::panels::TB2RunnerEvent, cx: &mut Context<Self>) {
+        use crate::panels::TB2RunnerEvent;
+
+        match event {
+            TB2RunnerEvent::RunStart { run_id, image_name, .. } => {
+                // Only process if this is our active run
+                if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id.as_str()) {
+                    return;
+                }
+                if let Some(ref mut run) = self.active_run {
+                    run.image_name = Some(image_name.clone());
+                }
+                cx.notify();
+            }
+            TB2RunnerEvent::ContainerStarted { run_id, container_id } => {
+                // Only process if this is our active run
+                if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id.as_str()) {
+                    return;
+                }
+                if let Some(ref mut run) = self.active_run {
+                    run.container_id = Some(container_id.clone());
+                }
+                cx.notify();
+            }
+            TB2RunnerEvent::AssistantMessage { run_id, turn, .. } => {
+                // Only process if this is our active run
+                if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id.as_str()) {
+                    return;
+                }
+                if let Some(ref mut run) = self.active_run {
+                    run.turns = *turn;
+                }
+                cx.notify();
+            }
+            TB2RunnerEvent::TurnComplete { run_id, turn } => {
+                // Only process if this is our active run
+                if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id.as_str()) {
+                    return;
+                }
+                if let Some(ref mut run) = self.active_run {
+                    run.turns = *turn;
+                }
+                cx.notify();
+            }
+            _ => {
+                // Ignore other events for now
+            }
+        }
     }
 
     /// Handle TB2 run completion
@@ -307,6 +374,9 @@ impl GymPanel {
 
     /// Render the task selector section
     fn render_task_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_open = self.task_dropdown_open;
+        let tasks = &self.tasks;
+
         div()
             .px(px(12.0))
             .py(px(8.0))
@@ -322,42 +392,102 @@ impl GymPanel {
             )
             .child(
                 div()
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    
-                    .bg(bg::CARD)
-                    .border_1()
-                    .border_color(border::DEFAULT)
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.select_next_task(cx);
+                    .id("task-selector-container")
+                    .relative()
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        if this.task_dropdown_open {
+                            this.task_dropdown_open = false;
+                            cx.notify();
+                        }
                     }))
+                    // Trigger button
                     .child(
-                        if let Some(task) = self.selected_task() {
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .justify_between()
-                                .child(
+                        div()
+                            .px(px(8.0))
+                            .py(px(6.0))
+
+                            .bg(bg::CARD)
+                            .border_1()
+                            .border_color(if is_open { border::FOCUS } else { border::DEFAULT })
+                            .cursor_pointer()
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.toggle_task_dropdown(cx);
+                            }))
+                            .child(
+                                if let Some(task) = self.selected_task() {
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(text::PRIMARY)
+                                                .child(task.id.clone())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(text::MUTED)
+                                                .child(if is_open { "▲" } else { "▼" })
+                                        )
+                                } else {
                                     div()
                                         .text_sm()
-                                        .text_color(text::PRIMARY)
-                                        .child(task.id.clone())
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
                                         .text_color(text::MUTED)
-                                        .child("v")
-                                )
-                        } else {
-                            div()
-                                .text_sm()
-                                .text_color(text::MUTED)
-                                .child("No tasks found")
-                        }
+                                        .child("No tasks found")
+                                }
+                            )
                     )
+                    // Dropdown options (when open) - use deferred for proper z-order
+                    .when(is_open && !tasks.is_empty(), |el| {
+                        el.child(
+                            deferred(
+                                div()
+                                    .absolute()
+                                    .top(px(36.0))
+                                    .left_0()
+                                    .right_0()
+                                    .max_h(px(300.0))
+                                    .border_1()
+                                    .border_color(border::DEFAULT)
+                                    .bg(bg::ELEVATED)
+                                    .occlude()
+                                    .child(
+                                        div()
+                                            .id("task-dropdown-scroll")
+                                            .overflow_y_scroll()
+                                            .max_h(px(300.0))
+                                            .py(px(4.0))
+                                            .children(tasks.iter().enumerate().map(|(idx, task)| {
+                                                let is_selected = self.selected_task_idx == Some(idx);
+                                                let task_id = task.id.clone();
+                                                let task_elem_id = format!("task-item-{}", idx);
+                                                div()
+                                                    .id(ElementId::Name(task_elem_id.into()))
+                                                    .px(px(8.0))
+                                                    .py(px(6.0))
+                                                    .text_sm()
+                                                    .cursor_pointer()
+                                                    .when(is_selected, |el| {
+                                                        el.bg(bg::HOVER)
+                                                            .text_color(text::PRIMARY)
+                                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                                    })
+                                                    .when(!is_selected, |el| {
+                                                        el.text_color(text::SECONDARY)
+                                                            .hover(|s| s.bg(bg::HOVER))
+                                                    })
+                                                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                                        this.select_task(idx, cx);
+                                                    }))
+                                                    .child(task_id)
+                                            }))
+                                    )
+                            ).with_priority(1)
+                        )
+                    })
             )
     }
 
@@ -388,19 +518,25 @@ impl GymPanel {
             )
             .child(
                 div()
+                    .id("model-selector-container")
                     .relative()
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        if this.model_dropdown_open {
+                            this.model_dropdown_open = false;
+                            cx.notify();
+                        }
+                    }))
                     // Trigger button
                     .child(
                         div()
-                            .id("model-selector-trigger")
                             .px(px(8.0))
                             .py(px(6.0))
-                            
+
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(if is_open { border::FOCUS } else { border::DEFAULT })
                             .cursor_pointer()
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                                 this.toggle_model_dropdown(cx);
                             }))
                             .child(
@@ -433,7 +569,7 @@ impl GymPanel {
                                     .left_0()
                                     .right_0()
                                     .py(px(4.0))
-                                    
+
                                     .border_1()
                                     .border_color(border::DEFAULT)
                                     .bg(bg::ELEVATED)
@@ -456,7 +592,7 @@ impl GymPanel {
                                                 el.text_color(text::SECONDARY)
                                                     .hover(|s| s.bg(bg::HOVER))
                                             })
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                                 this.select_model(model, cx);
                                             }))
                                             .child(model.label())
@@ -549,6 +685,24 @@ impl GymPanel {
                         .font_family(FONT_FAMILY)
                         .child(format!("{} {:.0}%", progress_bar, progress_width))
                 )
+                // Container metadata
+                .when(run.image_name.is_some(), |el| {
+                    el.child(
+                        div()
+                            .mt(px(4.0))
+                            .text_xs()
+                            .text_color(text::MUTED)
+                            .child(format!("Image: {}", run.image_name.as_ref().unwrap()))
+                    )
+                })
+                .when(run.container_id.is_some(), |el| {
+                    el.child(
+                        div()
+                            .text_xs()
+                            .text_color(text::MUTED)
+                            .child(format!("Container: {}", &run.container_id.as_ref().unwrap()[..12.min(run.container_id.as_ref().unwrap().len())]))
+                    )
+                })
         } else {
             div()
         }

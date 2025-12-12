@@ -69,6 +69,10 @@ pub struct TBenchRunEntry {
     pub cost: Option<f64>,
     /// Error message (if any)
     pub error: Option<String>,
+    /// Docker container ID (if running in container)
+    pub container_id: Option<String>,
+    /// Docker image name
+    pub image_name: Option<String>,
 }
 
 /// TB2 stream event entry - individual events from the run
@@ -283,6 +287,24 @@ impl SdkThread {
         self.entries.push(ThreadEntry::TBenchEvent(entry));
         let entry_idx = self.entries.len() - 1;
         cx.emit(SdkThreadEvent::EntryAdded(entry_idx));
+    }
+
+    /// Update container info for a TB2 run
+    pub fn update_tb2_container_info(
+        &mut self,
+        run_id: &str,
+        container_id: String,
+        cx: &mut Context<Self>,
+    ) {
+        for entry in &mut self.entries {
+            if let ThreadEntry::TBenchRun(run_entry) = entry {
+                if run_entry.run_id == run_id {
+                    run_entry.container_id = Some(container_id);
+                    cx.notify();
+                    return;
+                }
+            }
+        }
     }
 
     /// Send a user message.
