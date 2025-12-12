@@ -216,7 +216,7 @@ impl MechaCoderScreen {
 
             // Create a query to get available models
             match query("", Default::default()).await {
-                Ok(mut stream) => {
+                Ok(stream) => {
                     // Call supported_models on the stream
                     match stream.supported_models().await {
                         Ok(models) => {
@@ -243,7 +243,7 @@ impl MechaCoderScreen {
 
             // Create a query to get account info
             match query("", Default::default()).await {
-                Ok(mut stream) => {
+                Ok(stream) => {
                     // Call account_info on the stream
                     match stream.account_info().await {
                         Ok(account_info) => {
