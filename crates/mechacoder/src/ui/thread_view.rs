@@ -328,28 +328,39 @@ impl Render for ThreadView {
                     .max_w(px(768.0))
                     .child(render_todo_panel(&todo_state)),
             )
-            // Message list
+            // Message list and streaming in a shared flex container
             .child(
                 div()
                     .flex_1()
                     .w_full()
                     .max_w(px(768.0))
+                    .flex()
+                    .flex_col()
                     .overflow_hidden()
-                    .child(list(self.list_state.clone(), render_item).size_full()),
+                    // Message history (shrinks when streaming)
+                    .child(
+                        div()
+                            .when(streaming_view.is_some(), |el| el.flex_shrink())
+                            .when(streaming_view.is_none(), |el| el.flex_1())
+                            .w_full()
+                            .min_h(px(100.0))
+                            .overflow_hidden()
+                            .child(list(self.list_state.clone(), render_item).size_full()),
+                    )
+                    // Streaming message (grows to fill remaining space)
+                    .when_some(streaming_view, |el, view| {
+                        el.child(
+                            div()
+                                .id("streaming-message")
+                                .flex_1()
+                                .w_full()
+                                .min_h(px(200.0))
+                                .overflow_y_scroll()
+                                .px(px(16.0))
+                                .child(view)
+                        )
+                    }),
             )
-            // Streaming message (shown while receiving)
-            .when_some(streaming_view, |el, view| {
-                el.child(
-                    div()
-                        .id("streaming-message")
-                        .w_full()
-                        .max_w(px(768.0))
-                        .max_h(px(400.0))
-                        .overflow_y_scroll()
-                        .px(px(16.0))
-                        .child(view)
-                )
-            })
             // Message input
             .child(
                 div()
