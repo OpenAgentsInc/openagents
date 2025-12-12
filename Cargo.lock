@@ -9109,6 +9109,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "claude_agent_sdk",
+ "fm-bridge",
  "futures 0.3.31",
  "gpui",
  "gpui_tokio",

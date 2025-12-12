@@ -37,6 +37,35 @@ pub enum GymPanelEvent {
         cost: Option<f64>,
         error: Option<String>,
     },
+    /// Start a TestGen run
+    StartTestGenRun {
+        run_id: String,
+        task: TBTask,
+        model: TBModelOption,
+    },
+    /// TestGen progress event
+    TestGenProgress {
+        run_id: String,
+        phase: String,
+        message: String,
+    },
+    /// TestGen test generated
+    TestGenTest {
+        run_id: String,
+        test_id: String,
+        category: String,
+        input: String,
+        expected_output: Option<String>,
+        reasoning: String,
+    },
+    /// TestGen run completed
+    TestGenComplete {
+        run_id: String,
+        total_tests: u32,
+        total_rounds: u32,
+        duration_ms: u64,
+        error: Option<String>,
+    },
 }
 
 /// Gym panel component
@@ -88,7 +117,13 @@ impl GymPanel {
             log::warn!("GymPanel: No tasks loaded! Available suites: {:?}",
                 task_loader.list_available_suites());
         }
-        let selected_idx = if tasks.is_empty() { None } else { Some(0) };
+
+        // Default to "regex-log" task if available, otherwise first task
+        let selected_idx = if tasks.is_empty() {
+            None
+        } else {
+            tasks.iter().position(|t| t.id == "regex-log").or(Some(0))
+        };
 
         Self {
             focus_handle,
@@ -97,7 +132,7 @@ impl GymPanel {
             selected_task_idx: selected_idx,
             recent_runs: vec![],
             active_run: None,
-            selected_model: TBModelOption::ClaudeSonnet45,
+            selected_model: TBModelOption::ClaudeHaiku45,
             model_dropdown_open: false,
             task_dropdown_open: false,
         }
@@ -194,6 +229,110 @@ impl GymPanel {
             task,
             model,
         });
+
+        cx.notify();
+    }
+
+    /// Start a TestGen run for the selected task
+    pub fn start_testgen_run(&mut self, cx: &mut Context<Self>) {
+        if self.is_running() {
+            log::warn!("Already running a task");
+            return;
+        }
+
+        let task = match self.selected_task() {
+            Some(t) => t.clone(),
+            None => {
+                log::warn!("No task selected");
+                return;
+            }
+        };
+
+        let run_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let model = self.selected_model;
+
+        // Update active run state (TestGen doesn't have turns/max_turns like TB2)
+        self.active_run = Some(ActiveRunState {
+            run_id: run_id.clone(),
+            task_id: task.id.clone(),
+            task_name: format!("TestGen: {}", task.name),
+            turns: 0,
+            max_turns: 10, // Approximate rounds for progress bar
+            container_id: None,
+            image_name: None,
+        });
+
+        log::info!("Starting TestGen run: {} ({})", task.id, run_id);
+
+        // Emit event to start the TestGen run
+        cx.emit(GymPanelEvent::StartTestGenRun {
+            run_id,
+            task,
+            model,
+        });
+
+        cx.notify();
+    }
+
+    /// Handle TestGen run completion
+    pub fn handle_testgen_complete(
+        &mut self,
+        run_id: &str,
+        total_tests: u32,
+        error: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        // Only process if this is our active run
+        if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id) {
+            return;
+        }
+
+        // Get task info before clearing active run
+        let (task_id, task_name) = self.active_run.as_ref()
+            .map(|r| (r.task_id.clone(), r.task_name.clone()))
+            .unwrap_or_default();
+
+        // Clear active run
+        self.active_run = None;
+
+        // Add to recent runs
+        let summary = TBRunSummary {
+            id: run_id.to_string(),
+            task_id,
+            task_name,
+            status: terminalbench::TBRunStatus::Completed,
+            outcome: Some(if error.is_none() {
+                TBRunOutcome::Success
+            } else {
+                TBRunOutcome::Error
+            }),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            finished_at: Some(chrono::Utc::now().to_rfc3339()),
+            duration_ms: None,
+            steps_count: total_tests,
+            tokens_used: None,
+        };
+        self.recent_runs.insert(0, summary);
+
+        cx.notify();
+    }
+
+    /// Handle TestGen progress event
+    pub fn handle_testgen_progress(
+        &mut self,
+        run_id: &str,
+        _phase: &str,
+        cx: &mut Context<Self>,
+    ) {
+        // Only process if this is our active run
+        if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id) {
+            return;
+        }
+
+        // Increment turns for progress bar
+        if let Some(ref mut run) = self.active_run {
+            run.turns = (run.turns + 1).min(run.max_turns);
+        }
 
         cx.notify();
     }
@@ -638,9 +777,8 @@ impl GymPanel {
                         Button::new("TestGen")
                             .variant(ButtonVariant::Secondary)
                             .disabled(!has_task || is_running)
-                            .on_click(cx.listener(|_this, _, _, _cx| {
-                                // TODO: Start TestGen run
-                                log::info!("TestGen clicked");
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.start_testgen_run(cx);
                             }))
                     )
             )
