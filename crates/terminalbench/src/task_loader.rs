@@ -206,7 +206,7 @@ fn convert_task(raw: &RawTask) -> TBTask {
         description: raw.description.clone(),
         difficulty: parse_difficulty(&raw.difficulty),
         timeout_ms: raw.timeout_seconds.unwrap_or(120) * 1000,
-        max_turns: raw.max_turns.unwrap_or(50),
+        max_turns: raw.max_turns.unwrap_or(300),  // Increased from 50 - tasks need more iterations
         tags: raw.tags.clone().unwrap_or_default(),
     }
 }
