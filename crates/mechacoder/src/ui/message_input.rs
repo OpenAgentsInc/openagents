@@ -66,6 +66,11 @@ impl MessageInput {
         let handle = self.input.read(cx).focus_handle(cx);
         window.focus(&handle);
     }
+
+    /// Get the focus handle for the inner text input (use this for programmatic focus).
+    pub fn input_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.input.read(cx).focus_handle(cx)
+    }
 }
 
 impl Focusable for MessageInput {

@@ -103,7 +103,7 @@ Before making code changes:
 - NEVER use `-i` flag (interactive not supported)
 - NEVER `git stash` or `git checkout` to revert/discard changes you don't understand
 - If you see modified files causing build errors, another agent may be working on them - work around it or ask the user
-- A pre-push hook blocks all border radius usage (`.rounded*()`, `corner_radii`, `Corners<T>`, `CornerSolver`, `inner_corner_radius`)
+- A pre-push hook (AGGRESSIVE MODE) blocks all border radius - checks ENTIRE files, not just diffs (`.rounded*()`, `corner_radii`, `Corners<T>`, `CornerSolver`, `inner_corner_radius`, border radius imports)
 
 **Commit format:**
 ```bash
