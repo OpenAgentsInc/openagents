@@ -82,6 +82,22 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${WORKSPACE}/app"  # Create /app for TB2 tasks that expect it
 
+# Copy environment files to workspace (so agent has something to work with)
+ENV_DIR="${TASK_DIR}/environment"
+if [[ -d "${ENV_DIR}" ]]; then
+    # Copy files from environment/tests/ (common pattern) or environment/ directly
+    if [[ -d "${ENV_DIR}/tests" ]]; then
+        # Some tasks store input files in environment/tests/
+        cp -r "${ENV_DIR}/tests"/* "${WORKSPACE}/app/" 2>/dev/null || true
+    fi
+    # Also copy any files directly in environment/ (excluding Dockerfile)
+    for f in "${ENV_DIR}"/*; do
+        if [[ -f "$f" && "$(basename "$f")" != "Dockerfile" && "$(basename "$f")" != "docker-compose.yaml" ]]; then
+            cp "$f" "${WORKSPACE}/app/" 2>/dev/null || true
+        fi
+    done
+fi
+
 # Get absolute paths for Docker volumes
 OUTPUT_DIR_ABS="$(cd "$(dirname "${OUTPUT_DIR}")" 2>/dev/null && pwd)/$(basename "${OUTPUT_DIR}")"
 mkdir -p "${OUTPUT_DIR_ABS}"
