@@ -1445,9 +1445,9 @@ Benchmarking for project-level operations.
 ## Future/Planned
 
 ### `oanix`
-**OpenAgents Agent Operating Environment (Plan 9-style)**
+**OpenAgents Agent Operating Environment (WANIX and Plan 9-style)**
 
-Agent OS inspired by Plan 9:
+Agent OS inspired by [WANIX](https://github.com/tractordev/wanix) and Plan 9:
 - Everything is a file/service
 - Per-process namespaces
 - Capability-based security

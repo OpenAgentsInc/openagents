@@ -1,6 +1,6 @@
 # OANIX: OpenAgents Agent Operating Environment
 
-**A Rust-native agent OS inspired by Plan 9 from Bell Labs**
+**A Rust-native agent OS inspired by [WANIX](https://github.com/tractordev/wanix) by Jeff Lindsay and Plan 9 from Bell Labs**
 
 ---
 
@@ -555,6 +555,6 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for implementation progress.
 
 ## References
 
+- [WANIX](https://github.com/tractordev/wanix) by Jeff Lindsay - WebAssembly runtime inspired by Plan 9
 - [Plan 9 from Bell Labs](https://9p.io/plan9/) - The original "everything is a file" OS
-- [WANIX](https://github.com/tractordev/wanix) - WebAssembly runtime inspired by Plan 9
 - [WASI](https://wasi.dev/) - WebAssembly System Interface
