@@ -8,7 +8,6 @@ use crate::panels::verifier::VerificationResult;
 use claude_agent_sdk::{query, QueryOptions, SdkMessage};
 use futures::StreamExt;
 use sandbox::{ContainerBackend, ContainerConfig, DockerBackend};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -78,6 +77,13 @@ impl DockerRunConfig {
 /// Events streamed from Docker container execution
 #[derive(Debug, Clone)]
 pub enum DockerEvent {
+    /// Run is starting
+    RunStart {
+        task_id: String,
+        task_name: String,
+        image_name: String,
+        working_dir: String,
+    },
     /// Container is starting
     ContainerStarting { image: String },
     /// Container started successfully
@@ -253,6 +259,14 @@ impl DockerRunner {
         if !self.is_available().await {
             return Err(DockerError::NotAvailable);
         }
+
+        // Send run start event with metadata
+        let _ = event_tx.send(DockerEvent::RunStart {
+            task_id: config.task.id.clone(),
+            task_name: config.task.name.clone(),
+            image_name: config.task.docker_image().to_string(),
+            working_dir: config.workspace_dir.display().to_string(),
+        });
 
         // Setup directories
         self.setup_directories(config).await?;

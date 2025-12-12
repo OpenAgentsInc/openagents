@@ -102,6 +102,8 @@ pub struct ActiveRunState {
     pub container_id: Option<String>,
     /// Docker image name
     pub image_name: Option<String>,
+    /// Working directory on host
+    pub working_dir: Option<String>,
 }
 
 impl GymPanel {
@@ -219,6 +221,7 @@ impl GymPanel {
             max_turns: task.max_turns,
             container_id: None,
             image_name: None,
+            working_dir: None,
         });
 
         log::info!("Starting TB2 run: {} ({})", task.id, run_id);
@@ -260,6 +263,7 @@ impl GymPanel {
             max_turns: 10, // Approximate rounds for progress bar
             container_id: None,
             image_name: None,
+            working_dir: None,
         });
 
         log::info!("Starting TestGen run: {} ({})", task.id, run_id);
@@ -365,13 +369,14 @@ impl GymPanel {
         use crate::panels::TB2RunnerEvent;
 
         match event {
-            TB2RunnerEvent::RunStart { run_id, image_name, .. } => {
+            TB2RunnerEvent::RunStart { run_id, image_name, working_dir, .. } => {
                 // Only process if this is our active run
                 if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id.as_str()) {
                     return;
                 }
                 if let Some(ref mut run) = self.active_run {
                     run.image_name = Some(image_name.clone());
+                    run.working_dir = Some(working_dir.clone());
                 }
                 cx.notify();
             }
@@ -831,6 +836,14 @@ impl GymPanel {
                             .text_xs()
                             .text_color(text::MUTED)
                             .child(format!("Image: {}", run.image_name.as_ref().unwrap()))
+                    )
+                })
+                .when(run.working_dir.is_some(), |el| {
+                    el.child(
+                        div()
+                            .text_xs()
+                            .text_color(text::MUTED)
+                            .child(format!("Working Dir: {}", run.working_dir.as_ref().unwrap()))
                     )
                 })
                 .when(run.container_id.is_some(), |el| {

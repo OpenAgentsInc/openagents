@@ -14,6 +14,7 @@ pub enum TB2RunnerEvent {
         task_name: String,
         container_id: Option<String>,
         image_name: String,
+        working_dir: String,
     },
     /// Container is starting
     ContainerStarting {
@@ -71,6 +72,16 @@ impl TB2RunnerEvent {
     /// TB2RunnerEvent or might generate multiple events.
     pub fn from_docker_event(run_id: String, event: DockerEvent) -> Vec<Self> {
         match event {
+            DockerEvent::RunStart { task_id, task_name, image_name, working_dir } => {
+                vec![Self::RunStart {
+                    run_id,
+                    task_id,
+                    task_name,
+                    container_id: None,
+                    image_name,
+                    working_dir,
+                }]
+            }
             DockerEvent::ContainerStarting { image } => {
                 vec![Self::ContainerStarting {
                     run_id,
