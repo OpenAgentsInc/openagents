@@ -480,7 +480,7 @@ impl QueryOptions {
         }
 
         if !self.persist_session {
-            args.push("--no-persist-session".to_string());
+            args.push("--no-session-persistence".to_string());
         }
 
         if self.include_partial_messages {
