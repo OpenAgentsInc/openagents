@@ -1,7 +1,7 @@
 //! SDK Thread - wraps Claude Agent SDK for GPUI integration.
 
 use claude_agent_sdk::{
-    query, QueryOptions, SdkMessage, SdkResultMessage, SdkSystemMessage,
+    query, QueryOptions, SdkMessage, SdkResultMessage, SdkSystemMessage, ModelInfo, AccountInfo,
 };
 use futures::StreamExt;
 use gpui::{Context, EventEmitter, Task};
@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use terminalbench::TBRunStatus;
 use tokio::sync::mpsc;
 use tracing::debug;
+use crate::panels::CostTracker;
 
 /// Events emitted by SdkThread.
 #[derive(Clone, Debug)]
@@ -24,6 +25,16 @@ pub enum SdkThreadEvent {
     StatusChanged(ThreadStatus),
     /// Todo list was updated (plan mode).
     TodosUpdated,
+    /// Cost tracking was updated.
+    CostUpdated,
+    /// Available models were updated.
+    ModelsUpdated,
+    /// Session ID was updated.
+    SessionUpdated,
+    /// Account info was updated.
+    AccountInfoUpdated,
+    /// Tools and MCP servers were updated.
+    ToolsUpdated,
     /// Error occurred.
     Error(String),
 }
@@ -187,7 +198,12 @@ pub struct TodoState {
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Some fields are captured for future use
 enum SdkUpdate {
-    Init { session_id: String, model: String },
+    Init {
+        session_id: String,
+        model: String,
+        tools: Vec<String>,
+        mcp_servers: Vec<(String, String)>,
+    },
     StreamingContent(String),
     /// Tool use started from stream event content_block_start
     ToolUseStarted {
@@ -211,6 +227,13 @@ enum SdkUpdate {
         output: String,
         is_error: bool,
     },
+    /// Cost tracking update from result
+    CostUpdate {
+        total_cost: f64,
+        model_usage: HashMap<String, f64>,
+        input_tokens: u64,
+        output_tokens: u64,
+    },
     FinalContent(String),
     Completed,
     Error(String),
@@ -230,10 +253,20 @@ pub struct SdkThread {
     session_id: Option<String>,
     /// Model being used.
     model: Option<String>,
+    /// Available models from supported_models() call.
+    available_models: Vec<ModelInfo>,
+    /// Account information from account_info() call.
+    account_info: Option<AccountInfo>,
+    /// Available tools.
+    tools: Vec<String>,
+    /// MCP servers (name, status).
+    mcp_servers: Vec<(String, String)>,
     /// Map from tool_use_id to entry index for quick lookups.
     tool_use_index: HashMap<String, usize>,
     /// Current todo list state (plan mode).
     todo_state: TodoState,
+    /// Cost tracking state.
+    cost_tracker: CostTracker,
 }
 
 impl SdkThread {
@@ -246,8 +279,13 @@ impl SdkThread {
             streaming_content: None,
             session_id: None,
             model: None,
+            available_models: Vec::new(),
+            account_info: None,
+            tools: Vec::new(),
+            mcp_servers: Vec::new(),
             tool_use_index: HashMap::new(),
             todo_state: TodoState::default(),
+            cost_tracker: CostTracker::default(),
         }
     }
 
@@ -284,6 +322,72 @@ impl SdkThread {
     /// Check if there are active todos.
     pub fn has_todos(&self) -> bool {
         !self.todo_state.items.is_empty()
+    }
+
+    /// Get the cost tracker.
+    pub fn cost_tracker(&self) -> &CostTracker {
+        &self.cost_tracker
+    }
+
+    /// Update cost tracking from SDK result data.
+    pub fn update_cost(
+        &mut self,
+        total: f64,
+        model_usage: HashMap<String, f64>,
+        input_tokens: u64,
+        output_tokens: u64,
+        cx: &mut Context<Self>,
+    ) {
+        self.cost_tracker.total_cost_usd = total;
+        self.cost_tracker.model_usage = model_usage;
+        self.cost_tracker.total_input_tokens = input_tokens;
+        self.cost_tracker.total_output_tokens = output_tokens;
+        cx.emit(SdkThreadEvent::CostUpdated);
+    }
+
+    /// Get available models.
+    pub fn available_models(&self) -> &[ModelInfo] {
+        &self.available_models
+    }
+
+    /// Update available models list.
+    pub fn set_available_models(&mut self, models: Vec<ModelInfo>, cx: &mut Context<Self>) {
+        self.available_models = models;
+        cx.emit(SdkThreadEvent::ModelsUpdated);
+    }
+
+    /// Set the session ID.
+    pub fn set_session_id(&mut self, session_id: Option<String>, cx: &mut Context<Self>) {
+        self.session_id = session_id;
+        cx.emit(SdkThreadEvent::SessionUpdated);
+    }
+
+    /// Get the account information.
+    pub fn account_info(&self) -> Option<&AccountInfo> {
+        self.account_info.as_ref()
+    }
+
+    /// Set the account information.
+    pub fn set_account_info(&mut self, account_info: Option<AccountInfo>, cx: &mut Context<Self>) {
+        self.account_info = account_info;
+        cx.emit(SdkThreadEvent::AccountInfoUpdated);
+    }
+
+    /// Get the available tools.
+    pub fn tools(&self) -> &[String] {
+        &self.tools
+    }
+
+    /// Get the MCP servers.
+    pub fn mcp_servers(&self) -> &[(String, String)] {
+        &self.mcp_servers
+    }
+
+    /// Set the tools and MCP servers.
+    pub fn set_tools_and_mcp(&mut self, tools: Vec<String>, mcp_servers: Vec<(String, String)>, cx: &mut Context<Self>) {
+        self.tools = tools;
+        self.mcp_servers = mcp_servers;
+        cx.emit(SdkThreadEvent::ToolsUpdated);
     }
 
     /// Add a TB2 run entry to the thread
@@ -391,9 +495,15 @@ impl SdkThread {
                 match msg {
                     SdkMessage::System(sys) => {
                         if let SdkSystemMessage::Init(init) = sys {
+                            // Extract MCP server info (name, status)
+                            let mcp_servers = init.mcp_servers.iter()
+                                .map(|server| (server.name.clone(), server.status.clone()))
+                                .collect();
                             let _ = tx.send(SdkUpdate::Init {
                                 session_id: init.session_id,
                                 model: init.model,
+                                tools: init.tools,
+                                mcp_servers,
                             });
                         }
                     }
@@ -519,7 +629,25 @@ impl SdkThread {
                             let _ = tx.send(SdkUpdate::FinalContent(assistant_content.clone()));
                         }
                         match result {
-                            SdkResultMessage::Success(_) => {
+                            SdkResultMessage::Success(success) => {
+                                // Extract cost information
+                                let total_cost = success.total_cost_usd;
+                                let mut model_usage = HashMap::new();
+                                for (model, usage) in &success.model_usage {
+                                    // Estimate cost based on token usage
+                                    // This is a placeholder - actual pricing varies by model
+                                    let cost = usage.input_tokens as f64 * 0.00001 + usage.output_tokens as f64 * 0.00003;
+                                    model_usage.insert(model.clone(), cost);
+                                }
+                                let input_tokens = success.usage.input_tokens as u64;
+                                let output_tokens = success.usage.output_tokens as u64;
+
+                                let _ = tx.send(SdkUpdate::CostUpdate {
+                                    total_cost,
+                                    model_usage,
+                                    input_tokens,
+                                    output_tokens,
+                                });
                                 let _ = tx.send(SdkUpdate::Completed);
                             }
                             _ => {
@@ -546,9 +674,13 @@ impl SdkThread {
 
                 let _ = this.update(cx, |this, cx| {
                     match update {
-                        SdkUpdate::Init { session_id, model } => {
-                            this.session_id = Some(session_id);
+                        SdkUpdate::Init { session_id, model, tools, mcp_servers } => {
+                            this.session_id = Some(session_id.clone());
                             this.model = Some(model);
+                            this.tools = tools;
+                            this.mcp_servers = mcp_servers;
+                            cx.emit(SdkThreadEvent::SessionUpdated);
+                            cx.emit(SdkThreadEvent::ToolsUpdated);
                         }
                         SdkUpdate::StreamingContent(content) => {
                             this.streaming_content = Some(content);
@@ -622,6 +754,15 @@ impl SdkThread {
                                     cx.emit(SdkThreadEvent::EntryUpdated(idx));
                                 }
                             }
+                        }
+                        SdkUpdate::CostUpdate {
+                            total_cost,
+                            model_usage,
+                            input_tokens,
+                            output_tokens,
+                        } => {
+                            // Update cost tracking
+                            this.update_cost(total_cost, model_usage, input_tokens, output_tokens, cx);
                         }
                         SdkUpdate::FinalContent(content) => {
                             this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {
