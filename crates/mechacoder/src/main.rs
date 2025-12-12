@@ -46,6 +46,9 @@ fn main() {
             KeyBinding::new("escape", mechacoder::CancelGeneration, None),
             // Focus
             KeyBinding::new("cmd-l", mechacoder::FocusMessageInput, None),
+            // Panels
+            KeyBinding::new("cmd-g", mechacoder::ToggleGymPanel, None),
+            KeyBinding::new("ctrl-g", mechacoder::ToggleGymPanel, None), // Linux
         ]);
 
         // Set application menus
