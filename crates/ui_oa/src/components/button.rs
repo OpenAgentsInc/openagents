@@ -160,7 +160,6 @@ impl RenderOnce for Button {
             .bg(bg)
             .text_color(text_color)
             .text_size(font_size)
-            .rounded(px(6.0))
             .flex()
             .items_center()
             .justify_center()

@@ -74,7 +74,7 @@ impl ThreadView {
 
     /// Get the focus handle for the message input.
     pub fn message_input_focus_handle(&self, cx: &App) -> FocusHandle {
-        self.message_input.read(cx).focus_handle(cx)
+        self.message_input.read(cx).input_focus_handle(cx)
     }
 
     /// Handle a thread event.
@@ -336,16 +336,21 @@ impl Render for ThreadView {
                     .max_w(px(768.0))
                     .flex()
                     .flex_col()
+                    .justify_end()
                     .overflow_hidden()
                     // Message history (shrinks when streaming)
                     .child(
                         div()
+                            .id("message-list-container")
                             .when(streaming_view.is_some(), |el| el.flex_shrink())
                             .when(streaming_view.is_none(), |el| el.flex_1())
                             .w_full()
                             .min_h(px(100.0))
-                            .overflow_hidden()
-                            .child(list(self.list_state.clone(), render_item).size_full()),
+                            .overflow_y_scroll()
+                            .flex()
+                            .flex_col()
+                            .justify_end()
+                            .child(list(self.list_state.clone(), render_item).w_full()),
                     )
                     // Streaming message (grows to fill remaining space)
                     .when_some(streaming_view, |el, view| {

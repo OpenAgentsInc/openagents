@@ -123,9 +123,9 @@ impl TextInput {
         cx.notify();
     }
 
-    fn reset_cursor_blink(&mut self, cx: &mut Context<Self>) {
-        // Restart the blink timer (makes cursor visible and resets timing)
-        self.start_blink(cx);
+    fn reset_cursor_blink(&mut self, _cx: &mut Context<Self>) {
+        // Just make cursor visible - the existing blink task will toggle it
+        self.cursor_visible = true;
     }
 
     fn submit(&mut self, _: &Submit, _window: &mut Window, cx: &mut Context<Self>) {
