@@ -19,10 +19,17 @@ actions!(
 pub fn bind_text_input_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", Submit, None),
+        // macOS
         KeyBinding::new("cmd-a", SelectAll, None),
         KeyBinding::new("cmd-x", Cut, None),
         KeyBinding::new("cmd-c", Copy, None),
         KeyBinding::new("cmd-v", Paste, None),
+        // Linux/Windows
+        KeyBinding::new("ctrl-a", SelectAll, None),
+        KeyBinding::new("ctrl-x", Cut, None),
+        KeyBinding::new("ctrl-c", Copy, None),
+        KeyBinding::new("ctrl-v", Paste, None),
+        // Navigation
         KeyBinding::new("backspace", Backspace, None),
         KeyBinding::new("delete", Delete, None),
         KeyBinding::new("left", Left, None),
@@ -166,6 +173,15 @@ impl TextInput {
     fn on_mouse_down(&mut self, event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.is_selecting = true;
         self.move_to(self.index_for_mouse_position(event.position), cx)
+    }
+
+    fn on_right_click(&mut self, _event: &MouseDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        // Right-click pastes from clipboard
+        if let Some(clipboard_text) = cx.read_from_clipboard() {
+            if let Some(text) = clipboard_text.text() {
+                self.replace_text_in_range_internal(None, &text, cx);
+            }
+        }
     }
 
     fn on_mouse_up(&mut self, _: &MouseUpEvent, _window: &mut Window, _: &mut Context<Self>) {
@@ -593,6 +609,7 @@ impl Render for TextInput {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right_click))
             .items_center()
             .child(TextElement {
                 input: cx.entity(),

@@ -1,11 +1,12 @@
 //! Message view component for displaying messages with markdown rendering.
 
 use gpui::{
-    div, prelude::*, px, App, AppContext, Context, Entity, IntoElement, ParentElement, Refineable, Render,
-    SharedString, Styled, TextStyle, TextStyleRefinement, UnderlineStyle, Window,
+    div, prelude::*, px, relative, App, AppContext, Context, Entity, IntoElement, ParentElement,
+    Refineable, Render, SharedString, Styled, TextStyle, TextStyleRefinement, UnderlineStyle,
+    Window,
 };
 use markdown::{Markdown, MarkdownElement, MarkdownStyle};
-use theme_oa::{bg, border, text, FONT_FAMILY};
+use theme_oa::{bg, border, text, FONT_FAMILY, FONT_SIZE, LINE_HEIGHT_RELAXED};
 
 /// Message view for displaying a single message with markdown.
 pub struct MessageView {
@@ -55,11 +56,13 @@ impl MessageView {
 
     /// Get the markdown style.
     fn markdown_style(&self, _window: &Window, _cx: &App) -> MarkdownStyle {
-        // Use theme_oa colors directly instead of Zed's global theme
-        let link_color = gpui::hsla(210.0 / 360.0, 0.8, 0.6, 1.0); // Blue link color
+        // Use theme_oa colors and typography constants
+        let link_color = text::LINK;
 
         let mut text_style = TextStyle::default();
         text_style.font_family = SharedString::from(FONT_FAMILY);
+        text_style.font_size = px(FONT_SIZE).into();
+        text_style.line_height = relative(LINE_HEIGHT_RELAXED);
         text_style.refine(&TextStyleRefinement {
             color: Some(text::PRIMARY),
             ..Default::default()
@@ -70,10 +73,10 @@ impl MessageView {
             code_block: gpui::StyleRefinement::default()
                 .px(px(12.0))
                 .py(px(8.0))
-                .rounded(px(6.0))
-                .bg(bg::SURFACE),
+                .rounded(px(4.0))
+                .bg(bg::CODE),
             inline_code: TextStyleRefinement {
-                background_color: Some(bg::SURFACE),
+                background_color: Some(bg::CODE),
                 ..Default::default()
             },
             block_quote: TextStyleRefinement {
@@ -92,7 +95,7 @@ impl MessageView {
             rule_color: border::DEFAULT,
             block_quote_border_color: border::DEFAULT,
             syntax: std::sync::Arc::new(theme::SyntaxTheme::default()),
-            selection_background_color: gpui::hsla(210.0 / 360.0, 0.8, 0.6, 0.3),
+            selection_background_color: gpui::hsla(0.606, 0.8, 0.6, 0.3), // Blue selection
             ..Default::default()
         }
     }
@@ -114,7 +117,7 @@ impl Render for MessageView {
                     .max_w(px(600.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .rounded(px(8.0))
+                    .rounded(px(4.0))
                     .bg(if is_user { bg::CARD } else { bg::SURFACE })
                     .border_1()
                     .border_color(border::DEFAULT)
@@ -160,6 +163,8 @@ impl IntoElement for SimpleMessageView {
             .px(px(16.0))
             .py(px(12.0))
             .font_family(FONT_FAMILY)
+            .text_size(px(FONT_SIZE))
+            .line_height(relative(LINE_HEIGHT_RELAXED))
             .flex();
 
         if is_user {
@@ -171,7 +176,7 @@ impl IntoElement for SimpleMessageView {
                 .max_w(px(600.0))
                 .px(px(12.0))
                 .py(px(8.0))
-                .rounded(px(8.0))
+                .rounded(px(4.0))
                 .bg(if is_user { bg::CARD } else { bg::SURFACE })
                 .border_1()
                 .border_color(border::DEFAULT)
