@@ -49,13 +49,13 @@ pub fn render_todo_panel(state: &TodoState) -> impl IntoElement {
                 .h(px(4.0))
                 .mt(px(8.0))
                 .bg(bg::SURFACE)
-                .rounded(px(2.0))
+                
                 .child(
                     div()
                         .h_full()
                         .w(gpui::relative(progress))
                         .bg(status::SUCCESS)
-                        .rounded(px(2.0)),
+                        ,
                 ),
         )
         // Todo items
