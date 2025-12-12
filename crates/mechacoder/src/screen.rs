@@ -6,13 +6,13 @@ use gpui::{
 };
 use gpui_tokio::Tokio;
 use std::path::PathBuf;
-use terminalbench::{TB2TaskLoader, TBRunStatus, TBModelOption};
+use terminalbench::{TB2TaskLoader, TBModelOption};
 use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
 use crate::panels::{DockerRunner, GymPanel, GymPanelEvent, TB2RunnerEvent};
-use crate::sdk_thread::{SdkThread, TBenchRunEntry};
+use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
@@ -205,27 +205,8 @@ impl MechaCoderScreen {
                 .model(model.id());
                 log::info!("TB2: Config created");
 
-                let image_name = tb2_task.docker_image().to_string();
-
-                // Add TB2 run entry to thread
-                log::info!("TB2: Adding run entry to thread");
-                if let Some(sdk_thread) = &self.sdk_thread {
-                    sdk_thread.update(cx, |thread, cx| {
-                        thread.add_tbench_run_entry(TBenchRunEntry {
-                            run_id: run_id.clone(),
-                            task_id: task.id.clone(),
-                            task_name: task.name.clone(),
-                            status: TBRunStatus::Running,
-                            turns: 0,
-                            max_turns: task.max_turns,
-                            cost: None,
-                            error: None,
-                            container_id: None,
-                            image_name: Some(image_name.clone()),
-                        }, cx);
-                    });
-                }
-                log::info!("TB2: Run entry added");
+                // Don't create TBenchRunEntry - all metadata now shown in gym panel
+                // (user requested: "move the info about the docker container into the gym pane not the card in the main area")
 
                 // Create event channel (unbounded_channel doesn't need reactor)
                 log::info!("TB2: Creating event channel");
