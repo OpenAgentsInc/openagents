@@ -1,6 +1,9 @@
 //! Claude Code credential extraction and injection for containers.
 //!
-//! Extracts OAuth credentials from Mac Keychain at runtime.
+//! Extracts OAuth credentials from platform-specific storage:
+//! - macOS: Keychain (via `security` command)
+//! - Linux: ~/.config/claude/.credentials.json
+//!
 //! Creates temporary credential files for container mounting.
 
 use crate::config::CredentialMount;
@@ -19,17 +22,48 @@ const CREDENTIAL_FILENAME: &str = ".credentials.json";
 /// Container directory where credentials are mounted
 const CONTAINER_DIR: &str = "/root/.claude";
 
+/// Extract raw credentials JSON from Linux filesystem.
+///
+/// Reads Claude Code OAuth credentials from ~/.config/claude/.credentials.json.
+/// Returns the raw JSON string containing the credentials.
+async fn extract_credentials_from_linux_fs() -> CredentialResult<String> {
+    let home_dir = std::env::var("HOME")
+        .map_err(|_| CredentialError::not_found("HOME environment variable not set"))?;
+
+    let config_path = PathBuf::from(&home_dir)
+        .join(".config")
+        .join("claude")
+        .join(".credentials.json");
+
+    if !config_path.exists() {
+        return Err(CredentialError::not_found(
+            "Claude Code credentials not found. Please authenticate with Claude Code first (run: claude)",
+        ));
+    }
+
+    let credentials_json = fs::read_to_string(&config_path)
+        .await
+        .map_err(|e| {
+            CredentialError::extraction_failed(format!(
+                "Failed to read credentials from {}: {}",
+                config_path.display(),
+                e
+            ))
+        })?;
+
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&credentials_json).map_err(|_| {
+        CredentialError::invalid_format("Credentials file is not valid JSON")
+    })?;
+
+    Ok(credentials_json)
+}
+
 /// Extract raw credentials JSON from Mac Keychain.
 ///
 /// Uses `security find-generic-password` to extract Claude Code OAuth credentials.
 /// Returns the raw JSON string containing the credentials.
-pub async fn extract_credentials_from_keychain() -> CredentialResult<String> {
-    // Only available on macOS
-    if std::env::consts::OS != "macos" {
-        return Err(CredentialError::not_found(
-            "Mac Keychain only available on macOS",
-        ));
-    }
+async fn extract_credentials_from_keychain() -> CredentialResult<String> {
 
     let output = Command::new("security")
         .args(["find-generic-password", "-s", KEYCHAIN_SERVICE, "-g"])
@@ -91,13 +125,17 @@ pub async fn extract_credentials_from_keychain() -> CredentialResult<String> {
 
 /// Create a temporary credential mount for container use.
 ///
-/// Extracts credentials from Keychain and writes them to a temp directory
-/// that can be mounted into the container at /root/.claude.
+/// Extracts credentials from platform-specific storage (macOS Keychain or Linux filesystem)
+/// and writes them to a temp directory that can be mounted into the container at /root/.claude.
 ///
 /// Returns paths and the volume mount string for use with container run.
 pub async fn create_credential_mount() -> CredentialResult<CredentialMount> {
-    // Extract credentials from Keychain
-    let credentials_json = extract_credentials_from_keychain().await?;
+    // Extract credentials from platform-specific storage
+    let credentials_json = if cfg!(target_os = "macos") {
+        extract_credentials_from_keychain().await?
+    } else {
+        extract_credentials_from_linux_fs().await?
+    };
 
     // Create temp directory with unique name
     let uuid = Uuid::new_v4().to_string();
