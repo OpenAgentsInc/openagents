@@ -536,7 +536,7 @@ impl ClaudePanel {
                                                 .text_xs()
                                                 .text_color(text::PRIMARY)
                                                 .cursor_pointer()
-                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_this, _, _, cx| {
                                                     cx.emit(ClaudePanelEvent::SessionFork);
                                                 }))
                                                 .child("[Fork]")
@@ -551,7 +551,7 @@ impl ClaudePanel {
                                                 .text_xs()
                                                 .text_color(text::PRIMARY)
                                                 .cursor_pointer()
-                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_this, _, _, cx| {
+                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_this, _, _, _cx| {
                                                     // TODO: Show session history modal
                                                     log::info!("Show session history (coming in future)");
                                                 }))
