@@ -5,6 +5,7 @@ members = [
     "crates/acp",
     "crates/claude_agent_sdk",
     "crates/agent",
+    "crates/agents",
     "crates/archivist",
     "crates/atif",
     "crates/atif-store",
