@@ -1,7 +1,7 @@
 //! Message view component for displaying messages with markdown rendering.
 
 use gpui::{
-    div, px, App, AppContext, Context, Entity, IntoElement, ParentElement, Refineable, Render,
+    div, prelude::*, px, App, AppContext, Context, Entity, IntoElement, ParentElement, Refineable, Render,
     SharedString, Styled, TextStyle, TextStyleRefinement, UnderlineStyle, Window,
 };
 use markdown::{Markdown, MarkdownElement, MarkdownStyle};
@@ -45,10 +45,11 @@ impl MessageView {
         })
     }
 
-    /// Update the content of this message view.
+    /// Update the content of this message view (for streaming).
     pub fn update_content(&mut self, content: &str, cx: &mut Context<Self>) {
         self.markdown.update(cx, |md, cx| {
-            md.reset(content.to_string().into(), cx);
+            // Use replace instead of reset to avoid clearing content before re-parse
+            md.replace(content.to_string(), cx);
         });
     }
 

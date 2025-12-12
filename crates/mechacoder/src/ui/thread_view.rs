@@ -179,6 +179,7 @@ impl ThreadView {
 
     /// Render the permission prompt.
     /// Note: SDK uses BypassPermissions mode, so this always returns None.
+    #[allow(dead_code)]
     fn render_permission_prompt(&self, _cx: &App) -> Option<impl IntoElement> {
         // SDK currently uses BypassPermissions mode, no permission prompts
         None::<gpui::Empty>
@@ -342,6 +343,8 @@ impl Render for ThreadView {
                     div()
                         .w_full()
                         .max_w(px(768.0))
+                        .max_h(px(400.0))
+                        .overflow_y_scroll()
                         .px(px(16.0))
                         .child(view)
                 )
