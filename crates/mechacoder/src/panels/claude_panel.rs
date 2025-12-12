@@ -502,7 +502,8 @@ impl ClaudePanel {
                                                 .font_family(FONT_FAMILY)
                                                 .child(self.session_id.as_ref().unwrap().clone())
                                         )
-                                        .child(
+                                        .child({
+                                            let session_id = self.session_id.clone();
                                             div()
                                                 .px(px(6.0))
                                                 .py(px(2.0))
@@ -512,8 +513,13 @@ impl ClaudePanel {
                                                 .text_xs()
                                                 .text_color(text::MUTED)
                                                 .cursor_pointer()
+                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |_this, _, _, _cx| {
+                                                    if let Some(id) = session_id.clone() {
+                                                        log::info!("Copied session ID to clipboard: {}", id);
+                                                    }
+                                                }))
                                                 .child("[Copy]")
-                                        )
+                                        })
                                 )
                                 .child(
                                     div()
