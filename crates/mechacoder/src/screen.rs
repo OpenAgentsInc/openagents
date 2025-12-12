@@ -355,7 +355,7 @@ impl Render for MechaCoderScreen {
             self.needs_focus = false;
             if let Some(thread_view) = &self.thread_view {
                 let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
-                cx.defer(|_, window, _cx| {
+                cx.defer_in(window, move |_this, window, _cx| {
                     focus_handle.focus(window);
                 });
             }
