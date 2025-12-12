@@ -85,16 +85,19 @@ mkdir -p "${WORKSPACE}/app"  # Create /app for TB2 tasks that expect it
 # Copy environment files to workspace (so agent has something to work with)
 ENV_DIR="${TASK_DIR}/environment"
 if [[ -d "${ENV_DIR}" ]]; then
-    # Copy files from environment/tests/ (common pattern) or environment/ directly
+    # Copy files from environment/tests/ (common pattern)
     if [[ -d "${ENV_DIR}/tests" ]]; then
-        # Some tasks store input files in environment/tests/
         cp -r "${ENV_DIR}/tests"/* "${WORKSPACE}/app/" 2>/dev/null || true
     fi
-    # Copy files and directories from environment/ (excluding Docker-related and tests/)
+    # Copy CONTENTS of environment/src/ directly into /app/ (src is the content root)
+    if [[ -d "${ENV_DIR}/src" ]]; then
+        cp -r "${ENV_DIR}/src"/* "${WORKSPACE}/app/" 2>/dev/null || true
+    fi
+    # Copy other files and directories from environment/ (excluding Docker-related, tests/, and src/)
     for f in "${ENV_DIR}"/*; do
         basename_f="$(basename "$f")"
-        # Skip Docker files and tests/ (already handled above)
-        if [[ "$basename_f" == "Dockerfile" || "$basename_f" == "docker-compose.yaml" || "$basename_f" == "tests" ]]; then
+        # Skip Docker files and special directories (already handled above)
+        if [[ "$basename_f" == "Dockerfile" || "$basename_f" == "docker-compose.yaml" || "$basename_f" == "tests" || "$basename_f" == "src" ]]; then
             continue
         fi
         # Copy both files and directories
