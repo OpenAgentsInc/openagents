@@ -307,9 +307,11 @@ impl DockerRunner {
             .cwd(config.workspace_dir.clone())
             .dangerously_skip_permissions(true);
 
-        // Set allowed tools and environment variables
+        // Set allowed tools
         options.allowed_tools = Some(ALLOWED_TOOLS.iter().map(|s| s.to_string()).collect());
-        options.env = Some(self.build_env_vars(config));
+
+        // DON'T set options.env - let SDK inherit environment naturally
+        // This ensures Claude CLI can find credentials the same way it does in terminal
 
         if let Some(model) = &config.model {
             options = options.model(model.clone());
@@ -340,6 +342,24 @@ impl DockerRunner {
         while let Some(msg) = stream.next().await {
             match msg.map_err(|e| DockerError::ExecutionFailed(e.to_string()))? {
                 SdkMessage::Assistant(msg) => {
+                    // Check for authentication errors immediately
+                    if let Some(error_type) = msg.error.as_ref() {
+                        if matches!(error_type, claude_agent_sdk::AssistantMessageError::AuthenticationFailed) {
+                            tracing::error!(
+                                target: "mechacoder::docker",
+                                "Claude CLI authentication failed - check credentials at ~/.claude/.credentials.json or ANTHROPIC_API_KEY"
+                            );
+
+                            let _ = event_tx.send(DockerEvent::Error {
+                                message: "Authentication failed. Run 'claude' in terminal to authenticate first.".to_string(),
+                            });
+
+                            return Err(DockerError::ExecutionFailed(
+                                "Claude CLI authentication failed. Credentials not found.".to_string()
+                            ));
+                        }
+                    }
+
                     turns += 1;
 
                     tracing::debug!(
@@ -428,38 +448,6 @@ impl DockerRunner {
         })
     }
 
-    /// Build environment variables for Claude SDK
-    ///
-    /// Inherits all current environment variables and adds/overrides specific ones.
-    /// This ensures Claude CLI can find credentials at ~/.claude/.credentials.json.
-    fn build_env_vars(&self, config: &DockerRunConfig) -> HashMap<String, String> {
-        // Start with current environment (inherited)
-        let mut env: HashMap<String, String> = std::env::vars().collect();
-
-        // Override/add specific variables
-
-        // API key (if set, will override)
-        if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
-            env.insert("ANTHROPIC_API_KEY".to_string(), key);
-        }
-
-        // Model override
-        if let Some(model) = &config.model {
-            env.insert("ANTHROPIC_MODEL".to_string(), model.clone());
-        }
-
-        // Session logging - use host path (SDK runs on host)
-        env.insert(
-            "CLAUDE_CONFIG_DIR".to_string(),
-            config.logs_dir.join("agent/sessions").display().to_string(),
-        );
-
-        // Background tasks
-        env.insert("FORCE_AUTO_BACKGROUND_TASKS".to_string(), "1".to_string());
-        env.insert("ENABLE_BACKGROUND_TASKS".to_string(), "1".to_string());
-
-        env
-    }
 
     /// Run container with streaming output
     async fn run_with_streaming(
