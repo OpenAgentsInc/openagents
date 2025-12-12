@@ -44,7 +44,7 @@ impl Agent {
         Self {
             name: "claude-code".to_string(),
             version: version.to_string(),
-            model: Some("claude-sonnet-4-20250514".to_string()),
+            model: Some(ai::Model::default().id().to_string()),
             provider: Some("anthropic".to_string()),
         }
     }

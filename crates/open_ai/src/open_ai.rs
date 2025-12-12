@@ -325,6 +325,55 @@ pub enum RequestMessage {
     },
 }
 
+// Conversions with the centralized ai crate Model
+impl From<ai::Model> for Model {
+    fn from(model: ai::Model) -> Self {
+        match model {
+            ai::Model::Gpt4o => Self::FourOmni,
+            ai::Model::Gpt4oMini => Self::FourOmniMini,
+            ai::Model::O1 => Self::O1,
+            ai::Model::O3 => Self::O3,
+            ai::Model::O3Mini => Self::O3Mini,
+            ai::Model::O4Mini => Self::O4Mini,
+            ai::Model::Gpt4Turbo => Self::FourTurbo,
+            ai::Model::Gpt41 => Self::FourPointOne,
+            ai::Model::Gpt41Mini => Self::FourPointOneMini,
+            ai::Model::Gpt41Nano => Self::FourPointOneNano,
+            ai::Model::Gpt5 => Self::Five,
+            ai::Model::Gpt5Mini => Self::FiveMini,
+            ai::Model::Gpt5Nano => Self::FiveNano,
+            ai::Model::Gpt51 => Self::FivePointOne,
+            _ => panic!("Model {:?} is not an OpenAI model", model),
+        }
+    }
+}
+
+impl TryFrom<Model> for ai::Model {
+    type Error = anyhow::Error;
+
+    fn try_from(model: Model) -> Result<Self, Self::Error> {
+        match model {
+            Model::FourOmni => Ok(ai::Model::Gpt4o),
+            Model::FourOmniMini => Ok(ai::Model::Gpt4oMini),
+            Model::O1 => Ok(ai::Model::O1),
+            Model::O3 => Ok(ai::Model::O3),
+            Model::O3Mini => Ok(ai::Model::O3Mini),
+            Model::O4Mini => Ok(ai::Model::O4Mini),
+            Model::FourTurbo => Ok(ai::Model::Gpt4Turbo),
+            Model::FourPointOne => Ok(ai::Model::Gpt41),
+            Model::FourPointOneMini => Ok(ai::Model::Gpt41Mini),
+            Model::FourPointOneNano => Ok(ai::Model::Gpt41Nano),
+            Model::Five => Ok(ai::Model::Gpt5),
+            Model::FiveMini => Ok(ai::Model::Gpt5Mini),
+            Model::FiveNano => Ok(ai::Model::Gpt5Nano),
+            Model::FivePointOne => Ok(ai::Model::Gpt51),
+            Model::ThreePointFiveTurbo | Model::Four | Model::Custom { .. } => {
+                anyhow::bail!("Model {:?} is not in allowed list", model)
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum MessageContent {

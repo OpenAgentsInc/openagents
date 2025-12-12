@@ -129,7 +129,7 @@ impl Default for SessionConfig {
             max_tokens: None,
             safe_mode: true,
             dry_run: false,
-            model: "claude-sonnet-4-20250514".to_string(),
+            model: ai::Model::default().id().to_string(),
             temperature: None,
             auto_commit: true,
             auto_push: false,

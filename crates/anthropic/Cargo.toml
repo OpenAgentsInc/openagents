@@ -16,6 +16,7 @@ workspace = true
 path = "src/anthropic.rs"
 
 [dependencies]
+ai = { path = "../ai" }
 anyhow.workspace = true
 chrono.workspace = true
 futures.workspace = true

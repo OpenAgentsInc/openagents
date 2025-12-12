@@ -467,6 +467,40 @@ impl Model {
     }
 }
 
+// Conversions with the centralized ai crate Model
+impl From<ai::Model> for Model {
+    fn from(model: ai::Model) -> Self {
+        match model {
+            ai::Model::ClaudeHaiku45 => Self::ClaudeHaiku4_5,
+            ai::Model::ClaudeSonnet45 => Self::ClaudeSonnet4_5,
+            ai::Model::ClaudeOpus45 => Self::ClaudeOpus4_5,
+            ai::Model::ClaudeOpus41 => Self::ClaudeOpus4_1,
+            _ => panic!("Model {:?} is not an Anthropic model", model),
+        }
+    }
+}
+
+impl TryFrom<Model> for ai::Model {
+    type Error = anyhow::Error;
+
+    fn try_from(model: Model) -> Result<Self, Self::Error> {
+        match model {
+            Model::ClaudeHaiku4_5 | Model::ClaudeHaiku4_5Thinking => {
+                Ok(ai::Model::ClaudeHaiku45)
+            }
+            Model::ClaudeSonnet4_5 | Model::ClaudeSonnet4_5Thinking => {
+                Ok(ai::Model::ClaudeSonnet45)
+            }
+            Model::ClaudeOpus4_5 | Model::ClaudeOpus4_5Thinking => Ok(ai::Model::ClaudeOpus45),
+            Model::ClaudeOpus4_1 | Model::ClaudeOpus4_1Thinking => Ok(ai::Model::ClaudeOpus41),
+            _ => anyhow::bail!(
+                "Model {:?} is deprecated or not in allowed list",
+                model.request_id()
+            ),
+        }
+    }
+}
+
 /// Generate completion with streaming.
 pub async fn stream_completion(
     client: &dyn HttpClient,

@@ -23,7 +23,7 @@ pub enum MechaCommand {
         task: Option<String>,
 
         /// Model to use
-        #[arg(short, long, default_value = "claude-sonnet-4-20250514")]
+        #[arg(short, long, default_value = "claude-haiku-4-5-20251001")]
         model: String,
 
         /// Enable safe mode (no destructive operations) (CLI-012)

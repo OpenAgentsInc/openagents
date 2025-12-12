@@ -16,6 +16,7 @@ default = []
 schemars = ["dep:schemars"]
 
 [dependencies]
+ai = { path = "../ai" }
 anyhow.workspace = true
 futures.workspace = true
 http_client.workspace = true

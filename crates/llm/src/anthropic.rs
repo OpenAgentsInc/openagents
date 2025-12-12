@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001"; // Use ai::Model::default()
 const DEFAULT_MAX_TOKENS: u32 = 8192;
 
 /// Anthropic Claude provider
