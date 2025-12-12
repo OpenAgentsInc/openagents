@@ -316,7 +316,16 @@ impl DockerRunner {
         self.ensure_image(image).await?;
 
         // Create credential mount for Claude CLI OAuth credentials
+        tracing::debug!(
+            target: "mechacoder::docker",
+            "Creating Claude CLI credential mount"
+        );
         let credential_mount = create_credential_mount().await.map_err(|e| {
+            tracing::error!(
+                target: "mechacoder::docker",
+                error = %e,
+                "Failed to create credential mount"
+            );
             DockerError::CredentialError(format!("Failed to create credential mount: {}", e))
         })?;
 

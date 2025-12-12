@@ -247,7 +247,10 @@ impl MechaCoderScreen {
                         // Run Docker container
                         log::info!("TB2: About to call run_claude");
                         let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
-                        log::info!("TB2: run_claude completed: {:?}", run_result.is_ok());
+                        match &run_result {
+                            Ok(_) => log::info!("TB2: run_claude completed successfully"),
+                            Err(e) => log::error!("TB2: run_claude failed: {}", e),
+                        }
 
                         // Clean up
                         drop(abort_tx);
