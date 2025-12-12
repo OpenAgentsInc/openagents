@@ -1,10 +1,10 @@
 [package]
-name = "nostr-chat"
+name = "nostr-client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Nostr chat state machine for OpenAgents (NIP-28 channels + NIP-90 DVM)"
+description = "Nostr WebSocket client for connecting to relays"
 
 [lints]
 workspace = true
@@ -15,11 +15,14 @@ path = "src/lib.rs"
 [dependencies]
 # Nostr protocol types
 nostr = { path = "../nostr" }
-nostr-client = { path = "../nostr-client" }
+
+# WebSocket
+async-tungstenite = { workspace = true, features = ["tokio-runtime", "tokio-rustls-manual-roots"] }
+futures.workspace = true
+futures-lite.workspace = true
 
 # Async runtime
-tokio = { workspace = true, features = ["sync", "time"] }
-futures.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
 
 # Serialization
 serde.workspace = true
@@ -32,7 +35,8 @@ thiserror.workspace = true
 tracing.workspace = true
 
 # Utilities
-chrono.workspace = true
+url.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "macros"] }
