@@ -219,45 +219,52 @@ impl MechaCoderScreen {
                 let run_id_clone = run_id.clone();
                 let gym_panel_clone = self.gym_panel.clone();
 
-                // Spawn Docker work on Tokio runtime (no GPUI context)
+                // Spawn Docker work on Tokio runtime
                 log::info!("TB2: About to spawn Tokio task");
                 let _ = Tokio::spawn(cx, async move {
                     log::info!("TB2: Inside Tokio::spawn");
 
-                    // Create oneshot channel for abort (needs Tokio reactor)
-                    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
-                    log::info!("TB2: Created abort channel");
+                    // Use spawn_blocking to ensure we have a proper Tokio context
+                    let result = tokio::task::spawn_blocking(move || {
+                        log::info!("TB2: Inside spawn_blocking");
 
-                    // Spawn the actual Docker work on Tokio's executor to ensure proper reactor context
-                    let docker_work = tokio::task::spawn(async move {
-                        // Create a fresh Docker runner for this async task
-                        let docker_runner = DockerRunner::new();
-                        log::info!("TB2: Created DockerRunner (in tokio::task::spawn)");
+                        // Create a new Tokio runtime for this blocking task
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("Failed to create Tokio runtime");
 
-                        // Run Docker container
-                        log::info!("TB2: About to call run_claude");
-                        let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
-                        log::info!("TB2: run_claude completed: {:?}", run_result.is_ok());
+                        log::info!("TB2: Created local Tokio runtime");
 
-                        run_result
-                    });
+                        // Run Docker work on this runtime
+                        rt.block_on(async {
+                            // Create oneshot channel for abort
+                            let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                            log::info!("TB2: Created abort channel");
 
-                    // Wait for Docker work to complete
-                    let result = match docker_work.await {
-                        Ok(run_result) => {
-                            log::info!("TB2: Docker work joined successfully");
-                            run_result
-                        }
+                            // Create Docker runner
+                            let docker_runner = DockerRunner::new();
+                            log::info!("TB2: Created DockerRunner");
+
+                            // Run Docker container
+                            log::info!("TB2: About to call run_claude");
+                            let result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                            log::info!("TB2: run_claude completed: {:?}", result.is_ok());
+
+                            // Clean up
+                            drop(abort_tx);
+
+                            result
+                        })
+                    }).await;
+
+                    match result {
+                        Ok(docker_result) => docker_result,
                         Err(join_err) => {
-                            log::error!("TB2: Docker work join error: {}", join_err);
-                            Err(DockerError::ExecutionFailed(format!("Task join error: {}", join_err)))
+                            log::error!("TB2: spawn_blocking join error: {}", join_err);
+                            Err(DockerError::ExecutionFailed(format!("Blocking task failed: {}", join_err)))
                         }
-                    };
-
-                    // Clean up
-                    drop(abort_tx);
-
-                    result
+                    }
                 });
 
                 log::info!("TB2: Tokio task spawned successfully");
