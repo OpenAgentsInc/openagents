@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_stream::try_stream;
 use futures::Stream;
 use llm::{
-    ChatOptions, ChatStream, ContentPart, LlmProvider, LlmResult, Message, ProviderConfig,
+    ChatOptions, ContentPart, LlmProvider, Message, ProviderConfig,
     StreamChunk, Usage,
 };
 use tokio_util::sync::CancellationToken;
@@ -18,6 +18,7 @@ use crate::config::PiConfig;
 use crate::error::{PiError, PiResult};
 use crate::events::{AgentEvent, AgentOutcome, StopReason};
 use crate::state::AgentState;
+use crate::tool_executor::ToolRegistry;
 
 /// Pi coding agent
 ///
@@ -28,6 +29,9 @@ pub struct PiAgent {
 
     /// LLM provider for chat completions
     provider: Arc<dyn LlmProvider>,
+
+    /// Tool registry
+    tools: ToolRegistry,
 
     /// Current agent state
     state: AgentState,
@@ -56,6 +60,7 @@ impl PiAgent {
         Self {
             config,
             provider,
+            tools: ToolRegistry::new(),
             state: AgentState::Idle,
             messages: Vec::new(),
             cancel_token: CancellationToken::new(),
@@ -163,7 +168,7 @@ impl PiAgent {
                     Ok(s) => s,
                     Err(e) => {
                         error!(error = %e, "LLM error");
-                        let retryable = e.is_retryable();
+                        let retryable = is_retryable_error(&e);
                         yield AgentEvent::Error {
                             message: e.to_string(),
                             retryable,
@@ -203,7 +208,7 @@ impl PiAgent {
                             warn!(error = %e, "Stream error");
                             yield AgentEvent::Error {
                                 message: e.to_string(),
-                                retryable: e.is_retryable(),
+                                retryable: is_retryable_error(&e),
                             };
                             continue;
                         }
@@ -371,148 +376,38 @@ impl PiAgent {
 
     /// Build tool definitions for the LLM
     fn build_tool_definitions(&self) -> Vec<llm::ToolDefinition> {
-        use llm::ToolDefinition;
-
-        // Default tools - Phase 2 will make this dynamic
-        vec![
-            ToolDefinition {
-                name: "bash".to_string(),
-                description: "Execute a bash command".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The bash command to execute"
-                        }
-                    },
-                    "required": ["command"]
-                }),
-            },
-            ToolDefinition {
-                name: "read".to_string(),
-                description: "Read a file".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file to read"
-                        }
-                    },
-                    "required": ["path"]
-                }),
-            },
-            ToolDefinition {
-                name: "write".to_string(),
-                description: "Write content to a file".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to write to"
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "Content to write"
-                        }
-                    },
-                    "required": ["path", "content"]
-                }),
-            },
-            ToolDefinition {
-                name: "edit".to_string(),
-                description: "Edit a file by replacing text".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file to edit"
-                        },
-                        "old_text": {
-                            "type": "string",
-                            "description": "Text to replace"
-                        },
-                        "new_text": {
-                            "type": "string",
-                            "description": "Replacement text"
-                        }
-                    },
-                    "required": ["path", "old_text", "new_text"]
-                }),
-            },
-        ]
+        // Convert from our tool definitions to llm crate format
+        self.tools
+            .definitions()
+            .into_iter()
+            .map(|def| llm::ToolDefinition {
+                name: def.name,
+                description: def.description,
+                input_schema: def.parameters,
+            })
+            .collect()
     }
 
-    /// Execute a tool (placeholder implementation)
+    /// Execute a tool using the tool registry
     async fn execute_tool(
         &self,
         name: &str,
         input: &serde_json::Value,
     ) -> (String, bool) {
-        // Phase 2 will implement proper tool execution
-        // For now, return a placeholder
-        debug!(tool = name, "Executing tool (placeholder)");
+        debug!(tool = name, "Executing tool via registry");
 
-        match name {
-            "bash" => {
-                let command = input.get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                // Use the tools crate for bash execution
-                match tools::bash::execute(command, &self.config.working_directory) {
-                    Ok(output) => (output.stdout, false),
-                    Err(e) => (e.to_string(), true),
-                }
-            }
-            "read" => {
-                let path = input.get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                let full_path = self.config.working_directory.join(path);
-                match tools::read::read_file(&full_path) {
-                    Ok(content) => (content, false),
-                    Err(e) => (e.to_string(), true),
-                }
-            }
-            "write" => {
-                let path = input.get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let content = input.get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                let full_path = self.config.working_directory.join(path);
-                match tools::write::write_file(&full_path, content) {
-                    Ok(()) => ("File written successfully".to_string(), false),
-                    Err(e) => (e.to_string(), true),
-                }
-            }
-            "edit" => {
-                let path = input.get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let old_text = input.get("old_text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let new_text = input.get("new_text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                let full_path = self.config.working_directory.join(path);
-                match tools::edit::edit_file(&full_path, old_text, new_text) {
-                    Ok(()) => ("File edited successfully".to_string(), false),
-                    Err(e) => (e.to_string(), true),
-                }
-            }
-            _ => {
-                (format!("Unknown tool: {}", name), true)
-            }
+        match self
+            .tools
+            .execute(
+                name,
+                input.clone(),
+                &self.config.working_directory,
+                self.cancel_token.clone(),
+            )
+            .await
+        {
+            Ok(output) => (output.content, output.is_error),
+            Err(e) => (e.to_string(), true),
         }
     }
 
@@ -536,4 +431,24 @@ struct PendingToolCall {
     id: String,
     name: String,
     input_json: String,
+}
+
+/// Check if an LLM error is retryable
+fn is_retryable_error(error: &llm::LlmError) -> bool {
+    match error {
+        llm::LlmError::RateLimitError(_) => true,
+        llm::LlmError::TimeoutError(_) => true,
+        llm::LlmError::NetworkError(_) => true,
+        llm::LlmError::ProviderError { message, .. } => {
+            // Check for common retryable patterns
+            let msg = message.to_lowercase();
+            msg.contains("overloaded")
+                || msg.contains("rate limit")
+                || msg.contains("503")
+                || msg.contains("502")
+                || msg.contains("504")
+                || msg.contains("service unavailable")
+        }
+        _ => false,
+    }
 }

@@ -10,11 +10,10 @@ license.workspace = true
 # OpenAgents crates
 ai = { path = "../ai" }
 llm = { path = "../llm" }
-tools = { path = "../tools" }
 sessions-crate = { workspace = true }
 
 # Async runtime
-tokio = { workspace = true, features = ["sync", "time", "fs", "io-util", "rt"] }
+tokio = { workspace = true, features = ["sync", "time", "fs", "io-util", "rt", "process", "macros"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = { workspace = true }
@@ -35,6 +34,9 @@ tracing = { workspace = true }
 # Utilities
 uuid = { workspace = true, features = ["v4"] }
 chrono = { workspace = true }
+shellexpand = { workspace = true }
+similar = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }

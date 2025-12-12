@@ -38,6 +38,7 @@ members = [
     "crates/testgen",
     "crates/terminalbench",
     "crates/tools",
+    "crates/pi",
     "crates/unit",
     "crates/vibe",
 

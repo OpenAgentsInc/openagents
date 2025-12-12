@@ -51,3 +51,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 uuid = { version = "1", features = ["v4"] }
 thiserror.workspace = true
 tempfile = "3"
+pi = { version = "0.1.0", path = "../pi" }
