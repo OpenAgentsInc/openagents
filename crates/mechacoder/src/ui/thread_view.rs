@@ -185,13 +185,13 @@ impl ThreadView {
         None::<gpui::Empty>
     }
 
-    /// Render the status indicator (bottom left corner).
+    /// Render the status indicator (top left corner).
     fn render_status(&self, cx: &App) -> impl IntoElement {
         let status = self.thread.read(cx).status();
 
         div()
             .absolute()
-            .bottom(px(8.0))
+            .top(px(8.0))
             .left(px(12.0))
             .text_sm()
             .text_color(text::SECONDARY)
@@ -389,7 +389,7 @@ impl Render for ThreadView {
                             .into_any_element()
                     }),
             )
-            // Status indicator (bottom left corner)
+            // Status indicator (top left corner)
             .child(self.render_status(cx))
     }
 }

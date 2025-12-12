@@ -23,7 +23,9 @@ claude_agent_sdk = { path = "../claude_agent_sdk" }
 gpui = { path = "../gpui" }
 gpui_tokio = { path = "../gpui_tokio" }
 harbor = { path = "../harbor" }
+sandbox = { path = "../sandbox" }
 terminalbench = { path = "../terminalbench" }
+testgen = { path = "../testgen" }
 ui_oa = { path = "../ui_oa" }
 theme_oa = { path = "../theme_oa" }
 markdown = { path = "../markdown" }
@@ -46,3 +48,5 @@ similar.workspace = true
 pulldown-cmark.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 uuid = { version = "1", features = ["v4"] }
+thiserror.workspace = true
+tempfile = "3"
