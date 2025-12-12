@@ -105,9 +105,12 @@ impl Render for MessageView {
         div()
             .px(px(16.0))
             .py(px(12.0))
+            .flex()
+            .when(is_user, |el| el.justify_end())
             // Message content with markdown
             .child(
                 div()
+                    .max_w(px(600.0))
                     .px(px(12.0))
                     .py(px(8.0))
                     .rounded(px(8.0))
@@ -152,21 +155,27 @@ impl IntoElement for SimpleMessageView {
     fn into_element(self) -> Self::Element {
         let is_user = self.role == MessageRole::User;
 
-        div()
+        let mut container = div()
             .px(px(16.0))
             .py(px(12.0))
             .font_family(FONT_FAMILY)
-            // Message content
-            .child(
-                div()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .rounded(px(8.0))
-                    .bg(if is_user { bg::CARD } else { bg::SURFACE })
-                    .border_1()
-                    .border_color(border::DEFAULT)
-                    .text_color(text::PRIMARY)
-                    .child(self.content),
-            )
+            .flex();
+
+        if is_user {
+            container = container.justify_end();
+        }
+
+        container.child(
+            div()
+                .max_w(px(600.0))
+                .px(px(12.0))
+                .py(px(8.0))
+                .rounded(px(8.0))
+                .bg(if is_user { bg::CARD } else { bg::SURFACE })
+                .border_1()
+                .border_color(border::DEFAULT)
+                .text_color(text::PRIMARY)
+                .child(self.content),
+        )
     }
 }
