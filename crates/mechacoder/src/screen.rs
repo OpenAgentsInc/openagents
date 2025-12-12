@@ -4,8 +4,9 @@ use gpui::{
     div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
+use gpui_tokio::Tokio;
 use std::path::PathBuf;
-use terminalbench::{TB2TaskLoader, TBRunStatus};
+use terminalbench::{TB2TaskLoader, TBRunStatus, TBModelOption};
 use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
@@ -137,8 +138,9 @@ impl MechaCoderScreen {
     /// Focus the message input.
     fn focus_message_input(&mut self, _: &FocusMessageInput, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(thread_view) = &self.thread_view {
-            let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
-            focus_handle.focus(window);
+            thread_view.update(cx, |view, cx| {
+                view.focus_message_input(window, cx);
+            });
         }
     }
 
@@ -205,20 +207,29 @@ impl MechaCoderScreen {
                 let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
                 let run_id_clone = run_id.clone();
-                let gym_panel = self.gym_panel.clone();
-                let sdk_thread = self.sdk_thread.clone();
+                let gym_panel_clone = self.gym_panel.clone();
 
-                // Spawn DockerRunner task
-                cx.spawn(async move |_this, cx| {
+                // Spawn Docker work on Tokio runtime (no GPUI context)
+                let _ = Tokio::spawn(cx, async move {
                     // Create a fresh Docker runner for this async task
                     let docker_runner = DockerRunner::new();
 
                     // Run Docker container
-                    let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                    let _run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
 
+                    // Clean up abort channel
+                    drop(abort_tx);
+                });
+
+                // Spawn GPUI task to process events and update UI
+                let run_id_for_events = run_id.clone();
+                let gym_panel = self.gym_panel.clone();
+                let sdk_thread = self.sdk_thread.clone();
+
+                cx.spawn(async move |_this, cx| {
                     // Process events from Docker
                     while let Some(docker_event) = event_rx.recv().await {
-                        let tb2_events = TB2RunnerEvent::from_docker_event(run_id_clone.clone(), docker_event);
+                        let tb2_events = TB2RunnerEvent::from_docker_event(run_id_for_events.clone(), docker_event);
 
                         for tb2_event in tb2_events {
                             // Update container info when container starts
@@ -237,78 +248,381 @@ impl MechaCoderScreen {
                         }
                     }
 
-                    // Handle completion
-                    match run_result {
-                        Ok(docker_result) => {
-                            // Run TB2 verification
-                            use crate::panels::TB2Verifier;
-                            let verifier = TB2Verifier::new();
-                            let verification = verifier.run_tests(
-                                &tb2_task,
-                                &workspace_dir,
-                                &logs_dir,
-                            ).await;
+                    // Run TB2 verification after Docker completes
+                    use crate::panels::TB2Verifier;
+                    let verifier = TB2Verifier::new();
+                    let verification = verifier.run_tests(
+                        &tb2_task,
+                        &workspace_dir,
+                        &logs_dir,
+                    ).await;
 
-                            let final_success = match &verification {
-                                Ok(result) => docker_result.success && result.passed,
-                                Err(e) => {
-                                    log::error!("Verification error: {}", e);
-                                    false
-                                }
-                            };
-
-                            let verification_error = match &verification {
-                                Ok(result) if !result.passed => {
-                                    Some(format!("Tests failed: {}/{} passed. Reward: {}",
-                                        result.tests_passed,
-                                        result.tests_total,
-                                        result.reward))
-                                }
-                                Err(e) => Some(format!("Verification failed: {}", e)),
-                                _ => docker_result.error.clone()
-                            };
-
-                            let _ = gym_panel.update(cx, |panel, cx| {
-                                panel.handle_tb2_complete(
-                                    &run_id_clone,
-                                    final_success,
-                                    docker_result.turns,
-                                    Some(docker_result.cost_usd),
-                                    verification_error,
-                                    cx,
-                                );
-                            });
-
-                            if let Ok(ref verification) = verification {
-                                log::info!(
-                                    "TB2 verification: {} - {}/{} tests passed, reward: {}",
-                                    if verification.passed { "PASS" } else { "FAIL" },
-                                    verification.tests_passed,
-                                    verification.tests_total,
-                                    verification.reward
-                                );
-                            }
-                        }
+                    // Determine final status
+                    let (final_success, verification_error) = match &verification {
+                        Ok(result) if result.passed => (true, None),
+                        Ok(result) => (
+                            false,
+                            Some(format!("Tests failed: {}/{} passed. Reward: {}",
+                                result.tests_passed,
+                                result.tests_total,
+                                result.reward))
+                        ),
                         Err(e) => {
-                            log::error!("Docker runner error: {}", e);
-                            let _ = gym_panel.update(cx, |panel, cx| {
-                                panel.handle_tb2_complete(
-                                    &run_id_clone,
-                                    false,
-                                    0,
-                                    None,
-                                    Some(format!("Docker error: {}", e)),
-                                    cx,
-                                );
-                            });
+                            log::error!("Verification error: {}", e);
+                            (false, Some(format!("Verification failed: {}", e)))
                         }
-                    }
+                    };
 
-                    // Clean up abort channel
-                    drop(abort_tx);
+                    // Update gym panel with completion
+                    let _ = gym_panel_clone.update(cx, |panel, cx| {
+                        panel.handle_tb2_complete(
+                            &run_id_clone,
+                            final_success,
+                            0, // turns - we don't track this from events
+                            None, // cost - we don't track this from events
+                            verification_error,
+                            cx,
+                        );
+                    });
+
+                    if let Ok(ref verification) = verification {
+                        log::info!(
+                            "TB2 verification: {} - {}/{} tests passed, reward: {}",
+                            if verification.passed { "PASS" } else { "FAIL" },
+                            verification.tests_passed,
+                            verification.tests_total,
+                            verification.reward
+                        );
+                    }
                 }).detach();
             }
-            GymPanelEvent::TB2StreamEvent { .. } | GymPanelEvent::TB2RunComplete { .. } => {
+            GymPanelEvent::StartTestGenRun { run_id, task, model } => {
+                log::info!("Starting TestGen run: {} for task {} with model {:?}", run_id, task.id, model);
+
+                // Use the task description directly (works for both FM and TB2 tasks)
+                let run_id_clone = run_id.clone();
+                let task_description = task.description.clone();
+                let task_id = task.id.clone();
+                let model_id = model.id().to_string(); // Clone model ID for async block
+
+                // Determine if we use Claude SDK (for Claude models) or FM client (for FM models)
+                let use_claude_sdk = matches!(model, TBModelOption::ClaudeSonnet45 | TBModelOption::ClaudeHaiku45);
+
+                if use_claude_sdk {
+                    // Use Claude Agent SDK with testgen-protocol skill
+                    log::info!("Using Claude Agent SDK with testgen-protocol skill");
+
+                    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+                    // Spawn Claude SDK work
+                    let _ = Tokio::spawn(cx, async move {
+                        use claude_agent_sdk::{query, QueryOptions, SdkMessage, SettingSource};
+                        use futures::StreamExt;
+
+                        // Build prompt that invokes testgen-protocol skill
+                        let prompt = format!(
+                            "Use the testgen-protocol skill to generate comprehensive tests for this task:\n\n\
+                            Task: {}\n\n\
+                            Description: {}\n\n\
+                            Generate tests following the TestGen protocol workflow.",
+                            task_id, task_description
+                        );
+
+                        // Configure Claude SDK
+                        let query_options = QueryOptions::new()
+                            .model(&model_id)
+                            .max_turns(20)
+                            .setting_sources(vec![
+                                SettingSource::Project,
+                                SettingSource::User,
+                            ])
+                            .dangerously_skip_permissions(true);
+
+                        log::info!("Starting Claude Code query for TestGen with skill");
+
+                        // Start query
+                        let mut stream = match query(&prompt, query_options).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::error!("Failed to start Claude query: {}", e);
+                                let _ = event_tx.send(format!("ERROR: {}", e));
+                                return;
+                            }
+                        };
+
+                        // Process stream
+                        while let Some(message) = stream.next().await {
+                            match message {
+                                Ok(sdk_msg) => {
+                                    match sdk_msg {
+                                        SdkMessage::Assistant(assistant_msg) => {
+                                            if let Some(content) = assistant_msg.message.get("content") {
+                                                if let Some(text) = content.as_str() {
+                                                    let _ = event_tx.send(format!("ASSISTANT: {}", text));
+                                                }
+                                            }
+                                        }
+                                        SdkMessage::Result(result_msg) => {
+                                            let _ = event_tx.send(format!("COMPLETE: {:?}", result_msg));
+                                        }
+                                        SdkMessage::System(system_msg) => {
+                                            let _ = event_tx.send(format!("SYSTEM: {:?}", system_msg));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Stream error: {}", e);
+                                    let _ = event_tx.send(format!("ERROR: {}", e));
+                                }
+                            }
+                        }
+
+                        log::info!("TestGen run {} completed", run_id_clone);
+                    });
+
+                    // Spawn GPUI task to process events and update UI
+                    let gym_panel = self.gym_panel.clone();
+                    let sdk_thread = self.sdk_thread.clone();
+                    let run_id_for_events = run_id.clone();
+
+                    cx.spawn(async move |_this, cx| {
+                        while let Some(message) = event_rx.recv().await {
+                            // Add message to thread
+                            if let Some(thread) = &sdk_thread {
+                                let _ = thread.update(cx, |thread, cx| {
+                                    thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                });
+                            }
+
+                            log::info!("TestGen Message: {}", message);
+
+                            // Check for completion
+                            if message.starts_with("COMPLETE:") || message.starts_with("ERROR:") {
+                                let error = if message.starts_with("ERROR:") {
+                                    Some(message.clone())
+                                } else {
+                                    None
+                                };
+                                let _ = gym_panel.update(cx, |panel, cx| {
+                                    panel.handle_testgen_complete(
+                                        &run_id_for_events,
+                                        0, // total_tests unknown with skill
+                                        error,
+                                        cx,
+                                    );
+                                });
+                            }
+                        }
+                    }).detach();
+                } else {
+                    // Use FM client with TestGen crate (original approach)
+                    log::info!("Using FM client with TestGen crate");
+
+                    // Define event type for TestGen
+                    use testgen::types::{GeneratedTest, ReflectionEntry, TestCategory};
+
+                    #[derive(Clone, Debug)]
+                    enum TestGenEvent {
+                        Progress { phase: String, category: Option<TestCategory>, round: u32, status: String },
+                        Test(GeneratedTest),
+                        Reflection(ReflectionEntry),
+                        Complete { total_tests: u32, total_rounds: u32, duration_ms: u64 },
+                        Error(String),
+                    }
+
+                    // Create event channel
+                    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+                    // Spawn TestGen work on Tokio runtime
+                    let _ = Tokio::spawn(cx, async move {
+                        use testgen::{TestGenerator, TestGenEmitter, EnvironmentInfo, TestGenContext, IterationConfig};
+                        use fm_bridge::FMClient;
+
+                        // Struct to capture and forward events
+                        struct ChannelEmitter {
+                            tx: tokio::sync::mpsc::UnboundedSender<TestGenEvent>,
+                        }
+
+                        impl TestGenEmitter for ChannelEmitter {
+                            fn on_progress(&self, phase: &str, category: Option<TestCategory>, round: u32, status: &str) {
+                                let _ = self.tx.send(TestGenEvent::Progress {
+                                    phase: phase.to_string(),
+                                    category,
+                                    round,
+                                    status: status.to_string(),
+                                });
+                            }
+
+                            fn on_test(&self, test: &GeneratedTest) {
+                                let _ = self.tx.send(TestGenEvent::Test(test.clone()));
+                            }
+
+                            fn on_reflection(&self, entry: &ReflectionEntry) {
+                                let _ = self.tx.send(TestGenEvent::Reflection(entry.clone()));
+                            }
+
+                            fn on_complete(&self, total_tests: u32, total_rounds: u32, duration_ms: u64) {
+                                let _ = self.tx.send(TestGenEvent::Complete {
+                                    total_tests,
+                                    total_rounds,
+                                    duration_ms,
+                                });
+                            }
+
+                            fn on_error(&self, error: &str) {
+                                let _ = self.tx.send(TestGenEvent::Error(error.to_string()));
+                            }
+                        }
+
+                        let emitter = ChannelEmitter { tx: event_tx };
+
+                        // Create FM client and TestGen generator
+                        let fm_client = FMClient::new();
+                        let config = IterationConfig {
+                            min_tests_per_category: 2,
+                            target_tests_per_category: 5,
+                            max_rounds_per_category: 3,
+                            max_total_rounds: 15,
+                            max_total_tokens: 100000,
+                            max_total_time_ms: 180000,
+                            temperature: 0.3,
+                            ..Default::default()
+                        };
+                        let generator = TestGenerator::with_config(fm_client, config);
+
+                        // Build environment info for TestGen
+                        let environment = EnvironmentInfo::docker();
+
+                        log::info!(
+                            "Running TestGen for task '{}': {}",
+                            task_id,
+                            &task_description[..task_description.len().min(80)]
+                        );
+
+                        // Run TestGen generation
+                        let result = generator.generate_iteratively(
+                            &task_description,
+                            &task_id,
+                            &environment,
+                            TestGenContext::Benchmark,
+                            &emitter,
+                        ).await;
+
+                        match result {
+                            Ok(_generation_result) => {
+                                log::info!("TestGen run {} completed successfully", run_id_clone);
+                            }
+                            Err(e) => {
+                                log::error!("TestGen run {} failed: {}", run_id_clone, e);
+                                emitter.on_error(&e.to_string());
+                            }
+                        }
+                    });
+
+                    // Spawn GPUI task to process events and update UI
+                    let gym_panel = self.gym_panel.clone();
+                    let sdk_thread = self.sdk_thread.clone();
+                    let run_id_for_events = run_id.clone();
+
+                    cx.spawn(async move |_this, cx| {
+                        while let Some(event) = event_rx.recv().await {
+                            match event {
+                                TestGenEvent::Progress { phase, category, round, status } => {
+                                    let category_str = category.map(|c| c.as_str()).unwrap_or("all");
+                                    let message = format!("[Round {}] [{}] {}: {}", round, category_str, phase, status);
+
+                                    // Send progress to gym panel
+                                    let _ = gym_panel.update(cx, |panel, cx| {
+                                        panel.handle_testgen_progress(&run_id_for_events, &phase, cx);
+                                    });
+
+                                    // Add message to thread
+                                    if let Some(thread) = &sdk_thread {
+                                        let _ = thread.update(cx, |thread, cx| {
+                                            thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                        });
+                                    }
+
+                                    log::info!("TestGen Progress: {}", message);
+                                }
+                                TestGenEvent::Test(test) => {
+                                    let message = format!(
+                                        "✓ [{}] {}\n  Input: {}\n  Expected: {}\n  Reasoning: {}",
+                                        test.category.as_str(),
+                                        test.id,
+                                        test.input,
+                                        test.expected_output.as_deref().unwrap_or("(none)"),
+                                        test.reasoning
+                                    );
+
+                                    // Add test to thread
+                                    if let Some(thread) = &sdk_thread {
+                                        let _ = thread.update(cx, |thread, cx| {
+                                            thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                        });
+                                    }
+                                }
+                                TestGenEvent::Reflection(entry) => {
+                                    let category_str = entry.category.map(|c| c.as_str()).unwrap_or("global");
+                                    let message = format!(
+                                        "💭 Reflection [{}]: {}",
+                                        category_str,
+                                        entry.reflection_text
+                                    );
+
+                                    // Add reflection to thread
+                                    if let Some(thread) = &sdk_thread {
+                                        let _ = thread.update(cx, |thread, cx| {
+                                            thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                        });
+                                    }
+                                }
+                                TestGenEvent::Complete { total_tests, total_rounds, duration_ms } => {
+                                    let message = format!(
+                                        "✅ TestGen Complete: {} tests generated in {} rounds ({:.2}s)",
+                                        total_tests,
+                                        total_rounds,
+                                        duration_ms as f64 / 1000.0
+                                    );
+
+                                    // Add completion message to thread
+                                    if let Some(thread) = &sdk_thread {
+                                        let _ = thread.update(cx, |thread, cx| {
+                                            thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                        });
+                                    }
+
+                                    // Notify gym panel of completion
+                                    let _ = gym_panel.update(cx, |panel, cx| {
+                                        panel.handle_testgen_complete(&run_id_for_events, total_tests, None, cx);
+                                    });
+                                }
+                                TestGenEvent::Error(error_msg) => {
+                                    let message = format!("❌ TestGen Error: {}", error_msg);
+
+                                    // Add error to thread
+                                    if let Some(thread) = &sdk_thread {
+                                        let _ = thread.update(cx, |thread, cx| {
+                                            thread.add_testgen_message(&run_id_for_events, &message, cx);
+                                        });
+                                    }
+
+                                    // Notify gym panel of error
+                                    let _ = gym_panel.update(cx, |panel, cx| {
+                                        panel.handle_testgen_complete(&run_id_for_events, 0, Some(error_msg), cx);
+                                    });
+                                }
+                            }
+                        }
+                    }).detach();
+                }
+            }
+            GymPanelEvent::TB2StreamEvent { .. }
+            | GymPanelEvent::TB2RunComplete { .. }
+            | GymPanelEvent::TestGenProgress { .. }
+            | GymPanelEvent::TestGenTest { .. }
+            | GymPanelEvent::TestGenComplete { .. } => {
                 // These are forwarded events, ignore in screen handler
             }
         }
@@ -451,9 +765,11 @@ impl Render for MechaCoderScreen {
         if self.needs_focus {
             self.needs_focus = false;
             if let Some(thread_view) = &self.thread_view {
-                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
-                cx.defer_in(window, move |_this, window, _cx| {
-                    focus_handle.focus(window);
+                let thread_view_clone = thread_view.clone();
+                cx.defer_in(window, move |_this, window, cx| {
+                    thread_view_clone.update(cx, |view, cx| {
+                        view.focus_message_input(window, cx);
+                    });
                 });
             }
         }

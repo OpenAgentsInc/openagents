@@ -7,7 +7,7 @@ use gpui::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
 };
-use theme_oa::{border, text};
+use theme_oa::{border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
@@ -77,6 +77,13 @@ impl ThreadView {
         self.message_input.read(cx).focus_handle(cx)
     }
 
+    /// Focus the message input.
+    pub fn focus_message_input(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.message_input.update(cx, |input, cx| {
+            input.focus(window, cx);
+        });
+    }
+
     /// Handle a thread event.
     fn handle_thread_event(&mut self, event: &SdkThreadEvent, cx: &mut Context<Self>) {
         match event {
@@ -120,7 +127,7 @@ impl ThreadView {
             ThreadEntry::AssistantMessage(msg) => {
                 MessageView::assistant(&msg.content, cx)
             }
-            ThreadEntry::ToolUse(_) | ThreadEntry::TBenchRun(_) | ThreadEntry::TBenchEvent(_) => {
+            ThreadEntry::ToolUse(_) | ThreadEntry::TBenchRun(_) | ThreadEntry::TBenchEvent(_) | ThreadEntry::TestGenMessage(_) => {
                 // These don't use MessageView, handled separately
                 // Return a placeholder that won't be used
                 MessageView::assistant("", cx)
@@ -280,6 +287,22 @@ impl Render for ThreadView {
                     }
                     ThreadEntry::TBenchEvent(event) => {
                         TBenchEventView::from_entry(event).into_any_element()
+                    }
+                    ThreadEntry::TestGenMessage(msg) => {
+                        // Render TestGen messages with Berkeley Mono font
+                        div()
+                            .px(px(16.0))
+                            .py(px(8.0))
+                            .border_b_1()
+                            .border_color(border::SUBTLE)
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(text::SECONDARY)
+                                    .font_family(FONT_FAMILY)
+                                    .child(msg.message.clone())
+                            )
+                            .into_any_element()
                     }
                 }
             } else {

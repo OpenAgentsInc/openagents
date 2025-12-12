@@ -20,6 +20,7 @@ path = "src/lib.rs"
 # Local crates
 acp = { path = "../acp" }
 claude_agent_sdk = { path = "../claude_agent_sdk" }
+fm-bridge = { path = "../fm-bridge" }
 gpui = { path = "../gpui" }
 gpui_tokio = { path = "../gpui_tokio" }
 harbor = { path = "../harbor" }

@@ -48,6 +48,8 @@ pub enum ThreadEntry {
     TBenchRun(TBenchRunEntry),
     /// TB2 stream event entry
     TBenchEvent(TBenchStreamEntry),
+    /// TestGen message entry
+    TestGenMessage(TestGenMessageEntry),
 }
 
 /// TB2 run header entry - shown when a TB2 run starts
@@ -82,6 +84,15 @@ pub struct TBenchStreamEntry {
     pub run_id: String,
     /// The stream event from harbor
     pub event: StreamEvent,
+}
+
+/// TestGen message entry - messages from TestGen runs
+#[derive(Clone, Debug)]
+pub struct TestGenMessageEntry {
+    /// Run ID this message belongs to
+    pub run_id: String,
+    /// Message content
+    pub message: String,
 }
 
 /// User message.
@@ -305,6 +316,17 @@ impl SdkThread {
                 }
             }
         }
+    }
+
+    /// Add a TestGen message to the thread
+    pub fn add_testgen_message(&mut self, run_id: &str, message: &str, cx: &mut Context<Self>) {
+        self.entries.push(ThreadEntry::TestGenMessage(TestGenMessageEntry {
+            run_id: run_id.to_string(),
+            message: message.to_string(),
+        }));
+        let idx = self.entries.len() - 1;
+        cx.emit(SdkThreadEvent::EntryAdded(idx));
+        cx.notify();
     }
 
     /// Send a user message.
