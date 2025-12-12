@@ -12,6 +12,7 @@ use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
 use crate::panels::{DockerRunner, GymPanel, GymPanelEvent, TB2RunnerEvent};
+use crate::panels::docker_runner::DockerError;
 use crate::sdk_thread::{SdkThread, TBenchRunEntry};
 use crate::ui::thread_view::ThreadView;
 
@@ -225,16 +226,41 @@ impl MechaCoderScreen {
 
                     // Create oneshot channel for abort (needs Tokio reactor)
                     let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                    log::info!("TB2: Created abort channel");
 
-                    // Create a fresh Docker runner for this async task
-                    let docker_runner = DockerRunner::new();
+                    // Spawn the actual Docker work on Tokio's executor to ensure proper reactor context
+                    let docker_work = tokio::task::spawn(async move {
+                        // Create a fresh Docker runner for this async task
+                        let docker_runner = DockerRunner::new();
+                        log::info!("TB2: Created DockerRunner (in tokio::task::spawn)");
 
-                    // Run Docker container
-                    let _run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                        // Run Docker container
+                        log::info!("TB2: About to call run_claude");
+                        let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                        log::info!("TB2: run_claude completed: {:?}", run_result.is_ok());
 
-                    // Clean up abort channel
+                        run_result
+                    });
+
+                    // Wait for Docker work to complete
+                    let result = match docker_work.await {
+                        Ok(run_result) => {
+                            log::info!("TB2: Docker work joined successfully");
+                            run_result
+                        }
+                        Err(join_err) => {
+                            log::error!("TB2: Docker work join error: {}", join_err);
+                            Err(DockerError::ExecutionFailed(format!("Task join error: {}", join_err)))
+                        }
+                    };
+
+                    // Clean up
                     drop(abort_tx);
+
+                    result
                 });
+
+                log::info!("TB2: Tokio task spawned successfully");
 
                 // Spawn GPUI task to process events and update UI
                 let run_id_for_events = run_id.clone();
