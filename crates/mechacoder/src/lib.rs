@@ -10,6 +10,7 @@ use settings::Settings;
 
 pub mod actions;
 pub mod app_menus;
+pub mod panels;
 pub mod screen;
 pub mod sdk_thread;
 pub mod ui;

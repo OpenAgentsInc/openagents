@@ -6673,6 +6673,7 @@ dependencies = [
  "smol",
  "telemetry",
  "tempfile",
+ "terminalbench",
  "testgen",
  "theme_oa",
  "thiserror 1.0.69",
@@ -9111,6 +9112,7 @@ dependencies = [
  "futures 0.3.31",
  "gpui",
  "gpui_tokio",
+ "harbor",
  "language",
  "log",
  "markdown",
@@ -9121,6 +9123,7 @@ dependencies = [
  "settings",
  "similar",
  "telemetry",
+ "terminalbench",
  "theme",
  "theme_oa",
  "tokio",
@@ -15316,6 +15319,18 @@ dependencies = [
  "util",
  "workspace",
  "zed_actions",
+]
+
+[[package]]
+name = "terminalbench"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "directories",
+ "harbor",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

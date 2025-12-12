@@ -9,6 +9,7 @@ theme_oa = { path = "../theme_oa" }
 atif = { path = "../atif" }
 atif-store = { path = "../atif-store" }
 testgen = { path = "../testgen" }
+terminalbench = { path = "../terminalbench" }
 fm-bridge = { path = "../fm-bridge" }
 hillclimber = { path = "../hillclimber" }
 claude_agent_sdk = { path = "../claude_agent_sdk" }

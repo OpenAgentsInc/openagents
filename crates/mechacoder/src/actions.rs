@@ -26,6 +26,7 @@ actions!(
         // Navigation
         ToggleThreadHistory,
         ToggleTerminalPanel,
+        ToggleGymPanel,
         FocusMessageInput,
         // Mode/Model
         SelectMode,

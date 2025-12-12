@@ -9,6 +9,7 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
+use crate::panels::GymPanel;
 use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
 
@@ -26,6 +27,10 @@ pub struct MechaCoderScreen {
     error_message: Option<String>,
     /// Whether we need to focus the input on next render.
     needs_focus: bool,
+    /// Gym panel entity.
+    gym_panel: Entity<GymPanel>,
+    /// Whether gym panel is visible.
+    gym_panel_visible: bool,
 }
 
 /// Connection status.
@@ -45,6 +50,9 @@ impl MechaCoderScreen {
         // Default to current directory
         let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
+        // Create gym panel
+        let gym_panel = cx.new(|cx| GymPanel::new(cx));
+
         let mut screen = Self {
             focus_handle,
             project_root,
@@ -52,6 +60,8 @@ impl MechaCoderScreen {
             connection_status: ConnectionStatus::Connecting,
             error_message: None,
             needs_focus: false,
+            gym_panel,
+            gym_panel_visible: false,
         };
 
         // Auto-connect immediately
@@ -88,6 +98,12 @@ impl MechaCoderScreen {
     /// Handle the Quit action.
     fn quit(&mut self, _: &Quit, _window: &mut Window, cx: &mut Context<Self>) {
         cx.quit();
+    }
+
+    /// Toggle the gym panel visibility.
+    fn toggle_gym_panel(&mut self, _: &ToggleGymPanel, _window: &mut Window, cx: &mut Context<Self>) {
+        self.gym_panel_visible = !self.gym_panel_visible;
+        cx.notify();
     }
 
     /// Render the connecting state with disabled input.
@@ -231,6 +247,9 @@ impl Render for MechaCoderScreen {
             }
         }
 
+        let gym_panel_visible = self.gym_panel_visible;
+        let gym_panel = self.gym_panel.clone();
+
         div()
             .id("mechacoder-root")
             .key_context("MechaCoder")
@@ -240,10 +259,33 @@ impl Render for MechaCoderScreen {
             .font_family(FONT_FAMILY)
             .text_color(text::PRIMARY)
             .on_action(cx.listener(Self::quit))
-            .child(match &self.connection_status {
-                ConnectionStatus::Connecting => self.render_connecting().into_any_element(),
-                ConnectionStatus::Connected => self.render_connected().into_any_element(),
-                ConnectionStatus::Error(_) => self.render_error(cx).into_any_element(),
+            .on_action(cx.listener(Self::toggle_gym_panel))
+            .flex()
+            .flex_row()
+            // Main content area
+            .child(
+                div()
+                    .flex_1()
+                    .h_full()
+                    .overflow_hidden()
+                    .child(match &self.connection_status {
+                        ConnectionStatus::Connecting => self.render_connecting().into_any_element(),
+                        ConnectionStatus::Connected => self.render_connected().into_any_element(),
+                        ConnectionStatus::Error(_) => self.render_error(cx).into_any_element(),
+                    })
+            )
+            // Right panel (Gym) - 320px wide when visible
+            .when(gym_panel_visible, |el| {
+                el.child(
+                    div()
+                        .w(px(320.0))
+                        .h_full()
+                        .border_l_1()
+                        .border_color(border::DEFAULT)
+                        .bg(bg::SURFACE)
+                        .overflow_hidden()
+                        .child(gym_panel)
+                )
             })
     }
 }
