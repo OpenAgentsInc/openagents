@@ -215,9 +215,6 @@ impl MechaCoderScreen {
                 let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
                 log::info!("TB2: Event channel created");
 
-                let run_id_clone = run_id.clone();
-                let gym_panel_clone = self.gym_panel.clone();
-
                 // Spawn Docker work directly using std::thread to completely bypass GPUI's Tokio wrapper
                 log::info!("TB2: About to spawn std::thread for Docker work");
 
@@ -249,13 +246,54 @@ impl MechaCoderScreen {
 
                         // Run Docker container
                         log::info!("TB2: About to call run_claude");
-                        let result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
-                        log::info!("TB2: run_claude completed: {:?}", result.is_ok());
+                        let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                        log::info!("TB2: run_claude completed: {:?}", run_result.is_ok());
 
                         // Clean up
                         drop(abort_tx);
 
-                        result
+                        // Run verification (NOW HAS REACTOR ACCESS)
+                        let verification_result = if run_result.is_ok() {
+                            use crate::panels::TB2Verifier;
+                            let verifier = TB2Verifier::new();
+
+                            log::info!("TB2: Running verification");
+                            match verifier.run_tests(&config.task, &config.workspace_dir, &config.logs_dir).await {
+                                Ok(result) => {
+                                    log::info!(
+                                        "TB2: Verification complete - passed: {}, reward: {}, tests: {}/{}",
+                                        result.passed,
+                                        result.reward,
+                                        result.tests_passed,
+                                        result.tests_total
+                                    );
+                                    Some(result)
+                                }
+                                Err(e) => {
+                                    log::error!("TB2: Verification error: {}", e);
+                                    None
+                                }
+                            }
+                        } else {
+                            log::info!("TB2: Skipping verification (run_claude failed)");
+                            None
+                        };
+
+                        // Send completion event with verification results
+                        use crate::panels::docker_runner::DockerEvent;
+                        let (run_result_ok, run_error) = match run_result {
+                            Ok(result) => (Some(result), None),
+                            Err(e) => (None, Some(e.to_string())),
+                        };
+
+                        let _ = event_tx.send(DockerEvent::RunComplete {
+                            run_result: run_result_ok,
+                            run_error,
+                            verification: verification_result,
+                        });
+
+                        log::info!("TB2: Sent RunComplete event");
+                        Ok::<(), ()>(())
                     });
 
                     log::info!("TB2: Spawned task on worker thread, blocking on completion");
@@ -272,8 +310,17 @@ impl MechaCoderScreen {
                 let sdk_thread = self.sdk_thread.clone();
 
                 cx.spawn(async move |_this, cx| {
+                    // Track final results from RunComplete event
+                    let mut final_turns = 0u32;
+                    let mut final_cost = None;
+                    let mut final_success = false;
+                    let mut final_error = None;
+
                     // Process events from Docker
                     while let Some(docker_event) = event_rx.recv().await {
+                        // Check if this is the completion event
+                        let is_complete = matches!(&docker_event, crate::panels::docker_runner::DockerEvent::RunComplete { .. });
+
                         let tb2_events = TB2RunnerEvent::from_docker_event(run_id_for_events.clone(), docker_event);
 
                         for tb2_event in tb2_events {
@@ -286,59 +333,55 @@ impl MechaCoderScreen {
                                 }
                             }
 
+                            // Extract final results from RunComplete event
+                            if let TB2RunnerEvent::RunComplete {
+                                turns,
+                                cost_usd,
+                                success,
+                                verification_passed,
+                                verification_reward,
+                                error,
+                                ..
+                            } = &tb2_event {
+                                final_turns = *turns;
+                                final_cost = Some(*cost_usd);
+                                final_success = *success && *verification_passed;
+                                final_error = if !verification_passed {
+                                    Some(format!("Verification failed. Reward: {}", verification_reward))
+                                } else {
+                                    error.clone()
+                                };
+
+                                log::info!(
+                                    "TB2 verification: {} - Reward: {}",
+                                    if *verification_passed { "PASS" } else { "FAIL" },
+                                    verification_reward
+                                );
+                            }
+
                             // Update gym panel
                             let _ = gym_panel.update(cx, |panel, cx| {
                                 panel.handle_tb2_runner_event(&tb2_event, cx);
                             });
                         }
+
+                        // Break if this was the completion event
+                        if is_complete {
+                            break;
+                        }
                     }
 
-                    // Run TB2 verification after Docker completes
-                    use crate::panels::TB2Verifier;
-                    let verifier = TB2Verifier::new();
-                    let verification = verifier.run_tests(
-                        &tb2_task,
-                        &workspace_dir,
-                        &logs_dir,
-                    ).await;
-
-                    // Determine final status
-                    let (final_success, verification_error) = match &verification {
-                        Ok(result) if result.passed => (true, None),
-                        Ok(result) => (
-                            false,
-                            Some(format!("Tests failed: {}/{} passed. Reward: {}",
-                                result.tests_passed,
-                                result.tests_total,
-                                result.reward))
-                        ),
-                        Err(e) => {
-                            log::error!("Verification error: {}", e);
-                            (false, Some(format!("Verification failed: {}", e)))
-                        }
-                    };
-
-                    // Update gym panel with completion
-                    let _ = gym_panel_clone.update(cx, |panel, cx| {
+                    // Update gym panel with final completion
+                    let _ = gym_panel.update(cx, |panel, cx| {
                         panel.handle_tb2_complete(
-                            &run_id_clone,
+                            &run_id_for_events,
                             final_success,
-                            0, // turns - we don't track this from events
-                            None, // cost - we don't track this from events
-                            verification_error,
+                            final_turns,
+                            final_cost,
+                            final_error,
                             cx,
                         );
                     });
-
-                    if let Ok(ref verification) = verification {
-                        log::info!(
-                            "TB2 verification: {} - {}/{} tests passed, reward: {}",
-                            if verification.passed { "PASS" } else { "FAIL" },
-                            verification.tests_passed,
-                            verification.tests_total,
-                            verification.reward
-                        );
-                    }
                 }).detach();
             }
             GymPanelEvent::StartTestGenRun { run_id, task, model } => {
