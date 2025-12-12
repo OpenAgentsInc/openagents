@@ -264,7 +264,7 @@ impl MechaCoderScreen {
                             .flex_1()
                             .px(px(12.0))
                             .py(px(8.0))
-                            .rounded(px(4.0))
+                            
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(border::DEFAULT)
@@ -315,7 +315,7 @@ impl MechaCoderScreen {
                     div()
                         .px(px(16.0))
                         .py(px(8.0))
-                        .rounded(px(4.0))
+                        
                         .bg(bg::CARD)
                         .border_1()
                         .border_color(border::DEFAULT)
