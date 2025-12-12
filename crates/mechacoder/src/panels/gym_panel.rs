@@ -319,7 +319,7 @@ impl GymPanel {
                 div()
                     .px(px(8.0))
                     .py(px(6.0))
-                    .rounded(px(4.0))
+                    
                     .bg(bg::CARD)
                     .border_1()
                     .border_color(border::DEFAULT)
@@ -390,7 +390,7 @@ impl GymPanel {
                             .id("model-selector-trigger")
                             .px(px(8.0))
                             .py(px(6.0))
-                            .rounded(px(4.0))
+                            
                             .bg(bg::CARD)
                             .border_1()
                             .border_color(if is_open { border::FOCUS } else { border::DEFAULT })
@@ -428,7 +428,7 @@ impl GymPanel {
                                     .left_0()
                                     .right_0()
                                     .py(px(4.0))
-                                    .rounded(px(4.0))
+                                    
                                     .border_1()
                                     .border_color(border::DEFAULT)
                                     .bg(bg::ELEVATED)

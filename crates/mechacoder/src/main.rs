@@ -46,7 +46,8 @@ fn main() {
             KeyBinding::new("escape", mechacoder::CancelGeneration, None),
             // Focus
             KeyBinding::new("cmd-l", mechacoder::FocusMessageInput, None),
-            KeyBinding::new("tab", mechacoder::FocusMessageInput, Some("MechaCoder")),
+            KeyBinding::new("ctrl-l", mechacoder::FocusMessageInput, None), // Linux
+            KeyBinding::new("tab", mechacoder::FocusMessageInput, None),
             // Panels
             KeyBinding::new("cmd-g", mechacoder::ToggleGymPanel, None),
             KeyBinding::new("ctrl-g", mechacoder::ToggleGymPanel, None), // Linux
