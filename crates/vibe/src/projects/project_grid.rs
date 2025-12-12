@@ -1,7 +1,6 @@
 //! Project grid component - Grid of project cards with search and filters
 
 use gpui::*;
-use gpui::prelude::*;
 use theme_oa::{bg, border, text, FONT_FAMILY};
 
 use crate::types::ProjectsTabState;

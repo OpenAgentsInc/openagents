@@ -331,7 +331,7 @@ fn render_breakdown(title: &str, data: &[(String, u64)]) -> impl IntoElement {
                 .child(title),
         )
         .children(data.iter().map(|(name, value)| {
-            let percent = if total > 0 { (*value as f32 / total as f32 * 100.0) } else { 0.0 };
+            let percent = if total > 0 { *value as f32 / total as f32 * 100.0 } else { 0.0 };
             div()
                 .w_full()
                 .flex()

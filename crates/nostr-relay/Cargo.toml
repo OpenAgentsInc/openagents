@@ -17,7 +17,7 @@ path = "src/lib.rs"
 nostr = { path = "../nostr" }
 
 # WebSocket
-async-tungstenite = { workspace = true, features = ["tokio-runtime", "tokio-native-tls"] }
+async-tungstenite = { workspace = true, features = ["tokio-runtime", "tokio-rustls-manual-roots"] }
 futures.workspace = true
 futures-lite.workspace = true
 

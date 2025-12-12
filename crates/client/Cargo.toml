@@ -17,7 +17,7 @@ test-support = ["clock/test-support", "collections/test-support", "gpui/test-sup
 
 [dependencies]
 anyhow.workspace = true
-async-tungstenite = { workspace = true, features = ["tokio", "tokio-rustls-manual-roots"] }
+async-tungstenite = { workspace = true, features = ["tokio-runtime", "tokio-rustls-manual-roots"] }
 base64.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clock.workspace = true
@@ -53,7 +53,7 @@ text.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tiny_http.workspace = true
-tokio-socks = { version = "0.5.2", default-features = false, features = ["futures-io"] }
+tokio-socks = { version = "0.5.2" }
 tokio.workspace = true
 url.workspace = true
 util.workspace = true

@@ -4,7 +4,7 @@ use gpui::*;
 use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
-use crate::types::{EditorTab, FileType};
+use crate::types::EditorTab;
 
 /// Render the code editor with tabs and content
 pub fn render_code_editor(tabs: &[EditorTab], content: &str) -> impl IntoElement {
@@ -212,7 +212,7 @@ fn render_editor_tab(tab: &EditorTab) -> impl IntoElement {
                 div()
                     .w(px(6.0))
                     .h(px(6.0))
-                    .rounded_full()
+                    
                     .bg(status::WARNING),
             )
         })
@@ -278,7 +278,7 @@ fn tokenize_line(content: &str) -> Vec<(String, TokenType)> {
     let mut current = String::new();
     let mut in_string = false;
     let mut string_char = '"';
-    let mut in_comment = false;
+    let in_comment = false;
 
     for (i, c) in content.chars().enumerate() {
         // Check for comment start

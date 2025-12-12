@@ -1,6 +1,7 @@
 /// Stub engine that passes audio through without denoising
 /// (ONNX models are not included in this build)
 
+#[allow(dead_code)]
 pub const BLOCK_LEN: usize = 512;
 pub const BLOCK_SHIFT: usize = 128;
 

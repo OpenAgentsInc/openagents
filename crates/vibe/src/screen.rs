@@ -3,7 +3,6 @@
 //! Orchestrates all Vibe components: projects, editor, database, deploy.
 
 use gpui::*;
-use gpui::prelude::*;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 
 use crate::types::*;
@@ -239,7 +238,7 @@ impl VibeScreen {
                                 div()
                                     .w(px(6.0))
                                     .h(px(6.0))
-                                    .rounded_full()
+                                    
                                     .bg(status::SUCCESS),
                             )
                             .child(

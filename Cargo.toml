@@ -507,7 +507,7 @@ async-recursion = "1.0.0"
 async-tar = "0.5.1"
 async-task = "4.7"
 async-trait = "0.1"
-async-tungstenite = "0.31.0"
+async-tungstenite = { version = "0.32.0", default-features = false }
 async_zip = { version = "0.0.18", features = ["deflate", "deflate64"] }
 aws-config = { version = "1.6.1", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.2.2", features = ["hardcoded-credentials"] }

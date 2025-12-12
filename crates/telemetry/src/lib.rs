@@ -203,3 +203,119 @@ pub use layers::otel::OtelLayer;
 pub fn shutdown_otel() {
     layers::otel::OtelLayer::shutdown();
 }
+
+// =============================================================================
+// Client telemetry event system
+// =============================================================================
+
+use futures::channel::mpsc;
+use std::sync::OnceLock;
+use parking_lot::Mutex;
+
+pub use telemetry_events::FlexibleEvent;
+
+// Re-export serde_json for use in event! macro
+pub use serde_json;
+
+/// Global event sender for client telemetry
+static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::UnboundedSender<FlexibleEvent>>>> = OnceLock::new();
+
+/// Initialize the telemetry event system with a channel sender.
+///
+/// Events sent via `event!` macro will be forwarded to this channel.
+/// The receiver should be processed by the Telemetry struct in the client crate.
+pub fn init(tx: mpsc::UnboundedSender<FlexibleEvent>) {
+    let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
+    *sender.lock() = Some(tx);
+}
+
+/// Send an event through the telemetry channel.
+///
+/// Returns true if the event was sent, false if no sender is configured.
+#[doc(hidden)]
+pub fn send_event(event: FlexibleEvent) -> bool {
+    if let Some(sender) = EVENT_SENDER.get() {
+        if let Some(tx) = sender.lock().as_ref() {
+            return tx.unbounded_send(event).is_ok();
+        }
+    }
+    // Fall back to tracing if no sender configured
+    tracing::info!(
+        target: "telemetry::event",
+        event_type = %event.event_type,
+        properties = ?event.event_properties,
+        "telemetry event"
+    );
+    false
+}
+
+/// Log a telemetry event with the given type and properties.
+///
+/// Events are sent through the channel configured via `init()`, or logged
+/// via tracing if no channel is configured.
+///
+/// # Example
+///
+/// ```ignore
+/// telemetry::event!("App Closed");
+/// telemetry::event!("Editor Edited", duration = 1000, environment = "local");
+/// let ext = "rs";
+/// telemetry::event!("File Opened", ext); // shorthand for ext = ext
+/// ```
+#[macro_export]
+macro_rules! event {
+    // Base case: just event type
+    ($event_type:expr $(,)?) => {{
+        let event = $crate::FlexibleEvent {
+            event_type: $event_type.to_string(),
+            event_properties: std::collections::HashMap::new(),
+        };
+        $crate::send_event(event);
+    }};
+    // With properties - delegate to helper
+    ($event_type:expr, $($rest:tt)+) => {{
+        let mut properties = std::collections::HashMap::new();
+        $crate::event_props!(@insert properties; $($rest)+);
+        let event = $crate::FlexibleEvent {
+            event_type: $event_type.to_string(),
+            event_properties: properties,
+        };
+        $crate::send_event(event);
+    }};
+}
+
+/// Helper macro for event property insertion (supports both `key = value` and `key` shorthand)
+#[macro_export]
+#[doc(hidden)]
+macro_rules! event_props {
+    // key = value form followed by more
+    (@insert $props:ident; $key:ident = $value:expr, $($rest:tt)+) => {
+        $props.insert(
+            stringify!($key).to_string(),
+            $crate::serde_json::to_value(&$value).unwrap_or($crate::serde_json::Value::Null),
+        );
+        $crate::event_props!(@insert $props; $($rest)+);
+    };
+    // key = value form - terminal
+    (@insert $props:ident; $key:ident = $value:expr $(,)?) => {
+        $props.insert(
+            stringify!($key).to_string(),
+            $crate::serde_json::to_value(&$value).unwrap_or($crate::serde_json::Value::Null),
+        );
+    };
+    // shorthand form followed by more
+    (@insert $props:ident; $key:ident, $($rest:tt)+) => {
+        $props.insert(
+            stringify!($key).to_string(),
+            $crate::serde_json::to_value(&$key).unwrap_or($crate::serde_json::Value::Null),
+        );
+        $crate::event_props!(@insert $props; $($rest)+);
+    };
+    // shorthand form - terminal (with optional trailing comma)
+    (@insert $props:ident; $key:ident $(,)?) => {
+        $props.insert(
+            stringify!($key).to_string(),
+            $crate::serde_json::to_value(&$key).unwrap_or($crate::serde_json::Value::Null),
+        );
+    };
+}

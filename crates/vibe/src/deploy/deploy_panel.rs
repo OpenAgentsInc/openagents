@@ -8,7 +8,7 @@ use crate::types::{Deployment, DeploymentStatus};
 
 /// Render the deploy panel with deployment history and controls
 pub fn render_deploy_panel(deployments: &[Deployment]) -> impl IntoElement {
-    let latest = deployments.first();
+    let _latest = deployments.first();
     let live_deploy = deployments.iter().find(|d| d.status == DeploymentStatus::Live);
 
     div()
@@ -48,7 +48,7 @@ pub fn render_deploy_panel(deployments: &[Deployment]) -> impl IntoElement {
                                     div()
                                         .w(px(8.0))
                                         .h(px(8.0))
-                                        .rounded_full()
+                                        
                                         .bg(status::SUCCESS),
                                 )
                                 .child(

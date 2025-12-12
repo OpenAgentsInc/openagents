@@ -2,7 +2,7 @@
 //!
 //! Defines the native menu bar structure for macOS and other platforms.
 
-use gpui::{Menu, MenuItem, OsAction, SystemMenuType};
+use gpui::{Menu, MenuItem, OsAction};
 
 use crate::actions::*;
 use ui_oa::text_input;

@@ -281,7 +281,7 @@ impl CCHillClimberRunner {
 
         // Track state
         let mut turn = 0u32;
-        let mut best_progress = 0.0f64;
+        let best_progress = 0.0f64;
         let mut _output_buffer = String::new();
         let mut passed = false;
         let mut error_message: Option<String> = None;

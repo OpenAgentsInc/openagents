@@ -113,7 +113,7 @@ impl GeminiProvider {
                                 });
                             }
                         }
-                        ContentPart::ToolUse { id, name, input } => {
+                        ContentPart::ToolUse { id: _, name, input } => {
                             parts.push(GeminiPart::FunctionCall {
                                 function_call: GeminiFunctionCall {
                                     name: name.clone(),
@@ -201,7 +201,7 @@ impl GeminiProvider {
     }
 
     /// Parse error response
-    fn parse_error(&self, status: reqwest::StatusCode, body: &str) -> LlmError {
+    fn parse_error(&self, _status: reqwest::StatusCode, body: &str) -> LlmError {
         if let Ok(error_response) = serde_json::from_str::<GeminiErrorResponse>(body) {
             let msg = error_response.error.message;
             let code = error_response.error.code;

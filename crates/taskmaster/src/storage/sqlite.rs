@@ -328,6 +328,7 @@ impl IssueRepository for SqliteRepository {
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now_str.clone())];
         let mut param_idx = 2;
 
+        #[allow(unused_macros)]
         macro_rules! add_update {
             ($field:expr, $val:expr, $col:expr) => {
                 if let Some(v) = $val {
@@ -684,7 +685,7 @@ impl IssueRepository for SqliteRepository {
         Ok(self.list(filter)?.len())
     }
 
-    fn search(&self, query: &str, filter: IssueFilter) -> Result<Vec<Issue>> {
+    fn search(&self, query: &str, _filter: IssueFilter) -> Result<Vec<Issue>> {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(

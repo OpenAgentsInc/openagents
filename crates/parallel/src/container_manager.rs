@@ -102,6 +102,7 @@ pub struct ContainerManager {
     /// Base directory for temporary workspaces
     workspace_base: PathBuf,
     /// Default image to use
+    #[allow(dead_code)]
     default_image: String,
     /// Credential mount (shared across all containers)
     credential_mount: Option<CredentialMount>,
