@@ -12,7 +12,6 @@ use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
 use crate::panels::{DockerRunner, GymPanel, GymPanelEvent, TB2RunnerEvent};
-use crate::panels::docker_runner::DockerError;
 use crate::sdk_thread::{SdkThread, TBenchRunEntry};
 use crate::ui::thread_view::ThreadView;
 
@@ -219,55 +218,45 @@ impl MechaCoderScreen {
                 let run_id_clone = run_id.clone();
                 let gym_panel_clone = self.gym_panel.clone();
 
-                // Spawn Docker work on Tokio runtime
-                log::info!("TB2: About to spawn Tokio task");
-                let _ = Tokio::spawn(cx, async move {
-                    log::info!("TB2: Inside Tokio::spawn");
+                // Spawn Docker work directly using std::thread to completely bypass GPUI's Tokio wrapper
+                log::info!("TB2: About to spawn std::thread for Docker work");
 
-                    // Use spawn_blocking to ensure we have a proper Tokio context
-                    let result = tokio::task::spawn_blocking(move || {
-                        log::info!("TB2: Inside spawn_blocking");
+                std::thread::spawn(move || {
+                    log::info!("TB2: Inside std::thread");
 
-                        // Create a new Tokio runtime for this blocking task
-                        let rt = tokio::runtime::Builder::new_current_thread()
-                            .enable_all()
-                            .build()
-                            .expect("Failed to create Tokio runtime");
+                    // Create a dedicated Tokio runtime for Docker operations
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("Failed to create Tokio runtime");
 
-                        log::info!("TB2: Created local Tokio runtime");
+                    log::info!("TB2: Created Tokio runtime in std::thread");
 
-                        // Run Docker work on this runtime
-                        rt.block_on(async {
-                            // Create oneshot channel for abort
-                            let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
-                            log::info!("TB2: Created abort channel");
+                    // Run all Docker work on this runtime
+                    rt.block_on(async {
+                        log::info!("TB2: Inside runtime.block_on");
 
-                            // Create Docker runner
-                            let docker_runner = DockerRunner::new();
-                            log::info!("TB2: Created DockerRunner");
+                        // Create oneshot channel for abort
+                        let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                        log::info!("TB2: Created abort channel");
 
-                            // Run Docker container
-                            log::info!("TB2: About to call run_claude");
-                            let result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
-                            log::info!("TB2: run_claude completed: {:?}", result.is_ok());
+                        // Create Docker runner
+                        let docker_runner = DockerRunner::new();
+                        log::info!("TB2: Created DockerRunner");
 
-                            // Clean up
-                            drop(abort_tx);
+                        // Run Docker container
+                        log::info!("TB2: About to call run_claude");
+                        let result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                        log::info!("TB2: run_claude completed: {:?}", result.is_ok());
 
-                            result
-                        })
-                    }).await;
+                        // Clean up
+                        drop(abort_tx);
 
-                    match result {
-                        Ok(docker_result) => docker_result,
-                        Err(join_err) => {
-                            log::error!("TB2: spawn_blocking join error: {}", join_err);
-                            Err(DockerError::ExecutionFailed(format!("Blocking task failed: {}", join_err)))
-                        }
-                    }
+                        result
+                    })
                 });
 
-                log::info!("TB2: Tokio task spawned successfully");
+                log::info!("TB2: std::thread spawned successfully");
 
                 // Spawn GPUI task to process events and update UI
                 let run_id_for_events = run_id.clone();
