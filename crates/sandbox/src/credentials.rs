@@ -24,15 +24,14 @@ const CONTAINER_DIR: &str = "/root/.claude";
 
 /// Extract raw credentials JSON from Linux filesystem.
 ///
-/// Reads Claude Code OAuth credentials from ~/.config/claude/.credentials.json.
+/// Reads Claude Code OAuth credentials from ~/.claude/.credentials.json.
 /// Returns the raw JSON string containing the credentials.
 async fn extract_credentials_from_linux_fs() -> CredentialResult<String> {
     let home_dir = std::env::var("HOME")
         .map_err(|_| CredentialError::not_found("HOME environment variable not set"))?;
 
     let config_path = PathBuf::from(&home_dir)
-        .join(".config")
-        .join("claude")
+        .join(".claude")
         .join(".credentials.json");
 
     if !config_path.exists() {
