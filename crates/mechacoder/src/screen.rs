@@ -4,17 +4,14 @@ use gpui::{
     div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window,
 };
-use gpui_tokio::Tokio;
-use harbor::StreamEvent;
 use std::path::PathBuf;
 use terminalbench::TBRunStatus;
 use theme_oa::{bg, border, text, FONT_FAMILY};
-use tokio::sync::mpsc;
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
 use crate::panels::{GymPanel, GymPanelEvent, TBenchRunner, TBenchRunnerEvent, TBRunOptions};
-use crate::sdk_thread::{SdkThread, TBenchRunEntry, TBenchStreamEntry, ThreadEntry};
+use crate::sdk_thread::{SdkThread, TBenchRunEntry, TBenchStreamEntry};
 use crate::ui::thread_view::ThreadView;
 
 /// Main screen for MechaCoder.
@@ -178,7 +175,7 @@ impl MechaCoderScreen {
                             TBenchRunnerEvent::StreamEvent(stream_event) => {
                                 // Add to thread
                                 if let Some(sdk_thread) = &sdk_thread {
-                                    let _ = sdk_thread.update(&cx, |thread, cx| {
+                                    let _ = sdk_thread.update(cx, |thread, cx| {
                                         thread.add_tbench_stream_entry(TBenchStreamEntry {
                                             run_id: run_id.clone(),
                                             event: stream_event.clone(),
@@ -187,13 +184,13 @@ impl MechaCoderScreen {
                                 }
 
                                 // Update gym panel
-                                let _ = gym_panel.update(&cx, |panel, cx| {
+                                let _ = gym_panel.update(cx, |panel, cx| {
                                     panel.handle_tb2_event(&run_id, stream_event, cx);
                                 });
                             }
                             TBenchRunnerEvent::RunComplete { run_id, success, turns, cost, error } => {
                                 // Update gym panel
-                                let _ = gym_panel.update(&cx, |panel, cx| {
+                                let _ = gym_panel.update(cx, |panel, cx| {
                                     panel.handle_tb2_complete(
                                         run_id,
                                         *success,
@@ -353,11 +350,14 @@ impl Focusable for MechaCoderScreen {
 impl Render for MechaCoderScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Focus the message input when we just connected
+        // Defer focus to next frame so elements are in the tree
         if self.needs_focus {
             self.needs_focus = false;
             if let Some(thread_view) = &self.thread_view {
                 let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
-                focus_handle.focus(window);
+                cx.defer(|_, window, _cx| {
+                    focus_handle.focus(window);
+                });
             }
         }
 
