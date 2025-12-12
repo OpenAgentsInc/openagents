@@ -120,8 +120,17 @@ impl MechaCoderScreen {
     }
 
     /// Toggle the gym panel visibility.
-    fn toggle_gym_panel(&mut self, _: &ToggleGymPanel, _window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_gym_panel(&mut self, _: &ToggleGymPanel, window: &mut Window, cx: &mut Context<Self>) {
         self.gym_panel_visible = !self.gym_panel_visible;
+
+        // When closing the panel, refocus the message input so keybindings keep working
+        if !self.gym_panel_visible {
+            if let Some(thread_view) = &self.thread_view {
+                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+                focus_handle.focus(window);
+            }
+        }
+
         cx.notify();
     }
 
