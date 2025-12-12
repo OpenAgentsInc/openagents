@@ -14,13 +14,13 @@ path = "src/lib.rs"
 
 [dependencies]
 # BIP39 mnemonic handling (same as spark-sdk)
-bip39 = "2.2.0"
+bip39 = { version = "2.2.0", optional = true }
 
 # BIP32 derivation and secp256k1 (same as spark-sdk)
-bitcoin = { version = "0.32.6", features = ["serde"] }
+bitcoin = { version = "0.32.6", features = ["serde"], optional = true }
 
 # Bech32 encoding for nsec/npub (same as spark-sdk)
-bech32 = "0.11.0"
+bech32 = { version = "0.11.0", optional = true }
 
 # Error handling
 thiserror.workspace = true
@@ -36,6 +36,13 @@ serde_json.workspace = true
 sha2 = { workspace = true }
 
 # Random number generation (for key generation)
-rand.workspace = true
+rand = { workspace = true, optional = true }
+
+[features]
+default = ["full"]
+# Full crypto support (key generation, signing)
+full = ["bip39", "bitcoin", "bech32", "rand"]
+# Minimal - just Event type and serialization (for WASM/relay)
+minimal = []
 
 [dev-dependencies]
