@@ -51,6 +51,9 @@ impl TaskLoader {
     pub fn new() -> Self {
         let mut search_paths = vec![];
 
+        // Find workspace root by looking for Cargo.toml with workspace members
+        let workspace_root = Self::find_workspace_root();
+
         // Add common task suite locations
         if let Ok(cwd) = std::env::current_dir() {
             // Primary location: docs/tb-tasks
@@ -58,6 +61,12 @@ impl TaskLoader {
             // Also check legacy locations
             search_paths.push(cwd.join("tasks"));
             search_paths.push(cwd.join("suites"));
+        }
+
+        // If we found a workspace root, add that too
+        if let Some(root) = workspace_root {
+            search_paths.push(root.join("docs/tb-tasks"));
+            search_paths.push(root.join("tasks"));
         }
 
         // Add relative to exe location
@@ -69,6 +78,29 @@ impl TaskLoader {
             }
 
         Self { search_paths }
+    }
+
+    /// Find the workspace root by walking up directories looking for a workspace Cargo.toml
+    fn find_workspace_root() -> Option<PathBuf> {
+        let mut current = std::env::current_dir().ok()?;
+
+        // Walk up to 5 levels looking for workspace root
+        for _ in 0..5 {
+            let cargo_toml = current.join("Cargo.toml");
+            if cargo_toml.exists() {
+                // Check if it's a workspace (contains [workspace])
+                if let Ok(content) = fs::read_to_string(&cargo_toml) {
+                    if content.contains("[workspace]") {
+                        return Some(current);
+                    }
+                }
+            }
+
+            // Try parent directory
+            current = current.parent()?.to_path_buf();
+        }
+
+        None
     }
 
     /// Create with specific search paths
@@ -85,9 +117,7 @@ impl TaskLoader {
     pub fn list_available_suites(&self) -> Vec<PathBuf> {
         let mut suites = vec![];
 
-        eprintln!("[TaskLoader] Searching for task suites in {} paths:", self.search_paths.len());
         for search_path in &self.search_paths {
-            eprintln!("  - Checking: {}", search_path.display());
             if let Ok(entries) = fs::read_dir(search_path) {
                 for entry in entries.filter_map(|e| e.ok()) {
                     let path = entry.path();
@@ -95,17 +125,13 @@ impl TaskLoader {
                         // Quick check if it looks like a suite file
                         if let Ok(content) = fs::read_to_string(&path)
                             && content.contains("\"tasks\"") {
-                                eprintln!("    ✓ Found suite: {}", path.display());
                                 suites.push(path);
                             }
                     }
                 }
-            } else {
-                eprintln!("    ✗ Path not accessible");
             }
         }
 
-        eprintln!("[TaskLoader] Found {} task suite(s)", suites.len());
         suites
     }
 
