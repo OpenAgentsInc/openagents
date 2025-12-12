@@ -12,6 +12,7 @@ use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
 use super::message_view::{MessageView, SimpleMessageView};
+use super::tbench_view::{TBenchEventView, TBenchRunView};
 use super::todo_panel_view::render_todo_panel;
 use super::tool_call_view::ToolCallView;
 
@@ -119,8 +120,8 @@ impl ThreadView {
             ThreadEntry::AssistantMessage(msg) => {
                 MessageView::assistant(&msg.content, cx)
             }
-            ThreadEntry::ToolUse(_) => {
-                // Tool uses don't use MessageView, handled separately
+            ThreadEntry::ToolUse(_) | ThreadEntry::TBenchRun(_) | ThreadEntry::TBenchEvent(_) => {
+                // These don't use MessageView, handled separately
                 // Return a placeholder that won't be used
                 MessageView::assistant("", cx)
             }
@@ -183,29 +184,24 @@ impl ThreadView {
         None::<gpui::Empty>
     }
 
-    /// Render the status bar.
+    /// Render the status indicator (bottom left corner).
     fn render_status(&self, cx: &App) -> impl IntoElement {
         let status = self.thread.read(cx).status();
 
         div()
-            .px(px(16.0))
-            .py(px(8.0))
-            .border_t_1()
-            .border_color(border::DEFAULT)
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
+            .absolute()
+            .bottom(px(8.0))
+            .left(px(12.0))
+            .text_sm()
+            .text_color(text::SECONDARY)
             .child(
-                div().text_sm().text_color(text::SECONDARY).child(
-                    match status {
-                        ThreadStatus::Idle => "Ready",
-                        ThreadStatus::Streaming => "Claude is typing...",
-                        ThreadStatus::Completed => "Done",
-                        ThreadStatus::Error(_) => "Error",
-                    }
-                    .to_string(),
-                ),
+                match status {
+                    ThreadStatus::Idle => "Ready",
+                    ThreadStatus::Streaming => "Claude is typing...",
+                    ThreadStatus::Completed => "Done",
+                    ThreadStatus::Error(_) => "Error",
+                }
+                .to_string(),
             )
     }
 
@@ -278,6 +274,12 @@ impl Render for ThreadView {
                     ThreadEntry::ToolUse(tu) => {
                         ToolCallView::from_tool_use(tu).into_any_element()
                     }
+                    ThreadEntry::TBenchRun(run) => {
+                        TBenchRunView::from_entry(run).into_any_element()
+                    }
+                    ThreadEntry::TBenchEvent(event) => {
+                        TBenchEventView::from_entry(event).into_any_element()
+                    }
                 }
             } else {
                 div().into_any_element()
@@ -313,6 +315,7 @@ impl Render for ThreadView {
 
         div()
             .size_full()
+            .relative()
             .flex()
             .flex_col()
             .items_center()
@@ -371,12 +374,7 @@ impl Render for ThreadView {
                             .into_any_element()
                     }),
             )
-            // Status bar
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(768.0))
-                    .child(self.render_status(cx))
-            )
+            // Status indicator (bottom left corner)
+            .child(self.render_status(cx))
     }
 }

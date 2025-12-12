@@ -2,10 +2,10 @@
 
 use gpui::{
     div, px, App, AppContext, Context, Entity, IntoElement, ParentElement, Refineable, Render,
-    Styled, TextStyle, TextStyleRefinement, UnderlineStyle, Window,
+    SharedString, Styled, TextStyle, TextStyleRefinement, UnderlineStyle, Window,
 };
 use markdown::{Markdown, MarkdownElement, MarkdownStyle};
-use theme_oa::{bg, border, text};
+use theme_oa::{bg, border, text, FONT_FAMILY};
 
 /// Message view for displaying a single message with markdown.
 pub struct MessageView {
@@ -58,6 +58,7 @@ impl MessageView {
         let link_color = gpui::hsla(210.0 / 360.0, 0.8, 0.6, 1.0); // Blue link color
 
         let mut text_style = TextStyle::default();
+        text_style.font_family = SharedString::from(FONT_FAMILY);
         text_style.refine(&TextStyleRefinement {
             color: Some(text::PRIMARY),
             ..Default::default()
@@ -104,21 +105,6 @@ impl Render for MessageView {
         div()
             .px(px(16.0))
             .py(px(12.0))
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            // Role label
-            .child(
-                div()
-                    .text_sm()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(if is_user {
-                        text::PRIMARY
-                    } else {
-                        text::SECONDARY
-                    })
-                    .child(if is_user { "You" } else { "Claude" }),
-            )
             // Message content with markdown
             .child(
                 div()
@@ -169,21 +155,7 @@ impl IntoElement for SimpleMessageView {
         div()
             .px(px(16.0))
             .py(px(12.0))
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            // Role label
-            .child(
-                div()
-                    .text_sm()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(if is_user {
-                        text::PRIMARY
-                    } else {
-                        text::SECONDARY
-                    })
-                    .child(if is_user { "You" } else { "Claude" }),
-            )
+            .font_family(FONT_FAMILY)
             // Message content
             .child(
                 div()
