@@ -1,13 +1,17 @@
-//! Docker Runner - Executes Claude Code in TB2 containers
+//! Docker Runner - Executes Claude Code in TB2 containers via SDK
 //!
-//! This module handles running Claude Code CLI inside Docker containers
-//! that match the Terminal-Bench 2 evaluation environment.
+//! This module uses the claude-agent-sdk to run Claude Code on the host,
+//! with the workspace mounted to TB2 Docker containers for verification.
 
 use crate::panels::testgen_wrapper::TestGenWrapper;
 use crate::panels::verifier::VerificationResult;
+use claude_agent_sdk::{
+    query, AllowAllPermissions, ExecutableConfig, QueryOptions, SdkMessage,
+};
+use futures::StreamExt;
 use sandbox::{cleanup_credential_mount, create_credential_mount, ContainerBackend, ContainerConfig, DockerBackend};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use terminalbench::TB2Task;
@@ -266,16 +270,15 @@ impl DockerRunner {
         env
     }
 
-    /// Build the Claude command
+    /// Build arguments for running Claude CLI on host
     ///
     /// Wraps the instruction with TestGen protocol, requiring Claude to
     /// DESCRIBE → WRITE TESTS → ITERATE before submitting a solution.
-    fn build_claude_command(&self, instruction: &str, max_turns: u32) -> Vec<String> {
+    fn build_claude_args(&self, instruction: &str, max_turns: u32) -> Vec<String> {
         let allowed_tools = ALLOWED_TOOLS.join(",");
 
         // Wrap instruction with TestGen protocol
         let wrapped_instruction = TestGenWrapper::wrap_instruction(instruction);
-        let escaped_instruction = wrapped_instruction.replace("'", "'\\''");
 
         tracing::debug!(
             target: "mechacoder::docker",
@@ -283,17 +286,16 @@ impl DockerRunner {
         );
 
         vec![
-            "bash".to_string(),
-            "-c".to_string(),
-            format!(
-                "claude --verbose --output-format stream-json \
-                 --dangerously-skip-permissions \
-                 -p '{}' \
-                 --allowedTools {} \
-                 --max-turns {} \
-                 2>&1 | tee /logs/agent/claude-code.txt",
-                escaped_instruction, allowed_tools, max_turns
-            ),
+            "--verbose".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--dangerously-skip-permissions".to_string(),
+            "-p".to_string(),
+            wrapped_instruction,
+            "--allowedTools".to_string(),
+            allowed_tools,
+            "--max-turns".to_string(),
+            max_turns.to_string(),
         ]
     }
 
@@ -344,46 +346,33 @@ impl DockerRunner {
             }
         };
 
-        // Build environment
-        let env = self.build_env(config);
+        // Build Claude arguments for running on host
+        let claude_args = self.build_claude_args(&config.task.instruction, config.max_turns);
 
-        // Build command
-        let command = self.build_claude_command(&config.task.instruction, config.max_turns);
+        // Build environment for Claude CLI
+        let mut claude_env = self.build_env(config);
 
-        // Build container config
-        let timeout_sec = config.task.agent_timeout_sec() as u64;
-        let mut container_config = ContainerConfig::new(image, &config.workspace_dir)
-            .workdir("/app")
-            .memory_limit(config.task.memory_limit())
-            .cpu_limit(config.task.cpu_limit() as f32)
-            .envs(env)
-            .timeout(Duration::from_secs(timeout_sec));
-
-        // Mount Claude CLI credentials if available
-        if let Some(ref cred_mount) = credential_mount {
-            container_config = container_config.volume_mount(cred_mount.volume_mount.clone());
-        }
-
-        // Mount logs
-        container_config = container_config.volume_mount(format!("{}:/logs", config.logs_dir.display()));
-
-        // Mount tests from TB2 task
-        container_config = container_config.volume_mount(format!(
-            "{}:/tests:ro",
-            config.task.tests_dir.display()
-        ));
+        // Set config dir for session logs
+        let claude_config_dir = config.logs_dir.join("agent").join("sessions");
+        claude_env.insert("CLAUDE_CONFIG_DIR".to_string(), claude_config_dir.display().to_string());
 
         tracing::info!(
             target: "mechacoder::docker",
-            image,
-            timeout_sec,
             max_turns = config.max_turns,
-            "Starting Claude in container"
+            workspace = %config.workspace_dir.display(),
+            "Starting Claude on host"
         );
 
-        // Run with streaming output
+        // Run Claude on host with streaming output
         let result = self
-            .run_with_streaming(container_config, command, event_tx.clone(), &mut abort_rx)
+            .run_claude_on_host(
+                claude_args,
+                claude_env,
+                &config.workspace_dir,
+                &config.logs_dir,
+                event_tx.clone(),
+                &mut abort_rx
+            )
             .await;
 
         // Clean up credential mount if it was created
@@ -411,6 +400,145 @@ impl DockerRunner {
                 Err(e)
             }
         }
+    }
+
+    /// Run Claude CLI on host with streaming output
+    async fn run_claude_on_host(
+        &self,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+        workspace_dir: &Path,
+        logs_dir: &Path,
+        event_tx: mpsc::UnboundedSender<DockerEvent>,
+        abort_rx: &mut tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<DockerRunResult, DockerError> {
+        // Create log file path
+        let log_file = logs_dir.join("agent").join("claude-code.txt");
+
+        tracing::debug!(
+            target: "mechacoder::docker",
+            claude_path = "claude",
+            workspace = %workspace_dir.display(),
+            "Spawning Claude CLI on host"
+        );
+
+        // Spawn Claude CLI process
+        let mut child = Command::new("claude")
+            .args(&args)
+            .current_dir(workspace_dir)
+            .envs(env)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| DockerError::StartFailed(format!("Failed to spawn Claude CLI: {}", e)))?;
+
+        let _ = event_tx.send(DockerEvent::ContainerStarted {
+            container_id: "host-claude".to_string(),
+        });
+
+        // Stream stdout
+        let stdout = child.stdout.take().expect("stdout captured");
+        let mut reader = BufReader::new(stdout).lines();
+
+        let mut result = DockerRunResult::default();
+        let mut current_turn = 0u32;
+        let mut output_lines = Vec::new();
+
+        // Process output with abort handling
+        let timeout = Duration::from_secs(3600); // 1 hour default
+
+        let process_result = tokio::time::timeout(timeout, async {
+            loop {
+                tokio::select! {
+                    _ = &mut *abort_rx => {
+                        tracing::info!(
+                            target: "mechacoder::docker",
+                            "Abort signal received, killing Claude"
+                        );
+                        let _ = child.kill().await;
+                        return Err(DockerError::ExecutionFailed("Aborted".to_string()));
+                    }
+                    line_result = reader.next_line() => {
+                        match line_result {
+                            Ok(Some(line)) => {
+                                output_lines.push(line.clone());
+
+                                // Send raw output
+                                let _ = event_tx.send(DockerEvent::ClaudeOutput {
+                                    line: line.clone(),
+                                });
+
+                                // Try to parse JSON events
+                                if let Some(event) = parse_claude_output(&line, &mut current_turn) {
+                                    let _ = event_tx.send(event);
+                                }
+
+                                // Track metrics from result events
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                                    if json.get("type").and_then(|v| v.as_str()) == Some("result") {
+                                        result.turns = json.get("num_turns")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0) as u32;
+                                        result.cost_usd = json.get("total_cost_usd")
+                                            .and_then(|v| v.as_f64())
+                                            .unwrap_or(0.0);
+                                        let subtype = json.get("subtype")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        result.success = subtype == "success";
+                                    }
+                                }
+                            }
+                            Ok(None) => break, // EOF
+                            Err(e) => {
+                                tracing::warn!(
+                                    target: "mechacoder::docker",
+                                    error = %e,
+                                    "Error reading stdout"
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }).await;
+
+        // Handle timeout
+        if process_result.is_err() {
+            tracing::warn!(
+                target: "mechacoder::docker",
+                "Claude timed out, killing"
+            );
+            let _ = child.kill().await;
+            return Err(DockerError::Timeout(timeout.as_secs()));
+        }
+
+        // Wait for process to complete
+        let status = child.wait().await?;
+        result.exit_code = status.code().unwrap_or(-1);
+
+        // Write output to log file
+        if let Err(e) = fs::write(&log_file, output_lines.join("\n")).await {
+            tracing::warn!(
+                target: "mechacoder::docker",
+                error = %e,
+                "Failed to write Claude output log"
+            );
+        }
+
+        tracing::info!(
+            target: "mechacoder::docker",
+            exit_code = result.exit_code,
+            turns = result.turns,
+            cost = result.cost_usd,
+            success = result.success,
+            "Claude finished"
+        );
+
+        Ok(result)
     }
 
     /// Run container with streaming output
