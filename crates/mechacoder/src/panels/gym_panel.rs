@@ -7,12 +7,37 @@
 //! - Recent runs history
 
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, FocusHandle, Focusable,
+    div, prelude::*, px, App, Context, ElementId, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
+use harbor::StreamEvent;
 use theme_oa::{bg, border, status, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
-use terminalbench::{TBTask, TBRunSummary, TBRunStatus, TBRunOutcome, TaskLoader, TBModelOption};
+use terminalbench::{TBTask, TBRunSummary, TBRunOutcome, TaskLoader, TBModelOption};
+
+/// Events emitted by GymPanel
+#[derive(Clone, Debug)]
+pub enum GymPanelEvent {
+    /// Start a TB2 run
+    StartTB2Run {
+        run_id: String,
+        task: TBTask,
+        model: TBModelOption,
+    },
+    /// TB2 stream event received
+    TB2StreamEvent {
+        run_id: String,
+        event: StreamEvent,
+    },
+    /// TB2 run completed
+    TB2RunComplete {
+        run_id: String,
+        success: bool,
+        turns: u32,
+        cost: Option<f64>,
+        error: Option<String>,
+    },
+}
 
 /// Gym panel component
 pub struct GymPanel {
@@ -30,6 +55,8 @@ pub struct GymPanel {
     active_run: Option<ActiveRunState>,
     /// Selected model
     selected_model: TBModelOption,
+    /// Whether model dropdown is open
+    model_dropdown_open: bool,
 }
 
 /// Active run state
@@ -59,7 +86,8 @@ impl GymPanel {
             selected_task_idx: selected_idx,
             recent_runs: vec![],
             active_run: None,
-            selected_model: TBModelOption::ClaudeSonnet,
+            selected_model: TBModelOption::ClaudeSonnet45,
+            model_dropdown_open: false,
         }
     }
 
@@ -92,21 +120,140 @@ impl GymPanel {
         }
     }
 
-    /// Cycle to next model
-    pub fn cycle_model(&mut self, cx: &mut Context<Self>) {
-        self.selected_model = match self.selected_model {
-            TBModelOption::ClaudeSonnet => TBModelOption::ClaudeHaiku,
-            TBModelOption::ClaudeHaiku => TBModelOption::Gpt4o,
-            TBModelOption::Gpt4o => TBModelOption::Gpt4oMini,
-            TBModelOption::Gpt4oMini => TBModelOption::AppleFM,
-            TBModelOption::AppleFM => TBModelOption::ClaudeSonnet,
-        };
+    /// Toggle the model dropdown
+    pub fn toggle_model_dropdown(&mut self, cx: &mut Context<Self>) {
+        self.model_dropdown_open = !self.model_dropdown_open;
+        cx.notify();
+    }
+
+    /// Select a specific model
+    pub fn select_model(&mut self, model: TBModelOption, cx: &mut Context<Self>) {
+        self.selected_model = model;
+        self.model_dropdown_open = false;
         cx.notify();
     }
 
     /// Check if a run is active
     pub fn is_running(&self) -> bool {
         self.active_run.is_some()
+    }
+
+    /// Start a TB2 run for the selected task
+    pub fn start_tb2_run(&mut self, cx: &mut Context<Self>) {
+        if self.is_running() {
+            log::warn!("Already running a task");
+            return;
+        }
+
+        let task = match self.selected_task() {
+            Some(t) => t.clone(),
+            None => {
+                log::warn!("No task selected");
+                return;
+            }
+        };
+
+        let run_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let model = self.selected_model;
+
+        // Update active run state
+        self.active_run = Some(ActiveRunState {
+            run_id: run_id.clone(),
+            task_id: task.id.clone(),
+            task_name: task.name.clone(),
+            turns: 0,
+            max_turns: task.max_turns,
+        });
+
+        log::info!("Starting TB2 run: {} ({})", task.id, run_id);
+
+        // Emit event to start the run
+        cx.emit(GymPanelEvent::StartTB2Run {
+            run_id,
+            task,
+            model,
+        });
+
+        cx.notify();
+    }
+
+    /// Handle a TB2 stream event
+    pub fn handle_tb2_event(&mut self, run_id: &str, event: &StreamEvent, cx: &mut Context<Self>) {
+        // Only process if this is our active run
+        if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id) {
+            return;
+        }
+
+        // Update turns from assistant events
+        if let StreamEvent::Assistant { turn, .. } = event {
+            if let Some(ref mut run) = self.active_run {
+                run.turns = *turn;
+            }
+        }
+
+        // Forward the event
+        cx.emit(GymPanelEvent::TB2StreamEvent {
+            run_id: run_id.to_string(),
+            event: event.clone(),
+        });
+
+        cx.notify();
+    }
+
+    /// Handle TB2 run completion
+    pub fn handle_tb2_complete(
+        &mut self,
+        run_id: &str,
+        success: bool,
+        turns: u32,
+        cost: Option<f64>,
+        error: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        // Only process if this is our active run
+        if self.active_run.as_ref().map(|r| r.run_id.as_str()) != Some(run_id) {
+            return;
+        }
+
+        // Get task info before clearing active run
+        let (task_id, task_name) = self.active_run.as_ref()
+            .map(|r| (r.task_id.clone(), r.task_name.clone()))
+            .unwrap_or_default();
+
+        // Clear active run
+        self.active_run = None;
+
+        // Add to recent runs
+        let summary = TBRunSummary {
+            id: run_id.to_string(),
+            task_id,
+            task_name,
+            status: terminalbench::TBRunStatus::Completed,
+            outcome: Some(if success {
+                TBRunOutcome::Success
+            } else if error.is_some() {
+                TBRunOutcome::Error
+            } else {
+                TBRunOutcome::Failure
+            }),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            finished_at: Some(chrono::Utc::now().to_rfc3339()),
+            duration_ms: None,
+            steps_count: turns,
+            tokens_used: None,
+        };
+        self.recent_runs.insert(0, summary);
+
+        // Emit completion event
+        cx.emit(GymPanelEvent::TB2RunComplete {
+            run_id: run_id.to_string(),
+            success,
+            turns,
+            cost,
+            error,
+        });
+
+        cx.notify();
     }
 
     /// Reload tasks
@@ -119,7 +266,14 @@ impl GymPanel {
     }
 
     /// Render the header
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_header(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        // Use Ctrl on Linux, Cmd on macOS
+        let close_hint = if cfg!(target_os = "macos") {
+            "[Cmd+G to close]"
+        } else {
+            "[Ctrl+G to close]"
+        };
+
         div()
             .flex()
             .flex_row()
@@ -142,7 +296,7 @@ impl GymPanel {
                 div()
                     .text_xs()
                     .text_color(text::MUTED)
-                    .child("[Cmd+G to close]")
+                    .child(close_hint)
             )
     }
 
@@ -204,6 +358,16 @@ impl GymPanel {
 
     /// Render the model selector
     fn render_model_selector(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_open = self.model_dropdown_open;
+        let all_models = [
+            TBModelOption::ClaudeSonnet45,
+            TBModelOption::ClaudeHaiku45,
+            TBModelOption::ClaudeOpus45,
+            TBModelOption::Gpt4o,
+            TBModelOption::Gpt4oMini,
+            TBModelOption::AppleFM,
+        ];
+
         div()
             .px(px(12.0))
             .py(px(8.0))
@@ -219,35 +383,79 @@ impl GymPanel {
             )
             .child(
                 div()
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .rounded(px(4.0))
-                    .bg(bg::CARD)
-                    .border_1()
-                    .border_color(border::DEFAULT)
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.cycle_model(cx);
-                    }))
+                    .relative()
+                    // Trigger button
                     .child(
                         div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
+                            .id("model-selector-trigger")
+                            .px(px(8.0))
+                            .py(px(6.0))
+                            .rounded(px(4.0))
+                            .bg(bg::CARD)
+                            .border_1()
+                            .border_color(if is_open { border::FOCUS } else { border::DEFAULT })
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_model_dropdown(cx);
+                            }))
                             .child(
                                 div()
-                                    .text_sm()
-                                    .text_color(text::PRIMARY)
-                                    .child(self.selected_model.label())
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(text::MUTED)
-                                    .child("v")
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(text::PRIMARY)
+                                            .child(self.selected_model.label())
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(text::MUTED)
+                                            .child(if is_open { "▲" } else { "▼" })
+                                    )
                             )
                     )
+                    // Dropdown options (when open)
+                    .when(is_open, |el| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .top(px(36.0))
+                                .left_0()
+                                .right_0()
+                                .py(px(4.0))
+                                .rounded(px(4.0))
+                                .border_1()
+                                .border_color(border::DEFAULT)
+                                .bg(bg::ELEVATED)
+                                .children(all_models.iter().map(|model| {
+                                    let model = *model;
+                                    let is_selected = self.selected_model == model;
+                                    div()
+                                        .id(ElementId::Name(model.id().into()))
+                                        .px(px(8.0))
+                                        .py(px(6.0))
+                                        .text_sm()
+                                        .cursor_pointer()
+                                        .when(is_selected, |el| {
+                                            el.bg(bg::HOVER)
+                                                .text_color(text::PRIMARY)
+                                                .font_weight(gpui::FontWeight::MEDIUM)
+                                        })
+                                        .when(!is_selected, |el| {
+                                            el.text_color(text::SECONDARY)
+                                                .hover(|s| s.bg(bg::HOVER))
+                                        })
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.select_model(model, cx);
+                                        }))
+                                        .child(model.label())
+                                }))
+                        )
+                    })
             )
     }
 
@@ -279,15 +487,14 @@ impl GymPanel {
                             .variant(ButtonVariant::Default)
                             .disabled(!has_task || is_running)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                // TODO: Start TB2 run
-                                log::info!("Run TB2 clicked");
+                                this.start_tb2_run(cx);
                             }))
                     )
                     .child(
                         Button::new("TestGen")
                             .variant(ButtonVariant::Secondary)
                             .disabled(!has_task || is_running)
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|_this, _, _, _cx| {
                                 // TODO: Start TestGen run
                                 log::info!("TestGen clicked");
                             }))
@@ -414,6 +621,8 @@ impl GymPanel {
             })
     }
 }
+
+impl EventEmitter<GymPanelEvent> for GymPanel {}
 
 impl Focusable for GymPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
