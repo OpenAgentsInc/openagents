@@ -209,9 +209,9 @@ impl MechaCoderScreen {
         self.connection_status = ConnectionStatus::Connected;
         self.needs_focus = true;
 
-        // Note: Models and account info are fetched from SystemInit message
-        // during the first query, not separately. This avoids spawning queries
-        // outside of an active user session.
+        // Note: Models and account info will be populated from SystemInit message
+        // when the user sends their first message. This avoids spawning queries
+        // outside of an active user session, which would cause runtime errors.
 
         cx.notify();
     }

@@ -440,7 +440,7 @@ impl ClaudePanel {
                                 .border_color(border::DEFAULT)
                                 .text_sm()
                                 .text_color(text::SECONDARY)
-                                .child("Loading models...")
+                                .child("Send a message to load models")
                         )
                 }
             })
