@@ -7,7 +7,6 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc;
-use tracing::{debug, error, trace, warn};
 
 /// Configuration for finding the Claude Code executable.
 #[derive(Debug, Clone)]
