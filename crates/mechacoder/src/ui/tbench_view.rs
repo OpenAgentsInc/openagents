@@ -61,7 +61,7 @@ impl IntoElement for TBenchRunView {
             .bg(bg::CARD)
             .border_1()
             .border_color(border::DEFAULT)
-            .rounded(px(4.0))
+            
             .font_family(FONT_FAMILY)
             // Header row
             .child(
@@ -220,7 +220,7 @@ impl IntoElement for TBenchEventView {
                                 div()
                                     .w(px(8.0))
                                     .h(px(8.0))
-                                    .rounded_full()
+                                    
                                     .bg(status::RUNNING),
                             )
                             .child(

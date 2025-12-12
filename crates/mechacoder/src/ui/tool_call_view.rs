@@ -72,7 +72,7 @@ impl ToolCallView {
             ToolCallContent::Text(text_content) => div()
                 .p(px(8.0))
                 .bg(bg::CODE)
-                .rounded(px(4.0))
+                
                 .text_sm()
                 .text_color(text::PRIMARY)
                 .child(text_content.clone()),
@@ -109,7 +109,7 @@ impl IntoElement for ToolCallView {
                         div()
                             .w(px(8.0))
                             .h(px(8.0))
-                            .rounded_full()
+                            
                             .bg(status_color),
                     )
                     // Title

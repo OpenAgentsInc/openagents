@@ -73,7 +73,7 @@ impl MessageView {
             code_block: gpui::StyleRefinement::default()
                 .px(px(12.0))
                 .py(px(8.0))
-                .rounded(px(4.0))
+                
                 .bg(bg::CODE),
             inline_code: TextStyleRefinement {
                 background_color: Some(bg::CODE),
@@ -117,7 +117,7 @@ impl Render for MessageView {
                     .max_w(px(600.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .rounded(px(4.0))
+                    
                     .bg(if is_user { bg::CARD } else { bg::SURFACE })
                     .border_1()
                     .border_color(border::DEFAULT)
@@ -176,7 +176,7 @@ impl IntoElement for SimpleMessageView {
                 .max_w(px(600.0))
                 .px(px(12.0))
                 .py(px(8.0))
-                .rounded(px(4.0))
+                
                 .bg(if is_user { bg::CARD } else { bg::SURFACE })
                 .border_1()
                 .border_color(border::DEFAULT)
