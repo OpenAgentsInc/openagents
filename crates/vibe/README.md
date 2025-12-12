@@ -245,9 +245,9 @@ crates/vibe-backend/     # Minimal Rust backend framework
 
 ## References
 
-- [OANIX](../oanix/README.md) — Plan 9-inspired agent OS
+- [OANIX](../oanix/README.md) — WANIX and Plan 9-inspired agent OS
+- [WANIX](https://github.com/tractordev/wanix) by Jeff Lindsay — WebAssembly OS inspiration
 - [Plan 9 from Bell Labs](https://9p.io/plan9/)
-- [WANIX](https://github.com/tractordev/wanix) — WebAssembly OS inspiration
 
 ---
 

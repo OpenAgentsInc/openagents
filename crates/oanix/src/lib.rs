@@ -1,6 +1,6 @@
 //! OANIX: OpenAgents Agent Operating Environment
 //!
-//! A Rust-native agent OS inspired by Plan 9 from Bell Labs and WANIX.
+//! A Rust-native agent OS inspired by [WANIX](https://github.com/tractordev/wanix) by Jeff Lindsay and Plan 9 from Bell Labs.
 //!
 //! OANIX provides:
 //! - Plan 9-style namespaces where capabilities are granted by mounting services

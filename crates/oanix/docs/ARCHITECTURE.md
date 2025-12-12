@@ -1,6 +1,6 @@
 # OANIX Architecture
 
-OANIX (OpenAgents Agent Operating Environment) is a Rust-native agent OS inspired by Plan 9 from Bell Labs and WANIX. It provides isolated, composable execution environments for WebAssembly workloads.
+OANIX (OpenAgents Agent Operating Environment) is a Rust-native agent OS inspired by [WANIX](https://github.com/tractordev/wanix) by Jeff Lindsay and Plan 9 from Bell Labs. It provides isolated, composable execution environments for WebAssembly workloads.
 
 ## Core Philosophy
 
