@@ -234,9 +234,10 @@ impl MechaCoderScreen {
 
                     log::info!("TB2: Created multi-thread Tokio runtime in std::thread");
 
-                    // Run all Docker work on this runtime
-                    rt.block_on(async {
-                        log::info!("TB2: Inside runtime.block_on");
+                    // Spawn work on runtime's worker threads (which have reactor access)
+                    // This is critical: block_on runs on current thread, but spawn runs on worker threads
+                    let handle = rt.spawn(async move {
+                        log::info!("TB2: Inside runtime worker task (has reactor access)");
 
                         // Create oneshot channel for abort
                         let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
@@ -255,7 +256,12 @@ impl MechaCoderScreen {
                         drop(abort_tx);
 
                         result
-                    })
+                    });
+
+                    log::info!("TB2: Spawned task on worker thread, blocking on completion");
+
+                    // Block on the spawned task - it runs on worker thread with reactor
+                    rt.block_on(handle).expect("Task panicked")
                 });
 
                 log::info!("TB2: std::thread spawned successfully");
