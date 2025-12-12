@@ -82,6 +82,11 @@ impl TaskmasterError {
         TaskmasterError::DatabaseError(msg.into())
     }
 
+    /// Create a migration error
+    pub fn migration(msg: impl Into<String>) -> Self {
+        TaskmasterError::MigrationError(msg.into())
+    }
+
     /// Check if this is a not found error
     pub fn is_not_found(&self) -> bool {
         matches!(self, TaskmasterError::NotFound(_))

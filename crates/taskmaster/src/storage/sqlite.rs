@@ -90,6 +90,33 @@ impl SqliteRepository {
             tombstoned_at: row.get::<_, Option<String>>("tombstoned_at")?.map(parse_datetime),
             tombstone_ttl_days: row.get::<_, Option<i32>>("tombstone_ttl_days")?.map(|v| v as u32),
             tombstone_reason: row.get("tombstone_reason")?,
+            // Execution context fields (with defaults for V1 schema compatibility)
+            execution_mode: row
+                .get::<_, Option<String>>("execution_mode")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            execution_state: row
+                .get::<_, Option<String>>("execution_state")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            container_id: row.get("container_id").ok().flatten(),
+            agent_id: row.get("agent_id").ok().flatten(),
+            execution_branch: row.get("execution_branch").ok().flatten(),
+            execution_started_at: row
+                .get::<_, Option<String>>("execution_started_at")
+                .ok()
+                .flatten()
+                .map(parse_datetime),
+            execution_finished_at: row
+                .get::<_, Option<String>>("execution_finished_at")
+                .ok()
+                .flatten()
+                .map(parse_datetime),
+            execution_exit_code: row.get("execution_exit_code").ok().flatten(),
             labels: Vec::new(), // Loaded separately
             deps: Vec::new(),   // Loaded separately
         })
@@ -223,6 +250,15 @@ impl IssueRepository for SqliteRepository {
                 Option::<String>::None, // tombstoned_at
                 Option::<i32>::None,    // tombstone_ttl_days
                 Option::<String>::None, // tombstone_reason
+                // Execution context fields (defaults)
+                "none",                 // execution_mode
+                "unscheduled",          // execution_state
+                Option::<String>::None, // container_id
+                Option::<String>::None, // agent_id
+                Option::<String>::None, // execution_branch
+                Option::<String>::None, // execution_started_at
+                Option::<String>::None, // execution_finished_at
+                Option::<i32>::None,    // execution_exit_code
             ],
         )?;
 
@@ -372,6 +408,55 @@ impl IssueRepository for SqliteRepository {
         if let Some(close_reason) = &update.close_reason {
             updates.push(format!("close_reason = ?{}", param_idx));
             params.push(Box::new(close_reason.clone()));
+            param_idx += 1;
+        }
+
+        // Execution context fields
+        if let Some(mode) = update.execution_mode {
+            updates.push(format!("execution_mode = ?{}", param_idx));
+            params.push(Box::new(mode.to_string()));
+            param_idx += 1;
+        }
+
+        if let Some(state) = update.execution_state {
+            updates.push(format!("execution_state = ?{}", param_idx));
+            params.push(Box::new(state.to_string()));
+            param_idx += 1;
+        }
+
+        if let Some(container_id) = &update.container_id {
+            updates.push(format!("container_id = ?{}", param_idx));
+            params.push(Box::new(container_id.clone()));
+            param_idx += 1;
+        }
+
+        if let Some(agent_id) = &update.agent_id {
+            updates.push(format!("agent_id = ?{}", param_idx));
+            params.push(Box::new(agent_id.clone()));
+            param_idx += 1;
+        }
+
+        if let Some(branch) = &update.execution_branch {
+            updates.push(format!("execution_branch = ?{}", param_idx));
+            params.push(Box::new(branch.clone()));
+            param_idx += 1;
+        }
+
+        if let Some(started) = &update.execution_started_at {
+            updates.push(format!("execution_started_at = ?{}", param_idx));
+            params.push(Box::new(started.map(format_datetime)));
+            param_idx += 1;
+        }
+
+        if let Some(finished) = &update.execution_finished_at {
+            updates.push(format!("execution_finished_at = ?{}", param_idx));
+            params.push(Box::new(finished.map(format_datetime)));
+            param_idx += 1;
+        }
+
+        if let Some(exit_code) = &update.execution_exit_code {
+            updates.push(format!("execution_exit_code = ?{}", param_idx));
+            params.push(Box::new(*exit_code));
             let _ = param_idx;
         }
 
@@ -1176,9 +1261,44 @@ impl IssueRepository for SqliteRepository {
     }
 
     fn migrate(&self) -> Result<MigrationResult> {
-        // Schema is created on init, so just return success
+        let conn = self.conn.lock().unwrap();
+
+        // Get current schema version
+        let current_version: Option<u32> = conn
+            .query_row(CHECK_VERSION, [], |row| row.get(0))
+            .optional()?
+            .flatten();
+
+        let mut applied = Vec::new();
+
+        match current_version {
+            None | Some(0) => {
+                // Fresh database, apply V1
+                conn.execute_batch(SCHEMA_V1)?;
+                applied.push("v1_initial".to_string());
+                // Fall through to apply V2
+                conn.execute_batch(SCHEMA_V2)?;
+                applied.push("v2_execution_context".to_string());
+            }
+            Some(1) => {
+                // V1 exists, apply V2 migration
+                conn.execute_batch(SCHEMA_V2)?;
+                applied.push("v2_execution_context".to_string());
+            }
+            Some(v) if v >= SCHEMA_VERSION => {
+                // Already up to date
+            }
+            Some(v) => {
+                // Unknown version
+                return Err(TaskmasterError::migration(format!(
+                    "Unknown schema version: {}",
+                    v
+                )));
+            }
+        }
+
         Ok(MigrationResult {
-            applied: vec!["v1_initial".to_string()],
+            applied,
             current_version: SCHEMA_VERSION,
             success: true,
         })

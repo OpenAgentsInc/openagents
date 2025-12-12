@@ -3,8 +3,8 @@
 //! Implements PAR-001..005: Parallel orchestrator
 
 use crate::{
-    AgentConfig, AgentPool, ParallelError, ParallelResult, PoolStats, TaskCompletion,
-    WorktreeManager,
+    AgentConfig, AgentPool, ContainerAgentConfig, ContainerManager, ParallelError, ParallelResult,
+    PoolStats, TaskCompletion, WorktreeManager,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub struct ParallelConfig {
     pub max_tokens_per_agent: Option<u64>,
     /// Maximum duration in seconds
     pub max_duration_secs: Option<u64>,
-    /// Whether to automatically merge completed work
+    /// Whether to automatically merge completed work (only for worktree mode)
     pub auto_merge: bool,
     /// Whether to use Claude Code (true) or local model (false)
     pub use_claude_code: bool,
@@ -35,6 +35,42 @@ pub struct ParallelConfig {
     pub safe_mode: bool,
     /// Dry run mode - don't execute tools
     pub dry_run: bool,
+
+    // Container execution fields
+
+    /// Use container isolation (default: true)
+    /// When true, each agent runs in an isolated container with a fresh git clone.
+    /// When false, uses legacy worktree approach (shared git object database).
+    #[serde(default = "default_true")]
+    pub use_containers: bool,
+    /// Docker image for agent containers (default: "openagents/agent:latest")
+    #[serde(default = "default_container_image")]
+    pub container_image: String,
+    /// Git remote URL for cloning (required for container mode)
+    #[serde(default)]
+    pub git_remote_url: String,
+    /// Memory limit per container (e.g., "8G")
+    #[serde(default = "default_container_memory")]
+    pub container_memory: Option<String>,
+    /// CPU limit per container
+    #[serde(default = "default_container_cpus")]
+    pub container_cpus: Option<f32>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_container_image() -> String {
+    "openagents/agent:latest".to_string()
+}
+
+fn default_container_memory() -> Option<String> {
+    Some("8G".to_string())
+}
+
+fn default_container_cpus() -> Option<f32> {
+    Some(2.0)
 }
 
 impl Default for ParallelConfig {
@@ -49,6 +85,11 @@ impl Default for ParallelConfig {
             use_claude_code: true,
             safe_mode: false,
             dry_run: false,
+            use_containers: true,
+            container_image: default_container_image(),
+            git_remote_url: String::new(),
+            container_memory: default_container_memory(),
+            container_cpus: default_container_cpus(),
         }
     }
 }
@@ -106,6 +147,14 @@ pub struct AgentResult {
     pub error: Option<String>,
 }
 
+/// Execution backend for parallel agents
+pub enum ExecutionBackend {
+    /// Worktree-based isolation (legacy, shared git object database)
+    Worktree(Arc<RwLock<WorktreeManager>>),
+    /// Container-based isolation (fresh git clone per agent)
+    Container(Arc<RwLock<ContainerManager>>),
+}
+
 /// Parallel orchestrator for running multiple agents
 pub struct ParallelOrchestrator {
     /// Configuration
@@ -113,8 +162,8 @@ pub struct ParallelOrchestrator {
     /// Working directory (main repo)
     #[allow(dead_code)]
     working_dir: PathBuf,
-    /// Worktree manager
-    worktree_manager: Arc<RwLock<WorktreeManager>>,
+    /// Execution backend (worktree or container)
+    backend: ExecutionBackend,
     /// Agent pool
     agent_pool: Arc<AgentPool>,
     /// Task repository
@@ -123,24 +172,25 @@ pub struct ParallelOrchestrator {
     state: Arc<RwLock<ParallelState>>,
     /// Start time
     started_at: Option<DateTime<Utc>>,
-    /// Merged commits
+    /// Merged commits / pushed commits
     merged_commits: Arc<RwLock<Vec<String>>>,
 }
 
 impl ParallelOrchestrator {
-    /// Create a new parallel orchestrator
+    /// Create a new parallel orchestrator with worktree backend (legacy)
     pub fn new(
         config: ParallelConfig,
         working_dir: PathBuf,
         task_repo: Arc<dyn TaskRepository>,
     ) -> ParallelResult<Self> {
         let worktree_manager = WorktreeManager::new(&working_dir)?;
+        let backend = ExecutionBackend::Worktree(Arc::new(RwLock::new(worktree_manager)));
 
         Ok(Self {
             agent_pool: Arc::new(AgentPool::new(config.max_agents)),
             config,
             working_dir,
-            worktree_manager: Arc::new(RwLock::new(worktree_manager)),
+            backend,
             task_repo,
             state: Arc::new(RwLock::new(ParallelState::Idle)),
             started_at: None,
@@ -148,40 +198,125 @@ impl ParallelOrchestrator {
         })
     }
 
-    /// Initialize agents and worktrees
+    /// Create a new parallel orchestrator with container backend
+    ///
+    /// This is the recommended approach for parallel agent execution.
+    /// Each agent gets a fresh git clone in an isolated container.
+    pub async fn new_with_containers(
+        config: ParallelConfig,
+        working_dir: PathBuf,
+        task_repo: Arc<dyn TaskRepository>,
+    ) -> ParallelResult<Self> {
+        if config.git_remote_url.is_empty() {
+            return Err(ParallelError::InvalidConfig(
+                "git_remote_url is required for container mode".to_string(),
+            ));
+        }
+
+        let workspace_base = working_dir.join(".containers");
+        let container_manager =
+            ContainerManager::new(workspace_base, config.container_image.clone()).await?;
+        let backend = ExecutionBackend::Container(Arc::new(RwLock::new(container_manager)));
+
+        Ok(Self {
+            agent_pool: Arc::new(AgentPool::new(config.max_agents)),
+            config,
+            working_dir,
+            backend,
+            task_repo,
+            state: Arc::new(RwLock::new(ParallelState::Idle)),
+            started_at: None,
+            merged_commits: Arc::new(RwLock::new(Vec::new())),
+        })
+    }
+
+    /// Check if using container backend
+    pub fn is_container_mode(&self) -> bool {
+        matches!(self.backend, ExecutionBackend::Container(_))
+    }
+
+    /// Initialize agents and execution environments
     ///
     /// PAR-001: Run multiple agents in parallel
-    /// PAR-010: Create isolated worktrees for each agent
+    /// PAR-010: Create isolated environments for each agent
     pub async fn initialize(&mut self) -> ParallelResult<()> {
         info!(
-            "Initializing parallel orchestrator with {} agents",
-            self.config.max_agents
+            "Initializing parallel orchestrator with {} agents (mode: {})",
+            self.config.max_agents,
+            if self.is_container_mode() {
+                "container"
+            } else {
+                "worktree"
+            }
         );
 
-        let mut wt_manager = self.worktree_manager.write().await;
+        match &self.backend {
+            ExecutionBackend::Worktree(wt_manager) => {
+                let mut manager = wt_manager.write().await;
+                for i in 0..self.config.max_agents {
+                    let agent_id = format!("agent-{}", i);
 
-        for i in 0..self.config.max_agents {
-            let agent_id = format!("agent-{}", i);
+                    // Create worktree for this agent
+                    let worktree = manager.create_worktree(&agent_id)?;
 
-            // Create worktree for this agent
-            let worktree = wt_manager.create_worktree(&agent_id)?;
+                    // Create agent config
+                    let agent_config = AgentConfig {
+                        id: agent_id.clone(),
+                        worktree_path: worktree.path.clone(),
+                        branch: worktree.branch.clone(),
+                        max_tasks: self.config.max_tasks_per_agent,
+                        use_claude_code: self.config.use_claude_code,
+                    };
 
-            // Create agent config
-            let agent_config = AgentConfig {
-                id: agent_id.clone(),
-                worktree_path: worktree.path.clone(),
-                branch: worktree.branch.clone(),
-                max_tasks: self.config.max_tasks_per_agent,
-                use_claude_code: self.config.use_claude_code,
-            };
+                    // Add to pool
+                    self.agent_pool.add_agent(agent_config).await?;
 
-            // Add to pool
-            self.agent_pool.add_agent(agent_config).await?;
+                    info!(
+                        "Created agent {} with worktree at {:?}",
+                        agent_id, worktree.path
+                    );
+                }
+            }
+            ExecutionBackend::Container(container_manager) => {
+                let manager = container_manager.write().await;
+                for i in 0..self.config.max_agents {
+                    let agent_id = format!("agent-{}", i);
 
-            info!(
-                "Created agent {} with worktree at {:?}",
-                agent_id, worktree.path
-            );
+                    // Create container config for this agent
+                    let mut container_config = ContainerAgentConfig::new(
+                        &agent_id,
+                        &self.config.container_image,
+                        &self.config.git_remote_url,
+                    );
+
+                    if let Some(mem) = &self.config.container_memory {
+                        container_config = container_config.memory_limit(mem);
+                    }
+                    if let Some(cpus) = self.config.container_cpus {
+                        container_config = container_config.cpu_limit(cpus);
+                    }
+
+                    // Provision container
+                    manager.provision(container_config.clone()).await?;
+
+                    // Create agent config (for pool tracking)
+                    let agent_config = AgentConfig {
+                        id: agent_id.clone(),
+                        worktree_path: PathBuf::new(), // Not used in container mode
+                        branch: container_config.branch.clone(),
+                        max_tasks: self.config.max_tasks_per_agent,
+                        use_claude_code: self.config.use_claude_code,
+                    };
+
+                    // Add to pool
+                    self.agent_pool.add_agent(agent_config).await?;
+
+                    info!(
+                        "Created agent {} with container (branch: {})",
+                        agent_id, container_config.branch
+                    );
+                }
+            }
         }
 
         Ok(())
@@ -389,64 +524,115 @@ impl ParallelOrchestrator {
         false
     }
 
-    /// Merge all completed agent work
+    /// Merge or push all completed agent work
     ///
-    /// PAR-012: Merge completed work back to main
+    /// PAR-012: Merge completed work back to main (worktree mode)
+    ///          Push to agent branches (container mode)
     async fn merge_all(&self) -> ParallelResult<Vec<AgentResult>> {
-        info!("Merging completed agent work");
+        info!(
+            "{} completed agent work",
+            if self.is_container_mode() {
+                "Pushing"
+            } else {
+                "Merging"
+            }
+        );
 
         let mut results = Vec::new();
         let agent_ids = self.agent_pool.agent_ids().await;
-        let wt_manager = self.worktree_manager.write().await;
         let mut merged_commits = self.merged_commits.write().await;
 
-        for agent_id in agent_ids {
-            let _stats = self.agent_pool.stats().await;
+        match &self.backend {
+            ExecutionBackend::Worktree(wt_manager) => {
+                let manager = wt_manager.write().await;
+                for agent_id in agent_ids {
+                    let mut result = AgentResult {
+                        agent_id: agent_id.clone(),
+                        tasks_completed: 0, // TODO: get per-agent stats
+                        tasks_failed: 0,
+                        tokens_used: 0,
+                        branch: format!("agent/{}", agent_id),
+                        merged: false,
+                        error: None,
+                    };
 
-            let mut result = AgentResult {
-                agent_id: agent_id.clone(),
-                tasks_completed: 0,  // TODO: get per-agent stats
-                tasks_failed: 0,
-                tokens_used: 0,
-                branch: format!("agent/{}", agent_id),
-                merged: false,
-                error: None,
-            };
+                    // Try to merge
+                    let commit_msg = format!("Merge work from agent {}", agent_id);
+                    match manager.merge_to_main(&agent_id, &commit_msg) {
+                        Ok(sha) => {
+                            info!("Merged agent {} (commit {})", agent_id, sha);
+                            result.merged = true;
+                            merged_commits.push(sha);
+                        }
+                        Err(ParallelError::MergeConflict { files }) => {
+                            warn!("Merge conflict for agent {} in {:?}", agent_id, files);
+                            result.error = Some(format!("Merge conflict in: {:?}", files));
+                        }
+                        Err(e) => {
+                            warn!("Failed to merge agent {}: {}", agent_id, e);
+                            result.error = Some(e.to_string());
+                        }
+                    }
 
-            // Try to merge
-            let commit_msg = format!("Merge work from agent {}", agent_id);
-            match wt_manager.merge_to_main(&agent_id, &commit_msg) {
-                Ok(sha) => {
-                    info!("Merged agent {} (commit {})", agent_id, sha);
-                    result.merged = true;
-                    merged_commits.push(sha);
-                }
-                Err(ParallelError::MergeConflict { files }) => {
-                    warn!("Merge conflict for agent {} in {:?}", agent_id, files);
-                    result.error = Some(format!("Merge conflict in: {:?}", files));
-                }
-                Err(e) => {
-                    warn!("Failed to merge agent {}: {}", agent_id, e);
-                    result.error = Some(e.to_string());
+                    results.push(result);
                 }
             }
+            ExecutionBackend::Container(container_manager) => {
+                let manager = container_manager.write().await;
+                for agent_id in agent_ids {
+                    let mut result = AgentResult {
+                        agent_id: agent_id.clone(),
+                        tasks_completed: 0, // TODO: get per-agent stats
+                        tasks_failed: 0,
+                        tokens_used: 0,
+                        branch: format!("agent/{}", agent_id),
+                        merged: false, // In container mode, we push to branches, not merge
+                        error: None,
+                    };
 
-            results.push(result);
+                    // Try to push changes
+                    let commit_msg = format!(
+                        "Agent {} work\n\nGenerated with [OpenAgents](https://openagents.com)\n\nCo-Authored-By: OpenAgents Agent <agent@openagents.com>",
+                        agent_id
+                    );
+                    match manager.push_changes(&agent_id, &commit_msg).await {
+                        Ok(sha) => {
+                            info!("Pushed agent {} work (commit {})", agent_id, sha);
+                            result.merged = true; // Treat push as "merged" for result reporting
+                            merged_commits.push(sha);
+                        }
+                        Err(e) => {
+                            warn!("Failed to push agent {} work: {}", agent_id, e);
+                            result.error = Some(e.to_string());
+                        }
+                    }
+
+                    results.push(result);
+                }
+            }
         }
 
         Ok(results)
     }
 
-    /// Cleanup worktrees and resources
+    /// Cleanup execution environments and resources
     ///
-    /// PAR-011: Manage worktree lifecycle (cleanup)
+    /// PAR-011: Manage environment lifecycle (cleanup)
     async fn cleanup(&self) -> ParallelResult<()> {
         info!("Cleaning up parallel orchestrator");
 
         self.agent_pool.shutdown_all().await;
 
-        let mut wt_manager = self.worktree_manager.write().await;
-        wt_manager.cleanup_all()?;
+        match &self.backend {
+            ExecutionBackend::Worktree(wt_manager) => {
+                let mut manager = wt_manager.write().await;
+                manager.cleanup_all()?;
+            }
+            ExecutionBackend::Container(container_manager) => {
+                let manager = container_manager.write().await;
+                manager.cleanup_all().await?;
+            }
+        }
 
         Ok(())
     }

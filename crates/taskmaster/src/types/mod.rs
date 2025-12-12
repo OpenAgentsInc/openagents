@@ -6,6 +6,7 @@
 mod comment;
 mod dependency;
 mod event;
+mod execution;
 mod filter;
 mod issue;
 mod issue_type;
@@ -20,6 +21,10 @@ pub use dependency::{
     ParseDependencyTypeError,
 };
 pub use event::{EventType, IssueEvent, ParseEventTypeError};
+pub use execution::{
+    ExecutionContext, ExecutionMode, ExecutionState, ParseExecutionModeError,
+    ParseExecutionStateError,
+};
 pub use filter::{
     AssigneeFilter, DuplicateGroup, IssueFilter, LabelCount, LabelExpr, LabelFilter, SortPolicy,
     StaleFilter,

@@ -3,7 +3,7 @@
 //! This module contains all SQL schema definitions, ported from Beads.
 
 /// Current schema version
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Initial schema - creates all tables
 pub const SCHEMA_V1: &str = r#"
@@ -192,6 +192,36 @@ CREATE INDEX IF NOT EXISTS idx_comments_time ON issue_comments(created_at);
 INSERT OR IGNORE INTO _schema_version (version) VALUES (1);
 "#;
 
+/// Schema V2 migration - adds execution context fields for container-based parallel execution
+pub const SCHEMA_V2: &str = r#"
+-- Add execution context columns to issues table
+ALTER TABLE issues ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE issues ADD COLUMN execution_state TEXT NOT NULL DEFAULT 'unscheduled';
+ALTER TABLE issues ADD COLUMN container_id TEXT;
+ALTER TABLE issues ADD COLUMN agent_id TEXT;
+ALTER TABLE issues ADD COLUMN execution_branch TEXT;
+ALTER TABLE issues ADD COLUMN execution_started_at TEXT;
+ALTER TABLE issues ADD COLUMN execution_finished_at TEXT;
+ALTER TABLE issues ADD COLUMN execution_exit_code INTEGER;
+
+-- Index for finding issues by execution state (for container orchestration)
+CREATE INDEX IF NOT EXISTS idx_issues_execution_state ON issues(execution_state);
+
+-- Index for finding issues by agent (for tracking what agents are working on)
+CREATE INDEX IF NOT EXISTS idx_issues_agent_id ON issues(agent_id);
+
+-- Partial index for running containers
+CREATE INDEX IF NOT EXISTS idx_issues_container ON issues(container_id)
+    WHERE container_id IS NOT NULL;
+
+-- Partial index for active executions
+CREATE INDEX IF NOT EXISTS idx_issues_execution_active ON issues(execution_state, agent_id)
+    WHERE execution_state IN ('queued', 'provisioning', 'running');
+
+-- Record schema version
+INSERT OR REPLACE INTO _schema_version (version) VALUES (2);
+"#;
+
 /// SQL to check current schema version
 pub const CHECK_VERSION: &str = "SELECT MAX(version) FROM _schema_version";
 
@@ -202,7 +232,9 @@ SELECT
     status, priority, issue_type, assignee, estimated_minutes,
     compaction_level, close_reason, external_ref, source_repo,
     discovered_from, content_hash, created_at, updated_at, closed_at,
-    tombstoned_at, tombstone_ttl_days, tombstone_reason
+    tombstoned_at, tombstone_ttl_days, tombstone_reason,
+    execution_mode, execution_state, container_id, agent_id,
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
 FROM issues
 WHERE id = ?1 AND status != 'tombstone'
 "#;
@@ -214,7 +246,9 @@ SELECT
     status, priority, issue_type, assignee, estimated_minutes,
     compaction_level, close_reason, external_ref, source_repo,
     discovered_from, content_hash, created_at, updated_at, closed_at,
-    tombstoned_at, tombstone_ttl_days, tombstone_reason
+    tombstoned_at, tombstone_ttl_days, tombstone_reason,
+    execution_mode, execution_state, container_id, agent_id,
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
 FROM issues
 WHERE id = ?1
 "#;
@@ -226,13 +260,17 @@ INSERT INTO issues (
     status, priority, issue_type, assignee, estimated_minutes,
     compaction_level, close_reason, external_ref, source_repo,
     discovered_from, content_hash, created_at, updated_at, closed_at,
-    tombstoned_at, tombstone_ttl_days, tombstone_reason
+    tombstoned_at, tombstone_ttl_days, tombstone_reason,
+    execution_mode, execution_state, container_id, agent_id,
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5, ?6,
     ?7, ?8, ?9, ?10, ?11,
     ?12, ?13, ?14, ?15,
     ?16, ?17, ?18, ?19, ?20,
-    ?21, ?22, ?23
+    ?21, ?22, ?23,
+    ?24, ?25, ?26, ?27,
+    ?28, ?29, ?30, ?31
 )
 "#;
 
@@ -354,7 +392,9 @@ SELECT
     status, priority, issue_type, assignee, estimated_minutes,
     compaction_level, close_reason, external_ref, source_repo,
     discovered_from, content_hash, created_at, updated_at, closed_at,
-    tombstoned_at, tombstone_ttl_days, tombstone_reason
+    tombstoned_at, tombstone_ttl_days, tombstone_reason,
+    execution_mode, execution_state, container_id, agent_id,
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
 FROM issues
 WHERE status = 'open'
 AND id NOT IN (SELECT issue_id FROM blocked_issues)
@@ -400,7 +440,9 @@ SELECT
     status, priority, issue_type, assignee, estimated_minutes,
     compaction_level, close_reason, external_ref, source_repo,
     discovered_from, content_hash, created_at, updated_at, closed_at,
-    tombstoned_at, tombstone_ttl_days, tombstone_reason
+    tombstoned_at, tombstone_ttl_days, tombstone_reason,
+    execution_mode, execution_state, container_id, agent_id,
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
 FROM issues
 WHERE status IN ('open', 'in_progress', 'blocked')
 AND datetime(updated_at) < datetime('now', ?1)

@@ -282,9 +282,9 @@ impl Render for SettingsView {
                                         "Apple on-device (default)"
                                     ))
                                     .child(self.render_model_card(
-                                        TBModelOption::ClaudeSonnet,
-                                        self.execution.model == TBModelOption::ClaudeSonnet,
-                                        "Claude Sonnet",
+                                        TBModelOption::ClaudeSonnet45,
+                                        self.execution.model == TBModelOption::ClaudeSonnet45,
+                                        "Claude Sonnet 4.5",
                                         "Cloud-based"
                                     ))
                             )
