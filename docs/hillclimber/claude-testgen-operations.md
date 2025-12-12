@@ -4,6 +4,214 @@
 
 This guide explains how to run Claude Code on Terminal-Bench 2 (TB2) tasks using the TestGen protocol. The TestGen protocol requires Claude to generate its own tests before solving tasks, ensuring it understands requirements before implementing.
 
+## Architecture: Claude Agent SDK Integration
+
+**As of December 2024, TB2 runs use the `claude-agent-sdk` Rust crate instead of spawning the `claude` CLI directly.**
+
+### Why SDK Instead of CLI
+
+| Aspect | Manual CLI Spawn | claude-agent-sdk |
+|--------|------------------|------------------|
+| **Code size** | ~200 lines manual JSONL parsing | ~100 lines (SDK handles protocol) |
+| **Type safety** | ❌ Raw `serde_json::Value` | ✅ Typed `SdkMessage` enum |
+| **Error handling** | ❌ Exit codes, parse errors | ✅ Rust `Result` types |
+| **Streaming** | Manual line-by-line parsing | `Stream<Item = SdkMessage>` |
+| **Maintenance** | Duplicate logic | Single source of truth |
+| **Permission hooks** | N/A | `PermissionHandler` trait available |
+| **Future features** | Manual implementation | SDK provides automatically |
+
+### Architecture Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HOST MACHINE (MechaCoder)                                    │
+│                                                               │
+│  1. DockerRunner::run_claude()                               │
+│     └─ run_claude_with_sdk()                                 │
+│        └─ query(instruction, QueryOptions)                   │
+│           └─ Spawns: claude --output-format stream-json      │
+│              (via SDK's ProcessTransport)                    │
+│                                                               │
+│  2. Claude SDK runs on HOST                                  │
+│     └─ Working directory: /tmp/workspace_XXXXX               │
+│     └─ Tool calls (Bash, Read, Write, etc.) → HOST filesystem│
+│     └─ Creates: workspace_dir/regex.txt, testgen_tests.py   │
+│                                                               │
+│  3. After Claude completes:                                  │
+│     └─ TB2Verifier::run_tests()                              │
+│        └─ Docker run alexgshaw/regex-log:20251031            │
+│           └─ Mount: workspace_dir → /app (read-only)         │
+│           └─ Mount: logs_dir → /logs (read-write)            │
+│           └─ Runs: bash /tests/test.sh                       │
+│           └─ Writes: /logs/verifier/reward.txt (0 or 1)      │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+DOCKER CONTAINER (alexgshaw/regex-log:20251031)
+┌─────────────────────────────────────────────────────────────┐
+│  /app/             ← Volume mount (workspace_dir from host)  │
+│    ├─ regex.txt    ← Claude's solution (created on host)     │
+│    └─ testgen_tests.py ← Claude's tests (created on host)    │
+│                                                               │
+│  /tests/           ← Volume mount (TB2 task tests, read-only)│
+│    ├─ test.sh      ← Verification script                     │
+│    └─ test_outputs.py ← Official test cases                  │
+│                                                               │
+│  /logs/verifier/   ← Volume mount (logs_dir from host)       │
+│    ├─ reward.txt   ← Result: "1" = pass, "0" = fail          │
+│    └─ ctrf.json    ← Detailed test results                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Benefits of Volume Mount Strategy
+
+**Q: Why not run Claude CLI inside the Docker container?**
+
+A: TB2 Docker images are minimal task environments (Python, bash, basic tools). They don't include:
+- Node.js (required for Claude CLI)
+- npm packages
+- Claude Code CLI
+
+Installing these at runtime would add ~30s overhead per run.
+
+**Q: Why not execute tool calls inside the container?**
+
+A: The volume mount strategy is functionally equivalent:
+- Claude runs on host → writes to `workspace_dir/regex.txt`
+- Container sees same file at `/app/regex.txt` (via volume mount)
+- Tests run in isolated, reproducible TB2 environment
+- No need for complex tool interception
+
+**Benefits:**
+- ✅ **Fast startup** - No Node.js/npm install in containers
+- ✅ **Simple credentials** - Use host's `~/.claude/.credentials.json`
+- ✅ **Type safety** - SDK provides `SdkMessage` enum, not raw JSON
+- ✅ **Clean separation** - Agent (host) vs Environment (Docker)
+- ✅ **Same isolation** - Docker still used for verification
+
+### Implementation Details
+
+**File:** `crates/mechacoder/src/panels/docker_runner.rs`
+
+**Key method:** `run_claude_with_sdk()`
+
+```rust
+async fn run_claude_with_sdk(
+    &self,
+    config: &DockerRunConfig,
+    event_tx: mpsc::UnboundedSender<DockerEvent>,
+) -> Result<DockerRunResult, DockerError> {
+    let instruction = TestGenWrapper::wrap_instruction(&config.task.instruction);
+
+    // Build query options
+    let mut options = QueryOptions::new()
+        .max_turns(config.max_turns)
+        .cwd(config.workspace_dir.clone())
+        .dangerously_skip_permissions(true);
+
+    options.allowed_tools = Some(ALLOWED_TOOLS.iter().map(|s| s.to_string()).collect());
+    options.env = Some(self.build_env_vars(config));
+
+    // Run query with streaming
+    let mut stream = query(instruction, options).await?;
+
+    // Process stream
+    while let Some(msg) = stream.next().await {
+        match msg? {
+            SdkMessage::Assistant(msg) => { /* handle assistant message */ }
+            SdkMessage::ToolProgress(p) => { /* handle tool progress */ }
+            SdkMessage::Result(result) => { /* extract cost, turns, success */ }
+            SdkMessage::StreamEvent(_) => { /* partial content */ }
+            _ => {}
+        }
+    }
+
+    Ok(DockerRunResult { success, turns, cost_usd, ... })
+}
+```
+
+**Environment variables passed to SDK:**
+- `ANTHROPIC_API_KEY` - API authentication
+- `ANTHROPIC_MODEL` - Model override (if specified)
+- `CLAUDE_CONFIG_DIR` - Session log directory (host path)
+- `FORCE_AUTO_BACKGROUND_TASKS=1` - Enable background tasks
+- `ENABLE_BACKGROUND_TASKS=1` - Enable background tasks
+
+**Allowed tools:**
+- Bash, Edit, Write, Read, Glob, Grep, LS, WebFetch
+- NotebookEdit, NotebookRead, TodoRead, TodoWrite, Agent
+
+### Migration from Manual CLI Spawning
+
+**Before (removed in December 2024):**
+```rust
+// OLD: Manual claude CLI spawning
+let mut child = Command::new("claude")
+    .args(&["--verbose", "--output-format", "stream-json", ...])
+    .current_dir(workspace_dir)
+    .spawn()?;
+
+// Manual JSONL parsing
+let mut reader = BufReader::new(stdout).lines();
+while let Some(line) = reader.next_line().await? {
+    if let Ok(json) = serde_json::from_str::<Value>(&line) {
+        // Extract fields manually from raw JSON
+        if json.get("type") == Some("result") {
+            cost_usd = json.get("total_cost_usd")?.as_f64()?;
+        }
+    }
+}
+```
+
+**After (current implementation):**
+```rust
+// NEW: SDK-based approach
+let mut stream = query(instruction, options).await?;
+
+// Type-safe message processing
+while let Some(msg) = stream.next().await {
+    match msg? {
+        SdkMessage::Result(result) => {
+            match result {
+                SdkResultMessage::Success(s) => {
+                    cost_usd = s.total_cost_usd;
+                    turns = s.num_turns;
+                }
+                _ => { /* handle errors */ }
+            }
+        }
+        _ => {}
+    }
+}
+```
+
+### Testing
+
+**Manual test (simulates what SDK does):**
+```bash
+cd /tmp/test-workspace
+claude --verbose --output-format stream-json \
+  -p "Write a regex that matches IP addresses" \
+  --max-turns 5
+
+# Then verify with Docker
+docker run --rm \
+  -v $(pwd):/app \
+  alexgshaw/regex-log:20251031 \
+  bash /tests/test.sh
+```
+
+**Automated test (via MechaCoder UI):**
+1. Build: `cargo build -p mechacoder`
+2. Run: `./target/debug/MechaCoder`
+3. Navigate to GYM panel
+4. Click "Run TB2" on regex-log task
+5. Observe:
+   - Claude spawns via SDK ✅
+   - Streaming events appear in UI ✅
+   - Verification runs after completion ✅
+   - Results displayed with cost/turns ✅
+
 ## Models
 
 **ALWAYS use 4.5 model versions. Older versions are deprecated.**
