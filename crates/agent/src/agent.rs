@@ -1,3 +1,8 @@
+// Core agent types for the OpenAgents ecosystem.
+// This module provides the foundational types for defining, discovering,
+// and executing agents across local, cloud, and swarm compute environments.
+pub mod core;
+
 mod db;
 mod edit_agent;
 mod history_store;
