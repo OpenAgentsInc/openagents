@@ -794,7 +794,7 @@ impl GymPanel {
         if let Some(run) = &self.active_run {
             let progress = run.turns as f32 / run.max_turns as f32;
             let progress_width = (progress * 100.0).min(100.0);
-            let bar_filled = (progress * 10.0) as usize;
+            let bar_filled = ((progress * 10.0) as usize).min(10);  // Cap at 10 to prevent overflow
             let bar_empty = 10 - bar_filled;
             let progress_bar = format!(
                 "[{}{}]",
