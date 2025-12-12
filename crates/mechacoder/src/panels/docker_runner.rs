@@ -243,6 +243,11 @@ impl DockerRunner {
     fn build_env(&self, config: &DockerRunConfig) -> HashMap<String, String> {
         let mut env = HashMap::new();
 
+        // Pass through ANTHROPIC_API_KEY if set
+        if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+            env.insert("ANTHROPIC_API_KEY".to_string(), api_key);
+        }
+
         // Model override
         if let Some(ref model) = config.model {
             env.insert("ANTHROPIC_MODEL".to_string(), model.clone());
@@ -315,25 +320,29 @@ impl DockerRunner {
 
         self.ensure_image(image).await?;
 
-        // Create credential mount for Claude CLI OAuth credentials
+        // Try to create credential mount for Claude CLI OAuth credentials (optional)
         tracing::debug!(
             target: "mechacoder::docker",
-            "Creating Claude CLI credential mount"
+            "Attempting to create Claude CLI credential mount"
         );
-        let credential_mount = create_credential_mount().await.map_err(|e| {
-            tracing::error!(
-                target: "mechacoder::docker",
-                error = %e,
-                "Failed to create credential mount"
-            );
-            DockerError::CredentialError(format!("Failed to create credential mount: {}", e))
-        })?;
-
-        tracing::debug!(
-            target: "mechacoder::docker",
-            mount = %credential_mount.volume_mount,
-            "Created Claude CLI credential mount"
-        );
+        let credential_mount = match create_credential_mount().await {
+            Ok(mount) => {
+                tracing::info!(
+                    target: "mechacoder::docker",
+                    mount = %mount.volume_mount,
+                    "Created Claude CLI credential mount"
+                );
+                Some(mount)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "mechacoder::docker",
+                    error = %e,
+                    "Failed to create credential mount - will use ANTHROPIC_API_KEY instead"
+                );
+                None
+            }
+        };
 
         // Build environment
         let env = self.build_env(config);
@@ -343,21 +352,26 @@ impl DockerRunner {
 
         // Build container config
         let timeout_sec = config.task.agent_timeout_sec() as u64;
-        let container_config = ContainerConfig::new(image, &config.workspace_dir)
+        let mut container_config = ContainerConfig::new(image, &config.workspace_dir)
             .workdir("/app")
             .memory_limit(config.task.memory_limit())
             .cpu_limit(config.task.cpu_limit() as f32)
             .envs(env)
-            .timeout(Duration::from_secs(timeout_sec))
-            // Mount Claude CLI credentials
-            .volume_mount(credential_mount.volume_mount.clone())
-            // Mount logs
-            .volume_mount(format!("{}:/logs", config.logs_dir.display()))
-            // Mount tests from TB2 task
-            .volume_mount(format!(
-                "{}:/tests:ro",
-                config.task.tests_dir.display()
-            ));
+            .timeout(Duration::from_secs(timeout_sec));
+
+        // Mount Claude CLI credentials if available
+        if let Some(ref cred_mount) = credential_mount {
+            container_config = container_config.volume_mount(cred_mount.volume_mount.clone());
+        }
+
+        // Mount logs
+        container_config = container_config.volume_mount(format!("{}:/logs", config.logs_dir.display()));
+
+        // Mount tests from TB2 task
+        container_config = container_config.volume_mount(format!(
+            "{}:/tests:ro",
+            config.task.tests_dir.display()
+        ));
 
         tracing::info!(
             target: "mechacoder::docker",
@@ -372,13 +386,15 @@ impl DockerRunner {
             .run_with_streaming(container_config, command, event_tx.clone(), &mut abort_rx)
             .await;
 
-        // Clean up credential mount
-        if let Err(e) = cleanup_credential_mount(&credential_mount).await {
-            tracing::warn!(
-                target: "mechacoder::docker",
-                error = %e,
-                "Failed to cleanup credential mount"
-            );
+        // Clean up credential mount if it was created
+        if let Some(ref mount) = credential_mount {
+            if let Err(e) = cleanup_credential_mount(mount).await {
+                tracing::warn!(
+                    target: "mechacoder::docker",
+                    error = %e,
+                    "Failed to cleanup credential mount"
+                );
+            }
         }
 
         match result {
