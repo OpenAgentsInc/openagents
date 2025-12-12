@@ -117,8 +117,7 @@ impl Render for MessageView {
                     .max_w(px(600.0))
                     .px(px(12.0))
                     .py(px(8.0))
-                    
-                    .bg(if is_user { bg::CARD } else { bg::SURFACE })
+                    .when(!is_user, |el| el.bg(bg::SURFACE))
                     .border_1()
                     .border_color(border::DEFAULT)
                     .text_color(text::PRIMARY)
@@ -176,8 +175,7 @@ impl IntoElement for SimpleMessageView {
                 .max_w(px(600.0))
                 .px(px(12.0))
                 .py(px(8.0))
-                
-                .bg(if is_user { bg::CARD } else { bg::SURFACE })
+                .when(!is_user, |el| el.bg(bg::SURFACE))
                 .border_1()
                 .border_color(border::DEFAULT)
                 .text_color(text::PRIMARY)

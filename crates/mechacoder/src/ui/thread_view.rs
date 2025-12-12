@@ -359,6 +359,7 @@ impl Render for ThreadView {
                     .max_w(px(768.0))
                     .flex()
                     .flex_col()
+                    .justify_end()
                     .overflow_hidden()
                     // Message history (shrinks when streaming)
                     .child(
