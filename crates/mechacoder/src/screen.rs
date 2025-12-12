@@ -224,13 +224,15 @@ impl MechaCoderScreen {
                 std::thread::spawn(move || {
                     log::info!("TB2: Inside std::thread");
 
-                    // Create a dedicated Tokio runtime for Docker operations
-                    let rt = tokio::runtime::Builder::new_current_thread()
+                    // Create a multi-threaded Tokio runtime for Docker operations
+                    // current_thread might not support pidfd process reaper
+                    let rt = tokio::runtime::Builder::new_multi_thread()
+                        .worker_threads(2)
                         .enable_all()
                         .build()
                         .expect("Failed to create Tokio runtime");
 
-                    log::info!("TB2: Created Tokio runtime in std::thread");
+                    log::info!("TB2: Created multi-thread Tokio runtime in std::thread");
 
                     // Run all Docker work on this runtime
                     rt.block_on(async {
