@@ -272,6 +272,25 @@ pub struct SdkThread {
 impl SdkThread {
     /// Create a new SDK thread.
     pub fn new(project_root: PathBuf, _cx: &mut Context<Self>) -> Self {
+        // Initialize with some reasonable default models
+        let available_models = vec![
+            ModelInfo {
+                value: "claude-opus-4-5-20251101".to_string(),
+                display_name: "Claude Opus 4.5".to_string(),
+                description: "Most capable model, best for complex tasks".to_string(),
+            },
+            ModelInfo {
+                value: "claude-sonnet-4-5-20250929".to_string(),
+                display_name: "Claude Sonnet 4.5".to_string(),
+                description: "Balanced speed and capability".to_string(),
+            },
+            ModelInfo {
+                value: "claude-haiku-4-5-20251001".to_string(),
+                display_name: "Claude Haiku 4.5".to_string(),
+                description: "Fast and efficient model".to_string(),
+            },
+        ];
+
         Self {
             project_root,
             entries: Vec::new(),
@@ -279,7 +298,7 @@ impl SdkThread {
             streaming_content: None,
             session_id: None,
             model: None,
-            available_models: Vec::new(),
+            available_models,
             account_info: None,
             tools: Vec::new(),
             mcp_servers: Vec::new(),
