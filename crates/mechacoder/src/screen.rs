@@ -151,6 +151,7 @@ impl MechaCoderScreen {
                 log::info!("Starting TB2 run: {} for task {}", run_id, task.id);
 
                 // Load full TB2Task with Docker image info
+                log::info!("TB2: Loading task {}", task.id);
                 let tb2_task = match self.tb2_task_loader.load_task(&task.id) {
                     Ok(t) => t,
                     Err(e) => {
@@ -158,8 +159,10 @@ impl MechaCoderScreen {
                         return;
                     }
                 };
+                log::info!("TB2: Task loaded successfully");
 
                 // Create workspace and logs directories
+                log::info!("TB2: Creating workspace directory");
                 let workspace_dir = match tempfile::tempdir() {
                     Ok(dir) => dir.keep(),
                     Err(e) => {
@@ -172,8 +175,10 @@ impl MechaCoderScreen {
                     log::error!("Failed to create logs dir: {}", e);
                     return;
                 }
+                log::info!("TB2: Directories created");
 
                 // Build Docker run config
+                log::info!("TB2: Building Docker config");
                 let config = crate::panels::DockerRunConfig::new(
                     tb2_task.clone(),
                     workspace_dir.clone(),
@@ -181,10 +186,12 @@ impl MechaCoderScreen {
                 )
                 .max_turns(task.max_turns)
                 .model(model.id());
+                log::info!("TB2: Config created");
 
                 let image_name = tb2_task.docker_image().to_string();
 
                 // Add TB2 run entry to thread
+                log::info!("TB2: Adding run entry to thread");
                 if let Some(sdk_thread) = &self.sdk_thread {
                     sdk_thread.update(cx, |thread, cx| {
                         thread.add_tbench_run_entry(TBenchRunEntry {
@@ -201,16 +208,22 @@ impl MechaCoderScreen {
                         }, cx);
                     });
                 }
+                log::info!("TB2: Run entry added");
 
                 // Create event channel
+                log::info!("TB2: Creating event channels");
                 let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
                 let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                log::info!("TB2: Channels created");
 
                 let run_id_clone = run_id.clone();
                 let gym_panel_clone = self.gym_panel.clone();
 
                 // Spawn Docker work on Tokio runtime (no GPUI context)
+                log::info!("TB2: About to spawn Tokio task");
                 let _ = Tokio::spawn(cx, async move {
+                    log::info!("TB2: Inside Tokio::spawn");
+
                     // Create a fresh Docker runner for this async task
                     let docker_runner = DockerRunner::new();
 
@@ -338,6 +351,13 @@ impl MechaCoderScreen {
                             ])
                             .dangerously_skip_permissions(true);
 
+                        // Check for API key
+                        if std::env::var("ANTHROPIC_API_KEY").is_err() {
+                            log::error!("ANTHROPIC_API_KEY not set - Claude Code CLI will fail");
+                            let _ = event_tx.send("ERROR: ANTHROPIC_API_KEY environment variable is not set. Please set it to use Claude models for TestGen.".to_string());
+                            return;
+                        }
+
                         log::info!("Starting Claude Code query for TestGen with skill");
 
                         // Start query
@@ -345,15 +365,20 @@ impl MechaCoderScreen {
                             Ok(s) => s,
                             Err(e) => {
                                 log::error!("Failed to start Claude query: {}", e);
-                                let _ = event_tx.send(format!("ERROR: {}", e));
+                                let _ = event_tx.send(format!("ERROR: Failed to start Claude query: {}", e));
                                 return;
                             }
                         };
+
+                        // Track if we received any messages
+                        let mut received_messages = 0;
+                        let mut got_result = false;
 
                         // Process stream
                         while let Some(message) = stream.next().await {
                             match message {
                                 Ok(sdk_msg) => {
+                                    received_messages += 1;
                                     match sdk_msg {
                                         SdkMessage::Assistant(assistant_msg) => {
                                             if let Some(content) = assistant_msg.message.get("content") {
@@ -363,22 +388,31 @@ impl MechaCoderScreen {
                                             }
                                         }
                                         SdkMessage::Result(result_msg) => {
+                                            got_result = true;
                                             let _ = event_tx.send(format!("COMPLETE: {:?}", result_msg));
                                         }
                                         SdkMessage::System(system_msg) => {
                                             let _ = event_tx.send(format!("SYSTEM: {:?}", system_msg));
                                         }
-                                        _ => {}
+                                        _ => {
+                                            log::debug!("Received other SDK message: {:?}", sdk_msg);
+                                        }
                                     }
                                 }
                                 Err(e) => {
                                     log::error!("Stream error: {}", e);
-                                    let _ = event_tx.send(format!("ERROR: {}", e));
+                                    let _ = event_tx.send(format!("ERROR: Stream error: {}", e));
                                 }
                             }
                         }
 
-                        log::info!("TestGen run {} completed", run_id_clone);
+                        // Stream ended - check if we got a result
+                        if !got_result {
+                            log::error!("TestGen run {} - Claude Code stream ended without result (received {} messages)", run_id_clone, received_messages);
+                            let _ = event_tx.send(format!("ERROR: Claude Code process closed unexpectedly. Check that ANTHROPIC_API_KEY is set and claude CLI is working."));
+                        } else {
+                            log::info!("TestGen run {} completed successfully", run_id_clone);
+                        }
                     });
 
                     // Spawn GPUI task to process events and update UI
