@@ -102,6 +102,36 @@ fi
 OUTPUT_DIR_ABS="$(cd "$(dirname "${OUTPUT_DIR}")" 2>/dev/null && pwd)/$(basename "${OUTPUT_DIR}")"
 mkdir -p "${OUTPUT_DIR_ABS}"
 
+# Start Docker container for agent to use during development
+CONTAINER_NAME="tb2-${TASK_ID}-${SESSION_ID:0:8}"
+if [[ -n "${DOCKER_IMAGE}" ]]; then
+    echo "Starting Docker container for agent access..."
+    docker run --rm -d \
+        --name "${CONTAINER_NAME}" \
+        -v "${WORKSPACE}/app:/app" \
+        -w /app \
+        "${DOCKER_IMAGE}" \
+        tail -f /dev/null >/dev/null 2>&1
+
+    # Add container info to instruction
+    INSTRUCTION="${INSTRUCTION}
+
+## Docker Environment
+
+A Docker container is running with the task environment. Use it to run tools:
+
+\`\`\`bash
+docker exec ${CONTAINER_NAME} <command>
+\`\`\`
+
+Examples:
+- \`docker exec ${CONTAINER_NAME} ls /app\`
+- \`docker exec ${CONTAINER_NAME} pdflatex -interaction=nonstopmode main.tex\`
+- \`docker exec ${CONTAINER_NAME} python3 script.py\`
+
+The container has all required tools installed. Your workspace at /app is shared."
+fi
+
 echo "========================================"
 echo "TB2 Run: ${TASK_ID}"
 echo "========================================"
@@ -109,6 +139,7 @@ echo "Session:    ${SESSION_ID}"
 echo "Workspace:  ${WORKSPACE}"
 echo "Output:     ${OUTPUT_DIR}"
 echo "Docker:     ${DOCKER_IMAGE:-none}"
+echo "Container:  ${CONTAINER_NAME:-none}"
 echo "Model:      ${MODEL:-default}"
 echo "Timeout:    ${TIMEOUT}s"
 echo "========================================"
@@ -142,6 +173,11 @@ echo "========================================"
 echo "tbench completed (exit code: ${TBENCH_EXIT})"
 echo "========================================"
 echo ""
+
+# Stop the development container before verification
+if [[ -n "${CONTAINER_NAME}" ]]; then
+    docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+fi
 
 # Run TB2 verification if docker image is available
 if [[ -n "${DOCKER_IMAGE}" ]]; then
