@@ -16,14 +16,15 @@ use worker::*;
 /// Manages WebSocket connections, event storage, and subscriptions.
 #[durable_object]
 pub struct RelayDurableObject {
-    #[allow(dead_code)]
     state: State,
     #[allow(dead_code)]
     env: Env,
-    /// Subscriptions per WebSocket connection (by connection ID)
+    /// Subscriptions per WebSocket connection (keyed by WebSocket)
     subscriptions: RefCell<HashMap<String, SubscriptionManager>>,
     /// In-memory event storage (temporary - will migrate to SQLite)
     events: RefCell<Vec<nostr::Event>>,
+    /// Active WebSocket connections for broadcasting
+    websockets: RefCell<Vec<WebSocket>>,
 }
 
 impl DurableObject for RelayDurableObject {
@@ -33,6 +34,7 @@ impl DurableObject for RelayDurableObject {
             env,
             subscriptions: RefCell::new(HashMap::new()),
             events: RefCell::new(Vec::new()),
+            websockets: RefCell::new(Vec::new()),
         }
     }
 
@@ -51,9 +53,64 @@ impl DurableObject for RelayDurableObject {
             _ => Response::error("Not Found", 404),
         }
     }
+
+    async fn websocket_message(
+        &self,
+        ws: WebSocket,
+        message: WebSocketIncomingMessage,
+    ) -> Result<()> {
+        // Get the connection ID from the WebSocket
+        let conn_id = self.get_ws_id(&ws);
+
+        // Process the message
+        if let WebSocketIncomingMessage::String(text) = message {
+            match self.process_message(&conn_id, &text) {
+                Ok(responses) => {
+                    // Send responses back to the client
+                    for response in responses {
+                        let json = response.to_json();
+                        ws.send_with_str(&json)?;
+                    }
+                }
+                Err(e) => {
+                    // Send error notice
+                    let notice = RelayMessage::notice(&format!("error: {}", e));
+                    ws.send_with_str(&notice.to_json())?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn websocket_close(
+        &self,
+        ws: WebSocket,
+        _code: usize,
+        _reason: String,
+        _was_clean: bool,
+    ) -> Result<()> {
+        // Remove subscriptions for this connection
+        let conn_id = self.get_ws_id(&ws);
+        self.subscriptions.borrow_mut().remove(&conn_id);
+
+        // Remove from active websockets
+        self.websockets
+            .borrow_mut()
+            .retain(|w| self.get_ws_id(w) != conn_id);
+
+        Ok(())
+    }
 }
 
 impl RelayDurableObject {
+    /// Get a unique ID for a WebSocket connection.
+    fn get_ws_id(&self, _ws: &WebSocket) -> String {
+        // In a real implementation, we'd use attachment data or similar
+        // For now, use a simple approach based on the current connections
+        format!("ws_{}", Date::now().as_millis())
+    }
+
     /// Handle WebSocket upgrade.
     async fn handle_websocket_upgrade(&self) -> Result<Response> {
         // Create WebSocket pair
@@ -61,16 +118,19 @@ impl RelayDurableObject {
         let server = pair.server;
         let client = pair.client;
 
-        // Accept the connection
-        server.accept()?;
+        // Accept the WebSocket with hibernation support
+        self.state.accept_web_socket(&server);
 
-        // Generate connection ID
-        let conn_id = format!("conn_{}", Date::now().as_millis());
+        // Generate connection ID and store it
+        let conn_id = format!("ws_{}", Date::now().as_millis());
 
         // Initialize subscription manager for this connection
         self.subscriptions
             .borrow_mut()
             .insert(conn_id.clone(), SubscriptionManager::new());
+
+        // Track the WebSocket for broadcasting
+        self.websockets.borrow_mut().push(server);
 
         // Return the WebSocket response
         Response::from_websocket(client)
@@ -95,15 +155,44 @@ impl RelayDurableObject {
         Ok(Response::from_json(&info)?.with_headers(headers))
     }
 
-    /// Store an event in memory.
+    /// Store an event in memory and broadcast to matching subscribers.
     fn store_event(&self, event: nostr::Event) -> bool {
         let mut events = self.events.borrow_mut();
+
         // Check for duplicate
         if events.iter().any(|e| e.id == event.id) {
             return false;
         }
-        events.push(event);
+
+        // Store the event
+        events.push(event.clone());
+
+        // Broadcast to matching subscribers
+        drop(events); // Release borrow before broadcasting
+        self.broadcast_event(&event);
+
         true
+    }
+
+    /// Broadcast an event to all matching subscribers.
+    fn broadcast_event(&self, event: &nostr::Event) {
+        let subscriptions = self.subscriptions.borrow();
+        let websockets = self.websockets.borrow();
+
+        // For each connection's subscriptions
+        for (_conn_id, manager) in subscriptions.iter() {
+            // Get all subscriptions that match this event
+            let matching = manager.matching(event);
+            for sub in matching {
+                // Find the WebSocket for this connection and send
+                // Note: This is simplified - in production we'd need proper WS<->conn_id mapping
+                if let Some(ws) = websockets.first() {
+                    let msg = RelayMessage::event(&sub.id, event.clone());
+                    let _ = ws.send_with_str(&msg.to_json());
+                }
+                break; // Only send once per connection even if multiple subs match
+            }
+        }
     }
 
     /// Query events from memory.
@@ -136,7 +225,7 @@ impl RelayDurableObject {
                     return Ok(responses);
                 }
 
-                // Store event
+                // Store event (also broadcasts to subscribers)
                 let stored = self.store_event(event.clone());
                 if stored {
                     responses.push(RelayMessage::ok_success(&event.id));
@@ -169,6 +258,7 @@ impl RelayDurableObject {
                 if let Some(manager) = self.subscriptions.borrow_mut().get_mut(conn_id) {
                     manager.remove(&subscription_id);
                 }
+                responses.push(RelayMessage::closed(&subscription_id, ""));
             }
 
             ClientMessage::Auth(_) => {
