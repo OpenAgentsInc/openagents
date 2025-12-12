@@ -31,6 +31,7 @@ members = [
     "crates/sessions",
     "crates/storybook",
     "crates/tasks",
+    "crates/taskmaster",
     "crates/testgen",
     "crates/terminalbench",
     "crates/tools",

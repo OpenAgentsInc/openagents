@@ -15146,6 +15146,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "taskmaster"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "tasks"
 version = "0.1.0"
 dependencies = [
