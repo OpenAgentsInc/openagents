@@ -54,11 +54,13 @@ pub struct TextInput {
     is_selecting: bool,
     cursor_visible: bool,
     blink_epoch: usize,
+    #[allow(dead_code)]
+    blink_task: Option<gpui::Task<()>>,
 }
 
 impl TextInput {
     pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
-        Self {
+        let mut this = Self {
             focus_handle: cx.focus_handle(),
             content: "".into(),
             placeholder: placeholder.into(),
@@ -70,7 +72,39 @@ impl TextInput {
             is_selecting: false,
             cursor_visible: true,
             blink_epoch: 0,
-        }
+            blink_task: None,
+        };
+        this.start_blink(cx);
+        this
+    }
+
+    fn start_blink(&mut self, cx: &mut Context<Self>) {
+        self.cursor_visible = true;
+        self.blink_epoch += 1;
+        let epoch = self.blink_epoch;
+
+        self.blink_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(530))
+                    .await;
+
+                let should_continue = this
+                    .update(cx, |this, cx| {
+                        if this.blink_epoch != epoch {
+                            return false;
+                        }
+                        this.cursor_visible = !this.cursor_visible;
+                        cx.notify();
+                        true
+                    })
+                    .unwrap_or(false);
+
+                if !should_continue {
+                    break;
+                }
+            }
+        }));
     }
 
     pub fn content(&self) -> &str {
@@ -90,9 +124,8 @@ impl TextInput {
     }
 
     fn reset_cursor_blink(&mut self, cx: &mut Context<Self>) {
-        self.blink_epoch += 1;
-        self.cursor_visible = true;
-        cx.notify();
+        // Restart the blink timer (makes cursor visible and resets timing)
+        self.start_blink(cx);
     }
 
     fn submit(&mut self, _: &Submit, _window: &mut Window, cx: &mut Context<Self>) {
