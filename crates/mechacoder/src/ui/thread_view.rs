@@ -341,6 +341,7 @@ impl Render for ThreadView {
             .when_some(streaming_view, |el, view| {
                 el.child(
                     div()
+                        .id("streaming-message")
                         .w_full()
                         .max_w(px(768.0))
                         .max_h(px(400.0))
