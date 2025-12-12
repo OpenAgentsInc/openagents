@@ -90,11 +90,15 @@ if [[ -d "${ENV_DIR}" ]]; then
         # Some tasks store input files in environment/tests/
         cp -r "${ENV_DIR}/tests"/* "${WORKSPACE}/app/" 2>/dev/null || true
     fi
-    # Also copy any files directly in environment/ (excluding Dockerfile)
+    # Copy files and directories from environment/ (excluding Docker-related and tests/)
     for f in "${ENV_DIR}"/*; do
-        if [[ -f "$f" && "$(basename "$f")" != "Dockerfile" && "$(basename "$f")" != "docker-compose.yaml" ]]; then
-            cp "$f" "${WORKSPACE}/app/" 2>/dev/null || true
+        basename_f="$(basename "$f")"
+        # Skip Docker files and tests/ (already handled above)
+        if [[ "$basename_f" == "Dockerfile" || "$basename_f" == "docker-compose.yaml" || "$basename_f" == "tests" ]]; then
+            continue
         fi
+        # Copy both files and directories
+        cp -r "$f" "${WORKSPACE}/app/" 2>/dev/null || true
     done
 fi
 
