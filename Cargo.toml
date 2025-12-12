@@ -226,7 +226,7 @@ members = [
     "crates/ztracing",
     "crates/ztracing_macro",
     "crates/acp_tools",
-    "crates/acp_thread",
+    "crates/acp_thread", "crates/ai",
 ]
 
 [workspace.lints.rust]

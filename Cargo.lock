@@ -461,6 +461,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "strum 0.27.2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "ai_onboarding"
 version = "0.1.0"
 dependencies = [
@@ -637,6 +647,7 @@ dependencies = [
 name = "anthropic"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "anyhow",
  "chrono",
  "futures 0.3.31",
@@ -2913,6 +2924,7 @@ dependencies = [
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "anyhow",
  "chrono",
  "clap",
@@ -6739,6 +6751,7 @@ dependencies = [
 name = "harbor"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "anyhow",
  "chrono",
  "clap",
@@ -8744,6 +8757,7 @@ dependencies = [
 name = "llm"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "async-trait",
  "bytes 1.11.0",
  "chrono",
@@ -10273,6 +10287,7 @@ dependencies = [
 name = "open_ai"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "anyhow",
  "futures 0.3.31",
  "http_client",
@@ -10443,6 +10458,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "orchestrator"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "async-trait",
  "chrono",
  "futures 0.3.31",
@@ -19120,6 +19136,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 name = "x_ai"
 version = "0.1.0"
 dependencies = [
+ "ai",
  "anyhow",
  "schemars 1.1.0",
  "serde",

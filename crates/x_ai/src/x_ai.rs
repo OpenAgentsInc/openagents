@@ -206,3 +206,44 @@ impl Model {
         }
     }
 }
+
+// Conversions with the centralized ai crate Model
+impl From<ai::Model> for Model {
+    fn from(model: ai::Model) -> Self {
+        match model {
+            ai::Model::Grok2Vision => Self::Grok2Vision,
+            ai::Model::Grok3 => Self::Grok3,
+            ai::Model::Grok3Mini => Self::Grok3Mini,
+            ai::Model::Grok3Fast => Self::Grok3Fast,
+            ai::Model::Grok3MiniFast => Self::Grok3MiniFast,
+            ai::Model::Grok4 => Self::Grok4,
+            ai::Model::Grok4FastReasoning => Self::Grok4FastReasoning,
+            ai::Model::Grok4FastNonReasoning => Self::Grok4FastNonReasoning,
+            ai::Model::Grok41FastReasoning => Self::Grok41FastReasoning,
+            ai::Model::Grok41FastNonReasoning => Self::Grok41FastNonReasoning,
+            ai::Model::GrokCodeFast1 => Self::GrokCodeFast1,
+            _ => panic!("Model {:?} is not a Grok model", model),
+        }
+    }
+}
+
+impl TryFrom<Model> for ai::Model {
+    type Error = anyhow::Error;
+
+    fn try_from(model: Model) -> Result<Self, Self::Error> {
+        match model {
+            Model::Grok2Vision => Ok(ai::Model::Grok2Vision),
+            Model::Grok3 => Ok(ai::Model::Grok3),
+            Model::Grok3Mini => Ok(ai::Model::Grok3Mini),
+            Model::Grok3Fast => Ok(ai::Model::Grok3Fast),
+            Model::Grok3MiniFast => Ok(ai::Model::Grok3MiniFast),
+            Model::Grok4 => Ok(ai::Model::Grok4),
+            Model::Grok4FastReasoning => Ok(ai::Model::Grok4FastReasoning),
+            Model::Grok4FastNonReasoning => Ok(ai::Model::Grok4FastNonReasoning),
+            Model::Grok41FastReasoning => Ok(ai::Model::Grok41FastReasoning),
+            Model::Grok41FastNonReasoning => Ok(ai::Model::Grok41FastNonReasoning),
+            Model::GrokCodeFast1 => Ok(ai::Model::GrokCodeFast1),
+            Model::Custom { .. } => anyhow::bail!("Custom Grok models are not in the allowed list"),
+        }
+    }
+}
