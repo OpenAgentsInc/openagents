@@ -353,6 +353,16 @@ impl MechaCoderScreen {
                                 }
                             }
 
+                            // Add assistant messages to thread so they show in main content area
+                            if let TB2RunnerEvent::AssistantMessage { ref run_id, turn, ref text } = tb2_event {
+                                if let Some(sdk_thread) = &sdk_thread {
+                                    let message = format!("[Turn {}] {}", turn, text);
+                                    let _ = sdk_thread.update(cx, |thread, cx| {
+                                        thread.add_testgen_message(run_id, &message, cx);
+                                    });
+                                }
+                            }
+
                             // Extract final results from RunComplete event
                             if let TB2RunnerEvent::RunComplete {
                                 turns,
