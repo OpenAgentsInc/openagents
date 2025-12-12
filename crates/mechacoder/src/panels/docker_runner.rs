@@ -515,6 +515,7 @@ impl DockerRunner {
 
 
     /// Run container with streaming output
+    #[allow(dead_code)]
     async fn run_with_streaming(
         &self,
         config: ContainerConfig,

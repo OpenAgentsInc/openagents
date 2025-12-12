@@ -59,10 +59,12 @@ impl HarborRunConfig {
 
 /// Harbor StreamEvent from Harbor's lib.rs
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum StreamEvent {
     RunStart {
         session_id: String,
+        #[allow(dead_code)]
         instruction: String,
     },
     Assistant {
