@@ -28,8 +28,8 @@ pub struct Query {
     pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
     /// Request ID counter.
     request_counter: AtomicU64,
-    /// Permission handler for tool use requests.
-    permission_handler: Option<Arc<dyn PermissionHandler>>,
+    /// Permission handler for tool use requests (stored for future use).
+    _permission_handler: Option<Arc<dyn PermissionHandler>>,
     /// Channel to receive messages.
     message_rx: mpsc::Receiver<Result<SdkMessage>>,
     /// Session ID (available after first message).
@@ -73,7 +73,7 @@ impl Query {
             transport,
             pending_requests,
             request_counter: AtomicU64::new(0),
-            permission_handler,
+            _permission_handler: permission_handler,
             message_rx,
             session_id: None,
             completed: false,
