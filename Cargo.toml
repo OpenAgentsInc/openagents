@@ -23,7 +23,9 @@ members = [
     "crates/mechacoder",
     "crates/nostr",
     "crates/nostr-chat",
+    "crates/nostr-client",
     "crates/nostr-relay",
+    "crates/cloudflare",
     "crates/oanix",
     "crates/orchestrator",
     "crates/parallel",
@@ -278,6 +280,7 @@ hud = { path = "crates/hud" }
 marketplace = { path = "crates/marketplace" }
 nostr = { path = "crates/nostr" }
 nostr-chat = { path = "crates/nostr-chat" }
+nostr-client = { path = "crates/nostr-client" }
 nostr-relay = { path = "crates/nostr-relay" }
 archivist = { path = "crates/archivist" }
 atif = { path = "crates/atif" }

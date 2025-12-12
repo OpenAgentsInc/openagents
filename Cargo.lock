@@ -9685,7 +9685,7 @@ dependencies = [
  "chrono",
  "futures 0.3.31",
  "nostr",
- "nostr-relay",
+ "nostr-client",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -9694,7 +9694,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nostr-relay"
+name = "nostr-client"
 version = "0.1.0"
 dependencies = [
  "async-tungstenite",
@@ -9708,6 +9708,19 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "nostr-relay"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "hex",
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -10321,6 +10334,21 @@ dependencies = [
  "settings",
  "strum 0.27.2",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "openagents-cloudflare"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.31",
+ "nostr",
+ "nostr-relay",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "worker",
+ "worker-macros",
 ]
 
 [[package]]
@@ -19061,6 +19089,64 @@ dependencies = [
  "log",
  "thiserror 1.0.69",
  "wast 35.0.2",
+]
+
+[[package]]
+name = "worker"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42c76c5889873a2c309365ad4503810c007d3c25fbb4e9fa9e4e23c4ceb3c7f2"
+dependencies = [
+ "async-trait",
+ "bytes 1.11.0",
+ "chrono",
+ "futures-channel",
+ "futures-util",
+ "http 1.4.0",
+ "http-body 1.0.1",
+ "js-sys",
+ "matchit",
+ "pin-project",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "serde_urlencoded",
+ "tokio",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "worker-macros",
+ "worker-sys",
+]
+
+[[package]]
+name = "worker-macros"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62c62584d037bad33789a6a5d605b3fccea1c52de9251d06f9d44054170dc612"
+dependencies = [
+ "async-trait",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-macro-support",
+ "worker-sys",
+]
+
+[[package]]
+name = "worker-sys"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72ddd412fd62c6eeffc1dd85e6ae5960a33b534f44a733df75b6e7519972bc74"
+dependencies = [
+ "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

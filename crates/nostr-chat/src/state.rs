@@ -13,7 +13,7 @@ use nostr::{
     KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA,
     JobInput, JobRequest,
 };
-use nostr_relay::{Filter, PoolEvent, RelayPool};
+use nostr_client::{Filter, PoolEvent, RelayPool};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,7 +28,7 @@ pub enum ChatError {
     Identity(#[from] Nip06Error),
 
     #[error("relay error: {0}")]
-    Relay(#[from] nostr_relay::ConnectionError),
+    Relay(#[from] nostr_client::ConnectionError),
 
     #[error("not connected")]
     NotConnected,
@@ -140,7 +140,7 @@ pub struct ChatState {
 impl ChatState {
     /// Create a new chat state with default relays.
     pub fn new() -> Self {
-        let pool = nostr_relay::default_pool();
+        let pool = nostr_client::default_pool();
         let (events_tx, _) = broadcast::channel(1000);
 
         Self {

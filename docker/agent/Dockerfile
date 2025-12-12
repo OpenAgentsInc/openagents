@@ -54,10 +54,11 @@ RUN echo '#!/bin/bash\necho "Claude CLI placeholder - mount real CLI at /usr/loc
     && chmod +x /usr/local/bin/claude-placeholder
 
 # Configure git for agent commits
-RUN git config --global user.email "agent@openagents.com" \
-    && git config --global user.name "OpenAgents Agent" \
+RUN git config --global user.email "noreply@openagents.com" \
+    && git config --global user.name "OpenAgents MechaCoder" \
     && git config --global init.defaultBranch main \
-    && git config --global push.autoSetupRemote true
+    && git config --global push.autoSetupRemote true \
+    && git config --global --add safe.directory '*'
 
 # Create workspace directory
 WORKDIR /workspace

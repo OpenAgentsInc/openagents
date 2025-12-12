@@ -56,7 +56,7 @@ pub use state::{ChatError, ChatEvent, ChatState, DvmJob, DvmJobStatus};
 
 // Re-export useful types from dependencies
 pub use nostr::{Keypair, derive_keypair};
-pub use nostr_relay::{Filter, RelayPool};
+pub use nostr_client::{Filter, RelayPool};
 
 #[cfg(test)]
 mod tests {
