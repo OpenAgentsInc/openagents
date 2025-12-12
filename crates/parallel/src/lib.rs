@@ -1,4 +1,4 @@
-//! Parallel agent execution with git worktree isolation
+//! Parallel agent execution with container isolation
 //!
 //! Implements user stories PAR-001 through PAR-013:
 //!
@@ -9,32 +9,43 @@
 //! - PAR-004: Aggregate results from parallel runs
 //! - PAR-005: Report progress across all agents
 //!
-//! ## Worktree Isolation (PAR-010..013)
-//! - PAR-010: Create isolated worktrees for each agent
-//! - PAR-011: Manage worktree lifecycle (create/cleanup)
-//! - PAR-012: Merge completed work back to main
-//! - PAR-013: Handle merge conflicts
+//! ## Container Isolation (PAR-010..013)
+//! - PAR-010: Create isolated containers for each agent
+//! - PAR-011: Manage container lifecycle (provision/cleanup)
+//! - PAR-012: Push completed work to agent branches
+//! - PAR-013: Handle container failures
 //!
 //! # Architecture
 //!
 //! ```text
 //! ParallelOrchestrator
-//!     ├── WorktreeManager (creates isolated git worktrees)
+//!     ├── ContainerManager (creates isolated containers with fresh git clones)
+//!     │   └── Backend: Docker | macOS Container
 //!     ├── AgentPool (manages N agent instances)
-//!     │   ├── Agent[0] → Worktree[0] → Task queue
-//!     │   ├── Agent[1] → Worktree[1] → Task queue
-//!     │   └── Agent[N] → Worktree[N] → Task queue
-//!     └── ResultAggregator (merges work, reports progress)
+//!     │   ├── Agent[0] → Container[0] → agent/agent-0 branch
+//!     │   ├── Agent[1] → Container[1] → agent/agent-1 branch
+//!     │   └── Agent[N] → Container[N] → agent/agent-N branch
+//!     └── ResultAggregator (tracks completions, reports progress)
+//!
+//! # Isolation Model
+//!
+//! Each agent gets:
+//! - Fresh `git clone` of the repository
+//! - Isolated container environment
+//! - Dedicated branch (agent/<id>)
+//! - Push to remote for PR-based merging
 //! ```
 
 mod worktree;
 mod agent_pool;
 mod orchestrator;
+mod container_manager;
 mod error;
 
 pub use worktree::*;
 pub use agent_pool::*;
 pub use orchestrator::*;
+pub use container_manager::*;
 pub use error::*;
 
 #[cfg(test)]

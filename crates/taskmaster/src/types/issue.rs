@@ -2,9 +2,10 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 use super::dependency::DependencyRef;
+use super::execution::{ExecutionMode, ExecutionState};
 use super::issue_type::IssueType;
 use super::priority::Priority;
 use super::status::IssueStatus;
@@ -138,6 +139,41 @@ pub struct Issue {
     pub tombstone_reason: Option<String>,
 
     // =========================================================================
+    // Execution Context (Container-based parallel execution)
+    // =========================================================================
+    /// Execution mode (none, local, container)
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+
+    /// Execution state (lifecycle tracking)
+    #[serde(default)]
+    pub execution_state: ExecutionState,
+
+    /// Container ID when running in container mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_id: Option<String>,
+
+    /// Agent ID executing this task
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+
+    /// Git branch for this execution (e.g., "agent/agent-0")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_branch: Option<String>,
+
+    /// When execution started
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_started_at: Option<DateTime<Utc>>,
+
+    /// When execution finished
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_finished_at: Option<DateTime<Utc>>,
+
+    /// Container exit code (if applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_exit_code: Option<i32>,
+
+    // =========================================================================
     // Relationships (denormalized for convenience)
     // =========================================================================
     /// Labels/tags
@@ -177,6 +213,14 @@ impl Issue {
             tombstoned_at: None,
             tombstone_ttl_days: None,
             tombstone_reason: None,
+            execution_mode: ExecutionMode::None,
+            execution_state: ExecutionState::Unscheduled,
+            container_id: None,
+            agent_id: None,
+            execution_branch: None,
+            execution_started_at: None,
+            execution_finished_at: None,
+            execution_exit_code: None,
             labels: Vec::new(),
             deps: Vec::new(),
         }
@@ -368,6 +412,15 @@ pub struct IssueUpdate {
     pub external_ref: Option<Option<String>>,
     pub labels: Option<Vec<String>>,
     pub deps: Option<Vec<DependencyRef>>,
+    // Execution context fields
+    pub execution_mode: Option<ExecutionMode>,
+    pub execution_state: Option<ExecutionState>,
+    pub container_id: Option<Option<String>>,
+    pub agent_id: Option<Option<String>>,
+    pub execution_branch: Option<Option<String>>,
+    pub execution_started_at: Option<Option<DateTime<Utc>>>,
+    pub execution_finished_at: Option<Option<DateTime<Utc>>>,
+    pub execution_exit_code: Option<Option<i32>>,
 }
 
 impl IssueUpdate {
@@ -409,6 +462,67 @@ impl IssueUpdate {
     /// Set close reason
     pub fn close_reason(mut self, reason: impl Into<String>) -> Self {
         self.close_reason = Some(Some(reason.into()));
+        self
+    }
+
+    /// Set execution mode
+    pub fn execution_mode(mut self, mode: ExecutionMode) -> Self {
+        self.execution_mode = Some(mode);
+        self
+    }
+
+    /// Set execution state
+    pub fn execution_state(mut self, state: ExecutionState) -> Self {
+        self.execution_state = Some(state);
+        self
+    }
+
+    /// Set container ID
+    pub fn container_id(mut self, id: Option<String>) -> Self {
+        self.container_id = Some(id);
+        self
+    }
+
+    /// Set agent ID
+    pub fn agent_id(mut self, id: Option<String>) -> Self {
+        self.agent_id = Some(id);
+        self
+    }
+
+    /// Set execution branch
+    pub fn execution_branch(mut self, branch: Option<String>) -> Self {
+        self.execution_branch = Some(branch);
+        self
+    }
+
+    /// Set execution started timestamp
+    pub fn execution_started_at(mut self, ts: Option<DateTime<Utc>>) -> Self {
+        self.execution_started_at = Some(ts);
+        self
+    }
+
+    /// Set execution finished timestamp
+    pub fn execution_finished_at(mut self, ts: Option<DateTime<Utc>>) -> Self {
+        self.execution_finished_at = Some(ts);
+        self
+    }
+
+    /// Set execution exit code
+    pub fn execution_exit_code(mut self, code: Option<i32>) -> Self {
+        self.execution_exit_code = Some(code);
+        self
+    }
+
+    /// Clear all execution context (reset to defaults)
+    pub fn clear_execution_context(mut self) -> Self {
+        self.execution_mode = Some(ExecutionMode::None);
+        self.execution_state = Some(ExecutionState::Unscheduled);
+        self.container_id = Some(None);
+        self.agent_id = Some(None);
+        self.execution_branch = Some(None);
+        self.execution_started_at = Some(None);
+        self.execution_finished_at = Some(None);
+        self.execution_exit_code = Some(None);
         self
     }
 }

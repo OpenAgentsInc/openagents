@@ -10672,6 +10672,7 @@ dependencies = [
  "git2",
  "llm",
  "orchestrator",
+ "sandbox",
  "serde",
  "serde_json",
  "tasks",

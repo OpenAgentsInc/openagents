@@ -31,6 +31,7 @@ tracing = { workspace = true }
 
 # Git operations
 git2 = { workspace = true }
+sandbox = { version = "0.1.0", path = "../sandbox" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
