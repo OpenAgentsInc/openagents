@@ -324,9 +324,6 @@ impl DockerRunner {
         // Set allowed tools
         options.allowed_tools = Some(ALLOWED_TOOLS.iter().map(|s| s.to_string()).collect());
 
-        // DON'T set options.env - let SDK inherit environment naturally
-        // This ensures Claude CLI can find credentials the same way it does in terminal
-
         if let Some(model) = &config.model {
             options = options.model(model.clone());
         }

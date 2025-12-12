@@ -11,7 +11,7 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::panels::{DockerRunner, GymPanel, GymPanelEvent, TB2RunnerEvent};
+use crate::panels::{GymPanel, GymPanelEvent, TB2RunnerEvent};
 use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
 
@@ -194,16 +194,17 @@ impl MechaCoderScreen {
                 }
                 log::info!("TB2: Directories created");
 
-                // Build Docker run config
-                log::info!("TB2: Building Docker config");
-                let config = crate::panels::DockerRunConfig::new(
+                // Build Harbor run config (uses tbench for ATIF trajectory saving)
+                log::info!("TB2: Building Harbor config");
+                let output_dir = logs_dir.join("agent");
+                let config = crate::panels::HarborRunConfig::new(
                     tb2_task.clone(),
                     workspace_dir.clone(),
-                    logs_dir.clone(),
+                    output_dir,
                 )
                 // Use default max_turns (300) instead of task.max_turns
                 // Tasks need as many iterations as necessary to solve the problem
-                .model(model.id());
+                .model(model.id().to_string());
                 log::info!("TB2: Config created");
 
                 // Don't create TBenchRunEntry - all metadata now shown in gym panel
@@ -235,64 +236,62 @@ impl MechaCoderScreen {
                     let handle = rt.spawn(async move {
                         log::info!("TB2: Inside runtime worker task (has reactor access)");
 
-                        // Create oneshot channel for abort
-                        let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                        // Create mpsc channel for abort
+                        let (abort_tx, abort_rx) = tokio::sync::mpsc::channel(1);
                         log::info!("TB2: Created abort channel");
 
-                        // Create Docker runner
-                        let docker_runner = DockerRunner::new();
-                        log::info!("TB2: Created DockerRunner");
+                        // Create Harbor runner (uses tbench for ATIF trajectory saving)
+                        let harbor_runner = crate::panels::HarborRunner::new();
+                        log::info!("TB2: Created HarborRunner");
 
-                        // Run Docker container
-                        log::info!("TB2: About to call run_claude");
-                        let run_result = docker_runner.run_claude(&config, event_tx.clone(), abort_rx).await;
+                        // Clone values needed after run_tbench consumes config
+                        let output_dir = config.output_dir.clone();
+                        let task_id = config.task.id.clone();
+
+                        // Run tbench (automatically saves trajectory.json)
+                        log::info!("TB2: About to call run_tbench");
+                        let run_result = harbor_runner.run_tbench(config, event_tx.clone(), abort_rx).await;
                         match &run_result {
-                            Ok(_) => log::info!("TB2: run_claude completed successfully"),
-                            Err(e) => log::error!("TB2: run_claude failed: {}", e),
+                            Ok(_) => log::info!("TB2: run_tbench completed successfully"),
+                            Err(e) => log::error!("TB2: run_tbench failed: {}", e),
                         }
 
                         // Clean up
                         drop(abort_tx);
 
-                        // Run verification (NOW HAS REACTOR ACCESS)
-                        let verification_result = if run_result.is_ok() {
-                            use crate::panels::TB2Verifier;
-                            let verifier = TB2Verifier::new();
+                        // Copy trajectory to results/trajectories/ for git tracking
+                        if run_result.is_ok() {
+                            let trajectory_src = output_dir.join("trajectory.json");
+                            if trajectory_src.exists() {
+                                use std::fs;
+                                let results_dir = std::path::PathBuf::from("results/trajectories")
+                                    .join(&task_id);
+                                if let Err(e) = fs::create_dir_all(&results_dir) {
+                                    log::error!("Failed to create results dir: {}", e);
+                                } else {
+                                    let trajectory_dest = results_dir.join("trajectory.json");
+                                    if let Err(e) = fs::copy(&trajectory_src, &trajectory_dest) {
+                                        log::error!("Failed to copy trajectory: {}", e);
+                                    } else {
+                                        log::info!("Copied trajectory to {}", trajectory_dest.display());
+                                    }
 
-                            log::info!("TB2: Running verification");
-                            match verifier.run_tests(&config.task, &config.workspace_dir, &config.logs_dir).await {
-                                Ok(result) => {
-                                    log::info!(
-                                        "TB2: Verification complete - passed: {}, reward: {}, tests: {}/{}",
-                                        result.passed,
-                                        result.reward,
-                                        result.tests_passed,
-                                        result.tests_total
-                                    );
-                                    Some(result)
+                                    // Also copy metrics.json
+                                    let metrics_src = output_dir.join("metrics.json");
+                                    if metrics_src.exists() {
+                                        let metrics_dest = results_dir.join("metrics.json");
+                                        if let Err(e) = fs::copy(&metrics_src, &metrics_dest) {
+                                            log::error!("Failed to copy metrics: {}", e);
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    log::error!("TB2: Verification error: {}", e);
-                                    None
-                                }
+                            } else {
+                                log::warn!("Trajectory file not found at {}", trajectory_src.display());
                             }
-                        } else {
-                            log::info!("TB2: Skipping verification (run_claude failed)");
-                            None
-                        };
+                        }
 
-                        // Send completion event with verification results
-                        use crate::panels::docker_runner::DockerEvent;
-                        let (run_result_ok, run_error) = match run_result {
-                            Ok(result) => (Some(result), None),
-                            Err(e) => (None, Some(e.to_string())),
-                        };
-
-                        let _ = event_tx.send(DockerEvent::RunComplete {
-                            run_result: run_result_ok,
-                            run_error,
-                            verification: verification_result,
-                        });
+                        // HarborRunner already sends RunComplete event with verification
+                        // No need to send it again here
 
                         log::info!("TB2: Sent RunComplete event");
                         Ok::<(), ()>(())
