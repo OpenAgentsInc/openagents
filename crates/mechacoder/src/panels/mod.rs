@@ -4,5 +4,7 @@
 //! - Gym panel (Cmd+G): Terminal-Bench runs, TestGen, etc.
 
 pub mod gym_panel;
+pub mod tbench_runner;
 
-pub use gym_panel::GymPanel;
+pub use gym_panel::{GymPanel, GymPanelEvent};
+pub use tbench_runner::{TBenchRunner, TBenchRunnerEvent, TBRunOptions};

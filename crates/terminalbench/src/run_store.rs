@@ -50,12 +50,11 @@ impl RunStore {
     /// Load runs from disk
     fn load_from_disk(&mut self) {
         let runs_file = self.data_dir.join("tb_runs.json");
-        if let Ok(content) = fs::read_to_string(&runs_file) {
-            if let Ok(runs) = serde_json::from_str::<Vec<RunRecord>>(&content) {
+        if let Ok(content) = fs::read_to_string(&runs_file)
+            && let Ok(runs) = serde_json::from_str::<Vec<RunRecord>>(&content) {
                 self.runs = runs;
                 self.rebuild_index();
             }
-        }
     }
 
     /// Save runs to disk
@@ -138,7 +137,7 @@ impl RunStore {
     pub fn get_all_runs(&self) -> Vec<TBRunSummary> {
         self.runs.iter()
             .rev() // Most recent first
-            .map(|r| record_to_summary(r))
+            .map(record_to_summary)
             .collect()
     }
 
@@ -147,7 +146,7 @@ impl RunStore {
         self.runs.iter()
             .rev()
             .take(limit)
-            .map(|r| record_to_summary(r))
+            .map(record_to_summary)
             .collect()
     }
 
@@ -158,7 +157,7 @@ impl RunStore {
                 indices.iter()
                     .rev()
                     .filter_map(|&idx| self.runs.get(idx))
-                    .map(|r| record_to_summary(r))
+                    .map(record_to_summary)
                     .collect()
             })
             .unwrap_or_default()

@@ -58,12 +58,11 @@ impl TaskLoader {
         }
 
         // Add relative to exe location
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(parent) = exe.parent() {
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(parent) = exe.parent() {
                 search_paths.push(parent.join("tasks"));
                 search_paths.push(parent.join("../tasks"));
             }
-        }
 
         Self { search_paths }
     }
@@ -88,11 +87,10 @@ impl TaskLoader {
                     let path = entry.path();
                     if path.extension().map(|e| e == "json").unwrap_or(false) {
                         // Quick check if it looks like a suite file
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            if content.contains("\"tasks\"") {
+                        if let Ok(content) = fs::read_to_string(&path)
+                            && content.contains("\"tasks\"") {
                                 suites.push(path);
                             }
-                        }
                     }
                 }
             }
@@ -111,7 +109,7 @@ impl TaskLoader {
             .map_err(|e| TaskLoadError::ParseError(e.to_string()))?;
 
         let tasks = raw_suite.tasks.iter()
-            .map(|raw| convert_task(raw))
+            .map(convert_task)
             .collect();
 
         Ok(LoadedSuite {
