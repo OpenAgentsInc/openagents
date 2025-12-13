@@ -15,6 +15,14 @@ pub fn InfraPanel(
     on_refresh: EventHandler<()>,
     action_state: ActionState,
 ) -> Element {
+    let mut status_lines = Vec::new();
+    if action_state.provisioning {
+        status_lines.push("Provisioning customer...");
+    }
+    if action_state.refreshing {
+        status_lines.push("Refreshing usage...");
+    }
+
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
@@ -42,6 +50,12 @@ pub fn InfraPanel(
                             "Refresh usage"
                         }
                     }
+                }
+            }
+            if !status_lines.is_empty() {
+                div {
+                    style: "padding: 6px 8px; border: 1px solid {BORDER}; background: #0f0f0f; color: {MUTED}; font-size: 12px;",
+                    "{status_lines.join(\" | \")}"
                 }
             }
             InfraSummaryBar { customers: customers.clone(), events: events.clone() }
@@ -181,6 +195,14 @@ pub fn BillingPanel(
     on_download: EventHandler<()>,
     action_state: ActionState,
 ) -> Element {
+    let mut status_lines = Vec::new();
+    if action_state.paying {
+        status_lines.push("Paying invoice...");
+    }
+    if action_state.downloading {
+        status_lines.push("Downloading invoice...");
+    }
+
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
@@ -216,6 +238,12 @@ pub fn BillingPanel(
                             "Pay invoice"
                         }
                     }
+                }
+            }
+            if !status_lines.is_empty() {
+                div {
+                    style: "padding: 6px 8px; border: 1px solid {BORDER}; background: #0f0f0f; color: {MUTED}; font-size: 12px;",
+                    "{status_lines.join(\" | \")}"
                 }
             }
             div {
