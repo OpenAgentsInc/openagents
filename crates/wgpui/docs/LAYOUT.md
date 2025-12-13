@@ -2,7 +2,7 @@
 
 ## Overview
 
-wgpui uses [Taffy](https://github.com/DioxusLabs/taffy) for CSS Flexbox layout. Taffy is a high-performance layout library written in Rust.
+wgpui uses [Taffy 0.9](https://github.com/DioxusLabs/taffy) for CSS Flexbox layout. Taffy is a high-performance layout library written in Rust.
 
 ## Architecture
 
@@ -16,7 +16,8 @@ struct LayoutEngine {
 ## Basic Usage
 
 ```rust
-use wgpui::{LayoutEngine, LayoutStyle, px, pct, auto};
+use wgpui::{LayoutEngine, LayoutStyle, px, pct, auto, length};
+use taffy::prelude::*;
 
 let mut engine = LayoutEngine::new();
 
@@ -26,8 +27,16 @@ let root_style = LayoutStyle {
     flex_direction: FlexDirection::Column,
     width: px(400.0),
     height: px(300.0),
-    padding: Rect::from_length(length(16.0)),
-    gap: Size::from_length(length(8.0)),
+    padding: Rect {
+        left: LengthPercentage::length(16.0),
+        right: LengthPercentage::length(16.0),
+        top: LengthPercentage::length(16.0),
+        bottom: LengthPercentage::length(16.0),
+    },
+    gap: taffy::Size {
+        width: LengthPercentage::length(8.0),
+        height: LengthPercentage::length(8.0),
+    },
     ..Default::default()
 };
 
@@ -51,7 +60,33 @@ let child1_bounds = engine.layout(child1);
 
 ## LayoutStyle
 
-The `LayoutStyle` struct maps to Taffy's `Style`:
+The `LayoutStyle` struct maps to Taffy's `Style`. Note that some fields use Taffy types directly:
+
+```rust
+pub struct LayoutStyle {
+    pub display: Display,
+    pub position: Position,
+    pub flex_direction: FlexDirection,
+    pub flex_wrap: FlexWrap,
+    pub justify_content: Option<JustifyContent>,
+    pub align_items: Option<AlignItems>,
+    pub align_self: Option<AlignSelf>,
+    pub gap: taffy::Size<LengthPercentage>,        // Note: taffy::Size, not wgpui::Size
+    pub width: Dimension,
+    pub height: Dimension,
+    pub min_width: Dimension,
+    pub max_width: Dimension,
+    pub min_height: Dimension,
+    pub max_height: Dimension,
+    pub padding: Rect<LengthPercentage>,
+    pub margin: Rect<LengthPercentageAuto>,
+    pub flex_grow: f32,
+    pub flex_shrink: f32,
+    pub flex_basis: Dimension,
+    pub overflow: taffy::Point<Overflow>,          // Note: taffy::Point
+    pub inset: Rect<LengthPercentageAuto>,
+}
+```
 
 ### Display
 
@@ -82,7 +117,11 @@ align_items: Some(AlignItems::Center),
 ### Gap
 
 ```rust
-gap: Size::from_length(length(8.0)),  // Gap between items
+// Gap uses taffy::Size, not wgpui::Size
+gap: taffy::Size {
+    width: LengthPercentage::length(8.0),
+    height: LengthPercentage::length(8.0),
+},
 ```
 
 ### Sizing
@@ -105,50 +144,75 @@ flex_basis: auto(),     // Initial size (auto, px, %)
 ### Padding & Margin
 
 ```rust
+// Padding - build Rect manually
 padding: Rect {
-    top: length(8.0),
-    right: length(16.0),
-    bottom: length(8.0),
-    left: length(16.0),
+    left: LengthPercentage::length(16.0),
+    right: LengthPercentage::length(16.0),
+    top: LengthPercentage::length(8.0),
+    bottom: LengthPercentage::length(8.0),
 },
-margin: Rect::from_length(length_auto(8.0)),
+
+// Margin with auto
+margin: Rect {
+    left: LengthPercentageAuto::length(8.0),
+    right: LengthPercentageAuto::length(8.0),
+    top: LengthPercentageAuto::auto(),
+    bottom: LengthPercentageAuto::auto(),
+},
 ```
 
 ### Positioning
 
 ```rust
 position: Position::Relative,  // or Absolute
+
+// Inset for absolute positioning
 inset: Rect {
-    top: length_auto(10.0),
-    left: length_auto(10.0),
-    ..Default::default()
+    top: LengthPercentageAuto::length(10.0),
+    left: LengthPercentageAuto::length(10.0),
+    right: LengthPercentageAuto::auto(),
+    bottom: LengthPercentageAuto::auto(),
+},
+```
+
+### Overflow
+
+```rust
+// Overflow uses taffy::Point
+overflow: taffy::Point {
+    x: Overflow::Visible,  // or Scroll, Hidden, Clip
+    y: Overflow::Scroll,
 },
 ```
 
 ## Dimension Helpers
 
+wgpui provides helper functions that wrap Taffy's associated functions:
+
 ```rust
 // Pixels
-px(100.0) → Dimension::Length(100.0)
+px(100.0) → Dimension::length(100.0)
 
-// Percentage
-pct(50.0) → Dimension::Percent(0.5)
+// Percentage (input is 0-100, converted to 0-1)
+pct(50.0) → Dimension::percent(0.5)
 
 // Auto
-auto() → Dimension::Auto
+auto() → Dimension::auto()
 
-// Relative (fraction)
-relative(1.0) → Dimension::Percent(1.0)
+// Relative (input is fraction, 1.0 = 100%)
+relative(1.0) → Dimension::percent(1.0)
 
 // Length for LengthPercentage
-length(8.0) → LengthPercentage::Length(8.0)
+length(8.0) → LengthPercentage::length(8.0)
 
 // Length for LengthPercentageAuto
-length_auto(8.0) → LengthPercentageAuto::Length(8.0)
+length_auto(8.0) → LengthPercentageAuto::length(8.0)
 
 // Zero
-zero() → LengthPercentage::Length(0.0)
+zero() → LengthPercentage::length(0.0)
 ```
+
+**Important**: Taffy 0.9 uses associated functions (`Dimension::length()`) not enum variants (`Dimension::Length()`).
 
 ## Layout Integration
 
@@ -187,15 +251,18 @@ fn render_frame(&mut self) {
 For text or dynamic content, use measured nodes:
 
 ```rust
-let text_node = engine.request_measured(&style, |known_size, available_space, _, _, _| {
+let text_node = engine.request_measured(&style, |known_size, available_space, node_id, context, style| {
     // Measure text with given constraints
     let max_width = match available_space.width {
         AvailableSpace::Definite(w) => Some(w),
         _ => known_size.width,
     };
-    text_system.measure_size(text, font_size, max_width)
+    let size = text_system.measure_size(text, font_size, max_width);
+    taffy::Size { width: size.width, height: size.height }
 });
 ```
+
+**Note**: The current implementation creates a leaf node with context but doesn't wire up the measure function callback. This is a known limitation.
 
 ## Common Patterns
 
@@ -244,8 +311,16 @@ LayoutStyle {
 LayoutStyle {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
-    gap: Size::from_length(length(8.0)),
-    padding: Rect::from_length(length(16.0)),
+    gap: taffy::Size {
+        width: LengthPercentage::length(8.0),
+        height: LengthPercentage::length(8.0),
+    },
+    padding: Rect {
+        left: LengthPercentage::length(16.0),
+        right: LengthPercentage::length(16.0),
+        top: LengthPercentage::length(16.0),
+        bottom: LengthPercentage::length(16.0),
+    },
     ..Default::default()
 }
 ```
@@ -272,9 +347,23 @@ engine.mark_dirty(changed_node);
 engine.compute_layout(root, size);  // Only recomputes dirty nodes
 ```
 
+## Type Disambiguation
+
+wgpui has its own `Size` and `Point` types that differ from Taffy's:
+
+| wgpui Type | Taffy Type | Usage |
+|------------|------------|-------|
+| `wgpui::Size` | Non-generic `{ width: f32, height: f32 }` | Rendering, bounds |
+| `taffy::Size<T>` | Generic size with associated types | Gap, available space |
+| `wgpui::Point` | Non-generic `{ x: f32, y: f32 }` | Positions |
+| `taffy::Point<T>` | Generic point | Overflow settings |
+
+When working with `LayoutStyle`, use Taffy types for `gap` and `overflow` fields.
+
 ## Limitations
 
 - No CSS Grid (Taffy supports it, not exposed yet)
 - No `aspect-ratio` support
 - No `min-content` / `max-content` sizing
 - Position: Absolute is relative to nearest positioned ancestor
+- `request_measured` doesn't wire up the measure callback (creates static leaf)
