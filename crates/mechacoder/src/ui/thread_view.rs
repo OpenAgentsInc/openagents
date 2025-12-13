@@ -525,8 +525,6 @@ impl Render for ThreadView {
                     .w_full()
                     .max_w(px(768.0))
                     .p(px(16.0))
-                    .border_t_1()
-                    .border_color(border::DEFAULT)
                     .flex()
                     .flex_row()
                     .gap(px(8.0))
