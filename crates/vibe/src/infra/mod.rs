@@ -61,6 +61,9 @@ fn UsagePill(metric: UsageMetric) -> Element {
             div { style: "display: flex; flex-direction: column; align-items: flex-end;",
                 span { style: "color: {TEXT}; font-weight: 600;", "{metric.value}" }
                 span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
+                if let Some(remain) = metric.remaining {
+                    span { style: "color: {MUTED}; font-size: 11px;", "{remain}" }
+                }
             }
         }
     }
