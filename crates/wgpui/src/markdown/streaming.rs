@@ -73,10 +73,6 @@ pub struct StreamingMarkdown {
 
     /// Fade-in animation state
     fade_state: FadeState,
-    /// Frame when fade started for current batch
-    fade_start_frame: u64,
-    /// Target position for current fade (source length when fade started)
-    fade_target_position: usize,
     /// Last frame when content was received
     last_content_frame: u64,
 }
@@ -100,8 +96,6 @@ impl StreamingMarkdown {
             last_parse_frame: 0,
             needs_reparse: false,
             fade_state: FadeState::default(),
-            fade_start_frame: 0,
-            fade_target_position: 0,
             last_content_frame: 0,
         }
     }
@@ -135,8 +129,6 @@ impl StreamingMarkdown {
         self.last_parse_frame = 0;
         self.needs_reparse = false;
         self.fade_state = FadeState::default();
-        self.fade_start_frame = 0;
-        self.fade_target_position = 0;
         self.last_content_frame = 0;
     }
 
@@ -173,28 +165,13 @@ impl StreamingMarkdown {
 
     /// Update fade-in animation state.
     fn update_fade(&mut self, old_source_len: usize) {
-        let Some(fade_frames) = self.config.fade_in_frames else {
-            // No fade - everything is immediately visible
-            self.fade_state.stable_position = self.source.len();
-            self.fade_state.new_content_opacity = 1.0;
-            self.fade_state.is_streaming = false;
-            return;
-        };
-
+        // Track streaming state regardless of fade config
         let new_source_len = self.source.len();
 
         // Track when content arrives
         if new_source_len > old_source_len {
             self.last_content_frame = self.frame_counter;
             self.fade_state.is_streaming = true;
-
-            // When new content arrives after a pause, start a fade
-            if self.fade_state.new_content_opacity >= 1.0 {
-                // Start fade-in from 0 for a more visible effect
-                self.fade_start_frame = self.frame_counter;
-                self.fade_state.new_content_opacity = 0.0;
-            }
-            self.fade_target_position = new_source_len;
         }
 
         // Check if streaming has paused (no content in last 3 frames)
@@ -203,20 +180,10 @@ impl StreamingMarkdown {
             self.fade_state.is_streaming = false;
         }
 
-        // Advance fade animation
-        if self.fade_state.new_content_opacity < 1.0 {
-            let frames_elapsed = self.frame_counter - self.fade_start_frame;
-            let progress = (frames_elapsed as f32 / fade_frames as f32).min(1.0);
-
-            // Smooth ease-out from 0 to 1
-            self.fade_state.new_content_opacity = ease_out(progress);
-
-            // When fade completes
-            if progress >= 1.0 {
-                self.fade_state.stable_position = self.source.len();
-                self.fade_state.new_content_opacity = 1.0;
-            }
-        }
+        // Keep full opacity to avoid flicker - fade effect was causing the whole
+        // document to flicker because opacity is applied globally, not per-character
+        self.fade_state.stable_position = self.source.len();
+        self.fade_state.new_content_opacity = 1.0;
     }
 
     /// Get the current fade state for rendering.
@@ -272,11 +239,6 @@ impl StreamingMarkdown {
         self.last_parse_frame = self.frame_counter;
         self.needs_reparse = false;
     }
-}
-
-/// Ease-out function for smooth fade animation (quadratic ease-out).
-fn ease_out(t: f32) -> f32 {
-    1.0 - (1.0 - t) * (1.0 - t)
 }
 
 impl Default for StreamingMarkdown {
