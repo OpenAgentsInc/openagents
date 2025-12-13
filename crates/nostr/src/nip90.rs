@@ -14,6 +14,7 @@
 //! 3. Upon completion, service provider publishes job result (kind 6000-6999)
 //! 4. Customer pays via bolt11 or zap
 
+use crate::nip01::Event;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -387,6 +388,61 @@ impl JobRequest {
         }
 
         tags
+    }
+
+    /// Parse a JobRequest from a Nostr event.
+    ///
+    /// This extracts all NIP-90 tags from the event and constructs a JobRequest.
+    pub fn from_event(event: &Event) -> Result<Self, Nip90Error> {
+        if !is_job_request_kind(event.kind) {
+            return Err(Nip90Error::InvalidKind(event.kind, "5000-5999".to_string()));
+        }
+
+        let mut request = Self::new(event.kind)?;
+        request.content = event.content.clone();
+
+        for tag in &event.tags {
+            if tag.is_empty() {
+                continue;
+            }
+            match tag[0].as_str() {
+                "i" if tag.len() >= 3 => {
+                    let input_type = InputType::from_str(&tag[2])?;
+                    let relay = tag.get(3).cloned();
+                    let marker = tag.get(4).cloned();
+                    request.inputs.push(JobInput {
+                        data: tag[1].clone(),
+                        input_type,
+                        relay,
+                        marker,
+                    });
+                }
+                "output" if tag.len() >= 2 => {
+                    request.output = Some(tag[1].clone());
+                }
+                "param" if tag.len() >= 3 => {
+                    request.params.push(JobParam {
+                        key: tag[1].clone(),
+                        value: tag[2].clone(),
+                    });
+                }
+                "bid" if tag.len() >= 2 => {
+                    request.bid = tag[1].parse().ok();
+                }
+                "relays" => {
+                    request.relays.extend(tag[1..].iter().cloned());
+                }
+                "p" if tag.len() >= 2 => {
+                    request.service_providers.push(tag[1].clone());
+                }
+                "encrypted" => {
+                    request.encrypted = true;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(request)
     }
 
     /// Get the corresponding result kind for this request.

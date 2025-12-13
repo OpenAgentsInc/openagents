@@ -21,9 +21,13 @@
 
 use worker::*;
 
+mod dvm;
 mod relay_do;
+mod signing;
 
+pub use dvm::DvmProcessor;
 pub use relay_do::RelayDurableObject;
+pub use signing::ServiceIdentity;
 
 /// Main entry point for the Cloudflare Worker.
 ///
