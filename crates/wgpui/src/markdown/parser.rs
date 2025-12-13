@@ -63,7 +63,7 @@ struct DocumentBuilder<'a> {
     current_spans: Vec<StyledSpan>,
     style_stack: Vec<TextStyle>,
     list_stack: Vec<ListContext>,
-    blockquote_depth: u32,
+    blockquote_stack: Vec<BlockquoteContext>,
     in_code_block: bool,
     code_language: Option<String>,
     code_content: String,
@@ -75,6 +75,10 @@ struct ListContext {
     start: u64,
     items: Vec<Vec<MarkdownBlock>>,
     current_item_blocks: Vec<MarkdownBlock>,
+}
+
+struct BlockquoteContext {
+    blocks: Vec<MarkdownBlock>,
 }
 
 impl<'a> DocumentBuilder<'a> {
@@ -92,7 +96,7 @@ impl<'a> DocumentBuilder<'a> {
             current_spans: Vec::new(),
             style_stack: vec![base_style],
             list_stack: Vec::new(),
-            blockquote_depth: 0,
+            blockquote_stack: Vec::new(),
             in_code_block: false,
             code_language: None,
             code_content: String::new(),
@@ -173,7 +177,9 @@ impl<'a> DocumentBuilder<'a> {
             }
             Tag::BlockQuote(_) => {
                 self.flush_paragraph();
-                self.blockquote_depth += 1;
+                self.blockquote_stack.push(BlockquoteContext {
+                    blocks: Vec::new(),
+                });
             }
             Tag::Paragraph => {
                 // Paragraphs start implicitly
@@ -393,15 +399,32 @@ impl<'a> DocumentBuilder<'a> {
     }
 
     fn finish_blockquote(&mut self) {
-        self.blockquote_depth = self.blockquote_depth.saturating_sub(1);
-        // Blockquote handling would collect nested blocks
-        // For simplicity, we'll handle blockquotes as paragraphs with special styling
+        // Flush any pending content into the blockquote
+        if !self.current_spans.is_empty() {
+            let lines = vec![StyledLine {
+                spans: std::mem::take(&mut self.current_spans),
+                line_height: theme::line_height::RELAXED,
+                margin_top: 0.0,
+                indent: 0,
+            }];
+            if let Some(bq_ctx) = self.blockquote_stack.last_mut() {
+                bq_ctx.blocks.push(MarkdownBlock::Paragraph(lines));
+            }
+        }
+
+        // Pop the blockquote context and create the block
+        if let Some(bq_ctx) = self.blockquote_stack.pop() {
+            self.add_block(MarkdownBlock::Blockquote(bq_ctx.blocks));
+        }
     }
 
     fn add_block(&mut self, block: MarkdownBlock) {
         // If we're in a list item, add to the current item
         if let Some(list_ctx) = self.list_stack.last_mut() {
             list_ctx.current_item_blocks.push(block);
+        } else if let Some(bq_ctx) = self.blockquote_stack.last_mut() {
+            // If we're in a blockquote, add to the blockquote's blocks
+            bq_ctx.blocks.push(block);
         } else {
             self.blocks.push(block);
         }
@@ -502,6 +525,26 @@ mod tests {
                 assert_eq!(items.len(), 2);
             }
             _ => panic!("Expected unordered list"),
+        }
+    }
+
+    #[test]
+    fn test_parse_blockquote() {
+        let parser = MarkdownParser::new();
+        let doc = parser.parse("> This is a quote");
+
+        assert_eq!(doc.blocks.len(), 1);
+        match &doc.blocks[0] {
+            MarkdownBlock::Blockquote(blocks) => {
+                assert_eq!(blocks.len(), 1);
+                match &blocks[0] {
+                    MarkdownBlock::Paragraph(lines) => {
+                        assert_eq!(lines[0].spans[0].text, "This is a quote");
+                    }
+                    _ => panic!("Expected paragraph inside blockquote"),
+                }
+            }
+            _ => panic!("Expected blockquote, got {:?}", doc.blocks[0]),
         }
     }
 }

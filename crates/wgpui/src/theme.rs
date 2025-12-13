@@ -100,25 +100,25 @@ pub mod status {
     pub const INFO: Hsla = Hsla::new(0.592, 1.0, 0.65, 1.0); // #4A9EFF
 }
 
-/// Font sizes in logical pixels
+/// Font sizes in logical pixels (optimized for high-DPI displays)
 pub mod font_size {
     /// Extra small (labels, badges)
-    pub const XS: f32 = 9.0;
+    pub const XS: f32 = 6.0;
 
     /// Small (secondary text)
-    pub const SM: f32 = 10.0;
+    pub const SM: f32 = 7.0;
 
     /// Base/default size
-    pub const BASE: f32 = 11.0;
+    pub const BASE: f32 = 8.0;
 
     /// Large (section headers)
-    pub const LG: f32 = 12.0;
+    pub const LG: f32 = 9.0;
 
     /// Extra large (page titles)
-    pub const XL: f32 = 14.0;
+    pub const XL: f32 = 10.0;
 
     /// 2X large (hero text)
-    pub const XXL: f32 = 16.0;
+    pub const XXL: f32 = 12.0;
 }
 
 /// Line heights
