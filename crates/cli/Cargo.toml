@@ -9,7 +9,7 @@ description = "Command-line interface for OpenAgents"
 [dependencies]
 # Workspace crates
 ai = { path = "../ai" }
-tasks = { path = "../tasks" }
+taskmaster = { path = "../taskmaster" }
 config = { path = "../config" }
 tools = { path = "../tools" }
 llm = { path = "../llm" }
