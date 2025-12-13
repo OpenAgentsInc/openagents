@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
 
-use crate::data::{get_vibe_snapshot, run_wasi_job, tail_logs, trigger_deploy, VibeSnapshot};
+use crate::data::{VibeSnapshot, get_vibe_snapshot, run_wasi_job, tail_logs, trigger_deploy};
 use crate::database::{SchemaView, TableBrowser};
 use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
 use crate::editor::{ActionBar, AgentPanel, CodeEditor, FileTree, PreviewPanel, TerminalPanel};
+use crate::infra::{BillingPanel, InfraPanel};
 use crate::projects::{ProjectGrid, TemplatePicker};
 use crate::types::*;
 
@@ -34,6 +35,10 @@ pub fn VibeScreen() -> Element {
     let analytics = use_signal(Vec::<AnalyticsData>::new);
     let terminal_logs = use_signal(Vec::<String>::new);
     let agent_tasks = use_signal(Vec::<AgentTask>::new);
+    let infra_customers = use_signal(Vec::<InfraCustomer>::new);
+    let usage = use_signal(Vec::<UsageMetric>::new);
+    let invoice = use_signal(InvoiceSummary::default);
+    let billing_events = use_signal(Vec::<BillingEvent>::new);
 
     {
         let mut projects = projects.clone();
@@ -45,6 +50,10 @@ pub fn VibeScreen() -> Element {
         let mut analytics = analytics.clone();
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
+        let mut infra_customers = infra_customers.clone();
+        let mut usage = usage.clone();
+        let mut invoice = invoice.clone();
+        let mut billing_events = billing_events.clone();
         use_effect(move || {
             let loaded = snapshot.read_unchecked();
             if let Some(Ok(data)) = &*loaded {
@@ -57,6 +66,10 @@ pub fn VibeScreen() -> Element {
                 analytics.set(data.analytics.clone());
                 terminal_logs.set(data.logs.clone());
                 agent_tasks.set(data.tasks.clone());
+                infra_customers.set(data.infra_customers.clone());
+                usage.set(data.usage.clone());
+                invoice.set(data.invoice.clone());
+                billing_events.set(data.billing_events.clone());
             } else if projects.read().is_empty() {
                 let mock = VibeSnapshot::mock();
                 projects.set(mock.projects);
@@ -68,6 +81,10 @@ pub fn VibeScreen() -> Element {
                 analytics.set(mock.analytics);
                 terminal_logs.set(mock.logs);
                 agent_tasks.set(mock.tasks);
+                infra_customers.set(mock.infra_customers);
+                usage.set(mock.usage);
+                invoice.set(mock.invoice);
+                billing_events.set(mock.billing_events);
             }
         });
     }
@@ -82,6 +99,10 @@ pub fn VibeScreen() -> Element {
         let mut analytics = analytics.clone();
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
+        let mut infra_customers = infra_customers.clone();
+        let mut usage = usage.clone();
+        let mut invoice = invoice.clone();
+        let mut billing_events = billing_events.clone();
         move |data: VibeSnapshot| {
             projects.set(data.projects);
             templates.set(data.templates);
@@ -92,6 +113,10 @@ pub fn VibeScreen() -> Element {
             analytics.set(data.analytics);
             terminal_logs.set(data.logs);
             agent_tasks.set(data.tasks);
+            infra_customers.set(data.infra_customers);
+            usage.set(data.usage);
+            invoice.set(data.invoice);
+            billing_events.set(data.billing_events);
         }
     };
 
@@ -144,6 +169,7 @@ pub fn VibeScreen() -> Element {
                 TabButton { label: "Editor", active: tab() == VibeTab::Editor, ontap: move |_| tab.set(VibeTab::Editor) }
                 TabButton { label: "Database", active: tab() == VibeTab::Database, ontap: move |_| tab.set(VibeTab::Database) }
                 TabButton { label: "Deploy", active: tab() == VibeTab::Deploy, ontap: move |_| tab.set(VibeTab::Deploy) }
+                TabButton { label: "Infra", active: tab() == VibeTab::Infra, ontap: move |_| tab.set(VibeTab::Infra) }
             }
 
             match tab() {
@@ -197,6 +223,13 @@ pub fn VibeScreen() -> Element {
                             DomainManager { domains: domains() }
                         }
                         AnalyticsView { metrics: analytics() }
+                    }
+                },
+                VibeTab::Infra => rsx! {
+                    div {
+                        style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
+                        InfraPanel { customers: infra_customers(), usage: usage() }
+                        BillingPanel { invoice: invoice(), events: billing_events() }
                     }
                 },
             }
