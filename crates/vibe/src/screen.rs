@@ -267,7 +267,7 @@ fn ResourceBar() -> Element {
 fn ResourcePill(label: &'static str, value: &'static str) -> Element {
     rsx! {
         div {
-            style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; border-radius: 4px;",
+            style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG};",
             span { style: "color: {MUTED}; margin-right: 6px;", "{label}" }
             span { style: "color: {TEXT};", "{value}" }
         }

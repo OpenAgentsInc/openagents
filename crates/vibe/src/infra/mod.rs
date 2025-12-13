@@ -7,7 +7,7 @@ use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 pub fn InfraPanel(customers: Vec<InfraCustomer>, usage: Vec<UsageMetric>) -> Element {
     rsx! {
         div {
-            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px;",
+            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {TEXT}; font-weight: 600;", "Infrastructure resale" }
@@ -33,7 +33,7 @@ pub fn InfraPanel(customers: Vec<InfraCustomer>, usage: Vec<UsageMetric>) -> Ele
 fn UsagePill(metric: UsageMetric) -> Element {
     rsx! {
         div {
-            style: "border: 1px solid {BORDER}; border-radius: 4px; padding: 8px 10px; background: #0f0f0f; display: flex; gap: 8px; align-items: center;",
+            style: "border: 1px solid {BORDER}; padding: 8px 10px; background: #0f0f0f; display: flex; gap: 8px; align-items: center;",
             span { style: "color: {MUTED}; font-size: 12px;", "{metric.label}" }
             span { style: "color: {TEXT}; font-weight: 600;", "{metric.value}" }
             span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
@@ -51,7 +51,7 @@ fn CustomerCard(customer: InfraCustomer) -> Element {
 
     rsx! {
         div {
-            style: "border: 1px solid {BORDER}; padding: 12px; border-radius: 6px; background: #0f0f0f; display: flex; flex-direction: column; gap: 6px;",
+            style: "border: 1px solid {BORDER}; padding: 12px; background: #0f0f0f; display: flex; flex-direction: column; gap: 6px;",
             div { style: "display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {TEXT}; font-weight: 600;", "{customer.subdomain}" }
                 span { style: "color: {status_color}; font-size: 12px;", "{customer.status}" }
@@ -72,13 +72,13 @@ fn CustomerCard(customer: InfraCustomer) -> Element {
 pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Element {
     rsx! {
         div {
-            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px;",
+            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
             div { style: "display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {TEXT}; font-weight: 600;", "Billing & invoices" }
                 span { style: "color: {MUTED}; font-size: 12px;", "{invoice.period}" }
             }
             div {
-                style: "border: 1px dashed {BORDER}; border-radius: 6px; padding: 10px; background: #0f0f0f; display: flex; justify-content: space-between; align-items: center;",
+                style: "border: 1px dashed {BORDER}; padding: 10px; background: #0f0f0f; display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {MUTED}; font-size: 12px;", "Current total" }
                 span { style: "color: {TEXT}; font-weight: 700; font-size: 18px;", "{invoice.total}" }
             }
@@ -103,7 +103,7 @@ pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Eleme
 fn InvoiceRow(line: InvoiceLine) -> Element {
     rsx! {
         div {
-            style: "display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid {BORDER}; border-radius: 4px; background: #0f0f0f;",
+            style: "display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid {BORDER}; background: #0f0f0f;",
             div { style: "display: flex; flex-direction: column;",
                 span { style: "color: {TEXT};", "{line.description}" }
                 span { style: "color: {MUTED}; font-size: 12px;", "Quantity: {line.quantity}" }
@@ -117,7 +117,7 @@ fn InvoiceRow(line: InvoiceLine) -> Element {
 fn BillingEventRow(evt: BillingEvent) -> Element {
     rsx! {
         div {
-            style: "display: grid; grid-template-columns: 1.2fr 0.6fr 0.5fr 0.4fr; gap: 10px; padding: 8px 10px; border: 1px solid {BORDER}; border-radius: 4px; background: #0f0f0f; align-items: center;",
+            style: "display: grid; grid-template-columns: 1.2fr 0.6fr 0.5fr 0.4fr; gap: 10px; padding: 8px 10px; border: 1px solid {BORDER}; background: #0f0f0f; align-items: center;",
             span { style: "color: {TEXT}; font-weight: 600;", "{evt.label}" }
             span { style: "color: {TEXT};", "{evt.amount}" }
             span { style: "color: {MUTED}; font-size: 12px;", "{evt.status}" }
