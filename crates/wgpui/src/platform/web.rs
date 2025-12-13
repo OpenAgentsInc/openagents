@@ -505,6 +505,7 @@ impl WebPlatform {
         let mut paint_cx = PaintContext {
             scene: &mut self.scene,
             text_system: &mut self.text_system,
+            layout_engine: &self.layout_engine,
         };
         root.paint(bounds, &mut state, &mut paint_cx);
 

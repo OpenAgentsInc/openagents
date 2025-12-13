@@ -114,22 +114,26 @@ mod demo {
                             .gap(8.0)
                             .child(
                                 div()
+                                    .flex()
                                     .w(100.0)
                                     .h(32.0)
                                     .bg(theme::accent::PRIMARY)
                                     .rounded(4.0)
                                     .items_center()
                                     .justify_center()
+                                    .on_click(|| log::info!("Button 1 clicked!"))
                                     .child(text("Button 1").color(theme::bg::APP).size(11.0)),
                             )
                             .child(
                                 div()
+                                    .flex()
                                     .w(100.0)
                                     .h(32.0)
                                     .bg(theme::accent::BLUE)
                                     .rounded(4.0)
                                     .items_center()
                                     .justify_center()
+                                    .on_click(|| log::info!("Button 2 clicked!"))
                                     .child(text("Button 2").color(theme::bg::APP).size(11.0)),
                             ),
                     ),

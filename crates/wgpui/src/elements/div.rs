@@ -5,11 +5,16 @@ use crate::layout::{Bounds, LayoutId};
 use crate::scene::Quad;
 use crate::styled::{Style, Styled};
 use smallvec::SmallVec;
+use std::rc::Rc;
+
+/// Click handler type
+pub type ClickHandler = Rc<dyn Fn()>;
 
 /// Div element - a container that can hold child elements
 pub struct Div {
     style: Style,
     children: SmallVec<[AnyElement; 4]>,
+    on_click: Option<ClickHandler>,
 }
 
 impl Div {
@@ -17,7 +22,14 @@ impl Div {
         Self {
             style: Style::default(),
             children: SmallVec::new(),
+            on_click: None,
         }
+    }
+
+    /// Set a click handler for this div
+    pub fn on_click(mut self, handler: impl Fn() + 'static) -> Self {
+        self.on_click = Some(Rc::new(handler));
+        self
     }
 }
 
@@ -77,12 +89,17 @@ impl Element for Div {
             cx.scene.add_quad(quad);
         }
 
-        // Paint children
-        for (child, &_layout_id) in self.children.iter_mut().zip(state.child_layout_ids.iter()) {
-            // Get child bounds (relative to parent)
-            // Note: In a real impl, we'd get this from the layout engine
-            // For now, we'll use the parent bounds offset
-            let child_bounds = bounds; // Simplified - real impl would compute proper child bounds
+        // Paint children with their computed layout bounds
+        for (child, &layout_id) in self.children.iter_mut().zip(state.child_layout_ids.iter()) {
+            // Get child bounds from layout engine (relative to parent)
+            let child_layout = cx.layout_engine.layout(layout_id);
+            // Offset child bounds by parent origin
+            let child_bounds = crate::layout::Bounds::new(
+                bounds.origin.x + child_layout.origin.x,
+                bounds.origin.y + child_layout.origin.y,
+                child_layout.size.width,
+                child_layout.size.height,
+            );
             child.paint(child_bounds, cx);
         }
     }
