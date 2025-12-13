@@ -6,14 +6,30 @@ use crate::types::{
 use crate::{ACCENT, BG, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
-pub fn InfraPanel(customers: Vec<InfraCustomer>, usage: Vec<UsageMetric>) -> Element {
+pub fn InfraPanel(
+    customers: Vec<InfraCustomer>,
+    usage: Vec<UsageMetric>,
+    on_provision: EventHandler<()>,
+    on_refresh: EventHandler<()>,
+) -> Element {
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {TEXT}; font-weight: 600;", "Infrastructure resale" }
-                span { style: "color: {MUTED}; font-size: 12px;", "Subdomains, DOs, R2/D1 prefixes" }
+                div { style: "display: flex; gap: 8px; align-items: center;",
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| on_provision.call(()),
+                        "Provision customer"
+                    }
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| on_refresh.call(()),
+                        "Refresh usage"
+                    }
+                }
             }
             div {
                 style: "display: flex; flex-wrap: wrap; gap: 8px;",

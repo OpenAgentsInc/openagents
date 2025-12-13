@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::data::{VibeSnapshot, get_vibe_snapshot, run_wasi_job, tail_logs, trigger_deploy};
+use crate::data::{
+    VibeSnapshot, get_vibe_snapshot, provision_infra_customer, refresh_usage, run_wasi_job,
+    tail_logs, trigger_deploy,
+};
 use crate::database::{SchemaView, TableBrowser};
 use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
 use crate::editor::{ActionBar, AgentPanel, CodeEditor, FileTree, PreviewPanel, TerminalPanel};
@@ -168,6 +171,30 @@ pub fn VibeScreen() -> Element {
         }
     };
 
+    let on_provision = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = provision_infra_customer(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
+    let on_refresh_usage = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = refresh_usage(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
     rsx! {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
@@ -240,7 +267,7 @@ pub fn VibeScreen() -> Element {
                 VibeTab::Infra => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
-                        InfraPanel { customers: infra_customers(), usage: usage() }
+                        InfraPanel { customers: infra_customers(), usage: usage(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage() }
                         div {
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             PlanSummary { plan: plan_limits(), auth: auth() }

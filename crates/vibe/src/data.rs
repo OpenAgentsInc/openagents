@@ -120,3 +120,56 @@ pub async fn trigger_deploy(project_id: String) -> Result<VibeSnapshot, ServerFn
     });
     Ok(updated)
 }
+
+pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        let new_id = snap.infra_customers.len() + 1;
+        let customer_id = format!("customer-new-{new_id}");
+        snap.infra_customers.insert(
+            0,
+            InfraCustomer {
+                id: customer_id.clone(),
+                subdomain: format!("new-{new_id}.vibe.run"),
+                plan: "Starter".to_string(),
+                status: "Provisioning".to_string(),
+                r2_prefix: format!("customers/new-{new_id}/"),
+                d1_database: format!("vibe-customer-new-{new_id}"),
+                durable_object: format!("do:customer:new-{new_id}"),
+            },
+        );
+        snap.billing_events.insert(
+            0,
+            BillingEvent {
+                id: format!("evt-provision-{new_id}"),
+                label: "Provisioning requested".to_string(),
+                amount: "$0.00".to_string(),
+                status: "Queued".to_string(),
+                timestamp: "just now".to_string(),
+            },
+        );
+        snap.clone()
+    });
+    Ok(updated)
+}
+
+pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        snap.usage.push(UsageMetric {
+            label: "Bandwidth".to_string(),
+            value: "281 GB".to_string(),
+            delta: "+0.3%".to_string(),
+        });
+        snap.billing_events.insert(
+            0,
+            BillingEvent {
+                id: format!("evt-usage-refresh-{}", snap.billing_events.len() + 1),
+                label: "Usage refreshed".to_string(),
+                amount: "$0.00".to_string(),
+                status: "Info".to_string(),
+                timestamp: "just now".to_string(),
+            },
+        );
+        snap.clone()
+    });
+    Ok(updated)
+}
