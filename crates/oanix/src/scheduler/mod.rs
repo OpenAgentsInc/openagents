@@ -260,6 +260,7 @@ impl Scheduler {
                     args: args.clone(),
                     env: job.env_vars.clone(),
                     working_dir: job.working_dir.clone(),
+                    ..Default::default()
                 };
                 env.run_wasi(wasm_bytes, config)
             }
