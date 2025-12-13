@@ -102,6 +102,8 @@ pub struct ThreadView {
     list_state: ListState,
     /// Cached message views by entry index.
     message_cache: HashMap<usize, Entity<MessageView>>,
+    /// Cached tool call views by entry index.
+    tool_call_cache: HashMap<usize, Entity<ToolCallView>>,
     /// Cached streaming message view.
     streaming_message: Option<Entity<MessageView>>,
     /// Last streaming content (to detect changes).
@@ -140,6 +142,7 @@ impl ThreadView {
             focus_handle,
             list_state,
             message_cache: HashMap::new(),
+            tool_call_cache: HashMap::new(),
             streaming_message: None,
             last_streaming_content: None,
             _thread_subscription: thread_subscription,
@@ -174,6 +177,7 @@ impl ThreadView {
             focus_handle,
             list_state,
             message_cache: HashMap::new(),
+            tool_call_cache: HashMap::new(),
             streaming_message: None,
             last_streaming_content: None,
             _thread_subscription: thread_subscription,
@@ -394,6 +398,7 @@ impl Render for ThreadView {
         // Create render callback for list items
         let thread = self.thread.clone();
         let message_cache = self.message_cache.clone();
+        let tool_call_cache = self.tool_call_cache.clone();
         let render_item = move |ix: usize, _window: &mut Window, cx: &mut App| {
             let entries = thread.entries(cx);
             if ix < entries.len() {
@@ -416,8 +421,13 @@ impl Render for ThreadView {
                             }
                         }
                     }
-                    ThreadEntry::ToolUse(tu) => {
-                        ToolCallView::from_tool_use(tu).into_any_element()
+                    ThreadEntry::ToolUse(_) => {
+                        if let Some(view) = tool_call_cache.get(&ix) {
+                            view.clone().into_any_element()
+                        } else {
+                            // Fallback - shouldn't happen if cache is populated
+                            div().into_any_element()
+                        }
                     }
                     ThreadEntry::TBenchRun(run) => {
                         TBenchRunView::from_entry(run).into_any_element()
@@ -447,10 +457,12 @@ impl Render for ThreadView {
             }
         };
 
-        // Pre-populate cache for all entries
+        // Pre-populate caches for all entries
         // Collect entries to avoid borrow conflict
         let entries: Vec<_> = self.thread.entries(cx);
-        let missing_indices: Vec<_> = entries
+
+        // Populate message cache
+        let missing_message_indices: Vec<_> = entries
             .iter()
             .enumerate()
             .filter_map(|(ix, entry)| {
@@ -467,8 +479,18 @@ impl Render for ThreadView {
             })
             .collect();
 
-        for (ix, entry) in missing_indices {
+        for (ix, entry) in missing_message_indices {
             let _ = self.get_or_create_message_view(&entry, ix, cx);
+        }
+
+        // Populate tool call cache
+        for (ix, entry) in entries.iter().enumerate() {
+            if !self.tool_call_cache.contains_key(&ix) {
+                if let ThreadEntry::ToolUse(tu) = entry {
+                    let view = ToolCallView::from_tool_use(tu, cx);
+                    self.tool_call_cache.insert(ix, view);
+                }
+            }
         }
 
         // Get todo state for panel

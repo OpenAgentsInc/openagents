@@ -1,49 +1,38 @@
 //! Tool call view component.
 
-use crate::sdk_thread::{ToolUse, ToolStatus};
-use gpui::{div, prelude::*, px, IntoElement, ParentElement, Styled};
+use crate::sdk_thread::{ToolStatus, ToolUse};
+use gpui::{div, prelude::*, px, App, Context, Entity, IntoElement, ParentElement, Render, Styled, Window};
 use theme_oa::{bg, status, text};
 
-/// Simple content for tool call display.
-#[derive(Clone)]
-pub enum ToolCallContent {
-    /// Plain text content.
-    Text(String),
-}
-
-/// Tool call view for displaying a tool call.
+/// Tool call view for displaying a tool call (collapsible).
 pub struct ToolCallView {
     /// Tool call title.
     title: String,
     /// Tool call status.
     tool_status: ToolStatus,
-    /// Tool call content.
-    content: Vec<ToolCallContent>,
+    /// Input content.
+    input: String,
+    /// Output content.
+    output: Option<String>,
     /// Whether the view is expanded.
     expanded: bool,
 }
 
 impl ToolCallView {
     /// Create a new tool call view from SDK ToolUse.
-    pub fn from_tool_use(tool_use: &ToolUse) -> Self {
-        let mut content = Vec::new();
-
-        // Add input as content
-        if !tool_use.input.is_empty() {
-            content.push(ToolCallContent::Text(format!("Input: {}", tool_use.input)));
-        }
-
-        // Add output if available
-        if let Some(output) = &tool_use.output {
-            content.push(ToolCallContent::Text(format!("Output: {}", output)));
-        }
-
-        Self {
+    pub fn from_tool_use(tool_use: &ToolUse, cx: &mut App) -> Entity<Self> {
+        cx.new(|_cx| Self {
             title: tool_use.tool_name.clone(),
             tool_status: tool_use.status.clone(),
-            content,
-            expanded: true,
-        }
+            input: tool_use.input.clone(),
+            output: tool_use.output.clone(),
+            expanded: false, // Collapsed by default
+        })
+    }
+
+    /// Toggle expanded state.
+    fn toggle_expanded(&mut self, _cx: &mut Context<Self>) {
+        self.expanded = !self.expanded;
     }
 
     /// Get the status color.
@@ -59,85 +48,109 @@ impl ToolCallView {
     /// Get the status text.
     fn status_text(&self) -> &str {
         match &self.tool_status {
-            ToolStatus::Pending => "Pending",
-            ToolStatus::Running => "Running",
-            ToolStatus::Completed => "Completed",
-            ToolStatus::Failed(_) => "Failed",
+            ToolStatus::Pending => "pending",
+            ToolStatus::Running => "running...",
+            ToolStatus::Completed => "done",
+            ToolStatus::Failed(_) => "failed",
         }
     }
 
-    /// Render a single content item.
-    fn render_content_item(item: &ToolCallContent) -> impl IntoElement {
-        match item {
-            ToolCallContent::Text(text_content) => div()
-                .p(px(8.0))
-                .bg(bg::CODE)
-                
-                .text_sm()
-                .text_color(text::PRIMARY)
-                .child(text_content.clone()),
-        }
+    /// Get the expand/collapse indicator.
+    fn expand_indicator(&self) -> String {
+        if self.expanded { "▼".to_string() } else { "▶".to_string() }
     }
 }
 
-impl IntoElement for ToolCallView {
-    type Element = gpui::Div;
-
-    fn into_element(self) -> Self::Element {
-        // Extract values before consuming self
+impl Render for ToolCallView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status_color = self.status_color();
         let status_text = self.status_text().to_string();
-        let title = self.title;
+        let title = self.title.clone();
         let expanded = self.expanded;
-        let content = self.content;
+        let input = self.input.clone();
+        let output = self.output.clone();
+        let indicator = self.expand_indicator();
 
         div()
             .px(px(16.0))
-            .py(px(8.0))
+            .py(px(4.0))
             .flex()
             .flex_col()
-            .gap(px(8.0))
-            // Header
+            // Header (clickable)
             .child(
                 div()
+                    .id("tool-header")
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(8.0))
-                    // Status indicator
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.toggle_expanded(cx);
+                        cx.notify();
+                    }))
+                    // Expand indicator
                     .child(
                         div()
-                            .w(px(8.0))
-                            .h(px(8.0))
-                            
+                            .text_xs()
+                            .text_color(text::SECONDARY)
+                            .child(indicator),
+                    )
+                    // Status indicator dot
+                    .child(
+                        div()
+                            .w(px(6.0))
+                            .h(px(6.0))
                             .bg(status_color),
                     )
                     // Title
                     .child(
                         div()
-                            .flex_1()
                             .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(text::PRIMARY)
+                            .text_color(text::SECONDARY)
                             .child(title),
                     )
                     // Status text
                     .child(
                         div()
                             .text_xs()
-                            .text_color(text::SECONDARY)
+                            .text_color(text::MUTED)
                             .child(status_text),
                     ),
             )
-            // Content (if expanded)
-            .when(expanded && !content.is_empty(), |el| {
+            // Content (only if expanded)
+            .when(expanded, |el| {
                 el.child(
                     div()
-                        .pl(px(16.0))
+                        .pl(px(24.0))
+                        .pt(px(4.0))
                         .flex()
                         .flex_col()
-                        .gap(px(8.0))
-                        .children(content.iter().map(Self::render_content_item)),
+                        .gap(px(4.0))
+                        // Input
+                        .when(!input.is_empty(), |el| {
+                            el.child(
+                                div()
+                                    .p(px(8.0))
+                                    .bg(bg::CODE)
+                                    .text_xs()
+                                    .text_color(text::SECONDARY)
+                                    .overflow_hidden()
+                                    .child(format!("Input: {}", input)),
+                            )
+                        })
+                        // Output
+                        .when_some(output, |el, out| {
+                            el.child(
+                                div()
+                                    .p(px(8.0))
+                                    .bg(bg::CODE)
+                                    .text_xs()
+                                    .text_color(text::SECONDARY)
+                                    .overflow_hidden()
+                                    .child(format!("Output: {}", out)),
+                            )
+                        }),
                 )
             })
     }
