@@ -10,9 +10,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tasks::{TaskFilter, TaskRepository};
+use taskmaster::{IssueFilter, IssueRepository};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+
+/// Actor ID for parallel orchestrator operations
+const PARALLEL_ACTOR: &str = "parallel-orchestrator";
 
 /// Configuration for parallel execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,8 +169,8 @@ pub struct ParallelOrchestrator {
     backend: ExecutionBackend,
     /// Agent pool
     agent_pool: Arc<AgentPool>,
-    /// Task repository
-    task_repo: Arc<dyn TaskRepository>,
+    /// Issue repository (taskmaster)
+    issue_repo: Arc<dyn IssueRepository>,
     /// Current state
     state: Arc<RwLock<ParallelState>>,
     /// Start time
@@ -181,7 +184,7 @@ impl ParallelOrchestrator {
     pub fn new(
         config: ParallelConfig,
         working_dir: PathBuf,
-        task_repo: Arc<dyn TaskRepository>,
+        issue_repo: Arc<dyn IssueRepository>,
     ) -> ParallelResult<Self> {
         let worktree_manager = WorktreeManager::new(&working_dir)?;
         let backend = ExecutionBackend::Worktree(Arc::new(RwLock::new(worktree_manager)));
@@ -191,7 +194,7 @@ impl ParallelOrchestrator {
             config,
             working_dir,
             backend,
-            task_repo,
+            issue_repo,
             state: Arc::new(RwLock::new(ParallelState::Idle)),
             started_at: None,
             merged_commits: Arc::new(RwLock::new(Vec::new())),
@@ -205,7 +208,7 @@ impl ParallelOrchestrator {
     pub async fn new_with_containers(
         config: ParallelConfig,
         working_dir: PathBuf,
-        task_repo: Arc<dyn TaskRepository>,
+        issue_repo: Arc<dyn IssueRepository>,
     ) -> ParallelResult<Self> {
         if config.git_remote_url.is_empty() {
             return Err(ParallelError::InvalidConfig(
@@ -223,7 +226,7 @@ impl ParallelOrchestrator {
             config,
             working_dir,
             backend,
-            task_repo,
+            issue_repo,
             state: Arc::new(RwLock::new(ParallelState::Idle)),
             started_at: None,
             merged_commits: Arc::new(RwLock::new(Vec::new())),
@@ -343,14 +346,14 @@ impl ParallelOrchestrator {
                 break;
             }
 
-            // Get ready tasks
-            let ready_tasks = self
-                .task_repo
-                .ready_tasks(TaskFilter::default())
+            // Get ready issues
+            let ready_issues = self
+                .issue_repo
+                .ready(IssueFilter::default())
                 .map_err(|e| ParallelError::agent(e.to_string()))?;
 
-            if ready_tasks.is_empty() {
-                debug!("No ready tasks, checking if agents are done");
+            if ready_issues.is_empty() {
+                debug!("No ready issues, checking if agents are done");
 
                 // Wait for any running agents to complete
                 if self.agent_pool.stats().await.working_agents == 0 {
@@ -367,22 +370,22 @@ impl ParallelOrchestrator {
                 continue;
             }
 
-            // Try to assign tasks to available agents
-            for task in ready_tasks.iter() {
+            // Try to assign issues to available agents
+            for issue in ready_issues.iter() {
                 if let Some(agent_id) = self.agent_pool.get_available_agent().await {
-                    // Mark task as in progress
-                    if let Err(e) = self.task_repo.start(&task.id) {
-                        warn!("Failed to start task {}: {}", task.id, e);
+                    // Mark issue as in progress
+                    if let Err(e) = self.issue_repo.start(&issue.id, Some(PARALLEL_ACTOR)) {
+                        warn!("Failed to start issue {}: {}", issue.id, e);
                         continue;
                     }
 
                     // Assign to agent
-                    if let Err(e) = self.agent_pool.assign_task(&agent_id, &task.id).await {
-                        warn!("Failed to assign task {} to {}: {}", task.id, agent_id, e);
+                    if let Err(e) = self.agent_pool.assign_task(&agent_id, &issue.id).await {
+                        warn!("Failed to assign issue {} to {}: {}", issue.id, agent_id, e);
                         continue;
                     }
 
-                    info!("Assigned task {} to agent {}", task.id, agent_id);
+                    info!("Assigned issue {} to agent {}", issue.id, agent_id);
 
                     // TODO: Actually spawn the agent execution
                     // For now, we'll simulate completion
@@ -392,7 +395,7 @@ impl ParallelOrchestrator {
                     // Simulate task completion (TODO: replace with real execution)
                     let completion = TaskCompletion {
                         agent_id: agent_id.clone(),
-                        task_id: task.id.clone(),
+                        task_id: issue.id.clone(),
                         success: true,
                         error: None,
                         tokens_used: 1000,
@@ -461,31 +464,34 @@ impl ParallelOrchestrator {
         if completion.success {
             *total_completed += 1;
 
-            // Close task in repository
-            if let Err(e) = self
-                .task_repo
-                .close(&completion.task_id, Some("Completed by parallel agent"), vec![])
-            {
-                warn!("Failed to close task {}: {}", completion.task_id, e);
+            // Close issue in repository
+            if let Err(e) = self.issue_repo.close(
+                &completion.task_id,
+                Some("Completed by parallel agent"),
+                vec![],
+                Some(PARALLEL_ACTOR),
+            ) {
+                warn!("Failed to close issue {}: {}", completion.task_id, e);
             }
 
             info!(
-                "Agent {} completed task {} (total: {})",
+                "Agent {} completed issue {} (total: {})",
                 completion.agent_id, completion.task_id, total_completed
             );
         } else {
             *total_failed += 1;
 
-            // Block task in repository
-            if let Err(e) = self.task_repo.block(
+            // Block issue in repository
+            if let Err(e) = self.issue_repo.block(
                 &completion.task_id,
                 completion.error.as_deref(),
+                Some(PARALLEL_ACTOR),
             ) {
-                warn!("Failed to block task {}: {}", completion.task_id, e);
+                warn!("Failed to block issue {}: {}", completion.task_id, e);
             }
 
             error!(
-                "Agent {} failed task {}: {:?}",
+                "Agent {} failed issue {}: {:?}",
                 completion.agent_id, completion.task_id, completion.error
             );
         }

@@ -8,7 +8,7 @@ description = "Parallel agent execution with git worktree isolation"
 
 [dependencies]
 # Workspace crates
-tasks.workspace = true
+taskmaster.workspace = true
 orchestrator.workspace = true
 llm.workspace = true
 
