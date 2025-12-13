@@ -41,6 +41,7 @@ pub fn text(content: impl Into<String>) -> Text {
 
 /// State for text during layout
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct TextState {
     measured_width: f32,
     measured_height: f32,

@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     # Core UI (NEW - KEEP)
     "crates/wgpui",
-    "crates/openagents-web",
+    "crates/dioxus",
 
     # Nostr & Decentralized (OpenAgents - KEEP)
     "crates/nostr",

@@ -1,0 +1,16 @@
+[package]
+name = "dioxus-app"
+version = "0.1.0"
+edition = "2024"
+description = "OpenAgents web platform with Dioxus"
+license = "CC-0"
+
+[dependencies]
+dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+server = ["dioxus/server"]
