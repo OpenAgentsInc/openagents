@@ -8,6 +8,11 @@ license = "CC-0"
 [dependencies]
 dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
 lumen-blocks = { git = "https://github.com/Leaf-Computer/lumen-blocks.git", tag = "v0.2.0" }
+claude_agent_sdk = { path = "../claude_agent_sdk" }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
 
 [features]
 default = ["web"]

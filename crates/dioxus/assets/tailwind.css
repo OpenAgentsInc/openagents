@@ -36,6 +36,7 @@
     --ease-out: cubic-bezier(0, 0, 0.2, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --animate-spin: spin 1s linear infinite;
+    --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     --blur-sm: 8px;
     --default-transition-duration: 150ms;
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -495,6 +496,9 @@
   .animate-in {
     animation: forwards cubic-bezier(0.16, 1, 0.3, 1);
   }
+  .animate-pulse {
+    animation: var(--animate-pulse);
+  }
   .animate-slide-in-from-right {
     animation: slide-in-from-right 0.2s ease-out;
   }
@@ -674,6 +678,12 @@
   .bg-muted {
     background-color: var(--muted);
   }
+  .bg-muted\/50 {
+    background-color: var(--muted);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+    }
+  }
   .bg-popover {
     background-color: var(--popover);
   }
@@ -785,6 +795,9 @@
   .text-left {
     text-align: left;
   }
+  .font-mono {
+    font-family: var(--font-mono);
+  }
   .text-base {
     font-size: var(--text-base);
     line-height: var(--tw-leading, var(--text-base--line-height));
@@ -821,6 +834,9 @@
     --tw-tracking: var(--tracking-tight);
     letter-spacing: var(--tracking-tight);
   }
+  .whitespace-pre-wrap {
+    white-space: pre-wrap;
+  }
   .text-current {
     color: currentcolor;
   }
@@ -835,6 +851,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       color: color-mix(in oklab, var(--foreground) 80%, transparent);
     }
+  }
+  .text-green-500 {
+    color: var(--color-green-500);
   }
   .text-green-600 {
     color: var(--color-green-600);
@@ -859,6 +878,9 @@
   }
   .text-secondary-foreground {
     color: var(--secondary-foreground);
+  }
+  .text-yellow-500 {
+    color: var(--color-yellow-500);
   }
   .text-yellow-600 {
     color: var(--color-yellow-600);
@@ -1579,6 +1601,11 @@ body {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
   }
 }
 @keyframes slide-in-from-right {
