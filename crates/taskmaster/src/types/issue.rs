@@ -173,6 +173,10 @@ pub struct Issue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_exit_code: Option<i32>,
 
+    /// Commit SHAs associated with this issue (from agent work)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commits: Vec<String>,
+
     // =========================================================================
     // Relationships (denormalized for convenience)
     // =========================================================================
@@ -221,6 +225,7 @@ impl Issue {
             execution_started_at: None,
             execution_finished_at: None,
             execution_exit_code: None,
+            commits: Vec::new(),
             labels: Vec::new(),
             deps: Vec::new(),
         }
