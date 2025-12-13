@@ -5,7 +5,12 @@ You are helping on the core codebase of OpenAgents, an applied AI lab building i
 ## Tech Stack
 
 - **Rust** with edition 2024
-- **GPUI** for UI
+- **Dioxus 0.7** for web UI (see `crates/dioxus/`)
+- **wgpui** for GPU-accelerated canvas rendering
+
+## Dioxus 0.7
+
+The web UI uses [Dioxus 0.7](https://dioxuslabs.com/learn/0.7) with fullstack and router features. Key points: `cx`, `Scope`, and `use_state` are gone in 0.7. Use `use_signal` for local state, `use_memo` for derived values, and `use_resource` for async data. Components are functions with `#[component]` that return `Element`. Server functions use `#[post("/path")]` or `#[get("/path")]` macros. Run with `dx serve` from `crates/dioxus/`.
 
 ---
 
