@@ -483,10 +483,16 @@ impl Render for ThreadView {
             let _ = self.get_or_create_message_view(&entry, ix, cx);
         }
 
-        // Populate tool call cache
+        // Populate and update tool call cache
         for (ix, entry) in entries.iter().enumerate() {
-            if !self.tool_call_cache.contains_key(&ix) {
-                if let ThreadEntry::ToolUse(tu) = entry {
+            if let ThreadEntry::ToolUse(tu) = entry {
+                if let Some(view) = self.tool_call_cache.get(&ix) {
+                    // Update existing view if status changed
+                    view.update(cx, |v, _cx| {
+                        v.update_from(tu);
+                    });
+                } else {
+                    // Create new view
                     let view = ToolCallView::from_tool_use(tu, cx);
                     self.tool_call_cache.insert(ix, view);
                 }
