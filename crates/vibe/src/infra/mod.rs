@@ -13,6 +13,8 @@ pub fn InfraPanel(
     events: Vec<BillingEvent>,
     on_provision: EventHandler<()>,
     on_refresh: EventHandler<()>,
+    on_error: EventHandler<()>,
+    on_clear: EventHandler<()>,
     action_state: ActionState,
 ) -> Element {
     let mut status_lines: Vec<String> = Vec::new();
@@ -53,6 +55,16 @@ pub fn InfraPanel(
                         } else {
                             "Refresh usage"
                         }
+                    }
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| on_error.call(()),
+                        "Simulate error"
+                    }
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| on_clear.call(()),
+                        "Clear status"
                     }
                 }
             }
