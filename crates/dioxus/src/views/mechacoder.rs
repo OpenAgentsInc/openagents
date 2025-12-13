@@ -1,246 +1,201 @@
 use dioxus::prelude::*;
-use futures::StreamExt;
-use lumen_blocks::components::avatar::{Avatar, AvatarFallback};
-use lumen_blocks::components::button::{Button, ButtonVariant};
-use serde::{Deserialize, Serialize};
+use dioxus::fullstack::payloads::websocket::use_websocket;
+use mechacoder::{
+    ClientMessage, Message, ServerMessage, ThreadEntry, ToolStatus, ToolUse,
+};
 
-/// Message in the conversation
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct Message {
-    pub id: usize,
-    pub role: String,
-    pub content: String,
+// Bloomberg-inspired theme colors (from theme_oa)
+#[allow(dead_code)]
+mod theme {
+    pub const BG_APP: &str = "#000000";           // Pure black
+    pub const BG_SURFACE: &str = "#0A0A0A";       // Near black
+    pub const BG_CODE: &str = "#101010";          // Code blocks
+    pub const TEXT_PRIMARY: &str = "#E6E6E6";     // Main text
+    pub const TEXT_SECONDARY: &str = "#B0B0B0";   // Less emphasis
+    pub const TEXT_MUTED: &str = "#9E9E9E";       // Labels, hints
+    pub const TEXT_HIGHLIGHT: &str = "#FFB400";   // Bloomberg yellow
+    pub const BORDER: &str = "#1A1A1A";           // Default border
+    pub const STATUS_SUCCESS: &str = "#00C853";   // Green
+    pub const STATUS_ERROR: &str = "#D32F2F";     // Red
+    pub const STATUS_RUNNING: &str = "#FFB400";   // Yellow
 }
 
-/// Tool use entry
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolUse {
-    pub tool_use_id: String,
-    pub tool_name: String,
-    pub input: String,
-    pub output: Option<String>,
-    pub status: String, // "pending", "running", "completed", "failed"
-}
+/// WebSocket endpoint for chat
+#[get("/api/chat/ws")]
+pub async fn chat_ws(
+    options: dioxus::fullstack::payloads::websocket::WebSocketOptions,
+) -> Result<
+    dioxus::fullstack::payloads::websocket::Websocket<ClientMessage, ServerMessage>,
+    ServerFnError,
+> {
+    use tokio::sync::mpsc;
 
-/// Thread entry - either a message or tool use
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub enum ThreadEntry {
-    Message(Message),
-    ToolUse(ToolUse),
-}
-
-/// Streaming entry for real-time updates
-#[derive(Clone, Serialize, Deserialize)]
-pub enum StreamEntry {
-    /// Session initialized with ID
-    SessionInit { session_id: String },
-    /// New text content (incremental)
-    TextDelta { text: String },
-    /// Tool call started
-    ToolStart { tool_use_id: String, tool_name: String },
-    /// Tool input streaming (partial JSON)
-    ToolInput { tool_use_id: String, partial_json: String },
-    /// Tool execution progress
-    ToolProgress { tool_use_id: String, elapsed_seconds: f64 },
-    /// Tool completed with result
-    ToolResult {
-        tool_use_id: String,
-        output: String,
-        is_error: bool,
-    },
-    /// Stream complete
-    Done { error: Option<String> },
-}
-
-/// Send a message to Claude via the SDK with streaming updates
-#[server(output = dioxus::fullstack::payloads::stream::JsonStream)]
-pub async fn send_chat_message(
-    message: String,
-    cwd: String,
-) -> Result<dioxus::fullstack::payloads::stream::JsonStream<StreamEntry>, ServerFnError> {
-    use claude_agent_sdk::{query, QueryOptions, SdkMessage};
-    use dioxus::fullstack::payloads::stream::JsonStream;
-    use std::path::PathBuf;
-
-    // Create query options
-    let options = QueryOptions::new()
-        .cwd(PathBuf::from(&cwd))
-        .dangerously_skip_permissions(true);
-
-    // Create query stream
-    let sdk_stream = query(&message, options)
-        .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-
-    // Create an async stream that yields StreamEntry items
-    let stream = async_stream::stream! {
-        let mut sdk_stream = sdk_stream;
-
-        while let Some(msg_result) = sdk_stream.next().await {
-            let msg = match msg_result {
-                Ok(m) => m,
+    Ok(options.on_upgrade(move |mut socket| async move {
+        eprintln!("[ws] WebSocket connection established");
+        loop {
+            eprintln!("[ws] Waiting for client message...");
+            let msg = match socket.recv().await {
+                Ok(m) => {
+                    eprintln!("[ws] Received client message");
+                    m
+                }
                 Err(e) => {
-                    yield StreamEntry::Done {
-                        error: Some(e.to_string()),
-                    };
-                    return;
+                    eprintln!("[ws] Error receiving: {:?}", e);
+                    break;
                 }
             };
 
             match msg {
-                SdkMessage::System(sys) => {
-                    if let claude_agent_sdk::SdkSystemMessage::Init(init) = sys {
-                        yield StreamEntry::SessionInit {
-                            session_id: init.session_id,
-                        };
-                    }
-                }
-                SdkMessage::StreamEvent(event) => {
-                    let event_type = event.event.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                ClientMessage::SendMessage { content, cwd } => {
+                    eprintln!("[ws] Got SendMessage: {}", content);
+                    let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
 
-                    match event_type {
-                        "content_block_start" => {
-                            // Check if this is a tool use block
-                            if let Some(content_block) = event.event.get("content_block") {
-                                let block_type =
-                                    content_block.get("type").and_then(|t| t.as_str());
-                                if block_type == Some("tool_use") {
-                                    let tool_use_id = content_block
-                                        .get("id")
-                                        .and_then(|id| id.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    let tool_name = content_block
-                                        .get("name")
-                                        .and_then(|n| n.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    yield StreamEntry::ToolStart {
-                                        tool_use_id,
-                                        tool_name,
-                                    };
-                                }
-                            }
+                    tokio::spawn(async move {
+                        mechacoder::session::run_claude_session(content, cwd, tx).await;
+                    });
+
+                    eprintln!("[ws] Spawned session, waiting for messages...");
+                    while let Some(server_msg) = rx.recv().await {
+                        eprintln!("[ws] Got message from channel, sending to client...");
+                        let is_done = matches!(server_msg, ServerMessage::Done { .. });
+                        if socket.send(server_msg).await.is_err() {
+                            eprintln!("[ws] Failed to send to client!");
+                            break;
                         }
-                        "content_block_delta" => {
-                            if let Some(delta) = event.event.get("delta") {
-                                let delta_type = delta.get("type").and_then(|t| t.as_str());
-                                match delta_type {
-                                    Some("text_delta") => {
-                                        if let Some(text) =
-                                            delta.get("text").and_then(|t| t.as_str())
-                                        {
-                                            yield StreamEntry::TextDelta {
-                                                text: text.to_string(),
-                                            };
-                                        }
-                                    }
-                                    Some("input_json_delta") => {
-                                        if let Some(partial_json) =
-                                            delta.get("partial_json").and_then(|j| j.as_str())
-                                        {
-                                            yield StreamEntry::ToolInput {
-                                                tool_use_id: String::new(),
-                                                partial_json: partial_json.to_string(),
-                                            };
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                SdkMessage::ToolProgress(progress) => {
-                    yield StreamEntry::ToolProgress {
-                        tool_use_id: progress.tool_use_id,
-                        elapsed_seconds: progress.elapsed_time_seconds,
-                    };
-                }
-                SdkMessage::User(user) => {
-                    // Check if this is a tool result
-                    if let Some(tool_use_id) = &user.parent_tool_use_id {
-                        if let Some(result) = &user.tool_use_result {
-                            let stdout = result
-                                .get("stdout")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let stderr = result
-                                .get("stderr")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or("");
-                            let is_error = !stderr.is_empty();
-                            let output = if is_error {
-                                format!("{}\n{}", stdout, stderr)
-                            } else {
-                                stdout
-                            };
-                            yield StreamEntry::ToolResult {
-                                tool_use_id: tool_use_id.clone(),
-                                output,
-                                is_error,
-                            };
+                        eprintln!("[ws] Sent to client successfully");
+                        if is_done {
+                            eprintln!("[ws] Done message sent, breaking");
+                            break;
                         }
                     }
+                    eprintln!("[ws] Finished sending messages for this request");
                 }
-                SdkMessage::Assistant(assistant) => {
-                    // Extract text from assistant message
-                    if let Some(content) = assistant.message.get("content") {
-                        if let Some(content_array) = content.as_array() {
-                            for block in content_array {
-                                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        yield StreamEntry::TextDelta {
-                                            text: text.to_string(),
-                                        };
-                                    }
-                                }
-                            }
-                        }
-                    }
+                ClientMessage::Cancel => {
+                    eprintln!("[ws] Got Cancel");
+                    let _ = socket
+                        .send(ServerMessage::Done {
+                            error: Some("Cancelled".to_string()),
+                        })
+                        .await;
                 }
-                SdkMessage::Result(result) => {
-                    let error = match result {
-                        claude_agent_sdk::SdkResultMessage::Success(_) => None,
-                        claude_agent_sdk::SdkResultMessage::ErrorDuringExecution(err)
-                        | claude_agent_sdk::SdkResultMessage::ErrorMaxTurns(err)
-                        | claude_agent_sdk::SdkResultMessage::ErrorMaxBudget(err)
-                        | claude_agent_sdk::SdkResultMessage::ErrorMaxStructuredOutputRetries(
-                            err,
-                        ) => Some(format!("{:?}", err.errors)),
-                    };
-                    yield StreamEntry::Done { error };
-                    return;
-                }
-                _ => {}
             }
         }
-
-        // If stream ended without result, send done
-        yield StreamEntry::Done { error: None };
-    };
-
-    Ok(JsonStream::new(stream))
+        eprintln!("[ws] WebSocket loop ended");
+    }))
 }
 
 #[component]
 pub fn MechaCoder() -> Element {
-    let mut entries = use_signal(|| {
-        vec![ThreadEntry::Message(Message {
-            id: 0,
-            role: "assistant".to_string(),
-            content: "Hello! I'm MechaCoder, your AI coding assistant powered by Claude. How can I help you today?".to_string(),
-        })]
-    });
-    let mut input_value = use_signal(|| String::new());
+    let mut socket = use_websocket(|| chat_ws(dioxus::fullstack::payloads::websocket::WebSocketOptions::new()));
+
+    let mut entries = use_signal(Vec::<ThreadEntry>::new);
+    let mut input_value = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
-    let mut next_id = use_signal(|| 1usize);
-    // Track current assistant message for streaming text
-    let mut current_assistant_content = use_signal(|| String::new());
-    // Track current tool for input streaming
-    let mut current_tool_id = use_signal(|| Option::<String>::None);
+    let mut next_id = use_signal(|| 0usize);
+    let mut current_assistant_content = use_signal(String::new);
+    let mut current_tool_id = use_signal(|| None::<String>);
+
+    // Receive messages from WebSocket
+    use_future(move || async move {
+        loop {
+            match socket.recv().await {
+                Ok(msg) => {
+                    match msg {
+                        ServerMessage::SessionInit { .. } => {}
+                        ServerMessage::TextDelta { text } => {
+                            let mut content = current_assistant_content();
+                            content.push_str(&text);
+                            current_assistant_content.set(content);
+                        }
+                        ServerMessage::ToolStart {
+                            tool_use_id,
+                            tool_name,
+                        } => {
+                            current_tool_id.set(Some(tool_use_id.clone()));
+                            entries.write().push(ThreadEntry::ToolUse(ToolUse {
+                                tool_use_id,
+                                tool_name,
+                                input: String::new(),
+                                output: None,
+                                status: ToolStatus::Running,
+                            }));
+                        }
+                        ServerMessage::ToolInput { partial_json, .. } => {
+                            if let Some(tool_id) = current_tool_id() {
+                                let mut entries_mut = entries.write();
+                                for entry in entries_mut.iter_mut().rev() {
+                                    if let ThreadEntry::ToolUse(tool) = entry {
+                                        if tool.tool_use_id == tool_id {
+                                            tool.input.push_str(&partial_json);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        ServerMessage::ToolProgress { tool_use_id, .. } => {
+                            let mut entries_mut = entries.write();
+                            for entry in entries_mut.iter_mut().rev() {
+                                if let ThreadEntry::ToolUse(tool) = entry {
+                                    if tool.tool_use_id == tool_use_id {
+                                        tool.status = ToolStatus::Running;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        ServerMessage::ToolResult {
+                            tool_use_id,
+                            output,
+                            is_error,
+                        } => {
+                            let mut entries_mut = entries.write();
+                            for entry in entries_mut.iter_mut().rev() {
+                                if let ThreadEntry::ToolUse(tool) = entry {
+                                    if tool.tool_use_id == tool_use_id {
+                                        tool.output = Some(output);
+                                        tool.status = if is_error {
+                                            ToolStatus::Error
+                                        } else {
+                                            ToolStatus::Completed
+                                        };
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        ServerMessage::Done { error } => {
+                            let content = current_assistant_content();
+                            if !content.is_empty() {
+                                entries.write().push(ThreadEntry::Message(Message {
+                                    id: next_id(),
+                                    role: "assistant".to_string(),
+                                    content,
+                                }));
+                                next_id += 1;
+                                current_assistant_content.set(String::new());
+                            }
+
+                            if let Some(err) = error {
+                                entries.write().push(ThreadEntry::Message(Message {
+                                    id: next_id(),
+                                    role: "assistant".to_string(),
+                                    content: format!("Error: {}", err),
+                                }));
+                                next_id += 1;
+                            }
+
+                            is_loading.set(false);
+                        }
+                    }
+                }
+                Err(_) => {
+                    is_loading.set(false);
+                    break;
+                }
+            }
+        }
+    });
 
     let mut send_message = move |_| {
         let content = input_value();
@@ -248,7 +203,6 @@ pub fn MechaCoder() -> Element {
             return;
         }
 
-        // Add user message
         let user_id = next_id();
         entries.write().push(ThreadEntry::Message(Message {
             id: user_id,
@@ -257,182 +211,44 @@ pub fn MechaCoder() -> Element {
         }));
         next_id += 1;
 
-        // Clear input and set loading
-        let message = content.clone();
         input_value.set(String::new());
         is_loading.set(true);
         current_assistant_content.set(String::new());
         current_tool_id.set(None);
 
-        // Send to server with streaming
+        let message = content;
         spawn(async move {
-            // Use current directory as cwd (could be configured)
-            let cwd = ".".to_string();
-
-            match send_chat_message(message, cwd).await {
-                Ok(stream) => {
-                    let mut stream = stream.into_inner();
-
-                    while let Some(result) = stream.next().await {
-                        match result {
-                            Ok(entry) => match entry {
-                                StreamEntry::SessionInit { .. } => {
-                                    // Session initialized, could store session_id
-                                }
-                                StreamEntry::TextDelta { text } => {
-                                    // Append text to current assistant content
-                                    let mut content = current_assistant_content();
-                                    content.push_str(&text);
-                                    current_assistant_content.set(content);
-                                }
-                                StreamEntry::ToolStart {
-                                    tool_use_id,
-                                    tool_name,
-                                } => {
-                                    // Add a new tool entry
-                                    current_tool_id.set(Some(tool_use_id.clone()));
-                                    entries.write().push(ThreadEntry::ToolUse(ToolUse {
-                                        tool_use_id,
-                                        tool_name,
-                                        input: String::new(),
-                                        output: None,
-                                        status: "running".to_string(),
-                                    }));
-                                }
-                                StreamEntry::ToolInput { partial_json, .. } => {
-                                    // Update current tool's input
-                                    if let Some(tool_id) = current_tool_id() {
-                                        let mut entries_mut = entries.write();
-                                        for entry in entries_mut.iter_mut().rev() {
-                                            if let ThreadEntry::ToolUse(tool) = entry {
-                                                if tool.tool_use_id == tool_id {
-                                                    tool.input.push_str(&partial_json);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                StreamEntry::ToolProgress { tool_use_id, .. } => {
-                                    // Update tool status (could show elapsed time)
-                                    let mut entries_mut = entries.write();
-                                    for entry in entries_mut.iter_mut().rev() {
-                                        if let ThreadEntry::ToolUse(tool) = entry {
-                                            if tool.tool_use_id == tool_use_id {
-                                                tool.status = "running".to_string();
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                StreamEntry::ToolResult {
-                                    tool_use_id,
-                                    output,
-                                    is_error,
-                                } => {
-                                    // Update tool with result
-                                    let mut entries_mut = entries.write();
-                                    for entry in entries_mut.iter_mut().rev() {
-                                        if let ThreadEntry::ToolUse(tool) = entry {
-                                            if tool.tool_use_id == tool_use_id {
-                                                tool.output = Some(output);
-                                                tool.status = if is_error {
-                                                    "failed".to_string()
-                                                } else {
-                                                    "completed".to_string()
-                                                };
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                StreamEntry::Done { error } => {
-                                    // Add final assistant message if we have content
-                                    let content = current_assistant_content();
-                                    if !content.is_empty() {
-                                        entries.write().push(ThreadEntry::Message(Message {
-                                            id: next_id(),
-                                            role: "assistant".to_string(),
-                                            content,
-                                        }));
-                                        next_id += 1;
-                                    }
-
-                                    // Show error if any
-                                    if let Some(err) = error {
-                                        entries.write().push(ThreadEntry::Message(Message {
-                                            id: next_id(),
-                                            role: "assistant".to_string(),
-                                            content: format!("Error: {}", err),
-                                        }));
-                                        next_id += 1;
-                                    }
-                                    break;
-                                }
-                            },
-                            Err(e) => {
-                                entries.write().push(ThreadEntry::Message(Message {
-                                    id: next_id(),
-                                    role: "assistant".to_string(),
-                                    content: format!("Stream error: {}", e),
-                                }));
-                                next_id += 1;
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    entries.write().push(ThreadEntry::Message(Message {
-                        id: next_id(),
-                        role: "assistant".to_string(),
-                        content: format!("Error: {}", e),
-                    }));
-                    next_id += 1;
-                }
-            }
-            is_loading.set(false);
+            let _ = socket
+                .send(ClientMessage::SendMessage {
+                    content: message,
+                    cwd: ".".to_string(),
+                })
+                .await;
         });
     };
 
+    // Minimal UI - no header, just content and input
     rsx! {
         div {
-            class: "flex flex-col h-screen bg-background",
+            style: "display: flex; flex-direction: column; height: 100vh; background: {theme::BG_APP}; color: {theme::TEXT_PRIMARY}; font-family: 'Berkeley Mono', 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.3;",
 
-            // Header
-            header {
-                class: "flex items-center justify-between px-6 py-4 border-b border-border",
+            // Messages area - takes all available space
+            div {
+                style: "flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; justify-content: center;",
                 div {
-                    class: "flex items-center gap-3",
-                    Avatar {
-                        class: "h-8 w-8",
-                        AvatarFallback { "MC" }
-                    }
-                    h1 {
-                        class: "text-xl font-semibold text-foreground",
-                        "MechaCoder"
-                    }
-                }
-                span {
-                    class: "text-sm text-muted-foreground",
-                    "AI Coding Assistant"
-                }
-            }
+                    style: "width: 100%; max-width: 768px;",
 
-            // Messages area
-            main {
-                class: "flex-1 overflow-y-auto p-6 space-y-4",
                 for entry in entries() {
                     match entry {
                         ThreadEntry::Message(msg) => rsx! {
-                            MessageBubble {
+                            MessageLine {
                                 key: "{msg.id}",
                                 role: msg.role.clone(),
                                 content: msg.content.clone(),
                             }
                         },
                         ThreadEntry::ToolUse(tool) => rsx! {
-                            ToolCallBubble {
+                            ToolLine {
                                 key: "{tool.tool_use_id}",
                                 tool_name: tool.tool_name.clone(),
                                 status: tool.status.clone(),
@@ -442,46 +258,43 @@ pub fn MechaCoder() -> Element {
                     }
                 }
 
-                // Show streaming text if any
+                // Streaming text
                 if !current_assistant_content().is_empty() && is_loading() {
-                    MessageBubble {
+                    MessageLine {
                         role: "assistant".to_string(),
                         content: current_assistant_content(),
                     }
                 }
 
-                // Loading indicator
+                // Thinking indicator
                 if is_loading() && current_assistant_content().is_empty() {
                     div {
-                        class: "flex justify-start",
-                        div {
-                            class: "flex items-center gap-2 text-muted-foreground",
-                            span { class: "animate-pulse", "..." }
-                            span { "Claude is thinking" }
-                        }
+                        style: "color: {theme::TEXT_MUTED}; padding: 8px 0;",
+                        "..."
                     }
+                }
                 }
             }
 
-            // Input area
-            footer {
-                class: "border-t border-border p-4",
+            // Input area - simple, at bottom
+            div {
+                style: "border-top: 1px solid {theme::BORDER}; padding: 8px 16px; background: {theme::BG_SURFACE}; display: flex; justify-content: center;",
                 form {
-                    class: "flex gap-3 max-w-4xl mx-auto",
+                    style: "display: flex; gap: 8px; width: 100%; max-width: 768px;",
                     onsubmit: move |e| {
                         e.prevent_default();
                         send_message(());
                     },
                     input {
-                        class: "flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50",
-                        placeholder: "Type your message...",
+                        style: "flex: 1; background: {theme::BG_APP}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 12px; font-family: inherit; font-size: inherit; outline: none;",
+                        placeholder: "Message...",
                         value: input_value(),
-                        disabled: is_loading(),
+                        autofocus: true,
                         oninput: move |e| input_value.set(e.value()),
                     }
-                    Button {
-                        button_type: "submit",
-                        variant: ButtonVariant::Primary,
+                    button {
+                        style: "background: {theme::BG_SURFACE}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 16px; font-family: inherit; font-size: inherit; cursor: pointer;",
+                        r#type: "submit",
                         disabled: is_loading(),
                         if is_loading() { "..." } else { "Send" }
                     }
@@ -492,79 +305,61 @@ pub fn MechaCoder() -> Element {
 }
 
 #[component]
-fn MessageBubble(role: String, content: String) -> Element {
+fn MessageLine(role: String, content: String) -> Element {
     let is_user = role == "user";
 
-    rsx! {
-        div {
-            class: if is_user { "flex justify-end" } else { "flex justify-start" },
+    // User messages get ">" prefix in yellow, assistant messages are plain
+    if is_user {
+        rsx! {
             div {
-                class: "flex items-start gap-3 max-w-[80%]",
-                class: if is_user { "flex-row-reverse" } else { "" },
-
-                Avatar {
-                    class: "h-8 w-8 shrink-0",
-                    AvatarFallback {
-                        if is_user { "You" } else { "MC" }
-                    }
+                style: "padding: 8px 0; display: flex; gap: 8px;",
+                span {
+                    style: "color: {theme::TEXT_HIGHLIGHT}; flex-shrink: 0;",
+                    ">"
                 }
-
                 div {
-                    class: "rounded-lg px-4 py-2",
-                    class: if is_user {
-                        "bg-primary text-primary-foreground"
-                    } else {
-                        "bg-muted text-foreground"
-                    },
-                    // Render content with basic markdown-like formatting
-                    div {
-                        class: "whitespace-pre-wrap",
-                        "{content}"
-                    }
+                    style: "white-space: pre-wrap; color: {theme::TEXT_PRIMARY};",
+                    "{content}"
                 }
+            }
+        }
+    } else {
+        rsx! {
+            div {
+                style: "padding: 8px 0; white-space: pre-wrap; color: {theme::TEXT_PRIMARY};",
+                "{content}"
             }
         }
     }
 }
 
 #[component]
-fn ToolCallBubble(tool_name: String, status: String, input: String) -> Element {
-    let status_color = match status.as_str() {
-        "completed" => "text-green-500",
-        "failed" => "text-red-500",
-        "running" => "text-yellow-500",
-        _ => "text-muted-foreground",
-    };
-
-    let status_icon = match status.as_str() {
-        "completed" => "✓",
-        "failed" => "✗",
-        "running" => "...",
-        _ => "○",
+fn ToolLine(tool_name: String, status: ToolStatus, input: String) -> Element {
+    let (status_color, status_icon) = match status {
+        ToolStatus::Completed => (theme::STATUS_SUCCESS, "✓"),
+        ToolStatus::Error => (theme::STATUS_ERROR, "✗"),
+        ToolStatus::Running => (theme::STATUS_RUNNING, "..."),
     };
 
     rsx! {
         div {
-            class: "flex justify-start",
+            style: "padding: 4px 0; font-size: 12px;",
             div {
-                class: "flex flex-col gap-1 px-3 py-2 rounded bg-muted/50 text-sm max-w-[80%]",
-                div {
-                    class: "flex items-center gap-2",
-                    span {
-                        class: "font-mono text-xs font-medium",
-                        "{tool_name}"
-                    }
-                    span {
-                        class: status_color,
-                        "{status_icon}"
-                    }
+                style: "display: flex; align-items: center; gap: 8px;",
+                span {
+                    style: "color: {theme::TEXT_MUTED};",
+                    "{tool_name}"
                 }
-                if !input.is_empty() {
-                    div {
-                        class: "font-mono text-xs text-muted-foreground truncate max-w-full",
-                        title: "{input}",
-                        "{input}"
-                    }
+                span {
+                    style: "color: {status_color};",
+                    "{status_icon}"
+                }
+            }
+            if !input.is_empty() {
+                div {
+                    style: "color: {theme::TEXT_MUTED}; font-size: 11px; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                    title: "{input}",
+                    "{input}"
                 }
             }
         }
