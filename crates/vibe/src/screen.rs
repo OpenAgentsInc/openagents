@@ -291,7 +291,7 @@ pub fn VibeScreen() -> Element {
                 VibeTab::Infra => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
-                        InfraPanel { customers: infra_customers(), usage: usage(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage() }
+                        InfraPanel { customers: infra_customers(), usage: usage(), events: billing_events(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage() }
                         div {
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             PlanSummary { plan: plan_limits(), auth: auth() }

@@ -9,6 +9,7 @@ use crate::{ACCENT, BG, BORDER, MUTED, PANEL, TEXT};
 pub fn InfraPanel(
     customers: Vec<InfraCustomer>,
     usage: Vec<UsageMetric>,
+    events: Vec<BillingEvent>,
     on_provision: EventHandler<()>,
     on_refresh: EventHandler<()>,
 ) -> Element {
@@ -31,6 +32,7 @@ pub fn InfraPanel(
                     }
                 }
             }
+            InfraSummaryBar { customers: customers.clone(), events: events.clone() }
             div {
                 style: "display: flex; flex-wrap: wrap; gap: 8px;",
                 for metric in usage.iter().cloned() {
@@ -65,6 +67,41 @@ fn UsagePill(metric: UsageMetric) -> Element {
                 if let Some(remain) = metric.remaining {
                     span { style: "color: {MUTED}; font-size: 11px;", "{remain}" }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn InfraSummaryBar(customers: Vec<InfraCustomer>, events: Vec<BillingEvent>) -> Element {
+    let total = customers.len();
+    let active = customers.iter().filter(|c| c.status == "Active").count();
+    let provisioning = customers
+        .iter()
+        .filter(|c| c.status == "Provisioning")
+        .count();
+    let last_event = events
+        .get(0)
+        .map(|e| e.label.clone())
+        .unwrap_or_else(|| "No events yet".to_string());
+
+    rsx! {
+        div {
+            style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;",
+            div {
+                style: "border: 1px solid {BORDER}; padding: 8px; background: #0f0f0f; display: flex; justify-content: space-between;",
+                span { style: "color: {MUTED}; font-size: 12px;", "Customers" }
+                span { style: "color: {TEXT}; font-weight: 600;", "{total} total / {active} active" }
+            }
+            div {
+                style: "border: 1px solid {BORDER}; padding: 8px; background: #0f0f0f; display: flex; justify-content: space-between;",
+                span { style: "color: {MUTED}; font-size: 12px;", "Provisioning" }
+                span { style: "color: {TEXT}; font-weight: 600;", "{provisioning}" }
+            }
+            div {
+                style: "border: 1px solid {BORDER}; padding: 8px; background: #0f0f0f; display: flex; justify-content: space-between;",
+                span { style: "color: {MUTED}; font-size: 12px;", "Last event" }
+                span { style: "color: {TEXT}; font-weight: 600;", "{last_event}" }
             }
         }
     }
