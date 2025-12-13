@@ -13,10 +13,10 @@ worker = "0.7"
 worker-macros = "0.7"
 
 # Nostr relay logic (protocol, storage, subscriptions)
-nostr-relay = { path = "../nostr-relay", default-features = false, features = ["wasm"] }
+nostr-relay = { path = "../nostr/relay", default-features = false, features = ["wasm"] }
 
 # Nostr core types (minimal for WASM - no crypto)
-nostr = { path = "../nostr", default-features = false, features = ["minimal"] }
+nostr = { path = "../nostr/core", default-features = false, features = ["minimal"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

@@ -1,5 +1,5 @@
 [package]
-name = "claude_agent_sdk"
+name = "claude-agent-sdk"
 version = "0.1.0"
 edition = "2024"
 description = "Rust SDK for Claude Code CLI - programmatically build AI agents with Claude Code's capabilities"
