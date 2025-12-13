@@ -14,6 +14,10 @@ bindings = [{ name = "RELAY", class_name = "RelayDurableObject" }]
 tag = "v1"
 new_sqlite_classes = ["RelayDurableObject"]
 
+# Workers AI binding for NIP-90 DVM
+[ai]
+binding = "AI"
+
 # Environment variables
 [vars]
 ENVIRONMENT = "production"

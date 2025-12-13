@@ -1,0 +1,6 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "nostr-tools": "^2.19.3"
+  }
+}

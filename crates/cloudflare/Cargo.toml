@@ -28,3 +28,8 @@ wasm-bindgen-futures = "0.4"
 
 # Async utilities
 futures = "0.3"
+
+# Cryptography for NIP-90 event signing
+k256 = { version = "0.13.4", features = ["schnorr"] }
+getrandom = { version = "0.2", features = ["js"] }  # WASM support for random number generation
+hex.workspace = true
