@@ -84,6 +84,21 @@ pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Eleme
                 span { style: "color: {MUTED}; font-size: 12px;", "Current total" }
                 span { style: "color: {TEXT}; font-weight: 700; font-size: 18px;", "{invoice.total}" }
             }
+            div { style: "display: flex; justify-content: space-between; align-items: center;",
+                span { style: "color: {MUTED}; font-size: 12px;", "Invoice {invoice.invoice_id} - {invoice.status}" }
+                div { style: "display: flex; gap: 8px;",
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| {},
+                        "Download"
+                    }
+                    button {
+                        style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        onclick: move |_| {},
+                        "Pay invoice"
+                    }
+                }
+            }
             div {
                 style: "display: flex; flex-direction: column; gap: 6px;",
                 for line in invoice.lines {
