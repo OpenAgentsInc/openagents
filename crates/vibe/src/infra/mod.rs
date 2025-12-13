@@ -15,12 +15,16 @@ pub fn InfraPanel(
     on_refresh: EventHandler<()>,
     action_state: ActionState,
 ) -> Element {
-    let mut status_lines = Vec::new();
+    let mut status_lines: Vec<String> = Vec::new();
     if action_state.provisioning {
-        status_lines.push("Provisioning customer...");
+        status_lines.push("Provisioning customer...".to_string());
     }
     if action_state.refreshing {
-        status_lines.push("Refreshing usage...");
+        status_lines.push("Refreshing usage...".to_string());
+    }
+    let error_text = action_state.error.clone().map(|e| format!("Error: {e}"));
+    if let Some(err) = error_text {
+        status_lines.push(err);
     }
 
     rsx! {
