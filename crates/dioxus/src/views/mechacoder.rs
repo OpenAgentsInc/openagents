@@ -60,38 +60,29 @@ pub async fn send_chat_message(
 ) -> Result<dioxus::fullstack::payloads::stream::JsonStream<StreamEntry>, ServerFnError> {
     use claude_agent_sdk::{query, QueryOptions, SdkMessage};
     use dioxus::fullstack::payloads::stream::JsonStream;
-    use futures::channel::mpsc;
     use std::path::PathBuf;
 
-    let (tx, rx) = mpsc::unbounded();
+    // Create query options
+    let options = QueryOptions::new()
+        .cwd(PathBuf::from(&cwd))
+        .dangerously_skip_permissions(true);
 
-    // Spawn background task to process SDK stream
-    tokio::spawn(async move {
-        // Create query options
-        let options = QueryOptions::new()
-            .cwd(PathBuf::from(&cwd))
-            .dangerously_skip_permissions(true);
+    // Create query stream
+    let sdk_stream = query(&message, options)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
 
-        // Create query stream
-        let query_result = query(&message, options).await;
-        let mut stream = match query_result {
-            Ok(q) => q,
-            Err(e) => {
-                let _ = tx.unbounded_send(StreamEntry::Done {
-                    error: Some(e.to_string()),
-                });
-                return;
-            }
-        };
+    // Create an async stream that yields StreamEntry items
+    let stream = async_stream::stream! {
+        let mut sdk_stream = sdk_stream;
 
-        // Process stream and send entries
-        while let Some(msg_result) = stream.next().await {
+        while let Some(msg_result) = sdk_stream.next().await {
             let msg = match msg_result {
                 Ok(m) => m,
                 Err(e) => {
-                    let _ = tx.unbounded_send(StreamEntry::Done {
+                    yield StreamEntry::Done {
                         error: Some(e.to_string()),
-                    });
+                    };
                     return;
                 }
             };
@@ -99,9 +90,9 @@ pub async fn send_chat_message(
             match msg {
                 SdkMessage::System(sys) => {
                     if let claude_agent_sdk::SdkSystemMessage::Init(init) = sys {
-                        let _ = tx.unbounded_send(StreamEntry::SessionInit {
+                        yield StreamEntry::SessionInit {
                             session_id: init.session_id,
-                        });
+                        };
                     }
                 }
                 SdkMessage::StreamEvent(event) => {
@@ -124,10 +115,10 @@ pub async fn send_chat_message(
                                         .and_then(|n| n.as_str())
                                         .unwrap_or("")
                                         .to_string();
-                                    let _ = tx.unbounded_send(StreamEntry::ToolStart {
+                                    yield StreamEntry::ToolStart {
                                         tool_use_id,
                                         tool_name,
-                                    });
+                                    };
                                 }
                             }
                         }
@@ -139,19 +130,19 @@ pub async fn send_chat_message(
                                         if let Some(text) =
                                             delta.get("text").and_then(|t| t.as_str())
                                         {
-                                            let _ = tx.unbounded_send(StreamEntry::TextDelta {
+                                            yield StreamEntry::TextDelta {
                                                 text: text.to_string(),
-                                            });
+                                            };
                                         }
                                     }
                                     Some("input_json_delta") => {
                                         if let Some(partial_json) =
                                             delta.get("partial_json").and_then(|j| j.as_str())
                                         {
-                                            let _ = tx.unbounded_send(StreamEntry::ToolInput {
+                                            yield StreamEntry::ToolInput {
                                                 tool_use_id: String::new(),
                                                 partial_json: partial_json.to_string(),
-                                            });
+                                            };
                                         }
                                     }
                                     _ => {}
@@ -162,10 +153,10 @@ pub async fn send_chat_message(
                     }
                 }
                 SdkMessage::ToolProgress(progress) => {
-                    let _ = tx.unbounded_send(StreamEntry::ToolProgress {
+                    yield StreamEntry::ToolProgress {
                         tool_use_id: progress.tool_use_id,
                         elapsed_seconds: progress.elapsed_time_seconds,
-                    });
+                    };
                 }
                 SdkMessage::User(user) => {
                     // Check if this is a tool result
@@ -186,11 +177,27 @@ pub async fn send_chat_message(
                             } else {
                                 stdout
                             };
-                            let _ = tx.unbounded_send(StreamEntry::ToolResult {
+                            yield StreamEntry::ToolResult {
                                 tool_use_id: tool_use_id.clone(),
                                 output,
                                 is_error,
-                            });
+                            };
+                        }
+                    }
+                }
+                SdkMessage::Assistant(assistant) => {
+                    // Extract text from assistant message
+                    if let Some(content) = assistant.message.get("content") {
+                        if let Some(content_array) = content.as_array() {
+                            for block in content_array {
+                                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        yield StreamEntry::TextDelta {
+                                            text: text.to_string(),
+                                        };
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -204,7 +211,7 @@ pub async fn send_chat_message(
                             err,
                         ) => Some(format!("{:?}", err.errors)),
                     };
-                    let _ = tx.unbounded_send(StreamEntry::Done { error });
+                    yield StreamEntry::Done { error };
                     return;
                 }
                 _ => {}
@@ -212,10 +219,10 @@ pub async fn send_chat_message(
         }
 
         // If stream ended without result, send done
-        let _ = tx.unbounded_send(StreamEntry::Done { error: None });
-    });
+        yield StreamEntry::Done { error: None };
+    };
 
-    Ok(JsonStream::new(rx))
+    Ok(JsonStream::new(stream))
 }
 
 #[component]
