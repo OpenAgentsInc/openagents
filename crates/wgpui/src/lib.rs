@@ -225,14 +225,14 @@ You can use `inline code`, **bold**, *italic*, and ~~strikethrough~~.
 
         // Render markdown with fade-in effect
         let renderer = markdown::MarkdownRenderer::new();
-        let opacity = streaming_ref.fade_state().new_content_opacity;
+        let fade = streaming_ref.fade_state();
         renderer.render_with_opacity(
             streaming_ref.document(),
             Point::new(content_x, content_y),
             content_width,
             platform.text_system(),
             &mut scene,
-            opacity,
+            fade.new_content_opacity,
         );
 
         drop(streaming_ref);

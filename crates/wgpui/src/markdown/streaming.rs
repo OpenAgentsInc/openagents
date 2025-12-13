@@ -28,12 +28,24 @@ impl Default for StreamingConfig {
 }
 
 /// State for fade-in animation of new content.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FadeState {
     /// Source position where fully-visible content ends.
     pub stable_position: usize,
     /// Current opacity for content after stable_position (0.0 to 1.0).
     pub new_content_opacity: f32,
+    /// Whether content is actively streaming (received in last few frames).
+    pub is_streaming: bool,
+}
+
+impl Default for FadeState {
+    fn default() -> Self {
+        Self {
+            stable_position: 0,
+            new_content_opacity: 1.0,
+            is_streaming: false,
+        }
+    }
 }
 
 /// Streaming markdown renderer that handles incremental text input.
@@ -65,6 +77,8 @@ pub struct StreamingMarkdown {
     fade_start_frame: u64,
     /// Target position for current fade (source length when fade started)
     fade_target_position: usize,
+    /// Last frame when content was received
+    last_content_frame: u64,
 }
 
 impl StreamingMarkdown {
@@ -85,12 +99,10 @@ impl StreamingMarkdown {
             frame_counter: 0,
             last_parse_frame: 0,
             needs_reparse: false,
-            fade_state: FadeState {
-                stable_position: 0,
-                new_content_opacity: 1.0,
-            },
+            fade_state: FadeState::default(),
             fade_start_frame: 0,
             fade_target_position: 0,
+            last_content_frame: 0,
         }
     }
 
@@ -122,12 +134,10 @@ impl StreamingMarkdown {
         self.frame_counter = 0;
         self.last_parse_frame = 0;
         self.needs_reparse = false;
-        self.fade_state = FadeState {
-            stable_position: 0,
-            new_content_opacity: 1.0,
-        };
+        self.fade_state = FadeState::default();
         self.fade_start_frame = 0;
         self.fade_target_position = 0;
+        self.last_content_frame = 0;
     }
 
     /// Process pending chunks and update document.
@@ -167,34 +177,43 @@ impl StreamingMarkdown {
             // No fade - everything is immediately visible
             self.fade_state.stable_position = self.source.len();
             self.fade_state.new_content_opacity = 1.0;
+            self.fade_state.is_streaming = false;
             return;
         };
 
         let new_source_len = self.source.len();
 
-        // If new content arrived, start a new fade from current stable position
-        if new_source_len > old_source_len && old_source_len >= self.fade_target_position {
-            // Previous fade completed, start new one
-            self.fade_state.stable_position = old_source_len;
-            self.fade_start_frame = self.frame_counter;
-            self.fade_target_position = new_source_len;
-            self.fade_state.new_content_opacity = 0.0;
-        } else if new_source_len > self.fade_target_position {
-            // More content arrived during ongoing fade - extend target
+        // Track when content arrives
+        if new_source_len > old_source_len {
+            self.last_content_frame = self.frame_counter;
+            self.fade_state.is_streaming = true;
+
+            // When new content arrives after a pause, start a fade
+            if self.fade_state.new_content_opacity >= 1.0 {
+                // Start fade-in from 0 for a more visible effect
+                self.fade_start_frame = self.frame_counter;
+                self.fade_state.new_content_opacity = 0.0;
+            }
             self.fade_target_position = new_source_len;
         }
 
+        // Check if streaming has paused (no content in last 3 frames)
+        let frames_since_content = self.frame_counter.saturating_sub(self.last_content_frame);
+        if frames_since_content > 3 {
+            self.fade_state.is_streaming = false;
+        }
+
         // Advance fade animation
-        if self.fade_state.stable_position < self.fade_target_position {
+        if self.fade_state.new_content_opacity < 1.0 {
             let frames_elapsed = self.frame_counter - self.fade_start_frame;
             let progress = (frames_elapsed as f32 / fade_frames as f32).min(1.0);
 
-            // Ease-out for smoother appearance
+            // Smooth ease-out from 0 to 1
             self.fade_state.new_content_opacity = ease_out(progress);
 
-            // When fade completes, update stable position
+            // When fade completes
             if progress >= 1.0 {
-                self.fade_state.stable_position = self.fade_target_position;
+                self.fade_state.stable_position = self.source.len();
                 self.fade_state.new_content_opacity = 1.0;
             }
         }
