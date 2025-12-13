@@ -1,10 +1,11 @@
-//! Vibe UI surface (Dioxus) with server-backed snapshot state.
+//! Coder UI surface (Dioxus) for the coding agent platform.
 //!
-//! This crate hosts the Vibe components so the main Dioxus app can import
+//! This crate hosts the Coder Studio components so the main Dioxus app can import
 //! without cluttering its local views tree.
 
 pub mod data;
 pub mod types;
+pub mod workflow;
 
 mod database;
 mod deploy;
@@ -13,9 +14,9 @@ mod infra;
 mod projects;
 mod screen;
 
-pub use screen::VibeScreen;
+pub use screen::CoderScreen;
 
-// Shared theme constants for the Vibe surface
+// Shared theme constants for Coder Studio
 pub const BG: &str = "#030303";
 pub const PANEL: &str = "#0a0a0a";
 pub const BORDER: &str = "#1c1c1c";

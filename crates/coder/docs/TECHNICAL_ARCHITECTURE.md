@@ -1,6 +1,6 @@
-# Vibe Technical Architecture
+# Coder Technical Architecture
 
-Detailed technical specification for implementing the Vibe platform.
+Detailed technical specification for implementing the Coder platform.
 
 ---
 
@@ -8,7 +8,7 @@ Detailed technical specification for implementing the Vibe platform.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           VIBE SYSTEM ARCHITECTURE                           │
+│                           CODER SYSTEM ARCHITECTURE                           │
 └─────────────────────────────────────────────────────────────────────────────┘
 
                     ┌─────────────────────────────────────┐
@@ -22,7 +22,7 @@ Detailed technical specification for implementing the Vibe platform.
                             └─────────┬─┘          │
                                       │            │
                     ┌─────────────────▼────────────▼──────┐
-                    │         VIBE RUNTIME LAYER           │
+                    │         CODER RUNTIME LAYER           │
                     │  ┌─────────────────────────────────┐ │
                     │  │     MechaCoder + AI Backend     │ │
                     │  │  Claude │ OpenAI │ Workers AI   │ │
@@ -48,9 +48,9 @@ Detailed technical specification for implementing the Vibe platform.
 
 ## 2. Component Specifications
 
-### 2.1 Vibe Web (Browser Application)
+### 2.1 Coder Web (Browser Application)
 
-**Target:** `vibe.run` - Browser-based IDE
+**Target:** `coder.run` - Browser-based IDE
 
 **Technology:**
 - Dioxus 0.7 compiled to WASM
@@ -59,9 +59,9 @@ Detailed technical specification for implementing the Vibe platform.
 
 **Architecture:**
 ```rust
-// crates/vibe-web/src/main.rs
+// crates/coder-web/src/main.rs
 use dioxus::prelude::*;
-use vibe::{VibeScreen, VibeSnapshot};
+use coder::{CoderScreen, CoderSnapshot};
 
 fn main() {
     // Launch browser app
@@ -113,7 +113,7 @@ enum Route {
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  WORKER: vibe-api (main entry point)                                │    │
+│  │  WORKER: coder-api (main entry point)                                │    │
 │  │  Routes:                                                             │    │
 │  │    /api/auth/*      → Auth handlers                                  │    │
 │  │    /api/project/*   → Project CRUD                                   │    │
@@ -155,16 +155,16 @@ enum Route {
 **OANIX provides runtime abstraction** (from `crates/oanix/`):
 
 ```rust
-// Integration with Vibe
+// Integration with Coder
 use oanix::{Namespace, OanixEnv, FileService};
 use oanix::services::{WorkspaceFs, LogsFs, HttpFs, NostrFs};
 
-pub struct VibeProject {
+pub struct CoderProject {
     id: String,
     env: OanixEnv,
 }
 
-impl VibeProject {
+impl CoderProject {
     pub async fn new(project_id: String, base_path: PathBuf) -> Self {
         // Build namespace for this project
         let namespace = Namespace::builder()
@@ -177,7 +177,7 @@ impl VibeProject {
             // HTTP capability for agents
             .mount("/cap/http", HttpFs::new())
             // Nostr capability for publishing
-            .mount("/cap/nostr", NostrFs::new("wss://relay.vibe.run"))
+            .mount("/cap/nostr", NostrFs::new("wss://relay.coder.run"))
             .build();
 
         let env = OanixEnv::new(namespace);
@@ -214,9 +214,9 @@ impl VibeProject {
 
 **Current:** `crates/mechacoder/` with Claude SDK integration
 
-**Extended for Vibe:**
+**Extended for Coder:**
 ```rust
-// crates/vibe/src/ai/mod.rs
+// crates/coder/src/ai/mod.rs
 
 pub struct AiBackend {
     claude: Option<ClaudeClient>,
@@ -575,7 +575,7 @@ type ServerMessage =
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  CONTROL PLANE (vibe-control worker)                                │    │
+│  │  CONTROL PLANE (coder-control worker)                                │    │
 │  │                                                                       │    │
 │  │  - Customer provisioning                                             │    │
 │  │  - Billing aggregation                                               │    │
@@ -588,7 +588,7 @@ type ServerMessage =
 │         ▼                    ▼                    ▼                         │
 │  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐                 │
 │  │  acme.      │      │  startup.   │      │  agency.    │                 │
-│  │  vibe.run   │      │  vibe.run   │      │  vibe.run   │                 │
+│  │  coder.run   │      │  coder.run   │      │  coder.run   │                 │
 │  │             │      │             │      │             │                 │
 │  │  Customer   │      │  Customer   │      │  Customer   │                 │
 │  │  Durable    │      │  Durable    │      │  Durable    │                 │
@@ -610,7 +610,7 @@ type ServerMessage =
 ### 5.2 Provisioning Flow
 
 ```rust
-// crates/vibe-infra/src/provisioning.rs
+// crates/coder-infra/src/provisioning.rs
 
 pub struct InfraProvisioner {
     cf_api: CloudflareApi,
@@ -639,7 +639,7 @@ impl InfraProvisioner {
 
         // 5. Create D1 database
         let d1_db = self.cf_api.create_d1_database(
-            &format!("vibe-customer-{}", req.customer_id),
+            &format!("coder-customer-{}", req.customer_id),
         ).await?;
 
         // 6. Run migrations
@@ -649,7 +649,7 @@ impl InfraProvisioner {
         self.cf_api.create_dns_record(
             &subdomain,
             "CNAME",
-            "vibe-api.openagents.workers.dev",
+            "coder-api.openagents.workers.dev",
         ).await?;
 
         // 8. Return environment details
@@ -668,7 +668,7 @@ impl InfraProvisioner {
 ### 5.3 Usage Metering
 
 ```rust
-// crates/vibe-infra/src/metering.rs
+// crates/coder-infra/src/metering.rs
 
 #[derive(Serialize, Deserialize)]
 pub struct UsageRecord {
@@ -758,7 +758,7 @@ impl UsageMeter {
 ```yaml
 # .github/workflows/deploy.yml
 
-name: Deploy Vibe Platform
+name: Deploy Coder Platform
 
 on:
   push:
@@ -776,18 +776,18 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Build Vibe Web (WASM)
+      - name: Build Coder Web (WASM)
         run: |
-          cd crates/vibe-web
+          cd crates/coder-web
           cargo build --release --target wasm32-unknown-unknown
           wasm-bindgen --out-dir pkg --target web \
-            target/wasm32-unknown-unknown/release/vibe_web.wasm
+            target/wasm32-unknown-unknown/release/coder_web.wasm
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vibe-web
-          path: crates/vibe-web/pkg/
+          name: coder-web
+          path: crates/coder-web/pkg/
 
   deploy-workers:
     runs-on: ubuntu-latest
@@ -815,7 +815,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: vibe-web
+          name: coder-web
           path: dist/
 
       - name: Deploy to Cloudflare Pages
@@ -823,7 +823,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          projectName: vibe-web
+          projectName: coder-web
           directory: dist/
 ```
 
@@ -832,7 +832,7 @@ jobs:
 ```toml
 # crates/cloudflare/wrangler.toml
 
-name = "vibe-api"
+name = "coder-api"
 main = "build/worker/shim.mjs"
 compatibility_date = "2024-12-01"
 
@@ -868,12 +868,12 @@ id = "xxx"
 # R2 Buckets
 [[r2_buckets]]
 binding = "ARTIFACTS"
-bucket_name = "vibe-artifacts"
+bucket_name = "coder-artifacts"
 
 # D1 Databases
 [[d1_databases]]
 binding = "DB"
-database_name = "vibe-main"
+database_name = "coder-main"
 database_id = "xxx"
 
 # AI
@@ -886,12 +886,12 @@ ENVIRONMENT = "production"
 
 # Routes
 [[routes]]
-pattern = "api.vibe.run/*"
-zone_name = "vibe.run"
+pattern = "api.coder.run/*"
+zone_name = "coder.run"
 
 [[routes]]
-pattern = "*.vibe.run/*"
-zone_name = "vibe.run"
+pattern = "*.coder.run/*"
+zone_name = "coder.run"
 ```
 
 ---
@@ -907,7 +907,7 @@ zone_name = "vibe.run"
 │                                                                              │
 │  1. Client generates Nostr keypair (or uses existing)                       │
 │                                                                              │
-│     Browser                     Vibe API                                    │
+│     Browser                     Coder API                                    │
 │        │                            │                                        │
 │        │  POST /auth/challenge      │                                        │
 │        │  { npub: "npub1..." }      │                                        │
@@ -944,7 +944,7 @@ zone_name = "vibe.run"
 ### 7.2 Authorization Model
 
 ```rust
-// crates/vibe/src/auth/permissions.rs
+// crates/coder/src/auth/permissions.rs
 
 #[derive(Debug, Clone)]
 pub enum Permission {
@@ -1005,7 +1005,7 @@ impl AuthContext {
 ### 7.3 Rate Limiting
 
 ```rust
-// crates/vibe/src/middleware/rate_limit.rs
+// crates/coder/src/middleware/rate_limit.rs
 
 pub struct RateLimiter {
     kv: KvNamespace,
@@ -1081,7 +1081,7 @@ pub fn limits_for_plan(plan: &Plan) -> RateLimits {
 ### Phase 1: MVP (Weeks 1-4)
 
 **Must Have:**
-1. [ ] Vibe Web running on `vibe.run` (Dioxus WASM)
+1. [ ] Coder Web running on `coder.run` (Dioxus WASM)
 2. [ ] Nostr authentication working
 3. [ ] Project CRUD operations
 4. [ ] File editing with preview

@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use super::types::*;
 
-static STORE: OnceLock<RwLock<HashMap<String, VibeSnapshot>>> = OnceLock::new();
+static STORE: OnceLock<RwLock<HashMap<String, CoderSnapshot>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct VibeSnapshot {
+pub struct CoderSnapshot {
     pub projects: Vec<Project>,
     pub templates: Vec<ProjectTemplate>,
     pub files: Vec<ProjectFile>,
@@ -28,7 +28,7 @@ pub struct VibeSnapshot {
     pub action_state: ActionState,
 }
 
-impl VibeSnapshot {
+impl CoderSnapshot {
     pub fn mock() -> Self {
         Self {
             projects: mock_projects(),
@@ -51,11 +51,11 @@ impl VibeSnapshot {
     }
 }
 
-fn state() -> &'static RwLock<HashMap<String, VibeSnapshot>> {
+fn state() -> &'static RwLock<HashMap<String, CoderSnapshot>> {
     STORE.get_or_init(|| {
         let mut map = HashMap::new();
         for project in mock_projects() {
-            map.insert(project.id.clone(), VibeSnapshot::mock());
+            map.insert(project.id.clone(), CoderSnapshot::mock());
         }
         RwLock::new(map)
     })
@@ -63,24 +63,24 @@ fn state() -> &'static RwLock<HashMap<String, VibeSnapshot>> {
 
 fn with_snapshot<F, T>(project_id: &str, f: F) -> T
 where
-    F: FnOnce(&mut VibeSnapshot) -> T,
+    F: FnOnce(&mut CoderSnapshot) -> T,
 {
-    let mut guard = state().write().expect("VibeSnapshot lock poisoned");
+    let mut guard = state().write().expect("CoderSnapshot lock poisoned");
     let entry = guard
         .entry(project_id.to_string())
-        .or_insert_with(VibeSnapshot::mock);
+        .or_insert_with(CoderSnapshot::mock);
     f(entry)
 }
 
-pub async fn get_vibe_snapshot(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn get_coder_snapshot(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let guard = state().read().unwrap();
     Ok(guard
         .get(&project_id)
         .cloned()
-        .unwrap_or_else(VibeSnapshot::mock))
+        .unwrap_or_else(CoderSnapshot::mock))
 }
 
-pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn run_wasi_job(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         let new_id = snap.tasks.len() + 1;
         snap.logs
@@ -97,7 +97,7 @@ pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnEr
     Ok(updated)
 }
 
-pub async fn tail_logs(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn tail_logs(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.logs.push(format!(
             "[logs] streaming /logs/events.ndjson ({project_id})"
@@ -107,7 +107,7 @@ pub async fn tail_logs(project_id: String) -> Result<VibeSnapshot, ServerFnError
     Ok(updated)
 }
 
-pub async fn trigger_deploy(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn trigger_deploy(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         let version = format!("v0.3.{}", snap.deployments.len() + 2);
         snap.deployments.insert(
@@ -123,7 +123,7 @@ pub async fn trigger_deploy(project_id: String) -> Result<VibeSnapshot, ServerFn
     Ok(updated)
 }
 
-pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn provision_infra_customer(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.provisioning = true;
         let new_id = snap.infra_customers.len() + 1;
@@ -132,11 +132,11 @@ pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot
             0,
             InfraCustomer {
                 id: customer_id.clone(),
-                subdomain: format!("new-{new_id}.vibe.run"),
+                subdomain: format!("new-{new_id}.coder.openagents.com"),
                 plan: "Starter".to_string(),
                 status: "Provisioning".to_string(),
                 r2_prefix: format!("customers/new-{new_id}/"),
-                d1_database: format!("vibe-customer-new-{new_id}"),
+                d1_database: format!("coder-customer-new-{new_id}"),
                 durable_object: format!("do:customer:new-{new_id}"),
             },
         );
@@ -158,7 +158,7 @@ pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot
     Ok(updated)
 }
 
-pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn refresh_usage(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.refreshing = true;
         snap.usage.push(UsageMetric {
@@ -186,7 +186,7 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
     Ok(updated)
 }
 
-pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn pay_invoice(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.paying = true;
         snap.invoice.status = "Paid".to_string();
@@ -208,7 +208,7 @@ pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnErr
     Ok(updated)
 }
 
-pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn download_invoice(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.downloading = true;
         snap.billing_events.insert(
@@ -229,7 +229,7 @@ pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, Server
     Ok(updated)
 }
 
-pub async fn simulate_error(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn simulate_error(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.provisioning = false;
         snap.action_state.refreshing = false;
@@ -252,7 +252,7 @@ pub async fn simulate_error(project_id: String) -> Result<VibeSnapshot, ServerFn
     Ok(updated)
 }
 
-pub async fn clear_action_state(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+pub async fn clear_action_state(project_id: String) -> Result<CoderSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.action_state.provisioning = false;
         snap.action_state.refreshing = false;

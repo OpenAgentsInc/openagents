@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::data::{
-    VibeSnapshot, clear_action_state, download_invoice, get_vibe_snapshot, pay_invoice,
+    CoderSnapshot, clear_action_state, download_invoice, get_coder_snapshot, pay_invoice,
     provision_infra_customer, refresh_usage, run_wasi_job, simulate_error, tail_logs,
     trigger_deploy,
 };
@@ -20,13 +20,13 @@ pub const MUTED: &str = "#9a9a9a";
 pub const ACCENT: &str = "#ffb400";
 
 #[component]
-pub fn VibeScreen() -> Element {
-    let mut tab = use_signal(|| VibeTab::Editor);
+pub fn CoderScreen() -> Element {
+    let mut tab = use_signal(|| CoderTab::Editor);
     let mut active_project = use_signal(|| "workspace".to_string());
     let snapshot = {
         use_resource(move || {
             let project = active_project();
-            async move { get_vibe_snapshot(project).await }
+            async move { get_coder_snapshot(project).await }
         })
     };
 
@@ -84,7 +84,7 @@ pub fn VibeScreen() -> Element {
                 billing_events.set(data.billing_events.clone());
                 action_state.set(data.action_state.clone());
             } else if projects.read().is_empty() {
-                let mock = VibeSnapshot::mock();
+                let mock = CoderSnapshot::mock();
                 projects.set(mock.projects);
                 templates.set(mock.templates);
                 files.set(mock.files);
@@ -122,7 +122,7 @@ pub fn VibeScreen() -> Element {
         let mut invoice = invoice.clone();
         let mut billing_events = billing_events.clone();
         let mut action_state = action_state.clone();
-        move |data: VibeSnapshot| {
+        move |data: CoderSnapshot| {
             projects.set(data.projects);
             templates.set(data.templates);
             files.set(data.files);
@@ -259,15 +259,15 @@ pub fn VibeScreen() -> Element {
             // Tabs
             div {
                 style: "display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid {BORDER}; background: {BG};",
-                TabButton { label: "Projects", active: tab() == VibeTab::Projects, ontap: move |_| tab.set(VibeTab::Projects) }
-                TabButton { label: "Editor", active: tab() == VibeTab::Editor, ontap: move |_| tab.set(VibeTab::Editor) }
-                TabButton { label: "Database", active: tab() == VibeTab::Database, ontap: move |_| tab.set(VibeTab::Database) }
-                TabButton { label: "Deploy", active: tab() == VibeTab::Deploy, ontap: move |_| tab.set(VibeTab::Deploy) }
-                TabButton { label: "Infra", active: tab() == VibeTab::Infra, ontap: move |_| tab.set(VibeTab::Infra) }
+                TabButton { label: "Projects", active: tab() == CoderTab::Projects, ontap: move |_| tab.set(CoderTab::Projects) }
+                TabButton { label: "Editor", active: tab() == CoderTab::Editor, ontap: move |_| tab.set(CoderTab::Editor) }
+                TabButton { label: "Database", active: tab() == CoderTab::Database, ontap: move |_| tab.set(CoderTab::Database) }
+                TabButton { label: "Deploy", active: tab() == CoderTab::Deploy, ontap: move |_| tab.set(CoderTab::Deploy) }
+                TabButton { label: "Infra", active: tab() == CoderTab::Infra, ontap: move |_| tab.set(CoderTab::Infra) }
             }
 
             match tab() {
-                VibeTab::Projects => rsx! {
+                CoderTab::Projects => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 2fr 1fr; gap: 16px; padding: 16px;",
                         ProjectGrid {
@@ -277,7 +277,7 @@ pub fn VibeScreen() -> Element {
                         TemplatePicker { templates: templates() }
                     }
                 },
-                VibeTab::Editor => rsx! {
+                CoderTab::Editor => rsx! {
                     div {
                         style: "display: flex; flex-direction: column; gap: 12px; padding: 16px;",
                         ActionBar {
@@ -301,14 +301,14 @@ pub fn VibeScreen() -> Element {
                         }
                     }
                 },
-                VibeTab::Database => rsx! {
+                CoderTab::Database => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 320px 1fr; gap: 12px; padding: 16px;",
                         TableBrowser { tables: tables() }
                         SchemaView { table: tables().get(0).cloned() }
                     }
                 },
-                VibeTab::Deploy => rsx! {
+                CoderTab::Deploy => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 16px;",
                         div {
@@ -319,7 +319,7 @@ pub fn VibeScreen() -> Element {
                         AnalyticsView { metrics: analytics() }
                     }
                 },
-                VibeTab::Infra => rsx! {
+                CoderTab::Infra => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
                         InfraPanel {
@@ -425,8 +425,8 @@ fn HeaderBar(
             style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
             div {
                 style: "display: flex; align-items: center; gap: 12px;",
-                span { style: "color: {ACCENT}; font-weight: 600;", "Vibe" }
-                span { style: "color: {MUTED};", "OANIX agentic workbench" }
+                span { style: "color: {ACCENT}; font-weight: 600;", "Coder" }
+                span { style: "color: {MUTED};", "Coding Agent Platform" }
                 if let Some(current) = projects.iter().find(|p| p.id == active_project()) {
                     span { style: "color: {TEXT}; font-size: 12px;", "Active: {current.name}" }
                 }
