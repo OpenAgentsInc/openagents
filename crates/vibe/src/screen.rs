@@ -229,7 +229,7 @@ pub fn VibeScreen() -> Element {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
 
-            HeaderBar { active_project: active_project.clone(), projects: projects(), auth: auth(), plan_limits: plan_limits() }
+            HeaderBar { active_project: active_project.clone(), projects: projects(), auth: auth(), plan_limits: plan_limits(), action_state: action_state() }
 
             // Tabs
             div {
@@ -325,7 +325,7 @@ fn TabButton(label: &'static str, active: bool, ontap: EventHandler<()>) -> Elem
 }
 
 #[component]
-fn ResourceBar(limits: PlanLimits) -> Element {
+fn ResourceBar(limits: PlanLimits, busy: bool) -> Element {
     rsx! {
         div {
             style: "display: flex; gap: 12px; align-items: center; color: {MUTED}; font-size: 12px;",
@@ -334,6 +334,9 @@ fn ResourceBar(limits: PlanLimits) -> Element {
             ResourcePill { label: "Agents", value: limits.agent_runs.clone() }
             ResourcePill { label: "Infra", value: limits.infra_credits.clone() }
             ResourcePill { label: "API", value: limits.api_rate.clone() }
+            if busy {
+                ResourcePill { label: "Ops", value: "Working..." }
+            }
         }
     }
 }
@@ -355,7 +358,13 @@ fn HeaderBar(
     projects: Vec<Project>,
     auth: AuthState,
     plan_limits: PlanLimits,
+    action_state: ActionState,
 ) -> Element {
+    let busy = action_state.provisioning
+        || action_state.refreshing
+        || action_state.paying
+        || action_state.downloading;
+
     rsx! {
         div {
             style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
@@ -370,7 +379,7 @@ fn HeaderBar(
             div {
                 style: "display: flex; align-items: center; gap: 10px;",
                 AuthChip { auth: auth.clone() }
-                ResourceBar { limits: plan_limits }
+                ResourceBar { limits: plan_limits, busy }
             }
         }
     }
