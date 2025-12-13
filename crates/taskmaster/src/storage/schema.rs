@@ -3,7 +3,7 @@
 //! This module contains all SQL schema definitions, ported from Beads.
 
 /// Current schema version
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Initial schema - creates all tables
 pub const SCHEMA_V1: &str = r#"
@@ -222,6 +222,15 @@ CREATE INDEX IF NOT EXISTS idx_issues_execution_active ON issues(execution_state
 INSERT OR REPLACE INTO _schema_version (version) VALUES (2);
 "#;
 
+/// Schema V3 migration - adds commits field for tracking agent work
+pub const SCHEMA_V3: &str = r#"
+-- Add commits column to issues table (JSON array of commit SHAs)
+ALTER TABLE issues ADD COLUMN commits TEXT NOT NULL DEFAULT '[]';
+
+-- Record schema version
+INSERT OR REPLACE INTO _schema_version (version) VALUES (3);
+"#;
+
 /// SQL to check current schema version
 pub const CHECK_VERSION: &str = "SELECT MAX(version) FROM _schema_version";
 
@@ -234,7 +243,8 @@ SELECT
     discovered_from, content_hash, created_at, updated_at, closed_at,
     tombstoned_at, tombstone_ttl_days, tombstone_reason,
     execution_mode, execution_state, container_id, agent_id,
-    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code,
+    commits
 FROM issues
 WHERE id = ?1 AND status != 'tombstone'
 "#;
@@ -248,7 +258,8 @@ SELECT
     discovered_from, content_hash, created_at, updated_at, closed_at,
     tombstoned_at, tombstone_ttl_days, tombstone_reason,
     execution_mode, execution_state, container_id, agent_id,
-    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code,
+    commits
 FROM issues
 WHERE id = ?1
 "#;
@@ -262,7 +273,8 @@ INSERT INTO issues (
     discovered_from, content_hash, created_at, updated_at, closed_at,
     tombstoned_at, tombstone_ttl_days, tombstone_reason,
     execution_mode, execution_state, container_id, agent_id,
-    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code,
+    commits
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5, ?6,
     ?7, ?8, ?9, ?10, ?11,
@@ -270,7 +282,8 @@ INSERT INTO issues (
     ?16, ?17, ?18, ?19, ?20,
     ?21, ?22, ?23,
     ?24, ?25, ?26, ?27,
-    ?28, ?29, ?30, ?31
+    ?28, ?29, ?30, ?31,
+    ?32
 )
 "#;
 
@@ -394,7 +407,8 @@ SELECT
     discovered_from, content_hash, created_at, updated_at, closed_at,
     tombstoned_at, tombstone_ttl_days, tombstone_reason,
     execution_mode, execution_state, container_id, agent_id,
-    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code,
+    commits
 FROM issues
 WHERE status = 'open'
 AND id NOT IN (SELECT issue_id FROM blocked_issues)
@@ -442,7 +456,8 @@ SELECT
     discovered_from, content_hash, created_at, updated_at, closed_at,
     tombstoned_at, tombstone_ttl_days, tombstone_reason,
     execution_mode, execution_state, container_id, agent_id,
-    execution_branch, execution_started_at, execution_finished_at, execution_exit_code
+    execution_branch, execution_started_at, execution_finished_at, execution_exit_code,
+    commits
 FROM issues
 WHERE status IN ('open', 'in_progress', 'blocked')
 AND datetime(updated_at) < datetime('now', ?1)

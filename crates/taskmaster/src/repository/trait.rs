@@ -122,6 +122,9 @@ pub trait IssueRepository: Send + Sync {
         actor: Option<&str>,
     ) -> Result<Issue>;
 
+    /// Add a commit SHA to an issue
+    fn add_commit(&self, id: &str, sha: &str) -> Result<()>;
+
     /// Reopen a closed issue
     fn reopen(&self, id: &str, actor: Option<&str>) -> Result<Issue>;
 

@@ -10,7 +10,13 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
 
 use crate::repository::{IssueRepository, Result, TaskmasterError};
-use crate::storage::schema::*;
+use crate::storage::schema::{
+    CHECK_VERSION, DELETE_DEPENDENCY, DELETE_LABEL, DETECT_CYCLE, EXISTS_ISSUE,
+    EXPIRED_TOMBSTONES, FIND_DUPLICATES, GET_COMMENTS, GET_DEPENDENCIES, GET_EVENTS, GET_ISSUE,
+    GET_ISSUE_WITH_TOMBSTONES, GET_LABELS, INSERT_COMMENT, INSERT_DEPENDENCY, INSERT_EVENT,
+    INSERT_ISSUE, INSERT_LABEL, IS_BLOCKED, READY_ISSUES, SCHEMA_V1, SCHEMA_V2, SCHEMA_V3,
+    SCHEMA_VERSION, STALE_ISSUES, COUNT_BY_STATUS, COUNT_BY_PRIORITY, COUNT_BY_TYPE, GET_ALL_LABELS,
+};
 use crate::types::*;
 
 /// SQLite-backed repository implementation
@@ -117,6 +123,12 @@ impl SqliteRepository {
                 .flatten()
                 .map(parse_datetime),
             execution_exit_code: row.get("execution_exit_code").ok().flatten(),
+            commits: row
+                .get::<_, Option<String>>("commits")
+                .ok()
+                .flatten()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default(),
             labels: Vec::new(), // Loaded separately
             deps: Vec::new(),   // Loaded separately
         })
@@ -259,6 +271,7 @@ impl IssueRepository for SqliteRepository {
                 Option::<String>::None, // execution_started_at
                 Option::<String>::None, // execution_finished_at
                 Option::<i32>::None,    // execution_exit_code
+                "[]",                   // commits (empty JSON array)
             ],
         )?;
 
@@ -782,14 +795,60 @@ impl IssueRepository for SqliteRepository {
         &self,
         id: &str,
         reason: Option<&str>,
-        _commits: Vec<String>,
+        commits: Vec<String>,
         actor: Option<&str>,
     ) -> Result<Issue> {
+        // First add commits if provided
+        if !commits.is_empty() {
+            let conn = self.conn.lock().unwrap();
+            // Get current commits
+            let current_commits: String = conn
+                .query_row("SELECT commits FROM issues WHERE id = ?1", [id], |row| {
+                    row.get(0)
+                })
+                .unwrap_or_else(|_| "[]".to_string());
+            let mut all_commits: Vec<String> =
+                serde_json::from_str(&current_commits).unwrap_or_default();
+            // Add new commits (avoid duplicates)
+            for c in commits {
+                if !all_commits.contains(&c) {
+                    all_commits.push(c);
+                }
+            }
+            let commits_json = serde_json::to_string(&all_commits).unwrap_or_else(|_| "[]".to_string());
+            conn.execute(
+                "UPDATE issues SET commits = ?1, updated_at = datetime('now') WHERE id = ?2",
+                params![&commits_json, id],
+            )?;
+        }
+
         let mut update = IssueUpdate::new().status(IssueStatus::Closed);
         if let Some(r) = reason {
             update = update.close_reason(r);
         }
         self.update(id, update, actor)
+    }
+
+    fn add_commit(&self, id: &str, sha: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        // Get current commits
+        let current_commits: String = conn
+            .query_row("SELECT commits FROM issues WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .unwrap_or_else(|_| "[]".to_string());
+        let mut all_commits: Vec<String> =
+            serde_json::from_str(&current_commits).unwrap_or_default();
+        // Add new commit if not already present
+        if !all_commits.contains(&sha.to_string()) {
+            all_commits.push(sha.to_string());
+        }
+        let commits_json = serde_json::to_string(&all_commits).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE issues SET commits = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![&commits_json, id],
+        )?;
+        Ok(())
     }
 
     fn reopen(&self, id: &str, actor: Option<&str>) -> Result<Issue> {
@@ -1280,11 +1339,22 @@ impl IssueRepository for SqliteRepository {
                 // Fall through to apply V2
                 conn.execute_batch(SCHEMA_V2)?;
                 applied.push("v2_execution_context".to_string());
+                // Fall through to apply V3
+                conn.execute_batch(SCHEMA_V3)?;
+                applied.push("v3_commits".to_string());
             }
             Some(1) => {
                 // V1 exists, apply V2 migration
                 conn.execute_batch(SCHEMA_V2)?;
                 applied.push("v2_execution_context".to_string());
+                // Fall through to apply V3
+                conn.execute_batch(SCHEMA_V3)?;
+                applied.push("v3_commits".to_string());
+            }
+            Some(2) => {
+                // V2 exists, apply V3 migration
+                conn.execute_batch(SCHEMA_V3)?;
+                applied.push("v3_commits".to_string());
             }
             Some(v) if v >= SCHEMA_VERSION => {
                 // Already up to date
