@@ -232,6 +232,9 @@ members = [
     "crates/ztracing_macro",
     "crates/acp_tools",
     "crates/acp_thread", "crates/ai",
+
+    # Web demo
+    "crates/openagents-web",
 ]
 
 [workspace.lints.rust]
