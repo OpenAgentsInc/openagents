@@ -1,3 +1,0 @@
-docker: Error response from daemon: create results/trajectories/regex-log/20251211-161750-ba4ddb16/verifier: "results/trajectories/regex-log/20251211-161750-ba4ddb16/verifier" includes invalid characters for a local volume name, only "[a-zA-Z0-9][a-zA-Z0-9_.-]" are allowed. If you intended to pass a host directory, use absolute path
-
-Run 'docker run --help' for more information

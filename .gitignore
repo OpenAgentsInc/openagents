@@ -79,8 +79,6 @@ playwright-report/
 test-results/
 
 results
-!results/trajectories/
-!results/trajectories/**
 
 docs/local/
 
