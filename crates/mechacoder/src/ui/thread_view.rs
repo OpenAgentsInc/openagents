@@ -514,7 +514,6 @@ impl Render for ThreadView {
                                 .w_full()
                                 .max_h(px(400.0))
                                 .overflow_y_scroll()
-                                .px(px(16.0))
                                 .child(view)
                         )
                     }),
