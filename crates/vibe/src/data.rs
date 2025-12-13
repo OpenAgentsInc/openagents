@@ -25,6 +25,7 @@ pub struct VibeSnapshot {
     pub usage: Vec<UsageMetric>,
     pub invoice: InvoiceSummary,
     pub billing_events: Vec<BillingEvent>,
+    pub action_state: ActionState,
 }
 
 impl VibeSnapshot {
@@ -45,6 +46,7 @@ impl VibeSnapshot {
             usage: mock_usage_metrics(),
             invoice: mock_invoice(),
             billing_events: mock_billing_events(),
+            action_state: ActionState::default(),
         }
     }
 }
@@ -123,6 +125,7 @@ pub async fn trigger_deploy(project_id: String) -> Result<VibeSnapshot, ServerFn
 
 pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.provisioning = true;
         let new_id = snap.infra_customers.len() + 1;
         let customer_id = format!("customer-new-{new_id}");
         snap.infra_customers.insert(
@@ -147,6 +150,7 @@ pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot
                 timestamp: "just now".to_string(),
             },
         );
+        snap.action_state.provisioning = false;
         snap.clone()
     });
     Ok(updated)
@@ -154,6 +158,7 @@ pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot
 
 pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.refreshing = true;
         snap.usage.push(UsageMetric {
             label: "Bandwidth".to_string(),
             value: "281 GB".to_string(),
@@ -171,6 +176,7 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
                 timestamp: "just now".to_string(),
             },
         );
+        snap.action_state.refreshing = false;
         snap.clone()
     });
     Ok(updated)
@@ -178,6 +184,7 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
 
 pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.paying = true;
         snap.invoice.status = "Paid".to_string();
         snap.billing_events.insert(
             0,
@@ -189,6 +196,7 @@ pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnErr
                 timestamp: "just now".to_string(),
             },
         );
+        snap.action_state.paying = false;
         snap.clone()
     });
     Ok(updated)
@@ -196,6 +204,7 @@ pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnErr
 
 pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.downloading = true;
         snap.billing_events.insert(
             0,
             BillingEvent {
@@ -206,6 +215,7 @@ pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, Server
                 timestamp: "just now".to_string(),
             },
         );
+        snap.action_state.downloading = false;
         snap.clone()
     });
     Ok(updated)

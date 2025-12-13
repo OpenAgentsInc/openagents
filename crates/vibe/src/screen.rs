@@ -44,6 +44,7 @@ pub fn VibeScreen() -> Element {
     let usage = use_signal(Vec::<UsageMetric>::new);
     let invoice = use_signal(InvoiceSummary::default);
     let billing_events = use_signal(Vec::<BillingEvent>::new);
+    let action_state = use_signal(ActionState::default);
 
     {
         let mut projects = projects.clone();
@@ -61,6 +62,7 @@ pub fn VibeScreen() -> Element {
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
         let mut billing_events = billing_events.clone();
+        let mut action_state = action_state.clone();
         use_effect(move || {
             let loaded = snapshot.read_unchecked();
             if let Some(Ok(data)) = &*loaded {
@@ -79,6 +81,7 @@ pub fn VibeScreen() -> Element {
                 usage.set(data.usage.clone());
                 invoice.set(data.invoice.clone());
                 billing_events.set(data.billing_events.clone());
+                action_state.set(data.action_state.clone());
             } else if projects.read().is_empty() {
                 let mock = VibeSnapshot::mock();
                 projects.set(mock.projects);
@@ -96,6 +99,7 @@ pub fn VibeScreen() -> Element {
                 usage.set(mock.usage);
                 invoice.set(mock.invoice);
                 billing_events.set(mock.billing_events);
+                action_state.set(mock.action_state);
             }
         });
     }
@@ -116,6 +120,7 @@ pub fn VibeScreen() -> Element {
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
         let mut billing_events = billing_events.clone();
+        let mut action_state = action_state.clone();
         move |data: VibeSnapshot| {
             projects.set(data.projects);
             templates.set(data.templates);
@@ -132,6 +137,7 @@ pub fn VibeScreen() -> Element {
             usage.set(data.usage);
             invoice.set(data.invoice);
             billing_events.set(data.billing_events);
+            action_state.set(data.action_state);
         }
     };
 
@@ -291,11 +297,11 @@ pub fn VibeScreen() -> Element {
                 VibeTab::Infra => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
-                        InfraPanel { customers: infra_customers(), usage: usage(), events: billing_events(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage() }
+                        InfraPanel { customers: infra_customers(), usage: usage(), events: billing_events(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage(), action_state: action_state() }
                         div {
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             PlanSummary { plan: plan_limits(), auth: auth() }
-                            BillingPanel { invoice: invoice(), events: billing_events(), on_pay: move |_| on_pay_invoice(), on_download: move |_| on_download_invoice() }
+                            BillingPanel { invoice: invoice(), events: billing_events(), on_pay: move |_| on_pay_invoice(), on_download: move |_| on_download_invoice(), action_state: action_state() }
                         }
                     }
                 },

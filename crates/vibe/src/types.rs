@@ -144,6 +144,14 @@ pub struct BillingEvent {
     pub timestamp: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ActionState {
+    pub provisioning: bool,
+    pub refreshing: bool,
+    pub paying: bool,
+    pub downloading: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InvoiceLine {
     pub description: String,
