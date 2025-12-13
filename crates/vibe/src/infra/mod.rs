@@ -57,6 +57,11 @@ pub fn InfraPanel(
                     style: "padding: 6px 8px; border: 1px solid {BORDER}; background: #0f0f0f; color: {MUTED}; font-size: 12px;",
                     "{status_lines.join(\" | \")}"
                 }
+            } else if let Some(msg) = action_state.message.clone() {
+                div {
+                    style: "padding: 6px 8px; border: 1px solid {BORDER}; background: #0f0f0f; color: {MUTED}; font-size: 12px;",
+                    "{msg}"
+                }
             }
             InfraSummaryBar { customers: customers.clone(), events: events.clone() }
             div {

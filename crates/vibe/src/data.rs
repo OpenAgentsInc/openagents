@@ -151,6 +151,7 @@ pub async fn provision_infra_customer(project_id: String) -> Result<VibeSnapshot
             },
         );
         snap.action_state.provisioning = false;
+        snap.action_state.message = Some("Provisioning requested".to_string());
         snap.clone()
     });
     Ok(updated)
@@ -177,6 +178,7 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
             },
         );
         snap.action_state.refreshing = false;
+        snap.action_state.message = Some("Usage refreshed".to_string());
         snap.clone()
     });
     Ok(updated)
@@ -197,6 +199,7 @@ pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnErr
             },
         );
         snap.action_state.paying = false;
+        snap.action_state.message = Some("Invoice paid".to_string());
         snap.clone()
     });
     Ok(updated)
@@ -216,6 +219,7 @@ pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, Server
             },
         );
         snap.action_state.downloading = false;
+        snap.action_state.message = Some("Invoice downloaded".to_string());
         snap.clone()
     });
     Ok(updated)
