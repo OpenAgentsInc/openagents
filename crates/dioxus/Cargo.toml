@@ -16,10 +16,11 @@ futures = "0.3"
 claude-agent-sdk = { path = "../claude-agent-sdk", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 server_fn = { version = "0.8.8", optional = true }
+async-stream = { version = "0.3.6", optional = true }
 
 [features]
 default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "dep:claude-agent-sdk", "dep:tokio", "dep:server_fn"]
+server = ["dioxus/server", "dep:claude-agent-sdk", "dep:tokio", "dep:server_fn", "dep:async-stream"]

@@ -1537,6 +1537,7 @@ dependencies = [
 name = "dioxus-app"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "claude-agent-sdk",
  "dioxus",
  "futures",
