@@ -37,6 +37,9 @@ pub mod subagent_trajectory_ref;
 pub mod tool_call;
 pub mod trajectory;
 
+#[cfg(feature = "store")]
+pub mod store;
+
 // Re-export main types
 pub use agent::Agent;
 pub use error::AtifError;

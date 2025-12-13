@@ -12,7 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Server-only dependencies (not available in WASM)
-claude_agent_sdk = { path = "../claude_agent_sdk", optional = true }
+claude-agent-sdk = { path = "../claude-agent-sdk", optional = true }
 futures = { version = "0.3", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 
@@ -21,4 +21,4 @@ default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "dep:claude_agent_sdk", "dep:futures", "dep:tokio"]
+server = ["dioxus/server", "dep:claude-agent-sdk", "dep:futures", "dep:tokio"]

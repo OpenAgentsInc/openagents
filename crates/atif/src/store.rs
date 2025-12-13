@@ -1,11 +1,9 @@
-//! # ATIF Store
-//!
-//! SQLite storage layer for ATIF (Agent Trajectory Interchange Format) trajectories.
+//! SQLite storage layer for ATIF trajectories.
 //!
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use atif_store::TrajectoryStore;
+//! use atif::store::TrajectoryStore;
 //! use atif::{Agent, Step};
 //!
 //! let store = TrajectoryStore::new("trajectories.db")?;
@@ -25,8 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
-// Re-export atif types for convenience
-pub use atif::{Agent, FinalMetrics, Metrics, Observation, Step, StepSource, ToolCall, Trajectory};
+use crate::{Agent, FinalMetrics, Step, StepSource, Trajectory};
 
 /// Errors from the trajectory store
 #[derive(Error, Debug)]
@@ -243,7 +240,7 @@ impl TrajectoryStore {
                 tool_calls_json,
                 observation_json,
                 metrics_json,
-                None::<String>, // error field from Step doesn't exist in atif crate yet
+                None::<String>,
                 extra_json,
             ],
         )?;

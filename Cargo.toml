@@ -1,36 +1,28 @@
 [workspace]
 resolver = "2"
 members = [
-    # Core UI (NEW - KEEP)
-    "crates/wgpui",
+    # Core UI
     "crates/dioxus",
 
-    # Nostr & Decentralized (OpenAgents - KEEP)
-    "crates/nostr",
-    "crates/nostr-chat",
-    "crates/nostr-client",
-    "crates/nostr-relay",
+    # Nostr & Decentralized
+    "crates/nostr/core",
+    "crates/nostr/chat",
+    "crates/nostr/client",
+    "crates/nostr/relay",
     "crates/cloudflare",
 
-    # Agent Core (OpenAgents - KEEP)
+    # Agent Core
     "crates/agents",
-    "crates/claude_agent_sdk",
+    "crates/claude-agent-sdk",
     "crates/tools",
-    "crates/sessions",
     "crates/taskmaster",
     "crates/config",
 
-    # Data (OpenAgents - KEEP)
+    # Data
     "crates/atif",
-    "crates/atif-store",
 
-    # Learning/Research (OpenAgents - KEEP)
-    "crates/guardrails",
-    "crates/reflexion",
-
-    # Infrastructure (OpenAgents - KEEP)
+    # Infrastructure
     "crates/unit",
-    # "crates/pi",  # Disabled - depends on ai/llm which were local-only crates
     "crates/fm-bridge",
     "crates/oanix",
 ]
@@ -62,19 +54,17 @@ publish = false
 
 [workspace.dependencies]
 # OpenAgents workspace crates
-nostr = { path = "crates/nostr" }
-nostr-chat = { path = "crates/nostr-chat" }
-nostr-client = { path = "crates/nostr-client" }
-nostr-relay = { path = "crates/nostr-relay" }
-wgpui = { path = "crates/wgpui" }
+nostr = { path = "crates/nostr/core" }
+nostr-chat = { path = "crates/nostr/chat" }
+nostr-client = { path = "crates/nostr/client" }
+nostr-relay = { path = "crates/nostr/relay" }
 unit = { path = "crates/unit" }
 oanix = { path = "crates/oanix" }
 atif = { path = "crates/atif" }
-atif-store = { path = "crates/atif-store" }
 fm-bridge = { path = "crates/fm-bridge" }
-sessions-crate = { path = "crates/sessions", package = "sessions" }
 config = { path = "crates/config" }
 tools = { path = "crates/tools" }
+claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 
 # External crates
 anyhow = "1.0.86"
