@@ -33,10 +33,11 @@ pub fn InfraPanel(
             }
             div {
                 style: "display: flex; flex-wrap: wrap; gap: 8px;",
-                for metric in usage {
+                for metric in usage.iter().cloned() {
                     UsagePill { metric: metric.clone() }
                 }
             }
+            UsageBreakdown { usage: usage.clone() }
             div {
                 style: "display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;",
                 for customer in customers {
@@ -63,6 +64,33 @@ fn UsagePill(metric: UsageMetric) -> Element {
                 span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
                 if let Some(remain) = metric.remaining {
                     span { style: "color: {MUTED}; font-size: 11px;", "{remain}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn UsageBreakdown(usage: Vec<UsageMetric>) -> Element {
+    rsx! {
+        div {
+            style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;",
+            for metric in usage {
+                div {
+                    style: "border: 1px solid {BORDER}; padding: 8px; background: #0f0f0f; display: grid; grid-template-columns: 1fr 1fr; align-items: center;",
+                    div { style: "display: flex; flex-direction: column;",
+                        span { style: "color: {TEXT}; font-weight: 600;", "{metric.label}" }
+                        if let Some(limit) = metric.limit.clone() {
+                            span { style: "color: {MUTED}; font-size: 11px;", "{limit}" }
+                        }
+                    }
+                    div { style: "display: flex; flex-direction: column; align-items: flex-end;",
+                        span { style: "color: {TEXT}; font-weight: 600;", "{metric.value}" }
+                        span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
+                        if let Some(remain) = metric.remaining.clone() {
+                            span { style: "color: {MUTED}; font-size: 11px;", "{remain}" }
+                        }
+                    }
                 }
             }
         }
