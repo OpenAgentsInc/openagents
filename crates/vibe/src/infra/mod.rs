@@ -52,9 +52,16 @@ fn UsagePill(metric: UsageMetric) -> Element {
     rsx! {
         div {
             style: "border: 1px solid {BORDER}; padding: 8px 10px; background: #0f0f0f; display: flex; gap: 8px; align-items: center;",
-            span { style: "color: {MUTED}; font-size: 12px;", "{metric.label}" }
-            span { style: "color: {TEXT}; font-weight: 600;", "{metric.value}" }
-            span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
+            div { style: "display: flex; flex-direction: column;",
+                span { style: "color: {MUTED}; font-size: 12px;", "{metric.label}" }
+                if let Some(limit) = metric.limit {
+                    span { style: "color: {MUTED}; font-size: 11px;", "{limit}" }
+                }
+            }
+            div { style: "display: flex; flex-direction: column; align-items: flex-end;",
+                span { style: "color: {TEXT}; font-weight: 600;", "{metric.value}" }
+                span { style: "color: {ACCENT}; font-size: 12px;", "{metric.delta}" }
+            }
         }
     }
 }
@@ -142,11 +149,11 @@ pub fn PlanSummary(plan: PlanLimits, auth: AuthState) -> Element {
                 span { style: "color: {MUTED}; font-size: 12px;", "{plan.billing_cycle}" }
             }
             div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;",
-                PlanRow { label: "AI prompts", value: plan.ai_prompts.clone() }
-                PlanRow { label: "Agent runs", value: plan.agent_runs.clone() }
-                PlanRow { label: "Infra credits", value: plan.infra_credits.clone() }
-                PlanRow { label: "API rate", value: plan.api_rate.clone() }
-                PlanRow { label: "Status", value: auth.status.clone() }
+                PlanRow { label: "AI prompts", value: plan.ai_prompts.clone(), detail: "Remaining" }
+                PlanRow { label: "Agent runs", value: plan.agent_runs.clone(), detail: "Remaining" }
+                PlanRow { label: "Infra credits", value: plan.infra_credits.clone(), detail: "Included" }
+                PlanRow { label: "API rate", value: plan.api_rate.clone(), detail: "Per minute" }
+                PlanRow { label: "Status", value: auth.status.clone(), detail: "Identity" }
             }
             div { style: "display: flex; gap: 8px;",
                 button {
@@ -165,11 +172,15 @@ pub fn PlanSummary(plan: PlanLimits, auth: AuthState) -> Element {
 }
 
 #[component]
-fn PlanRow(label: &'static str, value: String) -> Element {
+fn PlanRow(label: &'static str, value: String, detail: &'static str) -> Element {
     rsx! {
         div {
             style: "display: flex; justify-content: space-between; border: 1px solid {BORDER}; padding: 6px 8px;",
-            span { style: "color: {MUTED}; font-size: 12px;", "{label}" }
+            div {
+                style: "display: flex; flex-direction: column;",
+                span { style: "color: {MUTED}; font-size: 12px;", "{label}" }
+                span { style: "color: {MUTED}; font-size: 11px;", "{detail}" }
+            }
             span { style: "color: {TEXT}; font-weight: 600;", "{value}" }
         }
     }

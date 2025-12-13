@@ -158,6 +158,7 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
             label: "Bandwidth".to_string(),
             value: "281 GB".to_string(),
             delta: "+0.3%".to_string(),
+            limit: Some("1 TB included".to_string()),
         });
         snap.billing_events.insert(
             0,
