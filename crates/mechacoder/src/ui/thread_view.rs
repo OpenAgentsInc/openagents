@@ -200,8 +200,25 @@ impl ThreadView {
     /// Handle a SDK thread event.
     fn handle_sdk_thread_event(&mut self, event: &SdkThreadEvent, cx: &mut Context<Self>) {
         match event {
-            SdkThreadEvent::EntryAdded(_) | SdkThreadEvent::EntryUpdated(_) => {
-                // Clear streaming state when entry is finalized
+            SdkThreadEvent::EntryAdded(idx) => {
+                // Check if this is an assistant message that should reuse the streaming view
+                let entries = self.thread.entries(cx);
+                if let Some(ThreadEntry::AssistantMessage(_)) = entries.get(*idx) {
+                    // Reuse the streaming message view if available to prevent flicker
+                    if let Some(streaming_view) = self.streaming_message.take() {
+                        self.message_cache.insert(*idx, streaming_view);
+                    }
+                }
+
+                // Clear remaining streaming state
+                self.last_streaming_content = None;
+
+                // Update list count
+                self.list_state.reset(entries.len());
+                cx.notify();
+            }
+            SdkThreadEvent::EntryUpdated(_) => {
+                // Clear streaming state when entry is updated (tool calls, etc.)
                 self.streaming_message = None;
                 self.last_streaming_content = None;
 
@@ -247,8 +264,25 @@ impl ThreadView {
     /// Handle a Pi thread event.
     fn handle_pi_thread_event(&mut self, event: &PiThreadEvent, cx: &mut Context<Self>) {
         match event {
-            PiThreadEvent::EntryAdded(_) | PiThreadEvent::EntryUpdated(_) => {
-                // Clear streaming state when entry is finalized
+            PiThreadEvent::EntryAdded(idx) => {
+                // Check if this is an assistant message that should reuse the streaming view
+                let entries = self.thread.entries(cx);
+                if let Some(ThreadEntry::AssistantMessage(_)) = entries.get(*idx) {
+                    // Reuse the streaming message view if available to prevent flicker
+                    if let Some(streaming_view) = self.streaming_message.take() {
+                        self.message_cache.insert(*idx, streaming_view);
+                    }
+                }
+
+                // Clear remaining streaming state
+                self.last_streaming_content = None;
+
+                // Update list count
+                self.list_state.reset(entries.len());
+                cx.notify();
+            }
+            PiThreadEvent::EntryUpdated(_) => {
+                // Clear streaming state when entry is updated (tool calls, etc.)
                 self.streaming_message = None;
                 self.last_streaming_content = None;
 
@@ -390,10 +424,17 @@ impl Render for ThreadView {
         // Clone streaming content to release the borrow on cx
         let streaming_content = self.thread.streaming_content(cx);
 
-        // Get streaming view if streaming
-        let streaming_view = streaming_content.as_ref().map(|content| {
-            self.get_streaming_view(content, cx)
-        });
+        // Get streaming view if streaming, OR if we still have a streaming view that
+        // hasn't been transferred to the message cache yet (prevents flicker during
+        // the gap between streaming ending and EntryAdded being processed)
+        let streaming_view = if let Some(content) = streaming_content.as_ref() {
+            Some(self.get_streaming_view(content, cx))
+        } else if self.streaming_message.is_some() {
+            // Keep showing the streaming view until it's been transferred to cache
+            self.streaming_message.clone()
+        } else {
+            None
+        };
 
         // Create render callback for list items
         let thread = self.thread.clone();

@@ -30,7 +30,7 @@ use gpui::Hsla;
 pub const FONT_FAMILY: &str = "Berkeley Mono";
 
 /// Base font size in pixels (Bloomberg uses ~10-11px)
-pub const FONT_SIZE: f32 = 11.0;
+pub const FONT_SIZE: f32 = 13.0;
 
 /// Small font size (-1 step)
 pub const FONT_SIZE_SM: f32 = 10.0;
