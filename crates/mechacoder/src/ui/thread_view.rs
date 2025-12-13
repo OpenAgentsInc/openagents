@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::sdk_thread::{SdkThread, SdkThreadEvent, ThreadEntry, ThreadStatus};
+use crate::pi_thread::{PiThread, PiThreadEvent};
+use crate::sdk_thread::{SdkThread, SdkThreadEvent, ThreadEntry, ThreadStatus, TodoState};
 use gpui::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
@@ -16,10 +17,83 @@ use super::tbench_view::{TBenchEventView, TBenchRunView};
 use super::todo_panel_view::render_todo_panel;
 use super::tool_call_view::ToolCallView;
 
+/// Enum wrapping either thread type
+#[derive(Clone)]
+pub enum ActiveThread {
+    Sdk(Entity<SdkThread>),
+    Pi(Entity<PiThread>),
+}
+
+impl ActiveThread {
+    /// Get entries from either thread type
+    fn entries(&self, cx: &App) -> Vec<ThreadEntry> {
+        match self {
+            ActiveThread::Sdk(thread) => thread.read(cx).entries().to_vec(),
+            ActiveThread::Pi(thread) => thread.read(cx).entries().to_vec(),
+        }
+    }
+
+    /// Get status from either thread type
+    fn status(&self, cx: &App) -> ThreadStatus {
+        match self {
+            ActiveThread::Sdk(thread) => thread.read(cx).status().clone(),
+            ActiveThread::Pi(thread) => thread.read(cx).status().clone(),
+        }
+    }
+
+    /// Get streaming content from either thread type
+    fn streaming_content(&self, cx: &App) -> Option<String> {
+        match self {
+            ActiveThread::Sdk(thread) => thread.read(cx).streaming_content().map(|s| s.to_string()),
+            ActiveThread::Pi(thread) => thread.read(cx).streaming_content().map(|s| s.to_string()),
+        }
+    }
+
+    /// Get todo state from either thread type
+    fn todo_state(&self, cx: &App) -> TodoState {
+        match self {
+            ActiveThread::Sdk(thread) => thread.read(cx).todo_state().clone(),
+            ActiveThread::Pi(thread) => thread.read(cx).todo_state().clone(),
+        }
+    }
+
+    /// Send a message to either thread type
+    fn send_message(&self, content: String, cx: &mut App) {
+        match self {
+            ActiveThread::Sdk(thread) => {
+                thread.update(cx, |thread, cx| {
+                    thread.send_message(content, cx).detach();
+                });
+            }
+            ActiveThread::Pi(thread) => {
+                thread.update(cx, |thread, cx| {
+                    thread.send_message(content, cx).detach();
+                });
+            }
+        }
+    }
+
+    /// Cancel the current operation on either thread type
+    fn cancel(&self, cx: &mut App) {
+        match self {
+            ActiveThread::Sdk(thread) => {
+                thread.update(cx, |thread, cx| {
+                    thread.cancel(cx);
+                });
+            }
+            ActiveThread::Pi(thread) => {
+                thread.update(cx, |thread, cx| {
+                    thread.cancel(cx);
+                });
+            }
+        }
+    }
+}
+
 /// Thread view for displaying the conversation.
 pub struct ThreadView {
-    /// The SDK thread.
-    thread: Entity<SdkThread>,
+    /// The thread (SDK or Pi).
+    thread: ActiveThread,
     /// Message input component.
     message_input: Entity<MessageInput>,
     /// Focus handle.
@@ -39,7 +113,7 @@ pub struct ThreadView {
 }
 
 impl ThreadView {
-    /// Create a new thread view.
+    /// Create a new thread view with SDK thread.
     pub fn new(thread: Entity<SdkThread>, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
 
@@ -48,19 +122,54 @@ impl ThreadView {
 
         // Subscribe to thread events
         let thread_subscription = cx.subscribe(&thread, |this, _thread, event, cx| {
-            this.handle_thread_event(event, cx);
+            this.handle_sdk_thread_event(event, cx);
         });
 
         // Subscribe to message input submit events
-        let input_subscription = cx.subscribe(&message_input, |this, _input, event: &SendMessageEvent, cx| {
-            this.send_message_content(&event.0, cx);
-        });
+        let input_subscription =
+            cx.subscribe(&message_input, |this, _input, event: &SendMessageEvent, cx| {
+                this.send_message_content(&event.0, cx);
+            });
 
         // Create list state
         let list_state = ListState::new(0, gpui::ListAlignment::Bottom, px(100.0));
 
         Self {
-            thread,
+            thread: ActiveThread::Sdk(thread),
+            message_input,
+            focus_handle,
+            list_state,
+            message_cache: HashMap::new(),
+            streaming_message: None,
+            last_streaming_content: None,
+            _thread_subscription: thread_subscription,
+            _input_subscription: input_subscription,
+        }
+    }
+
+    /// Create a new thread view with Pi thread.
+    pub fn new_pi(thread: Entity<PiThread>, cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+
+        // Create message input
+        let message_input = cx.new(|cx| MessageInput::new(cx));
+
+        // Subscribe to thread events
+        let thread_subscription = cx.subscribe(&thread, |this, _thread, event, cx| {
+            this.handle_pi_thread_event(event, cx);
+        });
+
+        // Subscribe to message input submit events
+        let input_subscription =
+            cx.subscribe(&message_input, |this, _input, event: &SendMessageEvent, cx| {
+                this.send_message_content(&event.0, cx);
+            });
+
+        // Create list state
+        let list_state = ListState::new(0, gpui::ListAlignment::Bottom, px(100.0));
+
+        Self {
+            thread: ActiveThread::Pi(thread),
             message_input,
             focus_handle,
             list_state,
@@ -84,8 +193,8 @@ impl ThreadView {
         });
     }
 
-    /// Handle a thread event.
-    fn handle_thread_event(&mut self, event: &SdkThreadEvent, cx: &mut Context<Self>) {
+    /// Handle a SDK thread event.
+    fn handle_sdk_thread_event(&mut self, event: &SdkThreadEvent, cx: &mut Context<Self>) {
         match event {
             SdkThreadEvent::EntryAdded(_) | SdkThreadEvent::EntryUpdated(_) => {
                 // Clear streaming state when entry is finalized
@@ -93,7 +202,7 @@ impl ThreadView {
                 self.last_streaming_content = None;
 
                 // Update list count
-                let entry_count = self.thread.read(cx).entries().len();
+                let entry_count = self.thread.entries(cx).len();
                 self.list_state.reset(entry_count);
                 cx.notify();
             }
@@ -126,6 +235,41 @@ impl ThreadView {
             }
             SdkThreadEvent::Error(error) => {
                 log::error!("Thread error: {}", error);
+                cx.notify();
+            }
+        }
+    }
+
+    /// Handle a Pi thread event.
+    fn handle_pi_thread_event(&mut self, event: &PiThreadEvent, cx: &mut Context<Self>) {
+        match event {
+            PiThreadEvent::EntryAdded(_) | PiThreadEvent::EntryUpdated(_) => {
+                // Clear streaming state when entry is finalized
+                self.streaming_message = None;
+                self.last_streaming_content = None;
+
+                // Update list count
+                let entry_count = self.thread.entries(cx).len();
+                self.list_state.reset(entry_count);
+                cx.notify();
+            }
+            PiThreadEvent::StatusChanged(_) => {
+                cx.notify();
+            }
+            PiThreadEvent::TodosUpdated => {
+                // Re-render to show updated todo list
+                cx.notify();
+            }
+            PiThreadEvent::CostUpdated => {
+                // Cost updates are handled by Pi panel directly
+                // No action needed in thread view
+            }
+            PiThreadEvent::SessionUpdated => {
+                // Session updates are handled by Pi panel directly
+                // No action needed in thread view
+            }
+            PiThreadEvent::Error(error) => {
+                log::error!("Pi thread error: {}", error);
                 cx.notify();
             }
         }
@@ -167,9 +311,7 @@ impl ThreadView {
         let content = content.to_string();
 
         // Send to thread
-        self.thread.update(cx, |thread, cx| {
-            thread.send_message(content, cx).detach();
-        });
+        self.thread.send_message(content, cx);
     }
 
     /// Send the current message from the input field.
@@ -185,16 +327,12 @@ impl ThreadView {
         });
 
         // Send to thread
-        self.thread.update(cx, |thread, cx| {
-            thread.send_message(content, cx).detach();
-        });
+        self.thread.send_message(content, cx);
     }
 
     /// Cancel generation.
     fn cancel(&mut self, cx: &mut Context<Self>) {
-        self.thread.update(cx, |thread, cx| {
-            thread.cancel(cx);
-        });
+        self.thread.cancel(cx);
     }
 
     /// Respond to a permission request.
@@ -214,7 +352,8 @@ impl ThreadView {
 
     /// Render the status indicator (top left corner).
     fn render_status(&self, cx: &App) -> impl IntoElement {
-        let status = self.thread.read(cx).status();
+        let status = self.thread.status(cx);
+        let is_pi = matches!(self.thread, ActiveThread::Pi(_));
 
         div()
             .absolute()
@@ -224,12 +363,17 @@ impl ThreadView {
             .text_color(text::SECONDARY)
             .child(
                 match status {
-                    ThreadStatus::Idle => "Ready",
-                    ThreadStatus::Streaming => "Claude is typing...",
-                    ThreadStatus::Completed => "Done",
-                    ThreadStatus::Error(_) => "Error",
-                }
-                .to_string(),
+                    ThreadStatus::Idle => "Ready".to_string(),
+                    ThreadStatus::Streaming => {
+                        if is_pi {
+                            "Pi is typing...".to_string()
+                        } else {
+                            "Claude is typing...".to_string()
+                        }
+                    }
+                    ThreadStatus::Completed => "Done".to_string(),
+                    ThreadStatus::Error(_) => "Error".to_string(),
+                },
             )
     }
 
@@ -265,9 +409,9 @@ impl Focusable for ThreadView {
 
 impl Render for ThreadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_streaming = matches!(*self.thread.read(cx).status(), ThreadStatus::Streaming);
+        let is_streaming = matches!(self.thread.status(cx), ThreadStatus::Streaming);
         // Clone streaming content to release the borrow on cx
-        let streaming_content = self.thread.read(cx).streaming_content().map(|s| s.to_string());
+        let streaming_content = self.thread.streaming_content(cx);
 
         // Get streaming view if streaming
         let streaming_view = streaming_content.as_ref().map(|content| {
@@ -278,7 +422,7 @@ impl Render for ThreadView {
         let thread = self.thread.clone();
         let message_cache = self.message_cache.clone();
         let render_item = move |ix: usize, _window: &mut Window, cx: &mut App| {
-            let entries = thread.read(cx).entries();
+            let entries = thread.entries(cx);
             if ix < entries.len() {
                 let entry = &entries[ix];
                 match entry {
@@ -332,7 +476,7 @@ impl Render for ThreadView {
 
         // Pre-populate cache for all entries
         // Collect entries to avoid borrow conflict
-        let entries: Vec<_> = self.thread.read(cx).entries().to_vec();
+        let entries: Vec<_> = self.thread.entries(cx);
         let missing_indices: Vec<_> = entries
             .iter()
             .enumerate()
@@ -355,7 +499,7 @@ impl Render for ThreadView {
         }
 
         // Get todo state for panel
-        let todo_state = self.thread.read(cx).todo_state().clone();
+        let todo_state = self.thread.todo_state(cx);
 
         div()
             .size_full()

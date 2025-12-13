@@ -7,8 +7,12 @@ actions!(
     [
         // Application
         Quit,
-        ShowSettings,
+        ToggleSettings,
         ShowAbout,
+        // Panels
+        ToggleGymPanel,
+        ToggleClaudePanel,
+        TogglePiPanel,
         // Messages
         SendMessage,
         CancelGeneration,
@@ -24,14 +28,6 @@ actions!(
         AllowToolAlways,
         RejectTool,
         // Navigation
-        ToggleThreadHistory,
-        ToggleTerminalPanel,
-        ToggleGymPanel,
-        ToggleClaudePanel,
         FocusMessageInput,
-        // Mode/Model
-        SelectMode,
-        SelectModel,
-        CycleMode,
     ]
 );

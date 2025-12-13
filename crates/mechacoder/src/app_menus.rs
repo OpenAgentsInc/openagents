@@ -12,7 +12,7 @@ pub fn app_menus() -> Vec<Menu> {
             items: vec![
                 MenuItem::action("About MechaCoder", ShowAbout),
                 MenuItem::separator(),
-                MenuItem::action("Settings...", ShowSettings),
+                MenuItem::action("Settings...", ToggleSettings),
                 MenuItem::separator(),
                 MenuItem::action("Quit", Quit),
             ],
@@ -36,8 +36,9 @@ pub fn app_menus() -> Vec<Menu> {
         Menu {
             name: "View".into(),
             items: vec![
-                MenuItem::action("Toggle Thread History", ToggleThreadHistory),
-                MenuItem::action("Toggle Terminal Panel", ToggleTerminalPanel),
+                MenuItem::action("Toggle Gym Panel", ToggleGymPanel),
+                MenuItem::action("Toggle Claude Panel", ToggleClaudePanel),
+                MenuItem::action("Toggle Pi Panel", TogglePiPanel),
             ],
         },
         Menu {
