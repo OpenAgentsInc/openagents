@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>wgpui Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #E6E6E6;
+            font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;
+            font-size: 14px;
+        }
+    </style>
+    <link data-trunk rel="rust" data-wasm-opt="z" />
+</head>
+<body>
+    <div id="loading">Loading wgpui...</div>
+    <canvas id="wgpui-canvas"></canvas>
+</body>
+</html>

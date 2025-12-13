@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # Core UI
     "crates/dioxus",
+    "crates/wgpui",
 
     # Nostr & Decentralized
     "crates/nostr/core",
@@ -69,6 +70,7 @@ config = { path = "crates/config" }
 tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 mechacoder = { path = "crates/mechacoder" }
+wgpui = { path = "crates/wgpui" }
 
 # External crates
 anyhow = "1.0.86"
