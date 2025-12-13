@@ -1328,28 +1328,31 @@ fn apply_heading_style(
     level: pulldown_cmark::HeadingLevel,
     custom_styles: Option<&HeadingLevelStyles>,
 ) -> Div {
-    heading = match level {
-        pulldown_cmark::HeadingLevel::H1 => heading.text_3xl(),
-        pulldown_cmark::HeadingLevel::H2 => heading.text_2xl(),
-        pulldown_cmark::HeadingLevel::H3 => heading.text_xl(),
-        pulldown_cmark::HeadingLevel::H4 => heading.text_lg(),
-        pulldown_cmark::HeadingLevel::H5 => heading.text_base(),
-        pulldown_cmark::HeadingLevel::H6 => heading.text_sm(),
-    };
-
-    if let Some(styles) = custom_styles {
-        let style_opt = match level {
-            pulldown_cmark::HeadingLevel::H1 => &styles.h1,
-            pulldown_cmark::HeadingLevel::H2 => &styles.h2,
-            pulldown_cmark::HeadingLevel::H3 => &styles.h3,
-            pulldown_cmark::HeadingLevel::H4 => &styles.h4,
-            pulldown_cmark::HeadingLevel::H5 => &styles.h5,
-            pulldown_cmark::HeadingLevel::H6 => &styles.h6,
-        };
-
-        if let Some(style) = style_opt {
-            heading.style().text = Some(style.clone());
+    // Check if custom style is provided for this level
+    let custom_style = custom_styles.and_then(|styles| {
+        match level {
+            pulldown_cmark::HeadingLevel::H1 => styles.h1.as_ref(),
+            pulldown_cmark::HeadingLevel::H2 => styles.h2.as_ref(),
+            pulldown_cmark::HeadingLevel::H3 => styles.h3.as_ref(),
+            pulldown_cmark::HeadingLevel::H4 => styles.h4.as_ref(),
+            pulldown_cmark::HeadingLevel::H5 => styles.h5.as_ref(),
+            pulldown_cmark::HeadingLevel::H6 => styles.h6.as_ref(),
         }
+    });
+
+    if let Some(style) = custom_style {
+        // Use custom style - don't apply default sizes
+        heading.style().text = Some(style.clone());
+    } else {
+        // Apply default heading sizes only when no custom style
+        heading = match level {
+            pulldown_cmark::HeadingLevel::H1 => heading.text_3xl(),
+            pulldown_cmark::HeadingLevel::H2 => heading.text_2xl(),
+            pulldown_cmark::HeadingLevel::H3 => heading.text_xl(),
+            pulldown_cmark::HeadingLevel::H4 => heading.text_lg(),
+            pulldown_cmark::HeadingLevel::H5 => heading.text_base(),
+            pulldown_cmark::HeadingLevel::H6 => heading.text_sm(),
+        };
     }
 
     heading
