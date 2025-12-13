@@ -4,9 +4,29 @@ use crate::color::Hsla;
 use crate::geometry::{Point, Size};
 use crate::scene::{GlyphInstance, TextRun};
 use cosmic_text::{
-    Attrs, Buffer, CacheKey, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
+    Attrs, Buffer, CacheKey, Family, FontSystem, Metrics, Shaping, Style, SwashCache, SwashContent,
+    Weight,
 };
+
+/// Default font family for text rendering
+#[cfg(target_arch = "wasm32")]
+const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Berkeley Mono");
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_FONT_FAMILY: Family<'static> = Family::Monospace;
+
+/// Default shaping mode - use Basic for WASM (simpler, no HarfBuzz)
+#[cfg(target_arch = "wasm32")]
+const DEFAULT_SHAPING: Shaping = Shaping::Basic;
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_SHAPING: Shaping = Shaping::Advanced;
 use std::collections::HashMap;
+
+/// Font style for text rendering.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FontStyle {
+    pub bold: bool,
+    pub italic: bool,
+}
 
 /// Default atlas size (1024x1024 single-channel texture)
 const ATLAS_SIZE: u32 = 1024;
@@ -44,11 +64,29 @@ pub struct TextSystem {
 
 impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
-        let font_system = FontSystem::new();
+        // For WASM, create font system with embedded fonts (all variants)
+        #[cfg(target_arch = "wasm32")]
+        let font_system = {
+            use cosmic_text::fontdb;
+            let mut db = fontdb::Database::new();
 
-        // Load embedded fonts if available
-        // For now, use system fonts. You can add embedded fonts here:
-        // font_system.db_mut().load_font_data(include_bytes!("../fonts/BerkeleyMono-Regular.ttf").to_vec());
+            // Load all font variants
+            let regular = include_bytes!("../fonts/BerkeleyMono-Regular.ttf");
+            let bold = include_bytes!("../fonts/BerkeleyMono-Bold.ttf");
+            let italic = include_bytes!("../fonts/BerkeleyMono-Italic.ttf");
+            let bold_italic = include_bytes!("../fonts/BerkeleyMono-BoldItalic.ttf");
+
+            db.load_font_data(regular.to_vec());
+            db.load_font_data(bold.to_vec());
+            db.load_font_data(italic.to_vec());
+            db.load_font_data(bold_italic.to_vec());
+
+            FontSystem::new_with_locale_and_db("en-US".to_string(), db)
+        };
+
+        // For native, use system fonts
+        #[cfg(not(target_arch = "wasm32"))]
+        let font_system = FontSystem::new();
 
         Self {
             font_system,
@@ -104,57 +142,47 @@ impl TextSystem {
 
     /// Measure text width without rendering.
     pub fn measure(&mut self, text: &str, font_size: f32) -> f32 {
-        let physical_font_size = font_size * self.scale_factor;
-        let metrics = Metrics::new(physical_font_size, physical_font_size * 1.2);
-
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(&mut self.font_system, Some(f32::MAX), None);
-        buffer.set_text(&mut self.font_system, text, Attrs::new(), Shaping::Advanced);
-        buffer.shape_until_scroll(&mut self.font_system, false);
-
-        // Calculate total width
-        let mut width = 0.0f32;
-        for run in buffer.layout_runs() {
-            for glyph in run.glyphs.iter() {
-                width = width.max(glyph.x + glyph.w);
-            }
-        }
-
-        width / self.scale_factor
+        // Simple calculation: character count * advance width
+        let char_count = text.chars().count() as f32;
+        char_count * font_size * 1.1
     }
 
     /// Measure text and return size.
-    pub fn measure_size(&mut self, text: &str, font_size: f32, max_width: Option<f32>) -> Size {
-        let physical_font_size = font_size * self.scale_factor;
-        let metrics = Metrics::new(physical_font_size, physical_font_size * 1.2);
-
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        let width_constraint = max_width.map(|w| w * self.scale_factor);
-        buffer.set_size(&mut self.font_system, width_constraint, None);
-        buffer.set_text(&mut self.font_system, text, Attrs::new(), Shaping::Advanced);
-        buffer.shape_until_scroll(&mut self.font_system, false);
-
-        let mut max_x = 0.0f32;
-        let mut max_y = 0.0f32;
-
-        for run in buffer.layout_runs() {
-            max_y = max_y.max(run.line_y + physical_font_size);
-            for glyph in run.glyphs.iter() {
-                max_x = max_x.max(glyph.x + glyph.w);
-            }
-        }
-
-        Size::new(max_x / self.scale_factor, max_y / self.scale_factor)
+    pub fn measure_size(&mut self, text: &str, font_size: f32, _max_width: Option<f32>) -> Size {
+        // Simple calculation for monospace font
+        let char_count = text.chars().count() as f32;
+        let width = char_count * font_size * 1.1;
+        let height = font_size * 1.6;
+        Size::new(width, height)
     }
 
     /// Layout text and return a TextRun for rendering.
     pub fn layout(&mut self, text: &str, origin: Point, font_size: f32, color: Hsla) -> TextRun {
+        self.layout_styled(text, origin, font_size, color, FontStyle::default())
+    }
+
+    /// Layout text with font style (bold/italic) and return a TextRun for rendering.
+    pub fn layout_styled(
+        &mut self,
+        text: &str,
+        origin: Point,
+        font_size: f32,
+        color: Hsla,
+        style: FontStyle,
+    ) -> TextRun {
         let physical_font_size = font_size * self.scale_factor;
         let metrics = Metrics::new(physical_font_size, physical_font_size * 1.2);
 
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(&mut self.font_system, Some(f32::MAX), None);
-        buffer.set_text(&mut self.font_system, text, Attrs::new(), Shaping::Advanced);
+        buffer.set_size(&mut self.font_system, Some(10000.0), None);
+
+        // Build attrs with correct weight and style
+        let attrs = Attrs::new()
+            .family(DEFAULT_FONT_FAMILY)
+            .weight(if style.bold { Weight::BOLD } else { Weight::NORMAL })
+            .style(if style.italic { Style::Italic } else { Style::Normal });
+
+        buffer.set_text(&mut self.font_system, text, attrs, DEFAULT_SHAPING);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let mut text_run = TextRun::new(origin, color, font_size);
@@ -163,12 +191,17 @@ impl TextSystem {
         let mut glyph_data: Vec<(GlyphCacheKey, f32, f32, u16)> = Vec::new();
 
         for run in buffer.layout_runs() {
+            // Manually track x position by accumulating glyph widths
+            let mut current_x = 0.0f32;
             for glyph in run.glyphs.iter() {
                 let physical_glyph = glyph.physical((0.0, 0.0), self.scale_factor);
                 let cache_key = GlyphCacheKey {
                     cache_key: physical_glyph.cache_key,
                 };
-                glyph_data.push((cache_key, glyph.x, run.line_y, glyph.glyph_id as u16));
+                glyph_data.push((cache_key, current_x, run.line_y, glyph.glyph_id as u16));
+                // Monospace font advance width
+                let advance = physical_font_size * 1.1;
+                current_x += advance;
             }
         }
 

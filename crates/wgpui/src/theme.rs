@@ -103,34 +103,34 @@ pub mod status {
 /// Font sizes in logical pixels
 pub mod font_size {
     /// Extra small (labels, badges)
-    pub const XS: f32 = 11.0;
+    pub const XS: f32 = 9.0;
 
     /// Small (secondary text)
-    pub const SM: f32 = 12.0;
+    pub const SM: f32 = 10.0;
 
     /// Base/default size
-    pub const BASE: f32 = 13.0;
+    pub const BASE: f32 = 11.0;
 
     /// Large (section headers)
-    pub const LG: f32 = 14.0;
+    pub const LG: f32 = 12.0;
 
     /// Extra large (page titles)
-    pub const XL: f32 = 16.0;
+    pub const XL: f32 = 14.0;
 
     /// 2X large (hero text)
-    pub const XXL: f32 = 20.0;
+    pub const XXL: f32 = 16.0;
 }
 
 /// Line heights
 pub mod line_height {
     /// Tight line height (compact lists)
-    pub const TIGHT: f32 = 1.2;
+    pub const TIGHT: f32 = 2.0;
 
     /// Normal line height
-    pub const NORMAL: f32 = 1.3;
+    pub const NORMAL: f32 = 2.2;
 
     /// Relaxed line height (body text)
-    pub const RELAXED: f32 = 1.5;
+    pub const RELAXED: f32 = 2.5;
 }
 
 /// Spacing values in logical pixels

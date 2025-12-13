@@ -40,6 +40,15 @@ futures = "0.3"
 # Logging
 log = "0.4"
 
+# Markdown
+pulldown-cmark = "0.12"
+
+# Syntax highlighting (WASM-compatible via fancy-regex)
+syntect = { version = "5.2", default-features = false, features = [
+    "default-fancy",
+    "parsing",
+] }
+
 # Web (optional)
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
