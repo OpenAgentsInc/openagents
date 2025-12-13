@@ -4,7 +4,7 @@ use crate::data::{VibeSnapshot, get_vibe_snapshot, run_wasi_job, tail_logs, trig
 use crate::database::{SchemaView, TableBrowser};
 use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
 use crate::editor::{ActionBar, AgentPanel, CodeEditor, FileTree, PreviewPanel, TerminalPanel};
-use crate::infra::{BillingPanel, InfraPanel};
+use crate::infra::{BillingPanel, InfraPanel, PlanSummary};
 use crate::projects::{ProjectGrid, TemplatePicker};
 use crate::types::*;
 
@@ -241,7 +241,11 @@ pub fn VibeScreen() -> Element {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
                         InfraPanel { customers: infra_customers(), usage: usage() }
-                        BillingPanel { invoice: invoice(), events: billing_events() }
+                        div {
+                            style: "display: flex; flex-direction: column; gap: 12px;",
+                            PlanSummary { plan: plan_limits(), auth: auth() }
+                            BillingPanel { invoice: invoice(), events: billing_events() }
+                        }
                     }
                 },
             }
