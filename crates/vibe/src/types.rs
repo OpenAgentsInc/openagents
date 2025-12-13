@@ -81,6 +81,16 @@ pub struct AuthState {
     pub token_preview: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanLimits {
+    pub plan: String,
+    pub ai_prompts: String,
+    pub agent_runs: String,
+    pub infra_credits: String,
+    pub api_rate: String,
+    pub billing_cycle: String,
+}
+
 impl Default for AuthState {
     fn default() -> Self {
         Self {
@@ -88,6 +98,19 @@ impl Default for AuthState {
             plan: "Free".to_string(),
             status: "anonymous".to_string(),
             token_preview: "jwt-***".to_string(),
+        }
+    }
+}
+
+impl Default for PlanLimits {
+    fn default() -> Self {
+        Self {
+            plan: "Free".to_string(),
+            ai_prompts: "100/day".to_string(),
+            agent_runs: "10/day".to_string(),
+            infra_credits: "$0".to_string(),
+            api_rate: "60 rpm".to_string(),
+            billing_cycle: "Monthly".to_string(),
         }
     }
 }
@@ -374,6 +397,17 @@ pub fn mock_auth_state() -> AuthState {
         plan: "Pro".to_string(),
         status: "verified".to_string(),
         token_preview: "jwt-abc123...".to_string(),
+    }
+}
+
+pub fn mock_plan_limits() -> PlanLimits {
+    PlanLimits {
+        plan: "Pro".to_string(),
+        ai_prompts: "1,000/day".to_string(),
+        agent_runs: "100/day".to_string(),
+        infra_credits: "$50".to_string(),
+        api_rate: "300 rpm".to_string(),
+        billing_cycle: "Dec cycle".to_string(),
     }
 }
 
