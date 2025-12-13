@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::types::{
-    AuthState, BillingEvent, InfraCustomer, InvoiceLine, InvoiceSummary, PlanLimits, UsageMetric,
+    ActionState, AuthState, BillingEvent, InfraCustomer, InvoiceLine, InvoiceSummary, PlanLimits,
+    UsageMetric,
 };
 use crate::{ACCENT, BG, BORDER, MUTED, PANEL, TEXT};
 
@@ -12,6 +13,7 @@ pub fn InfraPanel(
     events: Vec<BillingEvent>,
     on_provision: EventHandler<()>,
     on_refresh: EventHandler<()>,
+    action_state: ActionState,
 ) -> Element {
     rsx! {
         div {
@@ -22,11 +24,13 @@ pub fn InfraPanel(
                 div { style: "display: flex; gap: 8px; align-items: center;",
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        disabled: "{action_state.provisioning}",
                         onclick: move |_| on_provision.call(()),
                         "Provision customer"
                     }
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        disabled: "{action_state.refreshing}",
                         onclick: move |_| on_refresh.call(()),
                         "Refresh usage"
                     }
@@ -167,6 +171,7 @@ pub fn BillingPanel(
     events: Vec<BillingEvent>,
     on_pay: EventHandler<()>,
     on_download: EventHandler<()>,
+    action_state: ActionState,
 ) -> Element {
     rsx! {
         div {
@@ -185,11 +190,13 @@ pub fn BillingPanel(
                 div { style: "display: flex; gap: 8px;",
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        disabled: "{action_state.downloading}",
                         onclick: move |_| on_download.call(()),
                         "Download"
                     }
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                        disabled: "{action_state.paying}",
                         onclick: move |_| on_pay.call(()),
                         "Pay invoice"
                     }
