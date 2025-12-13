@@ -1,5 +1,6 @@
 [application]
 name = "dioxus-app"
+default_platform = "web"
 
 [web.app]
 

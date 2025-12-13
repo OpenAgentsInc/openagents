@@ -7,6 +7,7 @@ license = "CC-0"
 
 [dependencies]
 dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
+lumen-blocks = { git = "https://github.com/Leaf-Computer/lumen-blocks.git", tag = "v0.2.0" }
 
 [features]
 default = ["web"]
