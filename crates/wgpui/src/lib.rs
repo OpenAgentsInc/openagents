@@ -39,6 +39,7 @@
 pub mod color;
 pub mod geometry;
 pub mod layout;
+pub mod markdown;
 pub mod platform;
 pub mod renderer;
 pub mod scene;
@@ -50,7 +51,7 @@ pub use color::Hsla;
 pub use geometry::{Bounds, CornerRadii, Edges, Point, Size};
 pub use layout::{auto, length, length_auto, pct, px, relative, zero, LayoutEngine, LayoutId, LayoutStyle};
 pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
-pub use text::TextSystem;
+pub use text::{FontStyle, TextSystem};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{run_animation_loop, setup_resize_observer, WebPlatform};
@@ -87,22 +88,89 @@ pub async fn main() -> Result<(), JsValue> {
     let platform = Rc::new(RefCell::new(platform));
     let frame_count = Rc::new(RefCell::new(0u64));
 
+    // Demo markdown content
+    const DEMO_MARKDOWN: &str = r#"# BUILD v5
+
+This is a **GPU-accelerated** markdown renderer with *streaming* support.
+
+## Features
+
+- Syntax highlighting via syntect
+- Streaming text support
+- Full markdown rendering
+
+## Code Example
+
+```rust
+fn main() {
+    let greeting = "Hello, wgpui!";
+    println!("{}", greeting);
+}
+```
+
+> Blockquotes are styled with a yellow accent bar
+
+---
+
+### Inline Styles
+
+You can use `inline code`, **bold**, *italic*, and ~~strikethrough~~.
+
+1. Ordered lists
+2. Work great
+3. With numbers
+"#;
+
+    // Set up streaming markdown with fade-in enabled
+    let streaming_config = markdown::StreamingConfig {
+        fade_in_frames: Some(15), // Fade in over ~250ms at 60fps
+        ..Default::default()
+    };
+    let streaming = Rc::new(RefCell::new(markdown::StreamingMarkdown::with_config(streaming_config)));
+    let char_index = Rc::new(RefCell::new(0usize));
+    let demo_text = DEMO_MARKDOWN.to_string();
+
     // Set up resize handler
     {
         let platform_clone = platform.clone();
         let canvas = platform.borrow().canvas().clone();
         setup_resize_observer(&canvas, move || {
-            platform_clone.borrow_mut().handle_resize();
+            // Use try_borrow_mut to avoid panic if animation loop has it borrowed
+            if let Ok(mut p) = platform_clone.try_borrow_mut() {
+                p.handle_resize();
+            }
         });
     }
 
     // Animation loop
     let platform_clone = platform.clone();
     let frame_count_clone = frame_count.clone();
+    let streaming_clone = streaming.clone();
+    let char_index_clone = char_index.clone();
+
     run_animation_loop(move || {
         let mut platform = platform_clone.borrow_mut();
         let frame = *frame_count_clone.borrow();
         *frame_count_clone.borrow_mut() = frame.wrapping_add(1);
+
+        // Simulate streaming: append characters over time
+        {
+            let mut sm = streaming_clone.borrow_mut();
+            let mut idx = char_index_clone.borrow_mut();
+
+            // Append characters (faster at start, then slow down)
+            let chars_per_frame = if *idx < 100 { 5 } else { 2 };
+
+            if *idx < demo_text.len() {
+                let end = (*idx + chars_per_frame).min(demo_text.len());
+                sm.append(&demo_text[*idx..end]);
+                *idx = end;
+            } else if !sm.document().is_complete {
+                sm.complete();
+            }
+
+            sm.tick();
+        }
 
         // Build scene
         let mut scene = Scene::new();
@@ -121,102 +189,53 @@ pub async fn main() -> Result<(), JsValue> {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        // Animated pulse for accent color
-        let pulse = ((frame as f32 * 0.05).sin() * 0.5 + 0.5) * 0.3 + 0.7;
-        let accent_pulsed = theme::accent::PRIMARY.with_alpha(pulse);
-
-        // Centered card
-        let card_width = 400.0f32.min(size.width - 40.0);
-        let card_height = 300.0;
-        let card_x = (size.width - card_width) / 2.0;
-        let card_y = 80.0;
-
-        scene.draw_quad(
-            Quad::new(Bounds::new(card_x, card_y, card_width, card_height))
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_uniform_radius(8.0),
+        // Header title
+        let title_run = platform.text_system().layout(
+            "wgpui Markdown Demo",
+            Point::new(16.0, 16.0),
+            14.0,
+            theme::accent::PRIMARY,
         );
-
-        // Title text
-        let title_run = platform
-            .text_system()
-            .layout("wgpui Demo", Point::new(card_x + 20.0, card_y + 24.0), 16.0, theme::accent::PRIMARY);
         scene.draw_text(title_run);
 
-        // Subtitle text
-        let subtitle_run = platform.text_system().layout(
-            "GPU-accelerated UI rendering",
-            Point::new(card_x + 20.0, card_y + 50.0),
-            13.0,
-            theme::text::SECONDARY,
-        );
-        scene.draw_text(subtitle_run);
-
-        // Animated button
-        let button_y = card_y + 90.0;
-        scene.draw_quad(
-            Quad::new(Bounds::new(card_x + 20.0, button_y, 160.0, 36.0))
-                .with_background(accent_pulsed)
-                .with_uniform_radius(4.0),
-        );
-
-        let button_text = platform.text_system().layout(
-            "Get Started",
-            Point::new(card_x + 55.0, button_y + 10.0),
-            13.0,
-            theme::bg::APP,
-        );
-        scene.draw_text(button_text);
-
-        // Color boxes row
-        let colors = [
-            theme::status::SUCCESS,
-            theme::status::ERROR,
-            theme::accent::BLUE,
-            theme::accent::PURPLE,
-        ];
-        let box_size = 40.0;
-        let box_gap = 12.0;
-        let boxes_width = colors.len() as f32 * box_size + (colors.len() - 1) as f32 * box_gap;
-        let boxes_x = card_x + (card_width - boxes_width) / 2.0;
-        let boxes_y = card_y + 150.0;
-
-        for (i, color) in colors.iter().enumerate() {
-            let offset = (frame as f32 * 0.03 + i as f32 * 0.5).sin() * 5.0;
-            let x = boxes_x + i as f32 * (box_size + box_gap);
-            let y = boxes_y + offset;
-
-            scene.draw_quad(
-                Quad::new(Bounds::new(x, y, box_size, box_size))
-                    .with_background(*color)
-                    .with_uniform_radius(6.0),
-            );
-        }
-
-        // Info text
-        let info_text = platform.text_system().layout(
-            "wgpu + cosmic-text + taffy",
-            Point::new(card_x + 20.0, card_y + 220.0),
+        // Streaming status
+        let streaming_ref = streaming_clone.borrow();
+        let status_text = if streaming_ref.document().is_complete {
+            "Complete"
+        } else {
+            "Streaming..."
+        };
+        let status_color = if streaming_ref.document().is_complete {
+            theme::status::SUCCESS
+        } else {
+            theme::accent::PRIMARY
+        };
+        let status_run = platform.text_system().layout(
+            status_text,
+            Point::new(size.width - 140.0, 16.0),
             12.0,
-            theme::text::MUTED,
+            status_color,
         );
-        scene.draw_text(info_text);
+        scene.draw_text(status_run);
 
-        // Border demo box
-        scene.draw_quad(
-            Quad::new(Bounds::new(card_x + 20.0, card_y + 250.0, card_width - 40.0, 30.0))
-                .with_border(theme::accent::PRIMARY, 2.0)
-                .with_uniform_radius(4.0),
+        // Content area
+        let content_x = 20.0;
+        let content_y = 64.0;
+        let content_width = (size.width - 40.0).min(700.0);
+
+        // Render markdown with fade-in effect
+        let renderer = markdown::MarkdownRenderer::new();
+        let opacity = streaming_ref.fade_state().new_content_opacity;
+        renderer.render_with_opacity(
+            streaming_ref.document(),
+            Point::new(content_x, content_y),
+            content_width,
+            platform.text_system(),
+            &mut scene,
+            opacity,
         );
 
-        let border_text = platform.text_system().layout(
-            "SDF rounded borders",
-            Point::new(card_x + 100.0, card_y + 258.0),
-            12.0,
-            theme::text::PRIMARY,
-        );
-        scene.draw_text(border_text);
+        drop(streaming_ref);
 
         // Render
         if let Err(e) = platform.render(&scene) {
