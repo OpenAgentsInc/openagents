@@ -1,7 +1,8 @@
-//! Task verification - validates that tasks meet acceptance criteria
+//! Issue verification - validates that issues meet acceptance criteria
 
 use crate::OrchestratorResult;
 use serde::{Deserialize, Serialize};
+use taskmaster::Issue;
 
 /// Verification result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,10 +60,10 @@ impl Verifier {
         self.custom_checks.push(check);
     }
 
-    /// Verify a task completion
+    /// Verify an issue completion
     pub async fn verify(
         &self,
-        task: &tasks::Task,
+        issue: &Issue,
         context: &VerificationContext,
     ) -> OrchestratorResult<VerificationResult> {
         let mut checks = Vec::new();
@@ -71,11 +72,11 @@ impl Verifier {
         checks.push(self.check_files_exist(context).await?);
         checks.push(self.check_tests_pass(context).await?);
         checks.push(self.check_no_syntax_errors(context).await?);
-        checks.push(self.check_acceptance_criteria(task, context).await?);
+        checks.push(self.check_acceptance_criteria(issue, context).await?);
 
         // Run custom checks
         for custom_check in &self.custom_checks {
-            checks.push(custom_check.run(task, context).await?);
+            checks.push(custom_check.run(issue, context).await?);
         }
 
         // Calculate overall score
@@ -209,11 +210,11 @@ impl Verifier {
 
     async fn check_acceptance_criteria(
         &self,
-        task: &tasks::Task,
+        issue: &Issue,
         _context: &VerificationContext,
     ) -> OrchestratorResult<CheckResult> {
         // If no acceptance criteria, pass by default
-        let criteria = match &task.acceptance_criteria {
+        let criteria = match &issue.acceptance_criteria {
             Some(c) if !c.is_empty() => c,
             _ => {
                 return Ok(CheckResult {
@@ -288,7 +289,7 @@ pub trait VerificationCheck: Send + Sync {
     /// Run the verification check
     async fn run(
         &self,
-        task: &tasks::Task,
+        issue: &Issue,
         context: &VerificationContext,
     ) -> OrchestratorResult<CheckResult>;
 
@@ -321,7 +322,7 @@ impl CommandCheck {
 impl VerificationCheck for CommandCheck {
     async fn run(
         &self,
-        _task: &tasks::Task,
+        _issue: &Issue,
         _context: &VerificationContext,
     ) -> OrchestratorResult<CheckResult> {
         let result = tools::BashTool::execute_with_timeout(&self.command, 60_000)?;

@@ -8,8 +8,11 @@ use crate::{
 use llm::LlmClient;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tasks::{TaskFilter, TaskRepository};
+use taskmaster::{Issue, IssueFilter, IssueRepository};
 use tokio::sync::broadcast;
+
+/// Actor ID for orchestrator operations
+const ORCHESTRATOR_ACTOR: &str = "orchestrator";
 
 /// Orchestrator configuration
 #[derive(Debug, Clone)]
@@ -63,8 +66,8 @@ pub struct Orchestrator {
     config: OrchestratorConfig,
     /// LLM client
     llm: Arc<LlmClient>,
-    /// Task repository
-    task_repo: Arc<dyn TaskRepository>,
+    /// Issue repository (taskmaster)
+    issue_repo: Arc<dyn IssueRepository>,
     /// Session store
     session_store: Arc<dyn SessionStore>,
     /// Current session
@@ -82,7 +85,7 @@ impl Orchestrator {
     pub fn new(
         config: OrchestratorConfig,
         llm: LlmClient,
-        task_repo: Arc<dyn TaskRepository>,
+        issue_repo: Arc<dyn IssueRepository>,
     ) -> OrchestratorResult<Self> {
         let (event_tx, _) = broadcast::channel(config.event_buffer_size);
         let session = Session::new(config.working_dir.clone(), config.session_config.clone());
@@ -91,7 +94,7 @@ impl Orchestrator {
         Ok(Self {
             config,
             llm: Arc::new(llm),
-            task_repo,
+            issue_repo,
             session_store: Arc::new(InMemorySessionStore::new()),
             session,
             event_handlers: vec![],
@@ -186,29 +189,29 @@ impl Orchestrator {
     }
 
     /// Run a single task (useful for testing or manual execution)
-    pub async fn run_single_task(&mut self, task_id: &str) -> OrchestratorResult<()> {
-        let task = self.task_repo.get(task_id)?;
-        self.execute_task(&task).await
+    pub async fn run_single_task(&mut self, issue_id: &str) -> OrchestratorResult<()> {
+        let issue = self.issue_repo.get(issue_id)?;
+        self.execute_task(&issue).await
     }
 
     /// Select the next task to execute
-    async fn select_next_task(&self) -> OrchestratorResult<Option<tasks::Task>> {
-        let filter = TaskFilter::default();
-        let ready_tasks = self.task_repo.ready_tasks(filter)?;
-        Ok(ready_tasks.into_iter().next())
+    async fn select_next_task(&self) -> OrchestratorResult<Option<Issue>> {
+        let filter = IssueFilter::default();
+        let ready_issues = self.issue_repo.ready(filter)?;
+        Ok(ready_issues.into_iter().next())
     }
 
-    /// Execute a task
-    async fn execute_task(&mut self, task: &tasks::Task) -> OrchestratorResult<()> {
+    /// Execute an issue
+    async fn execute_task(&mut self, issue: &Issue) -> OrchestratorResult<()> {
         self.emit(OrchestratorEvent::task_started(
             &self.session.id,
-            &task.id,
-            &task.title,
+            &issue.id,
+            &issue.title,
         ))
         .await;
 
-        // Mark task as in progress
-        self.task_repo.start(&task.id)?;
+        // Mark issue as in progress
+        self.issue_repo.start(&issue.id, Some(ORCHESTRATOR_ACTOR))?;
 
         // Create tool executor
         let tool_executor = ToolExecutor::new(self.config.working_dir.to_string_lossy())
@@ -219,7 +222,7 @@ impl Orchestrator {
         let agent_executor = AgentExecutor::new(self.llm.clone(), tool_executor);
 
         // Build task prompt
-        let prompt = self.build_task_prompt(task);
+        let prompt = self.build_task_prompt(issue);
 
         // Execute agent loop
         let result = agent_executor
@@ -232,39 +235,39 @@ impl Orchestrator {
         // Verify results
         let verification = self
             .verifier
-            .verify(task, &self.config.verification_context)
+            .verify(issue, &self.config.verification_context)
             .await?;
 
         if !verification.passed {
-            // Block the task with verification failure
-            self.task_repo.block(&task.id, Some(&verification.summary))?;
+            // Block the issue with verification failure
+            self.issue_repo.block(&issue.id, Some(&verification.summary), Some(ORCHESTRATOR_ACTOR))?;
             return Err(OrchestratorError::VerificationFailed(verification.summary));
         }
 
-        // Close the task
-        self.task_repo
-            .close(&task.id, Some("Completed successfully"), vec![])?;
+        // Close the issue
+        self.issue_repo
+            .close(&issue.id, Some("Completed successfully"), vec![], Some(ORCHESTRATOR_ACTOR))?;
 
         Ok(())
     }
 
-    /// Build a prompt for the task
-    fn build_task_prompt(&self, task: &tasks::Task) -> String {
-        let mut prompt = format!("# Task: {}\n\n", task.title);
+    /// Build a prompt for the issue
+    fn build_task_prompt(&self, issue: &Issue) -> String {
+        let mut prompt = format!("# Task: {}\n\n", issue.title);
 
-        if !task.description.is_empty() {
-            prompt.push_str(&format!("## Description\n{}\n\n", task.description));
+        if !issue.description.is_empty() {
+            prompt.push_str(&format!("## Description\n{}\n\n", issue.description));
         }
 
-        if let Some(ref design) = task.design {
+        if let Some(ref design) = issue.design {
             prompt.push_str(&format!("## Design\n{}\n\n", design));
         }
 
-        if let Some(ref criteria) = task.acceptance_criteria {
+        if let Some(ref criteria) = issue.acceptance_criteria {
             prompt.push_str(&format!("## Acceptance Criteria\n{}\n\n", criteria));
         }
 
-        if let Some(ref notes) = task.notes {
+        if let Some(ref notes) = issue.notes {
             prompt.push_str(&format!("## Notes\n{}\n\n", notes));
         }
 
@@ -288,7 +291,7 @@ impl Orchestrator {
 pub struct OrchestratorBuilder {
     config: OrchestratorConfig,
     llm: Option<LlmClient>,
-    task_repo: Option<Arc<dyn TaskRepository>>,
+    issue_repo: Option<Arc<dyn IssueRepository>>,
     session_store: Option<Arc<dyn SessionStore>>,
     event_handlers: Vec<Arc<dyn EventHandler>>,
 }
@@ -299,7 +302,7 @@ impl OrchestratorBuilder {
         Self {
             config: OrchestratorConfig::default(),
             llm: None,
-            task_repo: None,
+            issue_repo: None,
             session_store: None,
             event_handlers: vec![],
         }
@@ -329,9 +332,9 @@ impl OrchestratorBuilder {
         self
     }
 
-    /// Set the task repository
-    pub fn task_repo(mut self, repo: Arc<dyn TaskRepository>) -> Self {
-        self.task_repo = Some(repo);
+    /// Set the issue repository
+    pub fn issue_repo(mut self, repo: Arc<dyn IssueRepository>) -> Self {
+        self.issue_repo = Some(repo);
         self
     }
 
@@ -365,11 +368,11 @@ impl OrchestratorBuilder {
             .llm
             .ok_or_else(|| OrchestratorError::ConfigurationError("LLM client required".into()))?;
 
-        let task_repo = self.task_repo.ok_or_else(|| {
-            OrchestratorError::ConfigurationError("Task repository required".into())
+        let issue_repo = self.issue_repo.ok_or_else(|| {
+            OrchestratorError::ConfigurationError("Issue repository required".into())
         })?;
 
-        let mut orchestrator = Orchestrator::new(self.config, llm, task_repo)?;
+        let mut orchestrator = Orchestrator::new(self.config, llm, issue_repo)?;
 
         if let Some(store) = self.session_store {
             orchestrator.session_store = store;

@@ -8,9 +8,9 @@ pub type OrchestratorResult<T> = Result<T, OrchestratorError>;
 /// Errors that can occur during orchestration
 #[derive(Error, Debug)]
 pub enum OrchestratorError {
-    /// Task-related error
-    #[error("Task error: {0}")]
-    TaskError(#[from] tasks::TaskError),
+    /// Taskmaster-related error
+    #[error("Taskmaster error: {0}")]
+    TaskmasterError(#[from] taskmaster::TaskmasterError),
 
     /// Tool execution error
     #[error("Tool error: {0}")]
