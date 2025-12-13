@@ -1139,3 +1139,123 @@ If you want, I’ll follow this by writing:
 * a concrete `coder_ui_runtime` API surface (types + module layout),
 * the NodeId derivation rules (exact hashing conventions),
 * and a “Terminal Vertical Slice” spec with the full event/state/render pipeline spelled out (selection, scroll, copy, search, and streaming).
+
+---
+
+Yep — the design I wrote is **explicitly GPU-first** and assumes **wgpu is the rendering backend** for Layer 5 (Renderer). Everything else is Rust-native too, but some layers will *optionally* lean on existing Rust crates to avoid reinventing deep math/text/platform wheels.
+
+Here’s how it uses **wgpu** and what other Rust packages typically fit each layer.
+
+## Layer 5 Renderer: uses `wgpu` directly (core dependency)
+
+**wgpu is the “narrow waist”**: once the UI runtime + layout produce a display list, the renderer turns that into GPU buffers and issues commands through `wgpu::Device/Queue/CommandEncoder/RenderPass`.
+
+Concretely:
+
+* Create swapchain surface (`wgpu::Surface`) from:
+
+  * Web: canvas → `wgpu` wasm target (WebGPU; maybe WebGL2 fallback depending on your setup)
+  * Desktop: `winit` window surface
+  * Mobile: platform-specific surface creation
+* Build pipelines:
+
+  * Quad pipeline (SDF rounded rect shader in WGSL)
+  * Text pipeline (glyph atlas texture + sampling)
+  * Image pipeline (textures)
+  * Path pipeline (optional)
+* Upload per-frame instance buffers (or ring buffers) and draw instanced quads/glyphs.
+* Use premultiplied alpha blending.
+* Maintain caches (glyph atlas, shaped runs, buffer pool) on the Rust side; wgpu just does GPU execution.
+
+So yes: **wgpu is the renderer**. “wgpui” in your doc is basically the first half of Layer 5 + parts of Layer 6.
+
+## Layer 6 Platform glue: uses different crates per target
+
+### Desktop: `winit` (likely) + `wgpu`
+
+* `winit` is the standard window + event loop layer.
+* It feeds events into your unified `PlatformEvent` enum.
+* You still “own” the platform abstraction—`winit` is just the implementation behind it.
+
+Also typically needed:
+
+* clipboard: either you implement per OS, or use a crate (still behind your `PlatformHost`)
+* file dialogs: same story
+* drag/drop: winit provides some; you may extend
+
+### Web: `wasm-bindgen` + `web-sys` (+ `wgpu`)
+
+* `web-sys` is how you attach to a canvas, register listeners, manage the hidden textarea for IME, etc.
+* `wgpu` handles rendering on the canvas (WebGPU, with whatever fallback strategy you choose).
+
+### Mobile: platform wrappers
+
+You can keep it “pure Rust” at the top but you’ll need platform bindings at the bottom:
+
+* iOS: typically through `objc2` / `cocoa`/`core-*` crates, or custom bindings
+* Android: `jni` / `ndk` crates
+  Still all hidden behind `coder_platform_ios/android`.
+
+## Layer 4 Widgets + IDE surfaces: some key Rust packages you’ll probably use
+
+Even if you “own the layer,” you’ll likely use crates for hard subproblems:
+
+### Text shaping & rasterization
+
+* Your wgpui spec uses **`cosmic-text`**. That’s totally consistent with “owning the stack”—you still own the API and glue; cosmic-text is an engine.
+* Alternative is `rustybuzz` + your own fontdb and shaping pipeline, but cosmic-text is a good pragmatic core.
+
+### Unicode segmentation
+
+* `unicode-segmentation` (graphemes, words)
+* `unicode-bidi` (if you support RTL properly)
+  These are “deep correctness” libraries.
+
+### ANSI terminal parsing
+
+* `vte` or similar for ANSI/VT parsing (again, behind your own terminal model)
+  You still own the terminal widget and rendering.
+
+### Data structures
+
+* `slotmap` (stable keys for nodes)
+* `smallvec` (reduce allocations)
+* `hashbrown` (fast maps)
+* `ropey` (if you build a full editor buffer; optional)
+
+## Layer 3 Layout: you can own it or use `taffy` internally
+
+In the “own all layers” spec, layout is “owned.” That doesn’t forbid using `taffy` as the internal algorithm. Two common interpretations:
+
+* **Owned API, borrowed engine**: you define `coder_layout::LayoutEngine` and implement it using `taffy` internally.
+* **Owned API, owned engine**: you implement flex/grid yourself.
+
+Given your earlier wgpui doc already uses **Taffy**, the cleanest is:
+
+* keep your own `Style` and `LayoutEngine` API,
+* translate to/from Taffy internally at first,
+* replace later if you want.
+
+## Layer 2 UI runtime: usually minimal external deps
+
+You can implement signals/scheduler yourself. You might still use:
+
+* `futures` / `tokio` (native) or `wasm-bindgen-futures` (web) for async plumbing
+  But the runtime semantics are yours.
+
+## Layer 1 Domain: serde + stable IDs
+
+Typically:
+
+* `serde` / `serde_json` for durable schema
+* `uuid` or your own IDs
+* `blake3` for stable hash-based IDs (NodeId derivation etc.)
+
+---
+
+### Bottom line
+
+* **Yes, wgpu is the core renderer** in this design (Layer 5) across web + native + (later) mobile.
+* You’ll still use a handful of Rust crates as “engines” (cosmic-text, taffy, winit, unicode libs, vte), but the **APIs, integration points, and semantics remain yours**, all living in your codebase and shaped for agents.
+
+If you want, I can write a short “Dependency Policy” section you can paste into the design doc: which crates are allowed per layer, which ones must be wrapped, and how we vendor/fork when needed.
