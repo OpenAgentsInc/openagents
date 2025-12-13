@@ -13,7 +13,9 @@ members = [
 
     # Agent Core
     "crates/agents",
+    "crates/ai",
     "crates/claude-agent-sdk",
+    "crates/mechacoder",
     "crates/tools",
     "crates/taskmaster",
     "crates/config",
@@ -65,6 +67,7 @@ fm-bridge = { path = "crates/fm-bridge" }
 config = { path = "crates/config" }
 tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
+mechacoder = { path = "crates/mechacoder" }
 
 # External crates
 anyhow = "1.0.86"
