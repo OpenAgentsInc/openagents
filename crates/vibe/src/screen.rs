@@ -36,6 +36,7 @@ pub fn VibeScreen() -> Element {
     let terminal_logs = use_signal(Vec::<String>::new);
     let agent_tasks = use_signal(Vec::<AgentTask>::new);
     let auth = use_signal(AuthState::default);
+    let plan_limits = use_signal(PlanLimits::default);
     let infra_customers = use_signal(Vec::<InfraCustomer>::new);
     let usage = use_signal(Vec::<UsageMetric>::new);
     let invoice = use_signal(InvoiceSummary::default);
@@ -52,6 +53,7 @@ pub fn VibeScreen() -> Element {
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
         let mut auth = auth.clone();
+        let mut plan_limits = plan_limits.clone();
         let mut infra_customers = infra_customers.clone();
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
@@ -69,6 +71,7 @@ pub fn VibeScreen() -> Element {
                 terminal_logs.set(data.logs.clone());
                 agent_tasks.set(data.tasks.clone());
                 auth.set(data.auth.clone());
+                plan_limits.set(data.plan_limits.clone());
                 infra_customers.set(data.infra_customers.clone());
                 usage.set(data.usage.clone());
                 invoice.set(data.invoice.clone());
@@ -85,6 +88,7 @@ pub fn VibeScreen() -> Element {
                 terminal_logs.set(mock.logs);
                 agent_tasks.set(mock.tasks);
                 auth.set(mock.auth);
+                plan_limits.set(mock.plan_limits);
                 infra_customers.set(mock.infra_customers);
                 usage.set(mock.usage);
                 invoice.set(mock.invoice);
@@ -104,6 +108,7 @@ pub fn VibeScreen() -> Element {
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
         let mut auth = auth.clone();
+        let mut plan_limits = plan_limits.clone();
         let mut infra_customers = infra_customers.clone();
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
@@ -119,6 +124,7 @@ pub fn VibeScreen() -> Element {
             terminal_logs.set(data.logs);
             agent_tasks.set(data.tasks);
             auth.set(data.auth);
+            plan_limits.set(data.plan_limits);
             infra_customers.set(data.infra_customers);
             usage.set(data.usage);
             invoice.set(data.invoice);
@@ -166,7 +172,7 @@ pub fn VibeScreen() -> Element {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
 
-            HeaderBar { active_project: active_project.clone(), projects: projects(), auth: auth() }
+            HeaderBar { active_project: active_project.clone(), projects: projects(), auth: auth(), plan_limits: plan_limits() }
 
             // Tabs
             div {
@@ -258,19 +264,21 @@ fn TabButton(label: &'static str, active: bool, ontap: EventHandler<()>) -> Elem
 }
 
 #[component]
-fn ResourceBar() -> Element {
+fn ResourceBar(limits: PlanLimits) -> Element {
     rsx! {
         div {
             style: "display: flex; gap: 12px; align-items: center; color: {MUTED}; font-size: 12px;",
-            ResourcePill { label: "Compute", value: "64% used" }
-            ResourcePill { label: "Credits", value: "412k sats" }
-            ResourcePill { label: "OANIX", value: "3 active envs" }
+            ResourcePill { label: "Plan", value: limits.plan.clone() }
+            ResourcePill { label: "AI", value: limits.ai_prompts.clone() }
+            ResourcePill { label: "Agents", value: limits.agent_runs.clone() }
+            ResourcePill { label: "Infra", value: limits.infra_credits.clone() }
+            ResourcePill { label: "API", value: limits.api_rate.clone() }
         }
     }
 }
 
 #[component]
-fn ResourcePill(label: &'static str, value: &'static str) -> Element {
+fn ResourcePill(label: &'static str, value: String) -> Element {
     rsx! {
         div {
             style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG};",
@@ -281,7 +289,12 @@ fn ResourcePill(label: &'static str, value: &'static str) -> Element {
 }
 
 #[component]
-fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>, auth: AuthState) -> Element {
+fn HeaderBar(
+    active_project: Signal<String>,
+    projects: Vec<Project>,
+    auth: AuthState,
+    plan_limits: PlanLimits,
+) -> Element {
     rsx! {
         div {
             style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
@@ -296,7 +309,7 @@ fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>, auth: AuthS
             div {
                 style: "display: flex; align-items: center; gap: 10px;",
                 AuthChip { auth: auth.clone() }
-                ResourceBar {}
+                ResourceBar { limits: plan_limits }
             }
         }
     }
