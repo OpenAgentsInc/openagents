@@ -1,11 +1,14 @@
-//! Task management CLI commands
+//! Issue management CLI commands
 //!
 //! Implements CLI-001..007 user stories
 
 use crate::{CliError, CliResult, OutputFormat, output::*};
 use clap::Subcommand;
 use serde::Serialize;
-use tasks::{Task, TaskCreate, TaskFilter, TaskRepository, SqliteRepository, TaskStatus, TaskPriority};
+use taskmaster::{Issue, IssueCreate, IssueFilter, IssueRepository, SqliteRepository, IssueStatus, Priority, LabelFilter};
+
+/// Actor ID for CLI operations
+const CLI_ACTOR: &str = "cli";
 
 /// Task management commands
 #[derive(Subcommand, Debug)]
@@ -134,20 +137,20 @@ struct TaskSummary {
     title: String,
 }
 
-impl From<&Task> for TaskSummary {
-    fn from(task: &Task) -> Self {
-        let priority_str = match task.priority {
-            TaskPriority::Critical => "P0",
-            TaskPriority::High => "P1",
-            TaskPriority::Medium => "P2",
-            TaskPriority::Low => "P3",
-            TaskPriority::Backlog => "P4",
+impl From<&Issue> for TaskSummary {
+    fn from(issue: &Issue) -> Self {
+        let priority_str = match issue.priority {
+            Priority::Critical => "P0",
+            Priority::High => "P1",
+            Priority::Medium => "P2",
+            Priority::Low => "P3",
+            Priority::Backlog => "P4",
         };
         Self {
-            id: truncate(&task.id, 8),
+            id: truncate(&issue.id, 8),
             priority: format_priority(priority_str),
-            status: format_status(task.status.as_str()),
-            title: truncate(&task.title, 50),
+            status: format_status(issue.status.as_str()),
+            title: truncate(&issue.title, 50),
         }
     }
 }
@@ -160,7 +163,7 @@ struct TaskDetailOutput {
     description: String,
     status: String,
     priority: String,
-    task_type: String,
+    issue_type: String,
     labels: Vec<String>,
     created_at: String,
     updated_at: String,
@@ -176,7 +179,7 @@ impl std::fmt::Display for TaskDetailOutput {
         writeln!(f, "{:12} {}", "Title:".dimmed(), self.title)?;
         writeln!(f, "{:12} {}", "Status:".dimmed(), format_status(&self.status))?;
         writeln!(f, "{:12} {}", "Priority:".dimmed(), format_priority(&self.priority))?;
-        writeln!(f, "{:12} {}", "Type:".dimmed(), self.task_type)?;
+        writeln!(f, "{:12} {}", "Type:".dimmed(), self.issue_type)?;
 
         if !self.description.is_empty() {
             writeln!(f, "{:12} {}", "Description:".dimmed(), self.description)?;
@@ -201,27 +204,27 @@ impl std::fmt::Display for TaskDetailOutput {
     }
 }
 
-impl From<&Task> for TaskDetailOutput {
-    fn from(task: &Task) -> Self {
-        let priority_str = match task.priority {
-            TaskPriority::Critical => "P0",
-            TaskPriority::High => "P1",
-            TaskPriority::Medium => "P2",
-            TaskPriority::Low => "P3",
-            TaskPriority::Backlog => "P4",
+impl From<&Issue> for TaskDetailOutput {
+    fn from(issue: &Issue) -> Self {
+        let priority_str = match issue.priority {
+            Priority::Critical => "P0",
+            Priority::High => "P1",
+            Priority::Medium => "P2",
+            Priority::Low => "P3",
+            Priority::Backlog => "P4",
         };
         Self {
-            id: task.id.clone(),
-            title: task.title.clone(),
-            description: task.description.clone(),
-            status: task.status.as_str().to_string(),
+            id: issue.id.clone(),
+            title: issue.title.clone(),
+            description: issue.description.clone(),
+            status: issue.status.as_str().to_string(),
             priority: priority_str.to_string(),
-            task_type: task.task_type.as_str().to_string(),
-            labels: task.labels.clone(),
-            created_at: format_timestamp(&task.created_at),
-            updated_at: format_timestamp(&task.updated_at),
-            assignee: task.assignee.clone(),
-            close_reason: task.close_reason.clone(),
+            issue_type: issue.issue_type.as_str().to_string(),
+            labels: issue.labels.clone(),
+            created_at: format_timestamp(&issue.created_at),
+            updated_at: format_timestamp(&issue.updated_at),
+            assignee: issue.assignee.clone(),
+            close_reason: issue.close_reason.clone(),
         }
     }
 }
@@ -230,33 +233,33 @@ use colored::Colorize;
 
 /// Execute a tasks command
 pub async fn execute(cmd: TasksCommand, workdir: &str, format: OutputFormat) -> CliResult<()> {
-    let db_path = format!("{}/tasks.db", workdir);
+    let db_path = format!("{}/issues.db", workdir);
     let repo = SqliteRepository::open(&db_path)
-        .map_err(|e| CliError::Other(format!("Failed to open task database: {}", e)))?;
+        .map_err(|e| CliError::Other(format!("Failed to open issue database: {}", e)))?;
     repo.init()
-        .map_err(|e| CliError::Other(format!("Failed to initialize task database: {}", e)))?;
+        .map_err(|e| CliError::Other(format!("Failed to initialize issue database: {}", e)))?;
 
     match cmd {
         TasksCommand::List { status, priority, tag, ready, limit } => {
-            let mut filter = TaskFilter::default();
+            let mut filter = IssueFilter::default();
 
             if let Some(s) = status {
-                filter.status = Some(parse_status(&s)?);
+                filter.status = Some(vec![parse_status(&s)?]);
             }
 
             if let Some(p) = priority {
-                filter.priority = Some(parse_priority(&p)?);
+                filter.priority = Some(vec![parse_priority(&p)?]);
             }
 
             if let Some(t) = tag {
-                filter.labels = Some(vec![t]);
+                filter.labels = Some(LabelFilter::any(vec![t]));
             }
 
             filter.limit = Some(limit);
 
-            // Use ready_tasks if --ready flag is set
-            let tasks = if ready {
-                repo.ready_tasks(filter)
+            // Use ready() if --ready flag is set
+            let issues = if ready {
+                repo.ready(filter)
                     .map_err(|e| CliError::Other(e.to_string()))?
             } else {
                 repo.list(filter)
@@ -264,15 +267,15 @@ pub async fn execute(cmd: TasksCommand, workdir: &str, format: OutputFormat) -> 
             };
 
             let output = TaskListOutput {
-                total: tasks.len(),
-                tasks: tasks.iter().map(TaskSummary::from).collect(),
+                total: issues.len(),
+                tasks: issues.iter().map(TaskSummary::from).collect(),
             };
 
             print_output(&output, format);
         }
 
         TasksCommand::Add { title, description, priority, tags, parent: _ } => {
-            let task = TaskCreate {
+            let issue = IssueCreate {
                 title,
                 description,
                 priority: parse_priority(&priority)?,
@@ -280,69 +283,68 @@ pub async fn execute(cmd: TasksCommand, workdir: &str, format: OutputFormat) -> 
                 ..Default::default()
             };
 
-            let created = repo.create(task)
+            let created = repo.create(issue, "cli")
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            print_success(&format!("Created task: {}", created.id));
+            print_success(&format!("Created issue: {}", created.id));
         }
 
         TasksCommand::Start { id } => {
-            repo.start(&id)
+            repo.start(&id, Some(CLI_ACTOR))
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            print_success(&format!("Started task: {}", id));
+            print_success(&format!("Started issue: {}", id));
         }
 
         TasksCommand::Complete { id, notes } => {
-            repo.close(&id, notes.as_deref(), vec![])
+            repo.close(&id, notes.as_deref(), vec![], Some(CLI_ACTOR))
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            print_success(&format!("Completed task: {}", id));
+            print_success(&format!("Completed issue: {}", id));
         }
 
         TasksCommand::Block { id, reason } => {
-            repo.block(&id, Some(&reason))
+            repo.block(&id, Some(&reason), Some(CLI_ACTOR))
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            print_success(&format!("Blocked task: {} ({})", id, reason));
+            print_success(&format!("Blocked issue: {} ({})", id, reason));
         }
 
         TasksCommand::Show { id } => {
-            let task = repo.get(&id)
+            let issue = repo.get(&id)
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            let output = TaskDetailOutput::from(&task);
+            let output = TaskDetailOutput::from(&issue);
             print_output(&output, format);
         }
 
         TasksCommand::Delete { id, force } => {
             if !force {
-                print_warning(&format!("This will delete task {}. Use --force to confirm.", id));
+                print_warning(&format!("This will delete issue {}. Use --force to confirm.", id));
                 return Ok(());
             }
 
-            repo.delete(&id, Some("Deleted via CLI"))
+            repo.tombstone(&id, Some("Deleted via CLI"), Some(CLI_ACTOR))
                 .map_err(|e| CliError::Other(e.to_string()))?;
-            print_success(&format!("Deleted task: {}", id));
+            print_success(&format!("Deleted issue: {}", id));
         }
     }
 
     Ok(())
 }
 
-fn parse_status(s: &str) -> CliResult<TaskStatus> {
+fn parse_status(s: &str) -> CliResult<IssueStatus> {
     match s.to_lowercase().as_str() {
-        "open" | "ready" => Ok(TaskStatus::Open),
-        "in_progress" | "inprogress" | "progress" => Ok(TaskStatus::InProgress),
-        "blocked" => Ok(TaskStatus::Blocked),
-        "closed" | "done" | "complete" | "completed" => Ok(TaskStatus::Closed),
-        "commit_pending" => Ok(TaskStatus::CommitPending),
+        "open" | "ready" => Ok(IssueStatus::Open),
+        "in_progress" | "inprogress" | "progress" => Ok(IssueStatus::InProgress),
+        "blocked" => Ok(IssueStatus::Blocked),
+        "closed" | "done" | "complete" | "completed" => Ok(IssueStatus::Closed),
         _ => Err(CliError::InvalidArgument(format!("Invalid status: {}", s))),
     }
 }
 
-fn parse_priority(s: &str) -> CliResult<TaskPriority> {
+fn parse_priority(s: &str) -> CliResult<Priority> {
     match s.to_uppercase().as_str() {
-        "P0" | "0" | "CRITICAL" => Ok(TaskPriority::Critical),
-        "P1" | "1" | "HIGH" => Ok(TaskPriority::High),
-        "P2" | "2" | "MEDIUM" => Ok(TaskPriority::Medium),
-        "P3" | "3" | "LOW" => Ok(TaskPriority::Low),
-        "P4" | "4" | "BACKLOG" => Ok(TaskPriority::Backlog),
+        "P0" | "0" | "CRITICAL" => Ok(Priority::Critical),
+        "P1" | "1" | "HIGH" => Ok(Priority::High),
+        "P2" | "2" | "MEDIUM" => Ok(Priority::Medium),
+        "P3" | "3" | "LOW" => Ok(Priority::Low),
+        "P4" | "4" | "BACKLOG" => Ok(Priority::Backlog),
         _ => Err(CliError::InvalidArgument(format!("Invalid priority: {}", s))),
     }
 }
@@ -353,22 +355,22 @@ mod tests {
 
     #[test]
     fn test_parse_status() {
-        assert!(matches!(parse_status("open"), Ok(TaskStatus::Open)));
-        assert!(matches!(parse_status("ready"), Ok(TaskStatus::Open)));
-        assert!(matches!(parse_status("in_progress"), Ok(TaskStatus::InProgress)));
-        assert!(matches!(parse_status("blocked"), Ok(TaskStatus::Blocked)));
-        assert!(matches!(parse_status("closed"), Ok(TaskStatus::Closed)));
-        assert!(matches!(parse_status("done"), Ok(TaskStatus::Closed)));
+        assert!(matches!(parse_status("open"), Ok(IssueStatus::Open)));
+        assert!(matches!(parse_status("ready"), Ok(IssueStatus::Open)));
+        assert!(matches!(parse_status("in_progress"), Ok(IssueStatus::InProgress)));
+        assert!(matches!(parse_status("blocked"), Ok(IssueStatus::Blocked)));
+        assert!(matches!(parse_status("closed"), Ok(IssueStatus::Closed)));
+        assert!(matches!(parse_status("done"), Ok(IssueStatus::Closed)));
         assert!(parse_status("invalid").is_err());
     }
 
     #[test]
     fn test_parse_priority() {
-        assert!(matches!(parse_priority("P0"), Ok(TaskPriority::Critical)));
-        assert!(matches!(parse_priority("p1"), Ok(TaskPriority::High)));
-        assert!(matches!(parse_priority("2"), Ok(TaskPriority::Medium)));
-        assert!(matches!(parse_priority("P3"), Ok(TaskPriority::Low)));
-        assert!(matches!(parse_priority("P4"), Ok(TaskPriority::Backlog)));
+        assert!(matches!(parse_priority("P0"), Ok(Priority::Critical)));
+        assert!(matches!(parse_priority("p1"), Ok(Priority::High)));
+        assert!(matches!(parse_priority("2"), Ok(Priority::Medium)));
+        assert!(matches!(parse_priority("P3"), Ok(Priority::Low)));
+        assert!(matches!(parse_priority("P4"), Ok(Priority::Backlog)));
         assert!(parse_priority("P5").is_err());
     }
 }

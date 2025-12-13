@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use orchestrator::{Orchestrator, OrchestratorConfig, SessionConfig};
-use tasks::{SqliteRepository, TaskRepository};
+use taskmaster::{SqliteRepository, IssueRepository};
 use llm::LlmClientBuilder;
 
 /// MechaCoder agent commands
@@ -139,17 +139,17 @@ pub async fn execute(cmd: MechaCommand, workdir: &str, format: OutputFormat) -> 
             session_config.max_tokens = max_tokens;
             session_config.max_duration_secs = max_duration.map(|m| m * 60);
 
-            // Create task repository
-            let db_path = format!("{}/tasks.db", workdir);
-            let task_repo = SqliteRepository::open(&db_path)
-                .map_err(|e| CliError::Other(format!("Failed to open task database: {}", e)))?;
-            task_repo.init()
-                .map_err(|e| CliError::Other(format!("Failed to initialize task database: {}", e)))?;
-            let task_repo: Arc<dyn TaskRepository> = Arc::new(task_repo);
+            // Create issue repository
+            let db_path = format!("{}/issues.db", workdir);
+            let issue_repo = SqliteRepository::open(&db_path)
+                .map_err(|e| CliError::Other(format!("Failed to open issue database: {}", e)))?;
+            issue_repo.init()
+                .map_err(|e| CliError::Other(format!("Failed to initialize issue database: {}", e)))?;
+            let issue_repo: Arc<dyn IssueRepository> = Arc::new(issue_repo);
 
             // If specific task, start it
             if let Some(ref task_id) = task {
-                task_repo.start(task_id)
+                issue_repo.start(task_id, Some("mechacoder"))
                     .map_err(|e| CliError::Other(e.to_string()))?;
                 print_info(&format!("Starting task: {}", task_id));
             }
@@ -170,7 +170,7 @@ pub async fn execute(cmd: MechaCommand, workdir: &str, format: OutputFormat) -> 
             };
 
             // Create and run orchestrator
-            let mut orchestrator = Orchestrator::new(config, llm, task_repo)?;
+            let mut orchestrator = Orchestrator::new(config, llm, issue_repo)?;
 
             print_info("Running orchestrator...");
 

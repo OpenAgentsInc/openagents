@@ -24,9 +24,9 @@ pub enum CliError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
-    /// Task repository error
-    #[error("Task error: {0}")]
-    TaskError(#[from] tasks::TaskError),
+    /// Taskmaster repository error
+    #[error("Taskmaster error: {0}")]
+    TaskmasterError(#[from] taskmaster::TaskmasterError),
 
     /// Orchestrator error
     #[error("Orchestrator error: {0}")]
