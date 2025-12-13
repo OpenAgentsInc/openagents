@@ -615,6 +615,11 @@ impl WebPlatform {
     pub fn layout_engine(&mut self) -> &mut LayoutEngine {
         &mut self.layout_engine
     }
+
+    /// Handle a click at the given logical coordinates
+    pub fn handle_click(&self, x: f32, y: f32) -> bool {
+        self.scene.handle_click(x, y)
+    }
 }
 
 /// Create bind group layout for text rendering
@@ -785,6 +790,22 @@ where
         });
         window
             .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
+            .ok();
+        closure.forget();
+    }
+
+    // Set up click handler
+    {
+        let platform = platform.clone();
+        let canvas_for_click = canvas.clone();
+        let closure = Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |event: web_sys::MouseEvent| {
+            let rect = canvas_for_click.get_bounding_client_rect();
+            let x = (event.client_x() as f64 - rect.left()) as f32;
+            let y = (event.client_y() as f64 - rect.top()) as f32;
+            platform.borrow().handle_click(x, y);
+        });
+        canvas
+            .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
             .ok();
         closure.forget();
     }

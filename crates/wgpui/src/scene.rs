@@ -103,12 +103,32 @@ pub struct TextRun {
     pub color: Hsla,
 }
 
+/// Click handler type
+pub type ClickHandler = Rc<dyn Fn()>;
+
+/// A clickable region in the scene
+pub struct ClickableRegion {
+    pub bounds: Bounds,
+    pub handler: ClickHandler,
+}
+
 /// Scene containing all rendering primitives for a frame
-#[derive(Default)]
 pub struct Scene {
     pub quads: Vec<Quad>,
     pub text_quads: Vec<TextQuad>,
     pub text_runs: Vec<TextRun>,
+    pub clickable_regions: Vec<ClickableRegion>,
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        Self {
+            quads: Vec::new(),
+            text_quads: Vec::new(),
+            text_runs: Vec::new(),
+            clickable_regions: Vec::new(),
+        }
+    }
 }
 
 impl Scene {
@@ -136,11 +156,31 @@ impl Scene {
         });
     }
 
+    /// Add a clickable region to the scene
+    pub fn add_clickable_region(&mut self, bounds: Bounds, handler: ClickHandler) {
+        self.clickable_regions.push(ClickableRegion { bounds, handler });
+    }
+
+    /// Handle a click at the given position, returns true if a handler was called
+    pub fn handle_click(&self, x: f32, y: f32) -> bool {
+        use crate::layout::Point;
+        let point = Point::new(x, y);
+        // Iterate in reverse order so topmost elements get clicked first
+        for region in self.clickable_regions.iter().rev() {
+            if region.bounds.contains(point) {
+                (region.handler)();
+                return true;
+            }
+        }
+        false
+    }
+
     /// Clear all primitives for the next frame
     pub fn clear(&mut self) {
         self.quads.clear();
         self.text_quads.clear();
         self.text_runs.clear();
+        self.clickable_regions.clear();
     }
 
     /// Check if scene is empty

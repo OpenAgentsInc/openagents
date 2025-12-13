@@ -89,6 +89,11 @@ impl Element for Div {
             cx.scene.add_quad(quad);
         }
 
+        // Register clickable region if we have a handler
+        if let Some(handler) = &self.on_click {
+            cx.scene.add_clickable_region(bounds, handler.clone());
+        }
+
         // Paint children with their computed layout bounds
         for (child, &layout_id) in self.children.iter_mut().zip(state.child_layout_ids.iter()) {
             // Get child bounds from layout engine (relative to parent)
