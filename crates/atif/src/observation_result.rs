@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::SubagentTrajectoryRef;
+use serde::{Deserialize, Serialize};
 
 /// Individual result from a tool execution or action.
 ///
@@ -84,10 +84,8 @@ mod tests {
     #[test]
     fn test_observation_result_with_subagent() {
         let subagent = SubagentTrajectoryRef::new("subagent-123");
-        let result = ObservationResult::with_subagent(
-            Some("call_delegate_1".to_string()),
-            vec![subagent],
-        );
+        let result =
+            ObservationResult::with_subagent(Some("call_delegate_1".to_string()), vec![subagent]);
 
         assert_eq!(result.source_call_id, Some("call_delegate_1".to_string()));
         assert!(result.content.is_none());

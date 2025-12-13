@@ -81,7 +81,9 @@ impl Default for Model {
 
 #[derive(Debug, Error)]
 pub enum ModelError {
-    #[error("Model is deprecated. Use 'claude-haiku-4-5-20251001' (Haiku 4.5) or 'claude-sonnet-4-5-20250929' (Sonnet 4.5): {0}")]
+    #[error(
+        "Model is deprecated. Use 'claude-haiku-4-5-20251001' (Haiku 4.5) or 'claude-sonnet-4-5-20250929' (Sonnet 4.5): {0}"
+    )]
     DeprecatedModel(String),
     #[error("Unknown model: {0}")]
     UnknownModel(String),
@@ -218,39 +220,37 @@ impl Model {
             || id == "claude-sonnet-4-20250514-v1:0"
             || id == "anthropic.claude-sonnet-4-20250514-v1:0"
         {
-            return Err(ModelError::DeprecatedModel(
-                id.to_string(),
-            ));
+            return Err(ModelError::DeprecatedModel(id.to_string()));
         }
 
         if id == "claude-3-5-sonnet-20241022"
             || id == "claude-3-5-sonnet-20241022-v2:0"
             || id == "anthropic.claude-3-5-sonnet-20241022-v2:0"
         {
-            return Err(ModelError::DeprecatedModel(
-                id.to_string(),
-            ));
+            return Err(ModelError::DeprecatedModel(id.to_string()));
         }
 
         if id == "claude-3-5-haiku-20241022"
             || id == "claude-3-5-haiku-20241022-v1:0"
             || id == "anthropic.claude-3-5-haiku-20241022-v1:0"
         {
-            return Err(ModelError::DeprecatedModel(
-                id.to_string(),
-            ));
+            return Err(ModelError::DeprecatedModel(id.to_string()));
         }
 
         // Try to parse the model
         match id.to_lowercase().as_str() {
             // Claude
-            "claude-haiku-4-5-20251001" | "claude-haiku-4-5-20251001-v1:0"
+            "claude-haiku-4-5-20251001"
+            | "claude-haiku-4-5-20251001-v1:0"
             | "anthropic.claude-haiku-4-5-20251001-v1:0" => Ok(Model::ClaudeHaiku45),
-            "claude-sonnet-4-5-20250929" | "claude-sonnet-4-5-20250929-v1:0"
+            "claude-sonnet-4-5-20250929"
+            | "claude-sonnet-4-5-20250929-v1:0"
             | "anthropic.claude-sonnet-4-5-20250929-v1:0" => Ok(Model::ClaudeSonnet45),
-            "claude-opus-4-5-20251101" | "claude-opus-4-5-20251101-v1:0"
+            "claude-opus-4-5-20251101"
+            | "claude-opus-4-5-20251101-v1:0"
             | "anthropic.claude-opus-4-5-20251101-v1:0" => Ok(Model::ClaudeOpus45),
-            "claude-opus-4-1-20250805" | "claude-opus-4-1-20250805-v1:0"
+            "claude-opus-4-1-20250805"
+            | "claude-opus-4-1-20250805-v1:0"
             | "anthropic.claude-opus-4-1-20250805-v1:0" => Ok(Model::ClaudeOpus41),
 
             // Grok
@@ -376,18 +376,27 @@ mod tests {
     fn test_model_ids() {
         assert_eq!(Model::ClaudeHaiku45.id(), "claude-haiku-4-5-20251001");
         assert_eq!(Model::ClaudeSonnet45.id(), "claude-sonnet-4-5-20250929");
-        assert_eq!(Model::Grok41FastReasoning.id(), "grok-4-1-fast-reasoning-latest");
+        assert_eq!(
+            Model::Grok41FastReasoning.id(),
+            "grok-4-1-fast-reasoning-latest"
+        );
         assert_eq!(Model::Gpt4o.id(), "gpt-4o");
     }
 
     #[test]
     fn test_from_id() {
-        assert_eq!(Model::from_id("claude-haiku-4-5-20251001").unwrap(), Model::ClaudeHaiku45);
+        assert_eq!(
+            Model::from_id("claude-haiku-4-5-20251001").unwrap(),
+            Model::ClaudeHaiku45
+        );
         assert_eq!(
             Model::from_id("claude-sonnet-4-5-20250929").unwrap(),
             Model::ClaudeSonnet45
         );
-        assert_eq!(Model::from_id("grok-4-1-fast-reasoning-latest").unwrap(), Model::Grok41FastReasoning);
+        assert_eq!(
+            Model::from_id("grok-4-1-fast-reasoning-latest").unwrap(),
+            Model::Grok41FastReasoning
+        );
         assert_eq!(Model::from_id("gpt-4o").unwrap(), Model::Gpt4o);
     }
 

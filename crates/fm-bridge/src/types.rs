@@ -1,5 +1,4 @@
 /// Types for Foundation Model API requests and responses
-
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -106,7 +105,11 @@ pub(crate) struct StreamDelta {
 impl StreamResponse {
     pub fn into_chunk(self) -> Option<StreamChunk> {
         self.choices.first().map(|choice| StreamChunk {
-            text: choice.delta.as_ref().and_then(|d| d.content.clone()).unwrap_or_default(),
+            text: choice
+                .delta
+                .as_ref()
+                .and_then(|d| d.content.clone())
+                .unwrap_or_default(),
             finish_reason: choice.finish_reason,
         })
     }

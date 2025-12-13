@@ -9,16 +9,15 @@
 use crate::channel::Channel;
 use crate::message::ChatMessage;
 use nostr::{
-    derive_keypair, Event, EventTemplate, Keypair, Nip06Error, finalize_event,
-    KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA,
-    JobInput, JobRequest,
+    Event, EventTemplate, JobInput, JobRequest, KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE,
+    KIND_CHANNEL_METADATA, Keypair, Nip06Error, derive_keypair, finalize_event,
 };
 use nostr_client::{Filter, PoolEvent, RelayPool};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{info, warn};
 
 /// Errors that can occur in chat state management.
@@ -68,14 +67,14 @@ pub enum ChatEvent {
         message: ChatMessage,
     },
     /// A message was sent
-    MessageSent { channel_id: String, event_id: String },
+    MessageSent {
+        channel_id: String,
+        event_id: String,
+    },
     /// DVM job submitted
     JobSubmitted { job_id: String, kind: u16 },
     /// DVM job status update
-    JobStatusUpdate {
-        job_id: String,
-        status: String,
-    },
+    JobStatusUpdate { job_id: String, status: String },
     /// DVM job result received
     JobResult { job_id: String, content: String },
     /// Error occurred
@@ -246,7 +245,8 @@ impl ChatState {
 
                         if kind == KIND_CHANNEL_CREATION {
                             // New channel discovered
-                            if let Ok(metadata) = nostr::ChannelMetadata::from_json(&event.content) {
+                            if let Ok(metadata) = nostr::ChannelMetadata::from_json(&event.content)
+                            {
                                 let mut chs = channels.write().await;
                                 if !chs.contains_key(&event.id) {
                                     let channel = Channel {
@@ -292,7 +292,9 @@ impl ChatState {
                         } else if kind == KIND_CHANNEL_METADATA {
                             // Channel metadata update
                             if let Some(channel_id) = Self::extract_channel_id(&event) {
-                                if let Ok(metadata) = nostr::ChannelMetadata::from_json(&event.content) {
+                                if let Ok(metadata) =
+                                    nostr::ChannelMetadata::from_json(&event.content)
+                                {
                                     let mut chs = channels.write().await;
                                     if let Some(channel) = chs.get_mut(&channel_id) {
                                         channel.metadata = metadata;
@@ -327,16 +329,17 @@ impl ChatState {
                                                 // Extract amount and bolt11 from tags
                                                 let amount = Self::extract_amount(&event);
                                                 let bolt11 = Self::extract_bolt11(&event);
-                                                DvmJobStatus::PaymentRequired { amount_msats: amount, bolt11 }
+                                                DvmJobStatus::PaymentRequired {
+                                                    amount_msats: amount,
+                                                    bolt11,
+                                                }
                                             }
                                             _ => job.status.clone(),
                                         };
                                     }
 
-                                    let _ = events_tx.send(ChatEvent::JobStatusUpdate {
-                                        job_id,
-                                        status,
-                                    });
+                                    let _ = events_tx
+                                        .send(ChatEvent::JobStatusUpdate { job_id, status });
                                 }
                             }
                         }
@@ -462,8 +465,7 @@ impl ChatState {
         let keypair = self.identity.as_ref().ok_or(ChatError::NoIdentity)?;
 
         // Build job request using NIP-90 builder
-        let mut request = JobRequest::new(kind)?
-            .add_input(JobInput::text(&input));
+        let mut request = JobRequest::new(kind)?.add_input(JobInput::text(&input));
 
         // Add parameters
         for (key, value) in params {
@@ -538,9 +540,7 @@ impl ChatState {
         // where we are tagged as the customer (p tag)
         let kinds: Vec<u16> = (6000..=6999).chain(std::iter::once(7000)).collect();
 
-        let filter = Filter::new()
-            .kinds(kinds)
-            .pubkey_refs(vec![pubkey]);
+        let filter = Filter::new().kinds(kinds).pubkey_refs(vec![pubkey]);
 
         let sub_id = self.pool.subscribe_all(vec![filter]).await?;
 
@@ -610,7 +610,8 @@ mod tests {
     #[test]
     fn test_set_identity_from_mnemonic() {
         let mut state = ChatState::new();
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
         state.set_identity_from_mnemonic(mnemonic).unwrap();
 

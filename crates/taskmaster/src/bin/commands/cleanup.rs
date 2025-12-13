@@ -17,7 +17,10 @@ pub struct CleanupArgs {
 
 pub fn run(repo: &impl IssueRepository, args: CleanupArgs) -> Result<()> {
     if args.dry_run {
-        println!("{}", "Note: Dry run not supported yet. Use --json to see counts.".yellow());
+        println!(
+            "{}",
+            "Note: Dry run not supported yet. Use --json to see counts.".yellow()
+        );
     }
 
     let result = repo.cleanup_tombstones()?;
@@ -28,8 +31,16 @@ pub fn run(repo: &impl IssueRepository, args: CleanupArgs) -> Result<()> {
     }
 
     println!("{}", "Cleanup Complete:".bold().green());
-    println!("{} {} tombstones purged", "Purged:".bold(), result.purged_count);
-    println!("{} {} tombstones retained", "Retained:".bold(), result.retained_count);
+    println!(
+        "{} {} tombstones purged",
+        "Purged:".bold(),
+        result.purged_count
+    );
+    println!(
+        "{} {} tombstones retained",
+        "Retained:".bold(),
+        result.retained_count
+    );
 
     if !result.errors.is_empty() {
         println!("\n{} errors:", "Encountered".red().bold());

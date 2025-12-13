@@ -55,11 +55,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_creation() {
-        let tool_call = ToolCall::new(
-            "call_1",
-            "search",
-            json!({"query": "test"}),
-        );
+        let tool_call = ToolCall::new("call_1", "search", json!({"query": "test"}));
 
         assert_eq!(tool_call.tool_call_id, "call_1");
         assert_eq!(tool_call.function_name, "search");
@@ -67,11 +63,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_serialization() {
-        let tool_call = ToolCall::new(
-            "call_1",
-            "search",
-            json!({}),
-        );
+        let tool_call = ToolCall::new("call_1", "search", json!({}));
 
         let json = serde_json::to_string(&tool_call).unwrap();
         let deserialized: ToolCall = serde_json::from_str(&json).unwrap();

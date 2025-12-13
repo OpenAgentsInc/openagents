@@ -30,8 +30,8 @@ pub use filter::{
     StaleFilter,
 };
 pub use issue::{
-    IdMethod, Issue, IssueCreate, IssueUpdate, ValidationError, DEFAULT_TOMBSTONE_TTL_DAYS,
-    MIN_TOMBSTONE_TTL_DAYS,
+    DEFAULT_TOMBSTONE_TTL_DAYS, IdMethod, Issue, IssueCreate, IssueUpdate, MIN_TOMBSTONE_TTL_DAYS,
+    ValidationError,
 };
 pub use issue_type::{IssueType, ParseIssueTypeError};
 pub use priority::{ParsePriorityError, Priority};

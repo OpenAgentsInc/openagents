@@ -63,7 +63,10 @@ impl EditTool {
 
         // Check if file exists
         if !path.exists() {
-            return Err(ToolError::not_found(format!("File not found: {}", path_str)));
+            return Err(ToolError::not_found(format!(
+                "File not found: {}",
+                path_str
+            )));
         }
 
         // Read current content
@@ -255,8 +258,8 @@ impl EditTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_simple_edit() {
@@ -328,7 +331,8 @@ mod tests {
         writeln!(file, "line 2").unwrap();
         writeln!(file, "line 3").unwrap();
 
-        let result = EditTool::edit(file.path(), "line 2\n", "new line\nextra line\n", false).unwrap();
+        let result =
+            EditTool::edit(file.path(), "line 2\n", "new line\nextra line\n", false).unwrap();
         assert_eq!(result.lines_added, 2);
         assert_eq!(result.lines_removed, 1);
 

@@ -10,13 +10,32 @@ pub enum ClientMessage {
 /// Server -> Client messages over WebSocket
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
-    SessionInit { session_id: String },
-    TextDelta { text: String },
-    ToolStart { tool_use_id: String, tool_name: String },
-    ToolInput { tool_use_id: String, partial_json: String },
-    ToolProgress { tool_use_id: String, elapsed_seconds: f64 },
-    ToolResult { tool_use_id: String, output: String, is_error: bool },
-    Done { error: Option<String> },
+    SessionInit {
+        session_id: String,
+    },
+    TextDelta {
+        text: String,
+    },
+    ToolStart {
+        tool_use_id: String,
+        tool_name: String,
+    },
+    ToolInput {
+        tool_use_id: String,
+        partial_json: String,
+    },
+    ToolProgress {
+        tool_use_id: String,
+        elapsed_seconds: f64,
+    },
+    ToolResult {
+        tool_use_id: String,
+        output: String,
+        is_error: bool,
+    },
+    Done {
+        error: Option<String>,
+    },
 }
 
 /// A chat message in the thread

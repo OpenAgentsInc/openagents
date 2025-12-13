@@ -214,10 +214,14 @@ impl Step {
                     return Err("model_name is only applicable when source is 'agent'".to_string());
                 }
                 if self.reasoning_effort.is_some() {
-                    return Err("reasoning_effort is only applicable when source is 'agent'".to_string());
+                    return Err(
+                        "reasoning_effort is only applicable when source is 'agent'".to_string()
+                    );
                 }
                 if self.reasoning_content.is_some() {
-                    return Err("reasoning_content is only applicable when source is 'agent'".to_string());
+                    return Err(
+                        "reasoning_content is only applicable when source is 'agent'".to_string(),
+                    );
                 }
                 if self.tool_calls.is_some() {
                     return Err("tool_calls is only applicable when source is 'agent'".to_string());
@@ -245,15 +249,13 @@ mod tests {
 
     #[test]
     fn test_agent_step_validation() {
-        let step = Step::agent(1, "Response")
-            .with_model("claude-3-5-sonnet");
+        let step = Step::agent(1, "Response").with_model("claude-3-5-sonnet");
         assert!(step.validate().is_ok());
     }
 
     #[test]
     fn test_user_step_validation_fails_with_agent_fields() {
-        let step = Step::user(1, "Hello")
-            .with_model("claude-3-5-sonnet");
+        let step = Step::user(1, "Hello").with_model("claude-3-5-sonnet");
         assert!(step.validate().is_err());
     }
 }

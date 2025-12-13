@@ -5,11 +5,11 @@
 
 use crate::connection::{ConnectionConfig, ConnectionError, ConnectionState, RelayConnection};
 use crate::message::{Filter, RelayMessage};
-use crate::subscription::{generate_subscription_id, SubscriptionTracker};
+use crate::subscription::{SubscriptionTracker, generate_subscription_id};
 use nostr::Event;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, info, warn};
 
 /// Events emitted by the relay pool.
@@ -166,10 +166,7 @@ impl RelayPool {
             let subs = self.subscriptions.read().await;
             for tracker in subs.values() {
                 if let Err(e) = conn.subscribe(&tracker.id, tracker.filters.clone()).await {
-                    warn!(
-                        "Failed to resubscribe {} on {}: {}",
-                        tracker.id, url, e
-                    );
+                    warn!("Failed to resubscribe {} on {}: {}", tracker.id, url, e);
                 }
             }
         }
@@ -225,9 +222,7 @@ impl RelayPool {
 
                         // Emit AllEose if all relays have sent EOSE
                         if all_eose {
-                            PoolEvent::AllEose {
-                                subscription_id,
-                            }
+                            PoolEvent::AllEose { subscription_id }
                         } else {
                             continue;
                         }
@@ -339,10 +334,7 @@ impl RelayPool {
     }
 
     /// Subscribe to events on all connected relays.
-    pub async fn subscribe_all(
-        &self,
-        filters: Vec<Filter>,
-    ) -> Result<String, ConnectionError> {
+    pub async fn subscribe_all(&self, filters: Vec<Filter>) -> Result<String, ConnectionError> {
         let subscription_id = generate_subscription_id();
         self.subscribe_with_id(&subscription_id, filters).await?;
         Ok(subscription_id)
@@ -402,7 +394,10 @@ impl RelayPool {
         for (url, conn) in conns.iter() {
             if conn.is_connected().await {
                 if let Err(e) = conn.unsubscribe(subscription_id).await {
-                    warn!("Failed to unsubscribe {} on {}: {}", subscription_id, url, e);
+                    warn!(
+                        "Failed to unsubscribe {} on {}: {}",
+                        subscription_id, url, e
+                    );
                 }
             }
         }

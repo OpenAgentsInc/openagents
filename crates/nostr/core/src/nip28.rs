@@ -53,7 +53,11 @@ pub struct ChannelMetadata {
 
 impl ChannelMetadata {
     /// Create new channel metadata.
-    pub fn new(name: impl Into<String>, about: impl Into<String>, picture: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        about: impl Into<String>,
+        picture: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             about: about.into(),
@@ -204,10 +208,7 @@ impl ChannelMetadataEvent {
         let mut tags = Vec::new();
 
         // Add e tag with NIP-10 marker
-        let mut e_tag = vec![
-            "e".to_string(),
-            self.channel_create_event_id.clone(),
-        ];
+        let mut e_tag = vec!["e".to_string(), self.channel_create_event_id.clone()];
         if let Some(relay) = &self.relay_url {
             e_tag.push(relay.clone());
             e_tag.push("root".to_string());
@@ -542,8 +543,10 @@ mod tests {
 
     #[test]
     fn test_channel_metadata_with_relays() {
-        let metadata = ChannelMetadata::new("Test", "About", "https://pic.com")
-            .with_relays(vec!["wss://relay1.com".to_string(), "wss://relay2.com".to_string()]);
+        let metadata = ChannelMetadata::new("Test", "About", "https://pic.com").with_relays(vec![
+            "wss://relay1.com".to_string(),
+            "wss://relay2.com".to_string(),
+        ]);
 
         assert_eq!(metadata.relays.len(), 2);
         assert_eq!(metadata.relays[0], "wss://relay1.com");
@@ -571,7 +574,10 @@ mod tests {
             "A test channel.",
             "https://placekitten.com/200/200",
         )
-        .with_relays(vec!["wss://nos.lol".to_string(), "wss://nostr.mom".to_string()]);
+        .with_relays(vec![
+            "wss://nos.lol".to_string(),
+            "wss://nostr.mom".to_string(),
+        ]);
 
         let json = metadata.to_json().unwrap();
 
@@ -647,11 +653,8 @@ mod tests {
             "https://example.com/picture.jpg",
         );
 
-        let event = ChannelMetadataEvent::new(
-            "channel_creation_event_id",
-            metadata.clone(),
-            1617932115,
-        );
+        let event =
+            ChannelMetadataEvent::new("channel_creation_event_id", metadata.clone(), 1617932115);
 
         assert_eq!(event.channel_create_event_id, "channel_creation_event_id");
         assert_eq!(event.metadata, metadata);
@@ -713,7 +716,12 @@ mod tests {
         assert_eq!(tags.len(), 1);
         assert_eq!(
             tags[0],
-            vec!["e", "channel_creation_event_id", "https://relay.example.com", "root"]
+            vec![
+                "e",
+                "channel_creation_event_id",
+                "https://relay.example.com",
+                "root"
+            ]
         );
     }
 
@@ -728,7 +736,10 @@ mod tests {
         );
 
         assert!(event.is_reply());
-        assert_eq!(event.reply_to_event_id, Some("message_event_id".to_string()));
+        assert_eq!(
+            event.reply_to_event_id,
+            Some("message_event_id".to_string())
+        );
     }
 
     #[test]
@@ -783,7 +794,10 @@ mod tests {
 
         assert_eq!(event.message_event_id, "channel_message_event_id");
         assert!(event.reason.is_some());
-        assert_eq!(event.reason.as_ref().unwrap().reason, "Inappropriate content");
+        assert_eq!(
+            event.reason.as_ref().unwrap().reason,
+            "Inappropriate content"
+        );
     }
 
     #[test]
@@ -797,8 +811,8 @@ mod tests {
 
     #[test]
     fn test_channel_hide_message_event_content() {
-        let event = ChannelHideMessageEvent::new("msg_id", 1617932115)
-            .with_reason("Inappropriate content");
+        let event =
+            ChannelHideMessageEvent::new("msg_id", 1617932115).with_reason("Inappropriate content");
 
         let content = event.content().unwrap();
         assert_eq!(content, r#"{"reason":"Inappropriate content"}"#);
@@ -817,8 +831,7 @@ mod tests {
 
     #[test]
     fn test_channel_mute_user_event() {
-        let event = ChannelMuteUserEvent::new("pubkey_to_mute", 1617932115)
-            .with_reason("Spamming");
+        let event = ChannelMuteUserEvent::new("pubkey_to_mute", 1617932115).with_reason("Spamming");
 
         assert_eq!(event.pubkey_to_mute, "pubkey_to_mute");
         assert!(event.reason.is_some());
@@ -836,8 +849,8 @@ mod tests {
 
     #[test]
     fn test_channel_mute_user_event_content() {
-        let event = ChannelMuteUserEvent::new("pubkey", 1617932115)
-            .with_reason("Posting dick pics");
+        let event =
+            ChannelMuteUserEvent::new("pubkey", 1617932115).with_reason("Posting dick pics");
 
         let content = event.content().unwrap();
         assert_eq!(content, r#"{"reason":"Posting dick pics"}"#);
@@ -867,12 +880,9 @@ mod tests {
             "https://bitcoin.org/img/icons/logotop.svg",
         );
 
-        let metadata_event = ChannelMetadataEvent::new(
-            "channel_create_id",
-            updated_metadata,
-            1617932200,
-        )
-        .with_categories(vec!["bitcoin".to_string(), "crypto".to_string()]);
+        let metadata_event =
+            ChannelMetadataEvent::new("channel_create_id", updated_metadata, 1617932200)
+                .with_categories(vec!["bitcoin".to_string(), "crypto".to_string()]);
 
         let tags = metadata_event.to_tags();
         assert!(tags.iter().any(|t| t[0] == "e"));
@@ -903,13 +913,12 @@ mod tests {
         assert!(reply_tags.iter().any(|t| t.len() >= 4 && t[3] == "reply"));
 
         // 5. Hide a message
-        let hide = ChannelHideMessageEvent::new("spam_msg_id", 1617932500)
-            .with_reason("Spam");
+        let hide = ChannelHideMessageEvent::new("spam_msg_id", 1617932500).with_reason("Spam");
         assert_eq!(hide.to_tags()[0], vec!["e", "spam_msg_id"]);
 
         // 6. Mute a user
-        let mute = ChannelMuteUserEvent::new("spammer_pubkey", 1617932600)
-            .with_reason("Repeated spam");
+        let mute =
+            ChannelMuteUserEvent::new("spammer_pubkey", 1617932600).with_reason("Repeated spam");
         assert_eq!(mute.to_tags()[0], vec!["p", "spammer_pubkey"]);
     }
 }

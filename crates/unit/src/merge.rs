@@ -167,7 +167,9 @@ impl Unit for Merge {
     }
 
     fn input_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.inputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.inputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn output(&self, name: &str) -> Option<&dyn AnyPin> {
@@ -175,7 +177,9 @@ impl Unit for Merge {
     }
 
     fn output_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.outputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.outputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn input_names(&self) -> Vec<&str> {

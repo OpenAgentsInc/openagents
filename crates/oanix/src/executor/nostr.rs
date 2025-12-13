@@ -87,7 +87,9 @@ impl NostrRelayConnector {
         let ws_fs = match &self.ws_fs {
             Some(fs) => fs,
             None => {
-                tracing::warn!("NostrRelayConnector has no WsFs attached, cannot connect to relays");
+                tracing::warn!(
+                    "NostrRelayConnector has no WsFs attached, cannot connect to relays"
+                );
                 return;
             }
         };
@@ -107,7 +109,10 @@ impl NostrRelayConnector {
 
             // Check connection limit
             if ws_fs.connection_count() >= self.config.ws_max_concurrent {
-                tracing::warn!("WebSocket connection limit reached, cannot connect to relay {}", relay_url);
+                tracing::warn!(
+                    "WebSocket connection limit reached, cannot connect to relay {}",
+                    relay_url
+                );
                 continue;
             }
 
@@ -181,7 +186,8 @@ impl NostrRelayConnector {
         };
 
         // Collect relay connections to iterate
-        let relay_conns: Vec<(String, String)> = self.relay_connections
+        let relay_conns: Vec<(String, String)> = self
+            .relay_connections
             .iter()
             .map(|(url, id)| (url.clone(), id.clone()))
             .collect();
@@ -260,7 +266,12 @@ impl NostrRelayConnector {
                         tracing::debug!("Event {} accepted by relay {}", event_id, relay_url);
                     } else {
                         let msg = array.get(3).and_then(|v| v.as_str()).unwrap_or("unknown");
-                        tracing::warn!("Event {} rejected by relay {}: {}", event_id, relay_url, msg);
+                        tracing::warn!(
+                            "Event {} rejected by relay {}: {}",
+                            event_id,
+                            relay_url,
+                            msg
+                        );
                     }
                 }
             }
@@ -304,7 +315,11 @@ impl NostrRelayConnector {
             let filters_json = match serde_json::to_string(&filters) {
                 Ok(json) => json,
                 Err(e) => {
-                    tracing::error!("Failed to serialize filters for subscription {}: {}", sub_id, e);
+                    tracing::error!(
+                        "Failed to serialize filters for subscription {}: {}",
+                        sub_id,
+                        e
+                    );
                     continue;
                 }
             };
@@ -320,7 +335,8 @@ impl NostrRelayConnector {
                     if info.state == WsState::Open {
                         if ws_fs.send_message(conn_id, message_bytes.clone()).is_ok() {
                             tracing::debug!("Sent subscription {} to relay {}", sub_id, relay_url);
-                            self.subscriptions.insert(sub_id.clone(), (conn_id.clone(), filters_json.clone()));
+                            self.subscriptions
+                                .insert(sub_id.clone(), (conn_id.clone(), filters_json.clone()));
                         }
                     }
                 }

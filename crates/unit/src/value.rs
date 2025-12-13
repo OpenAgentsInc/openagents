@@ -404,7 +404,9 @@ impl From<serde_json::Value> for Value {
             serde_json::Value::Bool(b) => Self::Boolean(b),
             serde_json::Value::Number(n) => Self::Number(n.as_f64().unwrap_or(f64::NAN)),
             serde_json::Value::String(s) => Self::String(s),
-            serde_json::Value::Array(arr) => Self::Array(arr.into_iter().map(Value::from).collect()),
+            serde_json::Value::Array(arr) => {
+                Self::Array(arr.into_iter().map(Value::from).collect())
+            }
             serde_json::Value::Object(obj) => {
                 Self::Object(obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect())
             }
@@ -535,10 +537,7 @@ mod tests {
     fn test_deep_get() {
         let data = Value::object([
             ("user", Value::object([("name", Value::from("Bob"))])),
-            (
-                "items",
-                Value::array([Value::from("a"), Value::from("b")]),
-            ),
+            ("items", Value::array([Value::from("a"), Value::from("b")])),
         ]);
 
         assert_eq!(
@@ -614,12 +613,18 @@ mod tests {
         // Numbers may differ in representation (42 vs 42.0), so compare semantically
         assert_eq!(back["name"], json_value["name"]);
         assert_eq!(back["count"].as_f64(), json_value["count"].as_f64());
-        assert_eq!(back["nested"]["a"].as_f64(), json_value["nested"]["a"].as_f64());
+        assert_eq!(
+            back["nested"]["a"].as_f64(),
+            json_value["nested"]["a"].as_f64()
+        );
     }
 
     #[test]
     fn test_len() {
-        assert_eq!(Value::Array(vec![Value::from(1), Value::from(2)]).len(), Some(2));
+        assert_eq!(
+            Value::Array(vec![Value::from(1), Value::from(2)]).len(),
+            Some(2)
+        );
         assert_eq!(Value::Object(HashMap::new()).len(), Some(0));
         assert_eq!(Value::String("hello".into()).len(), Some(5));
         assert_eq!(Value::Number(42.0).len(), None);

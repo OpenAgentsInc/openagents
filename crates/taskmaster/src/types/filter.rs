@@ -384,10 +384,7 @@ mod tests {
     fn test_label_expr() {
         // (has "urgent" AND has "backend") OR NOT has "wontfix"
         let expr = LabelExpr::or(vec![
-            LabelExpr::and(vec![
-                LabelExpr::has("urgent"),
-                LabelExpr::has("backend"),
-            ]),
+            LabelExpr::and(vec![LabelExpr::has("urgent"), LabelExpr::has("backend")]),
             LabelExpr::not(LabelExpr::has("wontfix")),
         ]);
 

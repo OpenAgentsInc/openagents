@@ -5,8 +5,8 @@
 //! are run via `fixture.block_on()`.
 
 use crate::fixtures::{
-    fast_test_config, retry_test_config, timeout_test_config, wait_for_completion,
-    wait_for_failure, wait_for_response, ExecutorTestFixture, HttpMockServer,
+    ExecutorTestFixture, HttpMockServer, fast_test_config, retry_test_config, timeout_test_config,
+    wait_for_completion, wait_for_failure, wait_for_response,
 };
 use oanix::services::{HttpMethod, HttpRequest};
 use std::collections::HashMap;
@@ -39,7 +39,8 @@ fn test_http_get_full_flow() {
 
     // Wait for response (using fixture's runtime)
     let http_fs = &fixture.http_fs;
-    let got_response = fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
+    let got_response =
+        fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
     assert!(got_response, "Response should arrive within timeout");
 
     // Verify response
@@ -75,7 +76,8 @@ fn test_http_post_with_body() {
     let req_id = fixture.http_fs.submit_request(request);
 
     let http_fs = &fixture.http_fs;
-    let got_response = fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
+    let got_response =
+        fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
     assert!(got_response);
 
     let response = fixture.http_fs.get_response(&req_id).unwrap();
@@ -149,7 +151,8 @@ fn test_http_retry_on_error() {
 
     // Should eventually succeed after retries
     let http_fs = &fixture.http_fs;
-    let got_response = fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(10)));
+    let got_response =
+        fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(10)));
     assert!(got_response, "Request should succeed after retries");
 
     let response = fixture.http_fs.get_response(&req_id).unwrap();
@@ -191,7 +194,8 @@ fn test_http_concurrent_requests() {
     // Wait for all responses
     for req_id in &req_ids {
         let http_fs = &fixture.http_fs;
-        let got_response = fixture.block_on(wait_for_response(http_fs, req_id, Duration::from_secs(10)));
+        let got_response =
+            fixture.block_on(wait_for_response(http_fs, req_id, Duration::from_secs(10)));
         assert!(got_response, "Request {} should complete", req_id);
     }
 
@@ -230,7 +234,8 @@ fn test_http_headers() {
     let req_id = fixture.http_fs.submit_request(request);
 
     let http_fs = &fixture.http_fs;
-    let got_response = fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
+    let got_response =
+        fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
     assert!(got_response);
 
     let response = fixture.http_fs.get_response(&req_id).unwrap();
@@ -265,7 +270,8 @@ fn test_http_put_method() {
     let req_id = fixture.http_fs.submit_request(request);
 
     let http_fs = &fixture.http_fs;
-    let got_response = fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
+    let got_response =
+        fixture.block_on(wait_for_response(http_fs, &req_id, Duration::from_secs(5)));
     assert!(got_response);
 
     let response = fixture.http_fs.get_response(&req_id).unwrap();
@@ -297,7 +303,11 @@ fn test_http_delete_method() {
     let req_id = fixture.http_fs.submit_request(request);
 
     let http_fs = &fixture.http_fs;
-    let completed = fixture.block_on(wait_for_completion(http_fs, &req_id, Duration::from_secs(5)));
+    let completed = fixture.block_on(wait_for_completion(
+        http_fs,
+        &req_id,
+        Duration::from_secs(5),
+    ));
     assert!(completed);
 
     let response = fixture.http_fs.get_response(&req_id).unwrap();

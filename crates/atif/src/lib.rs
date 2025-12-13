@@ -47,7 +47,7 @@ pub use final_metrics::FinalMetrics;
 pub use metrics::Metrics;
 pub use observation::Observation;
 pub use observation_result::ObservationResult;
-pub use step::{Step, StepSource, ReasoningEffort};
+pub use step::{ReasoningEffort, Step, StepSource};
 pub use subagent_trajectory_ref::SubagentTrajectoryRef;
 pub use tool_call::ToolCall;
 pub use trajectory::Trajectory;

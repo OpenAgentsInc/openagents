@@ -2,8 +2,8 @@
 //!
 //! Uses k256 for WASM-compatible Schnorr signatures (BIP-340).
 
-use k256::schnorr::signature::Signer;
 use k256::schnorr::SigningKey;
+use k256::schnorr::signature::Signer;
 use k256::sha2::{Digest, Sha256};
 
 /// Service identity for signing DVM events.

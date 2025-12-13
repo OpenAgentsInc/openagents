@@ -204,10 +204,7 @@ mod tests {
 
     #[test]
     fn test_event_type_parse() {
-        assert_eq!(
-            "created".parse::<EventType>().unwrap(),
-            EventType::Created
-        );
+        assert_eq!("created".parse::<EventType>().unwrap(), EventType::Created);
         assert_eq!(
             "status_changed".parse::<EventType>().unwrap(),
             EventType::StatusChanged

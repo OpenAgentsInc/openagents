@@ -8,7 +8,7 @@
 
 use crate::dvm::DvmProcessor;
 use crate::signing::ServiceIdentity;
-use nostr::{is_job_request_kind, JobRequest, JobStatus, KIND_JOB_FEEDBACK};
+use nostr::{JobRequest, JobStatus, KIND_JOB_FEEDBACK, is_job_request_kind};
 use nostr_relay::{ClientMessage, Filter, RelayMessage, SubscriptionManager};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;

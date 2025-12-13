@@ -41,7 +41,11 @@ pub fn run(repo: &impl IssueRepository, args: EventsArgs) -> Result<()> {
         println!("\n{}", "─".repeat(60));
         println!("{} {}", "Event:".bold(), event.id);
         println!("{} {}", "Issue:".bold(), event.issue_id.cyan());
-        println!("{} {}", "Type:".bold(), format_event_type(&event.event_type));
+        println!(
+            "{} {}",
+            "Type:".bold(),
+            format_event_type(&event.event_type)
+        );
         if let Some(actor) = &event.actor {
             println!("{} {}", "Actor:".bold(), actor);
         }

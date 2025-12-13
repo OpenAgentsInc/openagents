@@ -72,10 +72,12 @@ impl<'a> DvmProcessor<'a> {
     /// Call Cloudflare Workers AI with a chat completion request.
     async fn call_ai(&self, system: &str, user: &str) -> Result<String, String> {
         // Get the AI binding
-        let ai = self
-            .env
-            .ai("AI")
-            .map_err(|e| format!("AI binding not found: {}. Make sure [ai] is configured in wrangler.toml", e))?;
+        let ai = self.env.ai("AI").map_err(|e| {
+            format!(
+                "AI binding not found: {}. Make sure [ai] is configured in wrangler.toml",
+                e
+            )
+        })?;
 
         let request = AiChatRequest {
             messages: vec![

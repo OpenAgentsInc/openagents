@@ -1,7 +1,7 @@
 //! HTTP executor that processes HttpFs pending requests.
 
-use crate::services::{HttpFs, HttpMethod, HttpRequest, HttpResponse};
 use crate::executor::{ExecutorConfig, ExecutorError};
+use crate::services::{HttpFs, HttpMethod, HttpRequest, HttpResponse};
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
@@ -145,10 +145,7 @@ impl HttpExecutor {
         let response = timeout(request_timeout, req_builder.send())
             .await
             .map_err(|_| {
-                ExecutorError::Timeout(format!(
-                    "Request timed out after {:?}",
-                    request_timeout
-                ))
+                ExecutorError::Timeout(format!("Request timed out after {:?}", request_timeout))
             })?
             .map_err(ExecutorError::from)?;
 
@@ -164,12 +161,7 @@ impl HttpExecutor {
         let headers = response
             .headers()
             .iter()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    v.to_str().unwrap_or_default().to_string(),
-                )
-            })
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
             .collect();
 
         // Read body

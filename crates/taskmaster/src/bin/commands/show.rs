@@ -37,7 +37,11 @@ pub fn run(repo: &impl IssueRepository, args: ShowArgs) -> Result<()> {
     println!("{}", "─".repeat(60));
 
     println!("{} {}", "Status:".bold(), format_status(&issue.status));
-    println!("{} {}", "Priority:".bold(), format_priority(&issue.priority));
+    println!(
+        "{} {}",
+        "Priority:".bold(),
+        format_priority(&issue.priority)
+    );
     println!("{} {}", "Type:".bold(), issue.issue_type);
 
     if let Some(assignee) = &issue.assignee {
@@ -65,7 +69,11 @@ pub fn run(repo: &impl IssueRepository, args: ShowArgs) -> Result<()> {
     }
 
     if !issue.labels.is_empty() {
-        println!("\n{} {}", "Labels:".bold(), issue.labels.join(", ").yellow());
+        println!(
+            "\n{} {}",
+            "Labels:".bold(),
+            issue.labels.join(", ").yellow()
+        );
     }
 
     if !issue.deps.is_empty() {
@@ -100,7 +108,10 @@ pub fn run(repo: &impl IssueRepository, args: ShowArgs) -> Result<()> {
             if let Some(reason) = &issue.tombstone_reason {
                 println!("  Reason:   {}", reason);
             }
-            println!("  TTL:      {} days", issue.tombstone_ttl_days.unwrap_or(30));
+            println!(
+                "  TTL:      {} days",
+                issue.tombstone_ttl_days.unwrap_or(30)
+            );
         }
     }
 

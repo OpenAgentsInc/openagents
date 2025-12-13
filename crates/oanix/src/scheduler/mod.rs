@@ -150,9 +150,7 @@ impl Scheduler {
         }
 
         let mut job = self.pending.pop_front()?;
-        job.status = JobStatus::Running {
-            started_at: now(),
-        };
+        job.status = JobStatus::Running { started_at: now() };
         self.running.insert(job.id, job.clone());
         Some(job)
     }
@@ -165,12 +163,15 @@ impl Scheduler {
                 exit_code,
             };
             self.completed.push(job);
-            self.results.insert(*job_id, JobResult {
-                job_id: *job_id,
-                exit_code,
-                error: None,
-                completed_at: now(),
-            });
+            self.results.insert(
+                *job_id,
+                JobResult {
+                    job_id: *job_id,
+                    exit_code,
+                    error: None,
+                    completed_at: now(),
+                },
+            );
         }
     }
 
@@ -183,12 +184,15 @@ impl Scheduler {
                 error: error_str.clone(),
             };
             self.completed.push(job);
-            self.results.insert(*job_id, JobResult {
-                job_id: *job_id,
-                exit_code: 1,
-                error: Some(error_str),
-                completed_at: now(),
-            });
+            self.results.insert(
+                *job_id,
+                JobResult {
+                    job_id: *job_id,
+                    exit_code: 1,
+                    error: Some(error_str),
+                    completed_at: now(),
+                },
+            );
         }
     }
 
@@ -248,9 +252,9 @@ impl Scheduler {
         let env_id = job.env_id;
 
         // Get the environment
-        let env_arc = self.get_env(&env_id).ok_or_else(|| {
-            OanixError::Job(format!("environment {} not found", env_id))
-        })?;
+        let env_arc = self
+            .get_env(&env_id)
+            .ok_or_else(|| OanixError::Job(format!("environment {} not found", env_id)))?;
 
         // Execute based on job kind
         let result = match &job.kind {
@@ -365,9 +369,12 @@ mod tests {
         let env = create_test_env();
         let env_id = scheduler.register_env(env);
 
-        let job = JobSpec::new(env_id, JobKind::Script {
-            script: "test".into(),
-        });
+        let job = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "test".into(),
+            },
+        );
         let job_id = scheduler.submit(job).unwrap();
 
         assert_eq!(scheduler.pending_count(), 1);
@@ -379,9 +386,12 @@ mod tests {
         let mut scheduler = Scheduler::new();
         let fake_env_id = Uuid::new_v4();
 
-        let job = JobSpec::new(fake_env_id, JobKind::Script {
-            script: "test".into(),
-        });
+        let job = JobSpec::new(
+            fake_env_id,
+            JobKind::Script {
+                script: "test".into(),
+            },
+        );
         let result = scheduler.submit(job);
 
         assert!(result.is_err());
@@ -394,12 +404,27 @@ mod tests {
         let env_id = scheduler.register_env(env);
 
         // Submit jobs with different priorities
-        let low = JobSpec::new(env_id, JobKind::Script { script: "low".into() })
-            .with_priority(-10);
-        let high = JobSpec::new(env_id, JobKind::Script { script: "high".into() })
-            .with_priority(10);
-        let medium = JobSpec::new(env_id, JobKind::Script { script: "medium".into() })
-            .with_priority(0);
+        let low = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "low".into(),
+            },
+        )
+        .with_priority(-10);
+        let high = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "high".into(),
+            },
+        )
+        .with_priority(10);
+        let medium = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "medium".into(),
+            },
+        )
+        .with_priority(0);
 
         scheduler.submit(low).unwrap();
         scheduler.submit(high).unwrap();
@@ -424,7 +449,12 @@ mod tests {
 
         // Submit 3 jobs
         for _ in 0..3 {
-            let job = JobSpec::new(env_id, JobKind::Script { script: "test".into() });
+            let job = JobSpec::new(
+                env_id,
+                JobKind::Script {
+                    script: "test".into(),
+                },
+            );
             scheduler.submit(job).unwrap();
         }
 
@@ -443,7 +473,12 @@ mod tests {
         let env = create_test_env();
         let env_id = scheduler.register_env(env);
 
-        let job = JobSpec::new(env_id, JobKind::Script { script: "test".into() });
+        let job = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "test".into(),
+            },
+        );
         scheduler.submit(job).unwrap();
 
         let running_job = scheduler.next().unwrap();
@@ -465,7 +500,12 @@ mod tests {
         let env = create_test_env();
         let env_id = scheduler.register_env(env);
 
-        let job = JobSpec::new(env_id, JobKind::Script { script: "test".into() });
+        let job = JobSpec::new(
+            env_id,
+            JobKind::Script {
+                script: "test".into(),
+            },
+        );
         scheduler.submit(job).unwrap();
 
         let running_job = scheduler.next().unwrap();
@@ -485,7 +525,12 @@ mod tests {
         let env_id = scheduler.register_env(env);
 
         for _ in 0..3 {
-            let job = JobSpec::new(env_id, JobKind::Script { script: "test".into() });
+            let job = JobSpec::new(
+                env_id,
+                JobKind::Script {
+                    script: "test".into(),
+                },
+            );
             scheduler.submit(job).unwrap();
         }
 

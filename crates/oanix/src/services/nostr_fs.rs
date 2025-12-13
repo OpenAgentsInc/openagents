@@ -363,7 +363,9 @@ impl FileService for NostrFs {
                 if flags.write {
                     return Err(FsError::ReadOnly);
                 }
-                Ok(Box::new(StaticHandle::new(self.pubkey_hex.as_bytes().to_vec())))
+                Ok(Box::new(StaticHandle::new(
+                    self.pubkey_hex.as_bytes().to_vec(),
+                )))
             }
             ["identity", "npub"] => {
                 if flags.write {
@@ -425,8 +427,8 @@ impl FileService for NostrFs {
                 let event = outbox
                     .get(*event_id)
                     .ok_or_else(|| FsError::NotFound(path.to_string()))?;
-                let json = serde_json::to_string_pretty(event)
-                    .map_err(|e| FsError::Io(e.to_string()))?;
+                let json =
+                    serde_json::to_string_pretty(event).map_err(|e| FsError::Io(e.to_string()))?;
                 Ok(Box::new(StaticHandle::new(json.into_bytes())))
             }
 
@@ -436,8 +438,8 @@ impl FileService for NostrFs {
                 let event = inbox
                     .get(*event_id)
                     .ok_or_else(|| FsError::NotFound(path.to_string()))?;
-                let json = serde_json::to_string_pretty(event)
-                    .map_err(|e| FsError::Io(e.to_string()))?;
+                let json =
+                    serde_json::to_string_pretty(event).map_err(|e| FsError::Io(e.to_string()))?;
                 Ok(Box::new(StaticHandle::new(json.into_bytes())))
             }
 
@@ -791,14 +793,18 @@ mod tests {
         let nostr = NostrFs::new(test_secret_key()).unwrap();
 
         // Read pubkey
-        let mut handle = nostr.open("/identity/pubkey", OpenFlags::read_only()).unwrap();
+        let mut handle = nostr
+            .open("/identity/pubkey", OpenFlags::read_only())
+            .unwrap();
         let mut buf = vec![0u8; 1024];
         let n = handle.read(&mut buf).unwrap();
         let pubkey = String::from_utf8(buf[..n].to_vec()).unwrap();
         assert_eq!(pubkey, nostr.pubkey());
 
         // Read npub
-        let mut handle = nostr.open("/identity/npub", OpenFlags::read_only()).unwrap();
+        let mut handle = nostr
+            .open("/identity/npub", OpenFlags::read_only())
+            .unwrap();
         let n = handle.read(&mut buf).unwrap();
         let npub = String::from_utf8(buf[..n].to_vec()).unwrap();
         assert!(npub.starts_with("npub1"));
@@ -852,8 +858,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(event.kind, 5050); // Text generation
-        assert!(event.tags.iter().any(|t| t[0] == "i" && t[1] == "What is 2+2?"));
-        assert!(event.tags.iter().any(|t| t[0] == "param" && t[1] == "model"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "i" && t[1] == "What is 2+2?")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "param" && t[1] == "model")
+        );
 
         // Should be in outbox
         assert_eq!(nostr.outbox_events().len(), 1);
@@ -865,9 +881,7 @@ mod tests {
 
         // Write event template to /submit
         let template_json = r#"{"kind":1,"content":"Hello via file!"}"#;
-        let mut handle = nostr
-            .open("/submit", OpenFlags::write_only())
-            .unwrap();
+        let mut handle = nostr.open("/submit", OpenFlags::write_only()).unwrap();
         handle.write(template_json.as_bytes()).unwrap();
         handle.flush().unwrap();
 
@@ -884,9 +898,7 @@ mod tests {
 
         // Write job request to /request
         let request_json = r#"{"kind":5050,"input":"Tell me a joke","params":{"style":"funny"}}"#;
-        let mut handle = nostr
-            .open("/request", OpenFlags::write_only())
-            .unwrap();
+        let mut handle = nostr.open("/request", OpenFlags::write_only()).unwrap();
         handle.write(request_json.as_bytes()).unwrap();
         handle.flush().unwrap();
 

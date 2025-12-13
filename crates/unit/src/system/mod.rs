@@ -61,9 +61,18 @@ pub fn register_system_units(registry: &mut UnitRegistry) {
 
     // Comparison units
     registry.register("system/LessThan", Box::new(|| Box::new(LessThan::new())));
-    registry.register("system/GreaterThan", Box::new(|| Box::new(GreaterThan::new())));
-    registry.register("system/LessThanOrEqual", Box::new(|| Box::new(LessThanOrEqual::new())));
-    registry.register("system/GreaterThanOrEqual", Box::new(|| Box::new(GreaterThanOrEqual::new())));
+    registry.register(
+        "system/GreaterThan",
+        Box::new(|| Box::new(GreaterThan::new())),
+    );
+    registry.register(
+        "system/LessThanOrEqual",
+        Box::new(|| Box::new(LessThanOrEqual::new())),
+    );
+    registry.register(
+        "system/GreaterThanOrEqual",
+        Box::new(|| Box::new(GreaterThanOrEqual::new())),
+    );
     registry.register("system/Equal", Box::new(|| Box::new(Equal::new())));
     registry.register("system/NotEqual", Box::new(|| Box::new(NotEqual::new())));
 
@@ -110,7 +119,11 @@ mod tests {
         add.push_input("a", Box::new(10.0f64)).unwrap();
         add.push_input("b", Box::new(5.0f64)).unwrap();
 
-        let result = add.take_output("result").unwrap().downcast::<f64>().unwrap();
+        let result = add
+            .take_output("result")
+            .unwrap()
+            .downcast::<f64>()
+            .unwrap();
         assert_eq!(*result, 15.0);
     }
 

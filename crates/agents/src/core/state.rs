@@ -138,8 +138,7 @@ impl AgentStats {
         self.total_earnings_millisats += earnings_millisats;
 
         let total = self.jobs_completed + self.jobs_failed;
-        self.avg_job_duration_ms =
-            (self.avg_job_duration_ms * (total - 1) + duration_ms) / total;
+        self.avg_job_duration_ms = (self.avg_job_duration_ms * (total - 1) + duration_ms) / total;
     }
 
     pub fn record_failure(&mut self) {

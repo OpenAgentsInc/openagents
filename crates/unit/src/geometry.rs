@@ -57,7 +57,10 @@ impl Point {
         if d == 0.0 {
             return random_unit_vector();
         }
-        Self { x: dx / d, y: dy / d }
+        Self {
+            x: dx / d,
+            y: dy / d,
+        }
     }
 
     /// Add another point
@@ -121,7 +124,10 @@ pub fn unit_vector(x0: f64, y0: f64, x1: f64, y1: f64) -> Point {
     if d == 0.0 {
         return random_unit_vector();
     }
-    Point { x: dx / d, y: dy / d }
+    Point {
+        x: dx / d,
+        y: dy / d,
+    }
 }
 
 /// Calculate magnitude of vector (x, y)
@@ -176,7 +182,10 @@ impl Thing {
 
     /// Get position as Point
     pub fn position(&self) -> Point {
-        Point { x: self.x, y: self.y }
+        Point {
+            x: self.x,
+            y: self.y,
+        }
     }
 }
 
@@ -323,14 +332,7 @@ pub fn rad_between(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
 /// Generate SVG path for a rectangle
 #[allow(dead_code)]
 pub fn describe_rect(x: f64, y: f64, width: f64, height: f64) -> String {
-    format!(
-        "M {} {} H {} V {} H {} Z",
-        x,
-        y,
-        x + width,
-        y + height,
-        x
-    )
+    format!("M {} {} H {} V {} H {} Z", x, y, x + width, y + height, x)
 }
 
 /// Generate SVG path for a circle

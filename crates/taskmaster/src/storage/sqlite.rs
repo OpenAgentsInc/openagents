@@ -6,16 +6,16 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use uuid::Uuid;
 
 use crate::repository::{IssueRepository, Result, TaskmasterError};
 use crate::storage::schema::{
-    CHECK_VERSION, DELETE_DEPENDENCY, DELETE_LABEL, DETECT_CYCLE, EXISTS_ISSUE,
-    EXPIRED_TOMBSTONES, FIND_DUPLICATES, GET_COMMENTS, GET_DEPENDENCIES, GET_EVENTS, GET_ISSUE,
-    GET_ISSUE_WITH_TOMBSTONES, GET_LABELS, INSERT_COMMENT, INSERT_DEPENDENCY, INSERT_EVENT,
-    INSERT_ISSUE, INSERT_LABEL, IS_BLOCKED, READY_ISSUES, SCHEMA_V1, SCHEMA_V2, SCHEMA_V3,
-    SCHEMA_VERSION, STALE_ISSUES, COUNT_BY_STATUS, COUNT_BY_PRIORITY, COUNT_BY_TYPE, GET_ALL_LABELS,
+    CHECK_VERSION, COUNT_BY_PRIORITY, COUNT_BY_STATUS, COUNT_BY_TYPE, DELETE_DEPENDENCY,
+    DELETE_LABEL, DETECT_CYCLE, EXISTS_ISSUE, EXPIRED_TOMBSTONES, FIND_DUPLICATES, GET_ALL_LABELS,
+    GET_COMMENTS, GET_DEPENDENCIES, GET_EVENTS, GET_ISSUE, GET_ISSUE_WITH_TOMBSTONES, GET_LABELS,
+    INSERT_COMMENT, INSERT_DEPENDENCY, INSERT_EVENT, INSERT_ISSUE, INSERT_LABEL, IS_BLOCKED,
+    READY_ISSUES, SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_VERSION, STALE_ISSUES,
 };
 use crate::types::*;
 
@@ -92,9 +92,15 @@ impl SqliteRepository {
             content_hash: row.get("content_hash")?,
             created_at: parse_datetime(row.get::<_, String>("created_at")?),
             updated_at: parse_datetime(row.get::<_, String>("updated_at")?),
-            closed_at: row.get::<_, Option<String>>("closed_at")?.map(parse_datetime),
-            tombstoned_at: row.get::<_, Option<String>>("tombstoned_at")?.map(parse_datetime),
-            tombstone_ttl_days: row.get::<_, Option<i32>>("tombstone_ttl_days")?.map(|v| v as u32),
+            closed_at: row
+                .get::<_, Option<String>>("closed_at")?
+                .map(parse_datetime),
+            tombstoned_at: row
+                .get::<_, Option<String>>("tombstoned_at")?
+                .map(parse_datetime),
+            tombstone_ttl_days: row
+                .get::<_, Option<i32>>("tombstone_ttl_days")?
+                .map(|v| v as u32),
             tombstone_reason: row.get("tombstone_reason")?,
             // Execution context fields (with defaults for V1 schema compatibility)
             execution_mode: row
@@ -250,7 +256,7 @@ impl IssueRepository for SqliteRepository {
                 issue.issue_type.as_str(),
                 issue.assignee,
                 issue.estimated_minutes,
-                0i32, // compaction_level
+                0i32,                   // compaction_level
                 Option::<String>::None, // close_reason
                 issue.external_ref,
                 issue.source_repo,
@@ -352,7 +358,15 @@ impl IssueRepository for SqliteRepository {
                     // Record field change event
                     let old = format!("{:?}", $field);
                     let new = format!("{:?}", params.last().unwrap());
-                    self.record_event(&conn, id, EventType::Updated, actor, Some($col), Some(&old), Some(&new))?;
+                    self.record_event(
+                        &conn,
+                        id,
+                        EventType::Updated,
+                        actor,
+                        Some($col),
+                        Some(&old),
+                        Some(&new),
+                    )?;
                 }
             };
         }
@@ -493,7 +507,10 @@ impl IssueRepository for SqliteRepository {
         if let Some(deps) = update.deps {
             conn.execute("DELETE FROM issue_dependencies WHERE issue_id = ?1", [id])?;
             for dep in deps {
-                conn.execute(INSERT_DEPENDENCY, params![id, &dep.id, dep.dep_type.as_str()])?;
+                conn.execute(
+                    INSERT_DEPENDENCY,
+                    params![id, &dep.id, dep.dep_type.as_str()],
+                )?;
             }
         }
 
@@ -599,7 +616,10 @@ impl IssueRepository for SqliteRepository {
                     param_idx += 1;
                 }
                 AssigneeFilter::IsNot(name) => {
-                    sql.push_str(&format!(" AND (assignee IS NULL OR assignee != ?{})", param_idx));
+                    sql.push_str(&format!(
+                        " AND (assignee IS NULL OR assignee != ?{})",
+                        param_idx
+                    ));
                     params.push(Box::new(name.clone()));
                     param_idx += 1;
                 }
@@ -788,7 +808,11 @@ impl IssueRepository for SqliteRepository {
     }
 
     fn start(&self, id: &str, actor: Option<&str>) -> Result<Issue> {
-        self.update(id, IssueUpdate::new().status(IssueStatus::InProgress), actor)
+        self.update(
+            id,
+            IssueUpdate::new().status(IssueStatus::InProgress),
+            actor,
+        )
     }
 
     fn close(
@@ -815,7 +839,8 @@ impl IssueRepository for SqliteRepository {
                     all_commits.push(c);
                 }
             }
-            let commits_json = serde_json::to_string(&all_commits).unwrap_or_else(|_| "[]".to_string());
+            let commits_json =
+                serde_json::to_string(&all_commits).unwrap_or_else(|_| "[]".to_string());
             conn.execute(
                 "UPDATE issues SET commits = ?1, updated_at = datetime('now') WHERE id = ?2",
                 params![&commits_json, id],
@@ -987,9 +1012,8 @@ impl IssueRepository for SqliteRepository {
 
     fn has_cycle(&self, issue_id: &str, dep_id: &str) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
-        let has_cycle: bool = conn.query_row(DETECT_CYCLE, params![issue_id, dep_id], |row| {
-            row.get(0)
-        })?;
+        let has_cycle: bool =
+            conn.query_row(DETECT_CYCLE, params![issue_id, dep_id], |row| row.get(0))?;
         Ok(has_cycle)
     }
 
@@ -1053,7 +1077,15 @@ impl IssueRepository for SqliteRepository {
             params![&id, issue_id, &comment.author, &comment.body],
         )?;
 
-        self.record_event(&conn, issue_id, EventType::Commented, Some(&comment.author), None, None, None)?;
+        self.record_event(
+            &conn,
+            issue_id,
+            EventType::Commented,
+            Some(&comment.author),
+            None,
+            None,
+            None,
+        )?;
 
         Ok(Comment {
             id,
@@ -1076,7 +1108,9 @@ impl IssueRepository for SqliteRepository {
                     author: row.get("author")?,
                     body: row.get("body")?,
                     created_at: parse_datetime(row.get::<_, String>("created_at")?),
-                    updated_at: row.get::<_, Option<String>>("updated_at")?.map(parse_datetime),
+                    updated_at: row
+                        .get::<_, Option<String>>("updated_at")?
+                        .map(parse_datetime),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1287,7 +1321,10 @@ impl IssueRepository for SqliteRepository {
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM issues", [], |row| row.get(0))?;
         report.issues_checked = count as usize;
 
-        let dep_count: i64 = conn.query_row("SELECT COUNT(*) FROM issue_dependencies", [], |row| row.get(0))?;
+        let dep_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM issue_dependencies", [], |row| {
+                row.get(0)
+            })?;
         report.dependencies_checked = dep_count as usize;
 
         Ok(report)
@@ -1491,7 +1528,8 @@ mod tests {
         let create = IssueCreate::new("To Delete");
         let issue = repo.create(create, "tm").unwrap();
 
-        repo.tombstone(&issue.id, Some("Test deletion"), None).unwrap();
+        repo.tombstone(&issue.id, Some("Test deletion"), None)
+            .unwrap();
 
         // Should not find with regular get
         assert!(repo.get(&issue.id).is_err());

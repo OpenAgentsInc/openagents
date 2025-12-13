@@ -23,12 +23,20 @@ mod tests {
 
         and.push_input("a", Box::new(true)).unwrap();
         and.push_input("b", Box::new(true)).unwrap();
-        let result = and.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = and
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         and.push_input("a", Box::new(true)).unwrap();
         and.push_input("b", Box::new(false)).unwrap();
-        let result = and.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = and
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
     }
 
@@ -39,12 +47,20 @@ mod tests {
 
         or.push_input("a", Box::new(false)).unwrap();
         or.push_input("b", Box::new(false)).unwrap();
-        let result = or.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = or
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
 
         or.push_input("a", Box::new(true)).unwrap();
         or.push_input("b", Box::new(false)).unwrap();
-        let result = or.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = or
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
     }
 }

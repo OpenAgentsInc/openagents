@@ -247,8 +247,13 @@ impl FileService for FuncFs {
                             DirEntry {
                                 name: first.to_string(),
                                 is_dir,
-                                size: if is_dir { 0 } else {
-                                    self.files.get(first).map(|f| (f.read_fn)().len() as u64).unwrap_or(0)
+                                size: if is_dir {
+                                    0
+                                } else {
+                                    self.files
+                                        .get(first)
+                                        .map(|f| (f.read_fn)().len() as u64)
+                                        .unwrap_or(0)
                                 },
                             },
                         );
@@ -266,8 +271,13 @@ impl FileService for FuncFs {
                             DirEntry {
                                 name: first.to_string(),
                                 is_dir,
-                                size: if is_dir { 0 } else {
-                                    self.files.get(&child_path_normalized).map(|f| (f.read_fn)().len() as u64).unwrap_or(0)
+                                size: if is_dir {
+                                    0
+                                } else {
+                                    self.files
+                                        .get(&child_path_normalized)
+                                        .map(|f| (f.read_fn)().len() as u64)
+                                        .unwrap_or(0)
                                 },
                             },
                         );

@@ -91,7 +91,10 @@ impl FindTool {
 
         // Check if path exists
         if !path.exists() {
-            return Err(ToolError::not_found(format!("Path not found: {}", path_str)));
+            return Err(ToolError::not_found(format!(
+                "Path not found: {}",
+                path_str
+            )));
         }
 
         if !path.is_dir() {
@@ -111,7 +114,9 @@ impl FindTool {
         let glob_matcher: Option<GlobMatcher> = if let Some(g) = glob {
             Some(
                 Glob::new(g)
-                    .map_err(|e| ToolError::invalid_arguments(format!("Invalid glob pattern: {}", e)))?
+                    .map_err(|e| {
+                        ToolError::invalid_arguments(format!("Invalid glob pattern: {}", e))
+                    })?
                     .compile_matcher(),
             )
         } else {
@@ -138,9 +143,7 @@ impl FindTool {
             }
 
             let entry_path = entry.path();
-            let relative = entry_path
-                .strip_prefix(path)
-                .unwrap_or(entry_path);
+            let relative = entry_path.strip_prefix(path).unwrap_or(entry_path);
 
             // Skip hidden unless requested (check relative path only)
             if !include_hidden && Self::is_hidden_relative(relative) {
@@ -223,7 +226,10 @@ impl FindTool {
 
         // Check if path exists
         if !path.exists() {
-            return Err(ToolError::not_found(format!("Path not found: {}", path_str)));
+            return Err(ToolError::not_found(format!(
+                "Path not found: {}",
+                path_str
+            )));
         }
 
         if !path.is_dir() {
@@ -258,10 +264,7 @@ impl FindTool {
 
             entries_visited += 1;
 
-            let relative_path = entry
-                .path()
-                .strip_prefix(path)
-                .unwrap_or(entry.path());
+            let relative_path = entry.path().strip_prefix(path).unwrap_or(entry.path());
 
             // Skip hidden unless requested (check relative path only)
             if !include_hidden && Self::is_hidden_relative(relative_path) {

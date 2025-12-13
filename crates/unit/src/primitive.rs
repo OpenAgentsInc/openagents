@@ -151,7 +151,10 @@ impl PrimitiveState {
     }
 
     /// Add a typed input pin with default options
-    pub fn add_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(&mut self, name: impl Into<String>) {
+    pub fn add_input<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+    ) {
         let pin: Pin<T> = Pin::new(PinOpt::default());
         self.inputs.insert(name.into(), Box::new(pin));
     }
@@ -167,7 +170,10 @@ impl PrimitiveState {
     }
 
     /// Add a typed output pin with default options
-    pub fn add_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(&mut self, name: impl Into<String>) {
+    pub fn add_output<T: Clone + Send + Sync + std::fmt::Debug + 'static>(
+        &mut self,
+        name: impl Into<String>,
+    ) {
         let pin: Pin<T> = Pin::new(PinOpt::default());
         self.outputs.insert(name.into(), Box::new(pin));
     }
@@ -185,8 +191,7 @@ impl PrimitiveState {
     /// Push data to an input pin
     pub fn push_input(&mut self, name: &str, data: Box<dyn Any + Send>) -> Result<(), String> {
         if let Some(pin) = self.inputs.get_mut(name) {
-            pin.push_any(data)
-                .map_err(|e| e.to_string())?;
+            pin.push_any(data).map_err(|e| e.to_string())?;
             self.inputs_ready.insert(name.to_string());
             Ok(())
         } else {
@@ -209,22 +214,36 @@ impl PrimitiveState {
 
     /// Get a typed input pin reference
     pub fn input<T: Clone + Send + Sync + 'static>(&self, name: &str) -> Option<&Pin<T>> {
-        self.inputs.get(name).and_then(|pin| pin.downcast_ref::<T>())
+        self.inputs
+            .get(name)
+            .and_then(|pin| pin.downcast_ref::<T>())
     }
 
     /// Get a mutable typed input pin reference
-    pub fn input_mut<T: Clone + Send + Sync + 'static>(&mut self, name: &str) -> Option<&mut Pin<T>> {
-        self.inputs.get_mut(name).and_then(|pin| pin.downcast_mut::<T>())
+    pub fn input_mut<T: Clone + Send + Sync + 'static>(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut Pin<T>> {
+        self.inputs
+            .get_mut(name)
+            .and_then(|pin| pin.downcast_mut::<T>())
     }
 
     /// Get a typed output pin reference
     pub fn output<T: Clone + Send + Sync + 'static>(&self, name: &str) -> Option<&Pin<T>> {
-        self.outputs.get(name).and_then(|pin| pin.downcast_ref::<T>())
+        self.outputs
+            .get(name)
+            .and_then(|pin| pin.downcast_ref::<T>())
     }
 
     /// Get a mutable typed output pin reference
-    pub fn output_mut<T: Clone + Send + Sync + 'static>(&mut self, name: &str) -> Option<&mut Pin<T>> {
-        self.outputs.get_mut(name).and_then(|pin| pin.downcast_mut::<T>())
+    pub fn output_mut<T: Clone + Send + Sync + 'static>(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut Pin<T>> {
+        self.outputs
+            .get_mut(name)
+            .and_then(|pin| pin.downcast_mut::<T>())
     }
 
     /// Mark an input as having data

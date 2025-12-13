@@ -5,9 +5,9 @@
 
 use wasm_bindgen::prelude::*;
 
+use crate::Namespace;
 use crate::service::OpenFlags;
 use crate::services::MemFs;
-use crate::Namespace;
 
 /// OANIX runtime for the browser
 ///
@@ -214,7 +214,12 @@ impl OanixWeb {
     /// Returns a JSON array of mount point paths
     #[wasm_bindgen]
     pub fn mounts(&self) -> JsValue {
-        let mount_paths: Vec<&str> = self.namespace.mounts().iter().map(|m| m.path.as_str()).collect();
+        let mount_paths: Vec<&str> = self
+            .namespace
+            .mounts()
+            .iter()
+            .map(|m| m.path.as_str())
+            .collect();
         serde_wasm_bindgen::to_value(&mount_paths).unwrap_or(JsValue::NULL)
     }
 }

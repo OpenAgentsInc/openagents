@@ -117,7 +117,11 @@ pub struct Dependency {
 
 impl Dependency {
     /// Create a new dependency
-    pub fn new(issue_id: impl Into<String>, depends_on_id: impl Into<String>, dep_type: DependencyType) -> Self {
+    pub fn new(
+        issue_id: impl Into<String>,
+        depends_on_id: impl Into<String>,
+        dep_type: DependencyType,
+    ) -> Self {
         Self {
             issue_id: issue_id.into(),
             depends_on_id: depends_on_id.into(),

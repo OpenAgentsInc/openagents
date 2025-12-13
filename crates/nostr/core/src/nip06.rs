@@ -7,10 +7,10 @@
 //! The coin type 1237 is registered in SLIP-0044 for Nostr.
 
 use bip39::Mnemonic;
+use bitcoin::Network;
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::{PublicKey, SecretKey};
-use bitcoin::Network;
 use thiserror::Error;
 
 /// Nostr coin type as registered in SLIP-0044
@@ -88,8 +88,8 @@ impl std::fmt::Debug for Keypair {
 ///
 /// The passphrase is optional and defaults to empty string per BIP39 spec.
 pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Result<[u8; 64], Nip06Error> {
-    let mnemonic = Mnemonic::parse(mnemonic)
-        .map_err(|e| Nip06Error::InvalidMnemonic(e.to_string()))?;
+    let mnemonic =
+        Mnemonic::parse(mnemonic).map_err(|e| Nip06Error::InvalidMnemonic(e.to_string()))?;
 
     let seed = mnemonic.to_seed(passphrase);
     Ok(seed)
@@ -239,10 +239,13 @@ mod tests {
     /// npub: npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu
     #[test]
     fn test_nip06_vector_1() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
-        let expected_private_key = "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let expected_private_key =
+            "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a";
         let expected_nsec = "nsec10allq0gjx7fddtzef0ax00mdps9t2kmtrldkyjfs8l5xruwvh2dq0lhhkp";
-        let expected_public_key = "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
+        let expected_public_key =
+            "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
         let expected_npub = "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
 
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
@@ -262,9 +265,11 @@ mod tests {
     #[test]
     fn test_nip06_vector_2() {
         let mnemonic = "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade";
-        let expected_private_key = "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add";
+        let expected_private_key =
+            "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add";
         let expected_nsec = "nsec1c9wh8xy5eqdzln7n5t0ctgxjcrdug73gp5yj0x03gntn67h83twssdfhel";
-        let expected_public_key = "d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573";
+        let expected_public_key =
+            "d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573";
         let expected_npub = "npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h";
 
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
@@ -277,14 +282,16 @@ mod tests {
 
     #[test]
     fn test_mnemonic_to_seed() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let seed = mnemonic_to_seed(mnemonic, "").expect("should parse mnemonic");
         assert_eq!(seed.len(), 64);
     }
 
     #[test]
     fn test_mnemonic_to_seed_with_passphrase() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let seed_without = mnemonic_to_seed(mnemonic, "").expect("should parse mnemonic");
         let seed_with = mnemonic_to_seed(mnemonic, "my passphrase").expect("should parse mnemonic");
 
@@ -297,12 +304,16 @@ mod tests {
         let invalid = "invalid mnemonic words that are not valid";
         let result = derive_keypair(invalid);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Nip06Error::InvalidMnemonic(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            Nip06Error::InvalidMnemonic(_)
+        ));
     }
 
     #[test]
     fn test_account_derivation() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
         let keypair_0 = derive_keypair_with_account(mnemonic, 0).expect("should derive account 0");
         let keypair_1 = derive_keypair_with_account(mnemonic, 1).expect("should derive account 1");
@@ -320,7 +331,8 @@ mod tests {
 
     #[test]
     fn test_nsec_roundtrip() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
 
         let nsec = keypair.nsec().expect("should encode nsec");
@@ -331,7 +343,8 @@ mod tests {
 
     #[test]
     fn test_npub_roundtrip() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
 
         let npub = keypair.npub().expect("should encode npub");
@@ -396,7 +409,8 @@ mod tests {
 
     #[test]
     fn test_keypair_debug_redacts_private_key() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
 
         let debug_output = format!("{:?}", keypair);
@@ -427,7 +441,8 @@ mod tests {
 
     #[test]
     fn test_deterministic_derivation() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
         let keypair1 = derive_keypair(mnemonic).expect("should derive keypair");
         let keypair2 = derive_keypair(mnemonic).expect("should derive keypair");
@@ -439,7 +454,8 @@ mod tests {
 
     #[test]
     fn test_different_mnemonics_produce_different_keys() {
-        let mnemonic1 = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic1 =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
         let mnemonic2 = "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade";
 
         let keypair1 = derive_keypair(mnemonic1).expect("should derive keypair");
@@ -451,7 +467,8 @@ mod tests {
 
     #[test]
     fn test_high_account_index() {
-        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
 
         // Test with high account index (but within valid range for hardened derivation)
         let keypair = derive_keypair_with_account(mnemonic, 0x7FFFFFFF)
@@ -472,7 +489,8 @@ mod tests {
     #[test]
     fn test_nostr_tools_zoo_mnemonic_account_0() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
-        let expected_private_key = "c26cf31d8ba425b555ca27d00ca71b5008004f2f662470f8c8131822ec129fe2";
+        let expected_private_key =
+            "c26cf31d8ba425b555ca27d00ca71b5008004f2f662470f8c8131822ec129fe2";
 
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);
@@ -484,7 +502,8 @@ mod tests {
     #[test]
     fn test_nostr_tools_zoo_mnemonic_account_1() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
-        let expected_private_key = "b5fc7f229de3fb5c189063e3b3fc6c921d8f4366cff5bd31c6f063493665eb2b";
+        let expected_private_key =
+            "b5fc7f229de3fb5c189063e3b3fc6c921d8f4366cff5bd31c6f063493665eb2b";
 
         let keypair = derive_keypair_with_account(mnemonic, 1).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);
@@ -497,7 +516,8 @@ mod tests {
     fn test_nostr_tools_zoo_mnemonic_with_passphrase() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
         let passphrase = "123";
-        let expected_private_key = "55a22b8203273d0aaf24c22c8fbe99608e70c524b17265641074281c8b978ae4";
+        let expected_private_key =
+            "55a22b8203273d0aaf24c22c8fbe99608e70c524b17265641074281c8b978ae4";
 
         let keypair = derive_keypair_full(mnemonic, passphrase, 0).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);
@@ -510,7 +530,8 @@ mod tests {
     fn test_nostr_tools_zoo_mnemonic_account_1_with_passphrase() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
         let passphrase = "123";
-        let expected_private_key = "2e0f7bd9e3c3ebcdff1a90fb49c913477e7c055eba1a415d571b6a8c714c7135";
+        let expected_private_key =
+            "2e0f7bd9e3c3ebcdff1a90fb49c913477e7c055eba1a415d571b6a8c714c7135";
 
         let keypair = derive_keypair_full(mnemonic, passphrase, 1).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);
@@ -524,8 +545,10 @@ mod tests {
     fn test_nostr_tools_zoo_mnemonic_account_1_with_passphrase_full() {
         let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
         let passphrase = "123";
-        let expected_private_key = "2e0f7bd9e3c3ebcdff1a90fb49c913477e7c055eba1a415d571b6a8c714c7135";
-        let expected_public_key = "13f55f4f01576570ea342eb7d2b611f9dc78f8dc601aeb512011e4e73b90cf0a";
+        let expected_private_key =
+            "2e0f7bd9e3c3ebcdff1a90fb49c913477e7c055eba1a415d571b6a8c714c7135";
+        let expected_public_key =
+            "13f55f4f01576570ea342eb7d2b611f9dc78f8dc601aeb512011e4e73b90cf0a";
 
         let keypair = derive_keypair_full(mnemonic, passphrase, 1).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);
@@ -537,10 +560,11 @@ mod tests {
     /// xprv derived from m/44'/1237'/0' produces specific keys at /0/0
     #[test]
     fn test_nostr_tools_abandon_mnemonic_extended_key_derivation() {
-        let mnemonic =
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        let expected_private_key = "5f29af3b9676180290e77a4efad265c4c2ff28a5302461f73597fda26bb25731";
-        let expected_public_key = "e8bcf3823669444d0b49ad45d65088635d9fd8500a75b5f20b59abefa56a144f";
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let expected_private_key =
+            "5f29af3b9676180290e77a4efad265c4c2ff28a5302461f73597fda26bb25731";
+        let expected_public_key =
+            "e8bcf3823669444d0b49ad45d65088635d9fd8500a75b5f20b59abefa56a144f";
 
         let keypair = derive_keypair(mnemonic).expect("should derive keypair");
         assert_eq!(keypair.private_key_hex(), expected_private_key);

@@ -10,7 +10,7 @@ use nostr::Event;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -173,8 +173,8 @@ impl RelayConnection {
     /// Connect to the relay.
     pub async fn connect(&mut self) -> Result<(), ConnectionError> {
         // Parse and validate URL
-        let url = Url::parse(&self.config.url)
-            .map_err(|e| ConnectionError::InvalidUrl(e.to_string()))?;
+        let url =
+            Url::parse(&self.config.url).map_err(|e| ConnectionError::InvalidUrl(e.to_string()))?;
 
         // Update state
         *self.state.write().await = ConnectionState::Connecting;
@@ -224,7 +224,10 @@ impl RelayConnection {
                         match RelayMessage::from_json(&text) {
                             Ok(relay_msg) => {
                                 // Handle EOSE specially to update subscription state
-                                if let RelayMessage::Eose { ref subscription_id } = relay_msg {
+                                if let RelayMessage::Eose {
+                                    ref subscription_id,
+                                } = relay_msg
+                                {
                                     let mut subs = subscriptions.write().await;
                                     if let Some(sub) = subs.get_mut(subscription_id) {
                                         sub.eose_received = true;
@@ -352,7 +355,10 @@ impl RelayConnection {
     }
 
     /// Close a subscription.
-    pub async fn unsubscribe(&self, subscription_id: impl Into<String>) -> Result<(), ConnectionError> {
+    pub async fn unsubscribe(
+        &self,
+        subscription_id: impl Into<String>,
+    ) -> Result<(), ConnectionError> {
         let id = subscription_id.into();
         debug!("Unsubscribing {} on {}", id, self.config.url);
 

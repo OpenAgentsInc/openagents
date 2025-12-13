@@ -5,8 +5,8 @@
 //! are run via `fixture.block_on()`.
 
 use crate::fixtures::{
-    fast_test_config, timeout_test_config, wait_for_ws_message, wait_for_ws_state,
-    ExecutorTestFixture, WsDisconnectingServer, WsEchoServer,
+    ExecutorTestFixture, WsDisconnectingServer, WsEchoServer, fast_test_config,
+    timeout_test_config, wait_for_ws_message, wait_for_ws_state,
 };
 use oanix::services::WsState;
 use std::time::Duration;
@@ -25,7 +25,12 @@ fn test_ws_connect_and_echo() {
 
     // Wait for connected state
     let ws_fs = &fixture.ws_fs;
-    let connected = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Open, Duration::from_secs(5)));
+    let connected = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Open,
+        Duration::from_secs(5),
+    ));
     assert!(connected, "Connection should become Open");
 
     // Send message
@@ -53,7 +58,12 @@ fn test_ws_connect_and_echo() {
     // Close connection
     fixture.ws_fs.close_connection(&conn_id).unwrap();
     let ws_fs = &fixture.ws_fs;
-    let closed = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Closed, Duration::from_secs(5)));
+    let closed = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Closed,
+        Duration::from_secs(5),
+    ));
     assert!(closed, "Connection should become Closed");
 
     fixture.block_on(echo_server.shutdown());
@@ -74,7 +84,12 @@ fn test_ws_connection_timeout() {
 
     // Wait for error state
     let ws_fs = &fixture.ws_fs;
-    let got_error = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Error, Duration::from_secs(5)));
+    let got_error = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Error,
+        Duration::from_secs(5),
+    ));
     assert!(got_error, "Connection should fail with Error state");
 
     let info = fixture.ws_fs.get_connection(&conn_id).unwrap();
@@ -101,7 +116,12 @@ fn test_ws_multiple_connections() {
     // Wait for all to connect
     for conn_id in &conn_ids {
         let ws_fs = &fixture.ws_fs;
-        let connected = fixture.block_on(wait_for_ws_state(ws_fs, conn_id, WsState::Open, Duration::from_secs(5)));
+        let connected = fixture.block_on(wait_for_ws_state(
+            ws_fs,
+            conn_id,
+            WsState::Open,
+            Duration::from_secs(5),
+        ));
         assert!(connected, "Connection {} should become Open", conn_id);
     }
 
@@ -150,7 +170,12 @@ fn test_ws_message_fifo_order() {
 
     let conn_id = fixture.ws_fs.open_connection(echo_server.url()).unwrap();
     let ws_fs = &fixture.ws_fs;
-    let connected = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Open, Duration::from_secs(5)));
+    let connected = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Open,
+        Duration::from_secs(5),
+    ));
     assert!(connected);
 
     // Send numbered messages
@@ -194,7 +219,12 @@ fn test_ws_server_close() {
 
     let conn_id = fixture.ws_fs.open_connection(server.url()).unwrap();
     let ws_fs = &fixture.ws_fs;
-    let connected = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Open, Duration::from_secs(5)));
+    let connected = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Open,
+        Duration::from_secs(5),
+    ));
     assert!(connected);
 
     // Send text messages (server will close after 2)
@@ -210,7 +240,12 @@ fn test_ws_server_close() {
 
     // Wait for server to close the connection
     let ws_fs = &fixture.ws_fs;
-    let closed = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Closed, Duration::from_secs(5)));
+    let closed = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Closed,
+        Duration::from_secs(5),
+    ));
     assert!(closed, "Connection should be closed by server");
 
     fixture.block_on(server.shutdown());
@@ -228,7 +263,12 @@ fn test_ws_binary_messages() {
 
     let conn_id = fixture.ws_fs.open_connection(echo_server.url()).unwrap();
     let ws_fs = &fixture.ws_fs;
-    let connected = fixture.block_on(wait_for_ws_state(ws_fs, &conn_id, WsState::Open, Duration::from_secs(5)));
+    let connected = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn_id,
+        WsState::Open,
+        Duration::from_secs(5),
+    ));
     assert!(connected);
 
     // Send binary data
@@ -277,7 +317,12 @@ fn test_ws_connection_limit() {
     // Wait for all to connect
     for conn_id in &conn_ids {
         let ws_fs = &fixture.ws_fs;
-        let connected = fixture.block_on(wait_for_ws_state(ws_fs, conn_id, WsState::Open, Duration::from_secs(5)));
+        let connected = fixture.block_on(wait_for_ws_state(
+            ws_fs,
+            conn_id,
+            WsState::Open,
+            Duration::from_secs(5),
+        ));
         assert!(connected);
     }
 
@@ -298,7 +343,12 @@ fn test_ws_connection_limit() {
     fixture.ws_fs.close_connection(&conn_ids[0]).unwrap();
 
     let ws_fs = &fixture.ws_fs;
-    let connected = fixture.block_on(wait_for_ws_state(ws_fs, &conn4, WsState::Open, Duration::from_secs(5)));
+    let connected = fixture.block_on(wait_for_ws_state(
+        ws_fs,
+        &conn4,
+        WsState::Open,
+        Duration::from_secs(5),
+    ));
     assert!(connected, "4th connection should connect after slot freed");
 
     fixture.block_on(echo_server.shutdown());

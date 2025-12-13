@@ -65,7 +65,10 @@ pub struct PinSnapshot<T> {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ignored: bool,
     /// Whether the pin is idle (no active data)
-    #[serde(default = "default_true", skip_serializing_if = "std::clone::Clone::clone")]
+    #[serde(
+        default = "default_true",
+        skip_serializing_if = "std::clone::Clone::clone"
+    )]
     pub idle: bool,
 }
 

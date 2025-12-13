@@ -1,5 +1,4 @@
 /// Error types for the FM Bridge client
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]

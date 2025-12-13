@@ -74,11 +74,7 @@ impl SubscriptionBuilder {
 
     /// Add a filter for DVM job feedback (NIP-90 kind 7000).
     pub fn dvm_feedback(self, request_id: String) -> Self {
-        self.filter(
-            Filter::new()
-                .kinds(vec![7000])
-                .event_refs(vec![request_id]),
-        )
+        self.filter(Filter::new().kinds(vec![7000]).event_refs(vec![request_id]))
     }
 
     /// Build the subscription filters.
@@ -165,9 +161,7 @@ mod tests {
 
     #[test]
     fn test_subscription_builder_kinds() {
-        let filters = SubscriptionBuilder::new()
-            .kinds(vec![1, 4])
-            .build();
+        let filters = SubscriptionBuilder::new().kinds(vec![1, 4]).build();
 
         assert_eq!(filters.len(), 1);
         assert_eq!(filters[0].kinds, Some(vec![1, 4]));

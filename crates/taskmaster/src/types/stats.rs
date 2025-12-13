@@ -289,7 +289,10 @@ impl DoctorReport {
 
     /// Get count by severity
     pub fn count_by_severity(&self, severity: DoctorSeverity) -> usize {
-        self.problems.iter().filter(|p| p.severity == severity).count()
+        self.problems
+            .iter()
+            .filter(|p| p.severity == severity)
+            .count()
     }
 
     /// Get repairable problems

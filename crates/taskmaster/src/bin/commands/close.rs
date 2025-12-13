@@ -23,7 +23,12 @@ pub struct CloseArgs {
 }
 
 pub fn run(repo: &impl IssueRepository, args: CloseArgs) -> Result<()> {
-    let issue = repo.close(&args.id, args.reason.as_deref(), vec![], args.actor.as_deref())?;
+    let issue = repo.close(
+        &args.id,
+        args.reason.as_deref(),
+        vec![],
+        args.actor.as_deref(),
+    )?;
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&issue)?);

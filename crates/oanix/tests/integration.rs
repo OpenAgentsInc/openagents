@@ -3,8 +3,8 @@
 //! These tests demonstrate how the primitives compose together
 //! into real-world patterns for agent execution environments.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use oanix::{
     CowFs, FileService, FuncFs, LogEvent, LogLevel, LogsFs, MapFs, MemFs, Namespace, OpenFlags,
@@ -148,8 +148,14 @@ fn test_workspace_snapshot_pattern() {
     // Create "original" project files
     let original = MapFs::builder()
         .file("/src/main.rs", b"fn main() { println!(\"Hello\"); }")
-        .file("/src/lib.rs", b"pub fn add(a: i32, b: i32) -> i32 { a + b }")
-        .file("/Cargo.toml", b"[package]\nname = \"myproject\"\nversion = \"0.1.0\"")
+        .file(
+            "/src/lib.rs",
+            b"pub fn add(a: i32, b: i32) -> i32 { a + b }",
+        )
+        .file(
+            "/Cargo.toml",
+            b"[package]\nname = \"myproject\"\nversion = \"0.1.0\"",
+        )
         .file("/README.md", b"# My Project\n\nA sample project.")
         .build();
 
@@ -235,7 +241,11 @@ fn test_control_file_pattern() {
     assert!(status.contains(r#""connections": 0"#));
 
     // Send connect command
-    write_file(&cap_fs, "/control", r#"{"action": "connect", "url": "wss://relay.example.com"}"#);
+    write_file(
+        &cap_fs,
+        "/control",
+        r#"{"action": "connect", "url": "wss://relay.example.com"}"#,
+    );
 
     // Check command was received
     assert!(last_command.read().unwrap().contains("connect"));
@@ -527,7 +537,11 @@ fn test_taskfs_service() {
     assert!(status_content.contains("started_at"));
 
     // 5. Write result
-    write_file(&task, "/result.json", r#"{"matches": 1234, "accuracy": 0.99}"#);
+    write_file(
+        &task,
+        "/result.json",
+        r#"{"matches": 1234, "accuracy": 0.99}"#,
+    );
 
     // 6. Complete task
     task.set_completed();
@@ -679,7 +693,11 @@ fn test_complete_agent_environment() {
 
     // 4. Write intermediate results to tmp
     let (tmp_svc, _) = ns.resolve("/tmp").unwrap();
-    write_file(tmp_svc, "/analysis.json", r#"{"issues": ["unused import"]}"#);
+    write_file(
+        tmp_svc,
+        "/analysis.json",
+        r#"{"issues": ["unused import"]}"#,
+    );
 
     // 5. Log completion
     {
@@ -856,8 +874,11 @@ mod ws_tests {
         assert!(String::from_utf8_lossy(&pending[0]).contains("hello"));
 
         // Simulate receiving a message (external connector would do this)
-        ws.receive_message(&conn_id, r#"["OK", "event-id-123", true]"#.as_bytes().to_vec())
-            .unwrap();
+        ws.receive_message(
+            &conn_id,
+            r#"["OK", "event-id-123", true]"#.as_bytes().to_vec(),
+        )
+        .unwrap();
 
         // Read incoming messages via /in file
         let in_path = format!("/conns/{}/in", conn_id);
@@ -913,7 +934,13 @@ mod ws_tests {
         let (logs_svc, _) = ns.resolve("/logs").unwrap();
         let log_msg = format!("Connected to {} with id {}\n", relay, conn_id);
         let mut handle = logs_svc
-            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    ..Default::default()
+                },
+            )
             .unwrap();
         handle.write(log_msg.as_bytes()).unwrap();
 
@@ -1093,7 +1120,13 @@ mod http_tests {
         let (logs_svc, _) = ns.resolve("/logs").unwrap();
         let log_msg = format!("Submitted HTTP request {} to {}\n", req_id, endpoint);
         let mut handle = logs_svc
-            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    ..Default::default()
+                },
+            )
             .unwrap();
         handle.write(log_msg.as_bytes()).unwrap();
 
@@ -1138,9 +1171,21 @@ mod http_tests {
         let http = HttpFs::new();
 
         // Submit multiple requests
-        write_file(&http, "/request", r#"{"method": "GET", "url": "https://api.example.com/a"}"#);
-        write_file(&http, "/request", r#"{"method": "GET", "url": "https://api.example.com/b"}"#);
-        write_file(&http, "/request", r#"{"method": "POST", "url": "https://api.example.com/c", "body": "{\"data\": 42}"}"#);
+        write_file(
+            &http,
+            "/request",
+            r#"{"method": "GET", "url": "https://api.example.com/a"}"#,
+        );
+        write_file(
+            &http,
+            "/request",
+            r#"{"method": "GET", "url": "https://api.example.com/b"}"#,
+        );
+        write_file(
+            &http,
+            "/request",
+            r#"{"method": "POST", "url": "https://api.example.com/c", "body": "{\"data\": 42}"}"#,
+        );
 
         // All should be pending
         let entries = http.readdir("/pending").unwrap();
@@ -1268,7 +1313,11 @@ mod combined_capabilities_tests {
 
         // 2. Submit HTTP request
         let (http_svc, _) = ns.resolve("/cap/http").unwrap();
-        write_file(http_svc, "/request", r#"{"method": "GET", "url": "https://api.example.com/data"}"#);
+        write_file(
+            http_svc,
+            "/request",
+            r#"{"method": "GET", "url": "https://api.example.com/data"}"#,
+        );
 
         // 3. Open WebSocket connection
         let (ws_svc, _) = ns.resolve("/cap/ws").unwrap();
@@ -1279,11 +1328,19 @@ mod combined_capabilities_tests {
 
         // 4. Log progress
         let (logs_svc, _) = ns.resolve("/logs").unwrap();
-        write_file(logs_svc, "/stdout.log", "HTTP request submitted, WS connection opened\n");
+        write_file(
+            logs_svc,
+            "/stdout.log",
+            "HTTP request submitted, WS connection opened\n",
+        );
 
         // 5. Store intermediate data in tmp
         let (tmp_svc, _) = ns.resolve("/tmp").unwrap();
-        write_file(tmp_svc, "/state.json", r#"{"http_pending": true, "ws_connected": true}"#);
+        write_file(
+            tmp_svc,
+            "/state.json",
+            r#"{"http_pending": true, "ws_connected": true}"#,
+        );
 
         // 6. Simulate HTTP response arriving
         {
@@ -1313,7 +1370,11 @@ mod combined_capabilities_tests {
         write_file(ws_svc, &out_path, r#"["EVENT", {"items": [1, 2, 3]}]"#);
 
         // 8. Write final result
-        write_file(task_svc, "/result.json", r#"{"items_sent": 3, "success": true}"#);
+        write_file(
+            task_svc,
+            "/result.json",
+            r#"{"items_sent": 3, "success": true}"#,
+        );
 
         // === Verify ===
         let result = read_file(task_svc, "/result.json");
@@ -1427,8 +1488,18 @@ mod nostr_tests {
 
         let event = &events[0];
         assert_eq!(event.kind, 5050); // Text generation
-        assert!(event.tags.iter().any(|t| t[0] == "i" && t[1] == "What is the capital of France?"));
-        assert!(event.tags.iter().any(|t| t[0] == "param" && t[1] == "model"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "i" && t[1] == "What is the capital of France?")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "param" && t[1] == "model")
+        );
         assert!(event.tags.iter().any(|t| t[0] == "bid" && t[1] == "1000"));
     }
 
@@ -1485,7 +1556,13 @@ mod nostr_tests {
         let (logs_svc, _) = ns.resolve("/logs").unwrap();
         let log_msg = format!("Published NIP-90 request from {}\n", &pubkey[..16]);
         let mut handle = logs_svc
-            .open("/stdout.log", OpenFlags { write: true, ..Default::default() })
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    ..Default::default()
+                },
+            )
             .unwrap();
         handle.write(log_msg.as_bytes()).unwrap();
 
@@ -1495,7 +1572,11 @@ mod nostr_tests {
         //    For this test, we verify the outbox flow worked
 
         // 7. Write final result
-        write_file(task_svc, "/result.json", r#"{"answer": "4", "source": "nip90"}"#);
+        write_file(
+            task_svc,
+            "/result.json",
+            r#"{"answer": "4", "source": "nip90"}"#,
+        );
 
         // === Verify ===
         let result = read_file(task_svc, "/result.json");
@@ -1526,9 +1607,24 @@ mod nostr_tests {
         assert!(!event.sig.is_empty());
 
         // Verify tags
-        assert!(event.tags.iter().any(|t| t[0] == "i" && t[1] == "Summarize this article"));
-        assert!(event.tags.iter().any(|t| t[0] == "param" && t[1] == "model" && t[2] == "claude"));
-        assert!(event.tags.iter().any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string())));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "i" && t[1] == "Summarize this article")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "param" && t[1] == "model" && t[2] == "claude")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string()))
+        );
 
         // Verify in outbox
         assert_eq!(nostr.outbox_events().len(), 1);
@@ -1552,15 +1648,18 @@ mod env_tests {
     fn test_env_creation_and_lifecycle() {
         // Create environment with standard mounts
         let env = EnvBuilder::new()
-            .mount("/task", TaskFs::new(
-                TaskSpec {
-                    id: "env-test-001".into(),
-                    task_type: "test".into(),
-                    description: "Test task".into(),
-                    input: serde_json::json!({}),
-                },
-                TaskMeta::default(),
-            ))
+            .mount(
+                "/task",
+                TaskFs::new(
+                    TaskSpec {
+                        id: "env-test-001".into(),
+                        task_type: "test".into(),
+                        description: "Test task".into(),
+                        input: serde_json::json!({}),
+                    },
+                    TaskMeta::default(),
+                ),
+            )
             .mount("/logs", LogsFs::new())
             .mount("/tmp", MemFs::new())
             .build()
@@ -1598,15 +1697,18 @@ mod env_tests {
         use oanix::{HttpFs, WsFs};
 
         let env = EnvBuilder::new()
-            .mount("/task", TaskFs::new(
-                TaskSpec {
-                    id: "cap-test".into(),
-                    task_type: "full-stack".into(),
-                    description: "Test with all capabilities".into(),
-                    input: serde_json::json!({}),
-                },
-                TaskMeta::default(),
-            ))
+            .mount(
+                "/task",
+                TaskFs::new(
+                    TaskSpec {
+                        id: "cap-test".into(),
+                        task_type: "full-stack".into(),
+                        description: "Test with all capabilities".into(),
+                        input: serde_json::json!({}),
+                    },
+                    TaskMeta::default(),
+                ),
+            )
             .mount("/logs", LogsFs::new())
             .mount("/workspace", MemFs::new())
             .mount("/cap/ws", WsFs::new())
@@ -1657,15 +1759,18 @@ mod env_tests {
     #[test]
     fn test_env_agent_workflow() {
         let env = EnvBuilder::new()
-            .mount("/task", TaskFs::new(
-                TaskSpec {
-                    id: "workflow-001".into(),
-                    task_type: "analysis".into(),
-                    description: "Analyze data".into(),
-                    input: serde_json::json!({"data": [1, 2, 3, 4, 5]}),
-                },
-                TaskMeta::default(),
-            ))
+            .mount(
+                "/task",
+                TaskFs::new(
+                    TaskSpec {
+                        id: "workflow-001".into(),
+                        task_type: "analysis".into(),
+                        description: "Analyze data".into(),
+                        input: serde_json::json!({"data": [1, 2, 3, 4, 5]}),
+                    },
+                    TaskMeta::default(),
+                ),
+            )
             .mount("/logs", LogsFs::new())
             .mount("/workspace", MemFs::new())
             .mount("/tmp", MemFs::new())
@@ -1686,7 +1791,15 @@ mod env_tests {
 
         // Log progress
         let (logs_svc, _) = env.resolve("/logs").unwrap();
-        let mut handle = logs_svc.open("/stdout.log", OpenFlags { write: true, ..Default::default() }).unwrap();
+        let mut handle = logs_svc
+            .open(
+                "/stdout.log",
+                OpenFlags {
+                    write: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         handle.write(b"Analysis complete\n").unwrap();
 
         // Write result
@@ -1765,12 +1878,9 @@ mod scheduler_tests {
         let env_id = scheduler.register_env(env);
 
         // Submit jobs with different priorities
-        let low = JobSpec::new(env_id, JobKind::script("low priority"))
-            .with_priority(-5);
-        let high = JobSpec::new(env_id, JobKind::script("high priority"))
-            .with_priority(10);
-        let medium = JobSpec::new(env_id, JobKind::script("medium priority"))
-            .with_priority(0);
+        let low = JobSpec::new(env_id, JobKind::script("low priority")).with_priority(-5);
+        let high = JobSpec::new(env_id, JobKind::script("high priority")).with_priority(10);
+        let medium = JobSpec::new(env_id, JobKind::script("medium priority")).with_priority(0);
 
         scheduler.submit(low).unwrap();
         scheduler.submit(high).unwrap();

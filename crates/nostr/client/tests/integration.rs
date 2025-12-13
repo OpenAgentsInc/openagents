@@ -6,7 +6,7 @@
 //! - Publishing events
 //! - Handling disconnections
 
-use nostr_relay::{Filter, PoolEvent, RelayPool, DEFAULT_RELAYS};
+use nostr_relay::{DEFAULT_RELAYS, Filter, PoolEvent, RelayPool};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -48,11 +48,7 @@ async fn test_connect_to_default_relays() {
     match connect_result {
         Ok(results) => {
             let connected = results.iter().filter(|(_, r)| r.is_ok()).count();
-            println!(
-                "Connected to {}/{} relays",
-                connected,
-                DEFAULT_RELAYS.len()
-            );
+            println!("Connected to {}/{} relays", connected, DEFAULT_RELAYS.len());
 
             // Check for connected events
             let event_result = timeout(Duration::from_secs(2), events.recv()).await;
@@ -114,7 +110,9 @@ async fn test_subscribe_to_text_notes() {
                         println!("Received event: {} (kind {})", &event.id[..8], event.kind);
                         event_count += 1;
                     }
-                    Ok(Ok(PoolEvent::Eose { subscription_id, .. })) => {
+                    Ok(Ok(PoolEvent::Eose {
+                        subscription_id, ..
+                    })) => {
                         println!("EOSE for subscription: {}", subscription_id);
                     }
                     Ok(Ok(PoolEvent::AllEose { subscription_id })) => {

@@ -300,8 +300,8 @@ impl Default for ParallelExecutionConfig {
             max_agents: 2,
             per_agent_memory_mb: 4096,
             host_memory_reserve_mb: 6144,
-            worktree_timeout: 30 * 60 * 1000,     // 30 minutes
-            install_timeout_ms: 15 * 60 * 1000,   // 15 minutes
+            worktree_timeout: 30 * 60 * 1000,   // 30 minutes
+            install_timeout_ms: 15 * 60 * 1000, // 15 minutes
             install_args: vec!["--frozen-lockfile".into()],
             merge_strategy: MergeStrategy::Auto,
             merge_threshold: 4,
@@ -519,7 +519,6 @@ pub struct ProjectConfig {
     pub run_log_dir: String,
 
     // Nested configurations
-
     /// Claude Code settings
     #[serde(default)]
     pub claude_code: ClaudeCodeConfig,

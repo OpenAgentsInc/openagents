@@ -27,11 +27,7 @@ pub struct DeleteArgs {
 }
 
 pub fn run(repo: &impl IssueRepository, args: DeleteArgs) -> Result<()> {
-    repo.tombstone(
-        &args.id,
-        args.reason.as_deref(),
-        args.actor.as_deref(),
-    )?;
+    repo.tombstone(&args.id, args.reason.as_deref(), args.actor.as_deref())?;
 
     if args.json {
         let issue = repo.get_with_tombstones(&args.id)?;

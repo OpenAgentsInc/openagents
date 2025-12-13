@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo test --features "net-executor,nostr" -p oanix -- --ignored nostr_live`
 
-use crate::fixtures::{wait_for_nostr_sent, ExecutorTestFixture};
+use crate::fixtures::{ExecutorTestFixture, wait_for_nostr_sent};
 use nostr::EventTemplate;
 use oanix::executor::ExecutorConfig;
 use std::time::Duration;
@@ -171,7 +171,10 @@ async fn test_nostr_live_multi_relay() {
     if sent_to.len() > 1 {
         println!("Live multi-relay test passed!");
     } else {
-        println!("Only {} relays confirmed - network may be slow", sent_to.len());
+        println!(
+            "Only {} relays confirmed - network may be slow",
+            sent_to.len()
+        );
     }
 
     fixture.shutdown().unwrap();

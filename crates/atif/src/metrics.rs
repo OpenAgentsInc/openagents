@@ -105,7 +105,8 @@ impl Metrics {
 
     /// Validate that token ID arrays match token counts
     pub fn validate_token_ids(&self) -> Result<(), String> {
-        if let (Some(prompt_ids), Some(prompt_count)) = (&self.prompt_token_ids, self.prompt_tokens) {
+        if let (Some(prompt_ids), Some(prompt_count)) = (&self.prompt_token_ids, self.prompt_tokens)
+        {
             if prompt_ids.len() as i64 != prompt_count {
                 return Err(format!(
                     "prompt_token_ids length ({}) does not match prompt_tokens count ({})",
@@ -115,7 +116,9 @@ impl Metrics {
             }
         }
 
-        if let (Some(completion_ids), Some(completion_count)) = (&self.completion_token_ids, self.completion_tokens) {
+        if let (Some(completion_ids), Some(completion_count)) =
+            (&self.completion_token_ids, self.completion_tokens)
+        {
             if completion_ids.len() as i64 != completion_count {
                 return Err(format!(
                     "completion_token_ids length ({}) does not match completion_tokens count ({})",

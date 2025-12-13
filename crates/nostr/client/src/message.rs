@@ -107,10 +107,7 @@ pub enum RelayMessage {
     Auth { challenge: String },
 
     /// Count response (NIP-45): ["COUNT", <subscription_id>, {"count": <n>}]
-    Count {
-        subscription_id: String,
-        count: u64,
-    },
+    Count { subscription_id: String, count: u64 },
 }
 
 impl RelayMessage {
@@ -130,11 +127,15 @@ impl RelayMessage {
         match msg_type {
             "EVENT" => {
                 if arr.len() < 3 {
-                    return Err(MessageError::MissingField("event or subscription_id".to_string()));
+                    return Err(MessageError::MissingField(
+                        "event or subscription_id".to_string(),
+                    ));
                 }
                 let subscription_id = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("subscription_id not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("subscription_id not a string".to_string())
+                    })?
                     .to_string();
                 let event: Event = serde_json::from_value(arr[2].clone())?;
                 Ok(RelayMessage::Event {
@@ -148,15 +149,14 @@ impl RelayMessage {
                 }
                 let event_id = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("event_id not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("event_id not a string".to_string())
+                    })?
                     .to_string();
-                let success = arr[2]
-                    .as_bool()
-                    .ok_or_else(|| MessageError::InvalidFormat("success not a boolean".to_string()))?;
-                let message = arr[3]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let success = arr[2].as_bool().ok_or_else(|| {
+                    MessageError::InvalidFormat("success not a boolean".to_string())
+                })?;
+                let message = arr[3].as_str().unwrap_or("").to_string();
                 Ok(RelayMessage::Ok {
                     event_id,
                     success,
@@ -169,7 +169,9 @@ impl RelayMessage {
                 }
                 let subscription_id = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("subscription_id not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("subscription_id not a string".to_string())
+                    })?
                     .to_string();
                 Ok(RelayMessage::Eose { subscription_id })
             }
@@ -179,12 +181,11 @@ impl RelayMessage {
                 }
                 let subscription_id = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("subscription_id not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("subscription_id not a string".to_string())
+                    })?
                     .to_string();
-                let message = arr[2]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let message = arr[2].as_str().unwrap_or("").to_string();
                 Ok(RelayMessage::Closed {
                     subscription_id,
                     message,
@@ -206,7 +207,9 @@ impl RelayMessage {
                 }
                 let challenge = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("challenge not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("challenge not a string".to_string())
+                    })?
                     .to_string();
                 Ok(RelayMessage::Auth { challenge })
             }
@@ -216,11 +219,13 @@ impl RelayMessage {
                 }
                 let subscription_id = arr[1]
                     .as_str()
-                    .ok_or_else(|| MessageError::InvalidFormat("subscription_id not a string".to_string()))?
+                    .ok_or_else(|| {
+                        MessageError::InvalidFormat("subscription_id not a string".to_string())
+                    })?
                     .to_string();
-                let count_obj = arr[2]
-                    .as_object()
-                    .ok_or_else(|| MessageError::InvalidFormat("count not an object".to_string()))?;
+                let count_obj = arr[2].as_object().ok_or_else(|| {
+                    MessageError::InvalidFormat("count not an object".to_string())
+                })?;
                 let count = count_obj
                     .get("count")
                     .and_then(|v| v.as_u64())
@@ -352,9 +357,7 @@ mod tests {
 
     #[test]
     fn test_client_message_req() {
-        let filter = Filter::new()
-            .kinds(vec![1])
-            .limit(10);
+        let filter = Filter::new().kinds(vec![1]).limit(10);
 
         let msg = ClientMessage::Req {
             subscription_id: "sub1".to_string(),
@@ -526,9 +529,7 @@ mod tests {
 
     #[test]
     fn test_filter_serialization() {
-        let filter = Filter::new()
-            .kinds(vec![1])
-            .limit(10);
+        let filter = Filter::new().kinds(vec![1]).limit(10);
 
         let json = serde_json::to_string(&filter).unwrap();
         assert!(json.contains("\"kinds\":[1]"));

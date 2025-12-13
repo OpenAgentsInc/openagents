@@ -285,10 +285,10 @@ impl AgentKeypair {
         account: u32,
     ) -> Result<Self, AgentIdError> {
         use bip39::Mnemonic;
+        use bitcoin::Network;
         use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
         use bitcoin::key::Secp256k1;
         use bitcoin::secp256k1::{PublicKey, SecretKey};
-        use bitcoin::Network;
 
         const NOSTR_COIN_TYPE: u32 = 1237;
 
@@ -390,7 +390,7 @@ impl AgentKeypair {
     ///
     /// Returns a 64-byte Schnorr signature.
     pub fn sign(&self, message: &[u8]) -> Result<[u8; 64], AgentIdError> {
-        use bitcoin::hashes::{sha256, Hash};
+        use bitcoin::hashes::{Hash, sha256};
         use bitcoin::key::Secp256k1;
         use bitcoin::secp256k1::{Message, SecretKey};
 
@@ -412,9 +412,9 @@ impl AgentKeypair {
 
     /// Verify a signature against a public key.
     pub fn verify(public_key: &AgentId, message: &[u8], signature: &[u8; 64]) -> bool {
-        use bitcoin::hashes::{sha256, Hash};
+        use bitcoin::hashes::{Hash, sha256};
         use bitcoin::key::Secp256k1;
-        use bitcoin::secp256k1::{schnorr::Signature, Message, XOnlyPublicKey};
+        use bitcoin::secp256k1::{Message, XOnlyPublicKey, schnorr::Signature};
 
         let secp = Secp256k1::new();
 
@@ -505,7 +505,11 @@ mod tests {
         let message = b"Hello, OpenAgents!";
         let signature = keypair.sign(message).unwrap();
 
-        assert!(AgentKeypair::verify(&keypair.agent_id(), message, &signature));
+        assert!(AgentKeypair::verify(
+            &keypair.agent_id(),
+            message,
+            &signature
+        ));
         assert!(!AgentKeypair::verify(
             &keypair.agent_id(),
             b"wrong message",

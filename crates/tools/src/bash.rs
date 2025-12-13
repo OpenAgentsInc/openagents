@@ -90,11 +90,8 @@ impl BashTool {
         cwd: Option<&str>,
     ) -> ToolResult<BashResult> {
         let start = Instant::now();
-        let timeout = Duration::from_millis(
-            timeout_ms
-                .unwrap_or(DEFAULT_TIMEOUT_MS)
-                .min(MAX_TIMEOUT_MS),
-        );
+        let timeout =
+            Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
 
         // Build the command
         let mut cmd = Command::new("bash");

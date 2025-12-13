@@ -120,9 +120,7 @@ impl OanixEnv {
     pub fn set_running(&self) {
         let mut status = self.status.write().unwrap();
         if matches!(*status, EnvStatus::Created) {
-            *status = EnvStatus::Running {
-                started_at: now(),
-            };
+            *status = EnvStatus::Running { started_at: now() };
         }
     }
 
@@ -149,7 +147,10 @@ impl OanixEnv {
     /// Check if environment is finished (completed or failed)
     pub fn is_finished(&self) -> bool {
         let status = self.status.read().unwrap();
-        matches!(*status, EnvStatus::Completed { .. } | EnvStatus::Failed { .. })
+        matches!(
+            *status,
+            EnvStatus::Completed { .. } | EnvStatus::Failed { .. }
+        )
     }
 
     /// Resolve a path within the namespace
@@ -337,15 +338,18 @@ mod tests {
     #[test]
     fn test_env_resolve() {
         let env = EnvBuilder::new()
-            .mount("/task", TaskFs::new(
-                TaskSpec {
-                    id: "test-001".into(),
-                    task_type: "test".into(),
-                    description: "Test task".into(),
-                    input: serde_json::json!({}),
-                },
-                TaskMeta::default(),
-            ))
+            .mount(
+                "/task",
+                TaskFs::new(
+                    TaskSpec {
+                        id: "test-001".into(),
+                        task_type: "test".into(),
+                        description: "Test task".into(),
+                        input: serde_json::json!({}),
+                    },
+                    TaskMeta::default(),
+                ),
+            )
             .mount("/tmp", MemFs::new())
             .build()
             .unwrap();

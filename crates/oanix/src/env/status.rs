@@ -76,16 +76,42 @@ mod tests {
     fn test_status_terminal() {
         assert!(!EnvStatus::Created.is_terminal());
         assert!(!EnvStatus::Running { started_at: 0 }.is_terminal());
-        assert!(EnvStatus::Completed { finished_at: 0, exit_code: 0 }.is_terminal());
-        assert!(EnvStatus::Failed { finished_at: 0, error: "err".into() }.is_terminal());
+        assert!(
+            EnvStatus::Completed {
+                finished_at: 0,
+                exit_code: 0
+            }
+            .is_terminal()
+        );
+        assert!(
+            EnvStatus::Failed {
+                finished_at: 0,
+                error: "err".into()
+            }
+            .is_terminal()
+        );
     }
 
     #[test]
     fn test_status_as_str() {
         assert_eq!(EnvStatus::Created.as_str(), "created");
         assert_eq!(EnvStatus::Running { started_at: 0 }.as_str(), "running");
-        assert_eq!(EnvStatus::Completed { finished_at: 0, exit_code: 0 }.as_str(), "completed");
-        assert_eq!(EnvStatus::Failed { finished_at: 0, error: "".into() }.as_str(), "failed");
+        assert_eq!(
+            EnvStatus::Completed {
+                finished_at: 0,
+                exit_code: 0
+            }
+            .as_str(),
+            "completed"
+        );
+        assert_eq!(
+            EnvStatus::Failed {
+                finished_at: 0,
+                error: "".into()
+            }
+            .as_str(),
+            "failed"
+        );
     }
 
     #[test]

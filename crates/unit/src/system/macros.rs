@@ -174,7 +174,10 @@ macro_rules! unary_math_unit {
                 None
             }
 
-            fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn input_mut(
+                &mut self,
+                _name: &str,
+            ) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
@@ -182,7 +185,10 @@ macro_rules! unary_math_unit {
                 None
             }
 
-            fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+            fn output_mut(
+                &mut self,
+                _name: &str,
+            ) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
                 None
             }
 
@@ -212,12 +218,20 @@ macro_rules! unary_math_unit {
 
             fn restore(&mut self, _state: &serde_json::Value) {}
 
-            fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>) -> Result<(), String> {
+            fn push_input(
+                &mut self,
+                name: &str,
+                data: Box<dyn std::any::Any + Send>,
+            ) -> Result<(), String> {
                 if let Err(e) = self.primitive.push_input(name, data) {
                     return Err(e);
                 }
 
-                if let Some(x) = self.primitive.input::<f64>("x").and_then(|p| p.peak().copied()) {
+                if let Some(x) = self
+                    .primitive
+                    .input::<f64>("x")
+                    .and_then(|p| p.peak().copied())
+                {
                     let func: fn(f64) -> f64 = $func;
                     let result = func(x);
                     if let Some(out) = self.primitive.output_mut::<f64>("result") {
@@ -369,7 +383,10 @@ macro_rules! primitive_unit_boilerplate {
             None // PrimitiveState doesn't expose AnyPin directly
         }
 
-        fn input_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+        fn input_mut(
+            &mut self,
+            _name: &str,
+        ) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
             None
         }
 
@@ -377,7 +394,10 @@ macro_rules! primitive_unit_boilerplate {
             None
         }
 
-        fn output_mut(&mut self, _name: &str) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
+        fn output_mut(
+            &mut self,
+            _name: &str,
+        ) -> Option<&mut (dyn $crate::any_pin::AnyPin + 'static)> {
             None
         }
 

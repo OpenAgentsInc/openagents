@@ -90,9 +90,10 @@ impl ClientMessage {
 
                 let mut filters = Vec::new();
                 for filter_val in arr.iter().skip(2) {
-                    let filter: Filter = serde_json::from_value(filter_val.clone()).map_err(
-                        |e| MessageError::InvalidFormat(format!("invalid filter: {}", e)),
-                    )?;
+                    let filter: Filter =
+                        serde_json::from_value(filter_val.clone()).map_err(|e| {
+                            MessageError::InvalidFormat(format!("invalid filter: {}", e))
+                        })?;
                     filters.push(filter);
                 }
 
@@ -117,8 +118,9 @@ impl ClientMessage {
                 if arr.len() < 2 {
                     return Err(MessageError::MissingField("auth event".to_string()));
                 }
-                let event: Event = serde_json::from_value(arr[1].clone())
-                    .map_err(|e| MessageError::InvalidFormat(format!("invalid auth event: {}", e)))?;
+                let event: Event = serde_json::from_value(arr[1].clone()).map_err(|e| {
+                    MessageError::InvalidFormat(format!("invalid auth event: {}", e))
+                })?;
                 Ok(ClientMessage::Auth(event))
             }
             _ => Err(MessageError::UnknownType(msg_type.to_string())),
@@ -158,10 +160,7 @@ pub enum RelayMessage {
     Auth { challenge: String },
 
     /// Count response (NIP-45): `["COUNT", <subscription_id>, {"count": <n>}]`
-    Count {
-        subscription_id: String,
-        count: u64,
-    },
+    Count { subscription_id: String, count: u64 },
 }
 
 impl RelayMessage {
@@ -190,9 +189,7 @@ impl RelayMessage {
 
             RelayMessage::Notice { message } => serde_json::json!(["NOTICE", message]).to_string(),
 
-            RelayMessage::Auth { challenge } => {
-                serde_json::json!(["AUTH", challenge]).to_string()
-            }
+            RelayMessage::Auth { challenge } => serde_json::json!(["AUTH", challenge]).to_string(),
 
             RelayMessage::Count {
                 subscription_id,
