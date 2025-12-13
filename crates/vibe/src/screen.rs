@@ -359,7 +359,12 @@ fn TabButton(label: &'static str, active: bool, ontap: EventHandler<()>) -> Elem
 }
 
 #[component]
-fn ResourceBar(limits: PlanLimits, busy: bool) -> Element {
+fn ResourceBar(
+    limits: PlanLimits,
+    busy: bool,
+    status: Option<String>,
+    error: Option<String>,
+) -> Element {
     rsx! {
         div {
             style: "display: flex; gap: 12px; align-items: center; color: {MUTED}; font-size: 12px;",
@@ -370,6 +375,20 @@ fn ResourceBar(limits: PlanLimits, busy: bool) -> Element {
             ResourcePill { label: "API", value: limits.api_rate.clone() }
             if busy {
                 ResourcePill { label: "Ops", value: "Working..." }
+            }
+            if let Some(msg) = status {
+                div {
+                    style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT};",
+                    span { style: "color: {MUTED}; margin-right: 6px;", "Status" }
+                    span { style: "color: {TEXT};", "{msg}" }
+                }
+            }
+            if let Some(err) = error {
+                div {
+                    style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: #ff4d4f;",
+                    span { style: "color: {MUTED}; margin-right: 6px;", "Error" }
+                    span { style: "color: #ff4d4f;", "{err}" }
+                }
             }
         }
     }
@@ -398,6 +417,8 @@ fn HeaderBar(
         || action_state.refreshing
         || action_state.paying
         || action_state.downloading;
+    let status = action_state.message.clone();
+    let error = action_state.error.clone();
 
     rsx! {
         div {
@@ -413,7 +434,7 @@ fn HeaderBar(
             div {
                 style: "display: flex; align-items: center; gap: 10px;",
                 AuthChip { auth: auth.clone() }
-                ResourceBar { limits: plan_limits, busy }
+                ResourceBar { limits: plan_limits, busy, status, error }
             }
         }
     }
