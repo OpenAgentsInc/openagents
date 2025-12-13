@@ -37,8 +37,7 @@ pub struct ChatResponse {
 }
 
 /// Send a message to Claude via the SDK
-#[cfg(feature = "server")]
-#[post("/api/chat")]
+#[server]
 pub async fn send_chat_message(message: String, cwd: String) -> Result<ChatResponse, ServerFnError> {
     use claude_agent_sdk::{query, QueryOptions, SdkMessage, SdkResultMessage};
     use futures::StreamExt;
@@ -121,12 +120,19 @@ pub async fn send_chat_message(message: String, cwd: String) -> Result<ChatRespo
                     }));
                 }
 
-                if let SdkResultMessage::Error(err) = result {
-                    return Ok(ChatResponse {
-                        entries,
-                        session_id,
-                        error: Some(format!("{:?}", err)),
-                    });
+                // Handle error results
+                match result {
+                    SdkResultMessage::Success(_) => {}
+                    SdkResultMessage::ErrorDuringExecution(err)
+                    | SdkResultMessage::ErrorMaxTurns(err)
+                    | SdkResultMessage::ErrorMaxBudget(err)
+                    | SdkResultMessage::ErrorMaxStructuredOutputRetries(err) => {
+                        return Ok(ChatResponse {
+                            entries,
+                            session_id,
+                            error: Some(format!("{:?}", err)),
+                        });
+                    }
                 }
             }
             _ => {}
@@ -147,13 +153,6 @@ pub async fn send_chat_message(message: String, cwd: String) -> Result<ChatRespo
         session_id,
         error: None,
     })
-}
-
-#[cfg(not(feature = "server"))]
-#[post("/api/chat")]
-pub async fn send_chat_message(_message: String, _cwd: String) -> Result<ChatResponse, ServerFnError> {
-    // Client-side stub - actual call goes to server
-    Err(ServerFnError::new("This should not be called on the client"))
 }
 
 #[component]
