@@ -361,14 +361,12 @@ const MARKDOWN_STYLES: &str = r#"
     .markdown-content code {
         background: #1A1A1A;
         padding: 0.2em 0.4em;
-        border-radius: 3px;
         font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;
         font-size: 0.9em;
     }
     .markdown-content pre {
         background: #101010;
         padding: 12px;
-        border-radius: 4px;
         overflow-x: auto;
         margin: 0.5em 0;
         border: 1px solid #1A1A1A;

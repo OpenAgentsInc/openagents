@@ -7,7 +7,7 @@ use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 pub fn ProjectGrid(projects: Vec<Project>, on_select: EventHandler<String>) -> Element {
     rsx! {
         div {
-            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px;",
+            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
                 span { style: "color: {TEXT}; font-weight: 600;", "Projects" }
@@ -27,7 +27,7 @@ pub fn ProjectGrid(projects: Vec<Project>, on_select: EventHandler<String>) -> E
 fn ProjectCard(project: Project, on_select: EventHandler<()>) -> Element {
     rsx! {
         div {
-            style: "border: 1px solid {BORDER}; background: #0f0f0f; padding: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 6px; cursor: pointer;",
+            style: "border: 1px solid {BORDER}; background: #0f0f0f; padding: 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer;",
             onclick: move |_| on_select.call(()),
             span { style: "color: {ACCENT}; font-weight: 600;", "{project.name}" }
             span { style: "color: {MUTED}; font-size: 12px;", "{project.kind} · {project.language}" }
@@ -44,13 +44,13 @@ fn ProjectCard(project: Project, on_select: EventHandler<()>) -> Element {
 pub fn TemplatePicker(templates: Vec<ProjectTemplate>) -> Element {
     rsx! {
         div {
-            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 10px;",
+            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 10px;",
             span { style: "color: {TEXT}; font-weight: 600;", "Templates" }
             span { style: "color: {MUTED}; font-size: 12px;", "Starter kits prewired with OANIX mounts" }
 
             for template in templates {
                 div {
-                    style: "border: 1px solid {BORDER}; padding: 10px; border-radius: 4px;",
+                    style: "border: 1px solid {BORDER}; padding: 10px;",
                     div { style: "display: flex; justify-content: space-between; color: {TEXT}; font-weight: 600;",
                         span { "{template.name}" }
                         span { style: "color: {MUTED}; font-size: 12px;", "{template.category}" }
