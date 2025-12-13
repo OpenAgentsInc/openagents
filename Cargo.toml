@@ -40,6 +40,7 @@ members = [
     "crates/pi",
     "crates/unit",
     "crates/vibe",
+    "crates/wgpui",
 
     # Zed crates (copied for markdown support)
     "crates/action_log",
@@ -291,6 +292,7 @@ atif-store = { path = "crates/atif-store" }
 fm-bridge = { path = "crates/fm-bridge" }
 oanix = { path = "crates/oanix" }
 unit = { path = "crates/unit" }
+wgpui = { path = "crates/wgpui" }
 sessions-crate = { path = "crates/sessions", package = "sessions" }
 
 # Zed workspace member crates

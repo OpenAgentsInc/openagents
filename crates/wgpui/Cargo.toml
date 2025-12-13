@@ -1,0 +1,76 @@
+[package]
+name = "wgpui"
+version = "0.1.0"
+edition = "2024"
+description = "Cross-platform wgpu-based UI framework"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["web"]
+web = [
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "web-sys",
+    "js-sys",
+    "console_error_panic_hook",
+    "console_log",
+]
+native = ["winit", "pollster"]
+
+[dependencies]
+# Core rendering
+wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
+
+# Layout
+taffy = "0.9"
+
+# Text rendering
+cosmic-text = "0.12"
+
+# Utilities
+bytemuck = { version = "1", features = ["derive"] }
+smallvec = "1"
+slotmap = "1"
+futures = "0.3"
+log = "0.4"
+
+# Web dependencies (default)
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlBodyElement",
+    "CssStyleDeclaration",
+    "DomTokenList",
+    "ResizeObserver",
+    "ResizeObserverEntry",
+    "ResizeObserverSize",
+    "DomRectReadOnly",
+    "KeyboardEvent",
+    "MouseEvent",
+    "WheelEvent",
+    "PointerEvent",
+    "EventTarget",
+    "Navigator",
+    "Clipboard",
+    "CustomEvent",
+    "console",
+] }
+js-sys = { version = "0.3", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+console_log = { version = "1.0", optional = true }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+# Native dependencies (future)
+winit = { version = "0.30", optional = true }
+pollster = { version = "0.4", optional = true }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
