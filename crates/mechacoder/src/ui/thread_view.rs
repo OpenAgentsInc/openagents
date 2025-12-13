@@ -350,33 +350,6 @@ impl ThreadView {
         None::<gpui::Empty>
     }
 
-    /// Render the status indicator (top left corner).
-    fn render_status(&self, cx: &App) -> impl IntoElement {
-        let status = self.thread.status(cx);
-        let is_pi = matches!(self.thread, ActiveThread::Pi(_));
-
-        div()
-            .absolute()
-            .top(px(8.0))
-            .left(px(12.0))
-            .text_sm()
-            .text_color(text::SECONDARY)
-            .child(
-                match status {
-                    ThreadStatus::Idle => "Ready".to_string(),
-                    ThreadStatus::Streaming => {
-                        if is_pi {
-                            "Pi is typing...".to_string()
-                        } else {
-                            "Claude is typing...".to_string()
-                        }
-                    }
-                    ThreadStatus::Completed => "Done".to_string(),
-                    ThreadStatus::Error(_) => "Error".to_string(),
-                },
-            )
-    }
-
     /// Get or update the streaming message view.
     fn get_streaming_view(&mut self, content: &str, cx: &mut App) -> Entity<MessageView> {
         // Check if content changed
@@ -525,24 +498,21 @@ impl Render for ThreadView {
                     .flex_col()
                     .justify_end()
                     .overflow_hidden()
-                    // Message history (shrinks when streaming)
+                    // Message history - always at bottom via ListAlignment::Bottom
                     .child(
                         div()
-                            .when(streaming_view.is_some(), |el| el.flex_shrink())
-                            .when(streaming_view.is_none(), |el| el.flex_1())
+                            .flex_1()
                             .w_full()
-                            .min_h(px(100.0))
                             .overflow_hidden()
                             .child(list(self.list_state.clone(), render_item).size_full()),
                     )
-                    // Streaming message (grows to fill remaining space)
+                    // Streaming message (appended below history)
                     .when_some(streaming_view, |el, view| {
                         el.child(
                             div()
                                 .id("streaming-message")
-                                .flex_1()
                                 .w_full()
-                                .min_h(px(200.0))
+                                .max_h(px(400.0))
                                 .overflow_y_scroll()
                                 .px(px(16.0))
                                 .child(view)
@@ -577,7 +547,5 @@ impl Render for ThreadView {
                             .into_any_element()
                     }),
             )
-            // Status indicator (top left corner)
-            .child(self.render_status(cx))
     }
 }
