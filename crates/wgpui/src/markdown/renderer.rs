@@ -273,7 +273,8 @@ impl MarkdownRenderer {
         opacity: f32,
     ) -> f32 {
         let bar_width = 4.0;
-        let indent = theme::spacing::LG + bar_width;
+        let gap = theme::spacing::SM; // 8px gap between bar and text
+        let indent = bar_width + gap;
         let margin = theme::spacing::SM;
 
         // Draw quote bar FIRST so it's behind content
