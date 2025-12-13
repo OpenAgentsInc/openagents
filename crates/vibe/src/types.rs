@@ -74,6 +74,25 @@ pub struct AgentTask {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthState {
+    pub npub: String,
+    pub plan: String,
+    pub status: String,
+    pub token_preview: String,
+}
+
+impl Default for AuthState {
+    fn default() -> Self {
+        Self {
+            npub: "npub1...".to_string(),
+            plan: "Free".to_string(),
+            status: "anonymous".to_string(),
+            token_preview: "jwt-***".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InfraCustomer {
     pub id: String,
     pub subdomain: String,
@@ -347,6 +366,15 @@ pub fn mock_agent_tasks() -> Vec<AgentTask> {
             status: "complete".to_string(),
         },
     ]
+}
+
+pub fn mock_auth_state() -> AuthState {
+    AuthState {
+        npub: "npub1vibe...demo".to_string(),
+        plan: "Pro".to_string(),
+        status: "verified".to_string(),
+        token_preview: "jwt-abc123...".to_string(),
+    }
 }
 
 pub fn mock_infra_customers() -> Vec<InfraCustomer> {

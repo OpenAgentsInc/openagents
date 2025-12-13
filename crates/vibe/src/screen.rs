@@ -35,6 +35,7 @@ pub fn VibeScreen() -> Element {
     let analytics = use_signal(Vec::<AnalyticsData>::new);
     let terminal_logs = use_signal(Vec::<String>::new);
     let agent_tasks = use_signal(Vec::<AgentTask>::new);
+    let auth = use_signal(AuthState::default);
     let infra_customers = use_signal(Vec::<InfraCustomer>::new);
     let usage = use_signal(Vec::<UsageMetric>::new);
     let invoice = use_signal(InvoiceSummary::default);
@@ -50,6 +51,7 @@ pub fn VibeScreen() -> Element {
         let mut analytics = analytics.clone();
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
+        let mut auth = auth.clone();
         let mut infra_customers = infra_customers.clone();
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
@@ -66,6 +68,7 @@ pub fn VibeScreen() -> Element {
                 analytics.set(data.analytics.clone());
                 terminal_logs.set(data.logs.clone());
                 agent_tasks.set(data.tasks.clone());
+                auth.set(data.auth.clone());
                 infra_customers.set(data.infra_customers.clone());
                 usage.set(data.usage.clone());
                 invoice.set(data.invoice.clone());
@@ -81,6 +84,7 @@ pub fn VibeScreen() -> Element {
                 analytics.set(mock.analytics);
                 terminal_logs.set(mock.logs);
                 agent_tasks.set(mock.tasks);
+                auth.set(mock.auth);
                 infra_customers.set(mock.infra_customers);
                 usage.set(mock.usage);
                 invoice.set(mock.invoice);
@@ -99,6 +103,7 @@ pub fn VibeScreen() -> Element {
         let mut analytics = analytics.clone();
         let mut terminal_logs = terminal_logs.clone();
         let mut agent_tasks = agent_tasks.clone();
+        let mut auth = auth.clone();
         let mut infra_customers = infra_customers.clone();
         let mut usage = usage.clone();
         let mut invoice = invoice.clone();
@@ -113,6 +118,7 @@ pub fn VibeScreen() -> Element {
             analytics.set(data.analytics);
             terminal_logs.set(data.logs);
             agent_tasks.set(data.tasks);
+            auth.set(data.auth);
             infra_customers.set(data.infra_customers);
             usage.set(data.usage);
             invoice.set(data.invoice);
@@ -160,7 +166,7 @@ pub fn VibeScreen() -> Element {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
 
-            HeaderBar { active_project: active_project.clone(), projects: projects() }
+            HeaderBar { active_project: active_project.clone(), projects: projects(), auth: auth() }
 
             // Tabs
             div {
@@ -275,7 +281,7 @@ fn ResourcePill(label: &'static str, value: &'static str) -> Element {
 }
 
 #[component]
-fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>) -> Element {
+fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>, auth: AuthState) -> Element {
     rsx! {
         div {
             style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
@@ -287,7 +293,34 @@ fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>) -> Element 
                     span { style: "color: {TEXT}; font-size: 12px;", "Active: {current.name}" }
                 }
             }
-            ResourceBar {}
+            div {
+                style: "display: flex; align-items: center; gap: 10px;",
+                AuthChip { auth: auth.clone() }
+                ResourceBar {}
+            }
+        }
+    }
+}
+
+#[component]
+fn AuthChip(auth: AuthState) -> Element {
+    let status_color = match auth.status.as_str() {
+        "verified" => ACCENT,
+        "pending" => "#54c6ff",
+        _ => MUTED,
+    };
+
+    rsx! {
+        div {
+            style: "display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid {BORDER}; background: {BG};",
+            span { style: "color: {status_color}; font-weight: 600;", "{auth.plan}" }
+            span { style: "color: {MUTED}; font-size: 12px;", "{auth.npub}" }
+            span { style: "color: {MUTED}; font-size: 12px;", "{auth.token_preview}" }
+            button {
+                style: "padding: 4px 8px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                onclick: move |_| {},
+                "Nostr auth"
+            }
         }
     }
 }
