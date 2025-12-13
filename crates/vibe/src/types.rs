@@ -132,6 +132,7 @@ pub struct UsageMetric {
     pub value: String,
     pub delta: String,
     pub limit: Option<String>,
+    pub remaining: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -455,30 +456,35 @@ pub fn mock_usage_metrics() -> Vec<UsageMetric> {
             value: "12.4M".to_string(),
             delta: "+6%".to_string(),
             limit: Some("50M included".to_string()),
+            remaining: Some("37.6M left".to_string()),
         },
         UsageMetric {
             label: "DO reqs".to_string(),
             value: "3.1M".to_string(),
             delta: "+2%".to_string(),
             limit: Some("10M included".to_string()),
+            remaining: Some("6.9M left".to_string()),
         },
         UsageMetric {
             label: "R2 storage".to_string(),
             value: "38 GB".to_string(),
             delta: "+1.4 GB".to_string(),
             limit: Some("100 GB included".to_string()),
+            remaining: Some("62 GB left".to_string()),
         },
         UsageMetric {
             label: "AI tokens".to_string(),
             value: "2.1M".to_string(),
             delta: "-4%".to_string(),
             limit: Some("Pro AI pool".to_string()),
+            remaining: Some("Pool shared".to_string()),
         },
         UsageMetric {
             label: "Bandwidth".to_string(),
             value: "280 GB".to_string(),
             delta: "+9%".to_string(),
             limit: Some("1 TB included".to_string()),
+            remaining: Some("744 GB left".to_string()),
         },
     ]
 }
