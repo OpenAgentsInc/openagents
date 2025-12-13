@@ -68,6 +68,10 @@ pub struct MarkdownStyle {
     pub selection_background_color: Hsla,
     pub heading: StyleRefinement,
     pub heading_level_styles: Option<HeadingLevelStyles>,
+    /// Style for paragraph blocks (margin, padding, etc.)
+    pub paragraph: StyleRefinement,
+    /// Style for list blocks (margin, padding, etc.)
+    pub list: StyleRefinement,
     pub height_is_multiple_of_line_height: bool,
     pub prevent_mouse_interaction: bool,
 }
@@ -89,6 +93,8 @@ impl Default for MarkdownStyle {
             selection_background_color: Default::default(),
             heading: Default::default(),
             heading_level_styles: None,
+            paragraph: Default::default(),
+            list: Default::default(),
             height_is_multiple_of_line_height: false,
             prevent_mouse_interaction: false,
         }
@@ -819,13 +825,11 @@ impl Element for MarkdownElement {
                             }
                         }
                         MarkdownTag::Paragraph => {
-                            builder.push_div(
-                                div().when(!self.style.height_is_multiple_of_line_height, |el| {
-                                    el.mb_2().line_height(rems(1.3))
-                                }),
-                                range,
-                                markdown_end,
-                            );
+                            let mut paragraph = div().when(!self.style.height_is_multiple_of_line_height, |el| {
+                                el.mb_2().line_height(rems(1.3))
+                            });
+                            paragraph.style().refine(&self.style.paragraph);
+                            builder.push_div(paragraph, range, markdown_end);
                         }
                         MarkdownTag::Heading { level, .. } => {
                             let mut heading = div().mb_2();
@@ -898,7 +902,6 @@ impl Element for MarkdownElement {
                                             .notify_content();
 
                                         parent_container
-                                            .rounded_lg()
                                             .custom_scrollbars(scrollbars, window, cx)
                                             .into()
                                     } else {
@@ -909,7 +912,6 @@ impl Element for MarkdownElement {
                                         &self.code_block_renderer
                                     {
                                         parent_container = parent_container
-                                            .rounded_md()
                                             .border_1()
                                             .border_color(cx.theme().colors().border_variant);
                                     }
@@ -919,7 +921,6 @@ impl Element for MarkdownElement {
 
                                     let code_block = div()
                                         .id(("code-block", range.start))
-                                        .rounded_lg()
                                         .map(|mut code_block| {
                                             if let Some(scroll_handle) = scroll_handle.as_ref() {
                                                 code_block.style().restrict_scroll_to_axis =
@@ -946,7 +947,9 @@ impl Element for MarkdownElement {
                         MarkdownTag::HtmlBlock => builder.push_div(div(), range, markdown_end),
                         MarkdownTag::List(bullet_index) => {
                             builder.push_list(*bullet_index);
-                            builder.push_div(div().pl_2p5(), range, markdown_end);
+                            let mut list_div = div().pl_2p5();
+                            list_div.style().refine(&self.style.list);
+                            builder.push_div(list_div, range, markdown_end);
                         }
                         MarkdownTag::Item => {
                             let bullet = if let Some((_, MarkdownEvent::TaskListMarker(checked))) =
@@ -1025,7 +1028,6 @@ impl Element for MarkdownElement {
                                     .mb_2()
                                     .border_1()
                                     .border_color(cx.theme().colors().border)
-                                    .rounded_sm()
                                     .overflow_hidden(),
                                 range,
                                 markdown_end,

@@ -99,7 +99,9 @@ impl MessageView {
                 }),
                 ..Default::default()
             },
-            // Heading spacing
+            // Block spacing
+            paragraph: gpui::StyleRefinement::default().mb(px(12.0)),
+            list: gpui::StyleRefinement::default().mb(px(12.0)),
             heading: gpui::StyleRefinement::default().mb(px(8.0)).mt(px(16.0)),
             // All heading levels use same size
             heading_level_styles: Some(HeadingLevelStyles {
