@@ -151,6 +151,7 @@ pub struct ActionState {
     pub paying: bool,
     pub downloading: bool,
     pub message: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
