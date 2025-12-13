@@ -35,10 +35,7 @@ enum CommentCommand {
 pub fn run(repo: &impl IssueRepository, args: CommentArgs) -> Result<()> {
     match args.command {
         CommentCommand::Add { id, body, author } => {
-            let create = CommentCreate::new(
-                author.unwrap_or_else(|| "unknown".to_string()),
-                body
-            );
+            let create = CommentCreate::new(author.unwrap_or_else(|| "unknown".to_string()), body);
             let comment = repo.add_comment(&id, create)?;
             println!("{} comment to {}", "Added".green().bold(), id.cyan());
             println!("{} {}", "Author:".bold(), comment.author);

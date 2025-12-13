@@ -1,5 +1,4 @@
 /// HTTP client for Foundation Model API
-
 use crate::error::{FMError, Result};
 use crate::types::*;
 use reqwest::Client;
@@ -65,12 +64,7 @@ impl FMClient {
 
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.http_client.post(&url).json(&request).send().await?;
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
@@ -107,12 +101,7 @@ impl FMClient {
 
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.http_client.post(&url).json(&request).send().await?;
 
         if !response.status().is_success() {
             let status = response.status().as_u16();

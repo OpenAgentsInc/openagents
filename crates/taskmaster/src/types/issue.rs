@@ -267,7 +267,9 @@ impl Issue {
             return false;
         };
 
-        let ttl_days = self.tombstone_ttl_days.unwrap_or(DEFAULT_TOMBSTONE_TTL_DAYS);
+        let ttl_days = self
+            .tombstone_ttl_days
+            .unwrap_or(DEFAULT_TOMBSTONE_TTL_DAYS);
         let expiry = tombstoned_at + chrono::Duration::days(ttl_days as i64);
         Utc::now() > expiry
     }

@@ -251,7 +251,8 @@ impl GraphSpec {
 
     /// Set a unit position
     pub fn set_position(&mut self, unit_id: impl Into<String>, x: f64, y: f64) {
-        self.positions.insert(unit_id.into(), PositionSpec::new(x, y));
+        self.positions
+            .insert(unit_id.into(), PositionSpec::new(x, y));
     }
 
     /// Parse from JSON string

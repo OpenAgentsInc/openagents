@@ -5,7 +5,9 @@ use std::fmt;
 use std::str::FromStr;
 
 /// Issue priority - 0 is highest (critical), 4 is lowest (backlog)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[repr(u8)]
 pub enum Priority {
     /// P0 - Critical, drop everything

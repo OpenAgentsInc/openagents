@@ -20,7 +20,10 @@ pub enum AgentError {
     #[error("timeout after {0}ms")]
     Timeout(u64),
     #[error("payment required: {amount_millisats} millisats")]
-    PaymentRequired { amount_millisats: u64, bolt11: String },
+    PaymentRequired {
+        amount_millisats: u64,
+        bolt11: String,
+    },
     #[error("invalid input: {0}")]
     InvalidInput(String),
     #[error("resource exhausted: {0}")]
@@ -178,7 +181,12 @@ pub trait AgentStore: Send + Sync {
 
 #[async_trait]
 pub trait PermissionHandler: Send + Sync {
-    async fn can_use_tool(&self, tool_name: &str, input: &Value, job_id: &str) -> AgentResult<PermissionResult>;
+    async fn can_use_tool(
+        &self,
+        tool_name: &str,
+        input: &Value,
+        job_id: &str,
+    ) -> AgentResult<PermissionResult>;
 }
 
 #[derive(Debug, Clone)]

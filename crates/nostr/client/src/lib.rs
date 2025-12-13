@@ -55,7 +55,7 @@ pub use connection::{
 };
 pub use message::{ClientMessage, Filter, MessageError, RelayMessage};
 pub use pool::{PoolEvent, RelayPool};
-pub use subscription::{generate_subscription_id, SubscriptionBuilder, SubscriptionTracker};
+pub use subscription::{SubscriptionBuilder, SubscriptionTracker, generate_subscription_id};
 
 /// Default relays for OpenAgents.
 pub const DEFAULT_RELAYS: &[&str] = &[

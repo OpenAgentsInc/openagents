@@ -2,7 +2,7 @@
 
 use clap::Args;
 use colored::Colorize;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 use taskmaster::{IssueRepository, Result};
 
 #[derive(Args)]
@@ -64,7 +64,12 @@ pub fn run(repo: &impl IssueRepository, args: SearchArgs) -> Result<()> {
     let mut table = Table::new(rows);
     table.with(Style::rounded());
     println!("{}", table);
-    println!("\n{} {} issues matching '{}'", "Total:".bold(), issues.len(), args.query);
+    println!(
+        "\n{} {} issues matching '{}'",
+        "Total:".bold(),
+        issues.len(),
+        args.query
+    );
 
     Ok(())
 }

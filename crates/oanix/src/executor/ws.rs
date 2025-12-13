@@ -8,12 +8,8 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tokio::time::{interval, sleep, timeout, Duration};
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::Message,
-    MaybeTlsStream, WebSocketStream,
-};
+use tokio::time::{Duration, interval, sleep, timeout};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 /// Handle to a live WebSocket connection.
 struct ConnectionHandle {
@@ -125,11 +121,7 @@ impl WsConnector {
                     tracing::info!("WebSocket connection {} opened", conn_id);
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to open WebSocket connection {}: {}",
-                        conn_id,
-                        e
-                    );
+                    tracing::error!("Failed to open WebSocket connection {}: {}", conn_id, e);
                     let _ = self.ws_fs.set_error(&conn_id, e.to_string());
                 }
             }
@@ -235,9 +227,7 @@ impl WsConnector {
     async fn inbox_loop(
         ws_fs: Arc<WsFs>,
         conn_id: String,
-        mut read: futures_util::stream::SplitStream<
-            WebSocketStream<MaybeTlsStream<TcpStream>>,
-        >,
+        mut read: futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) {
         while let Some(result) = read.next().await {
             match result {

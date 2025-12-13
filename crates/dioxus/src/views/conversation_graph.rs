@@ -84,8 +84,8 @@ mod theme {
     pub const BG_SIDEBAR: &str = "#050505";
     pub const BORDER: &str = "#1A1A1A";
     pub const CONNECTION: &str = "#333333";
-    pub const DOT_FILL: &str = "#E6E6E6";      // Filled dots (user)
-    pub const DOT_STROKE: &str = "#666666";    // Stroke for hollow dots
+    pub const DOT_FILL: &str = "#E6E6E6"; // Filled dots (user)
+    pub const DOT_STROKE: &str = "#666666"; // Stroke for hollow dots
 }
 
 /// Main conversation graph sidebar component

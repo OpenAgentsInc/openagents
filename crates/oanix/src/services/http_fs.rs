@@ -508,7 +508,9 @@ impl FileService for HttpFs {
     }
 
     fn rename(&self, _from: &str, _to: &str) -> Result<(), FsError> {
-        Err(FsError::PermissionDenied("requests cannot be renamed".into()))
+        Err(FsError::PermissionDenied(
+            "requests cannot be renamed".into(),
+        ))
     }
 }
 
@@ -749,7 +751,10 @@ mod tests {
 
         assert!(http.get_pending(&id).is_none());
         assert_eq!(http.get_state(&id), Some(RequestState::Failed));
-        assert_eq!(http.get_failure(&id), Some("Connection refused".to_string()));
+        assert_eq!(
+            http.get_failure(&id),
+            Some("Connection refused".to_string())
+        );
     }
 
     #[test]
@@ -988,7 +993,11 @@ mod tests {
             let ids = http.list_pending();
             assert_eq!(ids.len(), 1);
             let request = http.get_pending(&ids[0]).unwrap();
-            assert_eq!(request.method, method, "Method {} should parse correctly", method_str);
+            assert_eq!(
+                request.method, method,
+                "Method {} should parse correctly",
+                method_str
+            );
         }
     }
 }

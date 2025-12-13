@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::ObservationResult;
+use serde::{Deserialize, Serialize};
 
 /// Environment feedback or results from tool executions and actions.
 ///
@@ -42,10 +42,7 @@ mod tests {
 
     #[test]
     fn test_observation_creation() {
-        let result = ObservationResult::with_content(
-            Some("call_1".to_string()),
-            "Test result",
-        );
+        let result = ObservationResult::with_content(Some("call_1".to_string()), "Test result");
         let observation = Observation::single(result);
 
         assert_eq!(observation.results.len(), 1);

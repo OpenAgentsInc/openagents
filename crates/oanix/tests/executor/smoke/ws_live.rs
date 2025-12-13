@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo test --features "net-executor,nostr" -p oanix -- --ignored ws_live`
 
-use crate::fixtures::{wait_for_ws_message, wait_for_ws_state, ExecutorTestFixture};
+use crate::fixtures::{ExecutorTestFixture, wait_for_ws_message, wait_for_ws_state};
 use oanix::executor::ExecutorConfig;
 use oanix::services::WsState;
 use std::time::Duration;
@@ -39,7 +39,13 @@ async fn test_ws_live_echo() {
         let conn_id = fixture.ws_fs.open_connection(*url).unwrap();
 
         // Wait for connection (10 seconds)
-        if wait_for_ws_state(&fixture.ws_fs, &conn_id, WsState::Open, Duration::from_secs(10)).await
+        if wait_for_ws_state(
+            &fixture.ws_fs,
+            &conn_id,
+            WsState::Open,
+            Duration::from_secs(10),
+        )
+        .await
         {
             println!("Connected to {}", url);
             working_url = url.to_string();
@@ -93,7 +99,13 @@ async fn test_ws_live_binary() {
     for url in ECHO_SERVERS {
         let conn_id = fixture.ws_fs.open_connection(*url).unwrap();
 
-        if wait_for_ws_state(&fixture.ws_fs, &conn_id, WsState::Open, Duration::from_secs(10)).await
+        if wait_for_ws_state(
+            &fixture.ws_fs,
+            &conn_id,
+            WsState::Open,
+            Duration::from_secs(10),
+        )
+        .await
         {
             // Send binary data
             let binary_data: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD];
@@ -135,7 +147,13 @@ async fn test_ws_live_multiple_messages() {
     for url in ECHO_SERVERS {
         let conn_id = fixture.ws_fs.open_connection(*url).unwrap();
 
-        if wait_for_ws_state(&fixture.ws_fs, &conn_id, WsState::Open, Duration::from_secs(10)).await
+        if wait_for_ws_state(
+            &fixture.ws_fs,
+            &conn_id,
+            WsState::Open,
+            Duration::from_secs(10),
+        )
+        .await
         {
             let mut success_count = 0;
 
@@ -156,10 +174,7 @@ async fn test_ws_live_multiple_messages() {
             }
 
             if success_count > 0 {
-                println!(
-                    "Received {} echo messages from {}",
-                    success_count, url
-                );
+                println!("Received {} echo messages from {}", success_count, url);
                 fixture.ws_fs.close_connection(&conn_id).unwrap();
                 fixture.shutdown().unwrap();
                 println!("Live WebSocket multiple messages test passed!");

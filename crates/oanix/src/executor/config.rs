@@ -216,11 +216,8 @@ mod tests {
 
     #[test]
     fn test_retry_delay_calculation() {
-        let policy = RetryPolicy::exponential(
-            3,
-            Duration::from_millis(100),
-            Duration::from_secs(10),
-        );
+        let policy =
+            RetryPolicy::exponential(3, Duration::from_millis(100), Duration::from_secs(10));
 
         assert_eq!(policy.delay_for_attempt(0), Duration::from_millis(100));
         assert_eq!(policy.delay_for_attempt(1), Duration::from_millis(200));
@@ -230,11 +227,8 @@ mod tests {
 
     #[test]
     fn test_retry_delay_respects_max() {
-        let policy = RetryPolicy::exponential(
-            10,
-            Duration::from_millis(100),
-            Duration::from_millis(500),
-        );
+        let policy =
+            RetryPolicy::exponential(10, Duration::from_millis(100), Duration::from_millis(500));
 
         // After a few attempts, should cap at max_delay
         assert_eq!(policy.delay_for_attempt(10), Duration::from_millis(500));

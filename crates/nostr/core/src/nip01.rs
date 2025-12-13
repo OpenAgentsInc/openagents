@@ -8,11 +8,11 @@
 //! - Kind classification (regular, replaceable, ephemeral, addressable)
 
 #[cfg(feature = "full")]
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::hashes::{Hash, sha256};
 #[cfg(feature = "full")]
 use bitcoin::key::Secp256k1;
 #[cfg(feature = "full")]
-use bitcoin::secp256k1::{schnorr, Message, SecretKey, XOnlyPublicKey};
+use bitcoin::secp256k1::{Message, SecretKey, XOnlyPublicKey, schnorr};
 #[cfg(feature = "full")]
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -225,8 +225,7 @@ pub fn finalize_event(
     let secp = Secp256k1::new();
 
     // Get public key
-    let sk =
-        SecretKey::from_slice(secret_key).map_err(|e| Nip01Error::Signing(e.to_string()))?;
+    let sk = SecretKey::from_slice(secret_key).map_err(|e| Nip01Error::Signing(e.to_string()))?;
     let (xonly_pk, _parity) = sk.x_only_public_key(&secp);
     let pubkey = hex::encode(xonly_pk.serialize());
 
@@ -359,11 +358,9 @@ pub fn is_addressable_kind(kind: u16) -> bool {
 /// Sort events in reverse-chronological order by created_at,
 /// then by id (lexicographically) in case of ties.
 pub fn sort_events(events: &mut [Event]) {
-    events.sort_by(|a, b| {
-        match b.created_at.cmp(&a.created_at) {
-            std::cmp::Ordering::Equal => a.id.cmp(&b.id),
-            other => other,
-        }
+    events.sort_by(|a, b| match b.created_at.cmp(&a.created_at) {
+        std::cmp::Ordering::Equal => a.id.cmp(&b.id),
+        other => other,
     });
 }
 
@@ -372,7 +369,8 @@ mod tests {
     use super::*;
 
     // Test private key used in nostr-tools tests
-    const TEST_PRIVATE_KEY: &str = "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf";
+    const TEST_PRIVATE_KEY: &str =
+        "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf";
 
     fn test_private_key() -> [u8; 32] {
         let bytes = hex::decode(TEST_PRIVATE_KEY).unwrap();
@@ -459,10 +457,7 @@ mod tests {
         let serialized = serialize_event(&unsigned).unwrap();
 
         // Should match the format [0, pubkey, created_at, kind, tags, content]
-        let expected = format!(
-            "[0,\"{}\",1617932115,1,[],\"Hello, world!\"]",
-            public_key
-        );
+        let expected = format!("[0,\"{}\",1617932115,1,[],\"Hello, world!\"]", public_key);
         assert_eq!(serialized, expected);
     }
 

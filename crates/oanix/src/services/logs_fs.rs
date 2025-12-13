@@ -52,11 +52,7 @@ impl LogEvent {
     }
 
     /// Create a new log event with data
-    pub fn with_data(
-        level: LogLevel,
-        message: impl Into<String>,
-        data: serde_json::Value,
-    ) -> Self {
+    pub fn with_data(level: LogLevel, message: impl Into<String>, data: serde_json::Value) -> Self {
         LogEvent {
             timestamp: crate::services::mem_fs_now(),
             level,

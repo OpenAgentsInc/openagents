@@ -1,12 +1,12 @@
 //! Mock Nostr relay implementing NIP-01 protocol for testing
 
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
@@ -96,7 +96,9 @@ impl NostrMockRelay {
                         &subscriptions,
                         &pending_events,
                         &mut local_subs,
-                    ).await {
+                    )
+                    .await
+                    {
                         for response in responses {
                             let _ = write.send(Message::Text(response.into())).await;
                         }
@@ -111,7 +113,9 @@ impl NostrMockRelay {
                             &subscriptions,
                             &pending_events,
                             &mut local_subs,
-                        ).await {
+                        )
+                        .await
+                        {
                             for response in responses {
                                 let _ = write.send(Message::Text(response.into())).await;
                             }

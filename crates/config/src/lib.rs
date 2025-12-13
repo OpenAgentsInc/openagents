@@ -22,8 +22,8 @@
 //! save_config("/path/to/project", &config).unwrap();
 //! ```
 
-mod types;
 mod loader;
+mod types;
 
-pub use types::*;
 pub use loader::*;
+pub use types::*;

@@ -87,7 +87,9 @@ impl Graph {
 
     /// Get a mutable child unit by ID
     pub fn get_unit_mut(&mut self, id: &str) -> Option<&mut (dyn Unit + 'static)> {
-        self.units.get_mut(id).map(|u| u.as_mut() as &mut (dyn Unit + 'static))
+        self.units
+            .get_mut(id)
+            .map(|u| u.as_mut() as &mut (dyn Unit + 'static))
     }
 
     /// Get all unit IDs
@@ -316,7 +318,9 @@ impl Unit for Graph {
     }
 
     fn input_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.inputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.inputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn output(&self, name: &str) -> Option<&dyn AnyPin> {
@@ -324,7 +328,9 @@ impl Unit for Graph {
     }
 
     fn output_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.outputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.outputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn input_names(&self) -> Vec<&str> {
@@ -402,7 +408,11 @@ impl Unit for Graph {
         }
     }
 
-    fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>) -> Result<(), String> {
+    fn push_input(
+        &mut self,
+        name: &str,
+        data: Box<dyn std::any::Any + Send>,
+    ) -> Result<(), String> {
         if let Some(pin) = self.inputs.get_mut(name) {
             pin.push_any(data).map_err(|e| e.to_string())
         } else {
@@ -485,7 +495,8 @@ impl GraphBuilder {
         unit_id: impl Into<String>,
         pin_name: impl Into<String>,
     ) -> Self {
-        self.graph.expose_input::<T>(exposed_name, unit_id, pin_name);
+        self.graph
+            .expose_input::<T>(exposed_name, unit_id, pin_name);
         self
     }
 

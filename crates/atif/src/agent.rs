@@ -67,8 +67,7 @@ mod tests {
 
     #[test]
     fn test_agent_creation() {
-        let agent = Agent::new("test-agent", "1.0.0")
-            .with_model("claude-3-5-sonnet");
+        let agent = Agent::new("test-agent", "1.0.0").with_model("claude-3-5-sonnet");
 
         assert_eq!(agent.name, "test-agent");
         assert_eq!(agent.version, "1.0.0");

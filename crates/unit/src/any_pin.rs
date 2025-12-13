@@ -128,7 +128,8 @@ impl<T: Clone + Send + Sync + std::fmt::Debug + 'static> AnyPin for Pin<T> {
     }
 
     fn clone_data(&self) -> Option<Arc<dyn CloneableAny>> {
-        self.peak().map(|v| Arc::new(v.clone()) as Arc<dyn CloneableAny>)
+        self.peak()
+            .map(|v| Arc::new(v.clone()) as Arc<dyn CloneableAny>)
     }
 
     fn peak_any(&self) -> Option<&dyn Any> {

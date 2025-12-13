@@ -1,10 +1,8 @@
-use dioxus::prelude::*;
 use dioxus::document::eval;
 use dioxus::fullstack::payloads::websocket::use_websocket;
-use mechacoder::{
-    ClientMessage, Message, ServerMessage, ThreadEntry, ToolStatus, ToolUse,
-};
-use pulldown_cmark::{Parser, Options, html};
+use dioxus::prelude::*;
+use mechacoder::{ClientMessage, Message, ServerMessage, ThreadEntry, ToolStatus, ToolUse};
+use pulldown_cmark::{Options, Parser, html};
 
 use super::ConversationGraph;
 
@@ -24,17 +22,17 @@ fn markdown_to_html(md: &str) -> String {
 // Bloomberg-inspired theme colors (from theme_oa)
 #[allow(dead_code)]
 mod theme {
-    pub const BG_APP: &str = "#000000";           // Pure black
-    pub const BG_SURFACE: &str = "#0A0A0A";       // Near black
-    pub const BG_CODE: &str = "#101010";          // Code blocks
-    pub const TEXT_PRIMARY: &str = "#E6E6E6";     // Main text
-    pub const TEXT_SECONDARY: &str = "#B0B0B0";   // Less emphasis
-    pub const TEXT_MUTED: &str = "#9E9E9E";       // Labels, hints
-    pub const TEXT_HIGHLIGHT: &str = "#FFB400";   // Bloomberg yellow
-    pub const BORDER: &str = "#1A1A1A";           // Default border
-    pub const STATUS_SUCCESS: &str = "#00C853";   // Green
-    pub const STATUS_ERROR: &str = "#D32F2F";     // Red
-    pub const STATUS_RUNNING: &str = "#FFB400";   // Yellow
+    pub const BG_APP: &str = "#000000"; // Pure black
+    pub const BG_SURFACE: &str = "#0A0A0A"; // Near black
+    pub const BG_CODE: &str = "#101010"; // Code blocks
+    pub const TEXT_PRIMARY: &str = "#E6E6E6"; // Main text
+    pub const TEXT_SECONDARY: &str = "#B0B0B0"; // Less emphasis
+    pub const TEXT_MUTED: &str = "#9E9E9E"; // Labels, hints
+    pub const TEXT_HIGHLIGHT: &str = "#FFB400"; // Bloomberg yellow
+    pub const BORDER: &str = "#1A1A1A"; // Default border
+    pub const STATUS_SUCCESS: &str = "#00C853"; // Green
+    pub const STATUS_ERROR: &str = "#D32F2F"; // Red
+    pub const STATUS_RUNNING: &str = "#FFB400"; // Yellow
 }
 
 /// WebSocket endpoint for chat
@@ -103,7 +101,8 @@ pub async fn chat_ws(
 
 #[component]
 pub fn MechaCoder() -> Element {
-    let mut socket = use_websocket(|| chat_ws(dioxus::fullstack::payloads::websocket::WebSocketOptions::new()));
+    let mut socket =
+        use_websocket(|| chat_ws(dioxus::fullstack::payloads::websocket::WebSocketOptions::new()));
 
     let mut entries = use_signal(Vec::<ThreadEntry>::new);
     let mut input_value = use_signal(String::new);
@@ -116,96 +115,94 @@ pub fn MechaCoder() -> Element {
     use_future(move || async move {
         loop {
             match socket.recv().await {
-                Ok(msg) => {
-                    match msg {
-                        ServerMessage::SessionInit { .. } => {}
-                        ServerMessage::TextDelta { text } => {
-                            let mut content = current_assistant_content();
-                            content.push_str(&text);
-                            current_assistant_content.set(content);
-                        }
-                        ServerMessage::ToolStart {
+                Ok(msg) => match msg {
+                    ServerMessage::SessionInit { .. } => {}
+                    ServerMessage::TextDelta { text } => {
+                        let mut content = current_assistant_content();
+                        content.push_str(&text);
+                        current_assistant_content.set(content);
+                    }
+                    ServerMessage::ToolStart {
+                        tool_use_id,
+                        tool_name,
+                    } => {
+                        current_tool_id.set(Some(tool_use_id.clone()));
+                        entries.write().push(ThreadEntry::ToolUse(ToolUse {
                             tool_use_id,
                             tool_name,
-                        } => {
-                            current_tool_id.set(Some(tool_use_id.clone()));
-                            entries.write().push(ThreadEntry::ToolUse(ToolUse {
-                                tool_use_id,
-                                tool_name,
-                                input: String::new(),
-                                output: None,
-                                status: ToolStatus::Running,
-                            }));
-                        }
-                        ServerMessage::ToolInput { partial_json, .. } => {
-                            if let Some(tool_id) = current_tool_id() {
-                                let mut entries_mut = entries.write();
-                                for entry in entries_mut.iter_mut().rev() {
-                                    if let ThreadEntry::ToolUse(tool) = entry {
-                                        if tool.tool_use_id == tool_id {
-                                            tool.input.push_str(&partial_json);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        ServerMessage::ToolProgress { tool_use_id, .. } => {
+                            input: String::new(),
+                            output: None,
+                            status: ToolStatus::Running,
+                        }));
+                    }
+                    ServerMessage::ToolInput { partial_json, .. } => {
+                        if let Some(tool_id) = current_tool_id() {
                             let mut entries_mut = entries.write();
                             for entry in entries_mut.iter_mut().rev() {
                                 if let ThreadEntry::ToolUse(tool) = entry {
-                                    if tool.tool_use_id == tool_use_id {
-                                        tool.status = ToolStatus::Running;
+                                    if tool.tool_use_id == tool_id {
+                                        tool.input.push_str(&partial_json);
                                         break;
                                     }
                                 }
                             }
-                        }
-                        ServerMessage::ToolResult {
-                            tool_use_id,
-                            output,
-                            is_error,
-                        } => {
-                            let mut entries_mut = entries.write();
-                            for entry in entries_mut.iter_mut().rev() {
-                                if let ThreadEntry::ToolUse(tool) = entry {
-                                    if tool.tool_use_id == tool_use_id {
-                                        tool.output = Some(output);
-                                        tool.status = if is_error {
-                                            ToolStatus::Error
-                                        } else {
-                                            ToolStatus::Completed
-                                        };
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        ServerMessage::Done { error } => {
-                            let content = current_assistant_content();
-                            if !content.is_empty() {
-                                entries.write().push(ThreadEntry::Message(Message {
-                                    id: next_id(),
-                                    role: "assistant".to_string(),
-                                    content,
-                                }));
-                                next_id += 1;
-                                current_assistant_content.set(String::new());
-                            }
-
-                            if let Some(err) = error {
-                                entries.write().push(ThreadEntry::Message(Message {
-                                    id: next_id(),
-                                    role: "assistant".to_string(),
-                                    content: format!("Error: {}", err),
-                                }));
-                                next_id += 1;
-                            }
-
-                            is_loading.set(false);
                         }
                     }
-                }
+                    ServerMessage::ToolProgress { tool_use_id, .. } => {
+                        let mut entries_mut = entries.write();
+                        for entry in entries_mut.iter_mut().rev() {
+                            if let ThreadEntry::ToolUse(tool) = entry {
+                                if tool.tool_use_id == tool_use_id {
+                                    tool.status = ToolStatus::Running;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    ServerMessage::ToolResult {
+                        tool_use_id,
+                        output,
+                        is_error,
+                    } => {
+                        let mut entries_mut = entries.write();
+                        for entry in entries_mut.iter_mut().rev() {
+                            if let ThreadEntry::ToolUse(tool) = entry {
+                                if tool.tool_use_id == tool_use_id {
+                                    tool.output = Some(output);
+                                    tool.status = if is_error {
+                                        ToolStatus::Error
+                                    } else {
+                                        ToolStatus::Completed
+                                    };
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    ServerMessage::Done { error } => {
+                        let content = current_assistant_content();
+                        if !content.is_empty() {
+                            entries.write().push(ThreadEntry::Message(Message {
+                                id: next_id(),
+                                role: "assistant".to_string(),
+                                content,
+                            }));
+                            next_id += 1;
+                            current_assistant_content.set(String::new());
+                        }
+
+                        if let Some(err) = error {
+                            entries.write().push(ThreadEntry::Message(Message {
+                                id: next_id(),
+                                role: "assistant".to_string(),
+                                content: format!("Error: {}", err),
+                            }));
+                            next_id += 1;
+                        }
+
+                        is_loading.set(false);
+                    }
+                },
                 Err(_) => {
                     is_loading.set(false);
                     break;

@@ -381,9 +381,7 @@ mod tests {
 
     #[test]
     fn test_write_creates_copy() {
-        let base = MapFs::builder()
-            .file("/readme.txt", b"Original")
-            .build();
+        let base = MapFs::builder().file("/readme.txt", b"Original").build();
 
         let cow = CowFs::new(base);
 
@@ -463,9 +461,7 @@ mod tests {
 
     #[test]
     fn test_recreate_after_delete() {
-        let base = MapFs::builder()
-            .file("/file.txt", b"original")
-            .build();
+        let base = MapFs::builder().file("/file.txt", b"original").build();
 
         let cow = CowFs::new(base);
 
@@ -585,9 +581,7 @@ mod tests {
 
     #[test]
     fn test_rename_file() {
-        let base = MapFs::builder()
-            .file("/old.txt", b"content")
-            .build();
+        let base = MapFs::builder().file("/old.txt", b"content").build();
 
         let cow = CowFs::new(base);
 

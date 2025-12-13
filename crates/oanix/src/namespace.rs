@@ -93,11 +93,7 @@ mod tests {
     struct DummyFs;
 
     impl FileService for DummyFs {
-        fn open(
-            &self,
-            _path: &str,
-            _flags: OpenFlags,
-        ) -> Result<Box<dyn FileHandle>, FsError> {
+        fn open(&self, _path: &str, _flags: OpenFlags) -> Result<Box<dyn FileHandle>, FsError> {
             Err(FsError::NotFound("dummy".into()))
         }
 

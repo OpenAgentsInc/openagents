@@ -68,7 +68,7 @@ fn compute_event_id(event: &Event) -> Result<String, VerifyError> {
 #[cfg(feature = "native")]
 fn verify_signature(event: &Event) -> Result<(), VerifyError> {
     use bitcoin::key::Secp256k1;
-    use bitcoin::secp256k1::{schnorr, Message, XOnlyPublicKey};
+    use bitcoin::secp256k1::{Message, XOnlyPublicKey, schnorr};
 
     let secp = Secp256k1::verification_only();
 
@@ -79,16 +79,14 @@ fn verify_signature(event: &Event) -> Result<(), VerifyError> {
         .map_err(|e| VerifyError::InvalidPublicKey(e.to_string()))?;
 
     // Parse event ID as message
-    let id_bytes =
-        hex::decode(&event.id).map_err(|e| VerifyError::InvalidHex(e.to_string()))?;
+    let id_bytes = hex::decode(&event.id).map_err(|e| VerifyError::InvalidHex(e.to_string()))?;
     let message = Message::from_digest_slice(&id_bytes)
         .map_err(|_| VerifyError::InvalidHex("invalid message length".to_string()))?;
 
     // Parse signature
-    let sig_bytes =
-        hex::decode(&event.sig).map_err(|e| VerifyError::InvalidHex(e.to_string()))?;
-    let signature = schnorr::Signature::from_slice(&sig_bytes)
-        .map_err(|_| VerifyError::InvalidSignature)?;
+    let sig_bytes = hex::decode(&event.sig).map_err(|e| VerifyError::InvalidHex(e.to_string()))?;
+    let signature =
+        schnorr::Signature::from_slice(&sig_bytes).map_err(|_| VerifyError::InvalidSignature)?;
 
     // Verify
     secp.verify_schnorr(&signature, &message, &pubkey)
@@ -117,8 +115,7 @@ mod tests {
     fn test_compute_event_id() {
         let event = Event {
             id: "unused".to_string(),
-            pubkey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-                .to_string(),
+            pubkey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".to_string(),
             created_at: 1234567890,
             kind: 1,
             tags: vec![],
@@ -133,10 +130,8 @@ mod tests {
     #[test]
     fn test_verify_event_id_mismatch() {
         let event = Event {
-            id: "0000000000000000000000000000000000000000000000000000000000000000"
-                .to_string(),
-            pubkey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-                .to_string(),
+            id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            pubkey: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".to_string(),
             created_at: 1234567890,
             kind: 1,
             tags: vec![],

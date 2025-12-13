@@ -117,8 +117,7 @@ impl SimpleUnit {
     /// Push data to an input pin
     pub fn push_input(&mut self, name: &str, data: Box<dyn Any + Send>) -> Result<(), String> {
         if let Some(pin) = self.inputs.get_mut(name) {
-            pin.push_any(data)
-                .map_err(|e| e.to_string())
+            pin.push_any(data).map_err(|e| e.to_string())
         } else {
             Err(format!("Input '{}' not found", name))
         }
@@ -127,8 +126,7 @@ impl SimpleUnit {
     /// Push data to an output pin
     pub fn push_output(&mut self, name: &str, data: Box<dyn Any + Send>) -> Result<(), String> {
         if let Some(pin) = self.outputs.get_mut(name) {
-            pin.push_any(data)
-                .map_err(|e| e.to_string())
+            pin.push_any(data).map_err(|e| e.to_string())
         } else {
             Err(format!("Output '{}' not found", name))
         }
@@ -169,7 +167,9 @@ impl Unit for SimpleUnit {
     }
 
     fn input_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.inputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.inputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn output(&self, name: &str) -> Option<&dyn AnyPin> {
@@ -177,7 +177,9 @@ impl Unit for SimpleUnit {
     }
 
     fn output_mut(&mut self, name: &str) -> Option<&mut (dyn AnyPin + 'static)> {
-        self.outputs.get_mut(name).map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
+        self.outputs
+            .get_mut(name)
+            .map(|p| p.as_mut() as &mut (dyn AnyPin + 'static))
     }
 
     fn input_names(&self) -> Vec<&str> {

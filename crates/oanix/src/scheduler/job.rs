@@ -312,8 +312,20 @@ mod tests {
     fn test_job_status_terminal() {
         assert!(!JobStatus::Pending.is_terminal());
         assert!(!JobStatus::Running { started_at: 0 }.is_terminal());
-        assert!(JobStatus::Completed { finished_at: 0, exit_code: 0 }.is_terminal());
-        assert!(JobStatus::Failed { finished_at: 0, error: "".into() }.is_terminal());
+        assert!(
+            JobStatus::Completed {
+                finished_at: 0,
+                exit_code: 0
+            }
+            .is_terminal()
+        );
+        assert!(
+            JobStatus::Failed {
+                finished_at: 0,
+                error: "".into()
+            }
+            .is_terminal()
+        );
         assert!(JobStatus::Cancelled { cancelled_at: 0 }.is_terminal());
     }
 

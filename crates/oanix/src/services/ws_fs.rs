@@ -421,8 +421,8 @@ impl FileService for WsFs {
                 let info = self
                     .get_connection(conn_id)
                     .ok_or_else(|| FsError::NotFound(path.to_string()))?;
-                let json = serde_json::to_string_pretty(&info)
-                    .map_err(|e| FsError::Io(e.to_string()))?;
+                let json =
+                    serde_json::to_string_pretty(&info).map_err(|e| FsError::Io(e.to_string()))?;
                 Ok(Box::new(StaticHandle::new(json.into_bytes())))
             }
 
@@ -574,7 +574,9 @@ impl FileService for WsFs {
     }
 
     fn rename(&self, _from: &str, _to: &str) -> Result<(), FsError> {
-        Err(FsError::PermissionDenied("connections cannot be renamed".into()))
+        Err(FsError::PermissionDenied(
+            "connections cannot be renamed".into(),
+        ))
     }
 }
 
@@ -912,7 +914,8 @@ mod tests {
         ws.set_connected(&id).unwrap();
 
         // Add message to inbox (simulating transport)
-        ws.receive_message(&id, b"Incoming message".to_vec()).unwrap();
+        ws.receive_message(&id, b"Incoming message".to_vec())
+            .unwrap();
 
         // Read via file
         let path = format!("/conns/{}/in", id);

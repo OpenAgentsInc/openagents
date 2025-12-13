@@ -2,7 +2,7 @@
 
 use clap::Args;
 use colored::Colorize;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 use taskmaster::{IssueRepository, Result};
 
 #[derive(Args)]

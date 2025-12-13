@@ -63,8 +63,9 @@ impl WriteTool {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| ToolError::io_error(format!("Failed to create directory: {}", e)))?;
+                fs::create_dir_all(parent).map_err(|e| {
+                    ToolError::io_error(format!("Failed to create directory: {}", e))
+                })?;
             }
         }
 
@@ -116,8 +117,9 @@ impl WriteTool {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| ToolError::io_error(format!("Failed to create directory: {}", e)))?;
+                fs::create_dir_all(parent).map_err(|e| {
+                    ToolError::io_error(format!("Failed to create directory: {}", e))
+                })?;
             }
         }
 

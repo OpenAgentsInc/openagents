@@ -109,9 +109,8 @@ impl WorkspaceFs {
 
         // For existing paths, canonicalize and check
         if full_path.exists() {
-            let canonical = fs::canonicalize(&full_path).map_err(|e| {
-                FsError::Io(format!("failed to resolve path: {}", e))
-            })?;
+            let canonical = fs::canonicalize(&full_path)
+                .map_err(|e| FsError::Io(format!("failed to resolve path: {}", e)))?;
 
             // Ensure it's within the root
             if !canonical.starts_with(&self.root) {
@@ -132,9 +131,8 @@ impl WorkspaceFs {
         // Verify the parent directory exists and is within workspace
         if let Some(parent) = target.parent() {
             if parent.exists() {
-                let canonical_parent = fs::canonicalize(parent).map_err(|e| {
-                    FsError::Io(format!("failed to resolve parent: {}", e))
-                })?;
+                let canonical_parent = fs::canonicalize(parent)
+                    .map_err(|e| FsError::Io(format!("failed to resolve parent: {}", e)))?;
 
                 if !canonical_parent.starts_with(&self.root) {
                     return Err(FsError::PermissionDenied(format!(
@@ -204,15 +202,11 @@ impl FileService for WorkspaceFs {
             opts.append(true);
         }
 
-        let file = opts.open(&full_path).map_err(|e| {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => FsError::NotFound(path.to_string()),
-                std::io::ErrorKind::PermissionDenied => {
-                    FsError::PermissionDenied(path.to_string())
-                }
-                std::io::ErrorKind::AlreadyExists => FsError::AlreadyExists(path.to_string()),
-                _ => FsError::Io(format!("failed to open file: {}", e)),
-            }
+        let file = opts.open(&full_path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => FsError::NotFound(path.to_string()),
+            std::io::ErrorKind::PermissionDenied => FsError::PermissionDenied(path.to_string()),
+            std::io::ErrorKind::AlreadyExists => FsError::AlreadyExists(path.to_string()),
+            _ => FsError::Io(format!("failed to open file: {}", e)),
         })?;
 
         Ok(Box::new(RealFileHandle { file }))
@@ -227,16 +221,14 @@ impl FileService for WorkspaceFs {
 
         let mut entries = Vec::new();
 
-        for entry in fs::read_dir(&full_path).map_err(|e| {
-            FsError::Io(format!("failed to read directory: {}", e))
-        })? {
-            let entry = entry.map_err(|e| {
-                FsError::Io(format!("failed to read entry: {}", e))
-            })?;
+        for entry in fs::read_dir(&full_path)
+            .map_err(|e| FsError::Io(format!("failed to read directory: {}", e)))?
+        {
+            let entry = entry.map_err(|e| FsError::Io(format!("failed to read entry: {}", e)))?;
 
-            let metadata = entry.metadata().map_err(|e| {
-                FsError::Io(format!("failed to get metadata: {}", e))
-            })?;
+            let metadata = entry
+                .metadata()
+                .map_err(|e| FsError::Io(format!("failed to get metadata: {}", e)))?;
 
             let name = entry.file_name().to_string_lossy().to_string();
 
@@ -288,16 +280,12 @@ impl FileService for WorkspaceFs {
             return Err(FsError::AlreadyExists(path.to_string()));
         }
 
-        fs::create_dir(&full_path).map_err(|e| {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => {
-                    FsError::NotFound("parent directory does not exist".to_string())
-                }
-                std::io::ErrorKind::PermissionDenied => {
-                    FsError::PermissionDenied(path.to_string())
-                }
-                _ => FsError::Io(format!("failed to create directory: {}", e)),
+        fs::create_dir(&full_path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                FsError::NotFound("parent directory does not exist".to_string())
             }
+            std::io::ErrorKind::PermissionDenied => FsError::PermissionDenied(path.to_string()),
+            _ => FsError::Io(format!("failed to create directory: {}", e)),
         })
     }
 
@@ -317,13 +305,9 @@ impl FileService for WorkspaceFs {
         } else {
             fs::remove_file(&full_path)
         }
-        .map_err(|e| {
-            match e.kind() {
-                std::io::ErrorKind::PermissionDenied => {
-                    FsError::PermissionDenied(path.to_string())
-                }
-                _ => FsError::Io(format!("failed to remove: {}", e)),
-            }
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => FsError::PermissionDenied(path.to_string()),
+            _ => FsError::Io(format!("failed to remove: {}", e)),
         })
     }
 
@@ -339,9 +323,8 @@ impl FileService for WorkspaceFs {
             return Err(FsError::NotFound(from.to_string()));
         }
 
-        fs::rename(&from_path, &to_path).map_err(|e| {
-            FsError::Io(format!("failed to rename: {}", e))
-        })
+        fs::rename(&from_path, &to_path)
+            .map_err(|e| FsError::Io(format!("failed to rename: {}", e)))
     }
 }
 

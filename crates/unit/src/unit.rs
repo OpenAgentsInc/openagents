@@ -134,7 +134,8 @@ pub trait Unit: Send + Sync {
     // Convenience methods for data flow
 
     /// Push data to an input pin
-    fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>) -> Result<(), String>;
+    fn push_input(&mut self, name: &str, data: Box<dyn std::any::Any + Send>)
+    -> Result<(), String>;
 
     /// Take data from an output pin
     fn take_output(&mut self, name: &str) -> Option<Box<dyn std::any::Any + Send>>;

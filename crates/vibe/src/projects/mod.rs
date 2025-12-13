@@ -4,10 +4,7 @@ use crate::types::{Project, ProjectTemplate};
 use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
-pub fn ProjectGrid(
-    projects: Vec<Project>,
-    on_select: EventHandler<String>,
-) -> Element {
+pub fn ProjectGrid(projects: Vec<Project>, on_select: EventHandler<String>) -> Element {
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px;",

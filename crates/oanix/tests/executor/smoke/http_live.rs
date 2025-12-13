@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo test --features "net-executor,nostr" -p oanix -- --ignored http_live`
 
-use crate::fixtures::{wait_for_response, ExecutorTestFixture};
+use crate::fixtures::{ExecutorTestFixture, wait_for_response};
 use oanix::executor::ExecutorConfig;
 use oanix::services::{HttpMethod, HttpRequest};
 use std::collections::HashMap;
@@ -102,7 +102,10 @@ async fn test_http_live_headers() {
     fixture.start().unwrap();
 
     let mut headers = HashMap::new();
-    headers.insert("X-Custom-Header".to_string(), "oanix-test-value".to_string());
+    headers.insert(
+        "X-Custom-Header".to_string(),
+        "oanix-test-value".to_string(),
+    );
     headers.insert(
         "Authorization".to_string(),
         "Bearer test-token-123".to_string(),
@@ -163,11 +166,7 @@ async fn test_http_live_status_codes() {
         );
 
         let response = fixture.http_fs.get_response(&req_id).unwrap();
-        assert_eq!(
-            response.status, code,
-            "Should return status {}",
-            code
-        );
+        assert_eq!(response.status, code, "Should return status {}", code);
 
         println!("Status {} test passed", code);
     }

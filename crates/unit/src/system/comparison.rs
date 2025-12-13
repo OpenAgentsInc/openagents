@@ -4,10 +4,10 @@
 //! - LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual
 //! - Equal, NotEqual
 
-use crate::primitive::PrimitiveState;
-use crate::unit::Unit;
 use crate::Lifecycle;
+use crate::primitive::PrimitiveState;
 use crate::primitive_unit_boilerplate;
+use crate::unit::Unit;
 use std::any::Any;
 
 // Use the macros for comparison operations
@@ -59,8 +59,12 @@ impl Unit for Equal {
         }
 
         if let (Some(a), Some(b)) = (
-            self.primitive.input::<f64>("a").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("b").and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("a")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("b")
+                .and_then(|p| p.peak().copied()),
         ) {
             // Use epsilon comparison for floating point
             let result = (a - b).abs() < f64::EPSILON;
@@ -123,8 +127,12 @@ impl Unit for NotEqual {
         }
 
         if let (Some(a), Some(b)) = (
-            self.primitive.input::<f64>("a").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("b").and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("a")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("b")
+                .and_then(|p| p.peak().copied()),
         ) {
             let result = (a - b).abs() >= f64::EPSILON;
             if let Some(out) = self.primitive.output_mut::<bool>("result") {
@@ -154,12 +162,20 @@ mod tests {
 
         lt.push_input("a", Box::new(3.0f64)).unwrap();
         lt.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = lt.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = lt
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         lt.push_input("a", Box::new(5.0f64)).unwrap();
         lt.push_input("b", Box::new(3.0f64)).unwrap();
-        let result = lt.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = lt
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
     }
 
@@ -170,7 +186,11 @@ mod tests {
 
         gt.push_input("a", Box::new(5.0f64)).unwrap();
         gt.push_input("b", Box::new(3.0f64)).unwrap();
-        let result = gt.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = gt
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
     }
 
@@ -181,12 +201,20 @@ mod tests {
 
         eq.push_input("a", Box::new(5.0f64)).unwrap();
         eq.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = eq.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = eq
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         eq.push_input("a", Box::new(5.0f64)).unwrap();
         eq.push_input("b", Box::new(3.0f64)).unwrap();
-        let result = eq.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = eq
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
     }
 
@@ -197,12 +225,20 @@ mod tests {
 
         ne.push_input("a", Box::new(5.0f64)).unwrap();
         ne.push_input("b", Box::new(3.0f64)).unwrap();
-        let result = ne.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = ne
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         ne.push_input("a", Box::new(5.0f64)).unwrap();
         ne.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = ne.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = ne
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
     }
 
@@ -213,17 +249,29 @@ mod tests {
 
         lte.push_input("a", Box::new(3.0f64)).unwrap();
         lte.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = lte.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = lte
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         lte.push_input("a", Box::new(5.0f64)).unwrap();
         lte.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = lte.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = lte
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         lte.push_input("a", Box::new(6.0f64)).unwrap();
         lte.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = lte.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = lte
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, false);
     }
 
@@ -234,12 +282,20 @@ mod tests {
 
         gte.push_input("a", Box::new(5.0f64)).unwrap();
         gte.push_input("b", Box::new(3.0f64)).unwrap();
-        let result = gte.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = gte
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
 
         gte.push_input("a", Box::new(5.0f64)).unwrap();
         gte.push_input("b", Box::new(5.0f64)).unwrap();
-        let result = gte.take_output("result").unwrap().downcast::<bool>().unwrap();
+        let result = gte
+            .take_output("result")
+            .unwrap()
+            .downcast::<bool>()
+            .unwrap();
         assert_eq!(*result, true);
     }
 }

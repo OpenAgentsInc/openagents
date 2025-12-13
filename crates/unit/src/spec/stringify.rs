@@ -10,18 +10,16 @@ use crate::merge::Merge;
 use crate::pin::Pin;
 use crate::unit::Unit;
 
-use super::types::{
-    BundleSpec, GraphSpec, MergeSpec, PinSpec, UnitSpec,
-};
+use super::types::{BundleSpec, GraphSpec, MergeSpec, PinSpec, UnitSpec};
 
 /// Convert a Pin to a PinSpec
 pub fn pin_to_spec<T: Clone + Send + Sync + 'static>(pin: &Pin<T>) -> PinSpec
 where
     T: serde::Serialize + std::fmt::Debug,
 {
-    let data = pin.peak().map(|v| {
-        serde_json::to_value(v).unwrap_or(serde_json::Value::Null)
-    });
+    let data = pin
+        .peak()
+        .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null));
 
     PinSpec {
         data,

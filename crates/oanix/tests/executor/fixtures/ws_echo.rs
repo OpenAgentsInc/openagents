@@ -4,7 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
@@ -53,10 +53,7 @@ impl WsEchoServer {
     }
 
     /// Handle a single WebSocket connection
-    async fn handle_connection(
-        stream: tokio::net::TcpStream,
-        received: Arc<Mutex<Vec<Vec<u8>>>>,
-    ) {
+    async fn handle_connection(stream: tokio::net::TcpStream, received: Arc<Mutex<Vec<Vec<u8>>>>) {
         let ws_stream = match accept_async(stream).await {
             Ok(ws) => ws,
             Err(_) => return,
@@ -247,10 +244,7 @@ mod tests {
         let (mut write, mut read) = ws_stream.split();
 
         // Send a message
-        write
-            .send(Message::Text("hello".into()))
-            .await
-            .unwrap();
+        write.send(Message::Text("hello".into())).await.unwrap();
 
         // Receive echo
         if let Some(Ok(Message::Text(text))) = read.next().await {

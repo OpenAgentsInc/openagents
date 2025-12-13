@@ -72,9 +72,9 @@ pub fn run(repo: &impl IssueRepository, args: UpdateArgs) -> Result<()> {
     }
 
     if let Some(type_str) = args.issue_type {
-        let issue_type: IssueType = type_str.parse().map_err(|e| {
-            taskmaster::TaskmasterError::validation(format!("Invalid type: {}", e))
-        })?;
+        let issue_type: IssueType = type_str
+            .parse()
+            .map_err(|e| taskmaster::TaskmasterError::validation(format!("Invalid type: {}", e)))?;
         update.issue_type = Some(issue_type);
     }
 

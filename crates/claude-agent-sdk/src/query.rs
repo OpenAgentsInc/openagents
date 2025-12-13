@@ -14,10 +14,10 @@ use futures::Stream;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, trace, warn};
 
 /// A query execution that streams messages from Claude.
@@ -130,12 +130,8 @@ impl Query {
                         }
                         StdoutMessage::ControlRequest(req) => {
                             // Handle control requests (e.g., permission checks)
-                            Self::handle_control_request(
-                                &transport,
-                                &permission_handler,
-                                req,
-                            )
-                            .await;
+                            Self::handle_control_request(&transport, &permission_handler, req)
+                                .await;
                         }
                         StdoutMessage::ControlResponse(resp) => {
                             // Route response to waiting request
@@ -259,7 +255,10 @@ impl Query {
 
     /// Send a control request and wait for response.
     async fn send_control_request(&self, request: ControlRequestData) -> Result<Value> {
-        let request_id = format!("sdk-{}", self.request_counter.fetch_add(1, Ordering::SeqCst));
+        let request_id = format!(
+            "sdk-{}",
+            self.request_counter.fetch_add(1, Ordering::SeqCst)
+        );
 
         let (tx, rx) = oneshot::channel();
 
@@ -284,8 +283,7 @@ impl Query {
         }
 
         // Wait for response
-        rx.await
-            .map_err(|_| Error::ControlTimeout)?
+        rx.await.map_err(|_| Error::ControlTimeout)?
     }
 
     /// Interrupt the current query execution.
@@ -430,9 +428,8 @@ impl Query {
             .await?;
 
         // Parse the response - should be an AccountInfo object
-        let account: AccountInfo = serde_json::from_value(response).map_err(|e| {
-            Error::InvalidMessage(format!("Failed to parse account info: {}", e))
-        })?;
+        let account: AccountInfo = serde_json::from_value(response)
+            .map_err(|e| Error::InvalidMessage(format!("Failed to parse account info: {}", e)))?;
 
         Ok(account)
     }
@@ -489,7 +486,11 @@ impl Query {
                 };
 
                 let mut transport = transport.lock().await;
-                if transport.send(&StdinMessage::UserMessage(message)).await.is_err() {
+                if transport
+                    .send(&StdinMessage::UserMessage(message))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -520,9 +521,7 @@ impl Query {
         };
 
         let mut transport = self.transport.lock().await;
-        transport
-            .send(&StdinMessage::UserMessage(message))
-            .await?;
+        transport.send(&StdinMessage::UserMessage(message)).await?;
         Ok(())
     }
 

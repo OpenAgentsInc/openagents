@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
-use crate::{Agent, FinalMetrics, Step, AtifError};
+use crate::{Agent, AtifError, FinalMetrics, Step};
 
 /// Root-level trajectory object storing global context and complete interaction history.
 ///
@@ -229,15 +229,11 @@ mod tests {
             agent,
             steps: vec![
                 Step::agent(1, "Searching")
-                    .with_tool_calls(vec![
-                        ToolCall::new("call_1", "search", json!({}))
-                    ])
-                    .with_observation(Observation::single(
-                        ObservationResult::with_content(
-                            Some("call_999".to_string()), // Non-existent call ID
-                            "Result"
-                        )
-                    )),
+                    .with_tool_calls(vec![ToolCall::new("call_1", "search", json!({}))])
+                    .with_observation(Observation::single(ObservationResult::with_content(
+                        Some("call_999".to_string()), // Non-existent call ID
+                        "Result",
+                    ))),
             ],
             notes: None,
             final_metrics: None,
@@ -250,8 +246,7 @@ mod tests {
     #[test]
     fn test_trajectory_serialization() {
         let agent = Agent::new("test-agent", "1.0.0");
-        let trajectory = Trajectory::v1_4("session-123", agent)
-            .with_notes("Test trajectory");
+        let trajectory = Trajectory::v1_4("session-123", agent).with_notes("Test trajectory");
 
         let json = trajectory.to_json().unwrap();
         let deserialized = Trajectory::from_json(&json).unwrap();

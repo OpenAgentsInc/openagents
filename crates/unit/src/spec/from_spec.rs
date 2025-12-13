@@ -185,11 +185,10 @@ pub fn graph_from_bundle(
 
 /// Parse and create a Graph from JSON
 pub fn graph_from_json(json: &str, registry: &UnitRegistry) -> Result<Graph, FromSpecError> {
-    let spec = GraphSpec::from_json(json)
-        .map_err(|e| FromSpecError::UnitCreationFailed {
-            type_id: "json".to_string(),
-            reason: e.to_string(),
-        })?;
+    let spec = GraphSpec::from_json(json).map_err(|e| FromSpecError::UnitCreationFailed {
+        type_id: "json".to_string(),
+        reason: e.to_string(),
+    })?;
     graph_from_spec(&spec, registry)
 }
 
@@ -198,11 +197,10 @@ pub fn graph_from_bundle_json(
     json: &str,
     registry: &UnitRegistry,
 ) -> Result<(Graph, HashMap<String, Graph>), FromSpecError> {
-    let bundle = BundleSpec::from_json(json)
-        .map_err(|e| FromSpecError::UnitCreationFailed {
-            type_id: "json".to_string(),
-            reason: e.to_string(),
-        })?;
+    let bundle = BundleSpec::from_json(json).map_err(|e| FromSpecError::UnitCreationFailed {
+        type_id: "json".to_string(),
+        reason: e.to_string(),
+    })?;
     graph_from_bundle(&bundle, registry)
 }
 

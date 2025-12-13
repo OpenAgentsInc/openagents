@@ -85,7 +85,10 @@ impl GrepTool {
 
         // Check if path exists
         if !path.exists() {
-            return Err(ToolError::not_found(format!("Path not found: {}", path_str)));
+            return Err(ToolError::not_found(format!(
+                "Path not found: {}",
+                path_str
+            )));
         }
 
         // Compile regex
@@ -219,13 +222,43 @@ impl GrepTool {
 
         matches!(
             ext.as_str(),
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "bmp" |
-            "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" |
-            "zip" | "tar" | "gz" | "bz2" | "7z" | "rar" |
-            "exe" | "dll" | "so" | "dylib" | "o" | "a" |
-            "mp3" | "mp4" | "wav" | "avi" | "mov" |
-            "ttf" | "otf" | "woff" | "woff2" |
-            "lock" | "sum" // package lock files
+            "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "ico"
+                | "bmp"
+                | "pdf"
+                | "doc"
+                | "docx"
+                | "xls"
+                | "xlsx"
+                | "ppt"
+                | "pptx"
+                | "zip"
+                | "tar"
+                | "gz"
+                | "bz2"
+                | "7z"
+                | "rar"
+                | "exe"
+                | "dll"
+                | "so"
+                | "dylib"
+                | "o"
+                | "a"
+                | "mp3"
+                | "mp4"
+                | "wav"
+                | "avi"
+                | "mov"
+                | "ttf"
+                | "otf"
+                | "woff"
+                | "woff2"
+                | "lock"
+                | "sum" // package lock files
         )
     }
 

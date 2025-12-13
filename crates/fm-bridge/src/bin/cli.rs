@@ -1,9 +1,8 @@
 /// FM Bridge CLI
 ///
 /// Simple CLI for testing Foundation Model API
-
 use clap::{Parser, Subcommand};
-use fm_bridge::{FMClient, CompletionOptions};
+use fm_bridge::{CompletionOptions, FMClient};
 use tokio_stream::StreamExt;
 
 #[derive(Parser)]

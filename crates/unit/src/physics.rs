@@ -247,8 +247,16 @@ pub fn apply_forces(
             (to_idx, from_idx)
         };
         let (left, right) = nodes.split_at_mut(max_idx);
-        left[min_idx].apply_force(if from_idx < to_idx { force } else { force * -1.0 });
-        right[0].apply_force(if from_idx < to_idx { force * -1.0 } else { force });
+        left[min_idx].apply_force(if from_idx < to_idx {
+            force
+        } else {
+            force * -1.0
+        });
+        right[0].apply_force(if from_idx < to_idx {
+            force * -1.0
+        } else {
+            force
+        });
     }
 
     // Apply center gravity
@@ -310,11 +318,7 @@ pub fn reheat(config: &mut SimulationConfig) {
 }
 
 /// Run one simulation tick
-pub fn tick(
-    nodes: &mut [SimNode],
-    connections: &[SimConnection],
-    config: &mut SimulationConfig,
-) {
+pub fn tick(nodes: &mut [SimNode], connections: &[SimConnection], config: &mut SimulationConfig) {
     if should_stop(config) {
         return;
     }

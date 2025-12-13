@@ -108,11 +108,7 @@ pub(crate) fn now() -> u64 {
 fn normalize_path(path: &str) -> &str {
     let path = path.trim_start_matches('/');
     let path = path.trim_end_matches('/');
-    if path.is_empty() {
-        "."
-    } else {
-        path
-    }
+    if path.is_empty() { "." } else { path }
 }
 
 /// Split path into components
@@ -135,7 +131,10 @@ impl MemFs {
     /// Get a node at the given path (read lock)
     fn get_node(&self, path: &str) -> Result<MemNode, FsError> {
         let components = path_components(path);
-        let root = self.root.read().map_err(|_| FsError::Io("lock poisoned".into()))?;
+        let root = self
+            .root
+            .read()
+            .map_err(|_| FsError::Io("lock poisoned".into()))?;
 
         let mut current = root.clone();
         for component in components {
@@ -168,7 +167,10 @@ impl MemFs {
         let name = components.last().unwrap().to_string();
         let parent_components = &components[..components.len() - 1];
 
-        let mut root = self.root.write().map_err(|_| FsError::Io("lock poisoned".into()))?;
+        let mut root = self
+            .root
+            .write()
+            .map_err(|_| FsError::Io("lock poisoned".into()))?;
 
         // Navigate to parent
         let mut current = &mut *root;
@@ -332,7 +334,11 @@ struct MemFileHandle {
 
 impl MemFileHandle {
     fn new(root: Arc<RwLock<MemNode>>, path: String, content: Vec<u8>, flags: OpenFlags) -> Self {
-        let position = if flags.append { content.len() as u64 } else { 0 };
+        let position = if flags.append {
+            content.len() as u64
+        } else {
+            0
+        };
         MemFileHandle {
             root,
             path,
@@ -356,7 +362,10 @@ impl MemFileHandle {
         let name = components.last().unwrap().to_string();
         let parent_components = &components[..components.len() - 1];
 
-        let mut root = self.root.write().map_err(|_| FsError::Io("lock poisoned".into()))?;
+        let mut root = self
+            .root
+            .write()
+            .map_err(|_| FsError::Io("lock poisoned".into()))?;
 
         // Navigate to parent
         let mut current = &mut *root;
@@ -389,7 +398,9 @@ impl MemFileHandle {
 impl FileHandle for MemFileHandle {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FsError> {
         if !self.flags.read {
-            return Err(FsError::PermissionDenied("file not opened for reading".into()));
+            return Err(FsError::PermissionDenied(
+                "file not opened for reading".into(),
+            ));
         }
 
         let pos = self.position as usize;
@@ -406,7 +417,9 @@ impl FileHandle for MemFileHandle {
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, FsError> {
         if !self.flags.write {
-            return Err(FsError::PermissionDenied("file not opened for writing".into()));
+            return Err(FsError::PermissionDenied(
+                "file not opened for writing".into(),
+            ));
         }
 
         let pos = self.position as usize;

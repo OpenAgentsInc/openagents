@@ -148,13 +148,7 @@ fn print_tree(node: &taskmaster::DependencyTreeNode, depth: usize) {
     } else {
         String::new()
     };
-    println!(
-        "{}{} {}{}",
-        indent,
-        "→".cyan(),
-        node.id,
-        dep_info
-    );
+    println!("{}{} {}{}", indent, "→".cyan(), node.id, dep_info);
     for child in &node.children {
         print_tree(child, depth + 1);
     }

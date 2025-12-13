@@ -17,7 +17,12 @@ use commands::*;
 #[command(version)]
 struct Cli {
     /// Path to database file
-    #[arg(short, long, env = "TASKMASTER_DB", default_value = ".openagents/taskmaster.db")]
+    #[arg(
+        short,
+        long,
+        env = "TASKMASTER_DB",
+        default_value = ".openagents/taskmaster.db"
+    )]
     db: PathBuf,
 
     /// ID prefix for new issues
@@ -96,7 +101,6 @@ enum Commands {
     /// Show audit events
     Events(EventsArgs),
 }
-
 
 fn main() {
     let cli = Cli::parse();

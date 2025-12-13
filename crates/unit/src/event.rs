@@ -18,29 +18,15 @@ pub enum RuntimeEvent {
         data: Arc<dyn CloneableAny>,
     },
     /// Data was dropped from a pin (consumed)
-    PinDrop {
-        unit_id: String,
-        pin_name: String,
-    },
+    PinDrop { unit_id: String, pin_name: String },
     /// Pin was invalidated
-    PinInvalid {
-        unit_id: String,
-        pin_name: String,
-    },
+    PinInvalid { unit_id: String, pin_name: String },
     /// Unit entered error state
-    UnitError {
-        unit_id: String,
-        error: String,
-    },
+    UnitError { unit_id: String, error: String },
     /// Unit error was cleared
-    UnitErrorCleared {
-        unit_id: String,
-    },
+    UnitErrorCleared { unit_id: String },
     /// Unit lifecycle changed
-    LifecycleChanged {
-        unit_id: String,
-        playing: bool,
-    },
+    LifecycleChanged { unit_id: String, playing: bool },
     /// Connection was established
     Connected {
         source_unit: String,
@@ -56,13 +42,9 @@ pub enum RuntimeEvent {
         target_pin: String,
     },
     /// Unit was added to graph
-    UnitAdded {
-        unit_id: String,
-    },
+    UnitAdded { unit_id: String },
     /// Unit was removed from graph
-    UnitRemoved {
-        unit_id: String,
-    },
+    UnitRemoved { unit_id: String },
 }
 
 impl RuntimeEvent {

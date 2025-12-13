@@ -23,42 +23,23 @@
 //! let graph = graph_from_spec(&spec, &registry)?;
 //! ```
 
-mod types;
-mod stringify;
 mod from_spec;
+mod stringify;
+mod types;
 
 // Re-export types
 pub use types::{
-    BundleSpec,
-    ExposureSpec,
-    GraphSpec,
-    MergePlugSpec,
-    MergeSpec,
-    PinSpec,
-    PositionSpec,
-    UnitSpec,
+    BundleSpec, ExposureSpec, GraphSpec, MergePlugSpec, MergeSpec, PinSpec, PositionSpec, UnitSpec,
 };
 
 // Re-export stringify functions
 pub use stringify::{
-    bundle_to_json,
-    graph_to_bundle,
-    graph_to_json,
-    graph_to_spec,
-    merge_to_spec,
-    pin_to_spec,
+    bundle_to_json, graph_to_bundle, graph_to_json, graph_to_spec, merge_to_spec, pin_to_spec,
     unit_to_spec,
 };
 
 // Re-export from_spec functions
 pub use from_spec::{
-    FromSpecError,
-    UnitFactory,
-    UnitRegistry,
-    graph_from_bundle,
-    graph_from_bundle_json,
-    graph_from_json,
-    graph_from_spec,
-    merge_from_spec,
-    unit_from_spec,
+    FromSpecError, UnitFactory, UnitRegistry, graph_from_bundle, graph_from_bundle_json,
+    graph_from_json, graph_from_spec, merge_from_spec, unit_from_spec,
 };

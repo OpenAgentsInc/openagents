@@ -319,7 +319,9 @@ async fn test_full_e2e_flow() {
                 // Using a known public channel ID (this is a test channel)
                 let join_result = timeout(
                     Duration::from_secs(5),
-                    state.join_channel("25e5c82273a271cb1a840d0060391a0bf4965cafeb029d5ab55350b418953fbb"),
+                    state.join_channel(
+                        "25e5c82273a271cb1a840d0060391a0bf4965cafeb029d5ab55350b418953fbb",
+                    ),
                 )
                 .await;
 

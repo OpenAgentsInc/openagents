@@ -88,13 +88,18 @@ impl Filter {
     }
 
     /// Add a tag filter.
-    pub fn tag(mut self, tag_name: &str, values: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn tag(
+        mut self,
+        tag_name: &str,
+        values: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         let key = if tag_name.starts_with('#') {
             tag_name.to_string()
         } else {
             format!("#{}", tag_name)
         };
-        self.tags.insert(key, values.into_iter().map(|s| s.into()).collect());
+        self.tags
+            .insert(key, values.into_iter().map(|s| s.into()).collect());
         self
     }
 

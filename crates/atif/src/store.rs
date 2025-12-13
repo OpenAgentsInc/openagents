@@ -18,7 +18,7 @@
 //! ```
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -345,7 +345,11 @@ impl TrajectoryStore {
                     _ => StepSource::System,
                 };
 
-                let timestamp = row.1.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+                let timestamp = row.1.and_then(|s| {
+                    DateTime::parse_from_rfc3339(&s)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&Utc))
+                });
                 let reasoning_effort = row.5.and_then(|s| serde_json::from_str(&s).ok());
                 let tool_calls = row.7.and_then(|s| serde_json::from_str(&s).ok());
                 let observation = row.8.and_then(|s| serde_json::from_str(&s).ok());
@@ -372,9 +376,7 @@ impl TrajectoryStore {
             .map(|s| serde_json::from_str(&s))
             .transpose()?;
 
-        let extra = extra_json
-            .map(|s| serde_json::from_str(&s))
-            .transpose()?;
+        let extra = extra_json.map(|s| serde_json::from_str(&s)).transpose()?;
 
         Ok(Trajectory {
             schema_version: "ATIF-v1.4".to_string(),
@@ -401,7 +403,11 @@ impl TrajectoryStore {
     }
 
     /// List trajectories with pagination
-    pub fn list_trajectories(&self, limit: usize, offset: usize) -> Result<Vec<TrajectoryMetadata>> {
+    pub fn list_trajectories(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<TrajectoryMetadata>> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT session_id, agent_name, agent_version, model_name, created_at, completed_at, status, total_steps
@@ -502,7 +508,11 @@ impl TrajectoryStore {
     }
 
     /// Search trajectories by agent name
-    pub fn search_by_agent(&self, agent_name: &str, limit: usize) -> Result<Vec<TrajectoryMetadata>> {
+    pub fn search_by_agent(
+        &self,
+        agent_name: &str,
+        limit: usize,
+    ) -> Result<Vec<TrajectoryMetadata>> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT session_id, agent_name, agent_version, model_name, created_at, completed_at, status, total_steps
@@ -592,8 +602,14 @@ mod tests {
         assert_eq!(trajectory.steps[0].message, "Hello, world!");
         assert_eq!(trajectory.steps[1].message, "Hello! How can I help you?");
         // Verify timestamps are stored and retrieved
-        assert!(trajectory.steps[0].timestamp.is_some(), "User step should have timestamp");
-        assert!(trajectory.steps[1].timestamp.is_some(), "Agent step should have timestamp");
+        assert!(
+            trajectory.steps[0].timestamp.is_some(),
+            "User step should have timestamp"
+        );
+        assert!(
+            trajectory.steps[1].timestamp.is_some(),
+            "Agent step should have timestamp"
+        );
     }
 
     #[test]
@@ -641,7 +657,9 @@ mod tests {
             extra: None,
         };
 
-        store.complete_trajectory(&session_id, Some(&metrics)).unwrap();
+        store
+            .complete_trajectory(&session_id, Some(&metrics))
+            .unwrap();
 
         let list = store.list_trajectories(10, 0).unwrap();
         assert_eq!(list[0].status, TrajectoryStatus::Completed);

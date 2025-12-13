@@ -220,7 +220,9 @@ impl JobInput {
     /// Parse from tag array.
     pub fn from_tag(tag: &[String]) -> Result<Self, Nip90Error> {
         if tag.len() < 3 || tag[0] != "i" {
-            return Err(Nip90Error::MissingTag("i tag requires at least 3 elements".to_string()));
+            return Err(Nip90Error::MissingTag(
+                "i tag requires at least 3 elements".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -257,7 +259,9 @@ impl JobParam {
     /// Parse from tag array.
     pub fn from_tag(tag: &[String]) -> Result<Self, Nip90Error> {
         if tag.len() < 3 || tag[0] != "param" {
-            return Err(Nip90Error::MissingTag("param tag requires 3 elements".to_string()));
+            return Err(Nip90Error::MissingTag(
+                "param tag requires 3 elements".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -485,7 +489,10 @@ impl JobResult {
         content: impl Into<String>,
     ) -> Result<Self, Nip90Error> {
         if !is_job_request_kind(request_kind) {
-            return Err(Nip90Error::InvalidKind(request_kind, "5000-5999".to_string()));
+            return Err(Nip90Error::InvalidKind(
+                request_kind,
+                "5000-5999".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -827,8 +834,14 @@ mod tests {
 
     #[test]
     fn test_job_status_from_str() {
-        assert_eq!(JobStatus::from_str("payment-required").unwrap(), JobStatus::PaymentRequired);
-        assert_eq!(JobStatus::from_str("processing").unwrap(), JobStatus::Processing);
+        assert_eq!(
+            JobStatus::from_str("payment-required").unwrap(),
+            JobStatus::PaymentRequired
+        );
+        assert_eq!(
+            JobStatus::from_str("processing").unwrap(),
+            JobStatus::Processing
+        );
         assert_eq!(JobStatus::from_str("error").unwrap(), JobStatus::Error);
         assert_eq!(JobStatus::from_str("success").unwrap(), JobStatus::Success);
         assert_eq!(JobStatus::from_str("partial").unwrap(), JobStatus::Partial);
@@ -884,8 +897,7 @@ mod tests {
         let tag = input.to_tag();
         assert_eq!(tag, vec!["i", "Hello", "text"]);
 
-        let input = JobInput::url("https://example.com")
-            .with_marker("audio");
+        let input = JobInput::url("https://example.com").with_marker("audio");
         let tag = input.to_tag();
         assert_eq!(tag, vec!["i", "https://example.com", "url", "", "audio"]);
 
@@ -935,7 +947,11 @@ mod tests {
 
     #[test]
     fn test_job_param_from_tag() {
-        let tag = vec!["param".to_string(), "max_tokens".to_string(), "512".to_string()];
+        let tag = vec![
+            "param".to_string(),
+            "max_tokens".to_string(),
+            "512".to_string(),
+        ];
         let param = JobParam::from_tag(&tag).unwrap();
         assert_eq!(param.key, "max_tokens");
         assert_eq!(param.value, "512");
@@ -1002,11 +1018,23 @@ mod tests {
 
         let tags = request.to_tags();
 
-        assert!(tags.iter().any(|t| t[0] == "i" && t[1] == "Hello" && t[2] == "text"));
-        assert!(tags.iter().any(|t| t[0] == "output" && t[1] == "text/plain"));
-        assert!(tags.iter().any(|t| t[0] == "param" && t[1] == "lang" && t[2] == "es"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "i" && t[1] == "Hello" && t[2] == "text")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "output" && t[1] == "text/plain")
+        );
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "param" && t[1] == "lang" && t[2] == "es")
+        );
         assert!(tags.iter().any(|t| t[0] == "bid" && t[1] == "5000"));
-        assert!(tags.iter().any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string())));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "relays" && t.contains(&"wss://relay1.com".to_string()))
+        );
     }
 
     // =========================================================================
@@ -1015,8 +1043,8 @@ mod tests {
 
     #[test]
     fn test_job_result_new() {
-        let result = JobResult::new(5001, "request123", "customer456", "The capital is Paris.")
-            .unwrap();
+        let result =
+            JobResult::new(5001, "request123", "customer456", "The capital is Paris.").unwrap();
 
         assert_eq!(result.kind, 6001);
         assert_eq!(result.request_id, "request123");
@@ -1051,7 +1079,10 @@ mod tests {
         let tags = result.to_tags();
 
         assert!(tags.iter().any(|t| t[0] == "request"));
-        assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "e" && t[1] == "req123" && t[2] == "wss://relay.com")
+        );
         assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "cust456"));
         assert!(tags.iter().any(|t| t[0] == "amount" && t[1] == "1000"));
     }
@@ -1076,7 +1107,10 @@ mod tests {
             .with_request_relay("wss://relay.com")
             .with_amount(5000, Some("lnbc...".to_string()));
 
-        assert_eq!(feedback.status_extra, Some("Please pay to continue".to_string()));
+        assert_eq!(
+            feedback.status_extra,
+            Some("Please pay to continue".to_string())
+        );
         assert_eq!(feedback.request_relay, Some("wss://relay.com".to_string()));
         assert_eq!(feedback.amount, Some(5000));
         assert_eq!(feedback.bolt11, Some("lnbc...".to_string()));
@@ -1099,7 +1133,10 @@ mod tests {
 
         let tags = feedback.to_tags();
 
-        assert!(tags.iter().any(|t| t[0] == "status" && t[1] == "error" && t[2] == "Out of credits"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "status" && t[1] == "error" && t[2] == "Out of credits")
+        );
         assert!(tags.iter().any(|t| t[0] == "e" && t[1] == "req123"));
         assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "cust456"));
     }
@@ -1151,7 +1188,10 @@ mod tests {
         // Job 2: Summarization (uses output of job 1)
         let job2 = JobRequest::new(KIND_JOB_SUMMARIZATION)
             .unwrap()
-            .add_input(JobInput::job("job1_event_id", Some("wss://relay.com".to_string())));
+            .add_input(JobInput::job(
+                "job1_event_id",
+                Some("wss://relay.com".to_string()),
+            ));
 
         assert_eq!(job1.kind, 5250);
         assert_eq!(job2.kind, 5001);

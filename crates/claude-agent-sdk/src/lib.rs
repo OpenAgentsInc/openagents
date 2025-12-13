@@ -89,19 +89,20 @@ pub use options::{
     RipgrepConfig, SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig,
 };
 pub use permissions::{
-    permission_handler, AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions,
-    PermissionHandler, PermissionRequest, PermissionRules, RulesPermissionHandler,
+    AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions, PermissionHandler,
+    PermissionRequest, PermissionRules, RulesPermissionHandler, permission_handler,
 };
 pub use protocol::{
-    AccountInfo, AssistantMessageError, KeepAliveMessage, ModelInfo, ModelUsage, PermissionBehavior,
-    PermissionDenial, PermissionMode, PermissionResult, PermissionRule, PermissionUpdate,
-    ResultError, ResultSuccess, SdkAssistantMessage, SdkAuthStatusMessage, SdkControlRequest,
-    SdkControlResponse, SdkMessage, SdkResultMessage, SdkStreamEvent, SdkSystemMessage,
-    SdkToolProgressMessage, SdkUserMessage, SlashCommand, StdinMessage, StdoutMessage, Usage,
+    AccountInfo, AssistantMessageError, KeepAliveMessage, ModelInfo, ModelUsage,
+    PermissionBehavior, PermissionDenial, PermissionMode, PermissionResult, PermissionRule,
+    PermissionUpdate, ResultError, ResultSuccess, SdkAssistantMessage, SdkAuthStatusMessage,
+    SdkControlRequest, SdkControlResponse, SdkMessage, SdkResultMessage, SdkStreamEvent,
+    SdkSystemMessage, SdkToolProgressMessage, SdkUserMessage, SlashCommand, StdinMessage,
+    StdoutMessage, Usage,
 };
 pub use query::Query;
 pub use session::{
-    unstable_v2_create_session, unstable_v2_prompt, unstable_v2_resume_session, Session,
+    Session, unstable_v2_create_session, unstable_v2_prompt, unstable_v2_resume_session,
 };
 pub use transport::{ExecutableConfig, ProcessTransport};
 
@@ -208,7 +209,10 @@ mod tests {
             .max_budget_usd(5.0)
             .include_partial_messages(true);
 
-        assert_eq!(options.model, Some("claude-sonnet-4-5-20250929".to_string()));
+        assert_eq!(
+            options.model,
+            Some("claude-sonnet-4-5-20250929".to_string())
+        );
         assert_eq!(options.max_turns, Some(10));
         assert_eq!(options.max_budget_usd, Some(5.0));
         assert!(options.include_partial_messages);
@@ -228,7 +232,9 @@ mod tests {
         }
 
         match deny {
-            PermissionResult::Deny { message, interrupt, .. } => {
+            PermissionResult::Deny {
+                message, interrupt, ..
+            } => {
                 assert_eq!(message, "Not allowed");
                 assert!(interrupt.is_none());
             }
@@ -236,7 +242,9 @@ mod tests {
         }
 
         match deny_interrupt {
-            PermissionResult::Deny { message, interrupt, .. } => {
+            PermissionResult::Deny {
+                message, interrupt, ..
+            } => {
                 assert_eq!(message, "Stop everything");
                 assert_eq!(interrupt, Some(true));
             }

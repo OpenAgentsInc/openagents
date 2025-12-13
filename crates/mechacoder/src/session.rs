@@ -3,7 +3,7 @@
 //! Handles streaming messages from the Claude Agent SDK and converting
 //! them to ServerMessage types for WebSocket delivery.
 
-use claude_agent_sdk::{query, QueryOptions, SdkMessage};
+use claude_agent_sdk::{QueryOptions, SdkMessage, query};
 use futures::StreamExt;
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -16,7 +16,10 @@ pub async fn run_claude_session(
     cwd: String,
     tx: mpsc::UnboundedSender<ServerMessage>,
 ) {
-    eprintln!("[mechacoder] Starting Claude session with message: {}", message);
+    eprintln!(
+        "[mechacoder] Starting Claude session with message: {}",
+        message
+    );
 
     let options = QueryOptions::new()
         .cwd(&cwd)
@@ -39,11 +42,20 @@ pub async fn run_claude_session(
     while let Some(result) = stream.next().await {
         match result {
             Ok(msg) => {
-                eprintln!("[mechacoder] Received SDK message: {:?}", std::mem::discriminant(&msg));
+                eprintln!(
+                    "[mechacoder] Received SDK message: {:?}",
+                    std::mem::discriminant(&msg)
+                );
                 let messages = process_sdk_message(msg);
-                eprintln!("[mechacoder] Processed into {} ServerMessages", messages.len());
+                eprintln!(
+                    "[mechacoder] Processed into {} ServerMessages",
+                    messages.len()
+                );
                 for server_msg in messages {
-                    eprintln!("[mechacoder] Sending: {:?}", std::mem::discriminant(&server_msg));
+                    eprintln!(
+                        "[mechacoder] Sending: {:?}",
+                        std::mem::discriminant(&server_msg)
+                    );
                     if tx.send(server_msg).is_err() {
                         eprintln!("[mechacoder] Channel closed!");
                         return;
@@ -171,11 +183,7 @@ fn process_stream_event(event: &Value) -> Option<Vec<ServerMessage>> {
         _ => {}
     }
 
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 /// Process an assistant message into ServerMessages.
@@ -214,7 +222,10 @@ fn process_assistant_message(message: &Value) -> Option<Vec<ServerMessage>> {
             }
             "tool_result" => {
                 let tool_use_id = block.get("tool_use_id")?.as_str()?.to_string();
-                let is_error = block.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                let is_error = block
+                    .get("is_error")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false);
 
                 let output = if let Some(content) = block.get("content") {
                     if let Some(text) = content.as_str() {
@@ -247,9 +258,5 @@ fn process_assistant_message(message: &Value) -> Option<Vec<ServerMessage>> {
         }
     }
 
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }

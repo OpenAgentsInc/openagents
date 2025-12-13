@@ -6,10 +6,10 @@
 //! - Switch: Multi-way routing
 //! - Gate: Enable/disable data flow
 
-use crate::primitive::PrimitiveState;
-use crate::unit::Unit;
 use crate::Lifecycle;
+use crate::primitive::PrimitiveState;
 use crate::primitive_unit_boilerplate;
+use crate::unit::Unit;
 use std::any::Any;
 
 /// Identity unit - passes input directly to output
@@ -53,7 +53,11 @@ impl Unit for Identity {
             return Err(e);
         }
 
-        if let Some(x) = self.primitive.input::<f64>("x").and_then(|p| p.peak().copied()) {
+        if let Some(x) = self
+            .primitive
+            .input::<f64>("x")
+            .and_then(|p| p.peak().copied())
+        {
             if let Some(out) = self.primitive.output_mut::<f64>("result") {
                 let _ = out.push(x);
             }
@@ -115,8 +119,12 @@ impl Unit for If {
         }
 
         if let (Some(cond), Some(value)) = (
-            self.primitive.input::<bool>("condition").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("value").and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<bool>("condition")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("value")
+                .and_then(|p| p.peak().copied()),
         ) {
             if cond {
                 if let Some(out) = self.primitive.output_mut::<f64>("then") {
@@ -183,8 +191,12 @@ impl Unit for Gate {
         }
 
         if let (Some(enabled), Some(value)) = (
-            self.primitive.input::<bool>("enable").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("value").and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<bool>("enable")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("value")
+                .and_then(|p| p.peak().copied()),
         ) {
             if enabled {
                 if let Some(out) = self.primitive.output_mut::<f64>("result") {
@@ -248,9 +260,15 @@ impl Unit for Select {
         }
 
         if let (Some(cond), Some(a), Some(b)) = (
-            self.primitive.input::<bool>("condition").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("a").and_then(|p| p.peak().copied()),
-            self.primitive.input::<f64>("b").and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<bool>("condition")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("a")
+                .and_then(|p| p.peak().copied()),
+            self.primitive
+                .input::<f64>("b")
+                .and_then(|p| p.peak().copied()),
         ) {
             let result = if cond { a } else { b };
             if let Some(out) = self.primitive.output_mut::<f64>("result") {
@@ -349,7 +367,11 @@ mod tests {
         sel.push_input("a", Box::new(10.0f64)).unwrap();
         sel.push_input("b", Box::new(20.0f64)).unwrap();
 
-        let result = sel.take_output("result").unwrap().downcast::<f64>().unwrap();
+        let result = sel
+            .take_output("result")
+            .unwrap()
+            .downcast::<f64>()
+            .unwrap();
         assert_eq!(*result, 10.0);
     }
 
@@ -362,7 +384,11 @@ mod tests {
         sel.push_input("a", Box::new(10.0f64)).unwrap();
         sel.push_input("b", Box::new(20.0f64)).unwrap();
 
-        let result = sel.take_output("result").unwrap().downcast::<f64>().unwrap();
+        let result = sel
+            .take_output("result")
+            .unwrap()
+            .downcast::<f64>()
+            .unwrap();
         assert_eq!(*result, 20.0);
     }
 }

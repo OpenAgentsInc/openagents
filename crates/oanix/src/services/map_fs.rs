@@ -185,12 +185,10 @@ impl FileService for MapFs {
         let node = self.get_node(path)?;
 
         match node {
-            MapNode::File { content } => {
-                Ok(Box::new(MapFileHandle {
-                    content: content.clone(),
-                    position: 0,
-                }))
-            }
+            MapNode::File { content } => Ok(Box::new(MapFileHandle {
+                content: content.clone(),
+                position: 0,
+            })),
             MapNode::Dir { .. } => Err(FsError::NotAFile(path.to_string())),
         }
     }
@@ -319,7 +317,9 @@ mod tests {
         assert_eq!(docs_entries.len(), 2); // readme.md and notes/
 
         // Read nested file
-        let mut handle = fs.open("/docs/notes/todo.txt", OpenFlags::read_only()).unwrap();
+        let mut handle = fs
+            .open("/docs/notes/todo.txt", OpenFlags::read_only())
+            .unwrap();
         let mut buf = [0u8; 32];
         let n = handle.read(&mut buf).unwrap();
         assert_eq!(&buf[..n], b"TODO list");
@@ -327,20 +327,21 @@ mod tests {
 
     #[test]
     fn test_write_fails() {
-        let fs = MapFs::builder()
-            .file("/test.txt", b"content")
-            .build();
+        let fs = MapFs::builder().file("/test.txt", b"content").build();
 
         // Try to open for writing
         let result = fs.open("/test.txt", OpenFlags::write_only());
         assert!(result.is_err());
 
         // Try to create
-        let result = fs.open("/new.txt", OpenFlags {
-            write: true,
-            create: true,
-            ..Default::default()
-        });
+        let result = fs.open(
+            "/new.txt",
+            OpenFlags {
+                write: true,
+                create: true,
+                ..Default::default()
+            },
+        );
         assert!(result.is_err());
 
         // Try mkdir
@@ -369,9 +370,7 @@ mod tests {
 
     #[test]
     fn test_seek() {
-        let fs = MapFs::builder()
-            .file("/test.txt", b"0123456789")
-            .build();
+        let fs = MapFs::builder().file("/test.txt", b"0123456789").build();
 
         let mut handle = fs.open("/test.txt", OpenFlags::read_only()).unwrap();
 

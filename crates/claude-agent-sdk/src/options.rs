@@ -215,11 +215,17 @@ pub struct SandboxSettings {
     pub enabled: Option<bool>,
 
     /// Auto-allow bash if sandboxed.
-    #[serde(rename = "autoAllowBashIfSandboxed", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "autoAllowBashIfSandboxed",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub auto_allow_bash_if_sandboxed: Option<bool>,
 
     /// Allow unsandboxed commands.
-    #[serde(rename = "allowUnsandboxedCommands", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "allowUnsandboxedCommands",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub allow_unsandboxed_commands: Option<bool>,
 
     /// Network configuration.
@@ -231,7 +237,10 @@ pub struct SandboxSettings {
     pub ignore_violations: Option<HashMap<String, Vec<String>>>,
 
     /// Enable weaker nested sandbox.
-    #[serde(rename = "enableWeakerNestedSandbox", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "enableWeakerNestedSandbox",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub enable_weaker_nested_sandbox: Option<bool>,
 
     /// Commands excluded from sandboxing.
@@ -265,7 +274,10 @@ pub struct SandboxNetworkConfig {
     pub allow_unix_sockets: Option<Vec<String>>,
 
     /// Allow all Unix sockets.
-    #[serde(rename = "allowAllUnixSockets", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "allowAllUnixSockets",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub allow_all_unix_sockets: Option<bool>,
 
     /// Allowed network domains.

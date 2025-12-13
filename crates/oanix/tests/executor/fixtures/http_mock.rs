@@ -106,7 +106,11 @@ impl HttpMockServer {
 
     /// Get the number of requests received
     pub async fn received_requests(&self) -> usize {
-        self.server.received_requests().await.unwrap_or_default().len()
+        self.server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .len()
     }
 }
 

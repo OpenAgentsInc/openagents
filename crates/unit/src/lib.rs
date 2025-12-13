@@ -26,36 +26,39 @@
 //! assert!(pin.is_empty());
 //! ```
 
-mod pin;
 mod any_pin;
 mod cloneable_any;
-mod unit;
-mod primitive;
-mod functional;
-mod merge;
-mod graph;
-pub mod spec;
-mod geometry;
-mod physics;
 mod error;
 mod event;
+mod functional;
+mod geometry;
+mod graph;
+mod merge;
+mod physics;
+mod pin;
+mod primitive;
 mod scheduler;
-mod value;
+pub mod spec;
 pub mod system;
+mod unit;
+mod value;
 
-pub use pin::{Pin, PinOpt, PinState, PinEvent, PinSnapshot};
 pub use any_pin::{AnyPin, PinTypeError};
-pub use cloneable_any::{CloneableAny, downcast, downcast_ref, downcast_mut};
-pub use unit::{Unit, Lifecycle, UnitEvent, IO};
-pub use primitive::{Primitive, PrimitiveState};
+pub use cloneable_any::{CloneableAny, downcast, downcast_mut, downcast_ref};
+pub use error::{ConnectionError, GraphError, PinError, UnitError, UnitResult};
+pub use event::{EventBus, EventHandler, RuntimeEvent};
 pub use functional::Functional;
-pub use merge::{Merge, MergeBuilder, MergeSpec, MergePlug};
+pub use geometry::{Point, Shape, Thing, point_in_node, surface_distance};
 pub use graph::{Graph, PinExposure};
+pub use merge::{Merge, MergeBuilder, MergePlug, MergeSpec};
+pub use physics::{
+    SimConnection, SimNode, SimulationConfig, apply_forces, cool, integrate, reheat,
+    run_until_settled, should_stop, tick,
+};
+pub use pin::{Pin, PinEvent, PinOpt, PinSnapshot, PinState};
+pub use primitive::{Primitive, PrimitiveState};
+pub use scheduler::{EventScheduler, SchedulerBuilder, SchedulerMode, SchedulerStats};
 pub use spec::GraphSpec;
-pub use geometry::{Point, Shape, Thing, surface_distance, point_in_node};
-pub use physics::{SimNode, SimConnection, SimulationConfig, apply_forces, integrate, should_stop, cool, reheat, tick, run_until_settled};
-pub use error::{UnitError, PinError, ConnectionError, GraphError, UnitResult};
-pub use event::{RuntimeEvent, EventBus, EventHandler};
-pub use scheduler::{EventScheduler, SchedulerMode, SchedulerStats, SchedulerBuilder};
-pub use value::Value;
 pub use system::{register_system_units, system_registry};
+pub use unit::{IO, Lifecycle, Unit, UnitEvent};
+pub use value::Value;

@@ -9,10 +9,16 @@ use std::path::PathBuf;
 pub enum ExecutionEnvironment {
     #[default]
     Local,
-    Cloud { provider: CloudProvider },
+    Cloud {
+        provider: CloudProvider,
+    },
     Swarm,
-    Hybrid { prefer: ExecutionPreference },
-    Oanix { namespace: OanixNamespace },
+    Hybrid {
+        prefer: ExecutionPreference,
+    },
+    Oanix {
+        namespace: OanixNamespace,
+    },
 }
 
 impl ExecutionEnvironment {
@@ -20,7 +26,10 @@ impl ExecutionEnvironment {
         match (self, other) {
             (ExecutionEnvironment::Local, ExecutionEnvironment::Local) => true,
             (ExecutionEnvironment::Local, ExecutionEnvironment::Hybrid { .. }) => true,
-            (ExecutionEnvironment::Cloud { provider: p1 }, ExecutionEnvironment::Cloud { provider: p2 }) => p1 == p2,
+            (
+                ExecutionEnvironment::Cloud { provider: p1 },
+                ExecutionEnvironment::Cloud { provider: p2 },
+            ) => p1 == p2,
             (ExecutionEnvironment::Cloud { .. }, ExecutionEnvironment::Hybrid { .. }) => true,
             (ExecutionEnvironment::Swarm, ExecutionEnvironment::Swarm) => true,
             (ExecutionEnvironment::Swarm, ExecutionEnvironment::Hybrid { .. }) => true,
@@ -86,8 +95,12 @@ pub struct AgentRequirements {
 }
 
 impl AgentRequirements {
-    pub fn new() -> Self { Self::default() }
-    pub fn builder() -> AgentRequirementsBuilder { AgentRequirementsBuilder::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn builder() -> AgentRequirementsBuilder {
+        AgentRequirementsBuilder::default()
+    }
 }
 
 #[derive(Default)]
@@ -100,7 +113,9 @@ impl AgentRequirementsBuilder {
         self.requirements.environment = env;
         self
     }
-    pub fn build(self) -> AgentRequirements { self.requirements }
+    pub fn build(self) -> AgentRequirements {
+        self.requirements
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -126,10 +141,14 @@ pub struct ResourceRequirements {
 impl ResourceRequirements {
     pub fn satisfied_by(&self, available: &AvailableResources) -> bool {
         if let Some(min_mem) = self.min_memory {
-            if available.memory < min_mem { return false; }
+            if available.memory < min_mem {
+                return false;
+            }
         }
         if let Some(disk_req) = self.disk_space {
-            if available.disk_space < disk_req { return false; }
+            if available.disk_space < disk_req {
+                return false;
+            }
         }
         true
     }
@@ -211,18 +230,28 @@ impl ModelRequirement {
     pub fn satisfied_by(&self, model: &AvailableModel) -> bool {
         if self.model.ends_with('*') {
             let prefix = &self.model[..self.model.len() - 1];
-            if !model.name.starts_with(prefix) { return false; }
+            if !model.name.starts_with(prefix) {
+                return false;
+            }
         } else if self.model != model.name {
             return false;
         }
         if let Some(required_provider) = &self.provider {
-            if model.provider.as_ref() != Some(required_provider) { return false; }
+            if model.provider.as_ref() != Some(required_provider) {
+                return false;
+            }
         }
         if let Some(min_ctx) = self.min_context_length {
-            if model.context_length.unwrap_or(0) < min_ctx { return false; }
+            if model.context_length.unwrap_or(0) < min_ctx {
+                return false;
+            }
         }
-        if self.requires_vision && !model.supports_vision { return false; }
-        if self.requires_tools && !model.supports_tools { return false; }
+        if self.requires_vision && !model.supports_vision {
+            return false;
+        }
+        if self.requires_tools && !model.supports_tools {
+            return false;
+        }
         true
     }
 }

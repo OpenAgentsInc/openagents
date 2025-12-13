@@ -1,6 +1,8 @@
 //! Agent manifest - declarative agent definition.
 
-use super::{AgentCapabilities, AgentEconomics, AgentId, AgentIdError, AgentKeypair, AgentRequirements};
+use super::{
+    AgentCapabilities, AgentEconomics, AgentId, AgentIdError, AgentKeypair, AgentRequirements,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -114,14 +116,21 @@ impl AgentManifest {
 
     pub fn verify_signature(&self) -> Result<bool, ManifestError> {
         let Some(id) = &self.id else {
-            return Err(ManifestError::SignatureVerification("manifest has no ID".to_string()));
+            return Err(ManifestError::SignatureVerification(
+                "manifest has no ID".to_string(),
+            ));
         };
         let Some(sig_hex) = &self.signature else {
-            return Err(ManifestError::SignatureVerification("manifest has no signature".to_string()));
+            return Err(ManifestError::SignatureVerification(
+                "manifest has no signature".to_string(),
+            ));
         };
-        let sig_bytes = hex::decode(sig_hex).map_err(|e| ManifestError::SignatureVerification(e.to_string()))?;
+        let sig_bytes = hex::decode(sig_hex)
+            .map_err(|e| ManifestError::SignatureVerification(e.to_string()))?;
         if sig_bytes.len() != 64 {
-            return Err(ManifestError::SignatureVerification("invalid signature length".to_string()));
+            return Err(ManifestError::SignatureVerification(
+                "invalid signature length".to_string(),
+            ));
         }
         let mut signature = [0u8; 64];
         signature.copy_from_slice(&sig_bytes);
@@ -251,7 +260,12 @@ pub struct AgentAuthor {
 
 impl AgentAuthor {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), npub: None, email: None, url: None }
+        Self {
+            name: name.into(),
+            npub: None,
+            email: None,
+            url: None,
+        }
     }
     pub fn with_npub(mut self, npub: impl Into<String>) -> Self {
         self.npub = Some(npub.into());
@@ -302,8 +316,13 @@ mod tests {
     fn test_manifest_signing() {
         let keypair = AgentKeypair::from_mnemonic(
             "leader monkey parrot ring guide accident before fence cannon height naive bean",
-        ).unwrap();
-        let mut manifest = AgentManifest::builder().name("agent").version("1.0.0").build().unwrap();
+        )
+        .unwrap();
+        let mut manifest = AgentManifest::builder()
+            .name("agent")
+            .version("1.0.0")
+            .build()
+            .unwrap();
         manifest.sign(&keypair).unwrap();
         assert!(manifest.is_signed());
         assert!(manifest.verify_signature().unwrap());

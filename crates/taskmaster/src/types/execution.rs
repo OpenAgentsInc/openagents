@@ -323,19 +323,43 @@ mod tests {
 
     #[test]
     fn test_execution_mode_parse() {
-        assert_eq!(ExecutionMode::from_str("none").unwrap(), ExecutionMode::None);
-        assert_eq!(ExecutionMode::from_str("local").unwrap(), ExecutionMode::Local);
-        assert_eq!(ExecutionMode::from_str("container").unwrap(), ExecutionMode::Container);
-        assert_eq!(ExecutionMode::from_str("CONTAINER").unwrap(), ExecutionMode::Container);
+        assert_eq!(
+            ExecutionMode::from_str("none").unwrap(),
+            ExecutionMode::None
+        );
+        assert_eq!(
+            ExecutionMode::from_str("local").unwrap(),
+            ExecutionMode::Local
+        );
+        assert_eq!(
+            ExecutionMode::from_str("container").unwrap(),
+            ExecutionMode::Container
+        );
+        assert_eq!(
+            ExecutionMode::from_str("CONTAINER").unwrap(),
+            ExecutionMode::Container
+        );
         assert!(ExecutionMode::from_str("invalid").is_err());
     }
 
     #[test]
     fn test_execution_state_parse() {
-        assert_eq!(ExecutionState::from_str("unscheduled").unwrap(), ExecutionState::Unscheduled);
-        assert_eq!(ExecutionState::from_str("running").unwrap(), ExecutionState::Running);
-        assert_eq!(ExecutionState::from_str("cancelled").unwrap(), ExecutionState::Cancelled);
-        assert_eq!(ExecutionState::from_str("canceled").unwrap(), ExecutionState::Cancelled);
+        assert_eq!(
+            ExecutionState::from_str("unscheduled").unwrap(),
+            ExecutionState::Unscheduled
+        );
+        assert_eq!(
+            ExecutionState::from_str("running").unwrap(),
+            ExecutionState::Running
+        );
+        assert_eq!(
+            ExecutionState::from_str("cancelled").unwrap(),
+            ExecutionState::Cancelled
+        );
+        assert_eq!(
+            ExecutionState::from_str("canceled").unwrap(),
+            ExecutionState::Cancelled
+        );
         assert!(ExecutionState::from_str("invalid").is_err());
     }
 

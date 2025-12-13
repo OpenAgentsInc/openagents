@@ -129,9 +129,12 @@ mod tests {
             msg_type: ControlResponseType::ControlResponse,
             response: ControlResponseData::Success {
                 request_id: "req-123".to_string(),
-                response: Some(serde_json::to_value(PermissionResult::allow(json!({
-                    "command": "ls -la"
-                }))).unwrap()),
+                response: Some(
+                    serde_json::to_value(PermissionResult::allow(json!({
+                        "command": "ls -la"
+                    })))
+                    .unwrap(),
+                ),
             },
         };
 
@@ -147,7 +150,9 @@ mod tests {
             msg_type: ControlResponseType::ControlResponse,
             response: ControlResponseData::Success {
                 request_id: "req-123".to_string(),
-                response: Some(serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap()),
+                response: Some(
+                    serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap(),
+                ),
             },
         };
 
@@ -300,7 +305,8 @@ mod tests {
             }
         });
 
-        let msg: SdkMessage = serde_json::from_value(json).expect("Failed to parse user message with tool result");
+        let msg: SdkMessage =
+            serde_json::from_value(json).expect("Failed to parse user message with tool result");
         match msg {
             SdkMessage::User(user_msg) => {
                 assert_eq!(user_msg.session_id, "5a7cf025-e061-47ee-be41-fed629978594");
@@ -333,12 +339,16 @@ mod tests {
             "uuid": "uuid-123"
         });
 
-        let stdout_msg: StdoutMessage = serde_json::from_value(json).expect("Failed to parse user message via StdoutMessage");
+        let stdout_msg: StdoutMessage =
+            serde_json::from_value(json).expect("Failed to parse user message via StdoutMessage");
         match stdout_msg {
             StdoutMessage::Message(SdkMessage::User(_)) => {
                 // Success!
             }
-            _ => panic!("Expected StdoutMessage::Message(SdkMessage::User), got {:?}", stdout_msg),
+            _ => panic!(
+                "Expected StdoutMessage::Message(SdkMessage::User), got {:?}",
+                stdout_msg
+            ),
         }
     }
 

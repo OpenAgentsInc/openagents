@@ -2,8 +2,10 @@
 
 use clap::Args;
 use colored::Colorize;
-use tabled::{settings::Style, Table, Tabled};
-use taskmaster::{AssigneeFilter, IssueFilter, IssueRepository, IssueStatus, Priority, Result, SortPolicy};
+use tabled::{Table, Tabled, settings::Style};
+use taskmaster::{
+    AssigneeFilter, IssueFilter, IssueRepository, IssueStatus, Priority, Result, SortPolicy,
+};
 
 #[derive(Args)]
 pub struct ListArgs {
@@ -84,9 +86,9 @@ pub fn run(repo: &impl IssueRepository, args: ListArgs) -> Result<()> {
     }
 
     if let Some(type_str) = args.issue_type {
-        let issue_type: taskmaster::IssueType = type_str.parse().map_err(|e| {
-            taskmaster::TaskmasterError::validation(format!("Invalid type: {}", e))
-        })?;
+        let issue_type: taskmaster::IssueType = type_str
+            .parse()
+            .map_err(|e| taskmaster::TaskmasterError::validation(format!("Invalid type: {}", e)))?;
         filter = filter.issue_type(issue_type);
     }
 
@@ -115,7 +117,7 @@ pub fn run(repo: &impl IssueRepository, args: ListArgs) -> Result<()> {
         _ => {
             return Err(taskmaster::TaskmasterError::validation(
                 "Invalid sort policy. Use: hybrid, priority, oldest, newest, recently_updated",
-            ))
+            ));
         }
     };
     filter = filter.sort(sort);

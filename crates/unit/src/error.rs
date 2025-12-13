@@ -13,10 +13,7 @@ pub enum UnitError {
     /// Connection-related errors
     Connection(ConnectionError),
     /// Computation errors during unit execution
-    Computation {
-        unit_id: String,
-        message: String,
-    },
+    Computation { unit_id: String, message: String },
     /// Graph structure errors
     Graph(GraphError),
 }
@@ -49,24 +46,16 @@ impl std::error::Error for UnitError {
 #[derive(Debug, Clone)]
 pub enum PinError {
     /// Pin with given name not found
-    NotFound {
-        unit_id: String,
-        pin_name: String,
-    },
+    NotFound { unit_id: String, pin_name: String },
     /// Type mismatch when pushing data
     TypeMismatch {
         expected: &'static str,
         got: &'static str,
     },
     /// Pin already exists with this name
-    AlreadyExists {
-        unit_id: String,
-        pin_name: String,
-    },
+    AlreadyExists { unit_id: String, pin_name: String },
     /// Operation not allowed on constant pin
-    ConstantViolation {
-        pin_name: String,
-    },
+    ConstantViolation { pin_name: String },
     /// Pin is in invalid state for operation
     InvalidState {
         pin_name: String,
@@ -111,33 +100,20 @@ impl std::error::Error for PinError {}
 #[derive(Debug, Clone)]
 pub enum ConnectionError {
     /// Source unit or pin not found
-    SourceNotFound {
-        unit_id: String,
-        pin_name: String,
-    },
+    SourceNotFound { unit_id: String, pin_name: String },
     /// Target unit or pin not found
-    TargetNotFound {
-        unit_id: String,
-        pin_name: String,
-    },
+    TargetNotFound { unit_id: String, pin_name: String },
     /// Connection would create a cycle
-    CycleDetected {
-        path: Vec<String>,
-    },
+    CycleDetected { path: Vec<String> },
     /// Type mismatch between connected pins
     TypeMismatch {
         source_type: String,
         target_type: String,
     },
     /// Connection already exists
-    AlreadyConnected {
-        source: String,
-        target: String,
-    },
+    AlreadyConnected { source: String, target: String },
     /// Invalid connection direction
-    InvalidDirection {
-        message: String,
-    },
+    InvalidDirection { message: String },
 }
 
 impl fmt::Display for ConnectionError {
@@ -178,25 +154,15 @@ impl std::error::Error for ConnectionError {}
 #[derive(Debug, Clone)]
 pub enum GraphError {
     /// Unit not found in graph
-    UnitNotFound {
-        unit_id: String,
-    },
+    UnitNotFound { unit_id: String },
     /// Unit already exists with this ID
-    UnitAlreadyExists {
-        unit_id: String,
-    },
+    UnitAlreadyExists { unit_id: String },
     /// Merge not found
-    MergeNotFound {
-        merge_id: String,
-    },
+    MergeNotFound { merge_id: String },
     /// Merge already exists with this ID
-    MergeAlreadyExists {
-        merge_id: String,
-    },
+    MergeAlreadyExists { merge_id: String },
     /// Invalid graph structure
-    InvalidStructure {
-        message: String,
-    },
+    InvalidStructure { message: String },
 }
 
 impl fmt::Display for GraphError {

@@ -70,7 +70,10 @@ impl ReadTool {
 
         // Check if file exists
         if !path.exists() {
-            return Err(ToolError::not_found(format!("File not found: {}", path_str)));
+            return Err(ToolError::not_found(format!(
+                "File not found: {}",
+                path_str
+            )));
         }
 
         // Get file metadata
@@ -124,7 +127,12 @@ impl ReadTool {
         let mut output = String::new();
         let mut truncated_count = 0;
 
-        for (idx, line) in lines.iter().enumerate().skip(start_idx).take(end_idx - start_idx) {
+        for (idx, line) in lines
+            .iter()
+            .enumerate()
+            .skip(start_idx)
+            .take(end_idx - start_idx)
+        {
             let line_num = idx + 1;
             let line_num_width = total_lines.to_string().len();
 
@@ -136,7 +144,12 @@ impl ReadTool {
                 line.to_string()
             };
 
-            output.push_str(&format!("{:>width$}\t{}\n", line_num, display_line, width = line_num_width));
+            output.push_str(&format!(
+                "{:>width$}\t{}\n",
+                line_num,
+                display_line,
+                width = line_num_width
+            ));
         }
 
         let lines_returned = end_idx - start_idx;
@@ -158,11 +171,7 @@ impl ReadTool {
     }
 
     /// Read a binary file (return base64 for images, error for others)
-    fn read_binary(
-        path: &Path,
-        resolved_path: &str,
-        size_bytes: u64,
-    ) -> ToolResult<ReadResult> {
+    fn read_binary(path: &Path, resolved_path: &str, size_bytes: u64) -> ToolResult<ReadResult> {
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -210,12 +219,39 @@ impl ReadTool {
 
         matches!(
             ext.as_str(),
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "bmp" |
-            "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" |
-            "zip" | "tar" | "gz" | "bz2" | "7z" | "rar" |
-            "exe" | "dll" | "so" | "dylib" |
-            "mp3" | "mp4" | "wav" | "avi" | "mov" |
-            "ttf" | "otf" | "woff" | "woff2"
+            "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "ico"
+                | "bmp"
+                | "pdf"
+                | "doc"
+                | "docx"
+                | "xls"
+                | "xlsx"
+                | "ppt"
+                | "pptx"
+                | "zip"
+                | "tar"
+                | "gz"
+                | "bz2"
+                | "7z"
+                | "rar"
+                | "exe"
+                | "dll"
+                | "so"
+                | "dylib"
+                | "mp3"
+                | "mp4"
+                | "wav"
+                | "avi"
+                | "mov"
+                | "ttf"
+                | "otf"
+                | "woff"
+                | "woff2"
         )
     }
 }

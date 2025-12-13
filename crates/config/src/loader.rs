@@ -105,7 +105,10 @@ pub fn save_config(project_root: impl AsRef<Path>, config: &ProjectConfig) -> Co
 /// CONF-004: Create new configuration with defaults
 ///
 /// Creates a new project.json file with the given project ID and defaults.
-pub fn init_config(project_root: impl AsRef<Path>, project_id: &str) -> ConfigResult<ProjectConfig> {
+pub fn init_config(
+    project_root: impl AsRef<Path>,
+    project_id: &str,
+) -> ConfigResult<ProjectConfig> {
     let config = ProjectConfig::new(project_id);
     save_config(&project_root, &config)?;
     Ok(config)
@@ -331,9 +334,6 @@ mod tests {
     #[test]
     fn test_config_path() {
         let path = config_path("/project");
-        assert_eq!(
-            path.to_str().unwrap(),
-            "/project/.openagents/project.json"
-        );
+        assert_eq!(path.to_str().unwrap(), "/project/.openagents/project.json");
     }
 }

@@ -24,19 +24,30 @@ pub struct AgentEconomics {
 }
 
 impl AgentEconomics {
-    pub fn new() -> Self { Self::default() }
-    pub fn free() -> Self {
-        Self { pricing: PricingModel::Free, ..Default::default() }
+    pub fn new() -> Self {
+        Self::default()
     }
-    pub fn builder() -> AgentEconomicsBuilder { AgentEconomicsBuilder::default() }
+    pub fn free() -> Self {
+        Self {
+            pricing: PricingModel::Free,
+            ..Default::default()
+        }
+    }
+    pub fn builder() -> AgentEconomicsBuilder {
+        AgentEconomicsBuilder::default()
+    }
 
     pub fn calculate_cost(&self, job: &JobCostEstimate) -> u64 {
         match &self.pricing {
             PricingModel::Free => 0,
             PricingModel::PerJob { millisats } => *millisats,
-            PricingModel::PerToken { input_millisats, output_millisats } => {
+            PricingModel::PerToken {
+                input_millisats,
+                output_millisats,
+            } => {
                 let input_cost = job.estimated_input_tokens.unwrap_or(0) as u64 * input_millisats;
-                let output_cost = job.estimated_output_tokens.unwrap_or(0) as u64 * output_millisats;
+                let output_cost =
+                    job.estimated_output_tokens.unwrap_or(0) as u64 * output_millisats;
                 input_cost + output_cost
             }
             PricingModel::PerSecond { millisats } => {
@@ -44,7 +55,11 @@ impl AgentEconomics {
             }
             PricingModel::Tiered { tiers } => {
                 let complexity = job.complexity.unwrap_or(1);
-                tiers.iter().find(|t| complexity <= t.max_complexity).map(|t| t.millisats).unwrap_or(0)
+                tiers
+                    .iter()
+                    .find(|t| complexity <= t.max_complexity)
+                    .map(|t| t.millisats)
+                    .unwrap_or(0)
             }
             PricingModel::Custom { .. } => job.bid.unwrap_or(0),
         }
@@ -53,10 +68,14 @@ impl AgentEconomics {
     pub fn is_bid_acceptable(&self, bid: u64, job: &JobCostEstimate) -> bool {
         let min_price = self.calculate_cost(job);
         if let Some(min) = self.min_payment {
-            if bid < min && min_price > 0 { return false; }
+            if bid < min && min_price > 0 {
+                return false;
+            }
         }
         if let Some(max) = self.max_job_value {
-            if bid > max { return false; }
+            if bid > max {
+                return false;
+            }
         }
         bid >= min_price
     }
@@ -99,10 +118,18 @@ pub struct WalletConfig {
 
 impl WalletConfig {
     pub fn lightning(address: impl Into<String>) -> Self {
-        Self { wallet_type: WalletType::Lightning, lightning_address: Some(address.into()), ..Default::default() }
+        Self {
+            wallet_type: WalletType::Lightning,
+            lightning_address: Some(address.into()),
+            ..Default::default()
+        }
     }
     pub fn spark(address: impl Into<String>) -> Self {
-        Self { wallet_type: WalletType::Spark, spark_address: Some(address.into()), ..Default::default() }
+        Self {
+            wallet_type: WalletType::Spark,
+            spark_address: Some(address.into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -122,11 +149,22 @@ pub enum WalletType {
 pub enum PricingModel {
     #[default]
     Free,
-    PerJob { millisats: u64 },
-    PerToken { input_millisats: u64, output_millisats: u64 },
-    PerSecond { millisats: u64 },
-    Tiered { tiers: Vec<PriceTier> },
-    Custom { description: String },
+    PerJob {
+        millisats: u64,
+    },
+    PerToken {
+        input_millisats: u64,
+        output_millisats: u64,
+    },
+    PerSecond {
+        millisats: u64,
+    },
+    Tiered {
+        tiers: Vec<PriceTier>,
+    },
+    Custom {
+        description: String,
+    },
 }
 
 impl PricingModel {
@@ -134,7 +172,10 @@ impl PricingModel {
         Self::PerJob { millisats }
     }
     pub fn per_token(input_millisats: u64, output_millisats: u64) -> Self {
-        Self::PerToken { input_millisats, output_millisats }
+        Self::PerToken {
+            input_millisats,
+            output_millisats,
+        }
     }
     pub fn per_second(millisats: u64) -> Self {
         Self::PerSecond { millisats }
@@ -166,8 +207,12 @@ pub enum RefundPolicy {
     #[default]
     NoRefunds,
     FullRefundOnFailure,
-    PartialRefund { min_refund_percent: u8 },
-    Custom { description: String },
+    PartialRefund {
+        min_refund_percent: u8,
+    },
+    Custom {
+        description: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,7 +293,10 @@ mod tests {
 
     #[test]
     fn test_per_job_pricing() {
-        let economics = AgentEconomics { pricing: PricingModel::per_job(10000), ..Default::default() };
+        let economics = AgentEconomics {
+            pricing: PricingModel::per_job(10000),
+            ..Default::default()
+        };
         let job = JobCostEstimate::default();
         assert_eq!(economics.calculate_cost(&job), 10000);
     }

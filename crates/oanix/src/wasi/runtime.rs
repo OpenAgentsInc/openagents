@@ -10,9 +10,9 @@ use wasmtime_wasi::pipe::{MemoryInputPipe, MemoryOutputPipe};
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
+use crate::Namespace;
 use crate::error::OanixError;
 use crate::service::{FileService, OpenFlags};
-use crate::Namespace;
 
 /// Configuration for running a WASI module
 #[derive(Debug, Clone, Default)]
@@ -125,12 +125,11 @@ impl WasiRuntime {
         // For now, we'll sync MemFs contents to temp directories
         let temp_mounts = self.prepare_mounts(namespace)?;
         for (guest_path, host_path) in &temp_mounts {
-            wasi_builder.preopened_dir(
-                host_path,
-                guest_path,
-                DirPerms::all(),
-                FilePerms::all(),
-            ).map_err(|e| OanixError::Wasi(format!("Failed to preopen {}: {}", guest_path, e)))?;
+            wasi_builder
+                .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
+                .map_err(|e| {
+                    OanixError::Wasi(format!("Failed to preopen {}: {}", guest_path, e))
+                })?;
         }
 
         // Build the WASI context
@@ -239,7 +238,9 @@ impl WasiRuntime {
                 // Read file content and write to host
                 let mut handle = service
                     .open(&entry_service_path, OpenFlags::read_only())
-                    .map_err(|e| OanixError::Wasi(format!("Failed to open {}: {}", entry_service_path, e)))?;
+                    .map_err(|e| {
+                        OanixError::Wasi(format!("Failed to open {}: {}", entry_service_path, e))
+                    })?;
 
                 let mut content = Vec::new();
                 let mut buf = [0u8; 4096];
@@ -295,7 +296,8 @@ impl WasiRuntime {
             };
             let entry_host_path = entry.path();
 
-            let metadata = entry.metadata()
+            let metadata = entry
+                .metadata()
                 .map_err(|e| OanixError::Wasi(format!("Metadata error: {}", e)))?;
 
             if metadata.is_dir() {

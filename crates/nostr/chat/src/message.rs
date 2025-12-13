@@ -67,9 +67,10 @@ impl ChatMessage {
 
     /// Check if event is a reply (has reply marker in e tag).
     fn is_reply(event: &Event) -> bool {
-        event.tags.iter().any(|tag| {
-            tag.len() >= 4 && tag[0] == "e" && tag[3] == "reply"
-        })
+        event
+            .tags
+            .iter()
+            .any(|tag| tag.len() >= 4 && tag[0] == "e" && tag[3] == "reply")
     }
 
     /// Extract the reply-to event ID if this is a reply.

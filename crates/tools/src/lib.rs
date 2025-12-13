@@ -22,18 +22,18 @@
 //! }
 //! ```
 
+mod bash;
+mod edit;
 mod error;
+mod find;
+mod grep;
 mod read;
 mod write;
-mod edit;
-mod grep;
-mod find;
-mod bash;
 
+pub use bash::*;
+pub use edit::*;
 pub use error::*;
+pub use find::*;
+pub use grep::*;
 pub use read::*;
 pub use write::*;
-pub use edit::*;
-pub use grep::*;
-pub use find::*;
-pub use bash::*;

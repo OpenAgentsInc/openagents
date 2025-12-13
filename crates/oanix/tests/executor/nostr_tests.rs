@@ -4,9 +4,7 @@
 //! ExecutorManager creates its own tokio runtime. All async operations
 //! are run via `fixture.block_on()`.
 
-use crate::fixtures::{
-    fast_test_config, wait_for_nostr_sent, ExecutorTestFixture, NostrMockRelay,
-};
+use crate::fixtures::{ExecutorTestFixture, NostrMockRelay, fast_test_config, wait_for_nostr_sent};
 use nostr::EventTemplate;
 use oanix::services::Filter;
 use std::collections::HashMap;
@@ -34,7 +32,11 @@ fn test_nostr_send_event() {
 
     // Wait for event to be sent
     let nostr_fs = &fixture.nostr_fs;
-    let sent = fixture.block_on(wait_for_nostr_sent(nostr_fs, &event_id, Duration::from_secs(10)));
+    let sent = fixture.block_on(wait_for_nostr_sent(
+        nostr_fs,
+        &event_id,
+        Duration::from_secs(10),
+    ));
     assert!(sent, "Event should be sent to relay");
 
     // Verify relay received the event
@@ -108,7 +110,11 @@ fn test_nostr_multiple_relays() {
 
     // Wait for event to be sent
     let nostr_fs = &fixture.nostr_fs;
-    let sent = fixture.block_on(wait_for_nostr_sent(nostr_fs, &event_id, Duration::from_secs(10)));
+    let sent = fixture.block_on(wait_for_nostr_sent(
+        nostr_fs,
+        &event_id,
+        Duration::from_secs(10),
+    ));
     assert!(sent, "Event should be sent");
 
     // Both relays should receive the event
@@ -116,8 +122,12 @@ fn test_nostr_multiple_relays() {
     let received2 = fixture.block_on(relay2.received_events());
 
     // At least one relay should have received it
-    let either_received = received1.iter().any(|e| e["id"].as_str() == Some(&event_id))
-        || received2.iter().any(|e| e["id"].as_str() == Some(&event_id));
+    let either_received = received1
+        .iter()
+        .any(|e| e["id"].as_str() == Some(&event_id))
+        || received2
+            .iter()
+            .any(|e| e["id"].as_str() == Some(&event_id));
 
     assert!(
         either_received,
@@ -150,7 +160,11 @@ fn test_nostr_nip90_job_request() {
 
     // Wait for event to be sent
     let nostr_fs = &fixture.nostr_fs;
-    let sent = fixture.block_on(wait_for_nostr_sent(nostr_fs, &event.id, Duration::from_secs(10)));
+    let sent = fixture.block_on(wait_for_nostr_sent(
+        nostr_fs,
+        &event.id,
+        Duration::from_secs(10),
+    ));
     assert!(sent, "Job request should be sent to relay");
 
     // Verify relay received a kind 5050 event
@@ -188,7 +202,11 @@ fn test_nostr_outbox_cleared() {
 
     // Wait for event to be sent
     let nostr_fs = &fixture.nostr_fs;
-    let sent = fixture.block_on(wait_for_nostr_sent(nostr_fs, &event.id, Duration::from_secs(10)));
+    let sent = fixture.block_on(wait_for_nostr_sent(
+        nostr_fs,
+        &event.id,
+        Duration::from_secs(10),
+    ));
     assert!(sent);
 
     // Outbox should be cleared
@@ -266,7 +284,11 @@ fn test_nostr_sent_to_tracking() {
 
     // Wait for event to be sent
     let nostr_fs = &fixture.nostr_fs;
-    let sent = fixture.block_on(wait_for_nostr_sent(nostr_fs, &event.id, Duration::from_secs(10)));
+    let sent = fixture.block_on(wait_for_nostr_sent(
+        nostr_fs,
+        &event.id,
+        Duration::from_secs(10),
+    ));
     assert!(sent);
 
     // Should be tracked as sent to relay

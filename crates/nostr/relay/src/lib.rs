@@ -68,16 +68,16 @@ pub use message::{ClientMessage, RelayMessage};
 pub use nostr::Event;
 pub use storage::{EventQuery, SqlQueryBuilder, Storage, StorageError, StorageResult};
 pub use subscription::{Subscription, SubscriptionManager};
-pub use verify::{verify_event, verify_event_id, VerifyError};
+pub use verify::{VerifyError, verify_event, verify_event_id};
 
 /// NIP-90 job kinds - re-export from nostr crate
 pub mod nip90 {
     pub use nostr::{
-        InputType, JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus, Nip90Error,
-        JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN,
+        InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX,
+        JOB_RESULT_KIND_MIN, JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus,
         KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT,
         KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION,
-        KIND_JOB_TRANSLATION, get_request_kind, get_result_kind, is_dvm_kind,
+        KIND_JOB_TRANSLATION, Nip90Error, get_request_kind, get_result_kind, is_dvm_kind,
         is_job_feedback_kind, is_job_request_kind, is_job_result_kind,
     };
 }

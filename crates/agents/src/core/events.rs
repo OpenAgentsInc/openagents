@@ -7,22 +7,97 @@ use std::time::SystemTime;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
-    StateChanged { from: AgentState, to: AgentState, timestamp: u64 },
-    Connected { relays: Vec<String>, timestamp: u64 },
-    Disconnected { relays: Vec<String>, reason: Option<String>, timestamp: u64 },
-    JobReceived { job_id: String, kind: u16, customer: String, timestamp: u64 },
-    JobStarted { job_id: String, timestamp: u64 },
-    JobProgress { job_id: String, progress: f32, step: Option<String>, timestamp: u64 },
-    JobCompleted { job_id: String, duration_ms: u64, result_summary: Option<String>, timestamp: u64 },
-    JobFailed { job_id: String, error: String, retryable: bool, timestamp: u64 },
-    PaymentReceived { job_id: String, amount_millisats: u64, method: String, timestamp: u64 },
-    PaymentRequired { job_id: String, amount_millisats: u64, bolt11: String, timestamp: u64 },
-    ToolInvoked { job_id: String, tool_name: String, permission_required: bool, timestamp: u64 },
-    ToolCompleted { job_id: String, tool_name: String, success: bool, duration_ms: u64, timestamp: u64 },
-    AgentMessage { from: AgentId, message_type: String, content: String, timestamp: u64 },
-    Error { message: String, code: Option<String>, context: Option<String>, timestamp: u64 },
-    Warning { message: String, context: Option<String>, timestamp: u64 },
-    Metrics { jobs_completed: u64, jobs_failed: u64, total_earnings_millisats: u64, memory_usage: Option<u64>, timestamp: u64 },
+    StateChanged {
+        from: AgentState,
+        to: AgentState,
+        timestamp: u64,
+    },
+    Connected {
+        relays: Vec<String>,
+        timestamp: u64,
+    },
+    Disconnected {
+        relays: Vec<String>,
+        reason: Option<String>,
+        timestamp: u64,
+    },
+    JobReceived {
+        job_id: String,
+        kind: u16,
+        customer: String,
+        timestamp: u64,
+    },
+    JobStarted {
+        job_id: String,
+        timestamp: u64,
+    },
+    JobProgress {
+        job_id: String,
+        progress: f32,
+        step: Option<String>,
+        timestamp: u64,
+    },
+    JobCompleted {
+        job_id: String,
+        duration_ms: u64,
+        result_summary: Option<String>,
+        timestamp: u64,
+    },
+    JobFailed {
+        job_id: String,
+        error: String,
+        retryable: bool,
+        timestamp: u64,
+    },
+    PaymentReceived {
+        job_id: String,
+        amount_millisats: u64,
+        method: String,
+        timestamp: u64,
+    },
+    PaymentRequired {
+        job_id: String,
+        amount_millisats: u64,
+        bolt11: String,
+        timestamp: u64,
+    },
+    ToolInvoked {
+        job_id: String,
+        tool_name: String,
+        permission_required: bool,
+        timestamp: u64,
+    },
+    ToolCompleted {
+        job_id: String,
+        tool_name: String,
+        success: bool,
+        duration_ms: u64,
+        timestamp: u64,
+    },
+    AgentMessage {
+        from: AgentId,
+        message_type: String,
+        content: String,
+        timestamp: u64,
+    },
+    Error {
+        message: String,
+        code: Option<String>,
+        context: Option<String>,
+        timestamp: u64,
+    },
+    Warning {
+        message: String,
+        context: Option<String>,
+        timestamp: u64,
+    },
+    Metrics {
+        jobs_completed: u64,
+        jobs_failed: u64,
+        total_earnings_millisats: u64,
+        memory_usage: Option<u64>,
+        timestamp: u64,
+    },
 }
 
 impl AgentEvent {
@@ -63,7 +138,10 @@ impl AgentEvent {
     }
 
     pub fn is_error(&self) -> bool {
-        matches!(self, AgentEvent::Error { .. } | AgentEvent::JobFailed { .. })
+        matches!(
+            self,
+            AgentEvent::Error { .. } | AgentEvent::JobFailed { .. }
+        )
     }
 
     pub fn now() -> u64 {
@@ -74,31 +152,75 @@ impl AgentEvent {
     }
 
     pub fn state_changed(from: AgentState, to: AgentState) -> Self {
-        Self::StateChanged { from, to, timestamp: Self::now() }
+        Self::StateChanged {
+            from,
+            to,
+            timestamp: Self::now(),
+        }
     }
 
     pub fn job_started(job_id: impl Into<String>) -> Self {
-        Self::JobStarted { job_id: job_id.into(), timestamp: Self::now() }
+        Self::JobStarted {
+            job_id: job_id.into(),
+            timestamp: Self::now(),
+        }
     }
 
     pub fn job_progress(job_id: impl Into<String>, progress: f32, step: Option<String>) -> Self {
-        Self::JobProgress { job_id: job_id.into(), progress, step, timestamp: Self::now() }
+        Self::JobProgress {
+            job_id: job_id.into(),
+            progress,
+            step,
+            timestamp: Self::now(),
+        }
     }
 
-    pub fn job_completed(job_id: impl Into<String>, duration_ms: u64, result_summary: Option<String>) -> Self {
-        Self::JobCompleted { job_id: job_id.into(), duration_ms, result_summary, timestamp: Self::now() }
+    pub fn job_completed(
+        job_id: impl Into<String>,
+        duration_ms: u64,
+        result_summary: Option<String>,
+    ) -> Self {
+        Self::JobCompleted {
+            job_id: job_id.into(),
+            duration_ms,
+            result_summary,
+            timestamp: Self::now(),
+        }
     }
 
-    pub fn job_failed(job_id: impl Into<String>, error: impl Into<String>, retryable: bool) -> Self {
-        Self::JobFailed { job_id: job_id.into(), error: error.into(), retryable, timestamp: Self::now() }
+    pub fn job_failed(
+        job_id: impl Into<String>,
+        error: impl Into<String>,
+        retryable: bool,
+    ) -> Self {
+        Self::JobFailed {
+            job_id: job_id.into(),
+            error: error.into(),
+            retryable,
+            timestamp: Self::now(),
+        }
     }
 
     pub fn error(message: impl Into<String>) -> Self {
-        Self::Error { message: message.into(), code: None, context: None, timestamp: Self::now() }
+        Self::Error {
+            message: message.into(),
+            code: None,
+            context: None,
+            timestamp: Self::now(),
+        }
     }
 
-    pub fn error_with_context(message: impl Into<String>, code: Option<String>, context: Option<String>) -> Self {
-        Self::Error { message: message.into(), code, context, timestamp: Self::now() }
+    pub fn error_with_context(
+        message: impl Into<String>,
+        code: Option<String>,
+        context: Option<String>,
+    ) -> Self {
+        Self::Error {
+            message: message.into(),
+            code,
+            context,
+            timestamp: Self::now(),
+        }
     }
 }
 
@@ -117,8 +239,11 @@ impl AgentEvent {
         match self {
             AgentEvent::Error { .. } | AgentEvent::JobFailed { .. } => EventSeverity::Error,
             AgentEvent::Warning { .. } => EventSeverity::Warning,
-            AgentEvent::StateChanged { .. } | AgentEvent::Connected { .. } | AgentEvent::Disconnected { .. }
-            | AgentEvent::JobCompleted { .. } | AgentEvent::PaymentReceived { .. } => EventSeverity::Info,
+            AgentEvent::StateChanged { .. }
+            | AgentEvent::Connected { .. }
+            | AgentEvent::Disconnected { .. }
+            | AgentEvent::JobCompleted { .. }
+            | AgentEvent::PaymentReceived { .. } => EventSeverity::Info,
             _ => EventSeverity::Debug,
         }
     }

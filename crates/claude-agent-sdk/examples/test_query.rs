@@ -1,9 +1,11 @@
-use claude_agent_sdk::{query, QueryOptions, SettingSource};
+use claude_agent_sdk::{QueryOptions, SettingSource, query};
 use futures::StreamExt;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().with_max_level(tracing::Level::INFO).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
 
     println!("Testing Claude Agent SDK...");
 
