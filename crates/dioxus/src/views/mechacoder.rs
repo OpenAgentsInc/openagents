@@ -1,8 +1,11 @@
 use dioxus::prelude::*;
+use dioxus::document::eval;
 use dioxus::fullstack::payloads::websocket::use_websocket;
 use mechacoder::{
     ClientMessage, Message, ServerMessage, ThreadEntry, ToolStatus, ToolUse,
 };
+
+use super::ConversationGraph;
 
 // Bloomberg-inspired theme colors (from theme_oa)
 #[allow(dead_code)]
@@ -227,76 +230,104 @@ pub fn MechaCoder() -> Element {
         });
     };
 
-    // Minimal UI - no header, just content and input
+    // Scroll to entry by ID
+    let scroll_to_entry = move |id: String| {
+        spawn(async move {
+            let js = format!(
+                r#"document.querySelector('[data-entry-id="{}"]')?.scrollIntoView({{ behavior: 'smooth', block: 'center' }})"#,
+                id
+            );
+            let _ = eval(&js).await;
+        });
+    };
+
+    // Layout: sidebar graph + main chat
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; height: 100vh; background: {theme::BG_APP}; color: {theme::TEXT_PRIMARY}; font-family: 'Berkeley Mono', 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.3;",
+            style: "display: flex; height: 100vh; background: {theme::BG_APP}; color: {theme::TEXT_PRIMARY}; font-family: 'Berkeley Mono', 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.3;",
 
-            // Messages area - takes all available space
-            div {
-                style: "flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; justify-content: center;",
-                div {
-                    style: "width: 100%; max-width: 768px;",
-
-                for entry in entries() {
-                    match entry {
-                        ThreadEntry::Message(msg) => rsx! {
-                            MessageLine {
-                                key: "{msg.id}",
-                                role: msg.role.clone(),
-                                content: msg.content.clone(),
-                            }
-                        },
-                        ThreadEntry::ToolUse(tool) => rsx! {
-                            ToolLine {
-                                key: "{tool.tool_use_id}",
-                                tool_name: tool.tool_name.clone(),
-                                status: tool.status.clone(),
-                                input: tool.input.clone(),
-                            }
-                        },
-                    }
-                }
-
-                // Streaming text
-                if !current_assistant_content().is_empty() && is_loading() {
-                    MessageLine {
-                        role: "assistant".to_string(),
-                        content: current_assistant_content(),
-                    }
-                }
-
-                // Thinking indicator
-                if is_loading() && current_assistant_content().is_empty() {
-                    div {
-                        style: "color: {theme::TEXT_MUTED}; padding: 8px 0;",
-                        "..."
-                    }
-                }
-                }
+            // Conversation graph sidebar
+            ConversationGraph {
+                entries: entries,
+                on_node_click: move |id| scroll_to_entry(id),
             }
 
-            // Input area - simple, at bottom
+            // Main chat area
             div {
-                style: "border-top: 1px solid {theme::BORDER}; padding: 8px 16px; background: {theme::BG_SURFACE}; display: flex; justify-content: center;",
-                form {
-                    style: "display: flex; gap: 8px; width: 100%; max-width: 768px;",
-                    onsubmit: move |e| {
-                        e.prevent_default();
-                        send_message(());
-                    },
-                    input {
-                        style: "flex: 1; background: {theme::BG_APP}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 12px; font-family: inherit; font-size: inherit; outline: none;",
-                        placeholder: "Message...",
-                        value: input_value(),
-                        autofocus: true,
-                        oninput: move |e| input_value.set(e.value()),
+                style: "flex: 1; display: flex; flex-direction: column; min-width: 0;",
+
+                // Messages area - takes all available space
+                div {
+                    style: "flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; justify-content: center;",
+                    div {
+                        style: "width: 100%; max-width: 768px;",
+
+                    for entry in entries() {
+                        match entry {
+                            ThreadEntry::Message(msg) => rsx! {
+                                div {
+                                    "data-entry-id": "{msg.id}",
+                                    MessageLine {
+                                        key: "{msg.id}",
+                                        role: msg.role.clone(),
+                                        content: msg.content.clone(),
+                                    }
+                                }
+                            },
+                            ThreadEntry::ToolUse(tool) => rsx! {
+                                div {
+                                    "data-entry-id": "{tool.tool_use_id}",
+                                    ToolLine {
+                                        key: "{tool.tool_use_id}",
+                                        tool_name: tool.tool_name.clone(),
+                                        status: tool.status.clone(),
+                                        input: tool.input.clone(),
+                                    }
+                                }
+                            },
+                        }
                     }
-                    button {
-                        style: "background: {theme::BG_SURFACE}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 16px; font-family: inherit; font-size: inherit; cursor: pointer;",
-                        r#type: "submit",
-                        disabled: is_loading(),
-                        if is_loading() { "..." } else { "Send" }
+
+                    // Streaming text
+                    if !current_assistant_content().is_empty() && is_loading() {
+                        MessageLine {
+                            role: "assistant".to_string(),
+                            content: current_assistant_content(),
+                        }
+                    }
+
+                    // Thinking indicator
+                    if is_loading() && current_assistant_content().is_empty() {
+                        div {
+                            style: "color: {theme::TEXT_MUTED}; padding: 8px 0;",
+                            "..."
+                        }
+                    }
+                    }
+                }
+
+                // Input area - simple, at bottom
+                div {
+                    style: "border-top: 1px solid {theme::BORDER}; padding: 8px 16px; background: {theme::BG_SURFACE}; display: flex; justify-content: center;",
+                    form {
+                        style: "display: flex; gap: 8px; width: 100%; max-width: 768px;",
+                        onsubmit: move |e| {
+                            e.prevent_default();
+                            send_message(());
+                        },
+                        input {
+                            style: "flex: 1; background: {theme::BG_APP}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 12px; font-family: inherit; font-size: inherit; outline: none;",
+                            placeholder: "Message...",
+                            value: input_value(),
+                            autofocus: true,
+                            oninput: move |e| input_value.set(e.value()),
+                        }
+                        button {
+                            style: "background: {theme::BG_SURFACE}; border: 1px solid {theme::BORDER}; color: {theme::TEXT_PRIMARY}; padding: 8px 16px; font-family: inherit; font-size: inherit; cursor: pointer;",
+                            r#type: "submit",
+                            disabled: is_loading(),
+                            if is_loading() { "..." } else { "Send" }
+                        }
                     }
                 }
             }
