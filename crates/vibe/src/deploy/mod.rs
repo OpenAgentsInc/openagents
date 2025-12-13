@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use super::{ACCENT, BORDER, MUTED, PANEL, TEXT};
-use crate::views::vibe::types::{AnalyticsData, Deployment, Domain};
+use crate::types::{AnalyticsData, Deployment, Domain};
+use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
 pub fn DeployPanel(deployments: Vec<Deployment>) -> Element {

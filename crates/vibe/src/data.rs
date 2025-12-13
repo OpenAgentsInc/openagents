@@ -1,8 +1,8 @@
-use dioxus::prelude::*;
-use serde::{Deserialize, Serialize};
-
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
+
+use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use super::types::*;
 
@@ -58,7 +58,6 @@ where
     f(entry)
 }
 
-/// Load current Vibe state (backed by an in-memory snapshot for now).
 pub async fn get_vibe_snapshot(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let guard = state().read().unwrap();
     Ok(guard
@@ -67,7 +66,6 @@ pub async fn get_vibe_snapshot(project_id: String) -> Result<VibeSnapshot, Serve
         .unwrap_or_else(VibeSnapshot::mock))
 }
 
-/// Append log lines and a running task to simulate a WASI job.
 pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         let new_id = snap.tasks.len() + 1;
@@ -84,7 +82,6 @@ pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnEr
     Ok(updated)
 }
 
-/// Append a log entry to simulate tailing logs.
 pub async fn tail_logs(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         snap.logs
@@ -94,7 +91,6 @@ pub async fn tail_logs(project_id: String) -> Result<VibeSnapshot, ServerFnError
     Ok(updated)
 }
 
-/// Insert a new deployment entry.
 pub async fn trigger_deploy(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
         let version = format!("v0.3.{}", snap.deployments.len() + 2);

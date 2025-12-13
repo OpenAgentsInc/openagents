@@ -1,7 +1,12 @@
-mod screen;
-mod types;
-mod data;
+//! Vibe UI surface (Dioxus) with server-backed snapshot state.
+//!
+//! This crate hosts the Vibe components so the main Dioxus app can import
+//! without cluttering its local views tree.
 
+pub mod data;
+pub mod types;
+
+mod screen;
 mod projects;
 mod editor;
 mod database;

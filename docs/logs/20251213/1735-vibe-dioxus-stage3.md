@@ -6,6 +6,7 @@
   - `run_wasi_job`, `tail_logs`, `trigger_deploy` mutate the snapshot and return the new data.
 - Vibe screen now hydrates from the snapshot and reapplies server updates to all panels; the action bar calls server functions instead of only local signals.
 - All Vibe types now derive `Serialize/Deserialize` to support fullstack/server functions.
+- Added project selection: Project cards now activate an “active project”, and server calls are scoped per project ID. The header shows the active project, and the snapshot store tracks state per project.
 
 ## How it’s structured
 - `crates/dioxus/src/views/vibe/data.rs`: snapshot store + server functions (swap the in-memory state for real OANIX data later).
@@ -18,4 +19,4 @@
    - Scheduler jobs / RunResult → AgentPanel.
    - Deploy pipeline → real server function / executor.
 2) Add wgpui canvas preview for richer renders once data is live.
-3) Add router + server mutations for per-project IDs and persisted state.
+3) Add router + persisted state (disk/DB) keyed by project IDs.

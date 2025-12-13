@@ -1,10 +1,13 @@
 use dioxus::prelude::*;
 
-use crate::views::vibe::types::{Project, ProjectTemplate};
-use crate::views::vibe::{ACCENT, BORDER, MUTED, PANEL, TEXT};
+use crate::types::{Project, ProjectTemplate};
+use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
-pub fn ProjectGrid(projects: Vec<Project>) -> Element {
+pub fn ProjectGrid(
+    projects: Vec<Project>,
+    on_select: EventHandler<String>,
+) -> Element {
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px;",
@@ -16,7 +19,7 @@ pub fn ProjectGrid(projects: Vec<Project>) -> Element {
             div {
                 style: "display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;",
                 for project in projects {
-                    ProjectCard { project: project.clone() }
+                    ProjectCard { project: project.clone(), on_select: move |_| on_select.call(project.id.clone()) }
                 }
             }
         }
@@ -24,10 +27,11 @@ pub fn ProjectGrid(projects: Vec<Project>) -> Element {
 }
 
 #[component]
-fn ProjectCard(project: Project) -> Element {
+fn ProjectCard(project: Project, on_select: EventHandler<()>) -> Element {
     rsx! {
         div {
-            style: "border: 1px solid {BORDER}; background: #0f0f0f; padding: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 6px;",
+            style: "border: 1px solid {BORDER}; background: #0f0f0f; padding: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 6px; cursor: pointer;",
+            onclick: move |_| on_select.call(()),
             span { style: "color: {ACCENT}; font-weight: 600;", "{project.name}" }
             span { style: "color: {MUTED}; font-size: 12px;", "{project.kind} · {project.language}" }
             span { style: "color: {TEXT};", "{project.description}" }
