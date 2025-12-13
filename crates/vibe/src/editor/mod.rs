@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use super::{ACCENT, BORDER, MUTED, PANEL, TEXT};
-use crate::views::vibe::types::{AgentTask, ProjectFile};
+use crate::types::{AgentTask, ProjectFile};
+use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 
 const SAMPLE_CODE: &str = r#"use oanix::{Namespace, RunConfig, WasiRuntime};
 

@@ -1,0 +1,11 @@
+[package]
+name = "vibe"
+version = "0.1.0"
+edition = "2024"
+description = "Vibe UI surface (Dioxus) integrated with OANIX"
+license = "CC-0"
+
+[dependencies]
+dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
+serde = { version = "1.0", features = ["derive"] }
+chrono = { workspace = true }

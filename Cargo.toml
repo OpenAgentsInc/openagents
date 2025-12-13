@@ -27,6 +27,7 @@ members = [
     "crates/unit",
     "crates/fm-bridge",
     "crates/oanix",
+    "crates/vibe",
 ]
 
 [workspace.lints.rust]

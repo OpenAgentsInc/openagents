@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -50,7 +49,7 @@ pub struct DatabaseRow {
 pub struct Deployment {
     pub version: String,
     pub status: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,8 +71,6 @@ pub struct AgentTask {
     pub title: String,
     pub status: String,
 }
-
-// Mock data constructors -------------------------------------------------
 
 pub fn mock_projects() -> Vec<Project> {
     vec![
@@ -197,12 +194,12 @@ pub fn mock_deployments() -> Vec<Deployment> {
         Deployment {
             version: "v0.3.2".to_string(),
             status: "Live".to_string(),
-            timestamp: Utc::now(),
+            timestamp: chrono::Utc::now(),
         },
         Deployment {
             version: "v0.3.1".to_string(),
             status: "Healthy".to_string(),
-            timestamp: Utc::now() - chrono::Duration::hours(4),
+            timestamp: chrono::Utc::now() - chrono::Duration::hours(4),
         },
     ]
 }

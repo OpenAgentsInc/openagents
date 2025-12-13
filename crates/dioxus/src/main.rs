@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
+use vibe::VibeScreen;
 
 mod views;
 
-use views::{MechaCoder, VibeScreen};
+use views::MechaCoder;
 
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 

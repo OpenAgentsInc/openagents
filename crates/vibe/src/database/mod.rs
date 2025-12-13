@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use super::{ACCENT, BORDER, MUTED, PANEL, TEXT};
-use crate::views::vibe::types::{DatabaseRow, DatabaseTable};
+use crate::types::{DatabaseRow, DatabaseTable};
+use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
 pub fn TableBrowser(tables: Vec<DatabaseTable>) -> Element {

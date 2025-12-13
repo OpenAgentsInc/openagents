@@ -14,7 +14,7 @@ futures = "0.3"
 mechacoder = { path = "../mechacoder" }
 unit = { path = "../unit" }
 pulldown-cmark = "0.12"
-chrono = { workspace = true }
+vibe = { path = "../vibe" }
 
 # Server-only dependencies (not available in WASM)
 tokio = { version = "1", features = ["full"], optional = true }

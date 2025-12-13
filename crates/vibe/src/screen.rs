@@ -1,13 +1,18 @@
 use dioxus::prelude::*;
-use crate::views::vibe::data::VibeSnapshot;
 
-use super::data::{get_vibe_snapshot, run_wasi_job, tail_logs, trigger_deploy};
-use super::database::{SchemaView, TableBrowser};
-use super::deploy::{AnalyticsView, DeployPanel, DomainManager};
-use super::editor::{ActionBar, AgentPanel, CodeEditor, FileTree, PreviewPanel, TerminalPanel};
-use super::projects::{ProjectGrid, TemplatePicker};
-use super::types::*;
-use super::{ACCENT, BG, BORDER, MUTED, PANEL, TEXT};
+use crate::data::{get_vibe_snapshot, run_wasi_job, tail_logs, trigger_deploy, VibeSnapshot};
+use crate::database::{SchemaView, TableBrowser};
+use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
+use crate::editor::{ActionBar, AgentPanel, CodeEditor, FileTree, PreviewPanel, TerminalPanel};
+use crate::projects::{ProjectGrid, TemplatePicker};
+use crate::types::*;
+
+pub const BG: &str = "#030303";
+pub const PANEL: &str = "#0a0a0a";
+pub const BORDER: &str = "#1c1c1c";
+pub const TEXT: &str = "#e6e6e6";
+pub const MUTED: &str = "#9a9a9a";
+pub const ACCENT: &str = "#ffb400";
 
 #[component]
 pub fn VibeScreen() -> Element {
@@ -29,7 +34,6 @@ pub fn VibeScreen() -> Element {
     let analytics = use_signal(Vec::<AnalyticsData>::new);
     let terminal_logs = use_signal(Vec::<String>::new);
     let agent_tasks = use_signal(Vec::<AgentTask>::new);
-    let _next_task_id = use_signal(|| 1usize);
 
     {
         let mut projects = projects.clone();
@@ -54,7 +58,7 @@ pub fn VibeScreen() -> Element {
                 terminal_logs.set(data.logs.clone());
                 agent_tasks.set(data.tasks.clone());
             } else if projects.read().is_empty() {
-                let mock = super::data::VibeSnapshot::mock();
+                let mock = VibeSnapshot::mock();
                 projects.set(mock.projects);
                 templates.set(mock.templates);
                 files.set(mock.files);
@@ -93,6 +97,7 @@ pub fn VibeScreen() -> Element {
 
     let on_run_wasi = {
         let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
         move || {
             spawn(async move {
                 if let Ok(data) = run_wasi_job(active_project()).await {
@@ -104,6 +109,7 @@ pub fn VibeScreen() -> Element {
 
     let on_tail_logs = {
         let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
         move || {
             spawn(async move {
                 if let Ok(data) = tail_logs(active_project()).await {
@@ -115,6 +121,7 @@ pub fn VibeScreen() -> Element {
 
     let on_deploy = {
         let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
         move || {
             spawn(async move {
                 if let Ok(data) = trigger_deploy(active_project()).await {
@@ -128,16 +135,7 @@ pub fn VibeScreen() -> Element {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
 
-            // Header
-            div {
-                style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
-                div {
-                    style: "display: flex; align-items: center; gap: 12px;",
-                    span { style: "color: {ACCENT}; font-weight: 600;", "Vibe" }
-                    span { style: "color: {MUTED};", "OANIX agentic workbench" }
-                }
-                ResourceBar {}
-            }
+            HeaderBar { active_project: active_project.clone(), projects: projects() }
 
             // Tabs
             div {
@@ -148,12 +146,14 @@ pub fn VibeScreen() -> Element {
                 TabButton { label: "Deploy", active: tab() == VibeTab::Deploy, ontap: move |_| tab.set(VibeTab::Deploy) }
             }
 
-            // Content
             match tab() {
                 VibeTab::Projects => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 2fr 1fr; gap: 16px; padding: 16px;",
-                        ProjectGrid { projects: projects() }
+                        ProjectGrid {
+                            projects: projects(),
+                            on_select: move |id| active_project.set(id),
+                        }
                         TemplatePicker { templates: templates() }
                     }
                 },
@@ -237,6 +237,24 @@ fn ResourcePill(label: &'static str, value: &'static str) -> Element {
             style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; border-radius: 4px;",
             span { style: "color: {MUTED}; margin-right: 6px;", "{label}" }
             span { style: "color: {TEXT};", "{value}" }
+        }
+    }
+}
+
+#[component]
+fn HeaderBar(active_project: Signal<String>, projects: Vec<Project>) -> Element {
+    rsx! {
+        div {
+            style: "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid {BORDER}; background: {PANEL}; position: sticky; top: 0; z-index: 10;",
+            div {
+                style: "display: flex; align-items: center; gap: 12px;",
+                span { style: "color: {ACCENT}; font-weight: 600;", "Vibe" }
+                span { style: "color: {MUTED};", "OANIX agentic workbench" }
+                if let Some(current) = projects.iter().find(|p| p.id == active_project()) {
+                    span { style: "color: {TEXT}; font-size: 12px;", "Active: {current.name}" }
+                }
+            }
+            ResourceBar {}
         }
     }
 }
