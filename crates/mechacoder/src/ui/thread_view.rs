@@ -8,7 +8,7 @@ use gpui::{
     div, list, prelude::*, px, App, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ListState, ParentElement, Render, Styled, Subscription, Window,
 };
-use theme_oa::{border, text, ui::button, FONT_FAMILY};
+use theme_oa::{border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use super::message_input::{MessageInput, SendMessageEvent};
@@ -525,37 +525,25 @@ impl Render for ThreadView {
                     .w_full()
                     .max_w(px(768.0))
                     .p(px(16.0))
-                    .child(
-                        // Connected input + button container
-                        div()
-                            .w_full()
-                            .flex()
-                            .flex_row()
-                            .h(px(36.0))
-                            .border_1()
-                            .border_color(button::SECONDARY_BG)
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .h_full()
-                                    .child(self.message_input.clone())
-                            )
-                            .child(if is_streaming {
-                                Button::new("Cancel")
-                                    .variant(ButtonVariant::Secondary)
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.cancel(cx);
-                                    }))
-                                    .into_any_element()
-                            } else {
-                                Button::new("Send")
-                                    .variant(ButtonVariant::Secondary)
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.send_message(cx);
-                                    }))
-                                    .into_any_element()
-                            }),
-                    ),
+                    .flex()
+                    .flex_row()
+                    .gap(px(8.0))
+                    .child(div().flex_1().child(self.message_input.clone()))
+                    .child(if is_streaming {
+                        Button::new("Cancel")
+                            .variant(ButtonVariant::Secondary)
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.cancel(cx);
+                            }))
+                            .into_any_element()
+                    } else {
+                        Button::new("Send")
+                            .variant(ButtonVariant::Secondary)
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.send_message(cx);
+                            }))
+                            .into_any_element()
+                    }),
             )
     }
 }
