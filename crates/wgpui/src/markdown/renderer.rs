@@ -199,10 +199,10 @@ impl MarkdownRenderer {
 
                 // Draw strikethrough line if needed
                 if span.style.strikethrough {
-                    let strike_y = y + text_size.height * 0.4; // Middle of text
-                    let strike_color = theme::accent::RED.with_alpha(opacity);
+                    let strike_y = y + text_size.height * 0.5; // Center of text
+                    let strike_color = color; // Same color as text
                     scene.draw_quad(
-                        Quad::new(Bounds::new(span_x, strike_y, span_width, 2.0))
+                        Quad::new(Bounds::new(span_x, strike_y, span_width, 3.0))
                             .with_background(strike_color),
                     );
                 }
