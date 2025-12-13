@@ -6,11 +6,12 @@
 pub mod data;
 pub mod types;
 
-mod screen;
-mod projects;
-mod editor;
 mod database;
 mod deploy;
+mod editor;
+mod infra;
+mod projects;
+mod screen;
 
 pub use screen::VibeScreen;
 

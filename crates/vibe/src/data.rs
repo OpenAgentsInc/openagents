@@ -19,6 +19,10 @@ pub struct VibeSnapshot {
     pub analytics: Vec<AnalyticsData>,
     pub logs: Vec<String>,
     pub tasks: Vec<AgentTask>,
+    pub infra_customers: Vec<InfraCustomer>,
+    pub usage: Vec<UsageMetric>,
+    pub invoice: InvoiceSummary,
+    pub billing_events: Vec<BillingEvent>,
 }
 
 impl VibeSnapshot {
@@ -33,6 +37,10 @@ impl VibeSnapshot {
             analytics: mock_analytics(),
             logs: mock_terminal_logs(),
             tasks: mock_agent_tasks(),
+            infra_customers: mock_infra_customers(),
+            usage: mock_usage_metrics(),
+            invoice: mock_invoice(),
+            billing_events: mock_billing_events(),
         }
     }
 }
@@ -71,7 +79,8 @@ pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnEr
         let new_id = snap.tasks.len() + 1;
         snap.logs
             .push(format!("[wasi] job {new_id} started on {project_id}"));
-        snap.logs.push("[wasi] mounting /workspace + /cap".to_string());
+        snap.logs
+            .push("[wasi] mounting /workspace + /cap".to_string());
         snap.tasks.push(AgentTask {
             id: new_id,
             title: format!("Run WASI job #{new_id}"),
@@ -84,8 +93,9 @@ pub async fn run_wasi_job(project_id: String) -> Result<VibeSnapshot, ServerFnEr
 
 pub async fn tail_logs(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
     let updated = with_snapshot(&project_id, |snap| {
-        snap.logs
-            .push(format!("[logs] streaming /logs/events.ndjson ({project_id})"));
+        snap.logs.push(format!(
+            "[logs] streaming /logs/events.ndjson ({project_id})"
+        ));
         snap.clone()
     });
     Ok(updated)
