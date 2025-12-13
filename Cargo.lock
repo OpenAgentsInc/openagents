@@ -1756,8 +1756,13 @@ dependencies = [
 name = "dioxus-app"
 version = "0.1.0"
 dependencies = [
+ "claude_agent_sdk",
  "dioxus",
+ "futures",
  "lumen-blocks",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
