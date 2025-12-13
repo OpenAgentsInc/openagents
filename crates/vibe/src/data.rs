@@ -175,3 +175,38 @@ pub async fn refresh_usage(project_id: String) -> Result<VibeSnapshot, ServerFnE
     });
     Ok(updated)
 }
+
+pub async fn pay_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        snap.invoice.status = "Paid".to_string();
+        snap.billing_events.insert(
+            0,
+            BillingEvent {
+                id: format!("evt-invoice-paid-{}", snap.billing_events.len() + 1),
+                label: format!("Invoice {} paid", snap.invoice.invoice_id),
+                amount: snap.invoice.total.clone(),
+                status: "Settled".to_string(),
+                timestamp: "just now".to_string(),
+            },
+        );
+        snap.clone()
+    });
+    Ok(updated)
+}
+
+pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        snap.billing_events.insert(
+            0,
+            BillingEvent {
+                id: format!("evt-invoice-download-{}", snap.billing_events.len() + 1),
+                label: format!("Invoice {} downloaded", snap.invoice.invoice_id),
+                amount: "$0.00".to_string(),
+                status: "Info".to_string(),
+                timestamp: "just now".to_string(),
+            },
+        );
+        snap.clone()
+    });
+    Ok(updated)
+}

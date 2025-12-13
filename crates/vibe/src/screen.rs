@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::data::{
-    VibeSnapshot, get_vibe_snapshot, provision_infra_customer, refresh_usage, run_wasi_job,
-    tail_logs, trigger_deploy,
+    VibeSnapshot, download_invoice, get_vibe_snapshot, pay_invoice, provision_infra_customer,
+    refresh_usage, run_wasi_job, tail_logs, trigger_deploy,
 };
 use crate::database::{SchemaView, TableBrowser};
 use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
@@ -195,6 +195,30 @@ pub fn VibeScreen() -> Element {
         }
     };
 
+    let on_pay_invoice = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = pay_invoice(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
+    let on_download_invoice = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = download_invoice(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
     rsx! {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
@@ -271,7 +295,7 @@ pub fn VibeScreen() -> Element {
                         div {
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             PlanSummary { plan: plan_limits(), auth: auth() }
-                            BillingPanel { invoice: invoice(), events: billing_events() }
+                            BillingPanel { invoice: invoice(), events: billing_events(), on_pay: move |_| on_pay_invoice(), on_download: move |_| on_download_invoice() }
                         }
                     }
                 },

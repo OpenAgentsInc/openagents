@@ -125,7 +125,12 @@ fn CustomerCard(customer: InfraCustomer) -> Element {
 }
 
 #[component]
-pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Element {
+pub fn BillingPanel(
+    invoice: InvoiceSummary,
+    events: Vec<BillingEvent>,
+    on_pay: EventHandler<()>,
+    on_download: EventHandler<()>,
+) -> Element {
     rsx! {
         div {
             style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 16px; display: flex; flex-direction: column; gap: 12px;",
@@ -143,12 +148,12 @@ pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Eleme
                 div { style: "display: flex; gap: 8px;",
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
-                        onclick: move |_| {},
+                        onclick: move |_| on_download.call(()),
                         "Download"
                     }
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
-                        onclick: move |_| {},
+                        onclick: move |_| on_pay.call(()),
                         "Pay invoice"
                     }
                 }
