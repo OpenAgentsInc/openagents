@@ -26,13 +26,21 @@ pub fn InfraPanel(
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
                         disabled: "{action_state.provisioning}",
                         onclick: move |_| on_provision.call(()),
-                        "Provision customer"
+                        if action_state.provisioning {
+                            "Provisioning..."
+                        } else {
+                            "Provision customer"
+                        }
                     }
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
                         disabled: "{action_state.refreshing}",
                         onclick: move |_| on_refresh.call(()),
-                        "Refresh usage"
+                        if action_state.refreshing {
+                            "Refreshing..."
+                        } else {
+                            "Refresh usage"
+                        }
                     }
                 }
             }
@@ -192,13 +200,21 @@ pub fn BillingPanel(
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
                         disabled: "{action_state.downloading}",
                         onclick: move |_| on_download.call(()),
-                        "Download"
+                        if action_state.downloading {
+                            "Downloading..."
+                        } else {
+                            "Download"
+                        }
                     }
                     button {
                         style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
                         disabled: "{action_state.paying}",
                         onclick: move |_| on_pay.call(()),
-                        "Pay invoice"
+                        if action_state.paying {
+                            "Paying..."
+                        } else {
+                            "Pay invoice"
+                        }
                     }
                 }
             }
