@@ -538,7 +538,7 @@ impl Render for ThreadView {
                             .into_any_element()
                     } else {
                         Button::new("Send")
-                            .variant(ButtonVariant::Default)
+                            .variant(ButtonVariant::Secondary)
                             .on_click(cx.listener(|this, _, _window, cx| {
                                 this.send_message(cx);
                             }))
