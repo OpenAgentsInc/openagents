@@ -986,6 +986,12 @@ dependencies = [
 
 [[package]]
 name = "const-str"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "451d0640545a0553814b4c646eb549343561618838e9b42495f466131fe3ad49"
+
+[[package]]
+name = "const-str"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4d34b8f066904ed7cfa4a6f9ee96c3214aa998cb44b69ca20bd2054f47402ed"
@@ -1537,6 +1543,7 @@ dependencies = [
  "lumen-blocks",
  "serde",
  "serde_json",
+ "server_fn",
  "tokio",
 ]
 
@@ -1747,7 +1754,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "ciborium",
- "const-str",
+ "const-str 0.7.0",
  "const_format",
  "content_disposition",
  "derive_more 2.1.0",
@@ -5975,6 +5982,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "server_fn"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdc30228718f62d80a376964baf990edbcb5e97688fdc71183a8ef3d44cb6c89"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "const-str 0.6.4",
+ "const_format",
+ "dashmap",
+ "futures",
+ "http",
+ "pin-project-lite",
+ "rustc_version",
+ "rustversion",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "server_fn_macro_default",
+ "thiserror 2.0.17",
+ "throw_error",
+ "url",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "server_fn_macro"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "950b8cfc9ff5f39ca879c5a7c5e640de2695a199e18e424c3289d0964cabe642"
+dependencies = [
+ "const_format",
+ "convert_case 0.8.0",
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 2.0.111",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "server_fn_macro_default"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63eb08f80db903d3c42f64e60ebb3875e0305be502bdc064ec0a0eab42207f00"
+dependencies = [
+ "server_fn_macro",
+ "syn 2.0.111",
+]
+
+[[package]]
 name = "servo_arc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6556,6 +6614,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "throw_error"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0ed6038fcbc0795aca7c92963ddda636573b956679204e044492d2b13c8f64"
+dependencies = [
+ "pin-project-lite",
 ]
 
 [[package]]

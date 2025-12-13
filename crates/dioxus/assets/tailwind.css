@@ -443,6 +443,9 @@
   .max-w-\[80\%\] {
     max-width: 80%;
   }
+  .max-w-full {
+    max-width: 100%;
+  }
   .max-w-sm {
     max-width: var(--container-sm);
   }
@@ -590,6 +593,11 @@
       margin-inline-start: calc(calc(var(--spacing) * 4) * var(--tw-space-x-reverse));
       margin-inline-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-x-reverse)));
     }
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .overflow-hidden {
     overflow: hidden;
