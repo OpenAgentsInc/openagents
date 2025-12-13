@@ -151,16 +151,20 @@ pub struct InvoiceLine {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InvoiceSummary {
+    pub invoice_id: String,
     pub period: String,
     pub total: String,
+    pub status: String,
     pub lines: Vec<InvoiceLine>,
 }
 
 impl Default for InvoiceSummary {
     fn default() -> Self {
         Self {
+            invoice_id: "inv-demo".to_string(),
             period: "Pending".to_string(),
             total: "$0.00".to_string(),
+            status: "draft".to_string(),
             lines: vec![],
         }
     }
@@ -475,8 +479,10 @@ pub fn mock_usage_metrics() -> Vec<UsageMetric> {
 
 pub fn mock_invoice() -> InvoiceSummary {
     InvoiceSummary {
+        invoice_id: "inv-2412".to_string(),
         period: "Dec 2024".to_string(),
         total: "$3,068.10".to_string(),
+        status: "Pending".to_string(),
         lines: vec![
             InvoiceLine {
                 description: "Platform fee (Scale)".to_string(),
