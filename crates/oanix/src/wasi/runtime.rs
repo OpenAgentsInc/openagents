@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use wasmtime::*;
-use wasmtime_wasi::pipe::MemoryOutputPipe;
+use wasmtime_wasi::pipe::{MemoryInputPipe, MemoryOutputPipe};
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
@@ -23,6 +23,8 @@ pub struct RunConfig {
     pub env: Vec<(String, String)>,
     /// Working directory within the namespace
     pub working_dir: Option<String>,
+    /// Optional stdin payload to provide to the WASI module
+    pub stdin: Option<Vec<u8>>,
 }
 
 /// Result of running a WASI module
@@ -109,8 +111,13 @@ impl WasiRuntime {
             wasi_builder.env(key, value);
         }
 
-        // Inherit stdin from host while capturing stdout/stderr
-        wasi_builder.inherit_stdin();
+        // Provide stdin data when supplied; otherwise inherit host stdin
+        if let Some(stdin_bytes) = &config.stdin {
+            wasi_builder.stdin(MemoryInputPipe::new(stdin_bytes.clone()));
+        } else {
+            wasi_builder.inherit_stdin();
+        }
+
         wasi_builder.stdout(stdout_pipe.clone());
         wasi_builder.stderr(stderr_pipe.clone());
 
@@ -379,5 +386,52 @@ mod tests {
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"stdout\n");
         assert_eq!(result.stderr, b"stderr\n");
+    }
+
+    #[test]
+    fn pipes_custom_stdin() {
+        let runtime = WasiRuntime::new().unwrap();
+        let namespace = Namespace::builder().build();
+        let wasm = wat::parse_str(
+            r#"
+            (module
+              (type $fd_read_ty (func (param i32 i32 i32 i32) (result i32)))
+              (type $fd_write_ty (func (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (type $fd_read_ty)))
+              (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (type $fd_write_ty)))
+              (memory 1)
+              (export "memory" (memory 0))
+              (func $_start (export "_start")
+                (local $n i32)
+                ;; Prepare read iovec at offset 0 -> buffer at offset 64
+                (i32.store (i32.const 0) (i32.const 64))
+                (i32.store (i32.const 4) (i32.const 32))
+                (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 8))
+                drop
+                (local.set $n (i32.load (i32.const 8)))
+                ;; Echo the bytes we read back to stdout
+                (i32.store (i32.const 16) (i32.const 64))
+                (i32.store (i32.const 20) (local.get $n))
+                (call $fd_write (i32.const 1) (i32.const 16) (i32.const 1) (i32.const 12))
+                drop))
+            "#,
+        )
+        .unwrap();
+
+        let input = b"echo from stdin".to_vec();
+        let result = runtime
+            .run(
+                &namespace,
+                &wasm,
+                RunConfig {
+                    stdin: Some(input.clone()),
+                    ..Default::default()
+                },
+            )
+            .expect("WASI execution failed");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, input);
+        assert!(result.stderr.is_empty());
     }
 }

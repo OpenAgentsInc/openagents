@@ -110,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ("HOME".to_string(), "/workspace".to_string()),
         ],
         working_dir: Some("/workspace".to_string()),
+        ..Default::default()
     };
 
     // Run the WASI module
