@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum VibeTab {
+pub enum CoderTab {
     Projects,
     Editor,
     Database,
@@ -338,11 +338,11 @@ pub fn mock_deployments() -> Vec<Deployment> {
 pub fn mock_domains() -> Vec<Domain> {
     vec![
         Domain {
-            host: "vibe.openagents.dev".to_string(),
+            host: "coder.openagents.com".to_string(),
             status: "Active".to_string(),
         },
         Domain {
-            host: "preview.vibe.dev".to_string(),
+            host: "preview.coder.openagents.com".to_string(),
             status: "Provisioning".to_string(),
         },
     ]
@@ -409,7 +409,7 @@ pub fn mock_agent_tasks() -> Vec<AgentTask> {
 
 pub fn mock_auth_state() -> AuthState {
     AuthState {
-        npub: "npub1vibe...demo".to_string(),
+        npub: "npub1coder...demo".to_string(),
         plan: "Pro".to_string(),
         status: "verified".to_string(),
         token_preview: "jwt-abc123...".to_string(),
@@ -431,29 +431,29 @@ pub fn mock_infra_customers() -> Vec<InfraCustomer> {
     vec![
         InfraCustomer {
             id: "customer-acme".to_string(),
-            subdomain: "acme.vibe.run".to_string(),
+            subdomain: "acme.coder.openagents.com".to_string(),
             plan: "Growth".to_string(),
             status: "Active".to_string(),
             r2_prefix: "customers/acme/".to_string(),
-            d1_database: "vibe-customer-acme".to_string(),
+            d1_database: "coder-customer-acme".to_string(),
             durable_object: "do:customer:acme".to_string(),
         },
         InfraCustomer {
             id: "customer-studio".to_string(),
-            subdomain: "studio.vibe.run".to_string(),
+            subdomain: "studio.coder.openagents.com".to_string(),
             plan: "Starter".to_string(),
             status: "Provisioning".to_string(),
             r2_prefix: "customers/studio/".to_string(),
-            d1_database: "vibe-customer-studio".to_string(),
+            d1_database: "coder-customer-studio".to_string(),
             durable_object: "do:customer:studio".to_string(),
         },
         InfraCustomer {
             id: "customer-zen".to_string(),
-            subdomain: "zenlabs.vibe.run".to_string(),
+            subdomain: "zenlabs.coder.openagents.com".to_string(),
             plan: "Scale".to_string(),
             status: "Active".to_string(),
             r2_prefix: "customers/zen/".to_string(),
-            d1_database: "vibe-customer-zen".to_string(),
+            d1_database: "coder-customer-zen".to_string(),
             durable_object: "do:customer:zen".to_string(),
         },
     ]

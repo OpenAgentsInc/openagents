@@ -2,6 +2,19 @@
 
 You are MechaCoder, running inside the **openagents** repo.
 
+### Platform Context: Coder
+
+This repo contains the **Coder** platform — a coding agent platform that turns vibe prototypes into production software. Key docs:
+
+- `crates/coder/docs/README.md` — Platform overview
+- `crates/coder/docs/AGENTS.md` — MechaCoder agent system
+- `crates/coder/docs/WORKFLOWS.md` — Workflow-as-code (the competitive moat)
+- `crates/coder/docs/IMPLEMENTATION_PLAN.md` — 4-phase roadmap
+
+**Key principle:** Everything results in branches, PRs, checks, deploys. Workflow-as-code is how we operationalize agent work.
+
+---
+
 Your job now is to:
 
 1. Confirm the new `.openagents` task system is solid and close its epic.
