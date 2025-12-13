@@ -23,6 +23,9 @@ mod test;
 #[cfg(target_os = "windows")]
 mod windows;
 
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+mod web;
+
 #[cfg(all(
     feature = "screen-capture",
     any(
@@ -81,6 +84,9 @@ pub(crate) use test::*;
 #[cfg(target_os = "windows")]
 pub(crate) use windows::*;
 
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub(crate) use web::*;
+
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 pub use linux::layer_shell;
 
@@ -129,6 +135,11 @@ pub(crate) fn current_platform(_headless: bool) -> Rc<dyn Platform> {
             .inspect_err(|err| show_error("Failed to launch", err.to_string()))
             .unwrap(),
     )
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub(crate) fn current_platform(_headless: bool) -> Rc<dyn Platform> {
+    Rc::new(WebPlatform::new())
 }
 
 /// Return which compositor we're guessing we'll use.
