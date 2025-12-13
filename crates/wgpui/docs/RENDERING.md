@@ -186,3 +186,47 @@ All primitives use GPU instancing:
 - Glyphs cached by (glyph_id, font_id, size, subpixel_offset)
 - Atlas persists across frames
 - Cache cleared on scale factor change
+
+## API Notes
+
+### wgpu 24.0 Deprecations
+
+Some type aliases are deprecated and will be renamed in wgpu 25.0:
+
+```rust
+// Current (deprecated)
+wgpu::ImageCopyTexture { ... }
+wgpu::ImageDataLayout { ... }
+
+// Future (wgpu 25.0)
+wgpu::TexelCopyTextureInfo { ... }
+wgpu::TexelCopyBufferLayout { ... }
+```
+
+### Atlas Upload
+
+The atlas texture is uploaded using `queue.write_texture()`:
+
+```rust
+pub fn update_atlas(&self, queue: &wgpu::Queue, data: &[u8], size: u32) {
+    queue.write_texture(
+        wgpu::ImageCopyTexture {  // Will become TexelCopyTextureInfo
+            texture: &self.atlas_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        data,
+        wgpu::ImageDataLayout {  // Will become TexelCopyBufferLayout
+            offset: 0,
+            bytes_per_row: Some(size),
+            rows_per_image: Some(size),
+        },
+        wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+```
