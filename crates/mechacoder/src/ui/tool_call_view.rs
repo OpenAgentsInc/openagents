@@ -30,6 +30,17 @@ impl ToolCallView {
         })
     }
 
+    /// Update from a ToolUse (status and output may have changed).
+    pub fn update_from(&mut self, tool_use: &ToolUse) {
+        self.tool_status = tool_use.status.clone();
+        self.output = tool_use.output.clone();
+    }
+
+    /// Get current status for comparison.
+    pub fn status(&self) -> &ToolStatus {
+        &self.tool_status
+    }
+
     /// Toggle expanded state.
     fn toggle_expanded(&mut self, _cx: &mut Context<Self>) {
         self.expanded = !self.expanded;
