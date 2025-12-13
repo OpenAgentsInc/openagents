@@ -33,7 +33,6 @@ members = [
     "crates/sandbox",
     "crates/sessions",
     "crates/storybook",
-    "crates/tasks",
     "crates/taskmaster",
     "crates/testgen",
     "crates/terminalbench",
@@ -268,7 +267,7 @@ llm = { path = "crates/llm" }
 orchestrator = { path = "crates/orchestrator" }
 parallel = { path = "crates/parallel" }
 sandbox = { path = "crates/sandbox" }
-tasks = { path = "crates/tasks" }
+taskmaster = { path = "crates/taskmaster" }
 tools = { path = "crates/tools" }
 testgen = { path = "crates/testgen" }
 guardrails = { path = "crates/guardrails" }
