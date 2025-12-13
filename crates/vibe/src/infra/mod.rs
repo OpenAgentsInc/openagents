@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::types::{BillingEvent, InfraCustomer, InvoiceLine, InvoiceSummary, UsageMetric};
-use crate::{ACCENT, BORDER, MUTED, PANEL, TEXT};
+use crate::types::{
+    AuthState, BillingEvent, InfraCustomer, InvoiceLine, InvoiceSummary, PlanLimits, UsageMetric,
+};
+use crate::{ACCENT, BG, BORDER, MUTED, PANEL, TEXT};
 
 #[component]
 pub fn InfraPanel(customers: Vec<InfraCustomer>, usage: Vec<UsageMetric>) -> Element {
@@ -95,6 +97,49 @@ pub fn BillingPanel(invoice: InvoiceSummary, events: Vec<BillingEvent>) -> Eleme
                     BillingEventRow { evt: evt.clone() }
                 }
             }
+        }
+    }
+}
+
+#[component]
+pub fn PlanSummary(plan: PlanLimits, auth: AuthState) -> Element {
+    rsx! {
+        div {
+            style: "background: {PANEL}; border: 1px solid {BORDER}; padding: 14px; display: flex; flex-direction: column; gap: 10px;",
+            div { style: "display: flex; justify-content: space-between; align-items: center;",
+                span { style: "color: {TEXT}; font-weight: 700;", "Plan: {plan.plan}" }
+                span { style: "color: {MUTED}; font-size: 12px;", "{plan.billing_cycle}" }
+            }
+            div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;",
+                PlanRow { label: "AI prompts", value: plan.ai_prompts.clone() }
+                PlanRow { label: "Agent runs", value: plan.agent_runs.clone() }
+                PlanRow { label: "Infra credits", value: plan.infra_credits.clone() }
+                PlanRow { label: "API rate", value: plan.api_rate.clone() }
+                PlanRow { label: "Status", value: auth.status.clone() }
+            }
+            div { style: "display: flex; gap: 8px;",
+                button {
+                    style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {PANEL}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                    onclick: move |_| {},
+                    "Upgrade plan"
+                }
+                button {
+                    style: "padding: 6px 10px; border: 1px solid {BORDER}; background: {BG}; color: {TEXT}; cursor: pointer; font-size: 12px;",
+                    onclick: move |_| {},
+                    "Manage billing"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn PlanRow(label: &'static str, value: String) -> Element {
+    rsx! {
+        div {
+            style: "display: flex; justify-content: space-between; border: 1px solid {BORDER}; padding: 6px 8px;",
+            span { style: "color: {MUTED}; font-size: 12px;", "{label}" }
+            span { style: "color: {TEXT}; font-weight: 600;", "{value}" }
         }
     }
 }
