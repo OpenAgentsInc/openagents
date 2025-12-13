@@ -228,3 +228,39 @@ pub async fn download_invoice(project_id: String) -> Result<VibeSnapshot, Server
     });
     Ok(updated)
 }
+
+pub async fn simulate_error(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.provisioning = false;
+        snap.action_state.refreshing = false;
+        snap.action_state.paying = false;
+        snap.action_state.downloading = false;
+        snap.action_state.error = Some("Mock failure: capacity unavailable".to_string());
+        snap.action_state.message = None;
+        snap.billing_events.insert(
+            0,
+            BillingEvent {
+                id: format!("evt-error-{}", snap.billing_events.len() + 1),
+                label: "Provisioning failed".to_string(),
+                amount: "$0.00".to_string(),
+                status: "Error".to_string(),
+                timestamp: "just now".to_string(),
+            },
+        );
+        snap.clone()
+    });
+    Ok(updated)
+}
+
+pub async fn clear_action_state(project_id: String) -> Result<VibeSnapshot, ServerFnError> {
+    let updated = with_snapshot(&project_id, |snap| {
+        snap.action_state.provisioning = false;
+        snap.action_state.refreshing = false;
+        snap.action_state.paying = false;
+        snap.action_state.downloading = false;
+        snap.action_state.message = None;
+        snap.action_state.error = None;
+        snap.clone()
+    });
+    Ok(updated)
+}

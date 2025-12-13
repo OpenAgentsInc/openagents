@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 
 use crate::data::{
-    VibeSnapshot, download_invoice, get_vibe_snapshot, pay_invoice, provision_infra_customer,
-    refresh_usage, run_wasi_job, tail_logs, trigger_deploy,
+    VibeSnapshot, clear_action_state, download_invoice, get_vibe_snapshot, pay_invoice,
+    provision_infra_customer, refresh_usage, run_wasi_job, simulate_error, tail_logs,
+    trigger_deploy,
 };
 use crate::database::{SchemaView, TableBrowser};
 use crate::deploy::{AnalyticsView, DeployPanel, DomainManager};
@@ -225,6 +226,30 @@ pub fn VibeScreen() -> Element {
         }
     };
 
+    let on_sim_error = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = simulate_error(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
+    let on_clear_status = {
+        let mut apply_snapshot = apply_snapshot.clone();
+        let active_project = active_project.clone();
+        move || {
+            spawn(async move {
+                if let Ok(data) = clear_action_state(active_project()).await {
+                    apply_snapshot(data);
+                }
+            });
+        }
+    };
+
     rsx! {
         div {
             style: "display: flex; flex-direction: column; min-height: 100vh; background: {BG}; color: {TEXT}; font-family: 'Berkeley Mono', 'JetBrains Mono', monospace; font-size: 13px;",
@@ -297,7 +322,16 @@ pub fn VibeScreen() -> Element {
                 VibeTab::Infra => rsx! {
                     div {
                         style: "display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 16px;",
-                        InfraPanel { customers: infra_customers(), usage: usage(), events: billing_events(), on_provision: move |_| on_provision(), on_refresh: move |_| on_refresh_usage(), action_state: action_state() }
+                        InfraPanel {
+                            customers: infra_customers(),
+                            usage: usage(),
+                            events: billing_events(),
+                            on_provision: move |_| on_provision(),
+                            on_refresh: move |_| on_refresh_usage(),
+                            on_error: move |_| on_sim_error(),
+                            on_clear: move |_| on_clear_status(),
+                            action_state: action_state(),
+                        }
                         div {
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             PlanSummary { plan: plan_limits(), auth: auth() }
