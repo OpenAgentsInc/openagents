@@ -4,8 +4,22 @@ use dioxus::fullstack::payloads::websocket::use_websocket;
 use mechacoder::{
     ClientMessage, Message, ServerMessage, ThreadEntry, ToolStatus, ToolUse,
 };
+use pulldown_cmark::{Parser, Options, html};
 
 use super::ConversationGraph;
+
+/// Convert markdown to HTML
+fn markdown_to_html(md: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let parser = Parser::new_ext(md, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    html_output
+}
 
 // Bloomberg-inspired theme colors (from theme_oa)
 #[allow(dead_code)]
@@ -335,11 +349,64 @@ pub fn MechaCoder() -> Element {
     }
 }
 
+/// CSS for markdown content
+const MARKDOWN_STYLES: &str = r#"
+    .markdown-content { color: #E6E6E6; }
+    .markdown-content p { margin: 0.5em 0; }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+        color: #FFB400;
+        margin: 1em 0 0.5em 0;
+        font-weight: 600;
+    }
+    .markdown-content h1 { font-size: 1.4em; }
+    .markdown-content h2 { font-size: 1.2em; }
+    .markdown-content h3 { font-size: 1.1em; }
+    .markdown-content code {
+        background: #1A1A1A;
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;
+        font-size: 0.9em;
+    }
+    .markdown-content pre {
+        background: #101010;
+        padding: 12px;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin: 0.5em 0;
+        border: 1px solid #1A1A1A;
+    }
+    .markdown-content pre code {
+        background: none;
+        padding: 0;
+    }
+    .markdown-content ul, .markdown-content ol {
+        margin: 0.5em 0;
+        padding-left: 1.5em;
+    }
+    .markdown-content li { margin: 0.25em 0; }
+    .markdown-content blockquote {
+        border-left: 3px solid #FFB400;
+        margin: 0.5em 0;
+        padding-left: 1em;
+        color: #B0B0B0;
+    }
+    .markdown-content a { color: #4A9EFF; text-decoration: none; }
+    .markdown-content a:hover { text-decoration: underline; }
+    .markdown-content table { border-collapse: collapse; margin: 0.5em 0; }
+    .markdown-content th, .markdown-content td {
+        border: 1px solid #1A1A1A;
+        padding: 0.5em;
+    }
+    .markdown-content th { background: #0A0A0A; }
+    .markdown-content hr { border: none; border-top: 1px solid #1A1A1A; margin: 1em 0; }
+"#;
+
 #[component]
 fn MessageLine(role: String, content: String) -> Element {
     let is_user = role == "user";
 
-    // User messages get ">" prefix in yellow, assistant messages are plain
+    // User messages get ">" prefix in yellow, assistant messages render as markdown
     if is_user {
         rsx! {
             div {
@@ -355,10 +422,13 @@ fn MessageLine(role: String, content: String) -> Element {
             }
         }
     } else {
+        let html_content = markdown_to_html(&content);
         rsx! {
+            style { {MARKDOWN_STYLES} }
             div {
-                style: "padding: 8px 0; white-space: pre-wrap; color: {theme::TEXT_PRIMARY};",
-                "{content}"
+                class: "markdown-content",
+                style: "padding: 8px 0;",
+                dangerous_inner_html: "{html_content}",
             }
         }
     }

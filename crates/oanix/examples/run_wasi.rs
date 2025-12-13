@@ -123,6 +123,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Execution complete:");
     println!("  Exit code: {}", result.exit_code);
 
+    if !result.stdout.is_empty() {
+        println!();
+        println!("Captured stdout:");
+        println!("{}", String::from_utf8_lossy(&result.stdout));
+    }
+
+    if !result.stderr.is_empty() {
+        println!();
+        println!("Captured stderr:");
+        println!("{}", String::from_utf8_lossy(&result.stderr));
+    }
+
     // Check if any files were created/modified in /tmp
     println!();
     println!("Checking namespace state after execution...");

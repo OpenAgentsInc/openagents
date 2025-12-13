@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use wasmtime::*;
+use wasmtime_wasi::pipe::MemoryOutputPipe;
 use wasmtime_wasi::preview1::{self, WasiP1Ctx};
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
@@ -29,11 +30,14 @@ pub struct RunConfig {
 pub struct RunResult {
     /// Exit code (0 = success)
     pub exit_code: i32,
-    /// Captured standard output (currently empty - inherits from host)
+    /// Captured standard output
     pub stdout: Vec<u8>,
-    /// Captured standard error (currently empty - inherits from host)
+    /// Captured standard error
     pub stderr: Vec<u8>,
 }
+
+/// Default in-memory buffer size for captured stdio (1 MiB per stream)
+const STDIO_BUFFER_CAPACITY: usize = 1024 * 1024;
 
 /// WASI runtime powered by wasmtime
 ///
@@ -92,6 +96,10 @@ impl WasiRuntime {
         // Build WASI context
         let mut wasi_builder = WasiCtxBuilder::new();
 
+        // Capture stdout/stderr into in-memory pipes for RunResult
+        let stdout_pipe = MemoryOutputPipe::new(STDIO_BUFFER_CAPACITY);
+        let stderr_pipe = MemoryOutputPipe::new(STDIO_BUFFER_CAPACITY);
+
         // Set up arguments
         let args: Vec<&str> = config.args.iter().map(|s| s.as_str()).collect();
         wasi_builder.args(&args);
@@ -101,12 +109,10 @@ impl WasiRuntime {
             wasi_builder.env(key, value);
         }
 
-        // Inherit stdio from host
-        // TODO: Implement custom stdin/stdout/stderr capture
-        // For now, output goes to host's stdio
+        // Inherit stdin from host while capturing stdout/stderr
         wasi_builder.inherit_stdin();
-        wasi_builder.inherit_stdout();
-        wasi_builder.inherit_stderr();
+        wasi_builder.stdout(stdout_pipe.clone());
+        wasi_builder.stderr(stderr_pipe.clone());
 
         // Mount namespace paths as preopened directories
         // For now, we'll sync MemFs contents to temp directories
@@ -170,8 +176,8 @@ impl WasiRuntime {
 
         Ok(RunResult {
             exit_code,
-            stdout: Vec::new(), // TODO: capture stdout
-            stderr: Vec::new(), // TODO: capture stderr
+            stdout: stdout_pipe.contents().to_vec(),
+            stderr: stderr_pipe.contents().to_vec(),
         })
     }
 
@@ -328,11 +334,50 @@ impl Default for WasiRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::MemFs;
+    use crate::Namespace;
 
     #[test]
     fn test_runtime_creation() {
-        let runtime = WasiRuntime::new().unwrap();
+        let _runtime = WasiRuntime::new().unwrap();
         assert!(true); // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn captures_stdout_and_stderr() {
+        let runtime = WasiRuntime::new().unwrap();
+        let namespace = Namespace::builder().build();
+        let wasm = wat::parse_str(
+            r#"
+            (module
+              (type $fd_write_ty (func (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (type $fd_write_ty)))
+              (memory 1)
+              (export "memory" (memory 0))
+              (data (i32.const 8) "stdout\n")
+              (data (i32.const 32) "stderr\n")
+              (func $_start (export "_start")
+                ;; iovec for stdout at offset 0
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 7))
+                ;; iovec for stderr at offset 16
+                (i32.store (i32.const 16) (i32.const 32))
+                (i32.store (i32.const 20) (i32.const 7))
+                ;; write stdout
+                (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 64))
+                drop
+                ;; write stderr
+                (call $fd_write (i32.const 2) (i32.const 16) (i32.const 1) (i32.const 68))
+                drop))
+            "#,
+        )
+        .unwrap();
+
+        let result = runtime
+            .run(&namespace, &wasm, RunConfig::default())
+            .expect("WASI execution failed");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"stdout\n");
+        assert_eq!(result.stderr, b"stderr\n");
     }
 }
