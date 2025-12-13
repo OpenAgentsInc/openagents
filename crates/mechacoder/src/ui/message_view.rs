@@ -5,7 +5,7 @@ use gpui::{
     Refineable, Render, SharedString, Styled, TextStyle, TextStyleRefinement, UnderlineStyle,
     Window,
 };
-use markdown::{Markdown, MarkdownElement, MarkdownStyle};
+use markdown::{HeadingLevelStyles, Markdown, MarkdownElement, MarkdownStyle};
 use theme_oa::{bg, border, text, FONT_FAMILY, FONT_SIZE, LINE_HEIGHT_RELAXED};
 
 /// Message view for displaying a single message with markdown.
@@ -68,12 +68,19 @@ impl MessageView {
             ..Default::default()
         });
 
+        // All headings use base text size (no size variation)
+        let heading_style = TextStyleRefinement {
+            font_size: Some(px(FONT_SIZE).into()),
+            font_weight: Some(gpui::FontWeight::BOLD),
+            ..Default::default()
+        };
+
         MarkdownStyle {
             base_text_style: text_style,
             code_block: gpui::StyleRefinement::default()
                 .px(px(12.0))
                 .py(px(8.0))
-                
+                .mb(px(12.0))
                 .bg(bg::CODE),
             inline_code: TextStyleRefinement {
                 background_color: Some(bg::CODE),
@@ -92,6 +99,17 @@ impl MessageView {
                 }),
                 ..Default::default()
             },
+            // Heading spacing
+            heading: gpui::StyleRefinement::default().mb(px(8.0)).mt(px(16.0)),
+            // All heading levels use same size
+            heading_level_styles: Some(HeadingLevelStyles {
+                h1: Some(heading_style.clone()),
+                h2: Some(heading_style.clone()),
+                h3: Some(heading_style.clone()),
+                h4: Some(heading_style.clone()),
+                h5: Some(heading_style.clone()),
+                h6: Some(heading_style),
+            }),
             rule_color: border::DEFAULT,
             block_quote_border_color: border::DEFAULT,
             syntax: std::sync::Arc::new(theme::SyntaxTheme::default()),
