@@ -502,7 +502,7 @@ pub fn mock_usage_metrics() -> Vec<UsageMetric> {
 pub fn mock_invoice() -> InvoiceSummary {
     InvoiceSummary {
         invoice_id: "inv-2412".to_string(),
-        period: "Dec 2024".to_string(),
+        period: "Dec 2025".to_string(),
         total: "$3,068.10".to_string(),
         status: "Pending".to_string(),
         lines: vec![
