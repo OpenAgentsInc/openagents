@@ -4,27 +4,32 @@
 //! - WebSocket handling via Cloudflare's WebSocket API
 //! - Event storage (in-memory for now, SQLite later)
 //! - HTTP endpoints for relay info (NIP-11)
+//! - NIP-90 DVM job processing
 
+use crate::dvm::DvmProcessor;
+use crate::signing::ServiceIdentity;
+use nostr::{is_job_request_kind, JobRequest, JobStatus, KIND_JOB_FEEDBACK};
 use nostr_relay::{ClientMessage, Filter, RelayMessage, SubscriptionManager};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use worker::*;
 
 /// Relay Durable Object.
 ///
-/// Manages WebSocket connections, event storage, and subscriptions.
+/// Manages WebSocket connections, event storage, subscriptions, and NIP-90 DVM processing.
 #[durable_object]
 pub struct RelayDurableObject {
     state: State,
-    #[allow(dead_code)]
     env: Env,
-    /// Subscriptions per WebSocket connection (keyed by WebSocket)
-    subscriptions: RefCell<HashMap<String, SubscriptionManager>>,
+    /// Global subscription manager (simplified - all connections share subscriptions)
+    subscriptions: RefCell<SubscriptionManager>,
     /// In-memory event storage (temporary - will migrate to SQLite)
     events: RefCell<Vec<nostr::Event>>,
     /// Active WebSocket connections for broadcasting
     websockets: RefCell<Vec<WebSocket>>,
+    /// Service identity for signing DVM responses (lazily loaded)
+    #[allow(dead_code)]
+    service_identity: RefCell<Option<ServiceIdentity>>,
 }
 
 impl DurableObject for RelayDurableObject {
@@ -32,9 +37,10 @@ impl DurableObject for RelayDurableObject {
         Self {
             state,
             env,
-            subscriptions: RefCell::new(HashMap::new()),
+            subscriptions: RefCell::new(SubscriptionManager::new()),
             events: RefCell::new(Vec::new()),
             websockets: RefCell::new(Vec::new()),
+            service_identity: RefCell::new(None),
         }
     }
 
@@ -59,12 +65,25 @@ impl DurableObject for RelayDurableObject {
         ws: WebSocket,
         message: WebSocketIncomingMessage,
     ) -> Result<()> {
-        // Get the connection ID from the WebSocket
-        let conn_id = self.get_ws_id(&ws);
-
         // Process the message
         if let WebSocketIncomingMessage::String(text) = message {
-            match self.process_message(&conn_id, &text) {
+            // Try to parse the message to check for NIP-90 job requests
+            if let Ok(ClientMessage::Event(ref event)) = ClientMessage::from_json(&text) {
+                if is_job_request_kind(event.kind) {
+                    // Handle NIP-90 job request asynchronously
+                    match self.handle_job_request(&ws, event).await {
+                        Ok(()) => return Ok(()),
+                        Err(e) => {
+                            let notice = RelayMessage::notice(&format!("job error: {}", e));
+                            ws.send_with_str(&notice.to_json())?;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
+            // Process non-NIP-90 messages synchronously
+            match self.process_message(&text) {
                 Ok(responses) => {
                     // Send responses back to the client
                     for response in responses {
@@ -85,32 +104,18 @@ impl DurableObject for RelayDurableObject {
 
     async fn websocket_close(
         &self,
-        ws: WebSocket,
+        _ws: WebSocket,
         _code: usize,
         _reason: String,
         _was_clean: bool,
     ) -> Result<()> {
-        // Remove subscriptions for this connection
-        let conn_id = self.get_ws_id(&ws);
-        self.subscriptions.borrow_mut().remove(&conn_id);
-
-        // Remove from active websockets
-        self.websockets
-            .borrow_mut()
-            .retain(|w| self.get_ws_id(w) != conn_id);
-
+        // Note: With global subscription manager, we don't remove subscriptions on close
+        // In production, we'd track subscription ownership and clean up properly
         Ok(())
     }
 }
 
 impl RelayDurableObject {
-    /// Get a unique ID for a WebSocket connection.
-    fn get_ws_id(&self, _ws: &WebSocket) -> String {
-        // In a real implementation, we'd use attachment data or similar
-        // For now, use a simple approach based on the current connections
-        format!("ws_{}", Date::now().as_millis())
-    }
-
     /// Handle WebSocket upgrade.
     async fn handle_websocket_upgrade(&self) -> Result<Response> {
         // Create WebSocket pair
@@ -120,14 +125,6 @@ impl RelayDurableObject {
 
         // Accept the WebSocket with hibernation support
         self.state.accept_web_socket(&server);
-
-        // Generate connection ID and store it
-        let conn_id = format!("ws_{}", Date::now().as_millis());
-
-        // Initialize subscription manager for this connection
-        self.subscriptions
-            .borrow_mut()
-            .insert(conn_id.clone(), SubscriptionManager::new());
 
         // Track the WebSocket for broadcasting
         self.websockets.borrow_mut().push(server);
@@ -176,21 +173,17 @@ impl RelayDurableObject {
 
     /// Broadcast an event to all matching subscribers.
     fn broadcast_event(&self, event: &nostr::Event) {
-        let subscriptions = self.subscriptions.borrow();
+        let manager = self.subscriptions.borrow();
         let websockets = self.websockets.borrow();
 
-        // For each connection's subscriptions
-        for (_conn_id, manager) in subscriptions.iter() {
-            // Get all subscriptions that match this event
-            let matching = manager.matching(event);
-            for sub in matching {
-                // Find the WebSocket for this connection and send
-                // Note: This is simplified - in production we'd need proper WS<->conn_id mapping
-                if let Some(ws) = websockets.first() {
-                    let msg = RelayMessage::event(&sub.id, event.clone());
-                    let _ = ws.send_with_str(&msg.to_json());
-                }
-                break; // Only send once per connection even if multiple subs match
+        // Get all subscriptions that match this event
+        let matching = manager.matching(event);
+
+        for sub in matching {
+            // Send to all connected websockets
+            for ws in websockets.iter() {
+                let msg = RelayMessage::event(&sub.id, event.clone());
+                let _ = ws.send_with_str(&msg.to_json());
             }
         }
     }
@@ -207,11 +200,7 @@ impl RelayDurableObject {
     }
 
     /// Process a client message.
-    pub fn process_message(
-        &self,
-        conn_id: &str,
-        message: &str,
-    ) -> Result<Vec<RelayMessage>> {
+    pub fn process_message(&self, message: &str) -> Result<Vec<RelayMessage>> {
         let client_msg = ClientMessage::from_json(message)
             .map_err(|e| Error::RustError(format!("parse error: {}", e)))?;
 
@@ -249,15 +238,13 @@ impl RelayDurableObject {
                 responses.push(RelayMessage::eose(&subscription_id));
 
                 // Store subscription
-                if let Some(manager) = self.subscriptions.borrow_mut().get_mut(conn_id) {
-                    manager.add(&subscription_id, filters);
-                }
+                self.subscriptions
+                    .borrow_mut()
+                    .add(&subscription_id, filters);
             }
 
             ClientMessage::Close { subscription_id } => {
-                if let Some(manager) = self.subscriptions.borrow_mut().get_mut(conn_id) {
-                    manager.remove(&subscription_id);
-                }
+                self.subscriptions.borrow_mut().remove(&subscription_id);
                 responses.push(RelayMessage::closed(&subscription_id, ""));
             }
 
@@ -268,6 +255,163 @@ impl RelayDurableObject {
         }
 
         Ok(responses)
+    }
+
+    // =========================================================================
+    // NIP-90 DVM Job Handling
+    // =========================================================================
+
+    /// Handle a NIP-90 job request.
+    ///
+    /// This processes the job using Cloudflare Workers AI and publishes
+    /// feedback and result events.
+    async fn handle_job_request(&self, ws: &WebSocket, event: &nostr::Event) -> Result<()> {
+        // Verify event ID first
+        if let Err(e) = nostr_relay::verify_event_id(event) {
+            let ok = RelayMessage::ok_failure(&event.id, &e.to_string());
+            ws.send_with_str(&ok.to_json())?;
+            return Ok(());
+        }
+
+        // Parse the job request from the event
+        let job_request = match JobRequest::from_event(event) {
+            Ok(req) => req,
+            Err(e) => {
+                let ok = RelayMessage::ok_failure(&event.id, &format!("invalid job: {}", e));
+                ws.send_with_str(&ok.to_json())?;
+                return Ok(());
+            }
+        };
+
+        // Store the job request event
+        self.store_event(event.clone());
+        let ok = RelayMessage::ok_success(&event.id);
+        ws.send_with_str(&ok.to_json())?;
+
+        // Get or initialize service identity
+        let identity = self.get_or_init_service_identity()?;
+
+        // Send "processing" feedback
+        let feedback_event =
+            self.create_feedback_event(&identity, event, JobStatus::Processing, None)?;
+        self.store_event(feedback_event.clone());
+        self.broadcast_event(&feedback_event);
+
+        // Process the job using Cloudflare AI
+        let processor = DvmProcessor::new(&self.env);
+        let result = processor.process(&job_request).await;
+
+        match result {
+            Ok(content) => {
+                // Create and broadcast result event
+                let result_event = self.create_result_event(&identity, event, &content)?;
+                self.store_event(result_event.clone());
+                self.broadcast_event(&result_event);
+            }
+            Err(e) => {
+                // Send error feedback
+                let error_feedback =
+                    self.create_feedback_event(&identity, event, JobStatus::Error, Some(&e))?;
+                self.store_event(error_feedback.clone());
+                self.broadcast_event(&error_feedback);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get or initialize the service identity from environment.
+    fn get_or_init_service_identity(&self) -> Result<ServiceIdentity> {
+        // Note: We recreate from env each time since Clone isn't available
+
+        // Try to load from environment
+        let privkey = self
+            .env
+            .secret("SERVICE_PRIVKEY")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| {
+                // Use a default test key if not configured
+                // In production, this should always be set
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()
+            });
+
+        let identity = ServiceIdentity::from_hex(&privkey)
+            .map_err(|e| Error::RustError(format!("invalid service key: {}", e)))?;
+
+        Ok(identity)
+    }
+
+    /// Create a job feedback event (kind 7000).
+    fn create_feedback_event(
+        &self,
+        identity: &ServiceIdentity,
+        request: &nostr::Event,
+        status: JobStatus,
+        message: Option<&str>,
+    ) -> Result<nostr::Event> {
+        let created_at = (Date::now().as_millis() / 1000) as u64;
+
+        let mut tags = vec![
+            vec!["e".to_string(), request.id.clone()],
+            vec!["p".to_string(), request.pubkey.clone()],
+            vec!["status".to_string(), status.as_str().to_string()],
+        ];
+
+        if let Some(msg) = message {
+            tags[2].push(msg.to_string());
+        }
+
+        let content = message.unwrap_or("").to_string();
+
+        // Compute event ID and sign
+        let (id, sig) = identity
+            .finalize_event(created_at, KIND_JOB_FEEDBACK, &tags, &content)
+            .map_err(|e| Error::RustError(e))?;
+
+        Ok(nostr::Event {
+            id,
+            pubkey: identity.pubkey().to_string(),
+            created_at,
+            kind: KIND_JOB_FEEDBACK,
+            tags,
+            content,
+            sig,
+        })
+    }
+
+    /// Create a job result event (kind 6xxx).
+    fn create_result_event(
+        &self,
+        identity: &ServiceIdentity,
+        request: &nostr::Event,
+        content: &str,
+    ) -> Result<nostr::Event> {
+        let created_at = (Date::now().as_millis() / 1000) as u64;
+        let result_kind = request.kind + 1000; // e.g., 5050 -> 6050
+
+        let tags = vec![
+            vec!["e".to_string(), request.id.clone()],
+            vec!["p".to_string(), request.pubkey.clone()],
+            vec![
+                "request".to_string(),
+                serde_json::to_string(request).unwrap_or_default(),
+            ],
+        ];
+
+        // Compute event ID and sign
+        let (id, sig) = identity
+            .finalize_event(created_at, result_kind, &tags, content)
+            .map_err(|e| Error::RustError(e))?;
+
+        Ok(nostr::Event {
+            id,
+            pubkey: identity.pubkey().to_string(),
+            created_at,
+            kind: result_kind,
+            tags,
+            content: content.to_string(),
+            sig,
+        })
     }
 }
 

@@ -11,7 +11,9 @@ use theme_oa::{bg, border, text, FONT_FAMILY};
 use ui_oa::{Button, ButtonVariant};
 
 use crate::actions::*;
-use crate::panels::{ClaudePanel, ClaudePanelEvent, GymPanel, GymPanelEvent, TB2RunnerEvent};
+use crate::panels::{ClaudePanel, ClaudePanelEvent, GymPanel, GymPanelEvent, PiPanel, PiPanelEvent, TB2RunnerEvent};
+use crate::pi_thread::{PiThread, PiThreadEvent};
+use crate::router::{Backend, Router, RouterConfig};
 use crate::sdk_thread::SdkThread;
 use crate::ui::thread_view::ThreadView;
 
@@ -20,6 +22,7 @@ use crate::ui::thread_view::ThreadView;
 pub enum ActivePanel {
     Gym,
     Claude,
+    Pi,
 }
 
 /// Main screen for MechaCoder.
@@ -28,8 +31,12 @@ pub struct MechaCoderScreen {
     focus_handle: FocusHandle,
     /// Current project root.
     project_root: PathBuf,
-    /// SDK thread for conversation.
+    /// Unified backend router.
+    router: Router,
+    /// SDK thread for conversation (Claude agent).
     sdk_thread: Option<Entity<SdkThread>>,
+    /// Pi thread for conversation (Pi agent).
+    pi_thread: Option<Entity<PiThread>>,
     /// Current thread view.
     thread_view: Option<Entity<ThreadView>>,
     /// Connection status.
@@ -42,6 +49,8 @@ pub struct MechaCoderScreen {
     gym_panel: Entity<GymPanel>,
     /// Claude panel entity.
     claude_panel: Entity<ClaudePanel>,
+    /// Pi panel entity.
+    pi_panel: Entity<PiPanel>,
     /// Currently active panel (if any).
     active_panel: Option<ActivePanel>,
     /// TB2 task loader for loading task definitions.
@@ -50,6 +59,8 @@ pub struct MechaCoderScreen {
     _gym_panel_subscription: Subscription,
     /// Subscription to claude panel events.
     _claude_panel_subscription: Subscription,
+    /// Subscription to pi panel events.
+    _pi_panel_subscription: Subscription,
 }
 
 /// Connection status.
@@ -85,27 +96,43 @@ impl MechaCoderScreen {
             this.handle_claude_panel_event(event, cx);
         });
 
+        // Create Pi panel
+        let pi_panel = cx.new(|cx| PiPanel::new(cx));
+
+        // Subscribe to pi panel events
+        let pi_panel_subscription = cx.subscribe(&pi_panel, |this, _panel, event, cx| {
+            this.handle_pi_panel_event(event, cx);
+        });
+
         // Create TB2 task loader
         let tb2_task_loader = TB2TaskLoader::new_default();
+
+        // Create and initialize router
+        let router = Router::new(RouterConfig::new());
 
         let mut screen = Self {
             focus_handle,
             project_root,
+            router,
             sdk_thread: None,
+            pi_thread: None,
             thread_view: None,
             connection_status: ConnectionStatus::Connecting,
             error_message: None,
             needs_focus: false,
             gym_panel,
             claude_panel,
+            pi_panel,
             active_panel: None,
             tb2_task_loader,
             _gym_panel_subscription: gym_panel_subscription,
             _claude_panel_subscription: claude_panel_subscription,
+            _pi_panel_subscription: pi_panel_subscription,
         };
 
-        // Auto-connect immediately - this will create the SDK thread and set up its subscription
-        screen.connect(cx);
+        // Detect available backends and auto-connect
+        screen.router.detect_sync();
+        screen.connect_to_best_backend(cx);
 
         screen
     }
@@ -114,6 +141,42 @@ impl MechaCoderScreen {
     #[allow(dead_code)]
     pub fn set_project_root(&mut self, path: impl Into<PathBuf>) {
         self.project_root = path.into();
+    }
+
+    /// Connect to the best available backend based on router detection.
+    fn connect_to_best_backend(&mut self, cx: &mut Context<Self>) {
+        match self.router.route() {
+            Some(Backend::ClaudeCode) => {
+                log::info!("Router selected Claude Code backend");
+                self.connect(cx);
+            }
+            Some(Backend::Ollama) => {
+                log::info!("Router selected Ollama backend (using Pi agent)");
+                // For now, Ollama uses Pi agent which can be configured for Ollama
+                self.connect_pi(cx);
+            }
+            Some(Backend::Pi) => {
+                log::info!("Router selected Pi agent backend");
+                self.connect_pi(cx);
+            }
+            Some(Backend::OpenAI) => {
+                log::info!("Router detected OpenAI - using Claude Code for now");
+                // OpenAI is available but we use Claude Code as primary
+                self.connect(cx);
+            }
+            Some(Backend::OpenAgentsCloud) => {
+                log::info!("Router selected OpenAgents Cloud (future)");
+                // Future: connect to OpenAgents Cloud
+                self.connect_pi(cx);
+            }
+            None => {
+                log::warn!("No backends available - showing setup prompt");
+                self.connection_status = ConnectionStatus::Error(
+                    "No AI backends available. Install Claude Code or run Ollama locally.".to_string()
+                );
+                cx.notify();
+            }
+        }
     }
 
     /// Connect to Claude Code via SDK and start a new thread.
@@ -250,9 +313,97 @@ impl MechaCoderScreen {
                 focus_handle.focus(window);
             }
         } else {
-            // Open Claude panel (closes Gym if open)
+            // Open Claude panel (closes others if open)
             self.active_panel = Some(ActivePanel::Claude);
         }
+
+        cx.notify();
+    }
+
+    /// Toggle the Pi panel visibility.
+    fn toggle_pi_panel(&mut self, _: &TogglePiPanel, window: &mut Window, cx: &mut Context<Self>) {
+        if self.active_panel == Some(ActivePanel::Pi) {
+            // Close Pi panel
+            self.active_panel = None;
+            // Refocus the message input so keybindings keep working
+            if let Some(thread_view) = &self.thread_view {
+                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+                focus_handle.focus(window);
+            }
+        } else {
+            // Open Pi panel (closes others if open)
+            self.active_panel = Some(ActivePanel::Pi);
+        }
+
+        cx.notify();
+    }
+
+    /// Toggle settings panel (reuses Claude panel).
+    fn toggle_settings(&mut self, _: &ToggleSettings, window: &mut Window, cx: &mut Context<Self>) {
+        // For now, settings opens the Claude panel which has settings
+        if self.active_panel == Some(ActivePanel::Claude) {
+            self.active_panel = None;
+            // Refocus the message input
+            if let Some(thread_view) = &self.thread_view {
+                let focus_handle = thread_view.read(cx).message_input_focus_handle(cx);
+                focus_handle.focus(window);
+            }
+        } else {
+            self.active_panel = Some(ActivePanel::Claude);
+        }
+        cx.notify();
+    }
+
+    /// Connect to Pi agent.
+    fn connect_pi(&mut self, cx: &mut Context<Self>) {
+        let project_root = self.project_root.clone();
+
+        // Create Pi thread
+        let thread = cx.new(|cx| PiThread::new(project_root.clone(), cx));
+
+        // Subscribe to Pi thread updates
+        let pi_panel = self.pi_panel.clone();
+        cx.subscribe(&thread, move |_this, _thread, event, cx| {
+            match event {
+                PiThreadEvent::CostUpdated => {
+                    let (total_cost, input_tokens, output_tokens) = {
+                        let thread_ref = _thread.read(cx);
+                        let cost = thread_ref.cost_tracker();
+                        (
+                            cost.total_cost_usd,
+                            cost.total_input_tokens,
+                            cost.total_output_tokens,
+                        )
+                    };
+                    let _ = pi_panel.update(cx, |panel, cx| {
+                        panel.update_cost(total_cost, input_tokens, output_tokens, cx);
+                    });
+                }
+                PiThreadEvent::SessionUpdated => {
+                    let session_id = {
+                        let thread_ref = _thread.read(cx);
+                        thread_ref.session_id().map(|s| s.to_string())
+                    };
+                    let _ = pi_panel.update(cx, |panel, cx| {
+                        panel.set_session_id(session_id, cx);
+                    });
+                }
+                _ => {}
+            }
+        }).detach();
+
+        self.pi_thread = Some(thread.clone());
+
+        // Create thread view for Pi
+        let thread_view = cx.new(|cx| ThreadView::new_pi(thread.clone(), cx));
+        self.thread_view = Some(thread_view);
+        self.connection_status = ConnectionStatus::Connected;
+        self.needs_focus = true;
+
+        // Set working directory in Pi panel
+        let _ = self.pi_panel.update(cx, |panel, cx| {
+            panel.set_working_dir(Some(project_root.to_string_lossy().to_string()), cx);
+        });
 
         cx.notify();
     }
@@ -891,6 +1042,19 @@ impl MechaCoderScreen {
         }
     }
 
+    /// Handle pi panel events
+    fn handle_pi_panel_event(&mut self, event: &PiPanelEvent, _cx: &mut Context<Self>) {
+        match event {
+            PiPanelEvent::ModelChanged { model } => {
+                log::info!("Pi model changed to: {}", model);
+            }
+            PiPanelEvent::SessionReset => {
+                log::info!("Pi session reset requested");
+                // TODO: Reset Pi session
+            }
+        }
+    }
+
     /// Render the connecting state with disabled input.
     fn render_connecting(&self) -> impl IntoElement {
         div()
@@ -1040,6 +1204,7 @@ impl Render for MechaCoderScreen {
         let active_panel = self.active_panel.clone();
         let gym_panel = self.gym_panel.clone();
         let claude_panel = self.claude_panel.clone();
+        let pi_panel = self.pi_panel.clone();
 
         div()
             .id("mechacoder-root")
@@ -1052,6 +1217,8 @@ impl Render for MechaCoderScreen {
             .on_action(cx.listener(Self::quit))
             .on_action(cx.listener(Self::toggle_gym_panel))
             .on_action(cx.listener(Self::toggle_claude_panel))
+            .on_action(cx.listener(Self::toggle_pi_panel))
+            .on_action(cx.listener(Self::toggle_settings))
             .on_action(cx.listener(Self::focus_message_input))
             .on_action(cx.listener(Self::cancel_generation))
             .flex()
@@ -1069,7 +1236,7 @@ impl Render for MechaCoderScreen {
                     })
             )
             // Right panel - 320px wide when visible
-            // Shows either Gym or Claude panel (exclusive)
+            // Shows Gym, Claude, or Pi panel (exclusive)
             .when_some(active_panel, |el, panel| {
                 match panel {
                     ActivePanel::Gym => {
@@ -1094,6 +1261,18 @@ impl Render for MechaCoderScreen {
                                 .bg(bg::SURFACE)
                                 .overflow_hidden()
                                 .child(claude_panel)
+                        )
+                    }
+                    ActivePanel::Pi => {
+                        el.child(
+                            div()
+                                .w(px(320.0))
+                                .h_full()
+                                .border_l_1()
+                                .border_color(border::DEFAULT)
+                                .bg(bg::SURFACE)
+                                .overflow_hidden()
+                                .child(pi_panel)
                         )
                     }
                 }
