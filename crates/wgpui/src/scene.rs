@@ -3,6 +3,7 @@
 use crate::color::Hsla;
 use crate::layout::Bounds;
 use bytemuck::{Pod, Zeroable};
+use std::rc::Rc;
 
 /// GPU quad instance data
 #[repr(C)]

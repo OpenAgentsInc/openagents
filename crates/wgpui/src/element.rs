@@ -14,6 +14,7 @@ pub struct LayoutContext<'a> {
 pub struct PaintContext<'a> {
     pub scene: &'a mut Scene,
     pub text_system: &'a mut crate::text::TextSystem,
+    pub layout_engine: &'a crate::layout::LayoutEngine,
 }
 
 /// Core trait for UI elements
