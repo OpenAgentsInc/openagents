@@ -68,8 +68,23 @@ impl MessageView {
             ..Default::default()
         });
 
-        // All headings use base text size (no size variation)
-        let heading_style = TextStyleRefinement {
+        // Heading styles with sizes 13-16px, all bold
+        let h1_style = TextStyleRefinement {
+            font_size: Some(px(16.0).into()),
+            font_weight: Some(gpui::FontWeight::BOLD),
+            ..Default::default()
+        };
+        let h2_style = TextStyleRefinement {
+            font_size: Some(px(15.0).into()),
+            font_weight: Some(gpui::FontWeight::BOLD),
+            ..Default::default()
+        };
+        let h3_style = TextStyleRefinement {
+            font_size: Some(px(14.0).into()),
+            font_weight: Some(gpui::FontWeight::BOLD),
+            ..Default::default()
+        };
+        let h4_style = TextStyleRefinement {
             font_size: Some(px(FONT_SIZE).into()),
             font_weight: Some(gpui::FontWeight::BOLD),
             ..Default::default()
@@ -103,14 +118,14 @@ impl MessageView {
             paragraph: gpui::StyleRefinement::default().mb(px(12.0)),
             list: gpui::StyleRefinement::default().mb(px(12.0)),
             heading: gpui::StyleRefinement::default().mb(px(8.0)).mt(px(16.0)),
-            // All heading levels use same size
+            // Heading levels: H1=16px, H2=15px, H3=14px, H4-H6=13px
             heading_level_styles: Some(HeadingLevelStyles {
-                h1: Some(heading_style.clone()),
-                h2: Some(heading_style.clone()),
-                h3: Some(heading_style.clone()),
-                h4: Some(heading_style.clone()),
-                h5: Some(heading_style.clone()),
-                h6: Some(heading_style),
+                h1: Some(h1_style),
+                h2: Some(h2_style),
+                h3: Some(h3_style),
+                h4: Some(h4_style.clone()),
+                h5: Some(h4_style.clone()),
+                h6: Some(h4_style),
             }),
             rule_color: border::DEFAULT,
             block_quote_border_color: border::DEFAULT,
@@ -127,17 +142,25 @@ impl Render for MessageView {
         let style = self.markdown_style(window, cx);
 
         div()
-            .px(px(16.0))
             .py(px(12.0))
             .flex()
-            .when(is_user, |el| el.justify_end())
+            .flex_row()
+            .gap(px(4.0))
+            // User message prefix
+            .when(is_user, |el| {
+                el.child(
+                    div()
+                        .text_size(px(FONT_SIZE))
+                        .text_color(text::MUTED)
+                        .child(">")
+                )
+            })
             // Message content with markdown
             .child(
                 div()
                     .max_w(px(600.0))
-                    .px(px(12.0))
                     .py(px(8.0))
-                    .when(is_user, |el| el.border_1().border_color(border::DEFAULT))
+                    .text_size(px(FONT_SIZE))
                     .text_color(text::PRIMARY)
                     .child(MarkdownElement::new(self.markdown.clone(), style)),
             )
@@ -176,26 +199,28 @@ impl IntoElement for SimpleMessageView {
     fn into_element(self) -> Self::Element {
         let is_user = self.role == MessageRole::User;
 
-        let mut container = div()
-            .px(px(16.0))
+        div()
             .py(px(12.0))
             .font_family(FONT_FAMILY)
             .text_size(px(FONT_SIZE))
             .line_height(relative(LINE_HEIGHT_RELAXED))
-            .flex();
-
-        if is_user {
-            container = container.justify_end();
-        }
-
-        container.child(
-            div()
-                .max_w(px(600.0))
-                .px(px(12.0))
-                .py(px(8.0))
-                .when(is_user, |el| el.border_1().border_color(border::DEFAULT))
-                .text_color(text::PRIMARY)
-                .child(self.content),
-        )
+            .flex()
+            .flex_row()
+            .gap(px(4.0))
+            // User message prefix
+            .when(is_user, |el| {
+                el.child(
+                    div()
+                        .text_color(text::MUTED)
+                        .child(">")
+                )
+            })
+            .child(
+                div()
+                    .max_w(px(600.0))
+                    .py(px(8.0))
+                    .text_color(text::PRIMARY)
+                    .child(self.content),
+            )
     }
 }

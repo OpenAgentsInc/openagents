@@ -205,6 +205,8 @@ enum SdkUpdate {
         mcp_servers: Vec<(String, String)>,
     },
     StreamingContent(String),
+    /// Text segment completed (before a tool call)
+    TextSegment(String),
     /// Tool use started from stream event content_block_start
     ToolUseStarted {
         tool_use_id: String,
@@ -575,6 +577,12 @@ impl SdkThread {
                                 if let Some(content_block) = event.event.get("content_block") {
                                     let block_type = content_block.get("type").and_then(|t| t.as_str()).unwrap_or("");
                                     if block_type == "tool_use" {
+                                        // Send accumulated text as a segment before the tool call
+                                        if !assistant_content.is_empty() {
+                                            let _ = tx.send(SdkUpdate::TextSegment(assistant_content.clone()));
+                                            assistant_content.clear();
+                                        }
+
                                         let tool_use_id = content_block.get("id").and_then(|i| i.as_str()).unwrap_or("");
                                         let tool_name = content_block.get("name").and_then(|n| n.as_str()).unwrap_or("");
                                         debug!("Tool use started: {} ({})", tool_name, tool_use_id);
@@ -704,6 +712,17 @@ impl SdkThread {
                         SdkUpdate::StreamingContent(content) => {
                             this.streaming_content = Some(content);
                             cx.notify();
+                        }
+                        SdkUpdate::TextSegment(content) => {
+                            // Create an assistant message entry for text before a tool call
+                            if !content.trim().is_empty() {
+                                this.streaming_content = None;
+                                this.entries.push(ThreadEntry::AssistantMessage(AssistantMessage {
+                                    content,
+                                }));
+                                let idx = this.entries.len() - 1;
+                                cx.emit(SdkThreadEvent::EntryAdded(idx));
+                            }
                         }
                         SdkUpdate::ToolUseStarted { tool_use_id, tool_name } => {
                             // Create a new tool use entry
