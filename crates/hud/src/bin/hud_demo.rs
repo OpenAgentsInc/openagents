@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use hud::{
     animator::{AnimatorManager, ManagerMode},
-    background::DotGridBackground,
+    background::{DotGridBackground, GridLinesBackground, LineDirection, MovingLinesBackground},
     button::HudButton,
-    frame::{FrameCorners, FrameLines, FrameSides},
+    frame::{FrameCircle, FrameCorners, FrameLines, FrameOctagon, FrameSides},
     theme::{hud as colors, timing},
 };
 use wgpui::platform::desktop::{create_window, DesktopPlatform};
@@ -22,16 +22,26 @@ use winit::window::WindowId;
 struct HudDemo {
     platform: Option<DesktopPlatform>,
 
-    // Components
-    background: DotGridBackground,
+    // Backgrounds
+    dot_grid: DotGridBackground,
+    grid_lines: GridLinesBackground,
+    moving_lines: MovingLinesBackground,
+
+    // Main frame
     main_frame: FrameCorners,
     title_lines: FrameLines,
+
+    // Buttons
     button_manager: AnimatorManager,
     buttons: Vec<HudButton>,
 
     // Panels with staggered animation
     panels: Vec<FrameCorners>,
     panel_manager: AnimatorManager,
+
+    // New frame showcases
+    octagon_frame: FrameOctagon,
+    circle_frame: FrameCircle,
 
     // State
     window_size: (f32, f32),
@@ -85,10 +95,22 @@ impl HudDemo {
 
         Self {
             platform: None,
-            background: DotGridBackground::new()
+            // Backgrounds (layered)
+            dot_grid: DotGridBackground::new()
                 .spacing(25.0)
                 .dot_radius(1.0)
                 .color(colors::DOT_GRID),
+            grid_lines: GridLinesBackground::new()
+                .spacing(100.0)
+                .line_width(1.0)
+                .color(wgpui::Hsla::new(0.0, 0.0, 1.0, 0.03)),
+            moving_lines: MovingLinesBackground::new()
+                .spacing(60.0)
+                .line_width(1.0)
+                .speed(0.5)
+                .direction(LineDirection::Down)
+                .color(wgpui::Hsla::new(0.0, 0.0, 1.0, 0.02)),
+            // Main frame
             main_frame: FrameCorners::new()
                 .corner_length(40.0)
                 .line_width(2.0)
@@ -102,6 +124,15 @@ impl HudDemo {
             buttons,
             panels,
             panel_manager,
+            // New frames
+            octagon_frame: FrameOctagon::new()
+                .corner_size(20.0)
+                .line_width(1.5)
+                .color(colors::FRAME_NORMAL),
+            circle_frame: FrameCircle::new()
+                .line_width(1.5)
+                .segments(48)
+                .color(colors::FRAME_NORMAL),
             window_size: (1280.0, 720.0),
             started: false,
         }
@@ -110,9 +141,18 @@ impl HudDemo {
     fn start_animations(&mut self) {
         log::info!("Starting HUD animations");
 
-        self.background.animator_mut().enter();
+        // Backgrounds
+        self.dot_grid.animator_mut().enter();
+        self.grid_lines.animator_mut().enter();
+        self.moving_lines.animator_mut().enter();
+
+        // Frames
         self.main_frame.animator_mut().enter();
         self.title_lines.animator_mut().enter();
+        self.octagon_frame.animator_mut().enter();
+        self.circle_frame.animator_mut().enter();
+
+        // Managers
         self.button_manager.enter();
         self.panel_manager.enter();
 
@@ -130,9 +170,18 @@ impl HudDemo {
     }
 
     fn tick(&mut self) {
-        self.background.tick();
+        // Backgrounds
+        self.dot_grid.tick();
+        self.grid_lines.tick();
+        self.moving_lines.tick();
+
+        // Frames
         self.main_frame.tick();
         self.title_lines.tick();
+        self.octagon_frame.tick();
+        self.circle_frame.tick();
+
+        // Managers
         self.button_manager.tick();
         self.panel_manager.tick();
 
@@ -165,8 +214,10 @@ impl HudDemo {
         // Black background
         scene.draw_quad(Quad::new(screen).with_background(colors::BG));
 
-        // Dot grid
-        self.background.paint(screen, scene);
+        // Layered backgrounds (back to front)
+        self.grid_lines.paint(screen, scene);
+        self.moving_lines.paint(screen, scene);
+        self.dot_grid.paint(screen, scene);
 
         // Main frame with padding
         let main_bounds = Bounds::new(40.0, 40.0, width - 80.0, height - 80.0);
@@ -279,7 +330,46 @@ impl HudDemo {
             content_frame.paint(content_bounds, scene);
         }
 
-        // Content text
+        // Frame showcase inside content area
+        let showcase_size = 100.0;
+        let showcase_y = content_bounds.origin.y + 40.0;
+        let showcase_spacing = 30.0;
+
+        // Octagon frame showcase
+        let octagon_x = content_bounds.origin.x + (content_bounds.size.width / 2.0) - showcase_size - showcase_spacing / 2.0;
+        let octagon_bounds = Bounds::new(octagon_x, showcase_y, showcase_size, showcase_size);
+        self.octagon_frame.paint(octagon_bounds, scene);
+
+        // Octagon label
+        let label_color = wgpui::Hsla::new(
+            colors::TEXT_MUTED.h,
+            colors::TEXT_MUTED.s,
+            colors::TEXT_MUTED.l,
+            colors::TEXT_MUTED.a * self.octagon_frame.animator().progress(),
+        );
+        let octagon_label = text_system.layout(
+            "OCTAGON",
+            Point::new(octagon_x + showcase_size / 2.0 - 25.0, showcase_y + showcase_size + 10.0),
+            10.0,
+            label_color,
+        );
+        scene.draw_text(octagon_label);
+
+        // Circle frame showcase
+        let circle_x = content_bounds.origin.x + (content_bounds.size.width / 2.0) + showcase_spacing / 2.0;
+        let circle_bounds = Bounds::new(circle_x, showcase_y, showcase_size, showcase_size);
+        self.circle_frame.paint(circle_bounds, scene);
+
+        // Circle label
+        let circle_label = text_system.layout(
+            "CIRCLE",
+            Point::new(circle_x + showcase_size / 2.0 - 20.0, showcase_y + showcase_size + 10.0),
+            10.0,
+            label_color,
+        );
+        scene.draw_text(circle_label);
+
+        // Content title
         let content_text_color = wgpui::Hsla::new(
             colors::TEXT_MUTED.h,
             colors::TEXT_MUTED.s,
@@ -287,15 +377,27 @@ impl HudDemo {
             colors::TEXT_MUTED.a * content_progress,
         );
         let content_text = text_system.layout(
-            "MAIN DISPLAY AREA",
+            "FRAME SHOWCASE",
             Point::new(
-                content_bounds.origin.x + content_bounds.size.width / 2.0 - 60.0,
-                content_bounds.origin.y + content_bounds.size.height / 2.0 - 6.0,
+                content_bounds.origin.x + content_bounds.size.width / 2.0 - 50.0,
+                content_bounds.origin.y + 10.0,
             ),
             12.0,
             content_text_color,
         );
         scene.draw_text(content_text);
+
+        // Background info text at bottom of content
+        let bg_info = text_system.layout(
+            "BACKGROUNDS: DOT GRID + GRID LINES + MOVING LINES",
+            Point::new(
+                content_bounds.origin.x + 20.0,
+                content_bounds.origin.y + content_bounds.size.height - 30.0,
+            ),
+            9.0,
+            content_text_color,
+        );
+        scene.draw_text(bg_info);
     }
 
     fn handle_input(&mut self, event: &wgpui::InputEvent) {
