@@ -819,6 +819,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder_service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "chrono",
+ "coder_agent",
+ "coder_domain",
+ "coder_permission",
+ "coder_session",
+ "coder_storage",
+ "futures",
+ "llm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tool_registry",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "coder_session"
 version = "0.1.0"
 dependencies = [
