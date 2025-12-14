@@ -3,25 +3,14 @@ set -e
 
 echo "Installing OpenAgents Harbor agents..."
 
-# Install curl and sudo first (needed for nvm and non-root execution)
+# Install curl (needed for nvm)
 apt-get update
-apt-get install -y curl sudo
+apt-get install -y curl
 
-# Create non-root user for Claude Code (it refuses to run as root with --dangerously-skip-permissions)
-echo "Creating claude user..."
-useradd -m -s /bin/bash claude || true
-echo "claude ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-# Give claude user ownership of /app
-chown -R claude:claude /app || true
-
-# Install Node.js and tools as the claude user (not root)
-echo "Installing Node.js and CLI tools as claude user..."
-su - claude -c '
-set -e
+# Install Node.js via nvm (as root)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+source "$HOME/.nvm/nvm.sh"
 
 nvm install 22
 echo "Node version: $(node -v)"
@@ -29,16 +18,11 @@ echo "NPM version: $(npm -v)"
 
 # Install Claude Code CLI
 echo "Installing Claude Code CLI..."
-npm install -g @anthropic-ai/claude-code || {
+npm install -g @anthropic-ai/claude-code@latest || {
     echo "Warning: Could not install @anthropic-ai/claude-code"
-    echo "Trying alternative package name..."
-    npm install -g claude-code || {
-        echo "Warning: Could not install Claude Code CLI"
-    }
 }
 
 # Verify claude is available
-export PATH="$HOME/.nvm/versions/node/v22.*/bin:$PATH"
 if command -v claude &> /dev/null; then
     echo "Claude Code CLI installed successfully"
 else
@@ -50,7 +34,6 @@ echo "Installing Pi agent..."
 npm install -g @mariozechner/pi-coding-agent@latest || {
     echo "Warning: Could not install pi-coding-agent"
 }
-'
 
 # Install Python dependencies for test generation
 echo "Installing Python test dependencies..."

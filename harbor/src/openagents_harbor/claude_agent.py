@@ -4,6 +4,8 @@ Harbor agent adapter for Claude Code CLI with testgen skill.
 This module implements the BaseInstalledAgent interface to run Claude Code CLI
 in Terminal-Bench evaluations via Harbor, with the testgen skill for improved
 test coverage and task completion.
+
+Uses Harbor's built-in ClaudeCode agent as base to get ATIF trajectory support.
 """
 
 import os
@@ -11,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
+from harbor.agents.installed.claude_code import ClaudeCode
 from harbor.models.agent.context import AgentContext
 from harbor.models.trial.paths import EnvironmentPaths
 
@@ -77,155 +80,108 @@ pytest /app/testgen_tests.py -v
 """
 
 
-class ClaudeCodeAgent(BaseInstalledAgent):
+class ClaudeCodeAgent(ClaudeCode):
     """
     Harbor agent adapter for Claude Code CLI with testgen skill.
 
-    Claude Code CLI is spawned with:
-    - --dangerously-skip-permissions (required for unattended execution)
-    - --max-turns 50 (prevent infinite loops)
-    - --model (configurable via Harbor -m flag)
-    - Testgen skill prepended to instruction
+    Extends Harbor's built-in ClaudeCode agent to:
+    - Prepend testgen skill protocol to instructions
+    - Use custom install template with non-root user setup
+    - Inject OAuth credentials from local machine
+
+    Inherits ATIF trajectory support from ClaudeCode base class.
     """
 
     @staticmethod
     def name() -> str:
-        return "claude-code"
+        return "claude-code-testgen"
 
     @property
     def _install_agent_template_path(self) -> Path:
         return Path(__file__).parent / "install-agent.sh.j2"
 
     def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
-        """Create commands to run Claude Code CLI with testgen skill."""
-
+        """Create commands to run Claude Code CLI with testgen skill prepended."""
         # Prepend testgen skill to instruction
         full_instruction = TESTGEN_SKILL + "\n\n# TASK:\n\n" + instruction
 
-        env: dict[str, str] = {}
+        # Get base commands from parent (handles --output-format stream-json, CLAUDE_CONFIG_DIR, etc.)
+        # But we need to modify to use our instruction
+        return self._create_testgen_commands(full_instruction)
 
-        # Support OAuth token (preferred) or API key
-        # OAuth tokens work if credentials are exported from Mac Keychain
-        for key in [
-            "ANTHROPIC_OAUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-        ]:
-            if key in os.environ:
-                env[key] = os.environ[key]
+    def _create_testgen_commands(self, instruction: str) -> list[ExecInput]:
+        """Create commands with testgen-modified instruction and credential injection."""
+        import shlex
 
-        # Build model arguments
-        model_args = ""
+        escaped_instruction = shlex.quote(instruction)
+
+        env = {
+            "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "CLAUDE_CODE_OAUTH_TOKEN": os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", ""),
+            "FORCE_AUTO_BACKGROUND_TASKS": "1",
+            "ENABLE_BACKGROUND_TASKS": "1",
+        }
+
+        # Remove empty auth credentials
+        env = {k: v for k, v in env.items() if v}
+
         if self.model_name:
-            # Harbor format: provider/model -> extract model part
-            model = self._parse_model_name(self.model_name)
-            model_args = f"--model {model}"
+            env["ANTHROPIC_MODEL"] = self.model_name.split("/")[-1]
+        elif "ANTHROPIC_MODEL" in os.environ:
+            env["ANTHROPIC_MODEL"] = os.environ["ANTHROPIC_MODEL"]
 
-        output_dir = EnvironmentPaths.agent_dir
-        log_file = output_dir / "claude-code.txt"
-        instruction_file = output_dir / "instruction.txt"
+        if "MAX_THINKING_TOKENS" in os.environ:
+            env["MAX_THINKING_TOKENS"] = os.environ["MAX_THINKING_TOKENS"]
 
-        # Escape instruction for heredoc (just need to escape backslashes and dollar signs)
-        escaped_for_heredoc = full_instruction.replace("\\", "\\\\").replace("$", "\\$")
+        env["CLAUDE_CONFIG_DIR"] = (EnvironmentPaths.agent_dir / "sessions").as_posix()
+
+        # Inject credentials from local machine if available
+        cred_setup = self._create_credential_setup_command()
 
         return [
             ExecInput(
-                command=f"mkdir -p {output_dir}",
+                command=(
+                    "mkdir -p $CLAUDE_CONFIG_DIR/debug $CLAUDE_CONFIG_DIR/projects/-app "
+                    "$CLAUDE_CONFIG_DIR/shell-snapshots $CLAUDE_CONFIG_DIR/statsig "
+                    "$CLAUDE_CONFIG_DIR/todos"
+                ),
                 env=env,
             ),
-            # Write instruction to file (avoids complex shell quoting)
             ExecInput(
-                command=f"cat > {instruction_file} << 'INSTRUCTION_EOF'\n{full_instruction}\nINSTRUCTION_EOF",
+                command=cred_setup,
                 env=env,
             ),
-            # Setup credentials for claude user
             ExecInput(
-                command=self._create_credential_setup_command(),
+                command=(
+                    f"source $HOME/.nvm/nvm.sh && "
+                    f"claude --verbose --output-format stream-json "
+                    f"-p {escaped_instruction} --allowedTools "
+                    f"{' '.join(self.ALLOWED_TOOLS)} 2>&1 </dev/null | tee "
+                    f"/logs/agent/claude-code.txt"
+                ),
                 env=env,
-            ),
-            # Run as non-root user (Claude CLI refuses --dangerously-skip-permissions as root)
-            ExecInput(
-                command=self._build_claude_command(instruction_file, model_args, log_file, env),
-                env=env,
-            ),
+            )
         ]
-
-    def _parse_model_name(self, model_name: str) -> str:
-        """Parse Harbor model format (provider/model) into Claude format."""
-        if "/" in model_name:
-            # e.g., "anthropic/claude-haiku-4-5-20251001" -> "claude-haiku-4-5-20251001"
-            return model_name.split("/", 1)[1]
-        return model_name
-
-    def _build_claude_command(
-        self,
-        instruction_file: Any,
-        model_args: str,
-        log_file: Any,
-        env: dict[str, str],
-    ) -> str:
-        """Build the full Claude CLI command to run as non-root user."""
-        # Build environment exports for API key (as fallback)
-        env_exports = ""
-        for key in ["ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN"]:
-            if key in env:
-                # Escape single quotes in the value
-                value = env[key].replace("'", "'\"'\"'")
-                env_exports += f"export {key}='{value}' && "
-
-        return (
-            f"su - claude -c '"
-            f"export NVM_DIR=\"$HOME/.nvm\" && "
-            f". \"$NVM_DIR/nvm.sh\" && "
-            f"{env_exports}"
-            f"cd /app && "
-            f"cat {instruction_file} | "
-            f"claude --print --dangerously-skip-permissions "
-            f"--max-turns 50 "
-            f"{model_args} "
-            f"-p - "
-            f"2>&1' | tee {log_file}"
-        )
 
     def _create_credential_setup_command(self) -> str:
         """
-        Create command to setup Claude credentials for the claude user.
+        Create command to setup Claude credentials from local machine.
 
-        Reads credentials from Mac Keychain and writes to ~/.claude/.credentials.json
-        for the claude user in the container.
+        Reads credentials from ~/.claude/.credentials.json and injects into container.
         """
-        # Read credentials from local machine and inject into container
         cred_file = Path.home() / ".claude" / ".credentials.json"
         if cred_file.exists():
             try:
                 cred_content = cred_file.read_text()
-                # Escape for shell
-                escaped_cred = cred_content.replace("'", "'\"'\"'")
                 return f"""
-mkdir -p /home/claude/.claude
-cat > /home/claude/.claude/.credentials.json << 'CRED_EOF'
+mkdir -p $CLAUDE_CONFIG_DIR
+cat > $CLAUDE_CONFIG_DIR/.credentials.json << 'CRED_EOF'
 {cred_content}
 CRED_EOF
-chmod 600 /home/claude/.claude/.credentials.json
-chown -R claude:claude /home/claude/.claude
-echo "Credentials file created for claude user"
+chmod 600 $CLAUDE_CONFIG_DIR/.credentials.json
+echo "Credentials file injected from host"
 """
             except Exception as e:
                 print(f"Warning: Could not read credentials file: {e}")
 
-        return "echo 'No credentials file found, using env vars'"
-
-    def populate_context_post_run(self, context: AgentContext) -> None:
-        """
-        Populate the agent context with token usage from Claude Code's output log.
-
-        Note: Token tracking not available without session file.
-        """
-        log_file = self.logs_dir / "claude-code.txt"
-
-        if not log_file.exists():
-            print(f"Claude Code log file not found: {log_file}")
-            return
-
-        # Token tracking would require session file which isn't supported
-        # Just verify the log file exists
-        print(f"Claude Code log file found: {log_file}")
+        return "echo 'No local credentials file found, using env vars'"
