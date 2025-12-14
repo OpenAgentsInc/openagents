@@ -187,6 +187,7 @@ fn process_stream_event(event: &Value) -> Option<Vec<ServerMessage>> {
 }
 
 /// Process an assistant message into ServerMessages.
+#[allow(dead_code)]
 fn process_assistant_message(message: &Value) -> Option<Vec<ServerMessage>> {
     let content = message.get("content")?.as_array()?;
     let mut out = Vec::new();

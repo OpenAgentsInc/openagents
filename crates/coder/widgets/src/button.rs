@@ -48,6 +48,10 @@ pub struct Button {
     icon: Option<AnyWidget>,
     /// Click callback.
     on_click: Option<OnClick>,
+    /// Custom background color (overrides variant).
+    custom_bg: Option<Hsla>,
+    /// Custom text color (overrides variant).
+    custom_text: Option<Hsla>,
 }
 
 impl Button {
@@ -65,7 +69,21 @@ impl Button {
             corner_radius: 4.0,
             icon: None,
             on_click: None,
+            custom_bg: None,
+            custom_text: None,
         }
+    }
+
+    /// Set custom background color.
+    pub fn background(mut self, color: Hsla) -> Self {
+        self.custom_bg = Some(color);
+        self
+    }
+
+    /// Set custom text color.
+    pub fn text_color(mut self, color: Hsla) -> Self {
+        self.custom_text = Some(color);
+        self
     }
 
     /// Set the widget ID.
@@ -132,60 +150,41 @@ impl Button {
     /// Get colors for the current variant and state.
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
         // (background, text, border)
-        // ON_ACCENT: Black text for light backgrounds
-        let on_accent = Hsla::new(0.0, 0.0, 0.0, 1.0);
+        // Use custom colors if set
+        let bg = self.custom_bg.unwrap_or_else(|| match self.variant {
+            ButtonVariant::Primary => wgpui::theme::accent::PRIMARY,
+            ButtonVariant::Secondary => wgpui::theme::bg::SURFACE,
+            ButtonVariant::Ghost => Hsla::transparent(),
+            ButtonVariant::Danger => wgpui::theme::status::ERROR,
+        });
 
-        let base = match self.variant {
-            ButtonVariant::Primary => (
-                wgpui::theme::accent::PRIMARY,
-                on_accent,
-                wgpui::theme::accent::PRIMARY,
-            ),
-            ButtonVariant::Secondary => (
-                wgpui::theme::bg::SURFACE,
-                wgpui::theme::text::PRIMARY,
-                wgpui::theme::border::DEFAULT,
-            ),
-            ButtonVariant::Ghost => (
-                Hsla::transparent(),
-                wgpui::theme::text::PRIMARY,
-                Hsla::transparent(),
-            ),
-            ButtonVariant::Danger => (
-                wgpui::theme::status::ERROR,
-                on_accent,
-                wgpui::theme::status::ERROR,
-            ),
-        };
+        let text = self.custom_text.unwrap_or_else(|| {
+            let on_accent = Hsla::new(0.0, 0.0, 0.0, 1.0);
+            match self.variant {
+                ButtonVariant::Primary | ButtonVariant::Danger => on_accent,
+                ButtonVariant::Secondary | ButtonVariant::Ghost => wgpui::theme::text::PRIMARY,
+            }
+        });
+
+        let border = bg; // Border matches background
 
         if self.disabled {
-            // Desaturate and reduce opacity for disabled state
             return (
-                base.0.with_alpha(0.5),
-                base.1.with_alpha(0.5),
-                base.2.with_alpha(0.5),
+                bg.with_alpha(bg.a * 0.5),
+                text.with_alpha(text.a * 0.5),
+                border.with_alpha(border.a * 0.5),
             );
         }
 
         if self.pressed {
-            // Darken for pressed state
-            return (
-                base.0.darken(0.15),
-                base.1,
-                base.2.darken(0.15),
-            );
+            return (bg.darken(0.15), text, border.darken(0.15));
         }
 
         if self.hovered {
-            // Lighten for hover state
-            return (
-                base.0.lighten(0.1),
-                base.1,
-                base.2.lighten(0.1),
-            );
+            return (bg.lighten(0.1), text, border.lighten(0.1));
         }
 
-        base
+        (bg, text, border)
     }
 }
 

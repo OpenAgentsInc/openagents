@@ -160,6 +160,7 @@ impl App {
 
         // Poll for server messages (non-blocking)
         while let Ok(msg) = self.server_rx.try_recv() {
+            log::info!("[App] Received server message: {:?}", std::mem::discriminant(&msg));
             self.handle_server_message(msg);
         }
     }
@@ -170,6 +171,7 @@ impl App {
 
         match msg {
             ServerMessage::TextDelta { text } => {
+                log::info!("[App] TextDelta received: {} chars", text.len());
                 // Update streaming message
                 if let Some(streaming) = &mut view.streaming_message {
                     streaming.content_so_far.push_str(&text);
@@ -181,6 +183,7 @@ impl App {
                         started_at: chrono::Utc::now(),
                     });
                 }
+                log::info!("[App] Streaming message now: {} chars", view.streaming_message.as_ref().map(|s| s.content_so_far.len()).unwrap_or(0));
                 self.chat_view.set(view);
             }
             ServerMessage::Done { error } => {

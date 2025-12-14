@@ -4,10 +4,13 @@
 
 use coder_widgets::context::{EventContext, PaintContext};
 use coder_widgets::{Button, ButtonVariant, EventResult, TextInput, Widget, WidgetId};
-use wgpui::{Bounds, InputEvent};
+use wgpui::{Bounds, Hsla, InputEvent};
 
 /// Callback for when a message is sent.
 pub type OnSendMessage = Box<dyn FnMut(String)>;
+
+/// Max width for the input container.
+const MAX_WIDTH: f32 = 768.0;
 
 /// Chat input widget.
 pub struct ChatInput {
@@ -36,12 +39,24 @@ pub struct ChatInput {
 impl ChatInput {
     /// Create a new chat input.
     pub fn new() -> Self {
+        // White with 10% opacity for button background
+        let button_bg = Hsla::new(0.0, 0.0, 1.0, 0.1);
+        // White text
+        let button_text = Hsla::new(0.0, 0.0, 1.0, 1.0);
+
         Self {
             id: None,
             text_input: TextInput::new()
-                .placeholder("Type a message..."),
+                .placeholder("Type a message...")
+                .font_size(13.0)
+                .border_color(Hsla::transparent())
+                .focused_border_color(Hsla::transparent()),
             send_button: Button::new("Send")
-                .variant(ButtonVariant::Primary),
+                .variant(ButtonVariant::Ghost)
+                .background(button_bg)
+                .text_color(button_text)
+                .font_size(12.0)
+                .corner_radius(6.0),
             enabled: true,
             placeholder: "Type a message...".to_string(),
             on_send: None,
@@ -65,7 +80,11 @@ impl ChatInput {
     /// Set placeholder text.
     pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = placeholder.into();
-        self.text_input = TextInput::new().placeholder(&self.placeholder);
+        self.text_input = TextInput::new()
+            .placeholder(&self.placeholder)
+            .font_size(13.0)
+            .border_color(Hsla::transparent())
+            .focused_border_color(Hsla::transparent());
         self
     }
 
@@ -124,22 +143,32 @@ impl Default for ChatInput {
 
 impl Widget for ChatInput {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Calculate layout: [input field] [send button]
-        let button_width = 80.0;
-        let gap = 8.0;
-
-        let input_bounds = Bounds::new(
-            bounds.origin.x,
+        // Center content with max width
+        let content_width = bounds.size.width.min(MAX_WIDTH);
+        let offset_x = (bounds.size.width - content_width) / 2.0;
+        let centered = Bounds::new(
+            bounds.origin.x + offset_x,
             bounds.origin.y,
-            bounds.size.width - button_width - gap,
+            content_width,
             bounds.size.height,
         );
 
+        // Calculate layout: [input field] [send button]
+        let button_width = 60.0;
+        let gap = 8.0;
+
+        let input_bounds = Bounds::new(
+            centered.origin.x,
+            centered.origin.y,
+            centered.size.width - button_width - gap,
+            centered.size.height,
+        );
+
         let button_bounds = Bounds::new(
-            bounds.origin.x + bounds.size.width - button_width,
-            bounds.origin.y,
+            centered.origin.x + centered.size.width - button_width,
+            centered.origin.y,
             button_width,
-            bounds.size.height,
+            centered.size.height,
         );
 
         // Paint input
@@ -154,22 +183,32 @@ impl Widget for ChatInput {
             return EventResult::Ignored;
         }
 
-        // Calculate layout
-        let button_width = 80.0;
-        let gap = 8.0;
-
-        let input_bounds = Bounds::new(
-            bounds.origin.x,
+        // Center content with max width (must match paint)
+        let content_width = bounds.size.width.min(MAX_WIDTH);
+        let offset_x = (bounds.size.width - content_width) / 2.0;
+        let centered = Bounds::new(
+            bounds.origin.x + offset_x,
             bounds.origin.y,
-            bounds.size.width - button_width - gap,
+            content_width,
             bounds.size.height,
         );
 
+        // Calculate layout (must match paint)
+        let button_width = 60.0;
+        let gap = 8.0;
+
+        let input_bounds = Bounds::new(
+            centered.origin.x,
+            centered.origin.y,
+            centered.size.width - button_width - gap,
+            centered.size.height,
+        );
+
         let button_bounds = Bounds::new(
-            bounds.origin.x + bounds.size.width - button_width,
-            bounds.origin.y,
+            centered.origin.x + centered.size.width - button_width,
+            centered.origin.y,
             button_width,
-            bounds.size.height,
+            centered.size.height,
         );
 
         // Check for Enter key to send
