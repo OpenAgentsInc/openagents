@@ -21,6 +21,7 @@ members = [
     "crates/coder/agent",
     "crates/coder/service",
     "crates/coder/app",
+    "crates/coder/test",
 
     # Nostr & Decentralized
     "crates/nostr/core",
@@ -39,6 +40,7 @@ members = [
     "crates/config",
     "crates/llm",
     "crates/tool_registry",
+    "crates/auto",
 
     # Data
     "crates/atif",
@@ -90,6 +92,7 @@ claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 mechacoder = { path = "crates/mechacoder" }
 llm = { path = "crates/llm" }
 tool_registry = { path = "crates/tool_registry" }
+auto = { path = "crates/auto" }
 wgpui = { path = "crates/wgpui" }
 hud = { path = "crates/hud" }
 coder_domain = { path = "crates/coder/domain" }
@@ -107,6 +110,7 @@ coder_session = { path = "crates/coder/session" }
 coder_agent = { path = "crates/coder/agent" }
 coder_service = { path = "crates/coder/service" }
 coder_app = { path = "crates/coder/app" }
+coder_test = { path = "crates/coder/test" }
 
 # External crates
 anyhow = "1.0.86"

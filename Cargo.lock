@@ -300,6 +300,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "auto"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "chrono",
+ "coder_agent",
+ "coder_service",
+ "futures",
+ "llm",
+ "mechacoder",
+ "serde",
+ "serde_json",
+ "taskmaster",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tool_registry",
+ "tracing",
+ "tracing-subscriber",
+ "walkdir",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -930,6 +954,27 @@ dependencies = [
  "coder_domain",
  "coder_ui_runtime",
  "coder_widgets",
+ "wgpui",
+]
+
+[[package]]
+name = "coder_test"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "coder_domain",
+ "coder_storage",
+ "coder_ui_runtime",
+ "coder_widgets",
+ "indexmap",
+ "lazy_static",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "uuid",
  "wgpui",
 ]
 
