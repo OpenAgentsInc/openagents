@@ -6,7 +6,7 @@
 use crate::context::{EventContext, PaintContext};
 use crate::widget::{EventResult, Widget, WidgetId};
 use std::ops::Range;
-use wgpui::scroll::{ScrollContainer, ScrollDirection};
+use wgpui::scroll::ScrollContainer;
 use wgpui::{Bounds, InputEvent, Point, Size};
 
 /// Render function type for list items.
