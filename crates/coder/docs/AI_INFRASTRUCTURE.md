@@ -34,7 +34,7 @@ This document describes the AI and session management infrastructure that powers
          ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                  llm                                         │
-│            (Provider Abstraction: Anthropic, OpenAI, Ollama)                │
+│       (Provider Abstraction: Anthropic, OpenRouter, OpenAI, Ollama)         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -189,6 +189,38 @@ let request = CompletionRequest::new("claude-sonnet-4-20250514")
 
 let stream = provider.stream(request).await?;
 ```
+
+### OpenRouter Provider
+
+The OpenRouter provider enables access to multiple models through a single API key using OpenAI-compatible chat completions format:
+
+- Multi-model gateway (Claude, GPT-4, Gemini, DeepSeek, Llama, etc.)
+- SSE streaming with OpenAI delta format
+- Tool calling support
+- Automatic credential detection from environment and `.env.local`
+
+```rust
+let provider = OpenRouterProvider::new()?; // Reads OPENROUTER_API_KEY
+let request = CompletionRequest::new("anthropic/claude-3.5-sonnet")
+    .system("You are a helpful assistant.")
+    .message(Message::user("Hello!"));
+
+let stream = provider.stream(request).await?;
+```
+
+**Supported Models:**
+
+| Model ID | Description |
+|----------|-------------|
+| `anthropic/claude-3.5-sonnet` | Claude 3.5 Sonnet via OpenRouter |
+| `openai/gpt-4o` | GPT-4o via OpenRouter |
+| `google/gemini-pro-1.5` | Gemini Pro 1.5 via OpenRouter |
+| `deepseek/deepseek-chat` | DeepSeek Chat via OpenRouter |
+| `meta-llama/llama-3.1-70b-instruct` | Llama 3.1 70B via OpenRouter |
+
+**Credential Sources:**
+1. `OPENROUTER_API_KEY` environment variable
+2. `OPENROUTER_API_KEY=sk-or-...` in `.env.local` file
 
 ---
 
@@ -752,8 +784,11 @@ tokio::spawn(async move {
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `ANTHROPIC_API_KEY` | Anthropic API key | For Anthropic provider |
+| `OPENROUTER_API_KEY` | OpenRouter API key | For OpenRouter provider |
 | `OPENAI_API_KEY` | OpenAI API key | For OpenAI provider |
 | `ANTHROPIC_BASE_URL` | Custom API endpoint | No (defaults to api.anthropic.com) |
+
+**Note:** `OPENROUTER_API_KEY` can also be specified in a `.env.local` file in the working directory.
 
 ### CLAUDE.md Files
 
@@ -963,6 +998,180 @@ For comprehensive service layer documentation, see [SERVICE_LAYER.md](./SERVICE_
 
 ---
 
+## 8. Auto Mode (`crates/auto/`)
+
+The Auto Mode crate provides autonomous task execution for OpenAgents, enabling unattended coding sessions with smart backend detection and taskmaster integration.
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        AutoMode                              │
+│  Entry point, orchestrates detection → discovery → execution │
+├─────────────────────────────────────────────────────────────┤
+│                       AutoEngine                             │
+│  Manages task lifecycle, progress tracking                   │
+├──────────────────────┬──────────────────────────────────────┤
+│      Detection       │           Discovery                   │
+│  Backend/credential  │  Task source enumeration              │
+│  scanning            │  (taskmaster, plans)                  │
+├──────────────────────┼──────────────────────────────────────┤
+│    ProgressTracker   │          TaskRunner                   │
+│  Taskmaster updates  │  Executes tasks via backend           │
+└──────────────────────┴──────────────────────────────────────┘
+```
+
+### AutoMode API
+
+```rust
+pub struct AutoMode {
+    engine: AutoEngine,
+    config: AutoConfig,
+    detection: Detection,
+}
+
+impl AutoMode {
+    /// Auto-detect everything and run
+    pub async fn auto() -> Result<Self, AutoError>;
+
+    /// Run with custom config
+    pub async fn with_config(config: AutoConfig) -> Result<Self, AutoError>;
+
+    /// Execute, returning stream of updates
+    pub fn run(&mut self) -> impl Stream<Item = AutoUpdate>;
+
+    /// Get detection results
+    pub fn detection(&self) -> &Detection;
+
+    /// Stop gracefully
+    pub async fn stop(&self);
+}
+```
+
+### Configuration
+
+```rust
+pub struct AutoConfig {
+    /// Working directory for execution
+    pub working_directory: PathBuf,
+
+    /// Execution mode (Single, Batch, Continuous)
+    pub execution_mode: ExecutionMode,
+
+    /// Source of tasks (Taskmaster, Plans, Explicit, Auto)
+    pub task_source: TaskSource,
+
+    /// Preferred backend (optional override)
+    pub preferred_backend: Option<Backend>,
+
+    /// Maximum turns per task (prevents infinite loops)
+    pub max_turns_per_task: usize,
+
+    /// Whether to auto-commit changes
+    pub auto_commit: bool,
+
+    /// Whether to update taskmaster with progress
+    pub update_taskmaster: bool,
+}
+
+pub enum ExecutionMode {
+    Single,                    // One task, then stop (default)
+    Batch { count: usize },    // N tasks, then stop
+    Continuous,                // Until stopped or empty
+}
+
+pub enum TaskSource {
+    Taskmaster { db_path: Option<PathBuf> },
+    Plans { claude_dir: Option<PathBuf> },
+    Explicit { task_ids: Vec<String> },
+    Auto,  // Try taskmaster, fall back to plans
+}
+```
+
+### Backend Detection
+
+Auto Mode automatically detects available AI backends in priority order:
+
+| Priority | Backend | Detection Method |
+|----------|---------|------------------|
+| 1 | Claude Code CLI | `which claude` command |
+| 2 | Anthropic API | `ANTHROPIC_API_KEY` env var |
+| 3 | OpenRouter | `OPENROUTER_API_KEY` (env or .env.local) |
+| 4 | OpenAI | `OPENAI_API_KEY` env var |
+| 5 | Ollama | TCP check on `localhost:11434` |
+| 6 | Pi (built-in) | Always available |
+
+### AutoUpdate Events
+
+```rust
+pub enum AutoUpdate {
+    // Initialization
+    Initialized { backends_detected, selected_backend, working_directory },
+    BackendSelected { backend, reason },
+
+    // Discovery
+    TasksDiscovered { count, source },
+    NoTasksFound { reason },
+
+    // Task Execution
+    TaskStarted { task_id, title, index, total },
+    TextDelta { task_id, delta },
+    ReasoningDelta { task_id, delta },
+    ToolStarted { task_id, tool_name, tool_call_id, input },
+    ToolCompleted { task_id, tool_call_id, output, is_error },
+    CommitCreated { task_id, sha, message },
+    TaskCompleted { task_id, success, commits },
+
+    // Completion
+    Finished { tasks_completed, tasks_failed },
+    Error { error },
+    Cancelled { reason },
+}
+```
+
+### Taskmaster Integration
+
+When `update_taskmaster` is enabled, Auto Mode updates task status:
+
+```rust
+impl ProgressTracker {
+    /// Called when task execution begins
+    pub async fn task_started(&self, task_id: &str, agent_id: &str);
+
+    /// Called when a commit is created
+    pub async fn add_commit(&self, task_id: &str, sha: &str);
+
+    /// Called on successful completion
+    pub async fn task_completed(&self, task_id: &str, commits: Vec<String>);
+
+    /// Called on failure
+    pub async fn task_failed(&self, task_id: &str, reason: &str);
+}
+```
+
+### CLI Usage
+
+```bash
+# Run a single task (auto-detect everything)
+cargo run -p auto
+
+# Run up to 5 tasks
+cargo run -p auto -- --batch 5
+
+# Run continuously until stopped
+cargo run -p auto -- --continuous
+
+# Run a specific task
+cargo run -p auto -- --task tm-123
+
+# Use a specific directory
+cargo run -p auto -- --dir /path/to/project
+```
+
+For full documentation, see [crates/auto/docs/README.md](../../../auto/docs/README.md).
+
+---
+
 ## Future Enhancements
 
 - **OpenAI Provider**: GPT-4, o1/o3 series with reasoning tokens
@@ -972,3 +1181,9 @@ For comprehensive service layer documentation, see [SERVICE_LAYER.md](./SERVICE_
 - **Parallel Tool Execution**: Execute independent tools concurrently
 - **Session Persistence**: Auto-save/restore session state
 - **Cost Tracking**: Per-session and aggregate cost metrics
+- **Auto Mode Enhancements**:
+  - Full API backend execution (not just Claude CLI)
+  - Parallel task execution
+  - Task dependency resolution
+  - Webhook notifications
+  - Resume interrupted sessions

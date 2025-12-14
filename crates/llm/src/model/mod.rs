@@ -448,3 +448,137 @@ pub mod ollama {
         vec![llama_3_2(), qwen_2_5_coder()]
     }
 }
+
+/// OpenRouter model definitions.
+///
+/// OpenRouter provides access to models from multiple providers through
+/// a unified API. Model IDs use the format "provider/model-name".
+pub mod openrouter {
+    use super::*;
+
+    /// Claude 3.5 Sonnet via OpenRouter.
+    pub fn claude_3_5_sonnet() -> ModelInfo {
+        ModelInfo::builder("anthropic/claude-3.5-sonnet", "openrouter")
+            .name("Claude 3.5 Sonnet (OpenRouter)")
+            .family("claude-3.5")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: true,
+                vision: true,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(3.0, 15.0))
+            .limits(ModelLimits::new(200_000, 8_192))
+            .build()
+    }
+
+    /// GPT-4o via OpenRouter.
+    pub fn gpt_4o() -> ModelInfo {
+        ModelInfo::builder("openai/gpt-4o", "openrouter")
+            .name("GPT-4o (OpenRouter)")
+            .family("gpt-4o")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: true,
+                vision: true,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(2.50, 10.0))
+            .limits(ModelLimits::new(128_000, 16_384))
+            .build()
+    }
+
+    /// Gemini 2.0 Flash (Free) via OpenRouter.
+    pub fn gemini_2_flash_free() -> ModelInfo {
+        ModelInfo::builder("google/gemini-2.0-flash-exp:free", "openrouter")
+            .name("Gemini 2.0 Flash (Free)")
+            .family("gemini-2.0")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: true,
+                vision: true,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.0, 0.0)) // Free tier
+            .limits(ModelLimits::new(1_000_000, 8_192))
+            .build()
+    }
+
+    /// DeepSeek Chat via OpenRouter.
+    pub fn deepseek_chat() -> ModelInfo {
+        ModelInfo::builder("deepseek/deepseek-chat", "openrouter")
+            .name("DeepSeek Chat")
+            .family("deepseek")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: true,
+                vision: false,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.14, 0.28))
+            .limits(ModelLimits::new(64_000, 8_192))
+            .build()
+    }
+
+    /// Llama 3.3 70B via OpenRouter.
+    pub fn llama_3_3_70b() -> ModelInfo {
+        ModelInfo::builder("meta-llama/llama-3.3-70b-instruct", "openrouter")
+            .name("Llama 3.3 70B")
+            .family("llama-3.3")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: true,
+                vision: false,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.35, 0.40))
+            .limits(ModelLimits::new(128_000, 8_192))
+            .build()
+    }
+
+    /// All OpenRouter models (commonly used ones).
+    pub fn all() -> Vec<ModelInfo> {
+        vec![
+            claude_3_5_sonnet(),
+            gpt_4o(),
+            gemini_2_flash_free(),
+            deepseek_chat(),
+            llama_3_3_70b(),
+        ]
+    }
+}
