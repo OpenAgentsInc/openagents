@@ -158,6 +158,18 @@ crates/coder/
 │   ├── timeline.rs   # Timeline widget
 │   ├── step.rs       # Step representation
 │   └── lane.rs       # Lane for parallel runs
+├── storage/          # Persistence layer
+│   └── lib.rs        # SQLite storage for threads, messages, sessions
+├── permission/       # Permission system
+│   └── lib.rs        # Async ask/respond pattern with "always allow"
+├── session/          # Session management
+│   ├── session.rs    # Session state and status
+│   ├── processor.rs  # Main conversation loop
+│   └── prompt.rs     # System prompt builder
+├── agent/            # Agent definitions
+│   ├── definition.rs # AgentDefinition types
+│   ├── permission.rs # Agent permission presets
+│   └── registry.rs   # Built-in agents (general, explore, plan, build)
 ├── app/              # Application entry
 │   ├── main.rs       # Native entry point
 │   ├── app.rs        # App struct
@@ -167,10 +179,22 @@ crates/coder/
     ├── ARCHITECTURE.md
     ├── DOMAIN_MODEL.md
     ├── REACTIVE_RUNTIME.md
-    ├── WIDGETS.md
-    ├── SURFACES.md
     ├── DATA_FLOW.md
+    ├── AI_INFRASTRUCTURE.md
     └── GETTING_STARTED.md
+
+crates/llm/           # LLM Provider abstraction
+├── message/          # Request/response types
+├── model/            # Model definitions and pricing
+├── provider/         # Provider trait and implementations
+│   └── anthropic.rs  # Anthropic Claude provider
+└── stream/           # Streaming types and SSE parsing
+
+crates/tool_registry/ # Tool execution framework
+├── tool.rs           # Tool trait
+├── registry.rs       # Tool registry
+├── context.rs        # Execution context with cancellation
+└── wrappers/         # Standard tools (bash, read, write, edit, grep, find)
 ```
 
 ## Key Concepts
@@ -205,12 +229,18 @@ Commands are requests. Events are facts.
 
 ## Documentation
 
+### UI & Rendering
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Deep dive into the six layers
 - **[DOMAIN_MODEL.md](./DOMAIN_MODEL.md)** - Event sourcing, entities, projections
 - **[REACTIVE_RUNTIME.md](./REACTIVE_RUNTIME.md)** - Signals, effects, scheduler
 - **[WIDGETS.md](./WIDGETS.md)** - Widget system and composition
 - **[SURFACES.md](./SURFACES.md)** - Chat, terminal, diff, timeline
 - **[DATA_FLOW.md](./DATA_FLOW.md)** - How data flows through the system
+
+### AI & Session Management
+- **[AI_INFRASTRUCTURE.md](./AI_INFRASTRUCTURE.md)** - LLM providers, tools, sessions, agents, permissions
+
+### Getting Started
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Build, run, develop
 
 ## Quick Start
