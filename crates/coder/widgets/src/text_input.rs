@@ -521,25 +521,19 @@ impl Widget for TextInput {
                             _ => {}
                         }
                     }
-                    // Direct character input for non-command keys
+                    // Character input - only if not a modifier combo
+                    // Note: Ideally this would come via InputEvent::TextInput,
+                    // but the platform doesn't generate those events yet
                     Key::Character(c) if !modifiers.command() && !modifiers.ctrl => {
-                        // Only insert printable characters
-                        if c.chars().all(|ch| !ch.is_control()) {
-                            for ch in c.chars() {
+                        // Only insert printable characters, not control chars
+                        for ch in c.chars() {
+                            if !ch.is_control() {
                                 self.insert_char(ch);
                             }
-                            return EventResult::Handled;
                         }
-                    }
-                    _ => {}
-                }
-
-                // Check for printable ASCII via key code
-                if !modifiers.command() && !modifiers.ctrl && !modifiers.alt {
-                    if let Some(c) = keycode_to_char(*code, modifiers.shift) {
-                        self.insert_char(c);
                         return EventResult::Handled;
                     }
+                    _ => {}
                 }
             }
 

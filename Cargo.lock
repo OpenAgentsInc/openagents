@@ -744,6 +744,7 @@ dependencies = [
 name = "coder_app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "coder_domain",
  "coder_protocol",
  "coder_shell",
@@ -754,7 +755,9 @@ dependencies = [
  "console_log",
  "env_logger",
  "log",
+ "mechacoder",
  "pollster",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

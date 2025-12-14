@@ -19,9 +19,15 @@
 pub mod app;
 pub mod state;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod chat_handler;
+
 // Re-exports
 pub use app::App;
 pub use state::AppState;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use chat_handler::spawn_chat_handler;
 
 // WASM entry point for web demo
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
@@ -60,8 +66,12 @@ pub async fn start() -> Result<(), JsValue> {
 
     let platform = Rc::new(RefCell::new(platform));
 
+    // Create channels (for web, we use dummy channels for now)
+    let (client_tx, _client_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_server_tx, server_rx) = tokio::sync::mpsc::unbounded_channel();
+
     // Create app
-    let mut app = App::new();
+    let mut app = App::new(client_tx, server_rx);
 
     // Set initial size
     {

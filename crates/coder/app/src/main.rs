@@ -3,9 +3,10 @@
 //! This file provides the native (desktop) entry point.
 //! For WASM, see the `start` function in lib.rs.
 
-use coder_app::App;
+use coder_app::{spawn_chat_handler, App};
 use log::info;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -101,12 +102,20 @@ fn main() {
 
     info!("Starting Coder desktop application...");
 
+    // Create message channels
+    let (client_tx, client_rx) = mpsc::unbounded_channel();
+    let (server_tx, server_rx) = mpsc::unbounded_channel();
+
+    // Spawn the background chat handler
+    let _handler_thread = spawn_chat_handler(client_rx, server_tx);
+    info!("Chat handler spawned");
+
     // Create event loop
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    // Create app
-    let app = App::new();
+    // Create app with channels
+    let app = App::new(client_tx, server_rx);
     let mut coder_app = CoderApp {
         app,
         platform: None,
