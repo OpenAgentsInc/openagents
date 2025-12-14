@@ -124,6 +124,18 @@ impl TextInput {
         self
     }
 
+    /// Set the border color.
+    pub fn border_color(mut self, color: Hsla) -> Self {
+        self.border_color = color;
+        self
+    }
+
+    /// Set the focused border color.
+    pub fn focused_border_color(mut self, color: Hsla) -> Self {
+        self.focused_border_color = color;
+        self
+    }
+
     /// Set the on_submit callback.
     pub fn on_submit<F>(mut self, f: F) -> Self
     where

@@ -70,8 +70,8 @@ impl MessageBubble {
     /// Get the background color based on role.
     fn background_color(&self) -> Hsla {
         match self.role {
-            Role::User => wgpui::theme::bg::SELECTED, // Slightly different for user
-            Role::Assistant => wgpui::theme::bg::SURFACE,
+            Role::User => Hsla::transparent(),
+            Role::Assistant => Hsla::transparent(),
             Role::System => wgpui::theme::bg::CODE,
         }
     }
@@ -79,18 +79,9 @@ impl MessageBubble {
     /// Get the border color based on role.
     fn border_color(&self) -> Hsla {
         match self.role {
-            Role::User => wgpui::theme::accent::PRIMARY,
-            Role::Assistant => wgpui::theme::border::DEFAULT,
+            Role::User => Hsla::transparent(),
+            Role::Assistant => Hsla::transparent(),
             Role::System => wgpui::theme::border::SUBTLE,
-        }
-    }
-
-    /// Get the role label.
-    fn role_label(&self) -> &'static str {
-        match self.role {
-            Role::User => "You",
-            Role::Assistant => "Assistant",
-            Role::System => "System",
         }
     }
 
@@ -119,31 +110,19 @@ impl MessageBubble {
 
 impl Widget for MessageBubble {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Draw bubble background
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(self.background_color())
-                .with_border(self.border_color(), 1.0)
-                .with_uniform_radius(self.corner_radius),
-        );
+        // Draw bubble background (skip for transparent user messages)
+        let bg = self.background_color();
+        if bg.a > 0.0 {
+            cx.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(bg)
+                    .with_border(self.border_color(), 1.0)
+                    .with_uniform_radius(self.corner_radius),
+            );
+        }
 
-        // Draw role label
-        let label_color = match self.role {
-            Role::User => wgpui::theme::accent::PRIMARY,
-            Role::Assistant => wgpui::theme::accent::BLUE,
-            Role::System => wgpui::theme::text::MUTED,
-        };
-
-        let label_run = cx.text.layout(
-            self.role_label(),
-            Point::new(bounds.origin.x + self.padding, bounds.origin.y + self.padding),
-            12.0,
-            label_color,
-        );
-        cx.scene.draw_text(label_run);
-
-        // Content area (below label)
-        let content_y = bounds.origin.y + self.padding + 18.0;
+        // Content area (no label)
+        let content_y = bounds.origin.y + self.padding;
         let content_width = bounds.size.width - self.padding * 2.0;
 
         // Render markdown content
@@ -206,7 +185,7 @@ impl Widget for MessageBubble {
         // Approximate height based on content lines
         let line_count = self.content.lines().count().max(1);
         let content_height = line_count as f32 * (self.font_size * 1.4);
-        let total_height = content_height + self.padding * 2.0 + 18.0; // +18 for label
+        let total_height = content_height + self.padding * 2.0;
         (None, Some(total_height))
     }
 }
@@ -234,22 +213,6 @@ mod tests {
 
         bubble.append(", world!");
         assert_eq!(bubble.content, "Hello, world!");
-    }
-
-    #[test]
-    fn test_role_label() {
-        assert_eq!(
-            MessageBubble::new("", Role::User).role_label(),
-            "You"
-        );
-        assert_eq!(
-            MessageBubble::new("", Role::Assistant).role_label(),
-            "Assistant"
-        );
-        assert_eq!(
-            MessageBubble::new("", Role::System).role_label(),
-            "System"
-        );
     }
 
     #[test]

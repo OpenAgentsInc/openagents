@@ -13,6 +13,9 @@ use coder_widgets::{EventResult, Widget, WidgetId};
 use wgpui::scroll::ScrollContainer;
 use wgpui::{Bounds, InputEvent, Point, Quad, Size};
 
+/// Max width for message content.
+const MAX_MESSAGE_WIDTH: f32 = 768.0;
+
 /// Callback for when a message is sent.
 pub type OnSend = Box<dyn FnMut(&str)>;
 
@@ -227,6 +230,10 @@ impl Widget for ChatThread {
         // Push clip
         cx.scene.push_clip(content_bounds);
 
+        // Calculate centered max width for messages
+        let message_content_width = (content_bounds.size.width - 32.0).min(MAX_MESSAGE_WIDTH);
+        let message_offset_x = (content_bounds.size.width - message_content_width) / 2.0;
+
         // Render visible entries
         for i in visible_range {
             if let Some(entry) = view.entries.get(i) {
@@ -243,9 +250,9 @@ impl Widget for ChatThread {
                 match entry {
                     ChatEntry::Message(msg_view) => {
                         let msg_bounds = Bounds::new(
-                            content_bounds.origin.x + 16.0,
+                            content_bounds.origin.x + message_offset_x,
                             entry_y,
-                            content_bounds.size.width - 32.0,
+                            message_content_width,
                             self.item_heights
                                 .get(i)
                                 .copied()
@@ -256,9 +263,9 @@ impl Widget for ChatThread {
                     }
                     ChatEntry::ToolUse(tool_view) => {
                         let tool_bounds = Bounds::new(
-                            content_bounds.origin.x + 32.0, // Indented
+                            content_bounds.origin.x + message_offset_x + 16.0, // Indented
                             entry_y,
-                            content_bounds.size.width - 64.0,
+                            message_content_width - 32.0,
                             self.item_heights
                                 .get(i)
                                 .copied()
@@ -282,9 +289,9 @@ impl Widget for ChatThread {
                     content_bounds.origin.y + y_offset - self.scroll.scroll_offset.y;
 
                 let streaming_bounds = Bounds::new(
-                    content_bounds.origin.x + 16.0,
+                    content_bounds.origin.x + message_offset_x,
                     streaming_y,
-                    content_bounds.size.width - 32.0,
+                    message_content_width,
                     self.estimated_height,
                 );
 

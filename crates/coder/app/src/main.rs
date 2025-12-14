@@ -21,6 +21,16 @@ struct CoderApp {
 }
 
 impl ApplicationHandler for CoderApp {
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Poll for streaming messages on each cycle
+        self.app.update();
+
+        // Request redraw to display any new content
+        if let Some(platform) = &self.platform {
+            platform.request_redraw();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.platform.is_none() {
             // Create window
@@ -110,9 +120,9 @@ fn main() {
     let _handler_thread = spawn_chat_handler(client_rx, server_tx);
     info!("Chat handler spawned");
 
-    // Create event loop
+    // Create event loop - use Poll for continuous updates during streaming
     let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Wait);
+    event_loop.set_control_flow(ControlFlow::Poll);
 
     // Create app with channels
     let app = App::new(client_tx, server_rx);

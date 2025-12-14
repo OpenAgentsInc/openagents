@@ -102,6 +102,7 @@ impl ChatHandler {
 
         // Forward messages from session to UI
         while let Some(msg) = session_rx.recv().await {
+            log::info!("[ChatHandler] Forwarding to UI: {:?}", std::mem::discriminant(&msg));
             if self.server_tx.send(msg.clone()).is_err() {
                 log::warn!("[ChatHandler] UI channel closed");
                 break;
