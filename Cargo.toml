@@ -12,6 +12,9 @@ members = [
     "crates/coder_widgets",
     "crates/coder_shell",
     "crates/coder_surfaces_chat",
+    "crates/coder_surfaces_terminal",
+    "crates/coder_surfaces_diff",
+    "crates/coder_surfaces_timeline",
     "crates/coder_app",
 
     # Nostr & Decentralized
@@ -86,6 +89,9 @@ coder_ui_runtime = { path = "crates/coder_ui_runtime" }
 coder_widgets = { path = "crates/coder_widgets" }
 coder_shell = { path = "crates/coder_shell" }
 coder_surfaces_chat = { path = "crates/coder_surfaces_chat" }
+coder_surfaces_terminal = { path = "crates/coder_surfaces_terminal" }
+coder_surfaces_diff = { path = "crates/coder_surfaces_diff" }
+coder_surfaces_timeline = { path = "crates/coder_surfaces_timeline" }
 coder_app = { path = "crates/coder_app" }
 
 # External crates
