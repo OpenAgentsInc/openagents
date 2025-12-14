@@ -4,14 +4,74 @@ This directory contains all Rust crates for the OpenAgents project. All crates u
 
 ## Core MVP
 
-### `dioxus/`
-**Main web application built with Dioxus**
+### `wgpui/`
+**GPU-accelerated UI rendering engine**
 
-MechaCoder chat UI with Claude integration:
-- Dioxus 0.7 fullstack (SSR + hydration)
-- Lumen Blocks component library (shadcn/ui-style)
-- Server functions for Claude API proxy
-- Tailwind CSS styling
+Low-level UI framework with wgpu/WebGPU backend:
+- Taffy-based flexbox layout
+- GPU-accelerated text rendering
+- Platform abstraction (web-sys/winit)
+- Theme and styling system
+
+### `coder_app/`
+**Main application entry point**
+
+Application bootstrap and platform initialization:
+- Native/web entry points
+- AppState management
+- Event processing loop
+- View composition
+
+### `coder_shell/`
+**Application shell with routing and navigation**
+
+Top-level app chrome and navigation:
+- Router (URL ↔ View mapping)
+- Navigation controller (back/forward, breadcrumbs)
+- ViewRegistry for managing active views
+- Window chrome (header, status bar)
+
+### `coder_surfaces_*/`
+**IDE surface components**
+
+Specialized UI surfaces:
+- `coder_surfaces_chat/` - Chat thread with markdown streaming
+- `coder_surfaces_terminal/` - ANSI terminal emulator
+- `coder_surfaces_diff/` - Side-by-side/unified diff viewer
+- `coder_surfaces_timeline/` - Agent workflow visualization
+
+### `coder_widgets/`
+**Widget library**
+
+Reusable UI components:
+- Widget trait + AnyWidget
+- Div, Text, ScrollView, VirtualList
+- TextInput, Button
+
+### `coder_ui_runtime/`
+**Reactive UI runtime**
+
+Solid.js-inspired reactivity:
+- Signal<T>, Memo<T>, Effect
+- Scope management
+- Frame scheduler
+- Command bus
+
+### `coder_domain/`
+**Domain model and events**
+
+Event-sourced domain types:
+- DomainEvent (ChatMessageReceived, ToolUseStarted, etc.)
+- Projections (ChatView, ThreadSummary)
+- Thread and message types
+
+### `coder_protocol/`
+**Wire protocol for agent communication**
+
+Protocol types for client-agent messaging:
+- Request/Response types
+- Message framing
+- Serialization
 
 ### `claude-agent-sdk/`
 **Rust SDK for Claude Code CLI**
@@ -140,20 +200,31 @@ HTTP client for on-device LLM inference (macOS 15.1+):
 
 ```
 crates/
-├── dioxus/              # Main web app (MVP)
-├── claude-agent-sdk/    # Claude CLI SDK
-├── config/              # Configuration
-├── tools/               # File/shell tools
-├── atif/                # Trajectory format + storage
+├── wgpui/                    # GPU-accelerated UI engine
+├── coder_app/                # Main application entry point
+├── coder_shell/              # Application shell + routing
+├── coder_surfaces_chat/      # Chat thread surface
+├── coder_surfaces_terminal/  # Terminal emulator surface
+├── coder_surfaces_diff/      # Diff viewer surface
+├── coder_surfaces_timeline/  # Timeline surface
+├── coder_widgets/            # Widget library
+├── coder_ui_runtime/         # Reactive runtime
+├── coder_domain/             # Domain model + events
+├── coder_protocol/           # Wire protocol
+├── claude-agent-sdk/         # Claude CLI SDK
+├── mechacoder/               # Agent message types
+├── config/                   # Configuration
+├── tools/                    # File/shell tools
+├── atif/                     # Trajectory format + storage
 ├── nostr/
-│   ├── core/            # Protocol types
-│   ├── client/          # WebSocket client
-│   ├── relay/           # Relay server
-│   └── chat/            # Chat state machine
-├── cloudflare/          # Cloudflare Workers
-├── agents/              # Agent types
-├── taskmaster/          # Task tracking
-├── oanix/               # Agent sandbox
-├── unit/                # Dataflow runtime
-└── fm-bridge/           # Apple FM client
+│   ├── core/                 # Protocol types
+│   ├── client/               # WebSocket client
+│   ├── relay/                # Relay server
+│   └── chat/                 # Chat state machine
+├── cloudflare/               # Cloudflare Workers
+├── agents/                   # Agent types
+├── taskmaster/               # Task tracking
+├── oanix/                    # Agent sandbox
+├── unit/                     # Dataflow runtime
+└── fm-bridge/                # Apple FM client
 ```

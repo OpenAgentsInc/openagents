@@ -1,3 +1,2 @@
 [alias]
-openagents = "run --bin OpenAgents"
-mechacoder = "run --bin MechaCoder"
+coder = "run --bin coder_app"
