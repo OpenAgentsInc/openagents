@@ -759,6 +759,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpui",
+ "winit",
 ]
 
 [[package]]

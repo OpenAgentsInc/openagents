@@ -5,7 +5,41 @@ use coder_shell::{Chrome, Navigation, Route, ViewRegistry};
 use coder_ui_runtime::{CommandBus, Scheduler};
 use coder_widgets::context::{EventContext, PaintContext};
 use coder_widgets::{EventResult, Widget};
-use wgpui::{Bounds, InputEvent, Scene};
+use wgpui::markdown::{MarkdownRenderer, StreamingConfig, StreamingMarkdown};
+use wgpui::{Bounds, InputEvent, Point, Quad, Scene};
+
+// Demo markdown content for streaming demo
+const DEMO_MARKDOWN: &str = r#"# BUILD v5
+
+This is a **GPU-accelerated** markdown renderer with *streaming* support.
+
+## Features
+
+- Syntax highlighting via syntect
+- Streaming text support
+- Full markdown rendering
+
+## Code Example
+
+```rust
+fn main() {
+    let greeting = "Hello, wgpui!";
+    println!("{}", greeting);
+}
+```
+
+> Blockquotes are styled with a yellow accent bar
+
+---
+
+### Inline Styles
+
+You can use `inline code`, **bold**, *italic*, and ~~strikethrough~~.
+
+1. Ordered lists
+2. Work great
+3. With numbers
+"#;
 
 /// The main application.
 pub struct App {
@@ -32,11 +66,27 @@ pub struct App {
 
     /// Scale factor for high-DPI.
     scale_factor: f32,
+
+    /// Streaming markdown demo.
+    demo_streaming: StreamingMarkdown,
+
+    /// Character index for streaming demo.
+    demo_char_index: usize,
+
+    /// Markdown renderer.
+    markdown_renderer: MarkdownRenderer,
 }
 
 impl App {
     /// Create a new application.
     pub fn new() -> Self {
+        // Set up streaming markdown with fade-in enabled and no debounce pauses
+        let streaming_config = StreamingConfig {
+            fade_in_frames: Some(15), // Fade in over ~250ms at 60fps
+            debounce_ms: 0, // No debouncing to avoid pauses
+            ..Default::default()
+        };
+
         Self {
             state: AppState::new(),
             navigation: Navigation::new(),
@@ -46,6 +96,9 @@ impl App {
             commands: CommandBus::new(),
             window_size: (800.0, 600.0),
             scale_factor: 1.0,
+            demo_streaming: StreamingMarkdown::with_config(streaming_config),
+            demo_char_index: 0,
+            markdown_renderer: MarkdownRenderer::new(),
         }
     }
 
@@ -104,6 +157,19 @@ impl App {
     pub fn update(&mut self) {
         // Run the scheduler
         let _stats = self.scheduler.run_frame();
+
+        // Simulate streaming: append characters over time (faster, smoother)
+        let chars_per_frame = if self.demo_char_index < 150 { 8 } else { 3 };
+
+        if self.demo_char_index < DEMO_MARKDOWN.len() {
+            let end = (self.demo_char_index + chars_per_frame).min(DEMO_MARKDOWN.len());
+            self.demo_streaming.append(&DEMO_MARKDOWN[self.demo_char_index..end]);
+            self.demo_char_index = end;
+        } else if !self.demo_streaming.document().is_complete {
+            self.demo_streaming.complete();
+        }
+
+        self.demo_streaming.tick();
     }
 
     /// Paint the application to a scene.
@@ -133,30 +199,67 @@ impl App {
         }
     }
 
-    /// Paint the home screen.
+    /// Paint the home screen with streaming markdown demo.
     fn paint_home(&self, bounds: Bounds, cx: &mut PaintContext) {
-        // Center the welcome message
-        let title = "Welcome to Coder";
-        let subtitle = "Your AI-powered coding assistant";
+        // Header bar
+        let header_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            48.0,
+        );
+        cx.scene.draw_quad(
+            Quad::new(header_bounds)
+                .with_background(wgpui::theme::bg::SURFACE)
+                .with_border(wgpui::theme::border::DEFAULT, 1.0),
+        );
 
-        let title_x = bounds.origin.x + bounds.size.width / 2.0 - 100.0;
-        let title_y = bounds.origin.y + bounds.size.height / 2.0 - 40.0;
-
+        // Header title
         let title_run = cx.text.layout(
-            title,
-            wgpui::Point::new(title_x, title_y),
-            24.0,
-            wgpui::theme::text::PRIMARY,
+            "wgpui Markdown Demo",
+            Point::new(bounds.origin.x + 16.0, bounds.origin.y + 16.0),
+            14.0,
+            wgpui::theme::accent::PRIMARY,
         );
         cx.scene.draw_text(title_run);
 
-        let subtitle_run = cx.text.layout(
-            subtitle,
-            wgpui::Point::new(title_x - 20.0, title_y + 36.0),
-            14.0,
-            wgpui::theme::text::SECONDARY,
+        // Streaming status
+        let status_text = if self.demo_streaming.document().is_complete {
+            "Complete"
+        } else {
+            "Streaming..."
+        };
+        let status_color = if self.demo_streaming.document().is_complete {
+            wgpui::theme::status::SUCCESS
+        } else {
+            wgpui::theme::accent::PRIMARY
+        };
+        let status_run = cx.text.layout(
+            status_text,
+            Point::new(
+                bounds.origin.x + bounds.size.width - 140.0,
+                bounds.origin.y + 16.0,
+            ),
+            12.0,
+            status_color,
         );
-        cx.scene.draw_text(subtitle_run);
+        cx.scene.draw_text(status_run);
+
+        // Content area
+        let content_x = bounds.origin.x + 20.0;
+        let content_y = bounds.origin.y + 64.0;
+        let content_width = (bounds.size.width - 40.0).min(700.0);
+
+        // Render markdown with fade-in effect
+        let fade = self.demo_streaming.fade_state();
+        self.markdown_renderer.render_with_opacity(
+            self.demo_streaming.document(),
+            Point::new(content_x, content_y),
+            content_width,
+            cx.text,
+            cx.scene,
+            fade.new_content_opacity,
+        );
     }
 
     /// Navigate to a route.
