@@ -13,11 +13,11 @@ You are helping on the core codebase of OpenAgents, an applied AI lab building i
 The UI uses a custom GPU-accelerated stack:
 
 ```
-coder_app          → Application entry point
-coder_shell        → Routing, navigation, chrome
-coder_surfaces_*   → Chat, terminal, diff, timeline
-coder_widgets      → Widget library
-coder_ui_runtime   → Reactive runtime (Signal<T>, Memo<T>)
+coder/app          → Application entry point
+coder/shell        → Routing, navigation, chrome
+coder/surfaces_*   → Chat, terminal, diff, timeline
+coder/widgets      → Widget library
+coder/ui_runtime   → Reactive runtime (Signal<T>, Memo<T>)
 wgpui              → GPU renderer (wgpu/WebGPU)
 ```
 

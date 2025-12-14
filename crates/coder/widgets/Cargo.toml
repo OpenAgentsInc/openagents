@@ -7,13 +7,13 @@ license = "MIT"
 
 [dependencies]
 # Rendering
-wgpui = { path = "../wgpui" }
+wgpui = { path = "../../wgpui" }
 
 # Runtime
-coder_ui_runtime = { path = "../coder_ui_runtime" }
+coder_ui_runtime = { path = "../ui_runtime" }
 
 # Domain
-coder_domain = { path = "../coder_domain" }
+coder_domain = { path = "../domain" }
 
 # Collections
 smallvec = { version = "1", features = ["union"] }
