@@ -67,13 +67,13 @@ Created `harbor/` Python package with:
 
 ### Additional Tasks
 
-| Task | Model | Result | Notes |
-|------|-------|--------|-------|
-| chess-best-move | Sonnet 4 | 0.0 | Challenging task |
-| filter-js-from-html | Sonnet 4 | Running | - |
-| gcode-to-text | Sonnet 4 | Running | - |
+| Task | Model | Result | Time | Notes |
+|------|-------|--------|------|-------|
+| chess-best-move | Sonnet 4 | 0.0 | 2:12 | Challenging task |
+| filter-js-from-html | Sonnet 4 | 0.0 | 22:48 | Complex parsing task |
+| gcode-to-text | Sonnet 4 | - | Running | - |
 
-Note: Some tasks are harder than others. The infrastructure is validated - regex-log passes with Sonnet.
+Note: Terminal-Bench 2.0 tasks are challenging. The infrastructure is validated - regex-log passes with Sonnet (reward=1.0).
 
 ## Issues Encountered
 

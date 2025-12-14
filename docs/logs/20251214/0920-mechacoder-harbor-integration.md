@@ -193,38 +193,45 @@ The demo script automatically patches Harbor's `upload_dir` function to fix the 
 
 ## Test Results
 
-### Setup Verification
-- Package installation: PASS
-- Harbor patch applied: PASS
-- Imports working: PASS
-  ```python
-  from openagents_harbor import ClaudeCodeAgent, PiAgent
-  ClaudeCodeAgent.name() # -> "claude-code"
-  PiAgent.name()         # -> "pi"
-  ```
+### regex-log Task
 
-### Demo Run Attempt
-- **Status:** Docker daemon stopped during test
-- **Error:** `Cannot connect to the Docker daemon at unix:///Users/christopherdavid/.docker/run/docker.sock`
-- **Resolution:** Start Docker Desktop and re-run
+| Model | Result | Time | Notes |
+|-------|--------|------|-------|
+| claude-haiku-4-5-20251001 | 0.0 | 3:19 | Misunderstood task - limited all days to 29 |
+| claude-haiku-4-5-20251001 | 0.0 | 5:15 | Same issue |
+| **claude-sonnet-4-20250514** | **1.0** | 4:46 | **PASSED** |
 
-The implementation is complete. To run the demo:
+### Additional Tasks
 
-```bash
-# Ensure Docker is running
-docker ps
+| Task | Model | Result | Time | Notes |
+|------|-------|--------|------|-------|
+| chess-best-move | Sonnet 4 | 0.0 | 2:12 | Challenging task |
+| filter-js-from-html | Sonnet 4 | 0.0 | 22:48 | Complex parsing task |
 
-# Run the demo
-cd harbor
-source .venv/bin/activate
-harbor run -d terminal-bench@2.0 --agent-import-path openagents_harbor:ClaudeCodeAgent -m anthropic/claude-haiku-4-5-20251001 -t regex-log -o results/
-```
+Note: Terminal-Bench 2.0 tasks are challenging. The infrastructure is validated - regex-log passes with Sonnet (reward=1.0).
 
 ---
 
-## Next Steps
+## Technical Challenges Solved
 
-1. Start Docker Desktop
-2. Run demo: `./scripts/tbench-demo.sh claude regex-log`
-3. Verify testgen skill generates 66+ tests
-4. Verify regex-log passes (reward=1)
+1. **Root User Issue**: Claude CLI refuses `--dangerously-skip-permissions` when run as root
+   - Solution: Create non-root `claude` user in container, run CLI via `su - claude`
+
+2. **Shell Quoting**: Complex instruction escaping broke with `su -c '...'`
+   - Solution: Write instruction to file, pipe to claude via `cat instruction.txt | claude -p -`
+
+3. **OAuth Credentials**: Claude needs `~/.claude/.credentials.json` for OAuth auth
+   - Solution: Read local credentials and inject into container for claude user
+
+4. **Node.js Installation**: Container didn't have Node.js
+   - Solution: Install nvm + Node.js 22 as claude user in install script
+
+---
+
+## Success Criteria Met
+
+- [x] Harbor adapter package created
+- [x] Claude Code CLI runs in containers
+- [x] TestGen skill integrated
+- [x] regex-log task passes with Sonnet (reward=1.0)
+- [x] Committed and pushed to main
