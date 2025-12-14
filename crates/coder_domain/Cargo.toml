@@ -1,0 +1,20 @@
+[package]
+name = "coder_domain"
+version = "0.1.0"
+edition = "2024"
+description = "Domain model for Coder - entities, events, and projections"
+license = "MIT"
+
+[dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Collections
+smallvec = { version = "1", features = ["serde"] }
